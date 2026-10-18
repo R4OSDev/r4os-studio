@@ -4,7 +4,7 @@ Lokales Grundgerüst einer browserbasierten Entwicklungsumgebung für R4OS.
 
 ## Repository
 
-Dieses Verzeichnis ist das lokale Git-Repository. Remote: `https://gitea.r4public.r4network/R4mbo/R4OS_Studio.git`, Branch `main`. Jede fertiggestellte Unterversion wird committed und gepusht. Unter Windows aus dem übergeordneten Workspace: `Tools\Push.bat "Kurze Commit-Beschreibung"`.
+Dieses Verzeichnis ist das lokale Git-Repository. Remote: `https://gitea.r4public.r4network/R4mbo/R4OS_Studio.git`, Branch `main`. Jede fertiggestellte Unterversion wird committed und gepusht. Aus dem übergeordneten Workspace unter Linux: `./Tools/Push.sh "Kurze Commit-Beschreibung"`; unter Windows: `Tools\Push.bat "Kurze Commit-Beschreibung"`.
 
 `AGENTS.md` und `Tools/` liegen im übergeordneten Workspace und werden nicht in dieses Repository aufgenommen. Lokale Git-Einstellungen erlauben das selbstsignierte Gitea-Zertifikat und lösen `gitea.r4public.r4network` bei Bedarf über `10.0.0.2` auf. Zugangsdaten stehen im außerhalb dieses Repositories abgelegten Push-Skript; die Remote-URL enthält keine Zugangsdaten.
 
