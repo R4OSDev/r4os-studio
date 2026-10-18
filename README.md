@@ -32,14 +32,14 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
 - Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Die Spaltenüberschriften zeigen ausschließlich ihre Bezeichnung ohne Zähler. Die Spalten enthalten keine wiederholten Kontextüberschriften und keine Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
-- Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
+- Im Tab **System** gibt es **Settings → LLM Provider** und **Virtual Machines**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
 - Rechts ein Hauptbereich mit Seitentitel und Inhalt, ohne Breadcrumb-Navigation oder zusätzliche Kontextüberschrift über dem Seitentitel.
 - Die untere Leiste zeigt **R4OS Studio** horizontal mittig und **Version …** rechtsbündig. Die Versionsnummer stammt aus `shared/version.json`.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
 
-Die Projektansichten einschließlich „Example Project“ sind Dummys. Die OpenAI-Provider-Verwaltung ist implementiert. Es werden noch keine R4OS-Projekte gespeichert oder R4OS-Tools gestartet. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+Die Projektansichten einschließlich „Example Project“ sind Dummys. OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Projekt-Builds sind noch nicht in die WebApp integriert; die VM-Verwaltung startet bereits QEMU. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
 
 ## OpenAI mit ChatGPT-Abonnement
 
@@ -148,11 +148,11 @@ Das [App-Paket](https://github.com/R4OSDev/r4os-app-example/blob/bf1d27058a54d09
 
 **Versionen:** Der untersuchte SDK-Hauptzweig `d62062c0a8f1d1d9fc3c5ac0d228d719c51669a2` (`0.64.37`) bindet bereits Contract `6d2feb313aa8892e8a3df7cb7f2e9545e4544362` (`0.64.21`). Dieses Paar ersetzt die App-Pins nicht automatisch. Das zukünftige Projektprofil bindet Compiler/Prüfsumme, SDK/Contract samt Pakethashes, optionale Libraries und Testabbild/Hash gemeinsam.
 
-**Tests:** Ein veröffentlichtes [Full-Abbild 0.84.47](https://github.com/R4OSDev/r4os-distribution/releases/tag/v0.84.47) ist ein Kandidat für GUI-Tests. ZIP-SHA-256: `cee402a6a6ae5130389ae0f367fa6ce7702aad91a4534f23f70919398dc628b4`. Sein geprüftes Quellmanifest nennt SDK `66c0ec3eeac8bf940f29afd515a7c6eba4aab61d`, Contract `03195b2a2e7461c72a4d0d6b645ae24319ba6315` und Libraries `4f2087cc114582878845b7ed69776f5b31c5a88d`. Es wurde noch kein Image heruntergeladen/gebootet und keine Laufzeitkompatibilität behauptet. R4X läuft im R4OS-Gast, nicht als Linux-Programm oder direkt im Browser.
+**Tests:** Ein veröffentlichtes [Full-Abbild 0.84.47](https://github.com/R4OSDev/r4os-distribution/releases/tag/v0.84.47) ist ein Kandidat für GUI-Tests. ZIP-SHA-256: `cee402a6a6ae5130389ae0f367fa6ce7702aad91a4534f23f70919398dc628b4`. Sein geprüftes Quellmanifest nennt SDK `66c0ec3eeac8bf940f29afd515a7c6eba4aab61d`, Contract `03195b2a2e7461c72a4d0d6b645ae24319ba6315` und Libraries `4f2087cc114582878845b7ed69776f5b31c5a88d`. Bei der ursprünglichen SDK-Untersuchung wurde das Image noch nicht gebootet. Inzwischen ist genau dieses Release für die unabhängige VM-Verwaltung importiert und getestet; siehe Virtual Machines. R4X läuft im R4OS-Gast, nicht als Linux-Programm oder direkt im Browser.
 
-Der Deploy-Pfad muss noch mit offiziellen Werkzeugen/Formaten nachgewiesen werden. Upstream besitzt R4UPack und ImageCreator in `r4os-distribution`; diese Untersuchung bestätigt noch keinen vollständigen App-Deploy in ein vorhandenes Image. Keine pauschale Abhängigkeit vom Distribution-Gesamtbuild einführen. Die VM verwendet später eine private Kopie oder ein Overlay des Basisabbilds, zunächst ohne Gastnetzwerk; keine Gastdienste für LAN/VPN oder Internet freigeben.
+Der Deploy-Pfad muss noch mit offiziellen Werkzeugen/Formaten nachgewiesen werden. Upstream besitzt R4UPack und ImageCreator in `r4os-distribution`; diese Untersuchung bestätigt noch keinen vollständigen App-Deploy in ein vorhandenes Image. Keine pauschale Abhängigkeit vom Distribution-Gesamtbuild einführen. Die unabhängige VM-Verwaltung verwendet inzwischen private Overlays des Basisabbilds ohne Gastnetzwerk; keine Gastdienste für LAN/VPN oder Internet freigeben.
 
-Geplante Zuständigkeiten: Projektbedienung/Editor im Browser, Projektpersistenz und R4OS-Adapter in getrennten Backend-Modulen, Compiler und VM in einem ausführenden Runner. Die Datenordner sind wie unten beschrieben eingerichtet; die zugehörigen Projekt-/Runner-Module sind noch nicht implementiert. Der Dienst hat derzeit nur Schreibrechte für `Data/LLMProvider/`; Runner-Rechte und Isolation sind bei dessen Umsetzung gesondert einzurichten.
+Geplante Zuständigkeiten: Projektbedienung/Editor im Browser, Projektpersistenz und R4OS-Adapter in getrennten Backend-Modulen, Compiler und VM in einem ausführenden Runner. Die Datenordner sind wie unten beschrieben eingerichtet. Projekt-/Build-Module sind noch nicht implementiert; die VM-Verwaltung besitzt einen eigenen Runner. Dienstrechte sind im Abschnitt Virtual Machines beschrieben.
 
 Die vollständige Quellen-/Abhängigkeitsprüfung und alle untersuchten Hauptzweig-Revisionen stehen im übergeordneten Workspace unter [`Docs/R4OS-Components.md`](../Docs/R4OS-Components.md). Der erste Nachweis erfolgte temporär; das anschließend lokal installierte Setup ist im folgenden Abschnitt beschrieben.
 
@@ -172,7 +172,7 @@ Data/
 └── LLMProvider/                   bestehende Provider-Daten
 ```
 
-Die versionierte Profilvorlage [`shared/r4os/minimal-profile.json`](shared/r4os/minimal-profile.json) bindet Zig 0.16.0, SDK 0.64.35 und Contract 0.64.20 mit Quell-URLs, Archiv-SHA-256 und SDK-/Contract-Zig-Pakethashes. Die installierte Profilkopie unter `Data/R4OS/Profiles/minimal.json` verwendet relative Pfade zum R4OS-Ordner. **QEMU, Firmware, Gastabbilder und zusätzliche Libraries sind nicht installiert.**
+Die versionierte Profilvorlage [`shared/r4os/minimal-profile.json`](shared/r4os/minimal-profile.json) bindet Zig 0.16.0, SDK 0.64.35 und Contract 0.64.20 mit Quell-URLs, Archiv-SHA-256 und SDK-/Contract-Zig-Pakethashes. Die installierte Profilkopie unter `Data/R4OS/Profiles/minimal.json` verwendet relative Pfade zum R4OS-Ordner. Dieses Minimalprofil enthält ausschließlich die Build-Werkzeuge; QEMU und Full-Abbild sind inzwischen separat für die VM-Verwaltung eingerichtet. Zusätzliche Libraries und UEFI-Firmware sind nicht installiert.
 
 Das Setup benötigt Linux x86_64 und Python ab 3.12. Aus dem App-Verzeichnis als Besitzer von `Data/`:
 
@@ -195,7 +195,45 @@ R4OS_ROOT='/Data/Projekte/R4OS Studio/App/Data/R4OS'
 
 Die Installation wurde als `r4os-studio` geprüft: Zig-Version und Pakethashes stimmen, ein erneuter Setup-Lauf verwendet vorhandene Komponenten, und ein frischer Example-Build mit den installierten Pfaden besteht alle 9 Schritte einschließlich R4M0-Prüfung. Protokoll und Ergebnis liegen unter `Data/R4OS/Profiles/minimal-build.log` und `minimal-verification.json`; das temporäre Prüfprojekt wurde entfernt. Ein VM-Test fand nicht statt.
 
-SDK/Contract/Compiler werden projektübergreifend genutzt; eigene App-Quellen und Ausgaben gehören unter `Data/Projects/`. `Data/` bleibt vollständig ignoriert, auch für beide Push-Skripte. Der Setup läuft außerhalb der systemd-Isolierung als unprivilegierter Benutzer. Die WebApp erhält damit noch keinen Build-Endpunkt oder zusätzliche Schreibrechte; ihr Dienst darf weiterhin nur den Provider-Ordner beschreiben. Ausführliche Einrichtung und Rechte: [`../Docs/R4OS-Setup.md`](../Docs/R4OS-Setup.md). Die laufende WebApp und ihre Versionsnummer bleiben für diese lokale Bereitstellung unverändert.
+SDK/Contract/Compiler werden projektübergreifend genutzt; eigene App-Quellen und Ausgaben gehören unter `Data/Projects/`. `Data/` bleibt vollständig ignoriert, auch für beide Push-Skripte. Der Setup läuft außerhalb der systemd-Isolierung als unprivilegierter Benutzer. Die Toolchain-Bereitstellung enthält noch keinen Projekt-Build-Endpunkt. Die gesonderte VM-Verwaltung erweitert gezielt die Schreibrechte für Instanzen und deren Runtime. Ausführliche Einrichtung und Rechte: [`../Docs/R4OS-Setup.md`](../Docs/R4OS-Setup.md). Die reine Toolchain-Bereitstellung änderte die WebApp nicht; die spätere VM-Verwaltung ist in Version 0.1.13 enthalten.
+
+## Virtual Machines
+
+Unter **System → Virtual Machines** steht **+ New VM** in Components; darunter die gespeicherten VMs. Views: Overview, Console, Settings, Exchange, Logs. VMs sind unabhängig von Projekten und können parallel laufen. Projektzuweisungen sind noch nicht implementiert.
+
+- Neue VMs verwenden das neueste vollständige lokale Full-Release nach numerischer Versionsnummer und starten ausgeschaltet. Das importierte Image bleibt unverändert; jede UUID unter `Data/R4OS/Instances/` hat ihr eigenes vollständiges QCOW2-Overlay. Die vorhandenen C:/D:-Partitionen bleiben erhalten.
+- Name, CPU und RAM sind bei gestoppter VM änderbar. Start, Shut down, bestätigter Restart/Force stop und bestätigtes Delete sind implementiert. Ein eigener systemd-Dienst pro VM erhält laufende Gäste über Studio-Neustarts hinweg. VMs starten nach einem Host-Reboot zunächst ausgeschaltet. Shut down sendet eine ACPI-Anfrage; deren Abschluss ist für den getesteten Gast noch nicht bestätigt. Force stop wurde erfolgreich geprüft.
+- `Instances/<uuid>/Exchange/Share/` nimmt fertige Artefakte auf. Beim Start wird daraus ein echter FAT32-Snapshot mit Label **R4SHARE** erzeugt und als schreibgeschützter USB-Datenträger zusätzlich eingebunden. Beim geprüften R4OS Full 0.84.47 erscheint er als **F:**; die Buchstabenvergabe erfolgt im Gast. Änderungen werden durch Stoppen und erneutes Starten übernommen.
+- Die direkte QEMU-Option `fat:32:` erzeugte im Test einen ungültigen FAT32-Aufbau und wurde verworfen. Der implementierte Generator verwendet `mkfs.fat`/`mcopy`, einen MBR und eine FAT32-Partition. Der Host-Ordner ist kein live synchronisiertes Dateisystem.
+- Exchange erlaubt zunächst gewöhnliche Dateien mit ASCII-Namen, keine Unterordner oder Symlinks: 128 Dateien, insgesamt 96 MiB, Browser-Upload maximal 8 MiB je Datei. Upload/Remove/Settings werden im laufenden Betrieb gesperrt.
+- Console zeigt den Gast mit Tastaturbedienung und etwa einem Bild pro Sekunde; US-Tastaturbelegung, noch keine Maussteuerung. Logs zeigt begrenzte serielle Gast-/QEMU-Ausgaben. Gastnetzwerke sind deaktiviert; QMP verwendet ausschließlich lokale Unix-Sockets.
+
+Datenstruktur:
+
+```text
+Data/R4OS/
+├── Images/<image-id>/image.json, disk.img, release/
+└── Instances/<vm-uuid>/
+    ├── vm.json
+    ├── Disks/disk.qcow2, exchange.img
+    ├── Exchange/Share/
+    └── Logs/qemu.log, serial.log
+```
+
+Hosteinrichtung aus dem Workspace-Stamm als root:
+
+```sh
+apt-get install --no-install-recommends qemu-system-x86 qemu-utils dosfstools mtools
+./Tools/install-vm-support.sh
+./Tools/install-service.sh
+python3 App/scripts/import-r4os-image.py --version 0.84.47
+```
+
+Der Image-Importer prüft die offizielle ZIP-Prüfsumme und anschließend Größe/SHA-256 des entpackten Disk-Abbilds gegen das Release-Manifest, entpackt Sparse-Nullbereiche und erhält Lizenzen/Quellenmetadaten. Vorhandene Images werden nie überschrieben. Ohne `--version` wird das neueste stabile Full-Release importiert; optional ein vorhandenes ZIP über `--archive /absolute/path` verwenden. Python ab 3.11 erforderlich. Die installierte QEMU-Version auf diesem Host ist 10.0.13; das importierte Full-Release 0.84.47 ist geprüft und bootfähig. Es wurden keine weiteren R4OS-Repositories installiert.
+
+Die Module liegen unter `frontend/src/features/virtual-machines/`, `backend/src/modules/virtual-machines/` und `shared/virtual-machines.d.ts`. Metadaten und lokale Dateien bleiben unter dem ignorierten `Data/`. Die WebApp darf gezielt `Data/R4OS/Instances/` und die VM-Runtime beschreiben; Images und Toolchains bleiben im Dienst schreibgeschützt. Polkit erlaubt dem unprivilegierten Dienstbenutzer nur Start/Stop gültiger UUID-Instanzen der festen VM-Vorlage. VM-HTTP-Anfragen sind über Sitzung, Host-/Origin-Prüfung und CSRF geschützt.
+
+Geprüft: zwei parallele VMs mit getrennten Austauschdateien und unveränderten VM-Dienst-PIDs nach Studio-Neustart; Uploads auf laufende VMs abgewiesen. Im Gasttest waren C: und D: sowie F: mit lesbarer `PROBE.TXT` vorhanden. Browseranlage, Datei-Upload, Start, Konsole und gleich breite Spalten bis 320 Pixel sind geprüft. Elf Backendtests, ESLint und Build bestehen. Ein isolierter Sparse-Importtest prüft Disk-Hashes, Metadaten/Lizenzen und den Schutz bestehender Images. Details und Quellen: [`../Docs/VirtualMachines.md`](../Docs/VirtualMachines.md).
 
 ## Prüfen und bauen
 
@@ -209,7 +247,7 @@ corepack pnpm start
 
 `build` prüft TypeScript und erzeugt `frontend/dist/` sowie `backend/dist/`. `start` stellt die gebaute Anwendung auf Port **5010** für LAN und VPN bereit, lokal unter <http://127.0.0.1:5010>. Der systemd-Dienst und die Skripte in [`../Tools/`](../Tools/README.md) übernehmen den dauerhaften Betrieb. Ein laufender Dienst belegt Port 5010; für einen parallelen manuellen Test einen anderen `PORT` setzen. Die Entwicklungsports 5173/3001 bleiben davon unabhängig.
 
-Das Studio selbst hat noch keine Benutzeranmeldung oder Mehrbenutzerrollen. Die OpenAI-Kontoanmeldung erfolgt separat wie oben beschrieben. Die vorhandene Host-Firewall begrenzt den Zugriff auf die erlaubten Netze; der Installer ergänzt nur TCP 5010 auf dem VPN-Interface `sdwan0`. Eine öffentliche Freigabe und R4OS-Testinstanzen sind nicht Teil dieses Dienstes.
+Das Studio selbst hat noch keine Benutzeranmeldung oder Mehrbenutzerrollen. Die OpenAI-Kontoanmeldung erfolgt separat wie oben beschrieben. Die vorhandene Host-Firewall begrenzt den Zugriff auf die erlaubten Netze; der Installer ergänzt nur TCP 5010 auf dem VPN-Interface `sdwan0`. Eine öffentliche Freigabe ist nicht eingerichtet. R4OS-VMs laufen in gesonderten, netzlosen Diensten.
 
 Die Backendtests verwenden isolierte temporäre Daten und einen kontrollierten Auth-Client. Sie prüfen Login-Besitz, Kontentrennung, Persistenz, CSRF/Origin/Host-Schutz, OpenAI-only-Validierung, Abbruch, Ablauf, Quoten-Cache und Kontentrennung, fehlende Nutzungsdaten, Reset-Bestätigung und Idempotenz sowie Fehler ohne Token-Leaks. Sie melden keinen simulierten Login als echten OpenAI-Test an. Zusätzlich wurden mit der offiziellen Binary Initialisierung, ein abgemeldetes isoliertes Konto sowie eine echte Device-Code-Anfrage mit anschließendem Abbruch geprüft. Eine vollständige persönliche Anmeldung muss der Benutzer selbst bei OpenAI abschließen.
 

@@ -1,0 +1,34 @@
+.vm-content { flex: 1; min-width: 0; padding: 27px 37px 36px; overflow: auto; scrollbar-color: #59416d #18121f; scrollbar-width: thin; }
+.vm-card { max-width: 1100px; padding: 26px; border: 1px solid var(--line); border-radius: 10px; background: #1b1623; }
+.vm-card h2 { font-size: 18px; font-weight: 500; margin: 0 0 15px; }
+.vm-help { color: #b0a2c0; font-size: 12px; line-height: 1.8; margin: 12px 0 20px; overflow-wrap: anywhere; }
+.vm-form { display: grid; gap: 12px; max-width: 460px; }
+.vm-form label, .vm-upload { color: #e5dfee; font-size: 12px; }
+.vm-form input, .vm-content select { padding: 12px; border: 1px solid #4b395c; border-radius: 5px; background: #120f18; color: #eee5fa; min-width: 0; font: inherit; }
+.vm-form button { justify-self: start; }
+.vm-toolbar, .vm-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.vm-actions { margin-top: 20px; }
+.vm-status { padding: 7px 10px; border: 1px solid #61467d; border-radius: 5px; color: #be9ce5; font-size: 12px; text-transform: capitalize; }
+.vm-status.running { background: #342348; color: #e0c8ff; }
+.vm-alert { padding: 14px; margin-bottom: 20px; border: 1px solid #725170; border-radius: 6px; color: #f2d8ed; background: #372336; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.vm-alert button { margin-right: 10px; }
+.vm-properties { margin: 0; font-size: 12px; }
+.vm-properties > div { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 15px; padding: 14px 0; border-bottom: 1px solid #30253b; }
+.vm-properties dt { color: #b0a2c0; }
+.vm-properties dd { margin: 0; overflow-wrap: anywhere; }
+.vm-path { display: block; padding: 12px; border: 1px solid #483456; border-radius: 5px; font-size: 11px; overflow-wrap: anywhere; }
+.vm-upload { display: grid; gap: 12px; margin: 20px 0; }
+.vm-upload input { max-width: 100%; }
+.vm-files { list-style: none; padding: 0; }
+.vm-files li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #30253b; font-size: 12px; }
+.vm-files li > span { overflow-wrap: anywhere; min-width: 0; }
+.vm-files small { display: block; color: #b0a2c0; margin-top: 7px; }
+.vm-log { max-height: 600px; overflow: auto; background: #100c16; padding: 16px; font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vm-screen { max-width: 100%; background: #000; border: 1px solid #634682; border-radius: 5px; overflow: hidden; }
+.vm-screen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.vm-screen img { display: block; width: 100%; height: auto; }
+.vm-nav-status { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: #715a84; flex-shrink: 0; }
+.vm-nav-status.running { background: #d1a8ff; box-shadow: 0 0 7px #b881ed88; }
+.vm-nav-status.failed { background: #ec99ae; }
+@media (max-width:1050px) { .vm-content { padding: 24px; } .vm-card { padding: 20px; } }
+@media (max-width:440px) { .vm-content { padding: 20px 16px; } .vm-card { padding: 16px; } .vm-properties > div { grid-template-columns: 100px minmax(0,1fr); } }

@@ -6,6 +6,8 @@ import type { Tab } from './navigation';
 import { useProviders } from '../features/llm-providers/useProviders';
 import { ProviderPanel } from '../features/llm-providers/components/ProviderPanel';
 import { percent } from '../features/llm-providers/usage-format';
+import { useVms } from '../features/virtual-machines/useVms';
+import { VmPanel } from '../features/virtual-machines/VmPanel';
 import { version } from '../../../shared/version.json';
 
 const tabs: Tab[] = ['System', 'Projects'];
@@ -13,6 +15,7 @@ type Selection = { group: number; item: number; view: number };
 
 export function App() {
   const [tab, setTab] = useState<Tab>('System');
+  const [vmId, setVmId] = useState<string | null>(null);
   const [providerView, setProviderView] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<Tab, Selection>>({
     System: { group: 0, item: 0, view: 0 },
@@ -22,11 +25,16 @@ export function App() {
   const selected = selections[tab];
   const groups = navigation[tab];
   const group = groups[selected.group];
-  const item = group.items[selected.item];
-  const providerPage = tab === 'System' && item === 'LLM Provider';
+  const vmPage = tab === 'System' && group.name === 'Virtual Machines';
+  const vms = useVms(vmPage);
+  const activeVm = vms.vms.find((vm) => vm.id === vmId);
+  const componentItems = vmPage ? ['+ New VM', ...vms.vms.map((vm) => vm.name)] : group.items;
+  const selectedComponent = vmPage ? (activeVm ? vms.vms.indexOf(activeVm) + 1 : 0) : selected.item;
+  const item = componentItems[selectedComponent];
+  const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : views[tab];
+  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : views[tab];
   const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : selected.view;
   const view = availableViews[selectedView];
 
@@ -85,11 +93,11 @@ export function App() {
           <nav className="nav-column" aria-label="Components">
             <div className="column-heading">Components</div>
             <div className="nav-items">
-              {group.items.map((name, index) => (
-                <button type="button" key={name} className={`nav-item ${selected.item === index ? 'selected' : ''}`}
-                  aria-current={selected.item === index ? 'true' : undefined}
-                  onClick={() => select({ item: index, view: 0 })}>
-                  <span className="component-mark" /><span>{name}</span>{availableViews.length > 0 && <Icon name="chevron" className="item-chevron" />}
+              {componentItems.map((name, index) => (
+                <button type="button" key={vmPage && index > 0 ? vms.vms[index - 1].id : name} className={`nav-item ${selectedComponent === index ? 'selected' : ''}`}
+                  aria-current={selectedComponent === index ? 'true' : undefined}
+                  onClick={() => { if (vmPage) setVmId(index ? vms.vms[index - 1].id : null); select({ item: index, view: 0 }); }}>
+                  <span className="component-mark" /><span className="provider-view-name">{name}</span>{vmPage && index > 0 && <span className={`vm-nav-status ${vms.vms[index - 1].state}`} title={vms.vms[index - 1].state} />}{availableViews.length > 0 && <Icon name="chevron" className="item-chevron" />}
                 </button>
               ))}
             </div>
@@ -111,7 +119,7 @@ export function App() {
                         ? 'Remaining usage is not available.' : 'Lowest reported remaining usage across quota windows.'}>
                         {remaining == null ? '—' : percent(remaining)}
                       </span>}
-                  </> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
+                  </> : vmPage ? <span>{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
                 </button>;
               })}
             </div>
@@ -119,8 +127,8 @@ export function App() {
         </aside>
 
         <main className="main-area">
-          <div className="page-heading"><h1>{view ?? item}</h1><span className="page-rule" /></div>
-          {providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
+          <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
+          {vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
             {view && <>
             <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>
             <span className="empty-eyebrow">IT ALL STARTS HERE</span>

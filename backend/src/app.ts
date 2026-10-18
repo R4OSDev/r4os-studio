@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { vmRoutes } from './modules/virtual-machines/routes.js';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { providerRoutes } from './modules/llm-providers/routes.js';
@@ -16,6 +17,8 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
     binary: process.env.CODEX_BINARY ?? '/opt/r4os-studio/bin/codex',
     ...providers,
   });
+
+  app.register(vmRoutes, { prefix: '/api/vms' });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

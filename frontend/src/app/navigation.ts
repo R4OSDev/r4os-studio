@@ -9,6 +9,7 @@ export interface NavigationGroup {
 export const navigation: Record<Tab, NavigationGroup[]> = {
   System: [
     { name: 'Settings', icon: 'settings', items: ['LLM Provider'] },
+    { name: 'Virtual Machines', icon: 'system', items: [] },
   ],
   Projects: [
     { name: 'Workspace', icon: 'folder', items: ['All Projects', 'Recently Opened', 'Templates'] },
