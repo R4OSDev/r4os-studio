@@ -30,10 +30,11 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 
 - Purple/Dark-Design mit dunkelvioletten Flächen, lavendelfarbener Schrift und violetten Akzenten für Auswahl, Tabs und Tastaturfokus. Favicon und Browser-Theme-Farbe sind darauf abgestimmt.
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
-- Obere Tab-Leiste mit **System** und **Projects**. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
-- Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
+- Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
+- Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Die Spalten enthalten keine wiederholten Kontextüberschriften und keine Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
 - Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider.
 - Rechts ein Hauptbereich mit Breadcrumb, Seitentitel und Platzhalter.
+- Die untere Leiste enthält ausschließlich linksbündig **R4OS Studio | Version …**. Die Versionsnummer stammt aus `shared/version.json`.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
@@ -73,6 +74,12 @@ Jeder logische Einlöseversuch hat eine UUID als Idempotenzschlüssel. Der Brows
 
 Die Umsetzung verwendet die offiziellen Account-RPCs `account/rateLimits/read` und `account/rateLimitResetCredit/consume`. Herkunft und Protokollgrenzen sind unter `Docs/OpenAI-Subscription.md` dokumentiert. Verbrauchende Tests verwenden ausschließlich kontrollierte Fake-Clients. Die bestehende persönliche Verbindung wurde nur lesend geprüft; kein echtes Reset-Guthaben wurde eingelöst.
 
+## Versionsnummer
+
+Die maßgebliche App-Version steht ausschließlich in `shared/version.json` im Format `major.minor.patch`. Für eine neue Unterversion diese Datei anpassen. Das Frontend liest sie direkt für die untere Leiste; das Backend verwendet dieselbe Version für die Codex-Client-Metadaten.
+
+`node scripts/sync-version.mjs` überträgt die Version in die Paketmetadaten von `package.json`. `corepack pnpm build` führt diesen Schritt automatisch vor dem Bauen aus. `package.json` deshalb nicht unabhängig versionieren. `shared/version.json` gehört auch beim Produktionsstart zur Anwendung und muss zusammen mit den Build-Dateien vorhanden sein.
+
 ## Aufbau und Entscheidungen
 
 ```text
@@ -93,7 +100,9 @@ App/
 │       ├── errors.ts                HTTP-Fehler des Moduls
 │       └── openai/                  Codex-Prozess und Usage-/Reset-Adapter
 ├── backend/test/                    Isolierte Provider-Integrationstests
-├── shared/llm-providers.d.ts         Öffentliche Datenverträge, keine Zugangstokens
+├── shared/
+│   ├── llm-providers.d.ts            Öffentliche Datenverträge, keine Zugangstokens
+│   └── version.json                 Maßgebliche App-Versionsnummer
 ├── Data/LLMProvider/                Lokale Laufzeitdaten; vollständig ignoriert
 ├── scripts/                         Gemeinsamer Entwicklungsstart
 └── pnpm-lock.yaml                   Aufgelöste Abhängigkeitsversionen

@@ -5,6 +5,7 @@ import { navigation, views } from './navigation';
 import type { Tab } from './navigation';
 import { useProviders } from '../features/llm-providers/useProviders';
 import { ProviderPanel } from '../features/llm-providers/components/ProviderPanel';
+import { version } from '../../../shared/version.json';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };
@@ -64,7 +65,6 @@ export function App() {
             </button>
           ))}
         </div>
-        <span className="stage-label">WORKSPACE <span>01</span></span>
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
@@ -80,12 +80,10 @@ export function App() {
                 </button>
               ))}
             </div>
-            <div className="column-note"><span className="small-dot" />{tab === 'System' ? 'System management' : 'Project management'}</div>
           </nav>
           <nav className="nav-column" aria-label="Components">
             <div className="column-heading"><span>Components</span><span className="count">{group.items.length.toString().padStart(2, '0')}</span></div>
-            <div className="nav-context">{group.name}</div>
-            <div className="nav-items compact">
+            <div className="nav-items">
               {group.items.map((name, index) => (
                 <button type="button" key={name} className={`nav-item ${selected.item === index ? 'selected' : ''}`}
                   aria-current={selected.item === index ? 'true' : undefined}
@@ -97,8 +95,7 @@ export function App() {
           </nav>
           <nav className="nav-column" aria-label="Views">
             <div className="column-heading"><span>Views</span><span className="count">{availableViews.length.toString().padStart(2, '0')}</span></div>
-            <div className="nav-context">{item}</div>
-            <div className="nav-items compact">
+            <div className="nav-items">
               {availableViews.map((name, index) => (
                 <button type="button" key={providerPage ? (index === 0 ? 'new-provider' : providers.providers[index - 1].id) : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
                   aria-current={selectedView === index ? 'page' : undefined}
@@ -125,13 +122,11 @@ export function App() {
             <div className="empty-label"><Icon name="grid" />App shell · Content coming soon</div>
             </>}
           </div>}
-          <div className="main-footnote"><span>R4OS development environment</span><span>APP SHELL / 0.1</span></div>
         </main>
       </div>
 
       <footer className="statusbar">
-        <div><span className="status-indicator" />UI ready<span className="status-divider" />{tab}<span className="status-slash">/</span>{view ?? item}</div>
-        <span>Local app shell<span className="status-divider" />R4OS Studio</span>
+        R4OS Studio | Version {version}
       </footer>
     </div>
   );

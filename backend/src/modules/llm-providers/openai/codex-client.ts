@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { version } from '../../../version.js';
 
 export interface AuthClient {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
@@ -69,7 +70,7 @@ export class CodexClient implements AuthClient {
       }
     });
     this.ready = this.send('initialize', {
-      clientInfo: { name: 'r4os_studio', title: 'R4OS Studio', version: '0.1.5' },
+      clientInfo: { name: 'r4os_studio', title: 'R4OS Studio', version },
       capabilities: { experimentalApi: false },
     }).then(() => {
       this.child.stdin.write(JSON.stringify({ method: 'initialized' }) + '\n');
