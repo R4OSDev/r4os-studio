@@ -67,7 +67,9 @@ h2 { margin: 14px 0 12px; color: #ece2fa; font-size: clamp(21px, 2vw, 29px); lin
 .empty-state p span { color: #cdbbdf; }
 .empty-label { display: flex; align-items: center; gap: 7px; margin-top: 29px; border: 1px dashed #4d375f; padding: 9px 12px; border-radius: 5px; color: #b7a4cb; font-size: 10px; }
 .empty-label .icon { width: 12px; height: 12px; }
-.statusbar { display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0; height: 30px; padding: 0 17px; border-top: 1px solid var(--line); background: #21192b; color: #b9a9cc; font-size: 10px; }
+.statusbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; flex-shrink: 0; height: 30px; padding: 0 17px; border-top: 1px solid var(--line); background: #21192b; color: #b9a9cc; font-size: 10px; }
+.statusbar-name { grid-column: 2; justify-self: center; white-space: nowrap; }
+.statusbar-version { grid-column: 3; justify-self: end; white-space: nowrap; }
 @keyframes enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (min-width: 1600px) { .workspace { --navigation-column-width: 190px; } }
 @media (max-width: 1050px) { .workspace { --navigation-column-width: calc(465px * .95 / 3.05); } .nav-item { font-size: 11px; gap: 7px; padding: 9px 6px; } .column-heading { padding: 0 12px; font-size: 9px; letter-spacing: 1px; } .page-heading { padding: 28px 25px 0; } }

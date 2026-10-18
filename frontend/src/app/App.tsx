@@ -133,7 +133,8 @@ export function App() {
       </div>
 
       <footer className="statusbar">
-        R4OS Studio | Version {version}
+        <span className="statusbar-name">R4OS Studio</span>
+        <span className="statusbar-version">Version {version}</span>
       </footer>
     </div>
   );
