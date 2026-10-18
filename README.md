@@ -114,7 +114,47 @@ React und TypeScript strukturieren die interaktive Studio-Oberfläche. Vite übe
 
 Browser: Layout, Navigation, Provider-Verwaltung und Anmeldecode. Der Feature-API-Client ist von React getrennt; `useProviders.ts` verwaltet den React-Zustand. Server: Health-Endpunkt, Provider-API, isolierte Codex-Kindprozesse, Persistenz und statische Frontend-Dateien. Ausschließlich `frontend/dist/` wird statisch ausgeliefert; `Data/` ist über HTTP nicht zugänglich. Im Entwicklungsbetrieb leitet Vite `/api` zum Backend weiter; dadurch ist keine zusätzliche CORS-Freigabe nötig. Die Entwicklungsserver binden an `127.0.0.1`. Im Produktionsbetrieb liefert ein gemeinsamer Server Frontend und API über `0.0.0.0:5010` aus. `HOST` und `PORT` überschreiben die jeweiligen Vorgaben.
 
-Geplant: Monaco-Editor, Projektpersistenz, versionierte R4OS-Dokumentation sowie ein eigener Runner für SDK, Builds und isolierte QEMU-Testinstanzen. Diese Komponenten kommen bei konkretem Bedarf hinzu. Die aktuelle App integriert noch keine R4OS-API oder Toolchain; daher gibt es noch keine eingebundenen R4OS-Revisionen.
+Geplant: Monaco-Editor, Projektpersistenz, versionierte R4OS-Dokumentation sowie ein eigener Runner für SDK, Builds und isolierte QEMU-Testinstanzen. Diese Komponenten kommen bei konkretem Bedarf hinzu. Die aktuelle App integriert noch keine R4OS-API oder Toolchain. Die folgende Untersuchung hält bereits Quellenrevisionen für die geplante Anbindung fest; sie sind noch keine installierten Studio-Abhängigkeiten.
+
+## R4OS: einzelne Apps statt Gesamtworkspace
+
+Entscheidung vom 18.10.2026: Studio lädt und baut das ausgewählte App-Projekt. Ein vollständiger R4OS-Workspace ist keine Voraussetzung.
+
+| Fähigkeit | Benötigte Komponenten |
+|---|---|
+| App bauen | App-Quellen/Manifest/Build-Dateien, Zig 0.16.0, `r4os-sdk` und dessen gebundener `r4os-contract`. |
+| Zusätzliche Bibliothek verwenden | Nur bei App-Bedarf die passenden Library-Bindings/-Verträge; zur Laufzeit passende R4L-Module im Gast. |
+| App in R4OS ausführen | Optional: geprüftes R4OS-Binärabbild, QEMU und ein noch zu integrierender Deploy-/Test-Runner. |
+| API-Wissen anzeigen | Passende Contract-/SDK-Referenzen und ausgewählte Dokumentation; kein zusätzlicher Build-Schritt. |
+
+**Praktisch geprüft:** Die unveränderte offizielle [Example-App](https://github.com/R4OSDev/r4os-app-example/blob/bf1d27058a54d0998eabe1d32f6fb05ab47796c5/build.zig) wurde temporär auf diesem Linux-Host mit ausschließlich Compiler, SDK und Contract zu `EXAMPLE.R4X` gebaut. Exitcode 0, **9/9 Schritte erfolgreich**, einschließlich `R4M0 inspect OK`. Keine Libraries, Kernel-, Distribution-, Project- oder DevKit-Quellen waren dafür erforderlich. Zig wurde über den [DevKit-Checksum-Pin](https://github.com/R4OSDev/r4os-devkit/blob/d362a4c20a651338cec678d6c177063ebfb12cb2/Setup/Setup.ps1) geprüft; Linux-Archiv-SHA-256: `70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00`. Die SDK-/Contract-Archive stimmen mit den deklarierten Zig-Pakethashes überein.
+
+Geprüfte Build-Revisionen:
+
+- Example: `bf1d27058a54d0998eabe1d32f6fb05ab47796c5`.
+- SDK `0.64.35`: `2fdc71e11d6a26fd1998dfddb43923f9d707abda`.
+- Contract `0.64.20`: `03195b2a2e7461c72a4d0d6b645ae24319ba6315`.
+- Zig `0.16.0`.
+
+Aus dem App-Verzeichnis mit absoluten Pfaden zu diesen entpackten Paketen und zum geprüften Compiler:
+
+```sh
+"$ZIG" build --prefix "$OUTPUT" --fork="$SDK" --fork="$CONTRACT" --summary all
+```
+
+Das [App-Paket](https://github.com/R4OSDev/r4os-app-example/blob/bf1d27058a54d0998eabe1d32f6fb05ab47796c5/build.zig.zon) bindet SDK, [SDK wiederum Contract](https://github.com/R4OSDev/r4os-sdk/blob/2fdc71e11d6a26fd1998dfddb43923f9d707abda/build.zig.zon). Die beim Build verwendeten lokalen `--fork`-Verzeichnisse müssen ihre tatsächlichen Revisionen bewahren; der deklarierte Archivhash prüft keine beliebig geänderten lokalen Quellen. Der Linux-App-Wrapper kann mit angepassten `Settings.R4S`-Pfaden direkt Zig starten; PowerShell und der vollständige DevKit-Installer sind für diesen Pfad nicht nötig.
+
+`module.R4MF` v2 ist die maßgebliche App-Beschreibung für Identität, Modulversion, Quellen, Einstieg, Imports, Ressourcen und Installationsziel. `build.zig.zon` hält zusätzlich Paketabhängigkeiten fest. Notepad und Calculator verwenden denselben grundlegenden SDK-Pfad. [Clock](https://github.com/R4OSDev/r4os-app-clock/blob/8a56eef6570c20a2d9fdcb43c2c56bed0dc1a9c6/build.zig) benötigt dagegen R4STD-Bindings und bindet Libraries an `20507b4504345e8ddc399735efdbaedca8776d5d`. Das vorhandene Libraries-Paket ist ein Repository-Archiv; separat veröffentlichte Binding-Pakete sind nicht bestätigt. Es wird bei Bedarf geladen, ohne alle Bibliotheken zu bauen.
+
+**Versionen:** Der untersuchte SDK-Hauptzweig `d62062c0a8f1d1d9fc3c5ac0d228d719c51669a2` (`0.64.37`) bindet bereits Contract `6d2feb313aa8892e8a3df7cb7f2e9545e4544362` (`0.64.21`). Dieses Paar ersetzt die App-Pins nicht automatisch. Das zukünftige Projektprofil bindet Compiler/Prüfsumme, SDK/Contract samt Pakethashes, optionale Libraries und Testabbild/Hash gemeinsam.
+
+**Tests:** Ein veröffentlichtes [Full-Abbild 0.84.47](https://github.com/R4OSDev/r4os-distribution/releases/tag/v0.84.47) ist ein Kandidat für GUI-Tests. ZIP-SHA-256: `cee402a6a6ae5130389ae0f367fa6ce7702aad91a4534f23f70919398dc628b4`. Sein geprüftes Quellmanifest nennt SDK `66c0ec3eeac8bf940f29afd515a7c6eba4aab61d`, Contract `03195b2a2e7461c72a4d0d6b645ae24319ba6315` und Libraries `4f2087cc114582878845b7ed69776f5b31c5a88d`. Es wurde noch kein Image heruntergeladen/gebootet und keine Laufzeitkompatibilität behauptet. R4X läuft im R4OS-Gast, nicht als Linux-Programm oder direkt im Browser.
+
+Der Deploy-Pfad muss noch mit offiziellen Werkzeugen/Formaten nachgewiesen werden. Upstream besitzt R4UPack und ImageCreator in `r4os-distribution`; diese Untersuchung bestätigt noch keinen vollständigen App-Deploy in ein vorhandenes Image. Keine pauschale Abhängigkeit vom Distribution-Gesamtbuild einführen. Die VM verwendet später eine private Kopie oder ein Overlay des Basisabbilds, zunächst ohne Gastnetzwerk; keine Gastdienste für LAN/VPN oder Internet freigeben.
+
+Geplante Zuständigkeiten: Projektbedienung/Editor im Browser, Projektpersistenz und R4OS-Adapter in getrennten Backend-Modulen, Compiler und VM in einem ausführenden Runner. Lokale Projekte unter `Data/Projects/`, versionierte Tool-/Paket-/Image-Caches unter `Data/R4OS/`; alles weiterhin ignoriert. Diese Ordner und Module sind noch nicht implementiert. Der Dienst hat derzeit nur Schreibrechte für `Data/LLMProvider/`; Runner-Rechte und Isolation sind bei dessen Umsetzung gesondert einzurichten.
+
+Die vollständige Quellen-/Abhängigkeitsprüfung und alle untersuchten Hauptzweig-Revisionen stehen im übergeordneten Workspace unter [`Docs/R4OS-Components.md`](../Docs/R4OS-Components.md). Für diese Recherche wurde nur ein temporäres Build-Setup verwendet; die Studio-Laufzeit bleibt unverändert.
 
 ## Prüfen und bauen
 
