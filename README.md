@@ -203,8 +203,10 @@ Unter **System → Virtual Machines** steht **+ New VM** in Components; darunter
 
 - Neue VMs verwenden das neueste vollständige lokale Full-Release nach numerischer Versionsnummer und starten ausgeschaltet. Das importierte Image bleibt unverändert; jede UUID unter `Data/R4OS/Instances/` hat ihr eigenes vollständiges QCOW2-Overlay. Die vorhandenen C:/D:-Partitionen bleiben erhalten.
 - Name, CPU und RAM sind bei gestoppter VM änderbar. Start, Shut down, bestätigter Restart/Force stop und bestätigtes Delete sind implementiert. Ein eigener systemd-Dienst pro VM erhält laufende Gäste über Studio-Neustarts hinweg. VMs starten nach einem Host-Reboot zunächst ausgeschaltet. Shut down sendet eine ACPI-Anfrage; deren Abschluss ist für den getesteten Gast noch nicht bestätigt. Force stop wurde erfolgreich geprüft.
-- `Instances/<uuid>/Exchange/Share/` nimmt fertige Artefakte auf. Beim Start wird daraus ein echter FAT32-Snapshot mit Label **R4SHARE** erzeugt und als schreibgeschützter USB-Datenträger zusätzlich eingebunden. Beim geprüften R4OS Full 0.84.47 erscheint er als **F:**; die Buchstabenvergabe erfolgt im Gast. Änderungen werden durch Stoppen und erneutes Starten übernommen.
+- `Instances/<uuid>/Exchange/Share/` nimmt fertige Artefakte auf. Seit 0.1.14 wird ein dauerhaftes, vom Gast beschreibbares FAT32-Abbild mit Label **R4SHARE** über USB eingebunden. Gaständerungen einschließlich Löschungen werden nach QEMU-Ende über `ExecStopPost` des VM-Dienstes in den Hostordner zurückübertragen, auch ohne laufenden Studio-Webdienst. Beim geprüften R4OS Full 0.84.47 erscheint er als **F:**; die Buchstabenvergabe erfolgt im Gast. Hoständerungen werden beim nächsten Start übernommen; ohne Hoständerungen bleibt das vorhandene Abbild bestehen. Offene Gastabgleiche werden vor jedem Start wiederaufgenommen, bevor ein Abbild erneuert werden darf.
 - Die direkte QEMU-Option `fat:32:` erzeugte im Test einen ungültigen FAT32-Aufbau und wurde verworfen. Der implementierte Generator verwendet `mkfs.fat`/`mcopy`, einen MBR und eine FAT32-Partition. Der Host-Ordner ist kein live synchronisiertes Dateisystem.
+- `Exchange/state.json` speichert SHA-256-Basisstände und den Syncstatus. Gleichzeitige abweichende Änderungen derselben Datei blockieren einen neuen Start; beide Fassungen bleiben unter `Exchange/Conflicts/<session>/Guest/` und `Host/` mit `conflicts.json` erhalten. Gewünschte Gastfassung nach `Share/` übernehmen (bei Gastlöschung dort entfernen), dann **Retry exchange sync**. Eine andere Hostfassung separat sichern und nach erfolgreichem Abgleich erneut einsetzen.
+- Abgleichfehler lassen das Image unverändert erhalten und werden in Exchange angezeigt. Unterordner, ungültige Namen und überschrittene Dateigrenzen verhindern den Export; Image separat wiederherstellen, keine automatische FAT-Reparatur. Force stop kann ungespeicherte Daten verlieren oder FAT beschädigen.
 - Exchange erlaubt zunächst gewöhnliche Dateien mit ASCII-Namen, keine Unterordner oder Symlinks: 128 Dateien, insgesamt 96 MiB, Browser-Upload maximal 8 MiB je Datei. Upload/Remove/Settings werden im laufenden Betrieb gesperrt.
 - Console zeigt den Gast mit Tastaturbedienung und etwa einem Bild pro Sekunde; US-Tastaturbelegung, noch keine Maussteuerung. Logs zeigt begrenzte serielle Gast-/QEMU-Ausgaben. Gastnetzwerke sind deaktiviert; QMP verwendet ausschließlich lokale Unix-Sockets.
 
@@ -217,6 +219,8 @@ Data/R4OS/
     ├── vm.json
     ├── Disks/disk.qcow2, exchange.img
     ├── Exchange/Share/
+    ├── Exchange/state.json
+    ├── Exchange/Conflicts/<session>/Guest/, Host/, conflicts.json
     └── Logs/qemu.log, serial.log
 ```
 
@@ -233,7 +237,7 @@ Der Image-Importer prüft die offizielle ZIP-Prüfsumme und anschließend Größ
 
 Die Module liegen unter `frontend/src/features/virtual-machines/`, `backend/src/modules/virtual-machines/` und `shared/virtual-machines.d.ts`. Metadaten und lokale Dateien bleiben unter dem ignorierten `Data/`. Die WebApp darf gezielt `Data/R4OS/Instances/` und die VM-Runtime beschreiben; Images und Toolchains bleiben im Dienst schreibgeschützt. Polkit erlaubt dem unprivilegierten Dienstbenutzer nur Start/Stop gültiger UUID-Instanzen der festen VM-Vorlage. VM-HTTP-Anfragen sind über Sitzung, Host-/Origin-Prüfung und CSRF geschützt.
 
-Geprüft: zwei parallele VMs mit getrennten Austauschdateien und unveränderten VM-Dienst-PIDs nach Studio-Neustart; Uploads auf laufende VMs abgewiesen. Im Gasttest waren C: und D: sowie F: mit lesbarer `PROBE.TXT` vorhanden. Browseranlage, Datei-Upload, Start, Konsole und gleich breite Spalten bis 320 Pixel sind geprüft. Elf Backendtests, ESLint und Build bestehen. Ein isolierter Sparse-Importtest prüft Disk-Hashes, Metadaten/Lizenzen und den Schutz bestehender Images. Details und Quellen: [`../Docs/VirtualMachines.md`](../Docs/VirtualMachines.md).
+Geprüft: zwei parallele VMs mit getrennten Austauschdateien und unveränderten VM-Dienst-PIDs nach Studio-Neustart; Uploads auf laufende VMs abgewiesen. Im Gasttest waren C: und D: sowie F: mit lesbarer `PROBE.TXT` vorhanden. Browseranlage, Datei-Upload, Start, Konsole und gleich breite Spalten bis 320 Pixel sind geprüft. Zwölf Backendtests, ESLint und Build bestehen. Seit 0.1.14 im echten Full-0.84.47-Gast zusätzlich geprüft: Dateien auf F: anlegen, lesen, löschen und ändern; Erhalt über einen zweiten Gaststart, Hostimport und Rückübertragung bei gestopptem Webdienst. Konfliktanzeige und Retry nach manueller Auflösung sind im Browser geprüft. Zwei reguläre netzlose VM-Dienste liefen parallel mit laut QMP beschreibbaren Austauschdatenträgern; Stoppen einer VM ließ die andere aktiv und beide Stopps synchronisierten erfolgreich. Die vorhandene Beispiel-VM wurde unter Erhalt von STUDIO.TXT migriert. Ein isolierter Sparse-Importtest prüft Disk-Hashes, Metadaten/Lizenzen und den Schutz bestehender Images. Details und Quellen: [`../Docs/VirtualMachines.md`](../Docs/VirtualMachines.md).
 
 ## Prüfen und bauen
 

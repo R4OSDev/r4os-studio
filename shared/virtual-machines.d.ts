@@ -8,7 +8,8 @@ export interface VmConfig {
 }
 export type VmState = 'stopped' | 'starting' | 'running' | 'paused' | 'stopping' | 'failed';
 export interface VirtualMachine extends VmConfig {
-  state: VmState; sharePath: string; shareMode: 'fat32-snapshot';
+  state: VmState; sharePath: string; shareMode: 'fat32-persistent';
+  shareSync?: { pending: boolean; error?: string; lastSyncedAt?: string };
   error?: string;
 }
 export interface VmFile { name: string; size: number }

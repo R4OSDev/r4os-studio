@@ -16,8 +16,8 @@ export async function shareFiles(directory: string) {
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** A real FAT32 snapshot: QEMU's native vvfat FAT32 layout is not reliable. */
-export async function prepareShare(directory: string) {
+/** A real FAT32 image: QEMU's native vvfat FAT32 layout is not reliable. */
+export async function createShareImage(directory: string) {
   const share = join(directory, 'Exchange/Share');
   const files = await shareFiles(share);
   const staging = join(directory, 'Disks/.exchange-new.img');
@@ -31,6 +31,10 @@ export async function prepareShare(directory: string) {
   try {
     await exec('/usr/sbin/mkfs.fat', ['-F', '32', '-n', 'R4SHARE', '--offset=2048', staging], { timeout: 30_000 });
     for (const entry of files) await exec('/usr/bin/mcopy', ['-i', staging + '@@1048576', join(share, entry.name), '::/'], { timeout: 30_000 });
+    const ready = await open(staging, 'r');
+    try { await ready.sync(); } finally { await ready.close(); }
     await rename(staging, join(directory, 'Disks/exchange.img'));
+    const parent = await open(join(directory, 'Disks'), 'r');
+    try { await parent.sync(); } finally { await parent.close(); }
   } catch (error) { await rm(staging, { force: true }); throw error; }
 }

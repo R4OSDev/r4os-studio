@@ -32,15 +32,21 @@ function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
   const stopped = ['stopped', 'failed'].includes(vm.state);
   useEffect(() => {
     let cancelled = false;
-    api.request<{ files: VmFile[] }>(`/${vm.id}/files`).then((result) => { if (!cancelled) setFiles(result.files); }).catch((cause) => { if (!cancelled) setError(cause.message); });
+    api.request<{ files: VmFile[] }>(`/${vm.id}/files`).then((result) => { if (!cancelled) { setFiles(result.files); setError(''); } }).catch((cause) => { if (!cancelled) setError(cause.message); });
     return () => { cancelled = true; };
-  // request is rebound by the API hook; VM selection is the load boundary.
+  // Reload the host copy after VM state transitions or a completed synchronization.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vm.id]);
+  }, [vm.id, vm.state, vm.shareSync?.lastSyncedAt]);
   async function refresh() { setFiles((await api.request<{ files: VmFile[] }>(`/${vm.id}/files`)).files); }
   return <div>
-    <p className="vm-help">Add artifacts while the VM is stopped. At each start, Studio creates a read-only FAT32 drive from this folder. C: and D: remain intact. Look for the R4SHARE volume in the guest. Stop and start the VM to publish changes.</p>
+    <p className="vm-help">F: (R4SHARE) is a persistent, writable FAT32 exchange drive. Guest changes are copied to this folder after the VM stops. Host changes are imported at the next start. C: and D: remain intact. Edit host files only while the VM is stopped; this is not a live shared folder.</p>
     <code className="vm-path">{vm.sharePath}</code>
+    {vm.shareSync?.pending && <p className="vm-help">{stopped ? 'Guest changes still need synchronization.' : 'Guest changes will be synchronized after QEMU stops. The folder below shows the last host copy.'}</p>}
+    {vm.shareSync?.error && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
+    {stopped && vm.shareSync?.pending && <button className="button-secondary" disabled={busy} onClick={() => {
+      setBusy(true); setError(''); void api.request(`/${vm.id}/actions`, 'POST', { action: 'sync-exchange' }).then(async () => { await api.reload(); await refresh(); }).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
+    }}>Retry exchange sync</button>}
+    {vm.shareSync?.lastSyncedAt && <p className="vm-help">Last synchronized: {new Date(vm.shareSync.lastSyncedAt).toLocaleString()}</p>}
     <label className="vm-upload">Upload artifact (up to 8 MiB)
       <input type="file" disabled={!stopped || busy} onChange={(event) => {
         const file = event.target.files?.[0]; if (!file) return;
@@ -59,7 +65,7 @@ function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
         setBusy(true); setError(''); void api.request(`/${vm.id}/files/${encodeURIComponent(file.name)}`, 'DELETE').then(refresh).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
       }}>Remove</button></li>)}</ul>
     {!files.length && <p className="vm-help">The exchange folder is empty.</p>}
-    <p className="vm-help">ASCII filenames only. Up to 128 files and 96 MiB total. Files can also be placed in the folder directly on the host.</p>
+    <p className="vm-help">Files in the root folder only; no folders or symlinks. ASCII filenames only. Up to 128 files and 96 MiB total. Files can also be placed in the folder directly on the host.</p>
   </div>;
 }
 function Logs({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
@@ -100,10 +106,11 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
         {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
           <button className="button-danger" disabled={busy} onClick={() => void action(confirm)}>Confirm {confirm}</button><button className="button-secondary" disabled={busy} onClick={() => setConfirm('')}>Cancel</button></div>}
         {notice && <p className="vm-help" role="status">{notice}</p>}
+        {vm.shareSync?.error && view !== 'Exchange' && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
         {(error || vm.error) && <p className="vm-alert" role="alert">{error || vm.error}</p>}
         {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
           <VmForm api={api} vm={vm} select={select} /><div className="vm-actions"><button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
-          <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', 'Disabled'], ['Exchange drive', 'Read-only FAT32 snapshot'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+          <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', 'Disabled'], ['Exchange drive', 'Persistent writable FAT32'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
             <p className="vm-help">System and data partitions are private to this VM. The base release is shared read-only. Project assignment will be added later.</p></>}
       </>}
     </section>

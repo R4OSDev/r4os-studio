@@ -8,6 +8,7 @@ import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
 import { qmp } from './qmp.js';
 import { shareFiles, validFilename } from './share.js';
+import { finishShare, shareState } from './share-sync.js';
 
 async function atomic(path: string, data: unknown) {
   const staging = `${path}.${randomUUID()}.tmp`;
@@ -63,7 +64,8 @@ export class VmManager {
       state = 'starting';
       try { const status = await qmp(id, 'query-status'); state = status.running ? 'running' : 'paused'; } catch { /* booting */ }
     }
-    return { ...config, state, shareMode: 'fat32-snapshot', sharePath: join(vmPath(id), 'Exchange/Share'),
+    const sync = await shareState(vmPath(id));
+    return { ...config, state, shareSync: sync && { pending: sync.pending, error: sync.error, lastSyncedAt: sync.lastSyncedAt }, shareMode: 'fat32-persistent', sharePath: join(vmPath(id), 'Exchange/Share'),
       ...(state === 'failed' ? { error: 'The VM stopped with an error. Check Logs.' } : {}) };
   }
   async list() {
@@ -123,7 +125,8 @@ export class VmManager {
         if (active.reduce((sum, v) => sum + v.memoryMiB, vm.memoryMiB) > totalmem() / 1024 / 1024 * .75)
           throw new VmError('The running VMs would exceed 75% of host memory.');
         await control(id, 'start');
-      } else if (action === 'force-stop') await control(id, 'stop');
+      } else if (action === 'sync-exchange') { await this.stopped(id); await finishShare(vmPath(id)); }
+      else if (action === 'force-stop') await control(id, 'stop');
       else {
         if (!['running', 'paused'].includes(vm.state)) throw new VmError('The VM is not running.');
         await qmp(id, action === 'shutdown' ? 'system_powerdown' : 'system_reset');

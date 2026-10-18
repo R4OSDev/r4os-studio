@@ -26,7 +26,7 @@ export async function vmRoutes(app: FastifyInstance) {
   }, async (request, reply) => { sessions.mutation(request, reply); await manager.remove(request.params.id); return reply.code(204).send(); });
   app.post<{ Params: { id: string }; Body: { action: string } }>('/:id/actions', {
     schema: { body: { type: 'object', additionalProperties: false, required: ['action'], properties: {
-      action: { type: 'string', enum: ['start', 'shutdown', 'force-stop', 'restart'] },
+      action: { type: 'string', enum: ['start', 'shutdown', 'force-stop', 'restart', 'sync-exchange'] },
     } } },
   }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await manager.action(request.params.id, request.body.action) }; });
   app.get<{ Params: { id: string } }>('/:id/files', async (request, reply) => {

@@ -3,13 +3,14 @@ import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { vmPath, runtimePath, root } from './paths.js';
-import { prepareShare } from './share.js';
+import { prepareShare, finishShare } from './share-sync.js';
 import type { VmConfig, VmImage } from '../../../../shared/virtual-machines.js';
 
 // Launched only by the fixed, unprivileged systemd VM template.
 const id = process.argv[2];
 const directory = vmPath(id);
 async function run() {
+  if (process.argv[3] === '--sync') { await finishShare(directory); return; }
   const config: VmConfig = JSON.parse(await readFile(join(directory, 'vm.json'), 'utf8'));
   if (config.id !== id || !/^[a-zA-Z0-9_.-]{1,100}$/.test(config.imageId)
     || !Number.isInteger(config.cpus) || config.cpus < 1 || config.cpus > 8
@@ -27,7 +28,7 @@ async function run() {
     '-boot', 'c', '-display', 'none', '-vga', 'std', '-nic', 'none', '-monitor', 'none',
     '-drive', 'file=Disks/disk.qcow2,if=none,id=system,format=qcow2,cache=none',
     '-device', 'ich9-ahci,id=ahci0', '-device', 'ide-hd,drive=system,bus=ahci0.0,bootindex=1',
-    '-drive', 'file=Disks/exchange.img,if=none,id=exchange,format=raw,readonly=on',
+    '-drive', 'file=Disks/exchange.img,if=none,id=exchange,format=raw,cache=writethrough',
     '-device', 'qemu-xhci,id=exchange-usb', '-device', 'usb-storage,drive=exchange,bus=exchange-usb.0,removable=on',
     '-audiodev', 'driver=none,id=silent', '-device', 'ich9-intel-hda', '-device', 'hda-duplex,audiodev=silent',
     '-serial', 'file:Logs/serial.log', '-qmp', `unix:${join(runtimePath(id), 'qmp.sock')},server=on,wait=off`];
