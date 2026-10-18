@@ -25,14 +25,16 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 ## Enthalten
 
 - Purple/Dark-Design mit dunkelvioletten Flächen, lavendelfarbener Schrift und violetten Akzenten für Auswahl, Tabs und Tastaturfokus. Favicon und Browser-Theme-Farbe sind darauf abgestimmt.
+- Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
-- Links drei gleich breite Navigationsspalten: **Bereiche → Komponenten → Ansichten**. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
+- Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
+- Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. Die Liste **Views** ist dort leer; der Hauptbereich enthält noch keine Konfigurationsfunktion.
 - Rechts ein Hauptbereich mit Breadcrumb, Seitentitel und Platzhalter.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
 
-Alle Navigationsinhalte sind Dummys, einschließlich „Beispielprojekt“. Es werden weder Projekte gespeichert noch R4OS-Tools gestartet. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+Alle Navigationsinhalte sind Dummys, einschließlich „Example Project“. Es werden weder Projekte gespeichert noch R4OS-Tools gestartet. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
 
 ## Aufbau und Entscheidungen
 

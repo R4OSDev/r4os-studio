@@ -1,4 +1,4 @@
-type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'chevron' | 'grid' | 'terminal';
+type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal';
 
 const paths: Record<IconName, React.ReactNode> = {
   system: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></>,
@@ -6,6 +6,7 @@ const paths: Record<IconName, React.ReactNode> = {
   book: <><path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3Z" /></>,
   flask: <><path d="M9 3h6m-5 0v6L4 19a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 14h10" /></>,
   folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />,
+  settings: <><path d="M3 7h6m4 0h8M3 17h12m4 0h2" /><circle cx="11" cy="7" r="2" /><circle cx="17" cy="17" r="2" /></>,
   chevron: <path d="m9 5 7 7-7 7" />,
   grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
   terminal: <path d="m5 6 6 6-6 6m9 0h6" />,

@@ -18,7 +18,8 @@ export function App() {
   const groups = navigation[tab];
   const group = groups[selected.group];
   const item = group.items[selected.item];
-  const view = views[selected.view];
+  const availableViews = views[tab];
+  const view = availableViews[selected.view];
 
   function select(patch: Partial<Selection>) {
     setSelections((previous) => ({ ...previous, [tab]: { ...previous[tab], ...patch } }));
@@ -41,11 +42,11 @@ export function App() {
   return (
     <div className="studio">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="R4OS Studio Startseite">
+        <a className="brand" href="/" aria-label="R4OS Studio home">
           <span className="brand-mark"><Icon name="terminal" /></span>
           <span>R4OS <span className="brand-light">Studio</span></span>
         </a>
-        <div className="tabs" role="tablist" aria-label="Arbeitsbereiche">
+        <div className="tabs" role="tablist" aria-label="Workspaces">
           {tabs.map((name, index) => (
             <button key={name} ref={(element) => { tabRefs.current[index] = element; }}
               id={`tab-${name}`} className={`tab ${tab === name ? 'active' : ''}`}
@@ -60,9 +61,9 @@ export function App() {
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        <aside className="navigation" aria-label={`${tab}-Navigation`}>
-          <nav className="nav-column" aria-label="Bereiche">
-            <div className="column-heading"><span>Bereiche</span><span className="count">{groups.length.toString().padStart(2, '0')}</span></div>
+        <aside className="navigation" aria-label={`${tab} navigation`}>
+          <nav className="nav-column" aria-label="Areas">
+            <div className="column-heading"><span>Areas</span><span className="count">{groups.length.toString().padStart(2, '0')}</span></div>
             <div className="nav-items">
               {groups.map((entry, index) => (
                 <button type="button" key={entry.name} className={`nav-item ${selected.group === index ? 'selected' : ''}`}
@@ -72,26 +73,26 @@ export function App() {
                 </button>
               ))}
             </div>
-            <div className="column-note"><span className="small-dot" />{tab === 'System' ? 'Systemverwaltung' : 'Projektverwaltung'}</div>
+            <div className="column-note"><span className="small-dot" />{tab === 'System' ? 'System management' : 'Project management'}</div>
           </nav>
-          <nav className="nav-column" aria-label="Komponenten">
-            <div className="column-heading"><span>Komponenten</span><span className="count">{group.items.length.toString().padStart(2, '0')}</span></div>
+          <nav className="nav-column" aria-label="Components">
+            <div className="column-heading"><span>Components</span><span className="count">{group.items.length.toString().padStart(2, '0')}</span></div>
             <div className="nav-context">{group.name}</div>
             <div className="nav-items compact">
               {group.items.map((name, index) => (
                 <button type="button" key={name} className={`nav-item ${selected.item === index ? 'selected' : ''}`}
                   aria-current={selected.item === index ? 'true' : undefined}
                   onClick={() => select({ item: index, view: 0 })}>
-                  <span className="component-mark" /><span>{name}</span><Icon name="chevron" className="item-chevron" />
+                  <span className="component-mark" /><span>{name}</span>{availableViews.length > 0 && <Icon name="chevron" className="item-chevron" />}
                 </button>
               ))}
             </div>
           </nav>
-          <nav className="nav-column" aria-label="Ansichten">
-            <div className="column-heading"><span>Ansichten</span><span className="count">03</span></div>
+          <nav className="nav-column" aria-label="Views">
+            <div className="column-heading"><span>Views</span><span className="count">{availableViews.length.toString().padStart(2, '0')}</span></div>
             <div className="nav-context">{item}</div>
             <div className="nav-items compact">
-              {views.map((name, index) => (
+              {availableViews.map((name, index) => (
                 <button type="button" key={name} className={`nav-item view-item ${selected.view === index ? 'selected' : ''}`}
                   aria-current={selected.view === index ? 'page' : undefined}
                   onClick={() => select({ view: index })}>
@@ -105,23 +106,25 @@ export function App() {
         <main className="main-area">
           <div className="content-toolbar">
             <div className="breadcrumb"><span>{tab}</span><Icon name="chevron" /><span>{group.name}</span><Icon name="chevron" /><strong>{item}</strong></div>
-            <span className="placeholder-badge">Platzhalter</span>
+            <span className="placeholder-badge">Placeholder</span>
           </div>
-          <div className="page-heading"><div className="page-eyebrow">{item}</div><h1>{view}</h1><span className="page-rule" /></div>
+          <div className="page-heading"><div className="page-eyebrow">{view ? item : group.name}</div><h1>{view ?? item}</h1><span className="page-rule" /></div>
           <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
+            {view && <>
             <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>
-            <span className="empty-eyebrow">ALLES BEGINNT HIER</span>
-            <h2>Raum für {tab === 'System' ? 'dein System' : 'deine Projekte'}.</h2>
-            <p>Diese Ansicht ist noch leer.<br />Hier entsteht <span>{item} · {view}</span>.</p>
-            <div className="empty-label"><Icon name="grid" />Grundgerüst · Inhalte folgen</div>
+            <span className="empty-eyebrow">IT ALL STARTS HERE</span>
+            <h2>Room for your {tab === 'System' ? 'system' : 'projects'}.</h2>
+            <p>This view is empty.<br /><span>{item} · {view}</span> will appear here.</p>
+            <div className="empty-label"><Icon name="grid" />App shell · Content coming soon</div>
+            </>}
           </div>
-          <div className="main-footnote"><span>R4OS Entwicklungsumgebung</span><span>APP SHELL / 0.1</span></div>
+          <div className="main-footnote"><span>R4OS development environment</span><span>APP SHELL / 0.1</span></div>
         </main>
       </div>
 
       <footer className="statusbar">
-        <div><span className="status-indicator" />UI bereit<span className="status-divider" />{tab}<span className="status-slash">/</span>{view}</div>
-        <span>Lokales Grundgerüst<span className="status-divider" />R4OS Studio</span>
+        <div><span className="status-indicator" />UI ready<span className="status-divider" />{tab}<span className="status-slash">/</span>{view ?? item}</div>
+        <span>Local app shell<span className="status-divider" />R4OS Studio</span>
       </footer>
     </div>
   );
