@@ -1,4 +1,10 @@
 import type { FastifyInstance } from 'fastify';
+import websocket from '@fastify/websocket';
+import { lstat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { runtimePath, VmError } from './paths.js';
+import { ConsoleTickets, ConsoleBridge } from './console.js';
+import { PointerControllers } from './pointer.js';
 import type { VmInput } from '../../../../shared/virtual-machines.js';
 import { VmManager, images } from './service.js';
 import { VmSessions } from './sessions.js';
@@ -9,7 +15,10 @@ const input = { type: 'object', additionalProperties: false, required: ['name', 
   memoryMiB: { type: 'integer', minimum: 2048, maximum: 16384 }, imageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' },
 } };
 export async function vmRoutes(app: FastifyInstance) {
+  await app.register(websocket, { options: { maxPayload: 256 * 1024, perMessageDeflate: false } });
   const manager = new VmManager(), sessions = new VmSessions();
+  const tickets = new ConsoleTickets(), bridge = new ConsoleBridge(), pointers = new PointerControllers();
+  app.addHook('preClose', async () => { bridge.close(); await pointers.close(); });
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
   app.get('/', async (request, reply) => {
     const session = sessions.get(request, reply, true);
@@ -43,6 +52,25 @@ export async function vmRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { name?: 'serial' | 'qemu' } }>('/:id/log', {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', enum: ['serial', 'qemu'] } } } },
   }, async (request, reply) => { sessions.get(request, reply); return { text: await manager.log(request.params.id, request.query.name ?? 'serial') }; });
+  for (const channel of ['display', 'pointer'] as const) {
+    app.post<{ Params: { id: string } }>(`/:id/${channel === 'display' ? 'console' : 'pointer'}-ticket`, async (request, reply) => {
+      const owner = sessions.mutation(request, reply);
+      const vm = await manager.get(request.params.id);
+      if (!['running', 'paused'].includes(vm.state)) throw new VmError('Start the VM before opening its console.');
+      try { if (!(await lstat(join(runtimePath(vm.id), channel === 'display' ? 'vnc.sock' : 'qmp.sock'))).isSocket()) throw new Error(); }
+      catch { throw new VmError('Stop and start this VM to enable the live console.'); }
+      return { ticket: tickets.issue(vm.id, owner!, channel) };
+    });
+    app.get<{ Params: { id: string } }>(`/:id/${channel === 'display' ? 'console' : 'pointer'}`, {
+      websocket: true,
+      preValidation: async (request, reply) => {
+        if (!request.headers.origin) throw new VmError('A browser origin is required.', 403);
+        const owner = sessions.get(request, reply).id;
+        await manager.config(request.params.id);
+        tickets.consume(request.params.id, owner!, request.headers['sec-websocket-protocol'], channel);
+      },
+    }, (socket, request) => { if (channel === 'display') bridge.attach(request.params.id, socket); else pointers.attach(request.params.id, socket); });
+  }
   // A POST because screendump asks QEMU to write a private temporary file.
   app.post<{ Params: { id: string } }>('/:id/screen', async (request, reply) => {
     sessions.mutation(request, reply); return reply.type('image/png').send(await manager.screen(request.params.id));

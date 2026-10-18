@@ -32,6 +32,9 @@ await test('VM administration requires same-origin session/CSRF, preserves base 
     const created = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: input });
     assert.equal(created.statusCode, 201); const vm = created.json().vm;
     assert.equal(vm.imageId, '0.10.0-full'); assert.equal(vm.state, 'stopped');
+    assert.equal((await app.inject({ method: 'POST', url: `/api/vms/${vm.id}/console-ticket` })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/vms/${vm.id}/console-ticket`, headers })).statusCode, 409);
+    assert.equal((await app.inject({ method: 'GET', url: `/api/vms/${vm.id}/console`, headers: { ...headers, origin: 'https://foreign.example' } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, cpus: 999 } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: `/api/vms/${vm.id}/files`, headers, payload: { name: '../escape.txt', content: 'YQ==' } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: `/api/vms/${vm.id}/files`, headers, payload: { name: 'TEST.TXT', content: 'YQ==' } })).statusCode, 204);

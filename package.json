@@ -1,6 +1,6 @@
 {
   "name": "r4os-studio",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.3",
@@ -24,15 +24,20 @@
   },
   "dependencies": {
     "@fastify/static": "^10.0.0",
+    "@fastify/websocket": "11.3.4",
+    "@novnc/novnc": "1.7.0",
     "fastify": "^5.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
     "@types/node": "^22.0.0",
+    "@types/novnc__novnc": "1.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "8.18.2",
     "@vitejs/plugin-react": "^5.0.0",
     "eslint": "^10.0.0",
     "eslint-plugin-react-hooks": "^7.0.0",

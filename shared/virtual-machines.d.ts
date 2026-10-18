@@ -15,3 +15,5 @@ export interface VirtualMachine extends VmConfig {
 export interface VmFile { name: string; size: number }
 export interface VmList { vms: VirtualMachine[]; images: VmImage[]; csrfToken: string; available: boolean }
 export interface VmInput { name: string; cpus: number; memoryMiB: number; imageId?: string }
+
+export interface VmPointerInput { dx: number; dy: number; buttons: number }

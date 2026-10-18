@@ -92,10 +92,10 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
-  return <div className="vm-content">
+  return <div className={`vm-content ${view === 'Console' && vm ? 'vm-content-console' : ''}`}>
     {api.error && <p className="vm-alert" role="alert">{api.error}</p>}
     {!api.loading && !api.available && <p className="vm-alert">VM host support is not installed. See the host setup documentation.</p>}
-    <section className="vm-card">
+    <section className={`vm-card ${view === 'Console' && vm ? 'vm-card-console' : ''}`}>
       {!vm ? <><h2>New virtual machine</h2><p className="vm-help">Create an independent R4OS instance. Multiple VMs can run at the same time.</p><VmForm api={api} select={select} /></> : <>
         <div className="vm-toolbar"><span className={`vm-status ${vm.state}`}>{vm.state}</span>
           <button className="button-primary" disabled={busy || !stopped || !api.available} onClick={() => void action('start')}>Start</button>

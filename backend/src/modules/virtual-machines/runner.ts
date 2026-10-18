@@ -19,13 +19,14 @@ async function run() {
   if (image.sha256 !== config.imageSha256) throw new Error('The base image identity changed.');
   await mkdir(runtimePath(id), { recursive: true, mode: 0o700 });
   await rm(join(runtimePath(id), 'qmp.sock'), { force: true });
+  await rm(join(runtimePath(id), 'vnc.sock'), { force: true });
   await prepareShare(directory);
   let kvm = false;
   try { await access('/dev/kvm', constants.R_OK | constants.W_OK); kvm = true; } catch { /* use TCG */ }
   const log = await open(join(directory, 'Logs/qemu.log'), 'w', 0o600);
   const args = ['-name', `R4OS Studio ${id}`, '-machine', `q35,accel=${kvm ? 'kvm' : 'tcg'}`,
     '-cpu', kvm ? 'host' : 'max', '-m', String(config.memoryMiB), '-smp', String(config.cpus),
-    '-boot', 'c', '-display', 'none', '-vga', 'std', '-nic', 'none', '-monitor', 'none',
+    '-boot', 'c', '-display', 'none', '-vnc', `unix:${join(runtimePath(id), 'vnc.sock')}`, '-vga', 'std', '-nic', 'none', '-monitor', 'none',
     '-drive', 'file=Disks/disk.qcow2,if=none,id=system,format=qcow2,cache=none',
     '-device', 'ich9-ahci,id=ahci0', '-device', 'ide-hd,drive=system,bus=ahci0.0,bootindex=1',
     '-drive', 'file=Disks/exchange.img,if=none,id=exchange,format=raw,cache=writethrough',
