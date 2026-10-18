@@ -20,3 +20,48 @@ export interface ProviderList {
   csrfToken: string;
   signInAvailable: boolean;
 }
+
+export interface UsageWindow {
+  usedPercent: number | null;
+  remainingPercent: number | null;
+  windowDurationMins: number | null;
+  resetsAt: string | null;
+}
+
+export interface UsageLimit {
+  id: string;
+  name: string;
+  primary: UsageWindow | null;
+  secondary: UsageWindow | null;
+  limitReached: boolean;
+}
+
+export interface ResetCredit {
+  id: string;
+  type: 'codexRateLimits' | 'unknown';
+  status: 'available' | 'redeeming' | 'redeemed' | 'unknown';
+  title: string | null;
+  description: string | null;
+  grantedAt: string | null;
+  expiresAt: string | null;
+}
+
+export interface ProviderUsage {
+  fetchedAt: string;
+  ordinaryUsageAllowed: boolean | null;
+  limits: UsageLimit[];
+  resetCredits: { availableCount: number | null; credits: ResetCredit[] | null } | null;
+}
+
+export type ResetOutcome = 'reset' | 'alreadyRedeemed' | 'nothingToReset' | 'noCredit';
+
+export interface ResetRequest {
+  confirm: true;
+  idempotencyKey: string;
+  creditId?: string;
+}
+
+export interface ResetResult {
+  outcome: ResetOutcome;
+  usage: ProviderUsage | null;
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Provider, ProviderLogin } from '../../../../../shared/llm-providers.js';
 import type { ProviderApi } from '../useProviders';
 import { Icon } from '../../../app/Icon';
+import { ProviderUsage } from './ProviderUsage';
 
 const labels: Record<Provider['status'], string> = {
   connected: 'Connected', disconnected: 'Not connected', signing_in: 'Waiting for sign-in', unavailable: 'Unavailable',
@@ -106,6 +107,7 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
         <div><dt>Plan</dt><dd className="plan-name">{provider.account?.plan ?? '—'}</dd></div>
         <div><dt>Authentication</dt><dd>ChatGPT subscription</dd></div>
       </dl>
+      {provider.status === 'connected' && !loading && <ProviderUsage id={provider.id} accountEmail={provider.account?.email ?? null} request={request} />}
       {provider.status !== 'connected' && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading || !api.signInAvailable || !!api.error || provider.status === 'signing_in'} onClick={() => void action('login')}>{busy ? 'Starting sign-in…' : 'Continue with ChatGPT'}</button></div>}
       {!api.signInAvailable && <p className="provider-alert" role="status">OpenAI sign-in is currently unavailable. Please try again later.</p>}
       {provider.status === 'signing_in' && <p className="field-help">A sign-in is in progress in another browser session.</p>}

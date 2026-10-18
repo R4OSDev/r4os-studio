@@ -6,7 +6,8 @@ import { basename, join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
 import type { AuthClient, AuthClientFactory, AuthNotification } from '../src/modules/llm-providers/openai/codex-client.js';
-import type { Provider, ProviderLogin } from '../../shared/llm-providers.js';
+import type { Provider, ProviderLogin, ResetOutcome } from '../../shared/llm-providers.js';
+import { normalizeUsage } from '../src/modules/llm-providers/openai/usage.js';
 
 const secret = 'test-token-must-never-reach-the-browser';
 class FakeClient implements AuthClient {
@@ -15,9 +16,17 @@ class FakeClient implements AuthClient {
   loginId = 'mock-login';
   badUrl = false;
   fail = false;
+  usageReads = 0;
+  redemptions = 0;
+  failUsage = false;
+  loseResetResponse = false;
+  resetOutcome: ResetOutcome = 'reset';
+  attempts = new Map<string, ResetOutcome>();
+  usage: unknown = { rateLimits: { limitId: 'codex', primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1800000000 } },
+    rateLimitResetCredits: { availableCount: 2, credits: null } };
   account: { type: string; email: string; planType: string } | null = null;
   constructor(readonly home: string, readonly notify: AuthNotification) {}
-  async request<T>(method: string): Promise<T> {
+  async request<T>(method: string, params?: unknown): Promise<T> {
     if (this.closed) throw new Error(secret);
     if (method === 'account/read') {
       try { this.account = JSON.parse(await readFile(join(this.home, 'auth.json'), 'utf8')).account; } catch { /* Signed out. */ }
@@ -29,6 +38,19 @@ class FakeClient implements AuthClient {
         verificationUrl: this.badUrl ? 'https://example.invalid/phishing' : 'https://auth.openai.com/codex/device', userCode: 'TEST-1234' } as T;
     }
     if (method === 'account/login/cancel') { this.cancelled = true; return {} as T; }
+    if (method === 'account/rateLimits/read') {
+      this.usageReads++;
+      if (this.failUsage) throw new Error(secret);
+      return structuredClone(this.usage) as T;
+    }
+    if (method === 'account/rateLimitResetCredit/consume') {
+      const { idempotencyKey } = params as { idempotencyKey: string };
+      if (this.attempts.has(idempotencyKey)) return { outcome: 'alreadyRedeemed' } as T;
+      this.redemptions++;
+      this.attempts.set(idempotencyKey, this.resetOutcome);
+      if (this.loseResetResponse) { this.loseResetResponse = false; throw new Error(secret); }
+      return { outcome: this.resetOutcome } as T;
+    }
     throw new Error('Unexpected RPC');
   }
   async complete(email = 'person@example.invalid') {
@@ -186,5 +208,101 @@ test('unsafe verification URLs and upstream errors are not exposed', async (cont
     assert.equal(login.userCode, undefined);
     assert.ok(!JSON.stringify(login).includes(secret));
     assert.ok(result.clients.get(provider.id)!.closed);
+  }
+});
+
+test('usage reads are account-isolated, cached, refreshed and filtered without consuming resets', async (context) => {
+  const result = await setup(); context.after(result.cleanup);
+  const b = await browser(result.app);
+  const first = await b.create(); const second = await b.create('Second account');
+  for (const provider of [first, second]) {
+    await b.start(provider.id); await result.clients.get(provider.id)!.complete();
+    await waitForConnected(result.app, provider.id, b.headers);
+  }
+  const client = result.clients.get(first.id)!;
+  client.usage = {
+    accountId: secret, accessToken: secret, rateLimitUpsell: { secret }, ordinaryUsageAllowed: false,
+    rateLimits: { limitId: 'codex', primary: { usedPercent: 99 } },
+    rateLimitsByLimitId: {
+      codex: { primary: { usedPercent: 105, windowDurationMins: 300, resetsAt: 1800000000 }, secondary: null },
+      weekly: { limitName: 'Other quota', primary: null, secondary: { usedPercent: 25.5, windowDurationMins: 10080, resetsAt: null } },
+    },
+    rateLimitResetCredits: { availableCount: 5, accessToken: secret, credits: [
+      { id: 'credit-1', resetType: 'codexRateLimits', status: 'available', grantedAt: 1790000000, expiresAt: 1810000000, title: 'Earned reset', accessToken: secret },
+    ] },
+  };
+  const read = (suffix = '') => result.app.inject({ method: 'GET', url: `/api/providers/${first.id}/usage${suffix}`, headers: b.headers });
+  assert.equal((await result.app.inject({ method: 'GET', url: `/api/providers/${first.id}/usage` })).statusCode, 403);
+  const response = await read(); const usage = response.json().usage;
+  assert.equal(response.statusCode, 200); assert.ok(!response.body.includes(secret));
+  assert.equal(usage.limits.length, 2); assert.equal(usage.limits[0].primary.usedPercent, 105);
+  assert.equal(usage.limits[0].primary.remainingPercent, 0);
+  assert.equal(usage.limits[0].primary.resetsAt, new Date(1800000000000).toISOString());
+  assert.equal(usage.limits[1].secondary.remainingPercent, 74.5);
+  assert.equal(usage.limits[1].secondary.resetsAt, null);
+  assert.equal(usage.resetCredits.availableCount, 5); assert.equal(usage.resetCredits.credits.length, 1);
+  assert.equal(usage.ordinaryUsageAllowed, false);
+  await read(); assert.equal(client.usageReads, 1);
+  await read('?refresh=true'); assert.equal(client.usageReads, 2);
+  client.notify('account/rateLimits/updated', { rateLimits: {} });
+  await read(); assert.equal(client.usageReads, 3);
+  const other = await result.app.inject({ method: 'GET', url: `/api/providers/${second.id}/usage`, headers: b.headers });
+  assert.equal(other.json().usage.limits[0].primary.usedPercent, 40);
+  assert.equal(client.redemptions, 0); assert.equal(result.clients.get(second.id)!.redemptions, 0);
+});
+
+test('unknown usage and reset availability are preserved instead of fabricated', () => {
+  const value = normalizeUsage({ rateLimits: { primary: { usedPercent: -1, resetsAt: '1800000000', windowDurationMins: null } },
+    rateLimitResetCredits: null });
+  assert.equal(value.limits[0].primary!.usedPercent, null);
+  assert.equal(value.limits[0].primary!.remainingPercent, null);
+  assert.equal(value.limits[0].primary!.resetsAt, null);
+  assert.equal(value.resetCredits, null);
+  assert.equal(value.ordinaryUsageAllowed, null);
+  assert.equal(normalizeUsage({ rateLimits: {}, rateLimitResetCredits: { availableCount: 3, credits: null } }).resetCredits!.credits, null);
+  assert.deepEqual(normalizeUsage({ rateLimits: {}, rateLimitResetCredits: { availableCount: 0, credits: [] } }).resetCredits!.credits, []);
+  assert.throws(() => normalizeUsage({ accessToken: secret }));
+});
+
+test('reset redemption requires a connected account, CSRF, explicit confirmation and a valid retry key', async (context) => {
+  const result = await setup(); context.after(result.cleanup);
+  const b = await browser(result.app); const provider = await b.create();
+  const url = `/api/providers/${provider.id}/usage/resets`;
+  const payload = { confirm: true, idempotencyKey: '00000000-0000-4000-8000-000000000001' };
+  assert.equal((await result.app.inject({ method: 'POST', url, headers: b.headers, payload })).statusCode, 409);
+  await b.start(provider.id); const client = result.clients.get(provider.id)!;
+  await client.complete(); await waitForConnected(result.app, provider.id, b.headers);
+  assert.equal((await result.app.inject({ method: 'POST', url, payload })).statusCode, 403);
+  assert.equal((await result.app.inject({ method: 'POST', url, headers: { ...b.headers, origin: 'https://evil.invalid' }, payload })).statusCode, 403);
+  for (const invalid of [{ ...payload, confirm: false }, { idempotencyKey: payload.idempotencyKey }, { ...payload, idempotencyKey: 'bad' }, { ...payload, creditId: '' }]) {
+    assert.equal((await result.app.inject({ method: 'POST', url, headers: b.headers, payload: invalid })).statusCode, 400);
+  }
+  assert.equal((await result.app.inject({ method: 'GET', url, headers: b.headers })).statusCode, 404);
+  assert.equal(client.redemptions, 0);
+});
+
+test('reset retries retain idempotency and successful outcomes survive a subsequent usage-read failure', async (context) => {
+  const result = await setup(); context.after(result.cleanup);
+  const b = await browser(result.app); const provider = await b.create();
+  await b.start(provider.id); const client = result.clients.get(provider.id)!;
+  await client.complete(); await waitForConnected(result.app, provider.id, b.headers);
+  const payload = { confirm: true, idempotencyKey: '00000000-0000-4000-8000-000000000001', creditId: 'credit-1' };
+  const post = (body = payload) => result.app.inject({ method: 'POST', url: `/api/providers/${provider.id}/usage/resets`, headers: b.headers, payload: body });
+  client.loseResetResponse = true;
+  const uncertain = await post(); assert.equal(uncertain.statusCode, 502); assert.ok(!uncertain.body.includes(secret));
+  const retry = await post(); assert.equal(retry.json().outcome, 'alreadyRedeemed'); assert.equal(client.redemptions, 1);
+  assert.equal(retry.json().usage.limits[0].primary.usedPercent, 40);
+  client.failUsage = true;
+  const confirmed = await post({ ...payload, idempotencyKey: '00000000-0000-4000-8000-000000000002' });
+  assert.equal(confirmed.statusCode, 200); assert.equal(confirmed.json().outcome, 'reset'); assert.equal(confirmed.json().usage, null);
+  assert.equal(client.redemptions, 2); assert.ok(!confirmed.body.includes(secret));
+  const unavailable = await result.app.inject({ method: 'GET', url: `/api/providers/${provider.id}/usage?refresh=true`, headers: b.headers });
+  assert.equal(unavailable.statusCode, 502); assert.ok(!unavailable.body.includes(secret));
+  assert.equal(client.redemptions, 2);
+  client.failUsage = false;
+  for (const [index, outcome] of ['nothingToReset', 'noCredit'].entries()) {
+    client.resetOutcome = outcome as ResetOutcome;
+    const response = await post({ ...payload, idempotencyKey: `00000000-0000-4000-8000-00000000000${index + 3}` });
+    assert.equal(response.json().outcome, outcome);
   }
 });

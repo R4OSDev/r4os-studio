@@ -1,12 +1,13 @@
 import { access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { Provider, ProviderLogin } from '../../../../shared/llm-providers.js';
+import type { Provider, ProviderLogin, ProviderUsage, ResetRequest, ResetResult } from '../../../../shared/llm-providers.js';
 import { CodexClient } from './openai/codex-client.js';
 import type { AuthClient, AuthClientFactory } from './openai/codex-client.js';
 import { ProviderStore, validProviderId } from './store.js';
 import type { ProviderRecord } from './store.js';
 import { ProviderError } from './errors.js';
+import { readUsage, redeemReset } from './openai/usage.js';
 
 type Login = ProviderLogin & { owner: string; id?: string; timer?: NodeJS.Timeout };
 type Runtime = { client: AuthClient; login?: Login; unavailable: boolean; retired?: boolean };
@@ -23,6 +24,7 @@ export class ProviderManager {
   private store: ProviderStore;
   private runtimes = new Map<string, Runtime>();
   private locks = new Map<string, Promise<unknown>>();
+  private usages = new Map<string, ProviderUsage>();
   private factory: AuthClientFactory;
   private loginTimeout: number;
 
@@ -70,6 +72,10 @@ export class ProviderManager {
     const runtime = {} as Runtime;
     runtime.unavailable = false;
     runtime.client = this.factory(home, (method, params) => {
+      if (method === 'account/rateLimits/updated' || method === 'account/updated') {
+        this.usages.delete(id);
+        return;
+      }
       if (method !== 'account/login/completed') return;
       void this.exclusive(id, async () => {
         if (this.runtimes.get(id) !== runtime || runtime.login?.status !== 'pending' || runtime.login.id !== params.loginId) return;
@@ -88,6 +94,7 @@ export class ProviderManager {
         }
       }).catch(() => {});
     }, () => {
+      this.usages.delete(id);
       runtime.unavailable = true;
       if (runtime.login?.status === 'pending') this.finish(runtime.login, 'failed', 'The sign-in service stopped. Please try again.');
     });
@@ -104,6 +111,7 @@ export class ProviderManager {
   }
 
   private async retire(id: string, runtime: Runtime) {
+    this.usages.delete(id);
     runtime.retired = true;
     await runtime.client.close();
     await rm(await this.store.home(id), { recursive: true, force: true });
@@ -147,6 +155,45 @@ export class ProviderManager {
       records.push(record);
     });
     return this.present(record);
+  }
+
+  private async connectedRuntime(id: string): Promise<Runtime> {
+    const record = await this.record(id);
+    if (!record.connected || this.runtimes.get(id)?.login?.status === 'pending') {
+      throw new ProviderError('Connect this OpenAI subscription before reading usage or using a reset.', 409);
+    }
+    return this.runtime(id);
+  }
+
+  private async readUsageLocked(id: string, runtime: Runtime): Promise<ProviderUsage> {
+    const usage = await readUsage(runtime.client);
+    this.usages.set(id, usage);
+    return usage;
+  }
+
+  async usage(id: string, refresh = false): Promise<ProviderUsage> {
+    return this.exclusive(id, async () => {
+      const runtime = await this.connectedRuntime(id);
+      const cached = this.usages.get(id);
+      if (!refresh && cached && Date.now() - Date.parse(cached.fetchedAt) < 15_000) return cached;
+      try { return await this.readUsageLocked(id, runtime); }
+      catch { throw new ProviderError('OpenAI usage could not be loaded. Please try again.', 502); }
+    });
+  }
+
+  async consumeReset(id: string, request: ResetRequest): Promise<ResetResult> {
+    return this.exclusive(id, async () => {
+      const runtime = await this.connectedRuntime(id);
+      let outcome: ResetResult['outcome'];
+      try { outcome = await redeemReset(runtime.client, request); }
+      catch { throw new ProviderError('The reset result could not be confirmed. Retry the same attempt to avoid using another reset.', 502); }
+      finally { this.usages.delete(id); }
+      // A confirmed redemption stays successful even if the subsequent read fails.
+      // Never infer new quotas or re-consume a credit to recover a usage-read error.
+      let usage: ProviderUsage | null = null;
+      try { usage = await this.readUsageLocked(id, runtime); } catch { /* The UI can retry this read separately. */ }
+      return { outcome, usage };
+    });
   }
 
   async start(id: string, owner: string): Promise<ProviderLogin> {
@@ -221,6 +268,7 @@ export class ProviderManager {
 
   private async disconnectLocked(id: string): Promise<Provider> {
     await this.record(id);
+    this.usages.delete(id);
     const runtime = this.runtimes.get(id);
     if (runtime?.login) this.finish(runtime.login, 'cancelled');
     if (runtime) { await runtime.client.close(); this.runtimes.delete(id); }
@@ -251,6 +299,7 @@ export class ProviderManager {
     for (const runtime of this.runtimes.values()) clearTimeout(runtime.login?.timer);
     await Promise.all([...this.runtimes.values()].map((runtime) => runtime.client.close()));
     this.runtimes.clear();
+    this.usages.clear();
   }
 }
 

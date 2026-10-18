@@ -52,9 +52,26 @@ Es wird kein API-Key benötigt. Die Zugangsmöglichkeiten hängen vom ChatGPT-Ko
 
 Die Anmeldung verwendet ausschließlich die Account-RPCs des offiziellen Codex-App-Servers, keine nachgebauten OpenAI-OAuth-Endpunkte oder kopierten Client-IDs. Getestete Binary: **codex-cli 0.162.1**. Der Dienst-Installer kopiert die vorhandene eigenständige CLI-Binary nach `/opt/r4os-studio/bin/codex`; auf neuen Hosts vorher die offizielle eigenständige Codex CLI installieren. Für die Entwicklung lässt sich deren Pfad über `CODEX_BINARY` setzen. `STUDIO_DATA_DIR` bestimmt direkt das Provider-Datenverzeichnis; ohne Vorgabe wird `App/Data/LLMProvider/` verwendet. Diese Vorgabe gilt für Entwicklung und Produktion. Die Anwendung ist für den privaten LAN-/VPN-Betrieb eingerichtet. Für öffentliche oder kommerziell gehostete Angebote ist der reguläre, von OpenAI freigegebene **Sign in with ChatGPT**-Web-Client erforderlich; der aktuelle Device-Code-Adapter ist dafür nicht vorgesehen.
 
-Jeder Provider hat einen eigenen geschützten Server-Speicher. Das lokale Verzeichnis `Data/LLMProvider/` erhält Modus `0700`; Metadaten liegen atomar geschrieben mit `0600` in `providers.json`. Die jeweiligen Codex-Anmeldedaten liegen in UUID-Unterordnern. `/Data/` und sämtliche Unterordner sind durch `.gitignore` ausgeschlossen. Beide Push-Skripte beachten diese Regeln und brechen zusätzlich ab, falls Data-Dateien bereits versioniert sind oder die Ausschlussregel fehlt. Auth-Tokens verbleiben im jeweiligen Codex-Speicher auf dem Server. Der Browser erhält ausschließlich Kontometadaten und während seines eigenen Login-Vorgangs den kurzlebigen Benutzer-Code. `HttpOnly`-/`SameSite=Strict`-Cookies binden Login-Vorgänge an die Browser-Sitzung; Änderungen benötigen zusätzlich einen CSRF-Token. Es gibt keine Mehrbenutzerkonten oder Rollen: Provider-Verwaltung gehört zum gemeinsamen, vertrauenswürdigen Studio-Workspace im LAN/VPN. Für weitere Hostnamen `STUDIO_ALLOWED_HOSTS` als kommagetrennte Liste setzen; standardmäßig werden lokale Interface-Adressen, localhost und der Rechnername akzeptiert. TLS ist für den Betrieb außerhalb dieser vertrauenswürdigen Netze erforderlich.
+Jeder Provider hat einen eigenen geschützten Server-Speicher. Das lokale Verzeichnis `Data/LLMProvider/` erhält Modus `0700`; Metadaten liegen atomar geschrieben mit `0600` in `providers.json`. Die jeweiligen Codex-Anmeldedaten liegen in UUID-Unterordnern. `/Data/` und sämtliche Unterordner sind durch `.gitignore` ausgeschlossen. Beide Push-Skripte beachten diese Regeln und brechen zusätzlich ab, falls Data-Dateien bereits versioniert sind oder die Ausschlussregel fehlt. Auth-Tokens verbleiben im jeweiligen Codex-Speicher auf dem Server. Der Browser erhält ausschließlich öffentliche Konto-, Quoten- und Reset-Metadaten sowie während seines eigenen Login-Vorgangs den kurzlebigen Benutzer-Code. `HttpOnly`-/`SameSite=Strict`-Cookies binden Login-Vorgänge an die Browser-Sitzung; Änderungen benötigen zusätzlich einen CSRF-Token. Es gibt keine Mehrbenutzerkonten oder Rollen: Provider-Verwaltung gehört zum gemeinsamen, vertrauenswürdigen Studio-Workspace im LAN/VPN. Für weitere Hostnamen `STUDIO_ALLOWED_HOSTS` als kommagetrennte Liste setzen; standardmäßig werden lokale Interface-Adressen, localhost und der Rechnername akzeptiert. TLS ist für den Betrieb außerhalb dieser vertrauenswürdigen Netze erforderlich.
 
 Die Analyse der drei Referenzprojekte und die genaue Herkunft stehen im Workspace unter `Docs/OpenAI-Subscription.md` und `Research/sources.json`.
+
+## Usage limits und verfügbare Resets
+
+Einen verbundenen OpenAI-Provider auswählen. **Usage limits** zeigt alle von OpenAI gemeldeten Quoten mit verbrauchtem und verbleibendem Anteil, Fensterdauer und nächstem Reset. Absolute Zeitpunkte enthalten die Browser-Zeitzone; zusätzlich steht die verbleibende Zeit dabei. Es werden nur tatsächlich gemeldete Fenster angezeigt, ohne eine feste Annahme über Tages- oder Wochenlimits. Fehlende Werte heißen **Not reported**. Ein vergangener Reset-Zeitpunkt setzt die Anzeige nicht automatisch auf frei: Erst eine neue Antwort von OpenAI bestimmt den aktuellen Stand.
+
+Die Ansicht lädt beim Öffnen, danach ungefähr einmal pro Minute bei sichtbarer Seite und über **Refresh usage**. Der Server hält erfolgreiche Werte maximal 15 Sekunden im Arbeitsspeicher pro Provider; manuelles Aktualisieren umgeht diesen Cache. Bei einem Fehler bleiben zuvor geladene Werte als möglicherweise veraltet gekennzeichnet.
+
+**Available resets** zeigt die gemeldete Gesamtzahl zusätzlicher Reset-Guthaben sowie verfügbare Titel, Status, Vergabe- und Ablaufzeiten. Die Anzahl bleibt maßgeblich, falls OpenAI nur einen Teil der Einzelheiten liefert. Nicht gemeldete Verfügbarkeit wird nicht als null verfügbare Resets dargestellt. Diese Guthaben sind unabhängig von den normalen zeitgesteuerten Quoten-Resets.
+
+**Use a reset** öffnet zunächst eine Bestätigung. Erst **Confirm reset** sendet den Verbrauch an OpenAI. OpenAI wählt standardmäßig das nächste verfügbare Guthaben und entscheidet, welche Fenster zurückgesetzt werden können. Studio aktualisiert danach die Quoten anhand einer neuen Abfrage. Es gibt keine automatische Nutzung von Reset-Guthaben, keine Käufe und keine Modellaufrufe.
+
+Jeder logische Einlöseversuch hat eine UUID als Idempotenzschlüssel. Der Browser speichert ihn vor dem Senden im Sitzungsspeicher, damit ein unklarer Ausgang auch nach Navigation oder Neuladen mit derselben ID erneut geprüft werden kann. **Retry previous reset** / **Retry same reset** verwenden diese ID weiter. Die Ablage enthält ausschließlich die Anfrage-ID und ihren Sendestatus, keine Auth-Tokens. Ein bestätigter Verbrauch mit anschließend fehlgeschlagener Quotenabfrage wird als bestätigtes Ergebnis angezeigt; die Quoten können separat nachgeladen werden. Der Sitzungsspeicher gilt für den jeweiligen Browser-Tab.
+
+- `GET /api/providers/:id/usage`: lesende Abfrage; optional `?refresh=true`.
+- `POST /api/providers/:id/usage/resets`: ausschließlich für ausdrücklich bestätigtes Einlösen mit Sitzung, CSRF-Token, `confirm: true` und `idempotencyKey`. Optional kann ein bekanntes `creditId` übergeben werden; die Oberfläche überlässt die Auswahl OpenAI.
+
+Die Umsetzung verwendet die offiziellen Account-RPCs `account/rateLimits/read` und `account/rateLimitResetCredit/consume`. Herkunft und Protokollgrenzen sind unter `Docs/OpenAI-Subscription.md` dokumentiert. Verbrauchende Tests verwenden ausschließlich kontrollierte Fake-Clients. Die bestehende persönliche Verbindung wurde nur lesend geprüft; kein echtes Reset-Guthaben wurde eingelöst.
 
 ## Aufbau und Entscheidungen
 
@@ -63,7 +80,7 @@ App/
 ├── frontend/src/
 │   ├── app/                         Layout, Navigation, gemeinsame Icons und Styles
 │   ├── features/llm-providers/       Provider-Oberfläche, API-Client und React-Zustand
-│   │   └── components/              NewProvider, ProviderDetails, ProviderPanel
+│   │   └── components/              NewProvider, ProviderDetails, ProviderPanel, Usage-Ansichten
 │   └── main.tsx                     Browser-Einstieg
 ├── backend/src/
 │   ├── app.ts                       HTTP-App zusammenstellen und konfigurieren
@@ -74,7 +91,7 @@ App/
 │       ├── service.ts               Provider- und Login-Lebenszyklus
 │       ├── store.ts                 Persistenz und private Provider-Verzeichnisse
 │       ├── errors.ts                HTTP-Fehler des Moduls
-│       └── openai/codex-client.ts   Offizieller Codex-App-Server über stdio
+│       └── openai/                  Codex-Prozess und Usage-/Reset-Adapter
 ├── backend/test/                    Isolierte Provider-Integrationstests
 ├── shared/llm-providers.d.ts         Öffentliche Datenverträge, keine Zugangstokens
 ├── Data/LLMProvider/                Lokale Laufzeitdaten; vollständig ignoriert
@@ -102,6 +119,6 @@ corepack pnpm start
 
 Das Studio selbst hat noch keine Benutzeranmeldung oder Mehrbenutzerrollen. Die OpenAI-Kontoanmeldung erfolgt separat wie oben beschrieben. Die vorhandene Host-Firewall begrenzt den Zugriff auf die erlaubten Netze; der Installer ergänzt nur TCP 5010 auf dem VPN-Interface `sdwan0`. Eine öffentliche Freigabe und R4OS-Testinstanzen sind nicht Teil dieses Dienstes.
 
-Die Backendtests verwenden isolierte temporäre Daten und einen kontrollierten Auth-Client. Sie prüfen Login-Besitz, Kontentrennung, Persistenz, CSRF/Origin/Host-Schutz, OpenAI-only-Validierung, Abbruch, Ablauf und Fehler ohne Token-Leaks. Sie melden keinen simulierten Login als echten OpenAI-Test an. Zusätzlich wurden mit der offiziellen Binary Initialisierung, ein abgemeldetes isoliertes Konto sowie eine echte Device-Code-Anfrage mit anschließendem Abbruch geprüft. Eine vollständige persönliche Anmeldung muss der Benutzer selbst bei OpenAI abschließen.
+Die Backendtests verwenden isolierte temporäre Daten und einen kontrollierten Auth-Client. Sie prüfen Login-Besitz, Kontentrennung, Persistenz, CSRF/Origin/Host-Schutz, OpenAI-only-Validierung, Abbruch, Ablauf, Quoten-Cache und Kontentrennung, fehlende Nutzungsdaten, Reset-Bestätigung und Idempotenz sowie Fehler ohne Token-Leaks. Sie melden keinen simulierten Login als echten OpenAI-Test an. Zusätzlich wurden mit der offiziellen Binary Initialisierung, ein abgemeldetes isoliertes Konto sowie eine echte Device-Code-Anfrage mit anschließendem Abbruch geprüft. Eine vollständige persönliche Anmeldung muss der Benutzer selbst bei OpenAI abschließen.
 
 Bei UI-Änderungen beide Tabs, alle drei Navigationsebenen, Tastatursteuerung und schmale Ansichten im Browser prüfen; `/api/health` muss HTTP 200 liefern. Unbekannte API-Pfade müssen HTTP 404 liefern.

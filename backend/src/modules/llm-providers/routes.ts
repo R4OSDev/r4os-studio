@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { ProviderManager } from './service.js';
 import type { ProviderOptions } from './service.js';
 import { ProviderSessions } from './sessions.js';
+import type { ResetRequest } from '../../../../shared/llm-providers.js';
 
 export async function providerRoutes(app: FastifyInstance, options: ProviderOptions) {
   const manager = new ProviderManager(options);
@@ -25,6 +26,22 @@ export async function providerRoutes(app: FastifyInstance, options: ProviderOpti
   app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     sessions.get(request, reply);
     return { provider: await manager.get(request.params.id) };
+  });
+  app.get<{ Params: { id: string }; Querystring: { refresh?: boolean } }>('/:id/usage', {
+    schema: { querystring: { type: 'object', additionalProperties: false, properties: { refresh: { type: 'boolean' } } } },
+  }, async (request, reply) => {
+    sessions.get(request, reply);
+    return { usage: await manager.usage(request.params.id, request.query.refresh === true) };
+  });
+  app.post<{ Params: { id: string }; Body: ResetRequest }>('/:id/usage/resets', {
+    schema: { body: { type: 'object', additionalProperties: false, required: ['confirm', 'idempotencyKey'], properties: {
+      confirm: { type: 'boolean', enum: [true] },
+      idempotencyKey: { type: 'string', pattern: '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$' },
+      creditId: { type: 'string', minLength: 1, maxLength: 512 },
+    } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return await manager.consumeReset(request.params.id, request.body);
   });
   app.post<{ Params: { id: string } }>('/:id/login', async (request, reply) => {
     const owner = sessions.mutation(request, reply);

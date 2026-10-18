@@ -69,7 +69,7 @@ export class CodexClient implements AuthClient {
       }
     });
     this.ready = this.send('initialize', {
-      clientInfo: { name: 'r4os_studio', title: 'R4OS Studio', version: '0.1.4' },
+      clientInfo: { name: 'r4os_studio', title: 'R4OS Studio', version: '0.1.5' },
       capabilities: { experimentalApi: false },
     }).then(() => {
       this.child.stdin.write(JSON.stringify({ method: 'initialized' }) + '\n');
