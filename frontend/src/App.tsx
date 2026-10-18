@@ -3,12 +3,16 @@ import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { navigation, views } from './navigation';
 import type { Tab } from './navigation';
+import { useProviders } from './providers';
+import { ProviderPanel } from './ProviderPanel';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };
 
 export function App() {
   const [tab, setTab] = useState<Tab>('System');
+  const providers = useProviders();
+  const [providerView, setProviderView] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<Tab, Selection>>({
     System: { group: 0, item: 0, view: 0 },
     Projects: { group: 0, item: 0, view: 0 },
@@ -18,8 +22,11 @@ export function App() {
   const groups = navigation[tab];
   const group = groups[selected.group];
   const item = group.items[selected.item];
-  const availableViews = views[tab];
-  const view = availableViews[selected.view];
+  const providerPage = tab === 'System' && item === 'LLM Provider';
+  const activeProvider = providers.providers.find((provider) => provider.id === providerView);
+  const availableViews = providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : views[tab];
+  const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : selected.view;
+  const view = availableViews[selectedView];
 
   function select(patch: Partial<Selection>) {
     setSelections((previous) => ({ ...previous, [tab]: { ...previous[tab], ...patch } }));
@@ -93,10 +100,10 @@ export function App() {
             <div className="nav-context">{item}</div>
             <div className="nav-items compact">
               {availableViews.map((name, index) => (
-                <button type="button" key={name} className={`nav-item view-item ${selected.view === index ? 'selected' : ''}`}
-                  aria-current={selected.view === index ? 'page' : undefined}
-                  onClick={() => select({ view: index })}>
-                  <span className="view-number">0{index + 1}</span><span>{name}</span>
+                <button type="button" key={providerPage ? (index === 0 ? 'new-provider' : providers.providers[index - 1].id) : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
+                  aria-current={selectedView === index ? 'page' : undefined}
+                  onClick={() => providerPage ? setProviderView(index === 0 ? null : providers.providers[index - 1].id) : select({ view: index })}>
+                  {providerPage && index === 0 ? <span className="view-number" aria-hidden="true">+</span> : <span className="view-number">{(index + 1).toString().padStart(2, '0')}</span>}<span>{name}</span>
                 </button>
               ))}
             </div>
@@ -106,10 +113,10 @@ export function App() {
         <main className="main-area">
           <div className="content-toolbar">
             <div className="breadcrumb"><span>{tab}</span><Icon name="chevron" /><span>{group.name}</span><Icon name="chevron" /><strong>{item}</strong></div>
-            <span className="placeholder-badge">Placeholder</span>
+            {!providerPage && <span className="placeholder-badge">Placeholder</span>}
           </div>
           <div className="page-heading"><div className="page-eyebrow">{view ? item : group.name}</div><h1>{view ?? item}</h1><span className="page-rule" /></div>
-          <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
+          {providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
             {view && <>
             <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>
             <span className="empty-eyebrow">IT ALL STARTS HERE</span>
@@ -117,7 +124,7 @@ export function App() {
             <p>This view is empty.<br /><span>{item} · {view}</span> will appear here.</p>
             <div className="empty-label"><Icon name="grid" />App shell · Content coming soon</div>
             </>}
-          </div>
+          </div>}
           <div className="main-footnote"><span>R4OS development environment</span><span>APP SHELL / 0.1</span></div>
         </main>
       </div>

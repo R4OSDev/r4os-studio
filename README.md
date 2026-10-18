@@ -30,13 +30,29 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
 - Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
-- Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. Die Liste **Views** ist dort leer; der Hauptbereich enthält noch keine Konfigurationsfunktion.
+- Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider.
 - Rechts ein Hauptbereich mit Breadcrumb, Seitentitel und Platzhalter.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
 
-Alle Navigationsinhalte sind Dummys, einschließlich „Example Project“. Es werden weder Projekte gespeichert noch R4OS-Tools gestartet. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+Die Projektansichten einschließlich „Example Project“ sind Dummys. Die OpenAI-Provider-Verwaltung ist implementiert. Es werden noch keine R4OS-Projekte gespeichert oder R4OS-Tools gestartet. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+
+## OpenAI mit ChatGPT-Abonnement
+
+1. **System → Settings → LLM Provider → New Provider** öffnen.
+2. **OpenAI** auswählen, einen Anzeigenamen vergeben und **Add OpenAI provider** anklicken.
+3. Im gespeicherten Provider **Continue with ChatGPT** anklicken. R4OS Studio zeigt einen einmaligen Code.
+4. **Open OpenAI sign-in** öffnet die offizielle OpenAI-Anmeldung in einem eigenen Tab. Dort anmelden und den Code bestätigen.
+5. R4OS Studio erkennt den Abschluss automatisch und zeigt Konto, Plan und **Connected**. Die Verbindung bleibt nach einem Dienstneustart gespeichert.
+
+Es wird kein API-Key benötigt. Die Zugangsmöglichkeiten hängen vom ChatGPT-Konto und dessen Codex-Berechtigungen ab. Der Provider kann lokal getrennt und erneut verbunden oder vollständig entfernt werden. **Disconnect** und **Remove** löschen die lokalen Zugangsdaten dieser Verbindung; eine globale Abmeldung oder bestätigte Remote-Widerrufung wird nicht behauptet. Bestehende Codex-CLI-Anmeldungen bleiben getrennt. Derzeit werden Kontoverbindungen verwaltet; ein Chat-/Inference-Endpunkt ist noch nicht implementiert.
+
+Die Anmeldung verwendet ausschließlich die Account-RPCs des offiziellen Codex-App-Servers, keine nachgebauten OpenAI-OAuth-Endpunkte oder kopierten Client-IDs. Getestete Binary: **codex-cli 0.162.1**. Der Dienst-Installer kopiert die vorhandene eigenständige CLI-Binary nach `/opt/r4os-studio/bin/codex`; auf neuen Hosts vorher die offizielle eigenständige Codex CLI installieren. Für die Entwicklung lässt sich deren Pfad über `CODEX_BINARY` setzen. `STUDIO_DATA_DIR` bestimmt das Datenverzeichnis; ohne Vorgabe wird `App/.local-data/` verwendet. Die Anwendung ist für den privaten LAN-/VPN-Betrieb eingerichtet. Für öffentliche oder kommerziell gehostete Angebote ist der reguläre, von OpenAI freigegebene **Sign in with ChatGPT**-Web-Client erforderlich; der aktuelle Device-Code-Adapter ist dafür nicht vorgesehen.
+
+Jeder Provider hat einen eigenen geschützten Server-Speicher. Das systemd-StateDirectory `/var/lib/r4os-studio` erhält Modus `0700`; Metadaten werden atomar mit `0600` geschrieben. Auth-Tokens verbleiben im jeweiligen Codex-Speicher auf dem Server. Der Browser erhält ausschließlich Kontometadaten und während seines eigenen Login-Vorgangs den kurzlebigen Benutzer-Code. `HttpOnly`-/`SameSite=Strict`-Cookies binden Login-Vorgänge an die Browser-Sitzung; Änderungen benötigen zusätzlich einen CSRF-Token. Es gibt keine Mehrbenutzerkonten oder Rollen: Provider-Verwaltung gehört zum gemeinsamen, vertrauenswürdigen Studio-Workspace im LAN/VPN. Für weitere Hostnamen `STUDIO_ALLOWED_HOSTS` als kommagetrennte Liste setzen; standardmäßig werden lokale Interface-Adressen, localhost und der Rechnername akzeptiert. TLS ist für den Betrieb außerhalb dieser vertrauenswürdigen Netze erforderlich.
+
+Die Analyse der drei Referenzprojekte und die genaue Herkunft stehen im Workspace unter `Docs/OpenAI-Subscription.md` und `Research/sources.json`.
 
 ## Aufbau und Entscheidungen
 
@@ -60,6 +76,7 @@ Geplant: Monaco-Editor, Projektpersistenz, versionierte R4OS-Dokumentation sowie
 ```bash
 corepack pnpm typecheck
 corepack pnpm lint
+corepack pnpm test
 corepack pnpm build
 corepack pnpm start
 ```
@@ -68,4 +85,6 @@ corepack pnpm start
 
 Es sind keine Zugangsdaten nötig. Authentifizierung und Mehrbenutzerabsicherung sind noch nicht implementiert. Die vorhandene Host-Firewall begrenzt den Zugriff auf die erlaubten Netze; der Installer ergänzt nur TCP 5010 auf dem VPN-Interface `sdwan0`. Eine öffentliche Freigabe und R4OS-Testinstanzen sind nicht Teil dieses Dienstes.
 
-Ein automatisierter Funktionstestsatz ist noch nicht eingerichtet. Für den aktuellen Stand: beide Tabs, alle drei Navigationsebenen, Tastatursteuerung und schmale Ansichten im Browser prüfen; `/api/health` muss HTTP 200 liefern. Unbekannte API-Pfade müssen HTTP 404 liefern.
+Die Backendtests verwenden isolierte temporäre Daten und einen kontrollierten Auth-Client. Sie prüfen Login-Besitz, Kontentrennung, Persistenz, CSRF/Origin/Host-Schutz, OpenAI-only-Validierung, Abbruch, Ablauf und Fehler ohne Token-Leaks. Sie melden keinen simulierten Login als echten OpenAI-Test an. Zusätzlich wurden mit der offiziellen Binary Initialisierung, ein abgemeldetes isoliertes Konto sowie eine echte Device-Code-Anfrage mit anschließendem Abbruch geprüft. Eine vollständige persönliche Anmeldung muss der Benutzer selbst bei OpenAI abschließen.
+
+Bei UI-Änderungen beide Tabs, alle drei Navigationsebenen, Tastatursteuerung und schmale Ansichten im Browser prüfen; `/api/health` muss HTTP 200 liefern. Unbekannte API-Pfade müssen HTTP 404 liefern.
