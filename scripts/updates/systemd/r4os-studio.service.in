@@ -1,0 +1,41 @@
+[Unit]
+Description=R4OS Studio WebApp
+Wants=network-online.target
+After=network-online.target r4-link-firewall.service
+RequiresMountsFor="@APP_DIRECTORY@"
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+WorkingDirectory=@APP_DIRECTORY@
+ExecStart="@NODE_BINARY@" "@APP_DIRECTORY@/backend/dist/server.js" --serve-frontend
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=5010
+Environment="STUDIO_DATA_DIR=@APP_DIRECTORY@/Data/LLMProvider"
+Environment=CODEX_BINARY=/opt/r4os-studio/bin/codex
+ReadWritePaths="@APP_DIRECTORY@/Data/LLMProvider"
+ReadWritePaths="@APP_DIRECTORY@/Data/R4OS/Instances"
+ReadWritePaths=-/run/r4os-studio-vms
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+KillMode=control-group
+User=r4os-studio
+Group=r4os-studio
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+# Node.js liest die Interface-Adressen über Netlink für die Startmeldung.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

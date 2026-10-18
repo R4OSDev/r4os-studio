@@ -9,6 +9,7 @@ import { percent } from '../features/llm-providers/usage-format';
 import { useVms } from '../features/virtual-machines/useVms';
 import { VmPanel } from '../features/virtual-machines/VmPanel';
 import { version } from '../../../shared/version.json';
+import { UpdatesPanel } from '../features/updates/UpdatesPanel';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };
@@ -18,7 +19,7 @@ export function App() {
   const [vmId, setVmId] = useState<string | null>(null);
   const [providerView, setProviderView] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<Tab, Selection>>({
-    System: { group: 0, item: 0, view: 0 },
+    System: { group: window.location.hash === '#updates' ? 2 : 0, item: 0, view: 0 },
     Projects: { group: 0, item: 0, view: 0 },
   });
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -26,6 +27,7 @@ export function App() {
   const groups = navigation[tab];
   const group = groups[selected.group];
   const vmPage = tab === 'System' && group.name === 'Virtual Machines';
+  const updatePage = tab === 'System' && group.name === 'Updates';
   const vms = useVms(vmPage);
   const activeVm = vms.vms.find((vm) => vm.id === vmId);
   const componentItems = vmPage ? ['+ New VM', ...vms.vms.map((vm) => vm.name)] : group.items;
@@ -128,7 +130,7 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
+          {updatePage ? <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
             {view && <>
             <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>
             <span className="empty-eyebrow">IT ALL STARTS HERE</span>

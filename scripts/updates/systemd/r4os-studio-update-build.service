@@ -1,0 +1,31 @@
+[Unit]
+Description=Build an R4OS Studio update without privileged code execution
+
+[Service]
+Type=oneshot
+User=r4os-studio-updater
+Group=r4os-studio-updater
+ExecStart=/usr/bin/python3 /opt/r4os-studio/bin/update-host.py build
+Environment=HOME=/var/cache/r4os-studio-updates/home
+Environment=COREPACK_HOME=/var/cache/r4os-studio-updates/corepack
+Environment=XDG_CACHE_HOME=/var/cache/r4os-studio-updates/home/.cache
+Environment=PNPM_HOME=/var/cache/r4os-studio-updates/home/.local/share/pnpm
+Environment=COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+Environment=CI=true
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+ReadWritePaths=/var/cache/r4os-studio-updates
+UMask=0022
+KillMode=control-group
+TimeoutStartSec=20min
+TimeoutStopSec=10
+MemoryMax=3G
+TasksMax=256
