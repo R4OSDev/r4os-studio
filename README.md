@@ -114,7 +114,7 @@ React und TypeScript strukturieren die interaktive Studio-Oberfläche. Vite übe
 
 Browser: Layout, Navigation, Provider-Verwaltung und Anmeldecode. Der Feature-API-Client ist von React getrennt; `useProviders.ts` verwaltet den React-Zustand. Server: Health-Endpunkt, Provider-API, isolierte Codex-Kindprozesse, Persistenz und statische Frontend-Dateien. Ausschließlich `frontend/dist/` wird statisch ausgeliefert; `Data/` ist über HTTP nicht zugänglich. Im Entwicklungsbetrieb leitet Vite `/api` zum Backend weiter; dadurch ist keine zusätzliche CORS-Freigabe nötig. Die Entwicklungsserver binden an `127.0.0.1`. Im Produktionsbetrieb liefert ein gemeinsamer Server Frontend und API über `0.0.0.0:5010` aus. `HOST` und `PORT` überschreiben die jeweiligen Vorgaben.
 
-Geplant: Monaco-Editor, Projektpersistenz, versionierte R4OS-Dokumentation sowie ein eigener Runner für SDK, Builds und isolierte QEMU-Testinstanzen. Diese Komponenten kommen bei konkretem Bedarf hinzu. Die aktuelle App integriert noch keine R4OS-API oder Toolchain. Die folgende Untersuchung hält bereits Quellenrevisionen für die geplante Anbindung fest; sie sind noch keine installierten Studio-Abhängigkeiten.
+Geplant: Monaco-Editor, Projektpersistenz, versionierte R4OS-Dokumentation sowie ein eigener Runner für SDK, Builds und isolierte QEMU-Testinstanzen. Diese Komponenten kommen bei konkretem Bedarf hinzu. Zig, SDK und Contract sind lokal bereitgestellt; die WebApp verwendet diese Pakete noch nicht für Projekt-Builds.
 
 ## R4OS: einzelne Apps statt Gesamtworkspace
 
@@ -152,9 +152,50 @@ Das [App-Paket](https://github.com/R4OSDev/r4os-app-example/blob/bf1d27058a54d09
 
 Der Deploy-Pfad muss noch mit offiziellen Werkzeugen/Formaten nachgewiesen werden. Upstream besitzt R4UPack und ImageCreator in `r4os-distribution`; diese Untersuchung bestätigt noch keinen vollständigen App-Deploy in ein vorhandenes Image. Keine pauschale Abhängigkeit vom Distribution-Gesamtbuild einführen. Die VM verwendet später eine private Kopie oder ein Overlay des Basisabbilds, zunächst ohne Gastnetzwerk; keine Gastdienste für LAN/VPN oder Internet freigeben.
 
-Geplante Zuständigkeiten: Projektbedienung/Editor im Browser, Projektpersistenz und R4OS-Adapter in getrennten Backend-Modulen, Compiler und VM in einem ausführenden Runner. Lokale Projekte unter `Data/Projects/`, versionierte Tool-/Paket-/Image-Caches unter `Data/R4OS/`; alles weiterhin ignoriert. Diese Ordner und Module sind noch nicht implementiert. Der Dienst hat derzeit nur Schreibrechte für `Data/LLMProvider/`; Runner-Rechte und Isolation sind bei dessen Umsetzung gesondert einzurichten.
+Geplante Zuständigkeiten: Projektbedienung/Editor im Browser, Projektpersistenz und R4OS-Adapter in getrennten Backend-Modulen, Compiler und VM in einem ausführenden Runner. Die Datenordner sind wie unten beschrieben eingerichtet; die zugehörigen Projekt-/Runner-Module sind noch nicht implementiert. Der Dienst hat derzeit nur Schreibrechte für `Data/LLMProvider/`; Runner-Rechte und Isolation sind bei dessen Umsetzung gesondert einzurichten.
 
-Die vollständige Quellen-/Abhängigkeitsprüfung und alle untersuchten Hauptzweig-Revisionen stehen im übergeordneten Workspace unter [`Docs/R4OS-Components.md`](../Docs/R4OS-Components.md). Für diese Recherche wurde nur ein temporäres Build-Setup verwendet; die Studio-Laufzeit bleibt unverändert.
+Die vollständige Quellen-/Abhängigkeitsprüfung und alle untersuchten Hauptzweig-Revisionen stehen im übergeordneten Workspace unter [`Docs/R4OS-Components.md`](../Docs/R4OS-Components.md). Der erste Nachweis erfolgte temporär; das anschließend lokal installierte Setup ist im folgenden Abschnitt beschrieben.
+
+## Installiertes R4OS-Minimalsetup
+
+```text
+Data/
+├── R4OS/
+│   ├── Toolchains/Zig/0.16.0/
+│   ├── SDK/2fdc71e11d6a26fd1998dfddb43923f9d707abda/
+│   ├── Contract/03195b2a2e7461c72a4d0d6b645ae24319ba6315/
+│   ├── Libraries/                 leer
+│   ├── Images/                    leer
+│   ├── Instances/                 leer
+│   └── Profiles/minimal.json
+├── Projects/                      leer, für eigene App-Projekte
+└── LLMProvider/                   bestehende Provider-Daten
+```
+
+Die versionierte Profilvorlage [`shared/r4os/minimal-profile.json`](shared/r4os/minimal-profile.json) bindet Zig 0.16.0, SDK 0.64.35 und Contract 0.64.20 mit Quell-URLs, Archiv-SHA-256 und SDK-/Contract-Zig-Pakethashes. Die installierte Profilkopie unter `Data/R4OS/Profiles/minimal.json` verwendet relative Pfade zum R4OS-Ordner. **QEMU, Firmware, Gastabbilder und zusätzliche Libraries sind nicht installiert.**
+
+Das Setup benötigt Linux x86_64 und Python ab 3.12. Aus dem App-Verzeichnis als Besitzer von `Data/`:
+
+```sh
+python3 scripts/setup-r4os.py
+```
+
+Auf diesem Host gehört `Data/` dem Dienstbenutzer; deshalb aus dem Workspace-Stamm als root `runuser -u r4os-studio -- python3 App/scripts/setup-r4os.py` ausführen. Das Skript lädt nur die drei gebundenen Archive, prüft SHA-256 vor sicherem Entpacken, ersetzt keine vorhandenen Installationen und veröffentlicht das Profil nach Prüfung von Zig-Version und beiden Pakethashes. Wiederholte Aufrufe verwenden vorhandene Installationen ohne Download. Optional `--archive-dir /absolute/path` mit geprüften Archiven namens `zig.tar`, `sdk.tar`, `contract.tar`; die Dateiendung legt die Komprimierung nicht fest.
+
+Aus einem passenden App-Projekt mit absoluten Pfaden zum installierten Profil bauen:
+
+```sh
+R4OS_ROOT='/Data/Projekte/R4OS Studio/App/Data/R4OS'
+"$R4OS_ROOT/Toolchains/Zig/0.16.0/zig" build \
+  --prefix "$PWD/Artifacts" \
+  "--fork=$R4OS_ROOT/SDK/2fdc71e11d6a26fd1998dfddb43923f9d707abda" \
+  "--fork=$R4OS_ROOT/Contract/03195b2a2e7461c72a4d0d6b645ae24319ba6315" \
+  --summary all
+```
+
+Die Installation wurde als `r4os-studio` geprüft: Zig-Version und Pakethashes stimmen, ein erneuter Setup-Lauf verwendet vorhandene Komponenten, und ein frischer Example-Build mit den installierten Pfaden besteht alle 9 Schritte einschließlich R4M0-Prüfung. Protokoll und Ergebnis liegen unter `Data/R4OS/Profiles/minimal-build.log` und `minimal-verification.json`; das temporäre Prüfprojekt wurde entfernt. Ein VM-Test fand nicht statt.
+
+SDK/Contract/Compiler werden projektübergreifend genutzt; eigene App-Quellen und Ausgaben gehören unter `Data/Projects/`. `Data/` bleibt vollständig ignoriert, auch für beide Push-Skripte. Der Setup läuft außerhalb der systemd-Isolierung als unprivilegierter Benutzer. Die WebApp erhält damit noch keinen Build-Endpunkt oder zusätzliche Schreibrechte; ihr Dienst darf weiterhin nur den Provider-Ordner beschreiben. Ausführliche Einrichtung und Rechte: [`../Docs/R4OS-Setup.md`](../Docs/R4OS-Setup.md). Die laufende WebApp und ihre Versionsnummer bleiben für diese lokale Bereitstellung unverändert.
 
 ## Prüfen und bauen
 

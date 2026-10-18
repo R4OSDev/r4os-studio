@@ -5,6 +5,8 @@ backend/dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+__pycache__/
+*.pyc
 .local-data/
 
 # Local runtime data, including provider credentials and all nested directories.

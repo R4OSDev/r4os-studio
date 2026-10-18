@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "zig-0.16.0-sdk-0.64.35",
+  "platform": "linux-x86_64",
+  "components": {
+    "zig": {
+      "version": "0.16.0",
+      "path": "Toolchains/Zig/0.16.0",
+      "url": "https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz",
+      "sha256": "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+    },
+    "sdk": {
+      "version": "0.64.35",
+      "revision": "2fdc71e11d6a26fd1998dfddb43923f9d707abda",
+      "path": "SDK/2fdc71e11d6a26fd1998dfddb43923f9d707abda",
+      "url": "https://codeload.github.com/R4OSDev/r4os-sdk/tar.gz/2fdc71e11d6a26fd1998dfddb43923f9d707abda",
+      "sha256": "0082211e0cc50f1056277de12a3a8a216a9a53568d9e23edb61760e5df7e0fe1",
+      "zigPackageHash": "r4os_sdk-0.64.35-NnPzAr_IEwGTHSJwdpAoaC4r1p2R4j3ifyp5n06kIwL1"
+    },
+    "contract": {
+      "version": "0.64.20",
+      "revision": "03195b2a2e7461c72a4d0d6b645ae24319ba6315",
+      "path": "Contract/03195b2a2e7461c72a4d0d6b645ae24319ba6315",
+      "url": "https://codeload.github.com/R4OSDev/r4os-contract/tar.gz/03195b2a2e7461c72a4d0d6b645ae24319ba6315",
+      "sha256": "87abe467bfd193b62dd3831659899c982d047c3dc40d22618ee8884df3fb7900",
+      "zigPackageHash": "r4os_contract-0.64.20-ELhbYaFX9wCSm-jm7aOO-vPI0L_0Jgo_cjcuUO2Jcg-d"
+    }
+  }
+}
