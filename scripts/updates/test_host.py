@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import host
 
@@ -47,6 +48,13 @@ class HostTests(unittest.TestCase):
             'f' * 40 + '\trefs/tags/v01.2.3', 'a' * 40 + '\trefs/heads/main']))
         self.assertEqual([value['version'] for value in values], ['0.1.9', '0.1.10'])
         self.assertEqual(values[-1]['commit'], 'd' * 40)
+
+    def test_inactive_unloaded_builder_is_not_reset_but_failed_builder_is(self):
+        with patch.object(host.subprocess, 'run', return_value=SimpleNamespace(returncode=1)):
+            host.reset_build_failure()
+        with patch.object(host.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), patch.object(host, 'run') as command:
+            host.reset_build_failure()
+        command.assert_called_once_with(['/usr/bin/systemctl', 'reset-failed', host.BUILD_UNIT])
 
     def test_successful_activation_restarts_only_web_service(self):
         with patch.object(host, 'run') as command, patch.object(self.manager, 'healthy') as health:

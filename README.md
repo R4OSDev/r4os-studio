@@ -259,7 +259,7 @@ Die Backendtests verwenden isolierte temporäre Daten und einen kontrollierten A
 
 Bei UI-Änderungen beide Tabs, alle drei Navigationsebenen, Tastatursteuerung und schmale Ansichten im Browser prüfen; `/api/health` muss HTTP 200 liefern. Unbekannte API-Pfade müssen HTTP 404 liefern.
 
-## Studio updates (0.1.16)
+## Studio updates (0.1.17)
 
 **System → Updates → R4OS Studio** zeigt die aktive und neueste veröffentlichte Version, Prüfzeiten, Fortschritt und die letzten zehn Installationen. Prüfung beim Start des Update-Dienstes und danach alle sechs Stunden; **Check for updates** prüft zusätzlich. Ausschließlich **Install update** installiert, niemals der Timer. Die Seite verbindet sich nach dem Studio-Neustart erneut und lädt neue Frontend-Dateien. Versionen werden über stabile Tags `vMAJOR.MINOR.PATCH` veröffentlicht; gewöhnliche main-Commits, Vorabversionen und ältere Versionen werden nicht automatisch installiert. Ein Tag muss zur kanonischen `shared/version.json` passen; veröffentlichte Tags nicht verschieben.
 

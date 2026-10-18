@@ -82,6 +82,14 @@ def git(config):
     return args
 
 
+def reset_build_failure():
+    # Unlike start/stop, reset-failed does not load an inactive, garbage-collected
+    # unit. Reset only an actually failed (therefore still loaded) build service.
+    result = subprocess.run(['/usr/bin/systemctl', 'is-failed', '--quiet', BUILD_UNIT], timeout=10)
+    if result.returncode == 0:
+        run(['/usr/bin/systemctl', 'reset-failed', BUILD_UNIT])
+
+
 def releases(text):
     """Stable numeric tags only; peel annotated tags to their commit identity."""
     values = {}
@@ -251,6 +259,7 @@ class Updater:
                 raise RuntimeError('Local source changes exist. Commit or preserve them before installing an update.')
         if any(shutil.disk_usage(path).free < 1024 ** 3 for path in [CACHE, BASE]):
             raise RuntimeError('At least 1 GiB of free space is required for staging and release storage.')
+        reset_build_failure()
         run(['/usr/bin/systemctl', 'stop', BUILD_UNIT])
         build = CACHE / 'build'
         shutil.rmtree(build, ignore_errors=True)
@@ -259,11 +268,12 @@ class Updater:
         os.chown(build, account.pw_uid, account.pw_gid)
         atomic_json(STATE / 'job.json', latest)
         self.change(phase='building', message='Downloading and building the release. Studio and VMs remain available.')
-        run(['/usr/bin/systemctl', 'reset-failed', BUILD_UNIT])
         run(['/usr/bin/systemctl', 'start', BUILD_UNIT], timeout=1250)
         # Type=oneshot and KillMode=control-group leave no writer in the build service.
         run(['/usr/bin/systemctl', 'stop', BUILD_UNIT])
         source = build / 'source'
+        if source.is_symlink() or not source.resolve().is_relative_to(build.resolve()):
+            raise RuntimeError('Invalid build output directory.')
         version = read_json(source / 'shared/version.json')['version']
         if read_json(source / 'shared/update-host.json') != COMPATIBILITY:
             raise RuntimeError('This release requires host support or a data migration. Manual maintenance is required.')
