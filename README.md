@@ -8,6 +8,8 @@ Dieses Verzeichnis ist das lokale Git-Repository. Remote: `https://gitea.r4publi
 
 `AGENTS.md` und `Tools/` liegen im übergeordneten Workspace und werden nicht in dieses Repository aufgenommen. Lokale Git-Einstellungen erlauben das selbstsignierte Gitea-Zertifikat und lösen `gitea.r4public.r4network` bei Bedarf über `10.0.0.2` auf. Zugangsdaten stehen im außerhalb dieses Repositories abgelegten Push-Skript; die Remote-URL enthält keine Zugangsdaten.
 
+Im übergeordneten Workspace liegen außerdem separate Quellcode-Checkouts unter `Research/Codex/`, `Research/OpenClaw/` und `Research/OpenCode/`. Herkunft und genaue Revisionen stehen in `Research/sources.json`. Der Codex-Checkout enthält die öffentlichen CLI-/SDK-/App-Server-Komponenten; ein öffentliches Repository für die vollständige Desktop-Oberfläche wurde nicht bestätigt. Diese Quellen dienen der Recherche und sind keine installierten App-Abhängigkeiten oder Bestandteil dieses Gitea-Repositories.
+
 ## Starten
 
 Voraussetzungen: Node.js 20 ab 20.19, 22 ab 22.13 oder ab Version 24, außerdem Corepack (alternativ pnpm 10.18.3 direkt installieren). Für neue Installationen Node.js 24 LTS verwenden.
