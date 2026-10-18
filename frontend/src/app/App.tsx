@@ -71,7 +71,7 @@ export function App() {
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
         <aside className="navigation" aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
-            <div className="column-heading"><span>Areas</span><span className="count">{groups.length.toString().padStart(2, '0')}</span></div>
+            <div className="column-heading">Areas</div>
             <div className="nav-items">
               {groups.map((entry, index) => (
                 <button type="button" key={entry.name} className={`nav-item ${selected.group === index ? 'selected' : ''}`}
@@ -83,7 +83,7 @@ export function App() {
             </div>
           </nav>
           <nav className="nav-column" aria-label="Components">
-            <div className="column-heading"><span>Components</span><span className="count">{group.items.length.toString().padStart(2, '0')}</span></div>
+            <div className="column-heading">Components</div>
             <div className="nav-items">
               {group.items.map((name, index) => (
                 <button type="button" key={name} className={`nav-item ${selected.item === index ? 'selected' : ''}`}
@@ -95,7 +95,7 @@ export function App() {
             </div>
           </nav>
           <nav className="nav-column" aria-label="Views">
-            <div className="column-heading"><span>Views</span><span className="count">{availableViews.length.toString().padStart(2, '0')}</span></div>
+            <div className="column-heading">Views</div>
             <div className="nav-items">
               {availableViews.map((name, index) => {
                 const provider = providerPage && index > 0 ? providers.providers[index - 1] : undefined;

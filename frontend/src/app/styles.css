@@ -36,8 +36,7 @@ button { border: 0; }
 .nav-column { position: relative; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); overflow-y: auto; }
 .nav-column:nth-child(2) { background: #191420; }
 .nav-column:nth-child(3) { background: #17121e; }
-.column-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; height: 54px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: 10px; color: #b0a3bf; letter-spacing: 1.35px; text-transform: uppercase; }
-.count { font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; color: #9b8aac; letter-spacing: 0; }
+.column-heading { display: flex; align-items: center; flex-shrink: 0; height: 54px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: 10px; color: #b0a3bf; letter-spacing: 1.35px; text-transform: uppercase; }
 .nav-items { display: flex; flex-direction: column; gap: 5px; padding: 18px 9px; }
 .nav-item { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 37px; padding: 9px 9px; text-align: left; border: 1px solid transparent; background: transparent; border-radius: 5px; color: #b1a4c3; font-size: 12px; line-height: 1.3; transition: background .15s, color .15s; }
 .nav-item > span:not(.component-mark):not(.view-number) { overflow-wrap: anywhere; }
