@@ -119,11 +119,7 @@ export function App() {
         </aside>
 
         <main className="main-area">
-          <div className="content-toolbar">
-            <div className="breadcrumb"><span>{tab}</span><Icon name="chevron" /><span>{group.name}</span><Icon name="chevron" /><strong>{item}</strong></div>
-            {!providerPage && <span className="placeholder-badge">Placeholder</span>}
-          </div>
-          <div className="page-heading"><div className="page-eyebrow">{view ? item : group.name}</div><h1>{view ?? item}</h1><span className="page-rule" /></div>
+          <div className="page-heading"><h1>{view ?? item}</h1><span className="page-rule" /></div>
           {providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
             {view && <>
             <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>

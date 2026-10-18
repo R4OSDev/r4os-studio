@@ -33,7 +33,7 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
 - Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Die Spaltenüberschriften zeigen ausschließlich ihre Bezeichnung ohne Zähler. Die Spalten enthalten keine wiederholten Kontextüberschriften und keine Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
 - Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
-- Rechts ein Hauptbereich mit Breadcrumb, Seitentitel und Platzhalter.
+- Rechts ein Hauptbereich mit Seitentitel und Inhalt, ohne Breadcrumb-Navigation oder zusätzliche Kontextüberschrift über dem Seitentitel.
 - Die untere Leiste enthält ausschließlich linksbündig **R4OS Studio | Version …**. Die Versionsnummer stammt aus `shared/version.json`.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
