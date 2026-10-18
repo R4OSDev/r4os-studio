@@ -3,8 +3,8 @@ import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { navigation, views } from './navigation';
 import type { Tab } from './navigation';
-import { useProviders } from './providers';
-import { ProviderPanel } from './ProviderPanel';
+import { useProviders } from '../features/llm-providers/useProviders';
+import { ProviderPanel } from '../features/llm-providers/components/ProviderPanel';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };

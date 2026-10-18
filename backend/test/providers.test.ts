@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
-import type { AuthClient, AuthClientFactory, AuthNotification } from '../src/codex-client.js';
-import type { Provider, ProviderLogin } from '../../shared/providers.js';
+import type { AuthClient, AuthClientFactory, AuthNotification } from '../src/modules/llm-providers/openai/codex-client.js';
+import type { Provider, ProviderLogin } from '../../shared/llm-providers.js';
 
 const secret = 'test-token-must-never-reach-the-browser';
 class FakeClient implements AuthClient {

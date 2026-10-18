@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, rename, chmod } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { Provider } from '../../shared/providers.js';
+import type { Provider } from '../../../../shared/llm-providers.js';
 
 export type ProviderRecord = Omit<Provider, 'status'> & { connected: boolean };
 export const validProviderId = (value: string) => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value);

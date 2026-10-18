@@ -1,17 +1,12 @@
 import { access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { hostname, networkInterfaces } from 'node:os';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { Provider, ProviderLogin } from '../../shared/providers.js';
-import { CodexClient } from './codex-client.js';
-import type { AuthClient, AuthClientFactory } from './codex-client.js';
-import { ProviderStore, validProviderId } from './provider-store.js';
-import type { ProviderRecord } from './provider-store.js';
-
-class ProviderError extends Error {
-  constructor(message: string, readonly statusCode = 400) { super(message); }
-}
+import { randomUUID } from 'node:crypto';
+import type { Provider, ProviderLogin } from '../../../../shared/llm-providers.js';
+import { CodexClient } from './openai/codex-client.js';
+import type { AuthClient, AuthClientFactory } from './openai/codex-client.js';
+import { ProviderStore, validProviderId } from './store.js';
+import type { ProviderRecord } from './store.js';
+import { ProviderError } from './errors.js';
 
 type Login = ProviderLogin & { owner: string; id?: string; timer?: NodeJS.Timeout };
 type Runtime = { client: AuthClient; login?: Login; unavailable: boolean; retired?: boolean };
@@ -259,83 +254,3 @@ export class ProviderManager {
   }
 }
 
-export async function providerRoutes(app: FastifyInstance, options: ProviderOptions) {
-  const manager = new ProviderManager(options);
-  const sessions = new Map<string, { token: string; expires: number }>();
-  const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]', hostname(),
-    ...Object.values(networkInterfaces()).flatMap((items) => (items ?? []).map((item) => item.address)),
-    ...(process.env.STUDIO_ALLOWED_HOSTS ?? '').split(',').map((host) => host.trim()).filter(Boolean)]);
-  app.addHook('onClose', () => manager.close());
-  app.addHook('onRequest', async (request, reply) => {
-    reply.header('Cache-Control', 'no-store');
-    if (!allowedHosts.has(request.hostname)) throw new ProviderError('This host is not allowed to access provider settings.', 403);
-    if (request.headers.origin) {
-      let origin: URL;
-      try { origin = new URL(request.headers.origin); } catch { throw new ProviderError('Invalid request origin.', 403); }
-      if (origin.host !== request.headers.host) throw new ProviderError('Cross-origin provider requests are not allowed.', 403);
-    }
-  });
-
-  function session(request: FastifyRequest, reply: FastifyReply, create = false) {
-    const id = request.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('studio_provider_session='))?.split('=')[1];
-    const existing = id && sessions.get(id);
-    if (existing && existing.expires > Date.now()) return { id, ...existing };
-    if (!create) throw new ProviderError('Reload provider settings before continuing.', 403);
-    for (const [key, value] of sessions) if (value.expires < Date.now()) sessions.delete(key);
-    if (sessions.size >= 256) sessions.delete(sessions.keys().next().value!);
-    const nextId = randomBytes(32).toString('hex');
-    const next = { token: randomBytes(32).toString('hex'), expires: Date.now() + 24 * 60 * 60_000 };
-    sessions.set(nextId, next);
-    reply.header('Set-Cookie', `studio_provider_session=${nextId}; Path=/api/providers; HttpOnly; SameSite=Strict; Max-Age=86400${request.protocol === 'https' ? '; Secure' : ''}`);
-    return { id: nextId, ...next };
-  }
-
-  function mutation(request: FastifyRequest, reply: FastifyReply) {
-    const current = session(request, reply);
-    const supplied = request.headers['x-csrf-token'];
-    if (typeof supplied !== 'string' || !/^[0-9a-f]{64}$/.test(supplied)
-      || !timingSafeEqual(Buffer.from(supplied), Buffer.from(current.token))) {
-      throw new ProviderError('Reload provider settings before continuing.', 403);
-    }
-    return current.id;
-  }
-
-  app.get('/', async (request, reply) => {
-    const current = session(request, reply, true);
-    return { providers: await manager.list(), csrfToken: current.token, signInAvailable: await manager.available() };
-  });
-  app.post<{ Body: { name: string; type: 'openai' } }>('/', {
-    schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: {
-      name: { type: 'string', minLength: 1, maxLength: 80 }, type: { type: 'string', enum: ['openai'] },
-    } } },
-  }, async (request, reply) => {
-    mutation(request, reply);
-    const provider = await manager.create(request.body.name);
-    return reply.code(201).send({ provider });
-  });
-  app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    session(request, reply);
-    return { provider: await manager.get(request.params.id) };
-  });
-  app.post<{ Params: { id: string } }>('/:id/login', async (request, reply) => {
-    const owner = mutation(request, reply);
-    return { login: await manager.start(request.params.id, owner) };
-  });
-  app.get<{ Params: { id: string } }>('/:id/login', async (request, reply) => {
-    const current = session(request, reply);
-    return { login: await manager.login(request.params.id, current.id) };
-  });
-  app.delete<{ Params: { id: string } }>('/:id/login', async (request, reply) => {
-    await manager.cancel(request.params.id, mutation(request, reply));
-    return reply.code(204).send();
-  });
-  app.post<{ Params: { id: string } }>('/:id/disconnect', async (request, reply) => {
-    mutation(request, reply);
-    return { provider: await manager.disconnect(request.params.id) };
-  });
-  app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    mutation(request, reply);
-    await manager.remove(request.params.id);
-    return reply.code(204).send();
-  });
-}

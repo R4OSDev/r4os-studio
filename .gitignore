@@ -6,3 +6,6 @@ backend/dist/
 !.env.example
 *.tsbuildinfo
 .local-data/
+
+# Local runtime data, including provider credentials and all nested directories.
+/Data/
