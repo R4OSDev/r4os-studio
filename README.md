@@ -32,7 +32,7 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
 - Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Die Spalten enthalten keine wiederholten Kontextüberschriften und keine Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
-- Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider.
+- Im Tab **System** gibt es ausschließlich **Settings → LLM Provider**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
 - Rechts ein Hauptbereich mit Breadcrumb, Seitentitel und Platzhalter.
 - Die untere Leiste enthält ausschließlich linksbündig **R4OS Studio | Version …**. Die Versionsnummer stammt aus `shared/version.json`.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
@@ -60,6 +60,8 @@ Die Analyse der drei Referenzprojekte und die genaue Herkunft stehen im Workspac
 ## Usage limits und verfügbare Resets
 
 Einen verbundenen OpenAI-Provider auswählen. **Usage limits** zeigt alle von OpenAI gemeldeten Quoten mit verbrauchtem und verbleibendem Anteil, Fensterdauer und nächstem Reset. Absolute Zeitpunkte enthalten die Browser-Zeitzone; zusätzlich steht die verbleibende Zeit dabei. Es werden nur tatsächlich gemeldete Fenster angezeigt, ohne eine feste Annahme über Tages- oder Wochenlimits. Fehlende Werte heißen **Not reported**. Ein vergangener Reset-Zeitpunkt setzt die Anzeige nicht automatisch auf frei: Erst eine neue Antwort von OpenAI bestimmt den aktuellen Stand.
+
+Die Provider-Buttons in **Views** zeigen rechts den niedrigsten bekannten verbleibenden Prozentsatz über alle gemeldeten Quotenfenster und Buckets. Beispielsweise ergeben 80 % im kurzen und 25 % im langen Fenster eine Anzeige von **25%**. Nicht verfügbare Werte erscheinen als **—**, niemals als erfundene 0 % oder 100 %. Der Tooltip erklärt die Zusammenfassung; die einzelnen Fenster stehen weiterhin in der Detailansicht. Die Werte werden für verbundene Abonnements bereits ohne Auswahl des Providers beim Öffnen der Provider-Navigation geladen und bei sichtbarer Navigation minütlich aktualisiert. Aktualisierungen aus der Detailansicht und bestätigte Reset-Ergebnisse fließen direkt in die Button-Anzeige ein. Beim Kontowechsel beziehungsweise Neuladen der Provider-Liste werden bisherige Prozentwerte verworfen.
 
 Die Ansicht lädt beim Öffnen, danach ungefähr einmal pro Minute bei sichtbarer Seite und über **Refresh usage**. Der Server hält erfolgreiche Werte maximal 15 Sekunden im Arbeitsspeicher pro Provider; manuelles Aktualisieren umgeht diesen Cache. Bei einem Fehler bleiben zuvor geladene Werte als möglicherweise veraltet gekennzeichnet.
 

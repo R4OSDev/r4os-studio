@@ -5,6 +5,7 @@ import { navigation, views } from './navigation';
 import type { Tab } from './navigation';
 import { useProviders } from '../features/llm-providers/useProviders';
 import { ProviderPanel } from '../features/llm-providers/components/ProviderPanel';
+import { percent } from '../features/llm-providers/usage-format';
 import { version } from '../../../shared/version.json';
 
 const tabs: Tab[] = ['System', 'Projects'];
@@ -12,7 +13,6 @@ type Selection = { group: number; item: number; view: number };
 
 export function App() {
   const [tab, setTab] = useState<Tab>('System');
-  const providers = useProviders();
   const [providerView, setProviderView] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<Tab, Selection>>({
     System: { group: 0, item: 0, view: 0 },
@@ -24,6 +24,7 @@ export function App() {
   const group = groups[selected.group];
   const item = group.items[selected.item];
   const providerPage = tab === 'System' && item === 'LLM Provider';
+  const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
   const availableViews = providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : views[tab];
   const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : selected.view;
@@ -96,13 +97,23 @@ export function App() {
           <nav className="nav-column" aria-label="Views">
             <div className="column-heading"><span>Views</span><span className="count">{availableViews.length.toString().padStart(2, '0')}</span></div>
             <div className="nav-items">
-              {availableViews.map((name, index) => (
-                <button type="button" key={providerPage ? (index === 0 ? 'new-provider' : providers.providers[index - 1].id) : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
+              {availableViews.map((name, index) => {
+                const provider = providerPage && index > 0 ? providers.providers[index - 1] : undefined;
+                const remaining = provider ? providers.remainingByProvider[provider.id] : null;
+                return <button type="button" key={providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
                   aria-current={selectedView === index ? 'page' : undefined}
-                  onClick={() => providerPage ? setProviderView(index === 0 ? null : providers.providers[index - 1].id) : select({ view: index })}>
-                  {providerPage && index === 0 ? <span className="view-number" aria-hidden="true">+</span> : <span className="view-number">{(index + 1).toString().padStart(2, '0')}</span>}<span>{name}</span>
-                </button>
-              ))}
+                  onClick={() => providerPage ? setProviderView(provider?.id ?? null) : select({ view: index })}>
+                  {providerPage ? <>
+                    {index === 0 && <span className="view-number" aria-hidden="true">+</span>}
+                    <span className="provider-view-name">{name}</span>
+                    {provider?.type === 'openai' && provider.status === 'connected' && provider.account &&
+                      <span className="provider-remaining" title={remaining == null
+                        ? 'Remaining usage is not available.' : 'Lowest reported remaining usage across quota windows.'}>
+                        {remaining == null ? '—' : percent(remaining)}
+                      </span>}
+                  </> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
+                </button>;
+              })}
             </div>
           </nav>
         </aside>

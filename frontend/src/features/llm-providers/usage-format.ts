@@ -1,3 +1,12 @@
+import type { ProviderUsage } from '../../../../shared/llm-providers.js';
+
+export function remainingUsage(usage: ProviderUsage | null): number | null {
+  if (!usage || !Array.isArray(usage.limits)) return null;
+  const values = usage.limits.flatMap((limit) => [limit.primary?.remainingPercent, limit.secondary?.remainingPercent])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100);
+  return values.length ? Math.min(...values) : null;
+}
+
 export function percent(value: number | null): string {
   return value === null ? 'Not reported' : `${new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(value)}%`;
 }
