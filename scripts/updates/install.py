@@ -32,7 +32,7 @@ def account(name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app', type=Path, default=Path(__file__).resolve().parents[2])
-    parser.add_argument('--repository', default='https://gitea.r4public.r4network/R4mbo/R4OS_Studio.git')
+    parser.add_argument('--repository', default='https://github.com/R4OSDev/r4os-studio.git')
     parser.add_argument('--ca-file', type=Path, help='Explicitly trusted CA/leaf certificate for a private Git host')
     parser.add_argument('--resolve', default='', help='Git curl mapping: hostname:443:address')
     parser.add_argument('--check-interval', type=int, default=21600)
