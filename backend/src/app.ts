@@ -12,14 +12,19 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>;
 } = {}) {
   const app = Fastify({ logger });
+  const legacyCodex = '/opt/r4os-studio/bin/codex';
+  const codexOverride = process.env.CODEX_BINARY;
+  // Old installers set the fallback path explicitly before selectable tools
+  // existed. Keep that deployment compatible with the selected default.
+  const selectedCodex = (!codexOverride || codexOverride === legacyCodex) && !providers.binary;
 
   app.get('/api/health', async () => ({ status: 'ok', service: 'r4os-studio', version,
     release: process.env.STUDIO_RELEASE_ID ?? null }));
   app.register(providerRoutes, {
     prefix: '/api/providers',
     directory: process.env.STUDIO_DATA_DIR ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url)),
-    binary: process.env.CODEX_BINARY ?? '/opt/r4os-studio/bin/codex',
-    ...(!process.env.CODEX_BINARY && !providers.binary ? { binaryResolver: async () => (await activeTool('codex')).binary } : {}),
+    binary: codexOverride || legacyCodex,
+    ...(selectedCodex ? { binaryResolver: async () => (await activeTool('codex')).binary } : {}),
     ...providers,
   });
 

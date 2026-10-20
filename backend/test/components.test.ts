@@ -60,6 +60,20 @@ await test('active tools reject changed binaries and paths outside the versioned
     await assert.rejects(activeTool('codex'), /checksum changed/);
     await writeFile(profile, JSON.stringify({ schema: 1, defaults: { codex: { ...record, binary: '/bin/sh' } } }));
     await assert.rejects(activeTool('codex'), /Invalid active tool path/);
+    // The original service template set this fallback path explicitly. It must
+    // now follow the managed profile, including rejection of invalid choices.
+    const originalOverride = process.env.CODEX_BINARY;
+    try {
+      for (const [override, available] of [['/opt/r4os-studio/bin/codex', false], ['/usr/bin/true', true]] as const) {
+        process.env.CODEX_BINARY = override;
+        const app = createApp({ providers: { directory: join(directory, 'providers') } });
+        try { assert.equal((await app.inject('/api/providers')).json().signInAvailable, available); }
+        finally { await app.close(); }
+      }
+    } finally {
+      if (originalOverride === undefined) delete process.env.CODEX_BINARY; else process.env.CODEX_BINARY = originalOverride;
+    }
+
   } finally {
     if (previous === undefined) delete process.env.STUDIO_R4OS_DIR; else process.env.STUDIO_R4OS_DIR = previous;
     await rm(directory, { recursive: true, force: true });
