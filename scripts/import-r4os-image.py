@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import tempfile
 import urllib.request
@@ -28,7 +29,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version', help='Release version, e.g. 0.84.47; defaults to latest stable.')
     parser.add_argument('--archive', type=Path, help='Use a previously downloaded official ZIP; still verify its published checksum.')
+    parser.add_argument('--r4os-dir', type=Path, default=Path(os.environ.get('STUDIO_R4OS_DIR', APP / 'Data/R4OS')))
+    parser.add_argument('--expected-archive-sha256', help='Require the archive identity previously selected from the official catalog.')
     args = parser.parse_args()
+    if args.version and not re.fullmatch(r'\d+\.\d+\.\d+', args.version):
+        parser.error('Use a numeric stable release version.')
+    if args.expected_archive_sha256 and not re.fullmatch('[a-f0-9]{64}', args.expected_archive_sha256):
+        parser.error('Invalid expected archive SHA-256.')
     release = json.load(request(API + ('tags/v' + args.version if args.version else 'latest')))
     if release['draft'] or release['prerelease']:
         raise ValueError('Only stable published releases are accepted.')
@@ -36,10 +43,12 @@ def main():
     if len(version.split('.')) != 3 or not all(v.isdigit() for v in version.split('.')):
         raise ValueError('Unexpected release version.')
     assets = {asset['name']: asset['browser_download_url'] for asset in release['assets']}
-    name = f'R4OS-{version}-full-x86_64.zip'
+    name = next(name for name in assets if name.lower() == f'R4OS-{version}-full-x86_64.zip'.lower())
     checksums = request(assets['SHA256SUMS.txt']).read().decode()
-    expected = next(line.split()[0] for line in checksums.splitlines() if line.split()[-1] == name)
-    root = APP / 'Data/R4OS/Images'
+    expected = next(line.split()[0] for line in checksums.splitlines() if line.split()[-1].lstrip('*') == name)
+    if not re.fullmatch('[a-f0-9]{64}', expected) or (args.expected_archive_sha256 and expected != args.expected_archive_sha256):
+        raise ValueError('Published archive checksum differs from the selected release.')
+    root = args.r4os_dir.resolve() / 'Images'
     root.mkdir(parents=True, exist_ok=True)
     image_id = version + '-full'
     destination = root / image_id
@@ -93,9 +102,12 @@ def main():
             user = pwd.getpwnam('r4os-studio')
             for path in [image, *image.rglob('*')]:
                 os.chown(path, user.pw_uid, user.pw_gid)
-        for path in [image, *image.rglob('*')]:
+        # Moving a directory between parents needs owner write permission on
+        # the directory itself. Seal the root only after atomic publication.
+        for path in image.rglob('*'):
             path.chmod(0o500 if path.is_dir() else 0o400)
         image.rename(destination)
+        destination.chmod(0o500)
         print(f'Imported: {destination}', flush=True)
 
 

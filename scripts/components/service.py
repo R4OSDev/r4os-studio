@@ -124,7 +124,12 @@ class Manager:
                 try:
                     record = json.loads(marker.read_text())
                     if kind == 'r4os':
-                        if record.get('variant') != 'full' or record.get('architecture') != 'x86_64' or not (path / 'disk.img').is_file():
+                        disk = path / 'disk.img'
+                        if (record.get('schema') != 1 or record.get('id') != path.name or record.get('disk') != 'disk.img'
+                                or record.get('variant') != 'full' or record.get('architecture') != 'x86_64'
+                                or not re.fullmatch('[a-f0-9]{64}', record.get('sha256', ''))
+                                or not disk.is_file() or disk.is_symlink()
+                                or (record.get('diskSizeBytes') is not None and disk.stat().st_size != record['diskSizeBytes'])):
                             continue
                     elif kind in ('sdk', 'contract', 'libraries'):
                         record.update(package_info(path))

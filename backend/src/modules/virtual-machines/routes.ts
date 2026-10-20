@@ -6,7 +6,7 @@ import { runtimePath, VmError } from './paths.js';
 import { ConsoleTickets, ConsoleBridge } from './console.js';
 import { PointerControllers } from './pointer.js';
 import type { VmInput } from '../../../../shared/virtual-machines.js';
-import { VmManager, images } from './service.js';
+import { VmManager, images, defaultImage } from './service.js';
 import { VmSessions } from './sessions.js';
 import { qmp } from './qmp.js';
 
@@ -22,7 +22,9 @@ export async function vmRoutes(app: FastifyInstance) {
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
   app.get('/', async (request, reply) => {
     const session = sessions.get(request, reply, true);
-    return { vms: await manager.list(), images: await images(), csrfToken: session.token, available: await manager.available() };
+    const local = await images();
+    return { vms: await manager.list(), images: local, defaultImageId: (await defaultImage(local))?.id ?? null,
+      csrfToken: session.token, available: await manager.available() };
   });
   app.post<{ Body: VmInput }>('/', { schema: { body: input } }, async (request, reply) => {
     sessions.mutation(request, reply); return reply.code(201).send({ vm: await manager.create(request.body) });

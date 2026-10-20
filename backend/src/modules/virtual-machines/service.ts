@@ -36,6 +36,19 @@ export async function images(): Promise<VmImage[]> {
   return result.sort(compareImages);
 }
 
+export async function defaultImage(local: VmImage[]): Promise<VmImage | undefined> {
+  try {
+    const profile = JSON.parse(await readFile(join(root, 'Profiles/versions.json'), 'utf8'));
+    if (profile.schema !== 1) return;
+    const selected = profile.defaults?.r4os;
+    return local.find((image) => image.id === selected?.id && image.sha256 === selected.sha256);
+  } catch (error) {
+    // Legacy installations retain their previous choice until a component profile exists.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return local[0];
+    return;
+  }
+}
+
 export class VmManager {
   private verifiedImages = new Map<string, string>();
   private locks = new Map<string, Promise<unknown>>();
@@ -80,8 +93,8 @@ export class VmManager {
       if ((await this.list()).length >= 32) throw new VmError('The workspace is limited to 32 virtual machines.');
       if (!input.name.trim()) throw new VmError('Enter a virtual machine name.', 400);
       const local = await images();
-      const image = input.imageId ? local.find((i) => i.id === input.imageId) : local[0];
-      if (!image) throw new VmError('No verified Full image is available. Import a release on the host first.');
+      const image = input.imageId ? local.find((i) => i.id === input.imageId) : await defaultImage(local);
+      if (!image) throw new VmError('Select an installed default release under Updates → R4OS Releases before creating a VM.');
       const base = join(root, 'Images', image.id, 'disk.img');
       const stat = await lstat(base);
       const signature = `${image.sha256}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;

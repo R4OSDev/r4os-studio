@@ -151,7 +151,9 @@ class Qemu:
         root = manager.root / FOLDERS[kind]
         root.mkdir(parents=True, exist_ok=True)
         destination = root / record['id']
-        with tempfile.TemporaryDirectory(prefix='.download-', dir=root) as temporary:
+        # QEMU rejects spaces/colons in its source and build directory. The data
+        # root may contain either; use the service's private /tmp for the build.
+        with tempfile.TemporaryDirectory(prefix='r4os-qemu-', dir='/tmp') as temporary:
             temporary = Path(temporary)
             archive = temporary / 'qemu.tar.xz'
             archive_hash = download(manager, record['archiveUrl'], archive)
@@ -199,4 +201,9 @@ class Qemu:
                      'binarySha256': digest(binary), 'imageBinarySha256': digest(image_binary), 'buildArguments': arguments,
                      'omittedBuildLinks': omitted}
             (target / '.studio-component.json').write_text(json.dumps(value, indent=2) + '\n')
-            publish(target, destination)
+            # /tmp may be another filesystem. Copy to a private data-side stage
+            # before the final rename so no partial installation becomes visible.
+            with tempfile.TemporaryDirectory(prefix='.publish-', dir=root) as publication:
+                staged = Path(publication) / 'tool'
+                shutil.copytree(target, staged, symlinks=True)
+                publish(staged, destination)

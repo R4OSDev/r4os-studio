@@ -10,9 +10,10 @@ function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: 
   const [cpus, setCpus] = useState(vm?.cpus ?? 4), [memory, setMemory] = useState(vm?.memoryMiB ?? 4096);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
+  const baseImage = api.images.find((image) => image.id === api.defaultImageId);
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
-    try { const result = await api.request<{ vm: VirtualMachine }>(vm ? `/${vm.id}` : '', vm ? 'PATCH' : 'POST', { name, cpus, memoryMiB: memory });
+    try { const result = await api.request<{ vm: VirtualMachine }>(vm ? `/${vm.id}` : '', vm ? 'PATCH' : 'POST', { name, cpus, memoryMiB: memory, ...(!vm && baseImage ? { imageId: baseImage.id } : {}) });
       await api.reload(); select(result.vm.id);
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
@@ -20,10 +21,10 @@ function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: 
     <label htmlFor="vm-name">Name</label><input id="vm-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} disabled={busy || !stopped} />
     <label htmlFor="vm-cpus">Virtual CPUs</label><input id="vm-cpus" type="number" min={1} max={8} value={cpus} onChange={(event) => setCpus(Number(event.target.value))} required disabled={busy || !stopped} />
     <label htmlFor="vm-memory">Memory (MiB)</label><input id="vm-memory" type="number" min={2048} max={16384} step={256} value={memory} onChange={(event) => setMemory(Number(event.target.value))} required disabled={busy || !stopped} />
-    {!vm && <p className="vm-help">Base image: <strong>{api.images[0] ? `R4OS ${api.images[0].version} Full` : 'No images available'}</strong>. New VMs use the newest verified local Full release and start powered off.</p>}
+    {!vm && <p className="vm-help">Base image: <strong>{baseImage ? `R4OS ${baseImage.version} Full` : 'No default release selected'}</strong>. New VMs use the selected default release and start powered off.{!baseImage && ' Choose an installed default under Updates → R4OS Releases.'}</p>}
     {!stopped && <p className="vm-help">Stop the VM before changing its settings.</p>}
     {error && <p className="vm-alert" role="alert">{error}</p>}
-    <button className="button-primary" type="submit" disabled={busy || !stopped || !name.trim() || !api.available || (!vm && !api.images.length)}>
+    <button className="button-primary" type="submit" disabled={busy || !stopped || !name.trim() || !api.available || (!vm && !baseImage)}>
       {busy ? 'Saving…' : vm ? 'Save settings' : 'Create virtual machine'}</button>
   </form>;
 }

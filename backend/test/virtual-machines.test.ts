@@ -13,7 +13,7 @@ const { createShareImage } = await import('../src/modules/virtual-machines/share
 const { prepareShare, finishShare, shareState } = await import('../src/modules/virtual-machines/share-sync.js');
 const { exec } = await import('../src/modules/virtual-machines/systemd.js');
 
-await test('VM administration requires same-origin session/CSRF, preserves base images and chooses latest local release', async () => {
+await test('VM administration requires same-origin session/CSRF, preserves VM pins and uses the selected local default release', async () => {
   // Small raw fixtures test management only; real guest boots are separate checks.
   const base = Buffer.alloc(1024 * 1024);
   for (const version of ['0.9.9', '0.10.0']) {
@@ -32,6 +32,17 @@ await test('VM administration requires same-origin session/CSRF, preserves base 
     const created = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: input });
     assert.equal(created.statusCode, 201); const vm = created.json().vm;
     assert.equal(vm.imageId, '0.10.0-full'); assert.equal(vm.state, 'stopped');
+    await mkdir(join(directory, 'Profiles'), { recursive: true });
+    await writeFile(join(directory, 'Profiles/versions.json'), JSON.stringify({ schema: 1, defaults: { r4os: { id: '0.9.9-full', sha256: createHash('sha256').update(base).digest('hex') } } }));
+    assert.equal((await app.inject('/api/vms')).json().defaultImageId, '0.9.9-full');
+    const second = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: { ...input, name: 'Uses selected default' } });
+    assert.equal(second.statusCode, 201); const secondVm = second.json().vm;
+    assert.equal(secondVm.imageId, '0.9.9-full');
+    assert.equal((await app.inject('/api/vms')).json().vms.find((item: { id: string }) => item.id === vm.id).imageId, '0.10.0-full');
+    assert.equal((await app.inject({ method: 'DELETE', url: `/api/vms/${secondVm.id}`, headers, payload: { confirm: true } })).statusCode, 204);
+    await writeFile(join(directory, 'Profiles/versions.json'), JSON.stringify({ schema: 1, defaults: { r4os: { id: 'missing', sha256: 'a'.repeat(64) } } }));
+    assert.equal((await app.inject('/api/vms')).json().defaultImageId, null);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/vms', headers, payload: input })).statusCode, 409);
     assert.equal((await app.inject({ method: 'POST', url: `/api/vms/${vm.id}/console-ticket` })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: `/api/vms/${vm.id}/console-ticket`, headers })).statusCode, 409);
     assert.equal((await app.inject({ method: 'GET', url: `/api/vms/${vm.id}/console`, headers: { ...headers, origin: 'https://foreign.example' } })).statusCode, 403);

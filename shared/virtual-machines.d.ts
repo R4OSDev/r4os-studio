@@ -13,7 +13,7 @@ export interface VirtualMachine extends VmConfig {
   error?: string;
 }
 export interface VmFile { name: string; size: number }
-export interface VmList { vms: VirtualMachine[]; images: VmImage[]; csrfToken: string; available: boolean }
+export interface VmList { vms: VirtualMachine[]; images: VmImage[]; defaultImageId: string | null; csrfToken: string; available: boolean }
 export interface VmInput { name: string; cpus: number; memoryMiB: number; imageId?: string }
 
 export interface VmPointerInput { dx: number; dy: number; buttons: number }
