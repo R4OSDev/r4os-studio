@@ -1,5 +1,9 @@
 # R4OS Studio · App
 
+## VM-Oberfläche ab 0.2.5
+
+Overview und Console teilen denselben beständigen VM-Kopfbereich außerhalb der View-Karte und ihres Scrollbereichs. Status links, Aktionsgruppe zentriert mit Icons in der Reihenfolge **Start, Restart, Shutdown, Force Stop**. In Settings, Exchange und Logs ist die Leiste ausgeblendet; Restart/Force Stop behalten ihre Bestätigung. Die Console zeigt den Betriebsstatus nur im Kopf-Badge. Screen Controls sind zentriert; unter dem Display folgen zentrierte Sondertasten und danach der Maus-/Escape-Hinweis ohne Keyboard-Layout-Text. Verbindungsfehler bleiben sichtbar. Build/TypeScript und Lint bestanden; Browserprüfung aller fünf Views, beständiger Kopf beim Wechsel, Zentrierung/Icons/Reihenfolge und Layout bis 320 px sowie Health HTTP 200 bestanden.
+
 ## Komponentenverwaltung ab 0.2.1 / Releases ab 0.2.4
 
 **R4OS Releases ab 0.2.4:** Neueste und ältere stabile Full-x86_64-Abbilder stammen aus den offiziellen Distribution-Releases. Archiv-Prüfsumme, Release-Manifest und entpacktes Disk-Abbild werden vor atomarer Veröffentlichung geprüft; Lizenzen und Quellmetadaten bleiben erhalten. Die Update-Seite und VM-Verwaltung verwenden dasselbe lokale Images-Inventar. Der Import läuft vollständig unprivilegiert; das Zielverzeichnis wird erst nach der atomaren Veröffentlichung schreibgeschützt. Downloads aktivieren keinen Standard. Der explizit ausgewählte globale Standard bestimmt neue VMs; bestehende VM-Imagebindungen bleiben unverändert. Bei fehlendem/ungültigem Standard im vorhandenen Profil ist die Erstellung gesperrt, bis ein lokales Release gewählt wurde. API und Formular binden die angezeigte Image-ID.

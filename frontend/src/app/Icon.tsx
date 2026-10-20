@@ -1,6 +1,10 @@
-type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal';
+type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal' | 'play' | 'restart' | 'power' | 'stop';
 
 const paths: Record<IconName, React.ReactNode> = {
+  play: <path d="m8 4 13 8-13 8Z" />,
+  restart: <><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5M20 7l-3 3" /></>,
+  power: <><path d="M12 2v10M6 5a9 9 0 1 0 12 0" /></>,
+  stop: <rect x="5" y="5" width="14" height="14" rx="1" />,
   system: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></>,
   box: <><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9 9-4M12 12 3 8m9 4v9M7.5 5.5l9 5" /></>,
   book: <><path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3Z" /></>,

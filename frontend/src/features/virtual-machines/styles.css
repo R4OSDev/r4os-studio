@@ -6,7 +6,7 @@
 .vm-form label, .vm-upload { color: #e5dfee; font-size: 12px; }
 .vm-form input, .vm-content select { padding: 12px; border: 1px solid #4b395c; border-radius: 5px; background: #120f18; color: #eee5fa; min-width: 0; font: inherit; }
 .vm-form button { justify-self: start; }
-.vm-toolbar, .vm-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.vm-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
 .vm-actions { margin-top: 20px; }
 .vm-status { padding: 7px 10px; border: 1px solid #61467d; border-radius: 5px; color: #be9ce5; font-size: 12px; text-transform: capitalize; }
 .vm-status.running { background: #342348; color: #e0c8ff; }
@@ -33,22 +33,28 @@
 .vm-content-console { padding: 16px 20px 24px; }
 .vm-card-console { max-width: none; padding: 18px; }
 .vm-console { min-width: 0; }
-.vm-console-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.vm-console-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.vm-console-toolbar { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 14px; }
+.vm-console-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .vm-console-tools button, .vm-console-shortcuts button { padding: 8px 11px; font-size: 11px; }
 .vm-console-tools button[aria-pressed="true"] { border-color: #9470b7; background: #342348; }
-.vm-console-connection { display: inline-flex; align-items: center; gap: 8px; color: #b0a2c0; font-size: 12px; }
-.vm-console-connection::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #715a84; }
-.vm-console-connection.connected::before { background: #d1a8ff; box-shadow: 0 0 7px #b881ed88; }
 .vm-console-resolution { color: #b0a2c0; font-size: 11px; font-variant-numeric: tabular-nums; }
 .vm-console-stage { position: relative; width: 100%; min-width: 0; height: clamp(260px, 62dvh, 850px); border: 1px solid #634682; border-radius: 6px; background: #100c16; overflow: hidden; }
 .vm-console-display { width: 100%; height: 100%; min-width: 0; }
 .vm-console-display:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
 .vm-console-placeholder { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; color: #b0a2c0; text-align: center; font-size: 13px; pointer-events: none; }
 .vm-console-stage.powered-off { height: 280px; }
-.vm-console-bottom { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
-.vm-console-bottom .vm-help { flex: 1; margin: 0; }
-.vm-console-shortcuts { display: flex; gap: 7px; flex-wrap: wrap; }
+.vm-console-bottom { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 12px; }
+.vm-console-bottom .vm-help { margin: 0; text-align: center; }
+.vm-console-shortcuts { display: flex; justify-content: center; gap: 7px; flex-wrap: wrap; }
 .vm-console:fullscreen { display: flex; flex-direction: column; width: 100%; height: 100%; box-sizing: border-box; padding: 16px; background: #18121f; overflow: auto; }
 .vm-console:fullscreen .vm-console-stage { flex: 1; height: auto; min-height: 120px; }
-@media (max-width:600px) { .vm-content-console { padding: 12px; } .vm-card-console { padding: 12px; } .vm-console-tools { margin-left: 0; } .vm-console-bottom { align-items: start; } }
+@media (max-width:600px) { .vm-content-console { padding: 12px; } .vm-card-console { padding: 12px; } }
+
+.vm-shell { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.vm-header { flex-shrink: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 18px 37px; border-bottom: 1px solid var(--line); background: #1b1623; }
+.vm-header .vm-status { justify-self: start; }
+.vm-controls { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.vm-controls button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.vm-controls .icon { width: 16px; height: 16px; flex-shrink: 0; }
+@media (max-width: 1200px) { .vm-header { grid-template-columns: minmax(0, 1fr); padding: 16px 24px; } .vm-controls { grid-column: 1; } }
+@media (max-width: 440px) { .vm-header { padding: 14px 16px; } .vm-controls { gap: 8px; } }

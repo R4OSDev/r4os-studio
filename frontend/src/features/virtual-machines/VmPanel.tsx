@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { VirtualMachine, VmFile } from '../../../../shared/virtual-machines.js';
 import type { VmApi } from './useVms';
+import { Icon } from '../../app/Icon';
 import { VmConsole } from './Console';
 import './styles.css';
 
@@ -88,22 +89,26 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
     if (!vm) return; setBusy(true); setError(''); setNotice('');
     try { if (name === 'delete') { await api.request(`/${vm.id}`, 'DELETE', { confirm: true }); select(null); }
       else { await api.request(`/${vm.id}/actions`, 'POST', { action: name });
-        if (name === 'shutdown') setNotice('Shutdown requested. Wait for the guest to power off. If it does not respond, use Force stop.'); }
+        if (name === 'shutdown') setNotice('Shutdown requested. Wait for the guest to power off. If it does not respond, use Force Stop.'); }
       setConfirm(''); await api.reload();
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
-  return <div className={`vm-content ${view === 'Console' && vm ? 'vm-content-console' : ''}`}>
+  return <div className="vm-shell">
+    {vm && ['Overview', 'Console'].includes(view) && <div className="vm-header" aria-label="Virtual machine controls">
+      <span className={`vm-status ${vm.state}`}>{vm.state}</span>
+      <div className="vm-controls">
+        <button className="button-primary" disabled={busy || !stopped || !api.available} onClick={() => void action('start')}><Icon name="play" />Start</button>
+        <button className="button-secondary" disabled={busy || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => setConfirm('restart')}><Icon name="restart" />Restart</button>
+        <button className="button-secondary" disabled={busy || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => void action('shutdown')}><Icon name="power" />Shutdown</button>
+        <button className="button-danger" disabled={busy || stopped} onClick={() => setConfirm('force-stop')}><Icon name="stop" />Force Stop</button>
+      </div>
+    </div>}
+    <div className={`vm-content ${view === 'Console' && vm ? 'vm-content-console' : ''}`}>
     {api.error && <p className="vm-alert" role="alert">{api.error}</p>}
     {!api.loading && !api.available && <p className="vm-alert">VM host support is not installed. See the host setup documentation.</p>}
     <section className={`vm-card ${view === 'Console' && vm ? 'vm-card-console' : ''}`}>
       {!vm ? <><h2>New virtual machine</h2><p className="vm-help">Create an independent R4OS instance. Multiple VMs can run at the same time.</p><VmForm api={api} select={select} /></> : <>
-        <div className="vm-toolbar"><span className={`vm-status ${vm.state}`}>{vm.state}</span>
-          <button className="button-primary" disabled={busy || !stopped || !api.available} onClick={() => void action('start')}>Start</button>
-          <button className="button-secondary" disabled={busy || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => void action('shutdown')}>Shut down</button>
-          <button className="button-secondary" disabled={busy || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => setConfirm('restart')}>Restart</button>
-          <button className="button-danger" disabled={busy || stopped} onClick={() => setConfirm('force-stop')}>Force stop</button>
-        </div>
         {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
           <button className="button-danger" disabled={busy} onClick={() => void action(confirm)}>Confirm {confirm}</button><button className="button-secondary" disabled={busy} onClick={() => setConfirm('')}>Cancel</button></div>}
         {notice && <p className="vm-help" role="status">{notice}</p>}
@@ -115,5 +120,5 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
             <p className="vm-help">System and data partitions are private to this VM. The base release is shared read-only. Project assignment will be added later.</p></>}
       </>}
     </section>
-  </div>;
+  </div></div>;
 }

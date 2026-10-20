@@ -97,7 +97,6 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
   const connected = running && status === 'Connected';
   return <div className="vm-console" ref={container}>
     <div className="vm-console-toolbar">
-      <span className={`vm-console-connection ${connected ? 'connected' : ''}`} role="status">{running ? status : 'Powered off'}</span>
       {size.width > 0 && running && <span className="vm-console-resolution">{size.width} × {size.height}</span>}
       <div className="vm-console-tools">
         <button className="button-secondary" aria-pressed={fit} onClick={() => setFit(true)}>Fit to window</button>
@@ -117,8 +116,8 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
       {running && status === 'Connecting' && <p className="vm-console-placeholder">Connecting to display…</p>}
     </div>
     <div className="vm-console-bottom">
-      <p className="vm-help">{viewOnly ? 'View only: input is disabled.' : pointer.captured ? pointer.ready ? 'Mouse captured. Keyboard and mouse control the guest.' : 'Connecting mouse…' : focused && connected ? 'Keyboard focused. Click the display to capture the mouse.' : 'Click the display to capture the mouse and focus the keyboard.'} Guest keyboard: US. Escape releases the mouse and exits fullscreen.</p>
       <div className="vm-console-shortcuts" aria-label="Guest keyboard shortcuts">{shortcuts.map(({ label, keys }) => <button type="button" key={label} className="button-secondary" disabled={!connected || viewOnly} onClick={() => shortcut(keys)}>{label}</button>)}</div>
+      <p className="vm-help">{viewOnly ? 'View only: input is disabled.' : pointer.captured ? pointer.ready ? 'Mouse captured. Keyboard and mouse control the guest.' : 'Connecting mouse…' : focused && connected ? 'Keyboard focused. Click the display to capture the mouse.' : 'Click the display to capture the mouse and focus the keyboard.'} Escape releases the mouse and exits fullscreen.</p>
     </div>
   </div>;
 }
