@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { updateCommand, unavailableStatus } from './client.js';
 import { UpdateSessions } from './sessions.js';
+import { componentRoutes } from './components.js';
 
 export async function updateRoutes(app: FastifyInstance) {
   const sessions = new UpdateSessions();
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
+  await componentRoutes(app, sessions);
   app.get('/', async (request, reply) => {
     const session = sessions.session(request, reply, true);
     const status = await updateCommand('status').catch(() => unavailableStatus());

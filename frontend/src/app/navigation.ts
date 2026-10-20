@@ -10,7 +10,7 @@ export const navigation: Record<Tab, NavigationGroup[]> = {
   System: [
     { name: 'Settings', icon: 'settings', items: ['LLM Provider'] },
     { name: 'Virtual Machines', icon: 'system', items: [] },
-    { name: 'Updates', icon: 'box', items: ['R4OS Studio'] },
+    { name: 'Updates', icon: 'box', items: ['R4OS Studio', 'Components', 'Tools', 'R4OS Releases'] },
   ],
   Projects: [
     { name: 'Workspace', icon: 'folder', items: ['All Projects', 'Recently Opened', 'Templates'] },

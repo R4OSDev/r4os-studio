@@ -1,5 +1,15 @@
 # R4OS Studio · App
 
+## Komponentenverwaltung ab 0.2.1
+
+System → Updates trennt **R4OS Studio**, **Components** (SDK, Contract, Libraries), **Tools** (Zig, QEMU, Codex) und **R4OS Releases**. Die führenden dekorativen Vierecke in der Components-Spalte wurden anwendungsweit entfernt. Studio-Updates bleiben separat.
+
+Die gemeinsame Komponentenverwaltung inventarisiert vorhandene Installationen, erhält parallele Versionen und speichert globale Standards unter `Data/R4OS/Profiles/versions.json`. Download und Aktivierung sind getrennte Aktionen. Ein SDK-Standardwechsel wählt den exakt passenden installierten Contract und Compiler gemeinsam. Projekt-Pins und VM-Imagebindungen bleiben erhalten; Projektüberschreibungen folgen mit der Projektintegration. Die offiziellen Downloadadapter folgen in 0.2.2–0.2.4; 0.2.1 stellt Dienst, gemeinsame UI und Verwaltung vorhandener Versionen bereit.
+
+Explizite Hostwartung nach Bereitstellung dieser Release: `python3 scripts/components/install.py` als root ausführen. Der Installer erhält die bestehende Update-Konfiguration und installiert einen festen Launcher sowie den unprivilegierten Dienst `r4os-studio-components.service`. Private Unix-Schnittstelle mit Peer-UID-Prüfung; ausschließlich Status/Prüfung/Download/Standardwahl für feste Komponententypen und Versionsidentitäten. Die Browser-API prüft zusätzlich Sitzung, CSRF und Host/Origin. Der Webdienst erhält keine freie Shell-/URL-Schnittstelle oder Schreibrechte auf SDKs/Images. Der Komponenten-Dienst darf gezielt Komponenten/Profile schreiben; Provider-, Projekt- und VM-Instanzdaten sind in seinem Sandbox-Namensraum gesperrt. Er folgt neuen Studio-Releases zwischen Aufträgen; laufende Aufträge verwenden ihren ursprünglichen Code. Keine VM wird neu gestartet.
+
+Prüfung: 18 Backendtests, sieben Host-Updater-Tests, zwei gezielte Komponentenprofil-/Quellenprüfungen, Produktionsbuild/TypeScript und ESLint bestanden. Browsernavigation, Inventar/Standardauswahl, gleiche Navigationsbreiten bis 320 px und Health HTTP 200 geprüft. Lokale Belege im übergeordneten Workspace: `Research/R4OS/Components/`.
+
 Lokales Grundgerüst einer browserbasierten Entwicklungsumgebung für R4OS.
 
 ## Repository

@@ -10,6 +10,8 @@ import { useVms } from '../features/virtual-machines/useVms';
 import { VmPanel } from '../features/virtual-machines/VmPanel';
 import { version } from '../../../shared/version.json';
 import { UpdatesPanel } from '../features/updates/UpdatesPanel';
+import { ComponentUpdatesPanel } from '../features/updates/ComponentUpdatesPanel';
+import type { ComponentKind } from '../../../shared/components';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };
@@ -36,9 +38,11 @@ export function App() {
   const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : views[tab];
+  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK', 'Contract', 'Libraries'] : item === 'Tools' ? ['Zig', 'QEMU', 'Codex'] : []) : views[tab];
   const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : selected.view;
   const view = availableViews[selectedView];
+  const componentKind: ComponentKind | undefined = updatePage && item !== 'R4OS Studio'
+    ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', QEMU: 'qemu', Codex: 'codex', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind>)[view ?? item] : undefined;
 
   function select(patch: Partial<Selection>) {
     setSelections((previous) => ({ ...previous, [tab]: { ...previous[tab], ...patch } }));
@@ -99,7 +103,7 @@ export function App() {
                 <button type="button" key={vmPage && index > 0 ? vms.vms[index - 1].id : name} className={`nav-item ${selectedComponent === index ? 'selected' : ''}`}
                   aria-current={selectedComponent === index ? 'true' : undefined}
                   onClick={() => { if (vmPage) setVmId(index ? vms.vms[index - 1].id : null); select({ item: index, view: 0 }); }}>
-                  <span className="component-mark" /><span className="provider-view-name">{name}</span>{vmPage && index > 0 && <span className={`vm-nav-status ${vms.vms[index - 1].state}`} title={vms.vms[index - 1].state} />}{availableViews.length > 0 && <Icon name="chevron" className="item-chevron" />}
+                  <span className="provider-view-name">{name}</span>{vmPage && index > 0 && <span className={`vm-nav-status ${vms.vms[index - 1].state}`} title={vms.vms[index - 1].state} />}{availableViews.length > 0 && <Icon name="chevron" className="item-chevron" />}
                 </button>
               ))}
             </div>
@@ -121,7 +125,7 @@ export function App() {
                         ? 'Remaining usage is not available.' : 'Lowest reported remaining usage across quota windows.'}>
                         {remaining == null ? '—' : percent(remaining)}
                       </span>}
-                  </> : vmPage ? <span>{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
+                  </> : vmPage || updatePage ? <span>{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
                 </button>;
               })}
             </div>
@@ -130,7 +134,7 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {updatePage ? <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
+          {updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
             {view && <>
             <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>
             <span className="empty-eyebrow">IT ALL STARTS HERE</span>

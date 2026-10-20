@@ -1,4 +1,12 @@
 .updates-content { flex: 1; min-width: 0; padding: 27px 37px 36px; overflow: auto; }
+.component-default { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 24px 0; font-size: 12px; }
+.component-default select { min-width: 0; max-width: 100%; padding: 10px; border: 1px solid #61467d; border-radius: 5px; background: #120f18; color: #eee5fa; }
+.component-default button, .component-version button { padding: 10px 13px; border: 1px solid #61467d; border-radius: 5px; background: #30213e; }
+.component-default button:disabled, .component-version button:disabled { opacity: .45; cursor: default; }
+.component-version { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 0; border-top: 1px solid #30253b; font-size: 12px; }
+.component-version > div { min-width: 0; }
+.component-version small { display: block; margin-top: 7px; color: #b0a2c0; overflow-wrap: anywhere; font-size: 10px; }
+.component-label { color: #c5a0f4; margin-left: 10px; font-size: 10px; }
 .updates-card { max-width: 1000px; padding: 28px; border: 1px solid var(--line); border-radius: 10px; background: #1b1623; }
 .updates-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .updates-title h2 { font-size: 21px; margin: 10px 0; }
