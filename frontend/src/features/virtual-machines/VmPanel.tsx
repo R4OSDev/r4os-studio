@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import type { VirtualMachine, VmFile } from '../../../../shared/virtual-machines.js';
 import type { VmApi } from './useVms';
 import { Icon } from '../../app/Icon';
+import { ReleaseSettings } from './ReleaseSettings';
 import { VmConsole } from './Console';
 import './styles.css';
 
@@ -118,7 +119,7 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
         {vm.shareSync?.error && view !== 'Exchange' && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
         {(error || vm.error) && <p className="vm-alert" role="alert">{error || vm.error}</p>}
         {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
-          <VmForm api={api} vm={vm} select={select} /><div className="vm-actions"><button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
+          <VmForm api={api} vm={vm} select={select} /><ReleaseSettings api={api} vm={vm} /><div className="vm-actions"><button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
           <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', vm.networkEnabled ? 'Enabled' : 'Disabled'], ['Exchange drive', 'Persistent writable FAT32'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
             <p className="vm-help">System and data partitions are private to this VM. The base release is shared read-only. Project assignment will be added later.</p></>}
       </>}

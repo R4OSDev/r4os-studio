@@ -3,8 +3,9 @@ import { createReadStream } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { totalmem } from 'node:os';
-import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState } from '../../../../shared/virtual-machines.js';
+import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState, VmReleaseChange } from '../../../../shared/virtual-machines.js';
 import { networkAvailable } from './network.js';
+import { recoverRelease, replaceRelease } from './release.js';
 import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
@@ -51,6 +52,7 @@ export async function defaultImage(local: VmImage[]): Promise<VmImage | undefine
 }
 
 export class VmManager {
+  private recovery = new Map<string, Promise<void>>();
   private verifiedImages = new Map<string, string>();
   private locks = new Map<string, Promise<unknown>>();
   async locked<T>(id: string, work: () => Promise<T>): Promise<T> {
@@ -66,6 +68,9 @@ export class VmManager {
   }
   async config(id: string): Promise<VmConfig> {
     const path = vmPath(id);
+    let pending = this.recovery.get(id);
+    if (!pending) { pending = recoverRelease(id); this.recovery.set(id, pending); void pending.catch(() => this.recovery.delete(id)); }
+    await pending;
     try { return JSON.parse(await readFile(join(path, 'vm.json'), 'utf8')); }
     catch { throw new VmError('Virtual machine not found.', 404); }
   }
@@ -102,7 +107,7 @@ export class VmManager {
       const signature = `${image.sha256}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
       if (this.verifiedImages.get(image.id) !== signature && !(image.diskSizeBytes === stat.size && image.diskMtimeMs === Math.trunc(stat.mtimeMs))) {
         const hash = createHash('sha256');
-        for await (const chunk of createReadStream(base)) hash.update(chunk);
+        for await (const chunk of createReadStream(base, { highWaterMark: 1024 * 1024 })) hash.update(chunk);
         if (hash.digest('hex') !== image.sha256) throw new VmError('The base image checksum does not match.');
         this.verifiedImages.set(image.id, signature);
       }
@@ -111,7 +116,7 @@ export class VmManager {
       try {
         await exec((await activeTool('qemu')).imageBinary!, ['create', '-f', 'qcow2', '-F', 'raw', '-b', base, join(directory, 'Disks/disk.qcow2')], { timeout: 30_000 });
         const config: VmConfig = { schema: 1, id, name: input.name.trim(), imageId: image.id, imageSha256: image.sha256,
-          cpus: input.cpus, memoryMiB: input.memoryMiB, networkEnabled: input.networkEnabled ?? false, createdAt: new Date().toISOString() };
+          cpus: input.cpus, memoryMiB: input.memoryMiB, networkEnabled: input.networkEnabled ?? false, revision: randomUUID(), createdAt: new Date().toISOString() };
         await atomic(join(directory, 'vm.json'), config);
         await rename(directory, vmPath(id));
       } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
@@ -129,9 +134,24 @@ export class VmManager {
       if (!input.name.trim()) throw new VmError('Enter a virtual machine name.', 400);
       const networkEnabled = input.networkEnabled ?? config.networkEnabled ?? false;
       if (networkEnabled && !await networkAvailable()) throw new VmError('VM network host support is not installed.');
-      await atomic(join(vmPath(id), 'vm.json'), { ...config, networkEnabled, name: input.name.trim(), cpus: input.cpus, memoryMiB: input.memoryMiB });
+      await atomic(join(vmPath(id), 'vm.json'), { ...config, networkEnabled, revision: randomUUID(), name: input.name.trim(), cpus: input.cpus, memoryMiB: input.memoryMiB });
       return this.get(id);
     });
+  }
+  async changeRelease(id: string, input: VmReleaseChange) {
+    return this.locked('admission', () => this.locked(id, async () => {
+      const vm = await this.stopped(id), config = await this.config(id);
+      if (input.confirm !== true) throw new VmError('Confirm the release change.', 400);
+      // Retries and selecting the current release never erase guest changes.
+      if (config.imageId === input.imageId && config.imageSha256 === input.imageSha256) return vm;
+      if ((config.revision ?? config.imageSha256) !== input.expectedRevision || config.imageId !== input.expectedImageId || config.imageSha256 !== input.expectedImageSha256)
+        throw new VmError('The VM changed after confirmation. Review its current release and confirm again.');
+      const image = (await images()).find((image) => image.id === input.imageId && image.sha256 === input.imageSha256);
+      if (!image) throw new VmError('The selected release is no longer available locally.');
+      if (vm.shareSync?.pending) await finishShare(vmPath(id));
+      await replaceRelease(id, config, image, (await activeTool('qemu')).imageBinary!);
+      return this.get(id);
+    }));
   }
   async action(id: string, action: string) {
     // Global admission lock includes concurrent starts of different VMs.

@@ -61,3 +61,9 @@
 
 .vm-network { display: flex; gap: 10px; align-items: center; }
 .vm-network input { accent-color: var(--accent); }
+.vm-release { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 32px; padding-top: 26px; border-top: 1px solid var(--line); }
+.vm-release h2, .vm-release .vm-help { margin: 0; }
+.vm-release label { color: #e5dfee; font-size: 12px; }
+.vm-release select { max-width: 100%; }
+.vm-release .vm-alert { margin: 0; width: 100%; box-sizing: border-box; }
+.vm-release .vm-alert button { margin-top: 10px; }

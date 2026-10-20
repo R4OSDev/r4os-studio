@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { runtimePath, VmError } from './paths.js';
 import { ConsoleTickets, ConsoleBridge } from './console.js';
 import { PointerControllers } from './pointer.js';
-import type { VmInput } from '../../../../shared/virtual-machines.js';
+import type { VmInput, VmReleaseChange } from '../../../../shared/virtual-machines.js';
 import { VmManager, images, defaultImage } from './service.js';
 import { VmSessions } from './sessions.js';
 import { networkAvailable } from './network.js';
@@ -37,6 +37,14 @@ export async function vmRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string }; Body: VmInput }>('/:id', { schema: { body: input } }, async (request, reply) => {
     sessions.mutation(request, reply); return { vm: await manager.update(request.params.id, request.body) };
   });
+  app.patch<{ Params: { id: string }; Body: VmReleaseChange }>('/:id/release', {
+    schema: { body: { type: 'object', additionalProperties: false,
+      required: ['confirm', 'expectedRevision', 'expectedImageId', 'expectedImageSha256', 'imageId', 'imageSha256'], properties: {
+        confirm: { const: true }, expectedRevision: { type: 'string', minLength: 1, maxLength: 64 },
+        expectedImageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' }, expectedImageSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+        imageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' }, imageSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+      } } },
+  }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await manager.changeRelease(request.params.id, request.body) }; });
   app.delete<{ Params: { id: string }; Body: { confirm: true } }>('/:id', {
     schema: { body: { type: 'object', additionalProperties: false, required: ['confirm'], properties: { confirm: { const: true } } } },
   }, async (request, reply) => { sessions.mutation(request, reply); await manager.remove(request.params.id); return reply.code(204).send(); });
