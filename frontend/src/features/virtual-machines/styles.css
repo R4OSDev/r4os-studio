@@ -58,3 +58,6 @@
 .vm-controls .icon { width: 16px; height: 16px; flex-shrink: 0; }
 @media (max-width: 1200px) { .vm-header { grid-template-columns: minmax(0, 1fr); padding: 16px 24px; } .vm-controls { grid-column: 1; } }
 @media (max-width: 440px) { .vm-header { padding: 14px 16px; } .vm-controls { gap: 8px; } }
+
+.vm-network { display: flex; gap: 10px; align-items: center; }
+.vm-network input { accent-color: var(--accent); }

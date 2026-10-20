@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { vmPath, runtimePath, root } from './paths.js';
 import { prepareShare, finishShare } from './share-sync.js';
 import type { VmConfig, VmImage } from '../../../../shared/virtual-machines.js';
+import { networkArguments } from './network.js';
 import { activeTool } from '../components/tools.js';
 
 // Launched only by the fixed, unprivileged systemd VM template.
@@ -13,7 +14,7 @@ const directory = vmPath(id);
 async function run() {
   if (process.argv[3] === '--sync') { await finishShare(directory); return; }
   const config: VmConfig = JSON.parse(await readFile(join(directory, 'vm.json'), 'utf8'));
-  if (config.id !== id || !/^[a-zA-Z0-9_.-]{1,100}$/.test(config.imageId)
+  if (config.id !== id || (config.networkEnabled !== undefined && typeof config.networkEnabled !== 'boolean') || !/^[a-zA-Z0-9_.-]{1,100}$/.test(config.imageId)
     || !Number.isInteger(config.cpus) || config.cpus < 1 || config.cpus > 8
     || !Number.isInteger(config.memoryMiB) || config.memoryMiB < 2048 || config.memoryMiB > 16384) throw new Error('Invalid VM configuration.');
   const image: VmImage = JSON.parse(await readFile(join(root, 'Images', config.imageId, 'image.json'), 'utf8'));
@@ -27,7 +28,7 @@ async function run() {
   const log = await open(join(directory, 'Logs/qemu.log'), 'w', 0o600);
   const args = ['-name', `R4OS Studio ${id}`, '-machine', `q35,accel=${kvm ? 'kvm' : 'tcg'}`,
     '-cpu', kvm ? 'host' : 'max', '-m', String(config.memoryMiB), '-smp', String(config.cpus),
-    '-boot', 'c', '-display', 'none', '-vnc', `unix:${join(runtimePath(id), 'vnc.sock')}`, '-vga', 'std', '-nic', 'none', '-monitor', 'none',
+    '-boot', 'c', '-display', 'none', '-vnc', `unix:${join(runtimePath(id), 'vnc.sock')}`, '-vga', 'std', ...await networkArguments(id, config.networkEnabled), '-monitor', 'none',
     '-drive', 'file=Disks/disk.qcow2,if=none,id=system,format=qcow2,cache=none',
     '-device', 'ich9-ahci,id=ahci0', '-device', 'ide-hd,drive=system,bus=ahci0.0,bootindex=1',
     '-drive', 'file=Disks/exchange.img,if=none,id=exchange,format=raw,cache=writethrough',

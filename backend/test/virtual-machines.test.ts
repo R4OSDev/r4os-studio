@@ -8,6 +8,7 @@ import Fastify from 'fastify';
 
 const directory = await mkdtemp(join(tmpdir(), 'studio-vm-test-'));
 process.env.STUDIO_R4OS_DIR = directory;
+process.env.STUDIO_VM_NETWORK_CAPABILITY = join(directory, 'network-capability.json');
 const { vmRoutes } = await import('../src/modules/virtual-machines/routes.js');
 const { createShareImage } = await import('../src/modules/virtual-machines/share.js');
 const { prepareShare, finishShare, shareState } = await import('../src/modules/virtual-machines/share-sync.js');
@@ -32,6 +33,16 @@ await test('VM administration requires same-origin session/CSRF, preserves VM pi
     const created = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: input });
     assert.equal(created.statusCode, 201); const vm = created.json().vm;
     assert.equal(vm.imageId, '0.10.0-full'); assert.equal(vm.state, 'stopped');
+    assert.equal(vm.networkEnabled, false);
+    assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: true } })).statusCode, 409);
+    await writeFile(process.env.STUDIO_VM_NETWORK_CAPABILITY!, JSON.stringify({ schema: 1, mode: 'user', device: 'e1000' }));
+    assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: 'false' } })).statusCode, 400);
+    const network = await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: true } });
+    assert.equal(network.statusCode, 200); assert.equal(network.json().vm.networkEnabled, true);
+    assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: input })).json().vm.networkEnabled, true);
+    assert.equal(JSON.parse(await readFile(join(directory, 'Instances', vm.id, 'vm.json'), 'utf8')).networkEnabled, true);
+    assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: false } })).json().vm.networkEnabled, false);
+
     await mkdir(join(directory, 'Profiles'), { recursive: true });
     await writeFile(join(directory, 'Profiles/versions.json'), JSON.stringify({ schema: 1, defaults: { r4os: { id: '0.9.9-full', sha256: createHash('sha256').update(base).digest('hex') } } }));
     assert.equal((await app.inject('/api/vms')).json().defaultImageId, '0.9.9-full');

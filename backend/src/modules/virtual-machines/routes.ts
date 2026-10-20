@@ -8,23 +8,28 @@ import { PointerControllers } from './pointer.js';
 import type { VmInput } from '../../../../shared/virtual-machines.js';
 import { VmManager, images, defaultImage } from './service.js';
 import { VmSessions } from './sessions.js';
+import { networkAvailable } from './network.js';
 import { qmp } from './qmp.js';
 
 const input = { type: 'object', additionalProperties: false, required: ['name', 'cpus', 'memoryMiB'], properties: {
   name: { type: 'string', minLength: 1, maxLength: 80 }, cpus: { type: 'integer', minimum: 1, maximum: 8 },
-  memoryMiB: { type: 'integer', minimum: 2048, maximum: 16384 }, imageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' },
+  memoryMiB: { type: 'integer', minimum: 2048, maximum: 16384 }, networkEnabled: { type: 'boolean' }, imageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' },
 } };
 export async function vmRoutes(app: FastifyInstance) {
   await app.register(websocket, { options: { maxPayload: 256 * 1024, perMessageDeflate: false } });
   const manager = new VmManager(), sessions = new VmSessions();
   const tickets = new ConsoleTickets(), bridge = new ConsoleBridge(), pointers = new PointerControllers();
   app.addHook('preClose', async () => { bridge.close(); await pointers.close(); });
+  app.addHook('preValidation', async (request) => {
+    const body = request.body as { networkEnabled?: unknown } | undefined;
+    if (body && Object.hasOwn(body, 'networkEnabled') && typeof body.networkEnabled !== 'boolean') throw new VmError('Network must be enabled or disabled.', 400);
+  });
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
   app.get('/', async (request, reply) => {
     const session = sessions.get(request, reply, true);
     const local = await images();
     return { vms: await manager.list(), images: local, defaultImageId: (await defaultImage(local))?.id ?? null,
-      csrfToken: session.token, available: await manager.available() };
+      csrfToken: session.token, available: await manager.available(), networkAvailable: await networkAvailable() };
   });
   app.post<{ Body: VmInput }>('/', { schema: { body: input } }, async (request, reply) => {
     sessions.mutation(request, reply); return reply.code(201).send({ vm: await manager.create(request.body) });

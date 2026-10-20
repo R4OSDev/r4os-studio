@@ -4,7 +4,7 @@ export interface VmImage {
 }
 export interface VmConfig {
   schema: 1; id: string; name: string; imageId: string; imageSha256: string;
-  cpus: number; memoryMiB: number; createdAt: string;
+  cpus: number; memoryMiB: number; networkEnabled?: boolean; createdAt: string;
 }
 export type VmState = 'stopped' | 'starting' | 'running' | 'paused' | 'stopping' | 'failed';
 export interface VirtualMachine extends VmConfig {
@@ -13,7 +13,7 @@ export interface VirtualMachine extends VmConfig {
   error?: string;
 }
 export interface VmFile { name: string; size: number }
-export interface VmList { vms: VirtualMachine[]; images: VmImage[]; defaultImageId: string | null; csrfToken: string; available: boolean }
-export interface VmInput { name: string; cpus: number; memoryMiB: number; imageId?: string }
+export interface VmList { vms: VirtualMachine[]; images: VmImage[]; defaultImageId: string | null; csrfToken: string; available: boolean; networkAvailable: boolean }
+export interface VmInput { name: string; cpus: number; memoryMiB: number; imageId?: string; networkEnabled?: boolean }
 
 export interface VmPointerInput { dx: number; dy: number; buttons: number }

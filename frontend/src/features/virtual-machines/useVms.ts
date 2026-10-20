@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { VmList } from '../../../../shared/virtual-machines.js';
 import { loadVms, vmRequest } from './api';
 export function useVms(enabled: boolean) {
-  const [data, setData] = useState<VmList>({ vms: [], images: [], defaultImageId: null, csrfToken: '', available: false });
+  const [data, setData] = useState<VmList>({ vms: [], images: [], defaultImageId: null, csrfToken: '', available: false, networkAvailable: false });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const reload = useCallback(async () => {

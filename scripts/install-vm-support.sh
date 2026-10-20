@@ -49,4 +49,5 @@ printf 'd /run/r4os-studio-vms 0700 r4os-studio r4os-studio -\n' > /etc/tmpfiles
 systemd-tmpfiles --create /etc/tmpfiles.d/r4os-studio-vms.conf
 systemd-analyze verify /etc/systemd/system/r4os-studio-vm@.service
 systemctl daemon-reload
+python3 "$SCRIPTS_DIRECTORY/install-vm-network.py"
 printf 'VM host support installed. Reinstall/restart the Studio service after building.\n'

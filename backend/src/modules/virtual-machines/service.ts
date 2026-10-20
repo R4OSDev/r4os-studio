@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { totalmem } from 'node:os';
 import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState } from '../../../../shared/virtual-machines.js';
+import { networkAvailable } from './network.js';
 import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
@@ -79,7 +80,7 @@ export class VmManager {
       try { const status = await qmp(id, 'query-status'); state = status.running ? 'running' : 'paused'; } catch { /* booting */ }
     }
     const sync = await shareState(vmPath(id));
-    return { ...config, state, shareSync: sync && { pending: sync.pending, error: sync.error, lastSyncedAt: sync.lastSyncedAt }, shareMode: 'fat32-persistent', sharePath: join(vmPath(id), 'Exchange/Share'),
+    return { ...config, networkEnabled: config.networkEnabled ?? false, state, shareSync: sync && { pending: sync.pending, error: sync.error, lastSyncedAt: sync.lastSyncedAt }, shareMode: 'fat32-persistent', sharePath: join(vmPath(id), 'Exchange/Share'),
       ...(state === 'failed' ? { error: 'The VM stopped with an error. Check Logs.' } : {}) };
   }
   async list() {
@@ -92,6 +93,7 @@ export class VmManager {
     return this.locked('create', async () => {
       if ((await this.list()).length >= 32) throw new VmError('The workspace is limited to 32 virtual machines.');
       if (!input.name.trim()) throw new VmError('Enter a virtual machine name.', 400);
+      if (input.networkEnabled && !await networkAvailable()) throw new VmError('VM network host support is not installed.');
       const local = await images();
       const image = input.imageId ? local.find((i) => i.id === input.imageId) : await defaultImage(local);
       if (!image) throw new VmError('Select an installed default release under Updates → R4OS Releases before creating a VM.');
@@ -109,7 +111,7 @@ export class VmManager {
       try {
         await exec((await activeTool('qemu')).imageBinary!, ['create', '-f', 'qcow2', '-F', 'raw', '-b', base, join(directory, 'Disks/disk.qcow2')], { timeout: 30_000 });
         const config: VmConfig = { schema: 1, id, name: input.name.trim(), imageId: image.id, imageSha256: image.sha256,
-          cpus: input.cpus, memoryMiB: input.memoryMiB, createdAt: new Date().toISOString() };
+          cpus: input.cpus, memoryMiB: input.memoryMiB, networkEnabled: input.networkEnabled ?? false, createdAt: new Date().toISOString() };
         await atomic(join(directory, 'vm.json'), config);
         await rename(directory, vmPath(id));
       } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
@@ -125,7 +127,9 @@ export class VmManager {
     return this.locked(id, async () => {
       await this.stopped(id); const config = await this.config(id);
       if (!input.name.trim()) throw new VmError('Enter a virtual machine name.', 400);
-      await atomic(join(vmPath(id), 'vm.json'), { ...config, name: input.name.trim(), cpus: input.cpus, memoryMiB: input.memoryMiB });
+      const networkEnabled = input.networkEnabled ?? config.networkEnabled ?? false;
+      if (networkEnabled && !await networkAvailable()) throw new VmError('VM network host support is not installed.');
+      await atomic(join(vmPath(id), 'vm.json'), { ...config, networkEnabled, name: input.name.trim(), cpus: input.cpus, memoryMiB: input.memoryMiB });
       return this.get(id);
     });
   }

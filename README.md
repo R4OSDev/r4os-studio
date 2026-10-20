@@ -1,5 +1,13 @@
 # R4OS Studio · App
 
+## VM-Netzwerk ab 0.2.6
+
+Settings enthält **Network**, je VM dauerhaft gespeichert und zunächst deaktiviert (auch für bestehende Konfigurationen ohne Feld). Änderungen nur bei gestoppter VM, wirksam ab dem nächsten Start; Overview zeigt Enabled/Disabled. QEMU verwendet bei Aktivierung eine e1000-Karte mit stabiler lokaler MAC und SLIRP-NAT/DHCP ohne Portweiterleitungen. Bei Deaktivierung weiterhin `-nic none`. Keine Bridge, keine Gastdienste im LAN/VPN. Gastbereitschaft wird nicht aus dem QEMU-Prozessstatus abgeleitet. Grundlage: [QEMU user networking](https://www.qemu.org/docs/master/system/devices/net.html).
+
+Bestehende Hosts einmal explizit als root mit `python3 scripts/install-vm-network.py` erweitern. Der Installer ergänzt ausschließlich die Socket-Familien im VM-Template per Drop-in und schreibt eine feste Capability-Datei; Dispatcher, Datenpfade und laufende VMs bleiben erhalten. Neue Hosteinrichtungen rufen ihn über `install-vm-support.sh` auf. Ohne diese Unterstützung bleibt das Einschalten gesperrt und wird verständlich angezeigt. Kein allgemeines sudo und keine automatische Root-Ausführung durch Updates.
+
+19 Backendtests einschließlich Legacy-Vorgabe, fehlender Hostfähigkeit, boolescher Eingabe, Persistenz und Erhalt bei gewöhnlichen Settings-Saves sowie Build/TypeScript und Lint bestanden. Checkbox, Save/Reload und Overview-Anzeige im echten Browser geprüft. Gastprüfung erfolgt an einer separaten QA-VM; Belege im Workspace unter `Research/R4OS/Components/`.
+
 ## VM-Oberfläche ab 0.2.5
 
 Overview und Console teilen denselben beständigen VM-Kopfbereich außerhalb der View-Karte und ihres Scrollbereichs. Status links, Aktionsgruppe zentriert mit Icons in der Reihenfolge **Start, Restart, Shutdown, Force Stop**. In Settings, Exchange und Logs ist die Leiste ausgeblendet; Restart/Force Stop behalten ihre Bestätigung. Die Console zeigt den Betriebsstatus nur im Kopf-Badge. Screen Controls sind zentriert; unter dem Display folgen zentrierte Sondertasten und danach der Maus-/Escape-Hinweis ohne Keyboard-Layout-Text. Verbindungsfehler bleiben sichtbar. Build/TypeScript und Lint bestanden; Browserprüfung aller fünf Views, beständiger Kopf beim Wechsel, Zentrierung/Icons/Reihenfolge und Layout bis 320 px sowie Health HTTP 200 bestanden.
@@ -283,7 +291,7 @@ corepack pnpm start
 
 `build` prüft TypeScript und erzeugt `frontend/dist/` sowie `backend/dist/`. `start` stellt die gebaute Anwendung auf Port **5010** für LAN und VPN bereit, lokal unter <http://127.0.0.1:5010>. Der systemd-Dienst und die Skripte in [`../Tools/`](../Tools/README.md) übernehmen den dauerhaften Betrieb. Ein laufender Dienst belegt Port 5010; für einen parallelen manuellen Test einen anderen `PORT` setzen. Die Entwicklungsports 5173/3001 bleiben davon unabhängig.
 
-Das Studio selbst hat noch keine Benutzeranmeldung oder Mehrbenutzerrollen. Die OpenAI-Kontoanmeldung erfolgt separat wie oben beschrieben. Die vorhandene Host-Firewall begrenzt den Zugriff auf die erlaubten Netze; der Installer ergänzt nur TCP 5010 auf dem VPN-Interface `sdwan0`. Eine öffentliche Freigabe ist nicht eingerichtet. R4OS-VMs laufen in gesonderten, netzlosen Diensten.
+Das Studio selbst hat noch keine Benutzeranmeldung oder Mehrbenutzerrollen. Die OpenAI-Kontoanmeldung erfolgt separat wie oben beschrieben. Die vorhandene Host-Firewall begrenzt den Zugriff auf die erlaubten Netze; der Installer ergänzt nur TCP 5010 auf dem VPN-Interface `sdwan0`. Eine öffentliche Freigabe ist nicht eingerichtet. R4OS-VMs laufen in gesonderten Diensten, standardmäßig ohne Netzwerk; privates NAT ist je VM ausdrücklich aktivierbar.
 
 Die Backendtests verwenden isolierte temporäre Daten und einen kontrollierten Auth-Client. Sie prüfen Login-Besitz, Kontentrennung, Persistenz, CSRF/Origin/Host-Schutz, OpenAI-only-Validierung, Abbruch, Ablauf, Quoten-Cache und Kontentrennung, fehlende Nutzungsdaten, Reset-Bestätigung und Idempotenz sowie Fehler ohne Token-Leaks. Sie melden keinen simulierten Login als echten OpenAI-Test an. Zusätzlich wurden mit der offiziellen Binary Initialisierung, ein abgemeldetes isoliertes Konto sowie eine echte Device-Code-Anfrage mit anschließendem Abbruch geprüft. Eine vollständige persönliche Anmeldung muss der Benutzer selbst bei OpenAI abschließen.
 

@@ -9,12 +9,13 @@ import './styles.css';
 function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: (id: string | null) => void }) {
   const [name, setName] = useState(vm?.name ?? 'R4OS VM');
   const [cpus, setCpus] = useState(vm?.cpus ?? 4), [memory, setMemory] = useState(vm?.memoryMiB ?? 4096);
+  const [networkEnabled, setNetworkEnabled] = useState(vm?.networkEnabled ?? false);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
   const baseImage = api.images.find((image) => image.id === api.defaultImageId);
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
-    try { const result = await api.request<{ vm: VirtualMachine }>(vm ? `/${vm.id}` : '', vm ? 'PATCH' : 'POST', { name, cpus, memoryMiB: memory, ...(!vm && baseImage ? { imageId: baseImage.id } : {}) });
+    try { const result = await api.request<{ vm: VirtualMachine }>(vm ? `/${vm.id}` : '', vm ? 'PATCH' : 'POST', { name, cpus, memoryMiB: memory, networkEnabled, ...(!vm && baseImage ? { imageId: baseImage.id } : {}) });
       await api.reload(); select(result.vm.id);
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
@@ -22,6 +23,8 @@ function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: 
     <label htmlFor="vm-name">Name</label><input id="vm-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} disabled={busy || !stopped} />
     <label htmlFor="vm-cpus">Virtual CPUs</label><input id="vm-cpus" type="number" min={1} max={8} value={cpus} onChange={(event) => setCpus(Number(event.target.value))} required disabled={busy || !stopped} />
     <label htmlFor="vm-memory">Memory (MiB)</label><input id="vm-memory" type="number" min={2048} max={16384} step={256} value={memory} onChange={(event) => setMemory(Number(event.target.value))} required disabled={busy || !stopped} />
+    <label className="vm-network" htmlFor="vm-network"><input id="vm-network" type="checkbox" checked={networkEnabled} onChange={(event) => setNetworkEnabled(event.target.checked)} disabled={busy || !stopped || (!api.networkAvailable && !networkEnabled)} />Network</label>
+    <p className="vm-help">{api.networkAvailable ? 'Enable outbound networking with private NAT and DHCP. Changes apply at the next start.' : 'VM network host support is not installed. See the host setup documentation.'}</p>
     {!vm && <p className="vm-help">Base image: <strong>{baseImage ? `R4OS ${baseImage.version} Full` : 'No default release selected'}</strong>. New VMs use the selected default release and start powered off.{!baseImage && ' Choose an installed default under Updates → R4OS Releases.'}</p>}
     {!stopped && <p className="vm-help">Stop the VM before changing its settings.</p>}
     {error && <p className="vm-alert" role="alert">{error}</p>}
@@ -116,7 +119,7 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
         {(error || vm.error) && <p className="vm-alert" role="alert">{error || vm.error}</p>}
         {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
           <VmForm api={api} vm={vm} select={select} /><div className="vm-actions"><button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
-          <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', 'Disabled'], ['Exchange drive', 'Persistent writable FAT32'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+          <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', vm.networkEnabled ? 'Enabled' : 'Disabled'], ['Exchange drive', 'Persistent writable FAT32'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
             <p className="vm-help">System and data partitions are private to this VM. The base release is shared read-only. Project assignment will be added later.</p></>}
       </>}
     </section>
