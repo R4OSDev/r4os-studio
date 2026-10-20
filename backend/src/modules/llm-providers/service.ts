@@ -16,6 +16,7 @@ type AccountResult = { account: { type: string; email?: string | null; planType?
 export interface ProviderOptions {
   directory: string;
   binary: string;
+  binaryResolver?: () => Promise<string>;
   clientFactory?: AuthClientFactory;
   loginTimeoutMs?: number;
 }
@@ -25,18 +26,16 @@ export class ProviderManager {
   private runtimes = new Map<string, Runtime>();
   private locks = new Map<string, Promise<unknown>>();
   private usages = new Map<string, ProviderUsage>();
-  private factory: AuthClientFactory;
   private loginTimeout: number;
 
   constructor(private options: ProviderOptions) {
     this.store = new ProviderStore(options.directory);
-    this.factory = options.clientFactory ?? ((home, notify, exited) => new CodexClient(options.binary, home, notify, exited));
     this.loginTimeout = options.loginTimeoutMs ?? 15 * 60_000;
   }
 
   async available(): Promise<boolean> {
     if (this.options.clientFactory) return true;
-    try { await access(this.options.binary, constants.X_OK); return true; } catch { return false; }
+    try { await access(await this.options.binaryResolver?.() ?? this.options.binary, constants.X_OK); return true; } catch { return false; }
   }
 
   private exclusive<T>(id: string, action: () => Promise<T>): Promise<T> {
@@ -69,9 +68,11 @@ export class ProviderManager {
     if (existing && !existing.unavailable && !existing.retired) return existing;
     if (existing) { await existing.client.close(); this.runtimes.delete(id); }
     const home = await this.store.home(id);
+    const binary = this.options.clientFactory ? this.options.binary : await this.options.binaryResolver?.() ?? this.options.binary;
+    const factory: AuthClientFactory = this.options.clientFactory ?? ((home, notify, exited) => new CodexClient(binary, home, notify, exited));
     const runtime = {} as Runtime;
     runtime.unavailable = false;
-    runtime.client = this.factory(home, (method, params) => {
+    runtime.client = factory(home, (method, params) => {
       if (method === 'account/rateLimits/updated' || method === 'account/updated') {
         this.usages.delete(id);
         return;

@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.js';
+import { activeTool } from '../src/modules/components/tools.js';
 
 await test('component downloads/defaults require session and CSRF and accept only fixed component identities', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'studio-components-'));
@@ -37,5 +39,29 @@ await test('component downloads/defaults require session and CSRF and accept onl
   } finally {
     await app.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
     delete process.env.STUDIO_COMPONENT_SOCKET; await rm(directory, { recursive: true, force: true });
+  }
+});
+
+await test('active tools reject changed binaries and paths outside the versioned tool directory', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'studio-tools-'));
+  const previous = process.env.STUDIO_R4OS_DIR;
+  process.env.STUDIO_R4OS_DIR = directory;
+  try {
+    await mkdir(join(directory, 'Profiles'));
+    await mkdir(join(directory, 'Toolchains/Codex/0.123.0'), { recursive: true });
+    const binary = join(directory, 'Toolchains/Codex/0.123.0/codex');
+    const source = '#!/bin/sh\nexit 0\n';
+    await writeFile(binary, source, { mode: 0o700 });
+    const record = { id: '0.123.0', version: '0.123.0', binary, binarySha256: createHash('sha256').update(source).digest('hex') };
+    const profile = join(directory, 'Profiles/versions.json');
+    await writeFile(profile, JSON.stringify({ schema: 1, defaults: { codex: record } }));
+    assert.equal((await activeTool('codex')).binary, binary);
+    await writeFile(binary, '#!/bin/sh\nexit 1\n');
+    await assert.rejects(activeTool('codex'), /checksum changed/);
+    await writeFile(profile, JSON.stringify({ schema: 1, defaults: { codex: { ...record, binary: '/bin/sh' } } }));
+    await assert.rejects(activeTool('codex'), /Invalid active tool path/);
+  } finally {
+    if (previous === undefined) delete process.env.STUDIO_R4OS_DIR; else process.env.STUDIO_R4OS_DIR = previous;
+    await rm(directory, { recursive: true, force: true });
   }
 });

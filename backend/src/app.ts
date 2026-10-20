@@ -6,6 +6,7 @@ import { providerRoutes } from './modules/llm-providers/routes.js';
 import type { ProviderOptions } from './modules/llm-providers/service.js';
 import { updateRoutes } from './modules/updates/routes.js';
 import { version } from './version.js';
+import { activeTool } from './modules/components/tools.js';
 
 export function createApp({ serveFrontend = false, logger = false, providers = {} }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>;
@@ -18,6 +19,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
     prefix: '/api/providers',
     directory: process.env.STUDIO_DATA_DIR ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url)),
     binary: process.env.CODEX_BINARY ?? '/opt/r4os-studio/bin/codex',
+    ...(!process.env.CODEX_BINARY && !providers.binary ? { binaryResolver: async () => (await activeTool('codex')).binary } : {}),
     ...providers,
   });
 

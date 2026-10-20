@@ -1,10 +1,11 @@
-import { readFile, mkdir, rm, open, access, appendFile } from 'node:fs/promises';
+import { readFile, mkdir, rm, open, access, appendFile, writeFile, rename } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { vmPath, runtimePath, root } from './paths.js';
 import { prepareShare, finishShare } from './share-sync.js';
 import type { VmConfig, VmImage } from '../../../../shared/virtual-machines.js';
+import { activeTool } from '../components/tools.js';
 
 // Launched only by the fixed, unprivileged systemd VM template.
 const id = process.argv[2];
@@ -33,7 +34,14 @@ async function run() {
     '-device', 'qemu-xhci,id=exchange-usb', '-device', 'usb-storage,drive=exchange,bus=exchange-usb.0,removable=on',
     '-audiodev', 'driver=none,id=silent', '-device', 'ich9-intel-hda', '-device', 'hda-duplex,audiodev=silent',
     '-serial', 'file:Logs/serial.log', '-qmp', `unix:${join(runtimePath(id), 'qmp.sock')},server=on,wait=off`];
-  const child = spawn('/usr/bin/qemu-system-x86_64', args, { cwd: directory, stdio: ['ignore', log.fd, log.fd] });
+  const tool = await activeTool('qemu');
+  try {
+    const pinPath = join(runtimePath(id), 'worker.json');
+    const pin = JSON.parse(await readFile(pinPath, 'utf8'));
+    await writeFile(pinPath + '.tmp', JSON.stringify({ ...pin, qemu: tool }), { mode: 0o600 });
+    await rename(pinPath + '.tmp', pinPath);
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const child = spawn(tool.binary, args, { cwd: directory, stdio: ['ignore', log.fd, log.fd] });
   process.on('SIGTERM', () => child.kill('SIGTERM'));
   process.on('SIGINT', () => child.kill('SIGTERM'));
   child.on('error', (error) => { console.error(error); process.exitCode = 1; });

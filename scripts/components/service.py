@@ -97,10 +97,18 @@ class Manager:
         if self.state.get('schema') != 1:
             raise ValueError('Unsupported component profile schema.')
         if not self.profile.exists():
+            minimal = self.root / 'Profiles/minimal.json'
+            pins = json.loads(minimal.read_text()).get('components', {}) if minimal.is_file() else {}
             for kind in KINDS:
                 installed = self.installed(kind)
                 if installed:
-                    self.state['defaults'][kind] = installed[0]
+                    pin = pins.get(kind, {})
+                    identity = Path(pin['path']).name if pin.get('path') else None
+                    preferred = next((value for value in installed if value['id'] == identity), None)
+                    preferred = preferred or self.external.get(kind)
+                    if kind == 'libraries' and not pin:
+                        continue
+                    self.state['defaults'][kind] = preferred or installed[0]
             atomic(self.profile, self.state)
 
     def installed(self, kind):
@@ -244,6 +252,15 @@ class Manager:
                 required = sdk.get('minZigVersion')
                 if required and defaults.get('zig', {}).get('version') != required:
                     raise ValueError(f'This SDK requires the verified Zig {required} profile. Download and select the matching compiler first.')
+            if kind in ('sdk', 'contract', 'zig', 'libraries') and defaults.get('libraries'):
+                library = defaults['libraries']
+                minimum = library.get('minZigVersion')
+                compiler_version = defaults.get('zig', {}).get('version', '0.0.0')
+                if minimum and tuple(map(int, compiler_version.split('.'))) < tuple(map(int, minimum.split('.'))):
+                    raise ValueError(f'The selected Libraries require Zig {minimum} or newer.')
+                library_pin = library.get('dependencies', {}).get('contract')
+                if library_pin and (contract.get('revision', contract.get('id')) != library_pin['revision'] or contract.get('packageHash') != library_pin['packageHash']):
+                    raise ValueError('The selected Libraries require a different Contract profile.')
             next_state = {'schema': 1, 'defaults': defaults, 'updatedAt': now()}
             atomic(self.profile, next_state)
             self.state = next_state

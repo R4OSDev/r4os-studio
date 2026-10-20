@@ -41,7 +41,7 @@ export function ComponentUpdatesPanel({ kind }: { kind: ComponentKind }) {
     } catch (cause) { setError((cause as Error).message); }
     finally { setRequesting(false); }
   }
-  const versions = [...(inventory?.available ?? []), ...(inventory?.installed ?? []).filter((local) => !inventory?.available.some((remote) => remote.id === local.id))];
+  const versions = [...(inventory?.available ?? []).map((remote) => ({ ...remote, ...inventory?.installed.find((local) => local.id === remote.id) })), ...(inventory?.installed ?? []).filter((local) => !inventory?.available.some((remote) => remote.id === local.id))];
   return <section className="updates-content" aria-label={`${componentNames[kind]} updates`}>
     <div className="updates-card">
       <div className="updates-title"><h2>{componentNames[kind]}</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
@@ -71,7 +71,7 @@ export function ComponentUpdatesPanel({ kind }: { kind: ComponentKind }) {
           const downloadable = inventory?.available.some((remote) => remote.id === value.id) && (kind !== 'codex' || value.id === inventory?.latestId);
           return <div className="component-version" key={value.id}>
             <div><strong>{value.version}</strong>{value.id === inventory?.latestId && <span className="component-label">Latest</span>}{value.id === inventory?.activeId && <span className="component-label">Default</span>}
-              {value.revision && <small>{value.revision}</small>}{value.sha256 && <small>SHA-256: {value.sha256}</small>}</div>
+              {value.revision && <small>{value.revision}</small>}{value.sha256 && <small>{value.external ? 'Binary' : kind === 'r4os' && installed ? 'Disk' : 'Archive'} SHA-256: {value.sha256}</small>}</div>
             {installed ? <span className="component-label">Installed</span> : <button type="button" disabled={!downloadable || busy} onClick={() => void action('download', value.id)}>Download</button>}
           </div>;
         })}

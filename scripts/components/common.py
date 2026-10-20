@@ -60,14 +60,15 @@ def download(manager, url, target, expected=None, limit=3 * 1024**3):
     return actual
 
 
-def unpack(archive, target, limit=2 * 1024**3):
+def unpack(archive, target, limit=2 * 1024**3, exclude=()):
     target = Path(target)
     target.mkdir()
     with tarfile.open(archive, 'r:*') as package:
         members = package.getmembers()
         if len(members) > 200_000 or sum(value.size for value in members) > limit:
             raise ValueError('Archive exceeds its extraction limits.')
-        package.extractall(target, filter='data')
+        selected = [member for member in members if member.name.partition('/')[2] not in exclude]
+        package.extractall(target, members=selected, filter='data')
     entries = list(target.iterdir())
     return entries[0] if len(entries) == 1 and entries[0].is_dir() else target
 

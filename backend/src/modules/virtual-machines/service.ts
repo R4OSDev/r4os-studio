@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { totalmem } from 'node:os';
 import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState } from '../../../../shared/virtual-machines.js';
+import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
 import { qmp } from './qmp.js';
@@ -45,7 +46,7 @@ export class VmManager {
   }
   async available() {
     try {
-      await exec('/usr/bin/qemu-system-x86_64', ['--version'], { timeout: 5000 });
+      await exec((await activeTool('qemu')).binary, ['--version'], { timeout: 5000 });
       await exec('/usr/bin/systemctl', ['cat', 'r4os-studio-vm@.service'], { timeout: 5000 }); return true;
     } catch { return false; }
   }
@@ -93,7 +94,7 @@ export class VmManager {
       const id = randomUUID(), directory = join(root, 'Instances', `.creating-${id}`);
       for (const part of ['Disks', 'Exchange/Share', 'Logs']) await mkdir(join(directory, part), { recursive: true, mode: 0o700 });
       try {
-        await exec('/usr/bin/qemu-img', ['create', '-f', 'qcow2', '-F', 'raw', '-b', base, join(directory, 'Disks/disk.qcow2')], { timeout: 30_000 });
+        await exec((await activeTool('qemu')).imageBinary!, ['create', '-f', 'qcow2', '-F', 'raw', '-b', base, join(directory, 'Disks/disk.qcow2')], { timeout: 30_000 });
         const config: VmConfig = { schema: 1, id, name: input.name.trim(), imageId: image.id, imageSha256: image.sha256,
           cpus: input.cpus, memoryMiB: input.memoryMiB, createdAt: new Date().toISOString() };
         await atomic(join(directory, 'vm.json'), config);
