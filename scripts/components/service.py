@@ -57,7 +57,10 @@ def run(args, timeout=60, **kwargs):
 
 
 def package_info(path):
-    text = (Path(path) / 'build.zig.zon').read_text()
+    return parse_package_info((Path(path) / 'build.zig.zon').read_text())
+
+
+def parse_package_info(text):
     version = re.search(r'\.version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', text)
     if not version:
         raise ValueError('Package version is missing.')
@@ -76,7 +79,7 @@ def package_info(path):
 
 
 def public(record):
-    return {key: value for key, value in record.items() if key not in ('directory', 'binary', 'imageBinary', 'archiveUrl', 'size', 'signatureUrl')}
+    return {key: value for key, value in record.items() if key not in ('directory', 'binary', 'imageBinary', 'archiveUrl', 'size', 'signatureUrl', 'metadataHash')}
 
 
 class Manager:
