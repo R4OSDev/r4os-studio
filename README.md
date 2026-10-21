@@ -6,7 +6,7 @@ System → Updates → Tools → Rust manages stable Rust toolchains and explici
 
 The existing unprivileged component service installs verified official component archives into private temporary storage, checks compiler/Cargo identities and a real `no_std` object build, then verifies relocation and publishes the directory atomically. The official installer runs without root in a temporary path without spaces. Saved release metadata, licenses and per-file/component checksums remain with each installation. No global rustup or host PATH changes. Downloads activate nothing; deliberate Use as default updates only the tool selection after integrity checks. Existing project pins and running jobs retain their versions. The project options API still rejects Rust until roadmap 0.3.7 integrates a verified SDK/Contract release.
 
-Validated: Rust 1.99.1 and Cargo 1.99.1, target libraries/linker, compilation before and after relocation, manifest/checksum rejection and default selection in an isolated profile. Production defaults remain unchanged.
+Validated: Rust/Cargo 1.99.1 and 1.99.0, including the older download through the production browser, target libraries/linker and compilation before and after relocation. Latest/older default switching and rejection of an altered compiler were exercised through the same UI with an isolated profile. Five component, seven updater and 22 backend tests, build/TypeScript and lint passed. Production defaults remain unchanged; no Rust default is active. Private QA projects and services were removed after validation.
 
 ## Projects in the browser (0.3.5)
 
@@ -20,7 +20,7 @@ Verified in the browser through a deliberately lost creation response and reload
 
 The session/CSRF-protected `POST /api/projects` creates a pinned project with a server-generated immutable UUID. A durable SQLite request reserves its identity and inputs, generated files are validated in private staging, synchronized and hashed, then published with Linux `renameat2(RENAME_NOREPLACE)`. Only ready entries appear in the list. Startup and a repeated request resume interrupted work, including publication before the final DB commit. Reusing a request ID with different data is rejected. Changed/foreign files and interrupted staging are retained for review. Completed retries keep the original project identity and pins even if defaults change.
 
-`GET/PATCH /api/projects/:id` reads or updates Name, Description and VM reference with a project revision. Stale saves fail; metadata saves never move the directory or rewrite manifests, technical names or pins. `GET /api/projects/vms` supplies read-only VM choices independently of SDK availability. VM references can be assigned, changed or removed; unavailable references remain visible. Creation/settings never start, stop, deploy to or change a VM. The browser workflow follows in 0.3.5.
+`GET/PATCH /api/projects/:id` reads or updates Name, Description and VM reference with a project revision. Stale saves fail; metadata saves never move the directory or rewrite manifests, technical names or pins. `GET /api/projects/vms` supplies read-only VM choices independently of SDK availability. VM references can be assigned, changed or removed; unavailable references remain visible. Creation/settings never start, stop, deploy to or change a VM. The browser workflow is available since 0.3.5.
 
 ## Standalone project templates (0.3.3)
 
@@ -32,19 +32,19 @@ Creation validates generated files only; it does not execute user build scripts.
 
 ## SDK manifest adapter and C tools (0.3.2)
 
-The session-bound `GET /api/projects/options` exposes the pinned language/type catalog. Studio builds and caches the official ModuleCatalog as the service user, validates SDK/Contract package hashes with the selected Zig compiler, and consumes its JSON plan and contract plan. Verified profiles currently use SDK 0.64.35/Contract 0.64.20 or SDK 0.64.58/Contract 0.64.41 with Zig 0.16.0; unknown combinations remain unavailable. Rust remains unavailable until its separate SDK integration. Template creation is enabled in the next increment.
+The session-bound `GET /api/projects/options` exposes the pinned language/type catalog. Studio builds and caches the official ModuleCatalog as the service user, validates SDK/Contract package hashes with the selected Zig compiler, and consumes its JSON plan and contract plan. Verified profiles currently use SDK 0.64.35/Contract 0.64.20 or SDK 0.64.58/Contract 0.64.41 with Zig 0.16.0; unknown combinations remain unavailable. Rust remains unavailable until its separate SDK integration. Template generation and the creation API followed in 0.3.3/0.3.4.
 
 System → Updates → Tools → C shows the shared Zig C compiler installation, downloads and default. It delegates to the same Zig inventory and creates no duplicate compiler installation. A real C console skeleton was built and inspected with the active profile.
 
 ## Project catalog (0.3.1)
 
-Projects now lists ready entries from `Data/Projects/Projects.sqlite`, using immutable UUIDs and display names. Foreign folders are preserved and are not imported automatically. The bounded Python sqlite3 helper runs as the Studio service user; Node 20 remains supported. The catalog uses schema version 1, full SQLite synchronization and a project revision for future Settings changes. Unknown or corrupt databases fail without reinitialization. Project creation is not exposed yet.
+Projects now lists ready entries from `Data/Projects/Projects.sqlite`, using immutable UUIDs and display names. Foreign folders are preserved and are not imported automatically. The bounded Python sqlite3 helper runs as the Studio service user; Node 20 remains supported. The catalog uses schema version 1, full SQLite synchronization and a project revision for Settings changes. Unknown or corrupt databases fail without reinitialization. Creation and Settings were added in 0.3.4/0.3.5.
 
 For managed deployments run `python3 scripts/install-project-support.py` as root once. It grants the web service write access only to the persistent Projects directory and takes effect on the next Studio start; it preserves existing update configuration, SDK/image permissions and VM services. All project data remains excluded from Git. Rolling back preserves the DB and project files; older folder-only releases do not understand the DB catalog.
 
 ## Projektverwaltung – Roadmap 0.3.X
 
-0.3.1–0.3.6 implementieren Projektkatalog, offizielle Manifestvalidierung, geprüfte Zig-/C-Vorlagen, wiederaufnehmbare Create-/Settings-API, Browseroberfläche sowie C-/Rust-Werkzeuge. 0.3.7 bleibt als getrennte Rust-Projektintegration bis zur externen SDK-/Contract-Lieferung und deren Nachweis offen. Agent Sessions, Editorfunktion und allgemeine Build-/Deploy-Endpunkte folgen separat.
+Roadmap 14 / 0.3.X: 0.3.1–0.3.6 sind abgeschlossen, 22 von 25 Aufgaben erledigt, keine Abnahmen. Sie implementieren Projektkatalog, offizielle Manifestvalidierung, geprüfte Zig-/C-Vorlagen, wiederaufnehmbare Create-/Settings-API, Browseroberfläche sowie C-/Rust-Werkzeuge. 0.3.7 bleibt als getrennte Rust-Projektintegration bis zur externen SDK-/Contract-Lieferung und deren Nachweis offen. Agent Sessions, Editorfunktion und allgemeine Build-/Deploy-Endpunkte folgen separat.
 
 Studio-Metadaten liegen in `Data/Projects/Projects.sqlite`; Projektdateien unter `Data/Projects/<immutable-uuid>/`. Ein kleiner fester Python-sqlite3-Adapter erhält Node-20-Kompatibilität. Name/Beschreibung und VM-Zuweisung können geändert werden, ohne UUID, Ordner, technischen Modulnamen, Manifest oder Compiler-/SDK-/Contract-Pins umzuschreiben. Der Browser hält Formular und Navigation; der unprivilegierte Host übernimmt SQLite, Dateierzeugung und offizielle SDK-Werkzeuge. Alle Daten bleiben von Git ausgeschlossen. Gezielte Hosteinrichtung: `scripts/install-project-support.py`.
 
@@ -56,7 +56,9 @@ Geprüfte Profile: SDK 0.64.35 (`2fdc71e11d6a26fd1998dfddb43923f9d707abda`) mit 
 
 Planung und Prüfbelege im übergeordneten Workspace: `Docs/Project-Creation.md`, `Research/R4OS/Projects/Implementation/`. Build-/Containerprüfungen belegen keinen Gastlauf.
 
-## Projects-Navigation (0.2.9, außerhalb der Roadmap)
+## Projects-Navigation (historisch: 0.2.9, außerhalb der Roadmap)
+
+Dieser Abschnitt beschreibt den früheren Ordnerkatalog. Seit 0.3.1 ersetzt ihn SQLite; seit 0.3.5 gelten die oben beschriebenen drei Navigationsebenen.
 
 Im **Projects**-Tab heißt die erste Spalte **Projects** und listet die direkten Projektordner unter `Data/Projects/` alphabetisch mit natürlicher Zahlensortierung auf. Ordnername und Projekt-ID stimmen vorerst überein; pro Projekt liegen Quellen und spätere Build-Ausgaben unter `Data/Projects/<project-id>/`. Dateien und Symlinks werden nicht als Projekte angezeigt. Ohne Projekte erscheint **No projects yet.**; die bisherigen Platzhalter Workspace, Example Project sowie deren Components und Views entfallen. Die zweite und dritte Spalte behalten ihre Breite und bleiben ohne Überschrift und Inhalt. Eine Auswahl zeigt zunächst nur den Projektnamen im Hauptbereich.
 
@@ -229,7 +231,7 @@ React und TypeScript strukturieren die interaktive Studio-Oberfläche. Vite übe
 
 Browser: Layout, Navigation, Provider-Verwaltung und Anmeldecode. Der Feature-API-Client ist von React getrennt; `useProviders.ts` verwaltet den React-Zustand. Server: Health-Endpunkt, Provider-API, isolierte Codex-Kindprozesse, Persistenz und statische Frontend-Dateien. Ausschließlich `frontend/dist/` wird statisch ausgeliefert; `Data/` ist über HTTP nicht zugänglich. Im Entwicklungsbetrieb leitet Vite `/api` zum Backend weiter; dadurch ist keine zusätzliche CORS-Freigabe nötig. Die Entwicklungsserver binden an `127.0.0.1`. Im Produktionsbetrieb liefert ein gemeinsamer Server Frontend und API über `0.0.0.0:5010` aus. `HOST` und `PORT` überschreiben die jeweiligen Vorgaben.
 
-Geplant: Monaco-Editor, Projektpersistenz, versionierte R4OS-Dokumentation sowie ein eigener Runner für SDK, Builds und isolierte QEMU-Testinstanzen. Diese Komponenten kommen bei konkretem Bedarf hinzu. Zig, SDK und Contract sind lokal bereitgestellt; die WebApp verwendet diese Pakete noch nicht für Projekt-Builds.
+Projektpersistenz, Manifestvalidierung und eigenständige Projektgerüste sind implementiert; die unabhängige VM-Verwaltung besitzt einen eigenen Runner. Geplant bleiben Agent Sessions, Browser-Editor, versioniertes API-Wissen sowie Projekt-Build-/Deploy-Endpunkte. Zig, SDK und Contract werden zur Projekterstellung bereits geprüft und gebunden; die Vorlagen wurden isoliert minimal gebaut.
 
 ## R4OS: einzelne Apps statt Gesamtworkspace
 
@@ -267,7 +269,7 @@ Das [App-Paket](https://github.com/R4OSDev/r4os-app-example/blob/bf1d27058a54d09
 
 Der Deploy-Pfad muss noch mit offiziellen Werkzeugen/Formaten nachgewiesen werden. Upstream besitzt R4UPack und ImageCreator in `r4os-distribution`; diese Untersuchung bestätigt noch keinen vollständigen App-Deploy in ein vorhandenes Image. Keine pauschale Abhängigkeit vom Distribution-Gesamtbuild einführen. Die unabhängige VM-Verwaltung verwendet inzwischen private Overlays des Basisabbilds ohne Gastnetzwerk; keine Gastdienste für LAN/VPN oder Internet freigeben.
 
-Geplante Zuständigkeiten: Projektbedienung/Editor im Browser, Projektpersistenz und R4OS-Adapter in getrennten Backend-Modulen, Compiler und VM in einem ausführenden Runner. Die Datenordner sind wie unten beschrieben eingerichtet. Projekt-/Build-Module sind noch nicht implementiert; die VM-Verwaltung besitzt einen eigenen Runner. Dienstrechte sind im Abschnitt Virtual Machines beschrieben.
+Zuständigkeiten: Projektbedienung, Formulare und Navigation im Browser; Projektpersistenz, Dateierzeugung und offizieller SDK-Adapter in getrennten unprivilegierten Backend-Helfern. Compiler und VM benötigen Hostausführung. Die Projektmodule sind implementiert, Editor und allgemeiner Projekt-Build-/Deploy-Runner bleiben geplant; die VM-Verwaltung besitzt einen eigenen Runner. Projekte benötigen die gezielte Hosteinrichtung aus dem Abschnitt Project catalog.
 
 Die vollständige Quellen-/Abhängigkeitsprüfung und alle untersuchten Hauptzweig-Revisionen stehen im übergeordneten Workspace unter [`Docs/R4OS-Components.md`](../Docs/R4OS-Components.md). Der erste Nachweis erfolgte temporär; das anschließend lokal installierte Setup ist im folgenden Abschnitt beschrieben.
 
@@ -318,7 +320,7 @@ SDK/Contract/Compiler werden projektübergreifend genutzt; eigene App-Quellen un
 
 ## Virtual Machines
 
-Unter **System → Virtual Machines** steht **+ New VM** in Components; darunter die gespeicherten VMs. Views: Overview, Console, Settings, Exchange, Logs. VMs sind unabhängig von Projekten und können parallel laufen. Projektzuweisungen sind noch nicht implementiert.
+Unter **System → Virtual Machines** steht **+ New VM** in Components; darunter die gespeicherten VMs. Views: Overview, Console, Settings, Exchange, Logs. VMs sind unabhängig von Projekten und können parallel laufen. Projekte können eine optionale VM-ID referenzieren; diese Zuweisung verändert oder startet keine VM.
 
 - Neue VMs verwenden das neueste vollständige lokale Full-Release nach numerischer Versionsnummer und starten ausgeschaltet. Das importierte Image bleibt unverändert; jede UUID unter `Data/R4OS/Instances/` hat ihr eigenes vollständiges QCOW2-Overlay. Die vorhandenen C:/D:-Partitionen bleiben erhalten.
 - Name, CPU und RAM sind bei gestoppter VM änderbar. Start, Restart, Shutdown und Force Stop (Restart/Force Stop bestätigt) und bestätigtes Delete sind implementiert. Ein eigener systemd-Dienst pro VM erhält laufende Gäste über Studio-Neustarts hinweg. VMs starten nach einem Host-Reboot zunächst ausgeschaltet. Shut down sendet eine ACPI-Anfrage; deren Abschluss ist für den getesteten Gast noch nicht bestätigt. Force stop wurde erfolgreich geprüft.
