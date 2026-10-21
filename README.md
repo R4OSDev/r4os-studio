@@ -508,3 +508,14 @@ and a private checked tools copy at `/tools`; call the official build driver wit
 explicit `/sdk`, `/contract`, `/tools`, `/rust/Install`, `/cache` and workspace
 output roots. Shared SDK/toolchain files stay read-only. No general deploy or
 R4OS guest execution API is implied by terminal support.
+
+0.3.13 adds Projects → Sessions → New Session / saved sessions. A native modal
+selects name, connected provider, model and reasoning effort without inference.
+The main pane shows a paginated durable conversation, streamed answers, collapsible
+file/terminal tool arguments/results and a composer with Stop. Closing a view does
+not stop its worker. Session links restore selection on reload; drafts and uncertain
+submissions retain the original request ID in browser session storage. A retry
+therefore resolves the same run, including a lost start response. SSE reconnects
+from its last stored sequence and refreshes browser authentication after a Studio
+restart. All transcript content renders as text, without executing model HTML.
+Session settings and tool toggles follow in 0.3.14; Editor remains unimplemented.

@@ -16,13 +16,14 @@ import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
 import type { ProjectNavigation } from '../features/projects/ProjectsWorkspace';
 
 const tabs: Tab[] = ['System', 'Projects'];
+const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('System');
+  const [tab, setTab] = useState<Tab>(sessionRoute ? 'Projects' : 'System');
   const [vmId, setVmId] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>({});
+  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? null);
+  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => setProjectNavigation((previous) => ({ ...previous, [id]: value })), []);

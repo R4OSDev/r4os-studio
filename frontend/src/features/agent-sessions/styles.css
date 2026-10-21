@@ -1,0 +1,40 @@
+.agent-session { display:flex; flex-direction:column; flex:1; min-height:360px; min-width:0; margin:24px 30px 22px; border:1px solid #392b49; border-radius:12px; background:#19131f; overflow:hidden; }
+.agent-header { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:18px 23px; border-bottom:1px solid #382b46; }
+.agent-header h2 { margin:0 0 5px; font-size:17px; font-weight:550; overflow-wrap:anywhere; }
+.agent-model { font-size:11px; color:#a99ab9; overflow-wrap:anywhere; }
+.agent-state { padding:5px 9px; border:1px solid #463551; border-radius:20px; font-size:10px; color:#b5a3c6; text-transform:capitalize; white-space:nowrap; }
+.agent-state.active { color:#ddbdff; border-color:#79529b; background:#ae83de13; }
+.agent-log { flex:1; min-height:170px; overflow:auto; overscroll-behavior:contain; padding:20px 24px; scrollbar-gutter:stable; }
+.agent-empty { margin:45px 0; text-align:center; color:#9685a6; font-size:13px; }
+.agent-message { margin:0 0 24px; min-width:0; }
+.agent-message-role { margin-bottom:9px; font-size:10px; font-weight:650; text-transform:uppercase; letter-spacing:.7px; color:#c8a8e8; }
+.agent-message.user { background:#33253f; padding:15px 18px; border:1px solid #4c365f; border-radius:9px; margin-left:24px; }
+.agent-message.user .agent-message-role { color:#baacc8; }
+.agent-message-text { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.8; color:#e0d7e8; }
+.agent-message.notice .agent-message-text { font-size:11px; color:#aa99bb; }
+.agent-tool { margin-bottom:12px; border:1px solid #3b2d49; border-radius:7px; min-width:0; background:#15101c; }
+.agent-tool summary { display:flex; justify-content:space-between; gap:12px; padding:11px 13px; cursor:pointer; font-size:11px; color:#bdafcc; }
+.agent-tool summary::before { content:'›'; color:#9c79bd; }
+.agent-tool summary span:first-of-type { flex:1; }
+.agent-tool[open] summary::before { transform:rotate(90deg); }
+.agent-tool-status { color:#9b8ca9; font-size:10px; }
+.agent-tool.denied .agent-tool-status, .agent-tool.failed .agent-tool-status { color:#efb0bc; }
+.agent-tool pre { margin:0; padding:12px 14px; border-top:1px solid #33283e; max-height:300px; overflow:auto; font-size:11px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; color:#c6bbd0; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+.agent-tool .agent-arguments { color:#a89ab5; font-size:10px; }
+.agent-tool p { margin:0; padding:8px 14px; color:#b3a2c2; font-size:11px; }
+.agent-composer { padding:15px 18px; border-top:1px solid #3b2c49; background:#201828; }
+.agent-composer textarea { display:block; width:100%; resize:vertical; min-height:70px; max-height:240px; border:1px solid #4e3a5f; border-radius:7px; background:#15101c; padding:12px 14px; color:#eee5fa; font:inherit; font-size:13px; line-height:1.6; }
+.agent-composer textarea:focus { outline:2px solid #a87ed2; outline-offset:1px; }
+.agent-composer textarea:disabled { opacity:.55; }
+.agent-compose-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:11px; }
+.agent-compose-actions button,.agent-older { padding:9px 17px; font-size:11px; border-radius:6px; border:1px solid #4e3a5f; background:#2d203a; }
+.agent-compose-actions .agent-send { background:#ba91e7; border-color:#c49bf0; color:#21132e; font-weight:650; }
+.agent-compose-actions .agent-stop { color:#f3bac7; border-color:#78505e; }
+.agent-compose-actions button:disabled { opacity:.45; cursor:default; }
+.agent-older { display:block; margin:0 auto 20px; color:#b8a4ce; }
+.agent-error { margin:0; padding:10px 20px; color:#ffb8c6; font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.session-nav-status { width:5px; height:5px; flex-shrink:0; border-radius:50%; background:#be91ec; }
+.session-empty { margin:35px; font-size:13px; color:#ab99bc; }
+@media (max-width:1050px) { .agent-session { margin:22px 20px; } .agent-header,.agent-log { padding:16px; } }
+@media (max-width:800px) { .agent-session { flex:initial; height:min(750px,85dvh); min-height:430px; } }
+@media (max-width:440px) { .agent-session { margin:18px 10px; } .agent-header { padding:14px 12px; gap:8px; } .agent-header h2 { font-size:15px; } .agent-log { padding:16px 12px; } .agent-composer { padding:12px; } .agent-message.user { margin-left:10px; padding:12px; } }

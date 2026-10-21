@@ -60,6 +60,10 @@ class Worker:
             elif kind == 'dynamicToolCall':
                 value = self.items.get(ident) or {'id': ident, 'runId': self.run_id, 'type': 'tool',
                          'tool': native.get('tool', '').replace('studio_', 'studio.', 1), 'arguments': native.get('arguments'), 'status': 'pending'}
+                if method == 'item/completed' and value['status'] == 'pending':
+                    value['status'] = 'completed' if native.get('success') else 'failed'
+                    content = native.get('contentItems') or []
+                    value['output'] = '\n'.join(v.get('text', '') for v in content if v.get('type') == 'inputText')[:24000]
                 self.items[ident] = value
                 item(self.store, self.session_id, self.run_id, value)
             elif kind == 'contextCompaction':
