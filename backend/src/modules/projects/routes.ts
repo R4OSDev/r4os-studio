@@ -4,6 +4,7 @@ import { listProjects, projectStore, ProjectError } from './store.js';
 import { ProjectSessions } from './sessions.js';
 import { agentSessionRoutes } from '../agent-sessions/routes.js';
 import { runRoutes } from '../agent-sessions/run-routes.js';
+import { developmentRoutes } from '../project-development/routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -41,6 +42,7 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   const sessions = new ProjectSessions();
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);
+  developmentRoutes(app, sessions);
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
   app.addHook('onReady', async () => {
     void projectStore<{ id: string; recovered: boolean }[]>(directory, { operation: 'recover' }, 'create')

@@ -9,6 +9,8 @@ from pathlib import Path
 import signal
 import sys
 
+sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
+
 from profile import prepare, write_json, TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
@@ -31,6 +33,8 @@ class Worker:
         self.items = {}; self.lease = None
         self.sandbox = Sandbox(self)
         self.terminals = Terminals(self)
+        from agent_snapshot import AgentSnapshots
+        self.build_snapshots = AgentSnapshots(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
@@ -176,6 +180,7 @@ class Worker:
             self.done.set()
 
     async def cleanup(self):
+        await self.build_snapshots.close()
         if self.client: await self.client.close()
         await self.terminals.close()
 
@@ -187,6 +192,7 @@ class Worker:
             if self.row['state'] == 'stopping': self.outcome = 'interrupted'; return
             self.lease = (self.store.projects / '.studio' / ('workspace-' + self.manifest['projectId'] + '.lock')).open('a')
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            await self.build_snapshots.start()
             transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid()})
             state = self.store.directory / self.session_id / 'Codex'
             provider_home = Path(self.manifest['providers']) / self.config['providerId']

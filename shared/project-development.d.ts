@@ -29,6 +29,7 @@ export interface DevelopmentSource {
   sha256: string;
   manifestSha256: string;
   files: SourceFileIdentity[];
+  directories: string[];
   pins: ProjectPins;
 }
 export interface DevelopmentArtifact {
@@ -43,6 +44,7 @@ export interface DevelopmentArtifact {
   entry: string;
   files: SourceFileIdentity[];
   createdAt: string;
+  buildProof: { format: string; sha256: string; bytes: number };
 }
 export interface DevelopmentTarget {
   vmId: string;
@@ -84,6 +86,7 @@ export interface DevelopmentJob {
   id: string;
   projectId: string;
   kind: DevelopmentJobKind;
+  source: Omit<DevelopmentSource, 'files' | 'directories'> | null;
   state: DevelopmentJobState;
   revision: number;
   sessionId: string | null;

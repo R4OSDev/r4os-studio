@@ -1,5 +1,36 @@
 # R4OS Studio · App
 
+## Durable project builds (0.3.19)
+
+Projects expose scoped development options, settings, build admission, job output,
+Stop and artifact metadata under `/api/projects/:id/development/`. Browser session,
+CSRF, Host and Origin checks apply. Build requests bind project/settings revisions
+and an idempotency key; retries do not create another build.
+
+The separate unprivileged development coordinator starts one immutable-release
+worker per job. Explicit host maintenance is `python3 scripts/project-development/install.py`
+as root; this adds only fixed services and narrow unit permissions and preserves
+the existing bootstrap. Running workers survive a Studio update. Recovery records
+uncertain jobs without replaying them. Limits allow two host jobs and one per project.
+
+`Development/Development.sqlite`, immutable `Inputs/`, `Artifacts/` and bounded
+`Evidence/` are outside the agent workspace. Capture includes uncommitted sources,
+checks for concurrent edits and rejects links/special files and input paths over
+240 UTF-8 bytes. Generated caches and
+old outputs are excluded. The worker uses pinned SDK validation and build paths in
+a Bubblewrap namespace with no network, provider state or VM sockets and read-only
+components. The canonical Zig/C SDK wrapper prevents project build scripts from
+selecting different components; Rust uses the official locked/offline build driver
+with explicit roots and all SDK technical checks intact.
+
+Only a fresh module passing the official SDK container inspector is published
+atomically with source/manifest/component hashes. Failed builds retain diagnostics
+and expose no successful artifact. VM deployment/execution, browser controls and
+the seven new agent tools follow in the remaining roadmap releases. An internal
+agent snapshot channel already preserves its existing workspace lease, serializes
+with file/terminal admission and rejects capture while a terminal is live; the
+public build endpoint never accepts an agent owner override.
+
 ## Development qualification and contracts (0.3.18)
 
 Studio now records exact execution qualification profiles separately from SDK
