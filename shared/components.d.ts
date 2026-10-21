@@ -4,6 +4,7 @@ export interface ComponentVersion {
   sourceUrl?: string; minZigVersion?: string; installedAt?: string; external?: boolean;
   dependencies?: { contract?: { revision: string; packageHash: string } };
   cargoVersion?: string; host?: string; targets?: string[]; manifestSha256?: string;
+  toolchainProfile?: string; sdkVersion?: string;
 }
 export interface ComponentInventory {
   installed: ComponentVersion[]; available: ComponentVersion[]; activeId: string | null;

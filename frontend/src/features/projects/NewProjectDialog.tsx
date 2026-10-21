@@ -47,7 +47,7 @@ export function NewProjectDialog({ token, close, created }: {
   const module = options?.moduleTypes.find((value) => value.id === template);
   const languageOption = options?.languages.find((value) => value.id === language);
   const supported = !!languageOption?.available && !!module?.available && module.languages.includes(language);
-  const capability = options && !supported ? languageOption?.reason ?? 'This language and module type are not supported.' : '';
+  const capability = options && !supported ? languageOption?.reason ?? module?.reasons?.[language] ?? 'This language and module type are not supported.' : '';
 
   async function submit(event: FormEvent) {
     event.preventDefault();

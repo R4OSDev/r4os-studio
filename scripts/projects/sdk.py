@@ -11,6 +11,7 @@ import sys
 SUPPORTED = {
     '2fdc71e11d6a26fd1998dfddb43923f9d707abda': '03195b2a2e7461c72a4d0d6b645ae24319ba6315',
     '0508853ba75f4d6e8b7bbe8515fa63ed0d314da1': '95f762623e6ac2025e9a8aa781713c7c957629a8',
+    '41770f2c354e461a5663ad805b7b2955dab1d5a9': '95f762623e6ac2025e9a8aa781713c7c957629a8',
 }
 TYPES = [
     ('terminal', 'Terminal application', 'R4X', 'console', ['Zig', 'C']),
@@ -40,7 +41,8 @@ def profile(root, projects, pinned=None):
     sdk_id = defaults['sdk'].get('revision')
     contract_id = defaults['contract'].get('revision')
     zig_id = defaults['zig'].get('version')
-    if SUPPORTED.get(sdk_id) != contract_id or zig_id != '0.16.0':
+    rust_pair = (pinned or {}).get('rust') and sdk_id == '41770f2c354e461a5663ad805b7b2955dab1d5a9' and contract_id == '50a38becae5765e0f85f6af6713fc72e00583952'
+    if (SUPPORTED.get(sdk_id) != contract_id and not rust_pair) or zig_id != '0.16.0':
         raise ValueError('Select a verified SDK/Contract profile with Zig 0.16.0.')
     paths = {'sdk': root / 'SDK' / sdk_id, 'contract': root / 'Contract' / contract_id,
              'zig': root / 'Toolchains/Zig' / zig_id}
@@ -59,7 +61,7 @@ def profile(root, projects, pinned=None):
     pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig')
     if pins['zig']['binarySha256'] != '2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c':
         raise ValueError('Compiler version or checksum does not match the verified Linux x86_64 profile.')
-    if pinned and pins != pinned:
+    if pinned and pins != {key: value for key, value in pinned.items() if key != 'rust'}:
         raise ValueError('Pinned project components changed.')
     key = hashlib.sha256(json.dumps(pins, sort_keys=True).encode()).hexdigest()
     cache = projects / '.studio/tools' / key
@@ -87,27 +89,75 @@ def profile(root, projects, pinned=None):
             os.replace(temp, tool)
             marker.write_text(json.dumps({'sha256': digest(tool)}))
     revision = hashlib.sha256((key + ':templates-v1').encode()).hexdigest()
-    return {'pins': pins, 'revision': revision, 'paths': paths, 'cache': cache, 'env': env, 'tool': tool}
+    context = {'pins': pins, 'revision': revision, 'templateRevision': revision,
+               'paths': paths, 'cache': cache, 'env': env, 'tool': tool}
+    if sdk_id == '41770f2c354e461a5663ad805b7b2955dab1d5a9':
+        from rust_projects import local, prepare
+        from rust_sdk import SPEC
+        context['templateRevision'] = hashlib.sha256((key + ':templates-v2').encode()).hexdigest()
+        # Capabilities describe SDK support independently of the selected compiler.
+        prefix = root / 'Toolchains/Rust' / SPEC['id']
+        if (prefix / 'Tools/RustToolsProfile.json').is_file():
+            try:
+                exported = json.loads((prefix / 'Tools/RustToolsProfile.json').read_text())
+                if digest(prefix / 'Tools/RustToolsProfile.json') != SPEC['release']['devkit']['profile_sha256']:
+                    raise ValueError('The SDK Rust capability profile checksum changed.')
+                with (cache / 'lock').open('a') as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX)
+                    declared = prepare(context, {'prefix': prefix, 'profile': exported,
+                                                 'pin': {'toolProfileSha256': SPEC['release']['devkit']['profile_sha256']}})
+                    context['capabilities'] = declared['capabilities']
+            except (OSError, ValueError, KeyError):
+                context['rustError'] = 'The SDK Rust capability files could not be verified.'
+        try:
+            with (cache / 'lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                context['rust'] = prepare(context, local(root, defaults, sdk_id, (pinned or {}).get('rust')))
+        except (OSError, ValueError, KeyError) as error:
+            if (pinned or {}).get('rust'):
+                raise ValueError('Pinned project Rust tools changed.') from error
+            context.setdefault('rustError', str(error) if str(error).startswith(('Select the SDK', 'The SDK Rust', 'An SDK Rust', 'The selected')) else 'The SDK Rust toolchain is unavailable. Download it in Updates → Tools → Rust.')
+        if (pinned or {}).get('rust'):
+            context['pins']['rust'] = context['rust']['pin']
+            context['templateRevision'] = hashlib.sha256((json.dumps(context['pins'], sort_keys=True) + ':rust-templates-v2').encode()).hexdigest()
+        selection = context['rust']['pin'] if context.get('rust') else context.get('rustError')
+        context['revision'] = hashlib.sha256((context['templateRevision'] + json.dumps(selection, sort_keys=True)).encode()).hexdigest()
+    return context
 
 
 def options(context):
+    from rust_projects import combination
+    modules = []
+    for template in TYPES:
+        ident, label, kind, app_class, languages = template
+        match = combination(context, template)
+        modules.append({'id': ident, 'label': label, 'kind': kind, 'appClass': app_class,
+                        'languages': [*languages, *(['Rust'] if match and match['supported'] and match['qualified'] else [])],
+                        'available': True, 'reasons': {'Rust': match['reason'] if match else context.get('rustError', 'Rust projects require a compatible SDK.')}})
+    matches = [combination(context, value) for value in TYPES]
+    supported = any(v and v['supported'] for v in matches)
+    qualified = any(v and v['supported'] and v['qualified'] for v in matches)
+    ready = qualified and bool(context.get('rust'))
     return {'revision': context['revision'], 'profile': context['pins'],
-            'languages': [{'id': language, 'available': language != 'Rust',
-                           **({'reason': 'Rust projects require a compatible SDK.'} if language == 'Rust' else {})}
+            'languages': [{'id': language, 'available': language != 'Rust' or ready,
+                           **({'supported': supported, 'toolsAvailable': bool(context.get('rust')),
+                               'executionQualified': qualified,
+                               **({'reason': context.get('rustError', 'Rust projects require a compatible SDK.')} if not ready else {})} if language == 'Rust' else {})}
                           for language in ('Rust', 'Zig', 'C')],
-            'moduleTypes': [{'id': ident, 'label': label, 'kind': kind, 'appClass': app_class,
-                             'languages': languages, 'available': True}
-                            for ident, label, kind, app_class, languages in TYPES],
-            'vms': [], 'vmsAvailable': True}
+            'moduleTypes': modules, 'vms': [], 'vmsAvailable': True}
 
 
 def validate(context, directory):
-    run([context['tool'], 'validate', '--manifest', directory / 'module.R4MF'], context['env'])
-    catalog = json.loads(run([context['tool'], 'catalog', '--root', directory], context['env']))
+    if context.get('rust') and 'LANGUAGE=Rust' in (directory / 'module.R4MF').read_text():
+        tool = context['rust']['catalog']
+    else:
+        tool = context['tool']
+    run([tool, 'validate', '--manifest', directory / 'module.R4MF'], context['env'])
+    catalog = json.loads(run([tool, 'catalog', '--root', directory], context['env']))
     if len(catalog['entries']) != 1:
         raise ValueError('Expected one project manifest.')
-    plan = json.loads(run([context['tool'], 'plan', '--manifest', directory / 'module.R4MF'], context['env'])) if catalog['entries'][0]['kind'] == 'R4X' else None
-    contract_plan = run([context['tool'], 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if plan else None
+    plan = json.loads(run([tool, 'plan', '--manifest', directory / 'module.R4MF'], context['env'])) if catalog['entries'][0]['kind'] == 'R4X' else None
+    contract_plan = run([tool, 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if plan else None
     return {'catalog': catalog, 'plan': plan, 'contractPlan': contract_plan}
 
 

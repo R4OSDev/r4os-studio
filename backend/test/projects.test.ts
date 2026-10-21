@@ -78,7 +78,7 @@ await test('project creation is pinned and idempotent; settings preserve files a
       vmId: null, optionsRevision: options.revision, requestId: randomUUID(), guestFormats: [] };
     assert.equal((await app.inject({ method: 'POST', url: '/api/projects', payload })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/projects', headers, payload: { ...payload, path: '/tmp/foreign' } })).statusCode, 400);
-    assert.equal((await app.inject({ method: 'POST', url: '/api/projects', headers, payload: { ...payload, language: 'Rust' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/projects', headers, payload: { ...payload, language: 'Rust', template: 'driver' } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: '/api/projects', headers, payload: { ...payload, optionsRevision: 'a'.repeat(64) } })).statusCode, 409);
     const requests = await Promise.all([1, 2].map(() => app.inject({ method: 'POST', url: '/api/projects', headers, payload })));
     for (const value of requests) assert.equal(value.statusCode, 201, value.body);
@@ -88,7 +88,7 @@ await test('project creation is pinned and idempotent; settings preserve files a
     assert.equal((await app.inject({ method: 'POST', url: '/api/projects', headers, payload: { ...payload, name: 'Changed request' } })).statusCode, 409);
     const manifest = await readFile(join(directory, project.id, 'module.R4MF'), 'utf8');
     assert.match(manifest, /LANGUAGE=Zig/);
-    assert.equal(project.pins.sdk.revision, '2fdc71e11d6a26fd1998dfddb43923f9d707abda');
+    assert.equal(project.pins.sdk.revision, options.profile.sdk.revision);
     const updated = await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}`, headers,
       payload: { revision: project.revision, name: 'Renamed project', description: 'Updated' } });
     assert.equal(updated.statusCode, 200, updated.body);
@@ -142,4 +142,44 @@ with sqlite3.connect(sys.argv[1]) as db:
     await app.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+await test('Rust creation uses SDK capabilities and official templates; pins and Cargo lock survive retry and Settings',
+  { skip: (!existsSync(join(componentRoot(), 'Toolchains/Rust/sdk-0.64.66/.studio-component.json'))
+      || JSON.parse(await readFile(join(componentRoot(), 'Profiles/versions.json'), 'utf8')).defaults?.rust?.id !== 'sdk-0.64.66')
+      && 'Select the matched SDK Rust profile for this integration check.' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'studio-rust-create-'));
+  const directory = join(root, 'Projects');
+  const app = createApp({ projectDirectory: directory, providers: { directory: join(root, 'Providers') } });
+  try {
+    const session = await app.inject('/api/projects');
+    const headers = { cookie: String(session.headers['set-cookie']).split(';')[0], 'x-csrf-token': session.json().csrfToken };
+    const response = await app.inject({ url: '/api/projects/options', headers });
+    assert.equal(response.statusCode, 200, response.body);
+    const options = response.json();
+    assert.equal(options.languages.find((value: { id: string }) => value.id === 'Rust').available, true);
+    for (const type of ['terminal', 'desktop', 'service']) assert(options.moduleTypes.find((v: { id: string }) => v.id === type).languages.includes('Rust'));
+    for (const type of ['driver', 'protocol', 'library', 'subsystem']) assert(!options.moduleTypes.find((v: { id: string }) => v.id === type).languages.includes('Rust'));
+    const input = { name: 'Rust integration', description: 'Official SDK creator', language: 'Rust', template: 'terminal',
+      vmId: null, guestFormats: [], optionsRevision: options.revision, requestId: randomUUID() };
+    const created = await app.inject({ method: 'POST', url: '/api/projects', headers, payload: input });
+    assert.equal(created.statusCode, 201, created.body);
+    const project = created.json().project as Project;
+    assert.equal(project.pins.rust?.id, 'sdk-0.64.66');
+    assert.equal(project.pins.contract.revision, '50a38becae5765e0f85f6af6713fc72e00583952');
+    const manifest = await readFile(join(directory, project.id, 'module.R4MF'), 'utf8');
+    assert.match(manifest, /LANGUAGE=Rust/);
+    const lock = await readFile(join(directory, project.id, 'Cargo.lock'), 'utf8');
+    assert.match(lock, /r4os-sdk/);
+    assert.doesNotMatch(await readFile(join(directory, project.id, 'Build.ps1'), 'utf8'), /-ProjectPin/);
+    assert(!existsSync(join(directory, project.id, 'r4os-project.json')));
+    const retry = await app.inject({ method: 'POST', url: '/api/projects', headers, payload: input });
+    assert.equal(retry.json().project.id, project.id);
+    const saved = await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}`, headers,
+      payload: { revision: project.revision, name: 'Rust renamed' } });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.deepEqual(saved.json().project.pins, project.pins);
+    assert.equal(await readFile(join(directory, project.id, 'module.R4MF'), 'utf8'), manifest);
+    assert.equal(await readFile(join(directory, project.id, 'Cargo.lock'), 'utf8'), lock);
+  } finally { await app.close(); await rm(root, { recursive: true, force: true }); }
 });

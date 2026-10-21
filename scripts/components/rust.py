@@ -103,9 +103,18 @@ class Rust:
         for version in versions[:count]:
             manager.progress('Checking official Rust ' + version + '…')
             values.append(release(version))
+        from rust_sdk import record as sdk_record
+        sdk = sdk_record()
+        if any(value.get('revision') == sdk['sdkRevision'] for value in manager.installed('sdk')):
+            values.append(sdk)
         return {'versions': values, 'latestId': latest, 'hasMore': len(versions) > count}
 
     def install(self, manager, kind, record):
+        from rust_sdk import record as sdk_record, install as install_sdk
+        if record['id'] == sdk_record()['id']:
+            if record != sdk_record():
+                raise ValueError('The SDK Rust release profile changed.')
+            return install_sdk(manager)
         # Re-read the immutable release manifest before trusting saved catalog URLs.
         verified = release(record['version'])
         if verified != record:

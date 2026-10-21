@@ -50,7 +50,7 @@ export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind 
       {viewKind === 'c' && <p className="updates-help">C uses the C compiler included with Zig. Downloads and the active default are shared with Zig.</p>}
       {kind === 'sdk' && <p className="updates-help">Selecting an SDK also selects its required installed Contract and compiler. Existing project pins stay in place.</p>}
       {kind === 'codex' && <p className="updates-help">Only the latest Codex version is available to download. Previously installed versions remain selectable.</p>}
-      {kind === 'rust' && <p className="updates-help">Rust toolchains include Cargo and target components. Rust projects require a compatible R4OS SDK.</p>}
+      {kind === 'rust' && <p className="updates-help">SDK profiles include the required compiler and build tools. Choose the profile matching your SDK for Rust projects.</p>}
       {kind === 'r4os' && <p className="updates-help">The default is used for new virtual machines. Existing virtual machines keep their selected release.</p>}
       {!loaded && !error && <p role="status">Loading component versions…</p>}
       {status && !status.enabled && <p className="updates-alert">{status.message}</p>}
@@ -64,7 +64,7 @@ export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind 
         <label htmlFor={`default-${kind}`}>Active default</label>
         <select id={`default-${kind}`} value={selected} disabled={!status?.enabled || busy || !inventory?.installed.length} onChange={(event) => setSelection(event.target.value)}>
           {!inventory?.installed.length && <option value="">No installed versions</option>}
-          {inventory?.installed.map((value) => <option key={value.id} value={value.id}>{value.version}{value.revision ? ` · ${value.revision.slice(0, 8)}` : ''}{value.external ? ' · system installation' : ''}</option>)}
+          {inventory?.installed.map((value) => <option key={value.id} value={value.id}>{value.version}{value.sdkVersion ? ` · SDK ${value.sdkVersion}` : ''}{value.revision ? ` · ${value.revision.slice(0, 8)}` : ''}{value.external ? ' · system installation' : ''}</option>)}
         </select>
         <button type="button" disabled={!status?.enabled || busy || !selected || selected === inventory?.activeId} onClick={() => void action('default', selected)}>Use as default</button>
       </div>
@@ -73,7 +73,7 @@ export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind 
           const installed = inventory?.installed.some((local) => local.id === value.id);
           const downloadable = inventory?.available.some((remote) => remote.id === value.id) && (kind !== 'codex' || value.id === inventory?.latestId);
           return <div className="component-version" key={value.id}>
-            <div><strong>{value.version}</strong>{value.id === inventory?.latestId && <span className="component-label">Latest</span>}{value.id === inventory?.activeId && <span className="component-label">Default</span>}
+            <div><strong>{value.version}</strong>{value.sdkVersion && <span className="component-label">SDK {value.sdkVersion}</span>}{value.id === inventory?.latestId && <span className="component-label">Latest</span>}{value.id === inventory?.activeId && <span className="component-label">Default</span>}
               {value.revision && <small>{value.revision}</small>}
               {kind === 'rust' && value.cargoVersion && <small>Cargo {value.cargoVersion} · {value.targets?.join(', ')}</small>}
               {value.sha256 && <small>{value.external ? 'Binary' : kind === 'rust' ? 'Manifest' : kind === 'r4os' && installed ? 'Disk' : 'Archive'} SHA-256: {value.sha256}</small>}</div>

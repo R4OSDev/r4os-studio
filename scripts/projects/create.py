@@ -15,10 +15,8 @@ from templates import render, hashes
 
 
 def validate_input(data):
-    if data['language'] == 'Rust':
-        raise ProjectFault('Rust projects require a compatible SDK.', 400)
     template = next((value for value in TYPES if value[0] == data['template']), None)
-    if not template or data['language'] not in template[4]:
+    if not template or (data['language'] != 'Rust' and data['language'] not in template[4]):
         raise ProjectFault('This language and module type are not supported.', 400)
     if (data['template'] == 'subsystem') != bool(data.get('guestFormats')):
         raise ProjectFault('Guest formats are required only for a subsystem host.', 400)
@@ -78,7 +76,7 @@ def finish(db, projects, root, request):
             preserved = stage.with_name(stage.name + '.interrupted.' + str(uuid.uuid4()))
             publish(stage, preserved)
         context = profile(root, projects, project['pins'])
-        if document['input']['optionsRevision'] != context['revision']:
+        if document.get('templateRevision', document['input']['optionsRevision']) != context['templateRevision']:
             raise ProjectFault('The saved template revision is unavailable. All pending files were preserved.')
         render(context, stage, {**document['input'], 'id': project['id'], 'moduleName': project['moduleName']})
         sync_tree(stage)
@@ -116,6 +114,17 @@ def create(db, projects, root, data):
     context = profile(root, projects)
     if data['optionsRevision'] != context['revision']:
         raise ProjectFault('Project options changed. Reload the available options.')
+    if data['language'] == 'Rust':
+        from rust_projects import combination
+        if not context.get('rust'):
+            raise ProjectFault(context.get('rustError', 'Rust projects require a compatible SDK.'), 400)
+        template = next(value for value in TYPES if value[0] == data['template'])
+        match = combination(context, template)
+        if not match or not match['supported'] or not match['qualified']:
+            raise ProjectFault(match['reason'] if match else context.get('rustError', 'Rust projects require a compatible SDK.'), 400)
+        context['pins']['rust'] = context['rust']['pin']
+        context['pins']['contract'] = context['rust']['contractPin']
+        context['templateRevision'] = hashlib.sha256((json.dumps(context['pins'], sort_keys=True) + ':rust-templates-v2').encode()).hexdigest()
     check_vm(root, data['vmId'])
     identity = str(uuid.uuid4())
     prefix = re.sub('[^A-Z0-9]', '', data['name'].upper())[:16] or 'PROJECT'
@@ -128,7 +137,7 @@ def create(db, projects, root, data):
                    (identity, data['name'], data['description'], data['language'], data['template'], module_name,
                     data['vmId'], json.dumps(context['pins']), now, now))
         db.execute("INSERT INTO requests VALUES (?,?,?,'reserved',?,NULL)",
-                   (request_key, request_hash, identity, json.dumps({'input': data})))
+                   (request_key, request_hash, identity, json.dumps({'input': data, 'templateRevision': context['templateRevision']})))
     request = db.execute('SELECT * FROM requests WHERE request_key=?', (request_key,)).fetchone()
     return finish(db, projects, root, request)
 

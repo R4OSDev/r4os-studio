@@ -1,0 +1,69 @@
+{
+  "id": "sdk-0.64.66",
+  "version": "1.99.0",
+  "releaseUrl": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.66/SDK-Release.json",
+  "releaseSha256": "40accab516f820491f6a9d23881926659b27fa4af5cab2d0a8b4e829311adc71",
+  "release": {
+    "schema": 1,
+    "interface": "r4os-sdk-release",
+    "sdk": {
+      "package_version": "0.64.66",
+      "source_commit": "41770f2c354e461a5663ad805b7b2955dab1d5a9",
+      "source_url": "https://github.com/R4OSDev/r4os-sdk/tree/41770f2c354e461a5663ad805b7b2955dab1d5a9",
+      "rust_crate": {
+        "name": "r4os-sdk",
+        "version": "0.1.0"
+      },
+      "package": {
+        "file": "R4OS-SDK-0.64.66-source.tar.gz",
+        "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.66/R4OS-SDK-0.64.66-source.tar.gz",
+        "sha256": "6c51166b282cb9ff99153712a79326efc849a8507843342095d7ba4f77bf53eb",
+        "bytes": 8754920
+      }
+    },
+    "contract": {
+      "package_version": "0.64.41",
+      "source_commit": "50a38becae5765e0f85f6af6713fc72e00583952",
+      "source_url": "https://github.com/R4OSDev/r4os-contract/tree/50a38becae5765e0f85f6af6713fc72e00583952",
+      "binding_crate": {
+        "name": "r4os-contract",
+        "version": "0.1.0"
+      },
+      "package": {
+        "file": "R4OS-Contract-0.64.41-source.tar.gz",
+        "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.66/R4OS-Contract-0.64.41-source.tar.gz",
+        "sha256": "67420b4364f61375912c8203f8f6221daa1175804b1980a19b1fab29977a3068",
+        "bytes": 1748016
+      }
+    },
+    "devkit": {
+      "source_commit": "41f6b68ec9357d4866e32c2af3758f96ebf5377c",
+      "source_url": "https://github.com/R4OSDev/r4os-devkit/tree/41f6b68ec9357d4866e32c2af3758f96ebf5377c",
+      "exported_profile": "r4os-rust-tools-v1",
+      "profile_sha256": "a5d13da83757ae4d180cb298d15804c4e5512c7a93af806dbdac723be2279005",
+      "package": {
+        "file": "R4OS-Rust-Tools-0.64.66.tar.gz",
+        "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.66/R4OS-Rust-Tools-0.64.66.tar.gz",
+        "sha256": "c7f40ffd4ce83cb729e3fec09fb80d7ac42825f148b77d33d9cfca7045101353",
+        "bytes": 3665803
+      }
+    },
+    "capabilities": {
+      "schema": 2,
+      "interface": "r4os-sdk-capabilities",
+      "package": {
+        "file": "r4os-sdk-capabilities-v2.json",
+        "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.66/r4os-sdk-capabilities-v2.json",
+        "sha256": "1bcab726ac6cb542953f3f9914699c450b934aaa7bec465c59f90fd17925c751",
+        "bytes": 89483
+      },
+      "support_rows": 66,
+      "templates": 8
+    }
+  },
+  "powershell": {
+    "version": "7.6.7",
+    "url": "https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/powershell-7.6.7-linux-x64.tar.gz",
+    "sha256": "6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431"
+  }
+}

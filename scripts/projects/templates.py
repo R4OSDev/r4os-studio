@@ -112,8 +112,11 @@ def render(context, directory, project):
     if not re.fullmatch('[A-Z][A-Z0-9_]{0,30}', name):
         raise ValueError('Invalid technical module name.')
     template = next((value for value in TYPES if value[0] == project['template']), None)
-    if not template or project['language'] not in template[4]:
+    if not template or (project['language'] != 'Rust' and project['language'] not in template[4]):
         raise ValueError('This language and module type are not supported.')
+    if project['language'] == 'Rust':
+        from rust_projects import render as render_rust
+        return render_rust(context, directory, project, template)
     _, _, kind, app_class, _ = template
     directory.mkdir(parents=True, exist_ok=True)
     if kind == 'R4L':

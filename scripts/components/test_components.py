@@ -1,5 +1,6 @@
 """Focused checks for profile atomicity and the component service trust boundary."""
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,9 +10,36 @@ from common import safe_url
 from service import Manager, atomic
 from service import digest
 from rust import HOST, TARGET, manifest
+from rust_sdk import SPEC, install as install_sdk
 
 
 class ComponentTests(unittest.TestCase):
+    def test_interrupted_sdk_install_is_preserved_for_retry_and_foreign_directories_are_not_replaced(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / 'Toolchains/Rust' / SPEC['id']
+            target.mkdir(parents=True)
+            pending = {'schema': 1, 'owner': 'R4OS Studio', 'id': SPEC['id'], 'releaseSha256': SPEC['releaseSha256']}
+            atomic(target / '.studio-installing.json', pending)
+            (target / 'keep.txt').write_text('Preserve interrupted files')
+            manager = Manager(root)
+            raw = b'published manifest fixture'
+            with patch('rust_sdk.read_url', return_value=raw), patch.dict(SPEC, {'releaseSha256': hashlib.sha256(raw).hexdigest()}):
+                pending['releaseSha256'] = SPEC['releaseSha256']
+                atomic(target / '.studio-installing.json', pending)
+                with patch('rust_sdk.download', side_effect=ValueError('Network interrupted')):
+                    with self.assertRaisesRegex(ValueError, 'Network interrupted'):
+                        install_sdk(manager)
+                retained = list(target.parent.glob('.incomplete-*'))
+                self.assertEqual(len(retained), 1)
+                self.assertEqual((retained[0] / 'keep.txt').read_text(), 'Preserve interrupted files')
+                target.mkdir()
+                (target / 'foreign.txt').write_text('Existing data')
+                with self.assertRaisesRegex(ValueError, 'preserved'):
+                    install_sdk(manager)
+                self.assertEqual((target / 'foreign.txt').read_text(), 'Existing data')
+                self.assertNotIn('rust', manager.state['defaults'])
+
     def test_rust_manifest_checksum_is_required_before_any_archive_is_trusted(self):
         with patch('rust.read_url', side_effect=[b'altered manifest', b'0' * 64 + b'  channel.toml\n']):
             with self.assertRaisesRegex(ValueError, 'manifest SHA-256'):

@@ -141,9 +141,14 @@ class Manager:
                     if kind == 'zig':
                         record['binary'] = str(path / 'zig')
                     elif kind == 'rust':
-                        if not (path / 'bin/rustc').is_file() or not (path / 'bin/cargo').is_file() or not record.get('fileHashes'):
+                        if record.get('installationMethod') == 'r4os-sdk-profile':
+                            from rust_sdk import COMPILER
+                            binary = path / COMPILER
+                        else:
+                            binary = path / 'bin/rustc'
+                        if not binary.is_file() or not record.get('fileHashes'):
                             continue
-                        record['binary'] = str(path / 'bin/rustc')
+                        record['binary'] = str(binary)
                     elif kind in ('qemu', 'codex'):
                         binary = path / ('bin/qemu-system-x86_64' if kind == 'qemu' else 'codex')
                         if not binary.is_file():
@@ -239,7 +244,10 @@ class Manager:
             if not record:
                 raise ValueError('Only a complete local installation can be selected as default.')
             if kind == 'rust':
-                from rust import verify_installation
+                if record.get('installationMethod') == 'r4os-sdk-profile':
+                    from rust_sdk import verify as verify_installation
+                else:
+                    from rust import verify_installation
                 verify_installation(self.root / FOLDERS[kind] / identity, record)
             defaults = copy.deepcopy(self.state['defaults'])
             defaults[kind] = record

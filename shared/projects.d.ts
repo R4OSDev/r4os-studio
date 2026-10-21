@@ -14,12 +14,20 @@ export interface ProjectPins {
   sdk: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
   contract: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
   zig: { version: string; sha256: string; binarySha256: string; url: string };
+  rust?: { id: string; version: string; cargoVersion: string; sha256: string;
+    toolProfileSha256: string; binarySha256: string; cargoSha256: string; linkerSha256: string;
+    powershellSha256: string; installationSha256: string; sysrootSha256: string;
+    rustupVersion: string; powershellVersion: string; target: string; codegenProfile: string;
+    codegenSha256: string; cpuBaselineSha256: string;
+    release: { url: string; sha256: string; sdkRevision: string; contractRevision: string;
+      devkitRevision: string; capabilitiesSha256: string } };
 }
 export interface ProjectOptions {
   revision: string; profile: ProjectPins;
-  languages: { id: ProjectLanguage; available: boolean; reason?: string }[];
+  languages: { id: ProjectLanguage; available: boolean; reason?: string;
+    supported?: boolean; toolsAvailable?: boolean; executionQualified?: boolean }[];
   moduleTypes: { id: ProjectTemplate; label: string; kind: string; appClass: string | null;
-    languages: ProjectLanguage[]; available: boolean }[];
+    languages: ProjectLanguage[]; available: boolean; reasons?: Partial<Record<ProjectLanguage, string>> }[];
   vms: { id: string; name: string }[]; vmsAvailable: boolean;
 }
 
