@@ -112,6 +112,18 @@ def operation(db, request, root):
             raise ProjectFault('Project settings changed. Reload before saving.')
         value = {**old, **data}
         if value['vmId'] != old['vmId']:
+            # Build receipts survive assignment changes. Active guest work keeps
+            # its target until explicitly stopped; do not retarget a live job.
+            catalog_path = Path(db.execute('PRAGMA database_list').fetchone()[2]).parent
+            development = catalog_path / old['id'] / 'Development/Development.sqlite'
+            if development.exists():
+                if development.resolve(strict=True) != development: raise ProjectFault('Invalid development storage.', 503)
+                from urllib.parse import quote
+                jobs = sqlite3.connect('file:' + quote(str(development)) + '?mode=ro', uri=True, timeout=5)
+                try:
+                    if jobs.execute("SELECT id FROM jobs WHERE busy=1 AND kind IN ('deploy','execution') LIMIT 1").fetchone():
+                        raise ProjectFault('Stop this project\'s VM development job before changing its assigned VM.')
+                finally: jobs.close()
             check_vm(root, value['vmId'])
         if (value['name'], value['description'], value['vmId']) != (old['name'], old['description'], old['vmId']):
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()

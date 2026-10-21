@@ -231,4 +231,5 @@ class SshTransport:
             shutil.copyfile(path, self.access.directory(self.vm['id']) / 'known_hosts')
             record = self.access.record(self.vm['id']); record['hostKeyFingerprint'] = fingerprint
             save(self.access.directory(self.vm['id']) / 'access.json', record)
+            self.record['hostKeyFingerprint'] = fingerprint
         except (OSError, ValueError, IndexError): raise DevelopmentFault('The guest host-key receipt could not be confirmed.') from None

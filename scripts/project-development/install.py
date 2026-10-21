@@ -30,18 +30,21 @@ def main():
     # Compiler workers retain the stricter inaccessible VM mounts below.
     coordinator_common = common.replace('InaccessiblePaths=-' + quote(r4os / 'Instances') + '\n', '').replace('InaccessiblePaths=-/run/r4os-studio-vms\n', '')
     coordinator = '[Unit]\nDescription=R4OS Studio development coordinator\nAfter=network-online.target\n\n' + coordinator_common
-    coordinator += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py\nRuntimeDirectory=r4os-studio-development\nRuntimeDirectoryMode=0700\nRestart=on-failure\nMemoryMax=512M\nTasksMax=64\nTimeoutStopSec=25\n\n[Install]\nWantedBy=multi-user.target\n'
+    coordinator += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py\nRuntimeDirectory=r4os-studio-development\nRuntimeDirectoryMode=0700\nRuntimeDirectoryPreserve=restart\nRestart=on-failure\nMemoryMax=512M\nTasksMax=64\nTimeoutStopSec=25\n\n[Install]\nWantedBy=multi-user.target\n'
     worker = '[Unit]\nDescription=R4OS Studio development job %i\n\n' + common
     worker += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py %i\nExecStopPost=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py %i --finalize\nKillMode=mixed\nTimeoutStopSec=15\nMemoryMax=3G\nTasksMax=256\nCPUQuota=200%\nLimitFSIZE=268435456\nRuntimeMaxSec=660\nRestart=no\n'
     Path('/etc/systemd/system/r4os-studio-development.service').write_text(coordinator)
     Path('/etc/systemd/system/r4os-studio-development@.service').write_text(worker)
+    vm_worker = worker.replace('Description=R4OS Studio development job %i', 'Description=R4OS Studio VM development job %i')
+    vm_worker += 'ReadWritePaths=-/run/r4os-studio-development\n'
+    Path('/etc/systemd/system/r4os-studio-development-vm@.service').write_text(vm_worker)
     agent_dropin = Path('/etc/systemd/system/r4os-studio-agent@.service.d')
     agent_dropin.mkdir(exist_ok=True)
     (agent_dropin / '51-development.conf').write_text('[Service]\nReadWritePaths=-/run/r4os-studio-agents\n')
     Path('/etc/polkit-1/rules.d/53-r4os-studio-development.rules').write_text('''polkit.addRule(function(action, subject) {
   if (action.id !== "org.freedesktop.systemd1.manage-units" || subject.user !== "r4os-studio") return;
   var unit = action.lookup("unit"), verb = action.lookup("verb");
-  if ((verb === "start" || verb === "stop") && /^r4os-studio-development@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.service$/.test(unit)) return polkit.Result.YES;
+  if ((verb === "start" || verb === "stop") && /^r4os-studio-development(?:-vm)?@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.service$/.test(unit)) return polkit.Result.YES;
 });
 ''')
     dropin = Path('/etc/systemd/system/r4os-studio.service.d/51-development.conf')

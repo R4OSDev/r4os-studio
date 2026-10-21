@@ -1,5 +1,39 @@
 # R4OS Studio · App
 
+## Verified project deployment (0.3.21)
+
+Projects expose scoped deployment admission and receipts under
+`/api/projects/:id/development/deployments`. Input is an owned completed artifact,
+request UUID and project/settings revisions. The server resolves the assigned VM,
+checks exact component/image identities and requires configured development access.
+It may start that assigned VM; Network, image and other VM settings are preserved.
+Active VM jobs block project reassignment. Repeated requests keep their original job.
+
+A separate immutable-release VM worker retains a cross-process VM reservation and
+checks the current assignment/boot before guest effects. It builds the small
+versioned Studio helper using the pinned official SDK in a credential-free build
+namespace, then authenticates the guest and verifies its active release/kernel.
+The compiler cannot access VM sockets, disks or credentials. The VM worker has
+only the additional private development-runtime access required by SSH.
+
+Guest packages use owned short project/deployment directories and full UUID
+ownership receipts. SFTP creates new files only; complete byte readback verifies
+the app module, helper and package descriptor. Existing/foreign directories and
+files are preserved. Success requires a matching helper handshake and a durable
+deployment receipt containing source, manifest, package, pins, target and hashes.
+A deployment starts no project application. Lost transfer receipts remain unknown
+and are not replayed; Stop preserves partial guest files for inspection.
+
+The helper reports available process/file/service interfaces; console input and
+owned project execution follow in 0.3.22. SDK support and guest role qualification
+remain distinct. New agent calls and their controls follow in 0.3.24.
+
+Explicit host maintenance via scripts/project-development/install.py installs the
+narrow VM-job service and preserves the shared runtime directory on coordinator
+restart. Existing bootstrap, VM processes and independently pinned workers remain
+unchanged. Private deployment state adds a compatible table to schema 1; older
+build workers ignore it.
+
 ## Private VM development access (0.3.20)
 
 VM Settings includes Development access, explicit guest authentication and Check

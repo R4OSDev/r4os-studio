@@ -35,6 +35,14 @@ await test('development API binds project scope and protects build and stop', as
     assert.deepEqual(calls.at(-1), { operation: 'read_job', projectId: id, id: jobId, offset: 12 });
     assert.equal((await app.inject({ method: 'POST', url: url + `/jobs/${jobId}/stop`, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: url + `/jobs/${jobId}/stop`, headers })).statusCode, 200);
+    const deployment = { ...payload, requestId: randomUUID(), artifactId: randomUUID() };
+    assert.equal((await app.inject({ method: 'POST', url: url + '/deployments', payload: deployment })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/deployments', headers, payload: { ...deployment, vmId: randomUUID() } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/deployments', headers, payload: deployment })).statusCode, 202);
+    assert.deepEqual(calls.at(-1), { operation: 'deploy', projectId: id, input: deployment });
+    const deploymentId = randomUUID();
+    assert.equal((await app.inject({ method: 'GET', url: url + '/deployments/' + deploymentId, headers })).statusCode, 200);
+    assert.deepEqual(calls.at(-1), { operation: 'deployment', projectId: id, id: deploymentId });
   } finally {
     await app.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
     if (previous === undefined) delete process.env.STUDIO_DEVELOPMENT_SOCKET; else process.env.STUDIO_DEVELOPMENT_SOCKET = previous;

@@ -18,7 +18,9 @@ else:
     if meta['schema'] != 1 or meta['jobId'] != ident or any(meta[k] != cfg[k] for k in ('projects', 'r4os')):
         raise SystemExit('Invalid development worker binding.')
     if not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', meta['projectId']): raise SystemExit('Invalid project ID.')
-    release = Path(meta['releaseRoot']).resolve(strict=True); name = 'worker.py'; extra = [str(path)]
+    release = Path(meta['releaseRoot']).resolve(strict=True)
+    name = 'worker.py' if meta.get('kind', 'build') == 'build' else 'vm_worker.py'
+    extra = [str(path)]
     if len(sys.argv) > 2:
         if sys.argv[2:] != ['--finalize']: raise SystemExit('Unsupported worker operation.')
         extra.append('--finalize')

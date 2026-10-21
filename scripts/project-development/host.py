@@ -17,6 +17,10 @@ from profiles import eligible
 from store import ProjectFault, connect
 
 UNIT = 'r4os-studio-development@{}.service'
+VM_UNIT = 'r4os-studio-development-vm@{}.service'
+
+
+def job_unit(job_id, kind='build'): return (UNIT if kind == 'build' else VM_UNIT).format(identity(job_id))
 
 
 async def systemctl(*args):
@@ -37,8 +41,8 @@ class Host:
 
     def store(self, project_id): return Jobs(self.config['projects'], self.config['r4os'], project_id)
 
-    async def alive(self, job_id):
-        return await systemctl('show', UNIT.format(identity(job_id)), '--property=ActiveState', '--value') in ('active', 'activating', 'deactivating', 'reloading')
+    async def alive(self, job_id, kind='build'):
+        return await systemctl('show', job_unit(job_id, kind), '--property=ActiveState', '--value') in ('active', 'activating', 'deactivating', 'reloading')
 
     def metadata(self, path):
         if path.resolve(strict=True) != path.absolute(): raise ValueError('Invalid worker metadata.')
@@ -63,22 +67,22 @@ class Host:
             try:
                 for row in store.db.execute('SELECT id FROM jobs WHERE busy=1').fetchall():
                     meta = manifests.get(row['id'])
-                    if meta and meta['projectId'] == project_id and await self.alive(row['id']): self.active[row['id']] = meta
+                    if meta and meta['projectId'] == project_id and await self.alive(row['id'], meta.get('kind', 'build')): self.active[row['id']] = meta
                     else: store.update(row['id'], 'unknown', phase='recovery', error='The job ended without a confirmed result. It was not restarted.')
             finally: store.close()
         await self.refresh()
 
     async def refresh(self):
         for job_id, meta in list(self.active.items()):
-            if await self.alive(job_id): continue
+            if await self.alive(job_id, meta.get('kind', 'build')): continue
             store = self.store(meta['projectId'])
             try: store.update(job_id, 'unknown', phase='recovery', error='The worker ended without a confirmed result. It was not restarted.')
             finally: store.close()
             self.active.pop(job_id, None)
-        raw = await systemctl('list-units', '--all', '--state=active,activating,deactivating,reloading', '--plain', '--no-legend', '--no-pager', 'r4os-studio-development@*.service')
+        raw = await systemctl('list-units', '--all', '--state=active,activating,deactivating,reloading', '--plain', '--no-legend', '--no-pager', 'r4os-studio-development@*.service', 'r4os-studio-development-vm@*.service')
         units = set()
         for line in raw.splitlines():
-            match = re.match(r'^r4os-studio-development@([a-f0-9-]{36})\.service\s', line.strip())
+            match = re.match(r'^r4os-studio-development(?:-vm)?@([a-f0-9-]{36})\.service\s', line.strip())
             if match: units.add(identity(match[1]))
         self.unbound = units - set(self.active)
 
@@ -98,8 +102,15 @@ class Host:
         elif access and not access['available']: unavailable = {'available': False, 'reason': access['reason']}
         if project['vmId'] and not image:
             unavailable = {'available': False, 'reason': 'Assigned VM metadata is unavailable. Development host maintenance is required.'}
+        deploy = unavailable
+        if image and access and access['available']:
+            from access import image_profile
+            profile = image_profile(vm)
+            if hash_value(project['pins']) == hash_value(profile['components']['pinSets'].get(project['language'])):
+                deploy = {'available': True}
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
-            'build': {'available': True}, 'deploy': unavailable, 'execute': unavailable,
+            'build': {'available': True}, 'deploy': deploy, 'execute': {'available': False,
+                'reason': match.get('reason') or 'The guest execution adapter is not installed yet.'},
             'capture': unavailable, 'input': unavailable, 'profileId': match['profileId'],
             'qualification': match, 'transport': {'available': bool(access and access['available']),
                 'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},
@@ -115,14 +126,38 @@ class Host:
             if op == 'access_read': return self.access.public(vm_id)
             if op == 'access_save': return self.access.configure(vm_id, request['input'])
             return await self.access.check(vm_id)
+        if op == 'bind_target':
+            if set(request) != {'operation', 'projectId', 'jobId', 'leaseId', 'token', 'helperSha256'}:
+                raise DevelopmentFault('Invalid private target binding request.', 400)
+            from lease import inspect
+            from access import vm_config, image_profile
+            from vm_client import vm_call
+            from types import SimpleNamespace
+            lease = inspect(self.config['projects'], request['leaseId'], request['token'], check_boot=False)
+            if lease['pid'] != peer_pid or lease['scope'].get('projectId') != request['projectId']:
+                raise DevelopmentFault('The target reservation does not belong to this worker.', 403)
+            store = self.store(request['projectId'])
+            try:
+                job = store.get(request['jobId']); vm = vm_config(self.config['r4os'], lease['vmId'])
+                if job['kind'] != 'deploy' or job['state'] != 'running' or job['binding']['id'] != vm['id']:
+                    raise DevelopmentFault('This job has no active target admission.')
+                if not re.fullmatch('[a-f0-9]{64}', request['helperSha256']): raise DevelopmentFault('Invalid helper identity.', 400)
+                info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
+                if info['vm']['state'] != 'running': raise DevelopmentFault('The target VM is not running.')
+                boot = await self.boots.ensure(vm, info['invocationId']); profile = image_profile(vm)
+                target = {'vmId': vm['id'], 'vmRevision': vm['revision'], 'imageId': vm['imageId'],
+                    'imageSha256': vm['imageSha256'], 'bootId': boot['bootId'], 'profileId': profile['id'],
+                    'helperSha256': request['helperSha256'], 'helperProtocol': 1}
+                store.update(job['id'], target=target); return target
+            finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId'}
-        if op in ('read_job', 'stop_job', 'artifact'): allowed.add('id')
+        if op in ('read_job', 'stop_job', 'artifact', 'deployment'): allowed.add('id')
         if op == 'read_job': allowed.add('offset')
-        if op == 'build': allowed.update(('input', 'owner'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'build'):
+        if op in ('build', 'deploy'): allowed.update(('input', 'owner'))
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -131,14 +166,15 @@ class Host:
             if op == 'jobs': return store.list()
             if op == 'read_job': return store.page(request['id'], request.get('offset', 0))
             if op == 'artifact': return store.artifact(request['id'])
+            if op == 'deployment': return store.deployment(request['id'])
             async with self.lock:
                 await self.refresh()
                 if self.unbound: raise DevelopmentFault('A development worker has no confirmed binding. Restore host support.', 503)
                 if op == 'stop_job':
                     job_id = identity(request['id']); job = store.get(job_id)
-                    if job['state'] in ACTIVE or await self.alive(job_id):
+                    if job['state'] in ACTIVE or await self.alive(job_id, job['kind']):
                         store.update(job_id, 'stopping', phase='stopping')
-                        await systemctl('stop', UNIT.format(job_id))
+                        await systemctl('stop', job_unit(job_id, job['kind']))
                         store.update(job_id, 'interrupted', phase='stopped', error='Job stopped.')
                     self.active.pop(job_id, None); return store.get(job_id)
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
@@ -156,25 +192,36 @@ class Host:
                     finally: db.close()
                     if not row or not row[0] or row[1] == 'stopping' or json.loads(row[2] or '{}').get('pid') != peer_pid:
                         raise DevelopmentFault('This build is not delegated by the active workspace owner.', 403)
-                    if not json.loads(row[3])['permissions'].get('studio.build_project', False):
-                        raise DevelopmentFault('Project builds are disabled for this agent run.', 403)
+                    permission = 'studio.build_project' if op == 'build' else 'studio.deploy_project'
+                    if not json.loads(row[3])['permissions'].get(permission, False):
+                        raise DevelopmentFault('This development operation is disabled for this agent run.', 403)
                 if not previous:
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
-                    if not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
-                job, fresh = store.admit('build', request['input'], owner)
+                    if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
+                binding = None
+                if op == 'deploy' and not previous:
+                    from access import vm_config, image_profile
+                    from contracts import hash_value
+                    if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings before deploying.')
+                    binding = vm_config(self.config['r4os'], store.project['vmId']); profile = image_profile(binding)
+                    if hash_value(store.project['pins']) != hash_value(profile['components']['pinSets'].get(store.project['language'])):
+                        raise DevelopmentFault('This project component identity has not been qualified with the VM image.')
+                    status = self.access.public(binding['id'])
+                    if not status['available']: raise DevelopmentFault(status['reason'])
+                job, fresh = store.admit(op, request['input'], owner, binding)
                 if not fresh: return job
                 try:
-                    release = Path('/opt/r4os-studio/current').resolve(strict=True)
+                    release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                     if not release.is_relative_to('/opt/r4os-studio/releases'): raise DevelopmentFault('Invalid development release.', 503)
                     protocol(release); info = json.loads((release / 'release.json').read_text())
-                    meta = {'schema': 1, 'jobId': job['id'], 'projectId': store.id,
+                    meta = {'schema': 1, 'jobId': job['id'], 'projectId': store.id, 'kind': op,
                         'projects': self.config['projects'], 'r4os': self.config['r4os'],
                         'releaseRoot': str(release), 'release': info['id'], 'version': info['version']}
                     save(folder(self.root / job['id']) / 'worker.json', meta)
                     self.active[job['id']] = meta
-                    await systemctl('start', '--no-block', UNIT.format(job['id']))
+                    await systemctl('start', '--no-block', job_unit(job['id'], op))
                 except BaseException:
-                    try: alive = await self.alive(job['id'])
+                    try: alive = await self.alive(job['id'], op)
                     except Exception: alive = True
                     if not alive:
                         store.update(job['id'], 'failed', phase='failed', error='The development worker could not start.')

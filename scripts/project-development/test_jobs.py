@@ -8,7 +8,7 @@ import uuid
 from contracts import DevelopmentFault, encode, digest, hash_value
 from jobs import Jobs, now
 from snapshot import capture
-from store import connect
+from store import connect, operation as project_operation, ProjectFault
 from layout import save
 
 
@@ -84,12 +84,39 @@ class JobsTest(unittest.TestCase):
         save(root / 'artifact.json', record)
         with self.store.db: self.store.db.execute('INSERT INTO artifacts VALUES(?,?,?)', (artifact_id, job['id'], encode(record)))
         with self.assertRaises(DevelopmentFault): self.store.artifact(artifact_id)
+
         self.store.update(job['id'], 'completed', artifactId=artifact_id)
         self.assertEqual(self.store.artifact(artifact_id), record)
         binary.write_bytes(b'modified')
         with self.assertRaises(DevelopmentFault): self.store.artifact(artifact_id)
         binary.unlink()
         with self.assertRaises(DevelopmentFault): self.store.artifact(artifact_id)
+
+    def test_project_reassignment_waits_for_its_guest_job(self):
+        # Use a complete local receipt; the separate SDK tests qualify containers.
+        build, _ = self.store.admit('build', self.input()); artifact_id = str(uuid.uuid4())
+        root = self.store.root / 'Artifacts' / artifact_id; root.mkdir(parents=True)
+        binary = root / 'TEST.R4X'; binary.write_bytes(b'fixture'); save(root / 'build-proof.json', {'status': 'success'})
+        proof = root / 'build-proof.json'; files = [{'path': binary.name, 'bytes': 7, 'sha256': digest(binary)}]
+        record = {'id': artifact_id, 'buildId': build['id'], 'files': files, 'pins': {},
+            'packageSha256': hash_value(files), 'buildProof': {'bytes': proof.stat().st_size, 'sha256': digest(proof)}}
+        save(root / 'artifact.json', record)
+        with self.store.db: self.store.db.execute('INSERT INTO artifacts VALUES(?,?,?)', (artifact_id, build['id'], encode(record)))
+        self.store.update(build['id'], 'completed', artifactId=artifact_id)
+        deploy, _ = self.store.admit('deploy', {**self.input(), 'artifactId': artifact_id})
+        vm_id = str(uuid.uuid4()); path = self.root / 'R4OS/Instances' / vm_id; path.mkdir(parents=True)
+        save(path / 'vm.json', {'id': vm_id})
+        db = connect(self.root)
+        try:
+            with self.assertRaises(ProjectFault):
+                project_operation(db, {'operation': 'update', 'id': self.id, 'input': {'revision': 1, 'vmId': vm_id}}, self.root / 'R4OS')
+        finally: db.rollback(); db.close()
+        self.store.update(deploy['id'], 'failed')
+        db = connect(self.root)
+        try:
+            result = project_operation(db, {'operation': 'update', 'id': self.id, 'input': {'revision': 1, 'vmId': vm_id}}, self.root / 'R4OS')
+            self.assertEqual(result['vmId'], vm_id)
+        finally: db.close()
 
 
 if __name__ == '__main__': unittest.main()

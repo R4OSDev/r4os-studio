@@ -59,6 +59,9 @@ class Jobs:
                 self.db.execute('INSERT INTO settings VALUES(1,?)', (encode({'revision': 1,
                     'arguments': '', 'workingDirectory': '.', 'timeoutSeconds': 60,
                     'expectedExitCode': 0, 'outputContains': [], 'visualCriteria': ''}),))
+        # Additive schema-1 extension: earlier build workers ignore this table.
+        with self.db:
+            self.db.execute('CREATE TABLE IF NOT EXISTS deployments(id TEXT PRIMARY KEY, job_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
 
     def close(self): self.db.close()
     def settings(self): return json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0])
@@ -74,9 +77,10 @@ class Jobs:
             if value.get('source'): value['source'] = {k: v for k, v in value['source'].items() if k not in ('files', 'directories')}
         return values
 
-    def admit(self, kind, request, owner=None):
-        if kind != 'build': raise DevelopmentFault('This development operation is not available.', 400)
-        if set(request) != {'requestId', 'projectRevision', 'settingsRevision'}:
+    def admit(self, kind, request, owner=None, binding=None):
+        if kind not in ('build', 'deploy'): raise DevelopmentFault('This development operation is not available.', 400)
+        expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else set())
+        if set(request) != expected:
             raise DevelopmentFault('Unexpected development fields.', 400)
         identity(request['requestId'])
         if any(type(request[k]) != int or request[k] < 1 for k in ('projectRevision', 'settingsRevision')):
@@ -93,12 +97,16 @@ class Jobs:
                 raise DevelopmentFault('Project or Run & Test settings changed. Reload before starting.')
             if self.db.execute('SELECT id FROM jobs WHERE busy=1').fetchone():
                 raise DevelopmentFault('This project already has an active development job.')
+            artifact = self.artifact(request['artifactId']) if kind == 'deploy' else None
+            if artifact and artifact.get('pins') != self.project['pins']:
+                raise DevelopmentFault('The artifact pins differ from the current project identity.')
             job = {'id': str(uuid.uuid4()), 'projectId': self.id, 'kind': kind, 'state': 'queued',
-                'revision': 1, **owner, 'artifactId': None, 'deploymentId': None,
+                'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
                 'phase': 'queued', 'check': None, 'createdAt': now(), 'completedAt': None,
                 'source': None, 'projectRevision': self.project['revision'],
-                'settingsRevision': self.settings()['revision'], 'pins': self.project['pins']}
+                'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
+                'settings': self.settings()}
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))
             self.db.commit(); return job, True
@@ -167,6 +175,19 @@ class Jobs:
         with self.db:
             self.db.execute('INSERT INTO artifacts VALUES(?,?,?)', (record['id'], job_id, encode(record)))
         return self.update(job_id, 'completed', phase='completed', artifactId=record['id'], exitCode=0)
+
+    def publish_deployment(self, job_id, record):
+        with self.db: self.db.execute('INSERT INTO deployments VALUES(?,?,?)', (record['id'], job_id, encode(record)))
+        return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], exitCode=0)
+
+    def deployment(self, deployment_id):
+        row = self.db.execute('SELECT payload FROM deployments WHERE id=?', (identity(deployment_id),)).fetchone()
+        if not row: raise DevelopmentFault('Deployment not found.', 404)
+        value = json.loads(row[0]); job = self.get(value['jobId'])
+        if job['state'] != 'completed' or job['deploymentId'] != deployment_id:
+            raise DevelopmentFault('The deployment has no completed verification receipt.')
+        self.artifact(value['artifactId'])
+        return value
 
     def evidence(self, job_id): return folder(self.root / 'Evidence' / identity(job_id))
 

@@ -20,6 +20,11 @@ class DevelopmentFault(Exception):
         self.code = code
 
 
+class UnconfirmedGuestEffect(DevelopmentFault):
+    """A command may have reached the guest; never replay it automatically."""
+    uncertain = True
+
+
 def identity(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', value):
         raise DevelopmentFault('Invalid development identity.', 400)

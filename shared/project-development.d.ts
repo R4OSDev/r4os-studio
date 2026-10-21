@@ -56,6 +56,14 @@ export interface DevelopmentTarget {
   helperSha256: string;
   helperProtocol: number;
 }
+export interface DevelopmentDeployment {
+  id: string; projectId: string; jobId: string; artifactId: string;
+  packageSha256: string; sourceSha256: string; manifestSha256: string;
+  target: DevelopmentTarget; role: ProjectTemplate; kind: DevelopmentArtifact['kind'];
+  guestDirectory: string; entry: string; helper: string; helperSourceSha256: string;
+  files: { path: string; bytes: number; sha256: string; fullReadbackVerified: boolean }[];
+  pins: ProjectPins; createdAt: string;
+}
 export interface GuestProcessIdentity {
   instanceId: number;
   /** Decimal string: R4OS generations are u64, beyond JavaScript integer precision. */
