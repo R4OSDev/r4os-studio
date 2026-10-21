@@ -1,6 +1,6 @@
 # R4OS Studio · App
 
-## Projects, sessions and agent runs (0.3.15)
+## Projects, sessions and agent runs (0.3.16)
 
 Projects store their immutable UUID and SDK/Contract/compiler pins in
 `Data/Projects/Projects.sqlite`. Sources, manifests and build outputs live in
@@ -576,3 +576,12 @@ native thread; an advertised disabled tool still receives a host denial and caus
 no execution. Explicit provider/model changes use that connected provider's
 nonsecret model metadata and original credential store while preserving native
 conversation state. Codex binary/profile pins are unchanged by settings edits.
+
+
+0.3.16 supplies read-only public Unix identity records in the tool namespace so
+isolated PowerShell/.NET and the official Rust build driver can start. The
+credential/session/VM isolation and network policy are unchanged. Rust R4X builds
+were verified with explicit pinned SDK/Contract/tools/install/cache/output roots.
+Terminal text limits count its encoded JSON representation, including control
+bytes; history pages also have a byte budget so long source/tool transcripts stay
+loadable through the bounded helper. Existing schema/protocols and pins remain 1.

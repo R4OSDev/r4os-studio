@@ -43,6 +43,11 @@ class Sandbox:
                  '--dir', '/home', '--dir', '/home/studio', '--dir', '/etc',
                  '--bind', str(self.worker.store.workspace), '/workspace',
                  '--bind', str(self.cache), '/cache', '--ro-bind', str(self.context['cache'] / 'global/p'), '/packages']
+        # PowerShell/.NET resolve the current Unix identity during startup.
+        # These public OS records are read-only; shadow, auth and host homes
+        # remain absent from the namespace.
+        for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
+            if Path(path).exists(): args += ['--ro-bind', path, path]
         for name, path in self.context['paths'].items():
             args += ['--ro-bind', str(path), '/' + name]
         if self.context.get('rust'):

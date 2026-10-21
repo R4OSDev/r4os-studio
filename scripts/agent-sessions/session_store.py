@@ -224,7 +224,12 @@ PRAGMA user_version=1;
         self.db.execute('BEGIN')
         rows = self.db.execute('SELECT rowid,* FROM items WHERE session_id=? AND rowid < ? ORDER BY rowid DESC LIMIT ?',
                                (session_id, before or 9223372036854775807, limit + 1)).fetchall()
-        more = len(rows) > limit; rows = rows[:limit]
+        batch = []; size = 0
+        for row in rows[:limit]:
+            next_size = len(row['payload'].encode())
+            if batch and size + next_size > 512*1024: break
+            batch.append(row); size += next_size
+        more = len(rows) > len(batch); rows = batch
         cursor = rows[-1]['rowid'] if more else None
         event_cursor = self.db.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]
         self.db.commit()

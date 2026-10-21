@@ -12,6 +12,18 @@ from run_store import event, item
 from session_store import encode
 
 
+def bounded_text(value, budget, tail=False):
+    """Bound the actual JSON representation, including escaped control bytes."""
+    if len(encode(value).encode()) <= budget: return value, False
+    low, high = 0, len(value)
+    while low < high:
+        middle = (low+high+1)//2
+        candidate = value[-middle:] if tail else value[:middle]
+        if len(encode(candidate).encode()) <= budget: low = middle
+        else: high = middle-1
+    return (value[-low:] if tail and low else value[:low]), True
+
+
 class Process:
     def __init__(self, manager, ident, proc, master, cmd):
         self.manager = manager; self.id = ident; self.proc = proc; self.master = master
@@ -30,17 +42,17 @@ class Process:
         if not text: return
         self.bytes += len(text.encode())
         self.pending += text
-        if len(self.pending.encode()) > 60000:
-            self.pending = self.pending.encode()[-60000:].decode('utf8', 'ignore'); self.dropped = True
+        self.pending, clipped = bounded_text(self.pending, 60000, True)
+        self.dropped = self.dropped or clipped
         visible = self.value['output']
-        remaining = max(0, 120000-len(visible.encode()))
+        remaining = max(0, 120000-len(encode(visible).encode()))
         if remaining:
-            delta = text.encode()[:remaining].decode('utf8', 'ignore'); self.value['output'] += delta
+            delta, clipped = bounded_text(text, remaining+2); self.value['output'] += delta
             w = self.manager.worker
             w.store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
                                (w.session_id, w.run_id, self.value['id'], encode(self.value)))
             event(w.store, w.session_id, w.run_id, 'delta', {'itemId': self.value['id'], 'text': delta, 'field': 'output'})
-        if len(text.encode()) > remaining: self.value['truncated'] = True
+        if len(encode(text).encode()) > remaining+2: self.value['truncated'] = True
         self.changed.set()
         if self.bytes > 2*1024*1024 and self.reason is None:
             self.reason = 'outputLimit'; asyncio.create_task(self.terminate('outputLimit'))

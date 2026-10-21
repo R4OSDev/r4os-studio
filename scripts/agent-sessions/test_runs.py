@@ -8,7 +8,7 @@ import unittest
 import uuid
 
 from session_store import SessionStore, TOOL_IDS, encode
-from run_store import admit, get_run, transition, events
+from run_store import admit, get_run, transition, events, item
 from store import connect, ProjectFault
 from worker import Worker
 
@@ -60,6 +60,18 @@ class Runs(unittest.TestCase):
             result, fresh = admit(s, self.sid, self.data, self.providers)
             self.assertFalse(fresh); self.assertEqual(result['state'], 'interrupted')
             self.assertEqual(len(s.history(self.sid)['items']), 1)
+
+    def test_large_history_is_byte_paginated_without_gaps(self):
+        with self.open() as s:
+            run, _ = admit(s, self.sid, self.data, self.providers)
+            for i in range(5):
+                item(s, self.sid, run['id'], {'id': 'large-' + str(i), 'runId': run['id'], 'type': 'assistant', 'text': 'x'*180000, 'status': 'completed'})
+            page = s.history(self.sid); pages = [page]; self.assertLess(len(page['items']), 5)
+            while page['before']:
+                page = s.history(self.sid, page['before']); pages.append(page)
+            values = [i['id'] for page in reversed(pages) for i in page['items']]
+            self.assertEqual(values, ['user-' + self.data['requestId']] + ['large-' + str(i) for i in range(5)])
+            self.assertTrue(all(len(encode(page).encode()) < 530000 for page in pages))
 
     def test_tool_denial_and_unconfirmed_receipt_never_execute(self):
         with self.open() as s:

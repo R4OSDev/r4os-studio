@@ -6,7 +6,8 @@ import unittest
 import uuid
 from test_runs import Runs
 from run_store import admit
-from terminal import Terminals
+from terminal import Terminals, bounded_text
+from session_store import encode
 
 
 class Box:
@@ -17,6 +18,16 @@ class Box:
         for path in ('/usr', '/lib', '/lib64'):
             if Path(path).exists(): args += ['--ro-bind', path, path]
         return args + ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--chdir', '/tmp', '--clearenv', '--setenv', 'PATH', '/usr/bin', *command]
+
+
+class TextBounds(unittest.TestCase):
+    def test_unicode_and_control_output_bound_actual_encoded_size(self):
+        for value in ('\x01'*100000, '🦀\n'*100000):
+            for tail in (False, True):
+                text, clipped = bounded_text(value, 60000, tail)
+                self.assertTrue(clipped); self.assertLessEqual(len(encode(text).encode()), 60000)
+                self.assertTrue(value.endswith(text) if tail else value.startswith(text))
+        self.assertEqual(bounded_text('small', 60000), ('small', False))
 
 
 @unittest.skipIf(os.getuid() == 0, 'Run this namespace test as an unprivileged user.')
