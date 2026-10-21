@@ -52,8 +52,12 @@ def profile(root, projects, pinned=None):
         record = json.loads(marker.read_text())
         if not re.fullmatch('[a-f0-9]{64}', record.get('sha256', '')):
             raise ValueError('Missing component checksum.')
-        pins[kind] = {key: record[key] for key in ('version', 'revision', 'sha256', 'zigPackageHash', 'url') if key in record}
+        pins[kind] = {key: record[key] for key in ('version', 'revision', 'sha256', 'url') if key in record}
+        if kind != 'zig':
+            pins[kind]['zigPackageHash'] = record.get('zigPackageHash') or record.get('packageHash')
     pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig')
+    if pins['zig']['binarySha256'] != '2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c':
+        raise ValueError('Compiler version or checksum does not match the verified Linux x86_64 profile.')
     if pinned and pins != pinned:
         raise ValueError('Pinned project components changed.')
     key = hashlib.sha256(json.dumps(pins, sort_keys=True).encode()).hexdigest()
@@ -81,7 +85,8 @@ def profile(root, projects, pinned=None):
                  '-femit-bin=' + str(temp)], env)
             os.replace(temp, tool)
             marker.write_text(json.dumps({'sha256': digest(tool)}))
-    return {'pins': pins, 'revision': key, 'paths': paths, 'cache': cache, 'env': env, 'tool': tool}
+    revision = hashlib.sha256((key + ':templates-v1').encode()).hexdigest()
+    return {'pins': pins, 'revision': revision, 'paths': paths, 'cache': cache, 'env': env, 'tool': tool}
 
 
 def options(context):
@@ -90,7 +95,7 @@ def options(context):
                            **({'reason': 'Rust projects require a compatible SDK.'} if language == 'Rust' else {})}
                           for language in ('Rust', 'Zig', 'C')],
             'moduleTypes': [{'id': ident, 'label': label, 'kind': kind, 'appClass': app_class,
-                             'languages': languages, 'available': False}
+                             'languages': languages, 'available': True}
                             for ident, label, kind, app_class, languages in TYPES],
             'vms': [], 'vmsAvailable': True}
 
@@ -112,6 +117,12 @@ def main():
     context = profile(root, projects, request.get('pins'))
     if request['operation'] == 'options':
         result = options(context)
+    elif request['operation'] == 'render':
+        from templates import render
+        directory = Path(request['directory'])
+        if not directory.is_relative_to(projects / '.studio/staging'):
+            raise ValueError('Invalid project staging path.')
+        result = render(context, directory, request['project'])
     elif request['operation'] == 'validate':
         directory = Path(request['directory'])
         if directory.resolve(strict=True) != directory.absolute() or not directory.is_relative_to(projects):
