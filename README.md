@@ -490,3 +490,21 @@ On this host, `ProtectKernelTunables` prevents rootless Bubblewrap's private pro
 mount and `RestrictSUIDSGID` filters `open_tree`. The agent installer omits those
 two incompatible systemd filters; empty capabilities, NoNewPrivileges, read-only
 host mounts and the inner mount/PID/network namespaces enforce execution scope.
+
+0.3.12 adds run-owned terminal tools with pipes or PTY, input/EOF, output polling,
+explicit termination and real exit/signal/timeout states. Handles are opaque and
+expire with the run. Up to four concurrent processes and 32 handles per run;
+default command timeout two minutes, maximum ten. Output is bounded and marked
+when clipped. Commands run without network in their own PID namespace, with only
+the project workspace writable and pinned components readable. A private run
+cache supplies checked offline SDK packages; it contains no conversation/auth
+state. Terminal processes also produce durable live transcript items. Run end,
+Stop, process timeout and worker-unit cgroup termination clean their descendants.
+The user Stop action remains available independently of tool permissions.
+
+For Zig/C, `zig build` uses the pinned `/zig` compiler and checked offline SDK
+packages. Rust projects additionally expose their pinned installation at `/rust`
+and a private checked tools copy at `/tools`; call the official build driver with
+explicit `/sdk`, `/contract`, `/tools`, `/rust/Install`, `/cache` and workspace
+output roots. Shared SDK/toolchain files stay read-only. No general deploy or
+R4OS guest execution API is implied by terminal support.

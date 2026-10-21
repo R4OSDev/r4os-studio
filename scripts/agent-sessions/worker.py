@@ -14,6 +14,7 @@ from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
 from tool_catalog import specifications, validate_arguments
 from sandbox import Sandbox
+from terminal import Terminals
 
 
 class Worker:
@@ -26,6 +27,7 @@ class Worker:
         self.done = asyncio.Event(); self.stopping = False; self.outcome = 'unknown'; self.error = None
         self.items = {}; self.lease = None
         self.sandbox = Sandbox(self)
+        self.terminals = Terminals(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
@@ -78,6 +80,8 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in ('exec_command', 'write_stdin', 'terminate_process'):
+            return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
             return await self.sandbox.file(name, arguments)
         return {'success': False, 'error': 'unavailable', 'output': 'This tool is not available in this Studio release.'}
@@ -135,6 +139,7 @@ class Worker:
 
     async def cleanup(self):
         if self.client: await self.client.close()
+        await self.terminals.close()
 
     async def run(self):
         if not self.row['busy']: return
