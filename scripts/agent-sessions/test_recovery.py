@@ -66,6 +66,35 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
             await self.host.check_unbound()
             self.assertIn(rid, self.host.unbound)
 
+    async def test_lost_start_reply_uses_native_events_and_never_submits_twice(self):
+        f = self.fixture
+        for mode in ('completed-without-started', 'started-then-completed', 'unconfirmed'):
+            rid = self.admit(); calls = []
+            worker = Worker({**self.config, 'projectId': f.pid, 'runId': rid, 'release': 'fixture', 'version': '0.3.17'})
+            worker.config['engine'] = {'version': '0.163.0'}
+            class Native:
+                def __init__(self, args, notify, tool): self.notify = notify
+                async def start(self): pass
+                async def close(self): pass
+                async def request(self, method, params, **kwargs):
+                    calls.append(method)
+                    if method.startswith('thread/'): return {'thread': {'id': 'native-thread'}}
+                    if method == 'turn/start':
+                        complete = {'threadId': 'native-thread', 'turn': {'id': 'native-turn', 'status': 'completed'}}
+                        if mode == 'completed-without-started': await self.notify('turn/completed', complete)
+                        if mode == 'started-then-completed':
+                            await self.notify('turn/started', {'threadId': 'native-thread', 'turn': {'id': 'native-turn'}})
+                            asyncio.get_running_loop().call_later(.01, lambda: asyncio.create_task(self.notify('turn/completed', complete)))
+                        raise asyncio.TimeoutError('The RPC response was lost')
+                    return {}
+            with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
+            self.assertEqual(calls.count('turn/start'), 1)
+            with f.open() as store:
+                row = get_run(store, rid)
+                self.assertEqual(row['state'], 'unknown' if mode == 'unconfirmed' else 'completed')
+                self.assertEqual(row['busy'], 0)
+                if mode != 'unconfirmed': self.assertIsNone(row['error']); self.assertEqual(row['turn_id'], 'native-turn')
+
     async def test_unconfirmed_native_call_is_not_replayed_in_another_run(self):
         rid = self.admit(); f = self.fixture
         args = {'path': 'receipt.txt', 'content': 'one', 'expectedSha256': None}

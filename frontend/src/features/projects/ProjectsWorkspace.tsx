@@ -82,7 +82,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>
         {current.section === 'Settings' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
           id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload} />}
-        {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} /> : <p className="session-empty">Select a session or create one.</p>)}
+        {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} dirtyChanged={setDirty} busyChanged={setSaving} /> : <p className="session-empty">Select a session or create one.</p>)}
       </>}
     </main>
     {newProject && <NewProjectDialog token={api.token} close={() => setNewProject(false)} created={async (project) => {

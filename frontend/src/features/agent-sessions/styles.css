@@ -55,3 +55,19 @@
 .agent-permission input:checked + .agent-switch::after { transform:translateX(15px); background:#22132f; }
 .agent-permission input:focus-visible + .agent-switch { outline:2px solid #d1a6f8; outline-offset:3px; }
 .agent-permission:has(input:disabled) { opacity:.5; }
+.agent-code-block { min-width:0; margin:10px 0; border:1px solid #3b2d49; border-radius:7px; overflow:hidden; background:#15101c; }
+.agent-code-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:7px 11px; color:#a99ab9; font-size:10px; white-space:normal; }
+.agent-copy { padding:4px 9px; border:1px solid #57416a; border-radius:4px; background:#30223d; color:#d8b9f5; font-size:10px; }
+.agent-code-block pre { margin:0; padding:12px 14px; max-height:350px; overflow:auto; border-top:1px solid #33283e; white-space:pre; font-size:11px; line-height:1.7; }
+.agent-code-block code { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+.agent-tool .agent-code-block { margin:0; border:0; border-radius:0; border-top:1px solid #33283e; }
+.agent-tool .agent-code-block pre { white-space:pre; overflow-wrap:normal; }
+.agent-markdown { white-space:normal; }
+.agent-markdown p { margin:0 0 12px; }
+.agent-markdown h1,.agent-markdown h2,.agent-markdown h3 { font-size:1.15em; margin:18px 0 10px; }
+.agent-markdown ul,.agent-markdown ol { padding-left:24px; margin:10px 0; }
+.agent-markdown blockquote { margin:12px 0; padding-left:15px; border-left:2px solid #785796; color:#b8a9c7; }
+.agent-markdown a { color:#d4adff; overflow-wrap:anywhere; }
+.agent-markdown :not(pre)>code { padding:2px 5px; border-radius:3px; background:#33243f; color:#e0c8f6; font-size:.92em; }
+.agent-markdown .agent-code-block pre { line-height:1.7; }
+.agent-terminal-hint { color:#ac9bbb; font-size:11px; line-height:1.6; margin:12px 0 0; }

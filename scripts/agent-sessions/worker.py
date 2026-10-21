@@ -15,7 +15,7 @@ from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
 from tool_catalog import specifications, validate_arguments
 from sandbox import Sandbox
-from terminal import Terminals
+from terminal import Terminals, bounded_text
 
 
 class Worker:
@@ -27,6 +27,7 @@ class Worker:
         self.client = None; self.turn_id = None; self.thread_id = None
         self.done = asyncio.Event(); self.stopping = False; self.outcome = 'unknown'; self.error = None
         self.turn_requested = False
+        self.uncertain_effect = False
         self.items = {}; self.lease = None
         self.sandbox = Sandbox(self)
         self.terminals = Terminals(self)
@@ -37,8 +38,9 @@ class Worker:
             self.turn_id = params['turn']['id']
             transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
         elif method == 'turn/completed':
+            self.turn_id = params['turn']['id']
             status = params['turn']['status']
-            self.outcome = {'completed': 'completed', 'failed': 'failed', 'interrupted': 'interrupted'}.get(status, 'unknown')
+            self.outcome = 'unknown' if self.uncertain_effect else {'completed': 'completed', 'failed': 'failed', 'interrupted': 'interrupted'}.get(status, 'unknown')
             if self.outcome == 'failed': self.error = self.error or 'The agent run failed.'
             self.done.set()
         elif method == 'studio/processExited':
@@ -95,6 +97,13 @@ class Worker:
             return await self.sandbox.file(name, arguments)
         return {'success': False, 'error': 'unavailable', 'output': 'This tool is not available in this Studio release.'}
 
+    def unconfirmed(self):
+        if self.uncertain_effect: return
+        self.uncertain_effect = True; self.stopping = True; self.outcome = 'unknown'
+        self.error = 'A tool result is unconfirmed. Inspect possible partial changes before sending a follow-up.'
+        transition(self.store, self.run_id, 'stopping', self.error)
+        asyncio.create_task(self.stop())
+
     async def tool(self, params):
         def output(result):
             return {'success': result['success'], 'contentItems': [{'type': 'inputText', 'text': encode(result)}]}
@@ -113,27 +122,47 @@ class Worker:
         if previous:
             if previous['arguments_hash'] != hashed:
                 return output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
-            if previous['result']: return output(json.loads(previous['result']))
-            return output({'success': False, 'error': 'unknown', 'output': 'The previous tool outcome is unconfirmed; it was not repeated.'})
+            if previous['result']:
+                result = json.loads(previous['result'])
+                if result.get('error') != 'unknown': return output(result)
+            result = {'success': False, 'error': 'unknown', 'output': 'The previous tool outcome is unconfirmed; it was not repeated.', 'partialChangesPossible': True}
+            self.unconfirmed()
+            value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': name.replace('studio_', 'studio.', 1),
+                     'arguments': arguments, 'status': 'unknown', 'output': result['output'], 'error': 'unknown', 'partialChangesPossible': True}
+            self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
+            return output(result)
         with self.store.db:
+            self.store.db.execute('BEGIN IMMEDIATE')
+            row = get_run(self.store, self.run_id)
+            admission_closed = self.stopping or not row['busy'] or row['state'] == 'stopping'
             self.store.db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,NULL)',
                                   (self.run_id, call_id, name, hashed, 'intent', encode(arguments)))
         tool_id = name.replace('studio_', 'studio.', 1)
-        if self.stopping or not get_run(self.store, self.run_id)['busy']:
+        if admission_closed:
             result = {'success': False, 'error': 'interrupted', 'output': 'The run is stopping.'}
         elif not self.config['permissions'].get(tool_id, False):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
         else:
             try: result = await self.execute(name[7:], arguments, call_id)
-            except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.'}
-            except Exception: result = {'success': False, 'error': 'failed', 'output': 'The project tool could not complete.'}
+            except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
+            except Exception:
+                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process')
+                result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The project tool could not confirm its result.',
+                          **({'partialChangesPossible': True} if uncertain else {})}
+        if result.get('error') == 'unknown':
+            self.unconfirmed()
         with self.store.db:
             self.store.db.execute('UPDATE tools SET state=?,result=? WHERE run_id=? AND call_id=?',
-                                  ('completed' if result['success'] else 'failed', encode(result), self.run_id, call_id))
+                                  ('completed' if result['success'] else ('unknown' if result.get('error') == 'unknown' else 'failed'), encode(result), self.run_id, call_id))
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
-                 'status': 'completed' if result['success'] else ('denied' if result.get('error') == 'disabled' else 'failed'),
+                 'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        if 'exitCode' in result: value['exitCode'] = result['exitCode']
+        for key in ('exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'partialChangesPossible', 'files'):
+            if key in result: value[key] = result[key]
+        value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
+        base_size = len(encode({**value, 'output': ''}).encode())
+        value['output'], clipped = bounded_text(str(value['output']), max(2, 261000-base_size))
+        value['truncated'] = value['truncated'] or clipped
         self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
         return output(result)
 
@@ -143,7 +172,7 @@ class Worker:
             try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
             except Exception: pass
         if not self.done.is_set():
-            if self.outcome not in ('completed', 'failed'): self.outcome = 'interrupted'
+            if self.outcome not in ('completed', 'failed'): self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
             self.done.set()
 
     async def cleanup(self):
@@ -180,12 +209,20 @@ class Worker:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
             if self.stopping: self.outcome = 'interrupted'; return
             self.turn_requested = True
-            result = await self.client.request('turn/start', {'threadId': self.thread_id,
-                         'clientUserMessageId': self.row['request_id'], 'input': [{'type': 'text', 'text': request_text(self.store, self.run_id)}],
-                         'model': self.config['model'], 'effort': self.config['effort']})
-            self.turn_id = result['turn']['id']
-            if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
-                                                   worker={'release': self.manifest['release'], 'pid': os.getpid(), 'profile': profile})
+            try:
+                result = await self.client.request('turn/start', {'threadId': self.thread_id,
+                             'clientUserMessageId': self.row['request_id'], 'input': [{'type': 'text', 'text': request_text(self.store, self.run_id)}],
+                             'model': self.config['model'], 'effort': self.config['effort']})
+                self.turn_id = result['turn']['id']
+                if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
+                                                       worker={'release': self.manifest['release'], 'pid': os.getpid(), 'profile': profile})
+            except asyncio.TimeoutError:
+                # A missing RPC reply does not negate a native started/completed
+                # event. Continue observing this one turn; never send it again.
+                if not self.turn_id and not self.done.is_set():
+                    self.uncertain_effect = True; self.outcome = 'unknown'
+                    self.error = 'The run start was not confirmed. It was not submitted again.'
+                    await self.stop()
             await asyncio.wait_for(self.done.wait(), timeout=1800)
         except asyncio.TimeoutError:
             self.error = 'The agent run reached the host time limit.'; await self.stop()
@@ -197,7 +234,7 @@ class Worker:
             await self.cleanup()
             if self.lease: self.lease.close()
             reconcile_items(self.store, self.run_id, self.outcome)
-            transition(self.store, self.run_id, self.outcome, self.error)
+            transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)
             self.store.close()
 
 

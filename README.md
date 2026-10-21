@@ -600,3 +600,23 @@ were removed; shared components/defaults, provider stores and VM instances remai
 The existing OpenAI Main provider returned HTTP 401 and needs sign-in; OpenAI Work
 was used successfully. No host reboot, guest execution or deploy capability is
 claimed by these agent tests. Roadmap 14 / 0.3.X retains all 51 completed tasks.
+
+0.3.17 completes the requirement-by-requirement roadmap audit: CommonMark/code
+transcripts use pinned `react-markdown` 10.1.0 (needed for the planned Markdown/code
+view); raw HTML and automatic message-image requests are disabled. Copy actions
+for code, arguments and results support the HTTP LAN through a user-gesture
+clipboard fallback. Display/copy removes ANSI/OSC control sequences. Source:
+https://github.com/remarkjs/react-markdown .
+
+Unsaved Session settings are guarded on close, Escape, navigation and browser
+reload; explicit Cancel discards the draft without changing saved values. Tools
+contains the required short reminder that terminal commands can change workspace
+files. Paginated/truncated file and search results, skipped files and possible
+partial patch changes are carried through to their tool cards.
+
+Tool admission now observes the durable stopping state in the same transaction
+as its intent, including the interval before SIGTERM delivery. Unconfirmed
+mutating I/O results stop the run as unknown, preserve possible effects and close
+further admission; they cannot silently continue with another automatic call.
+A lost turn/start RPC reply is reconciled with native started/completed events,
+without resubmitting the turn or reporting a false timeout after confirmed end.

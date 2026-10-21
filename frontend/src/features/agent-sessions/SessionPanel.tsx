@@ -4,6 +4,7 @@ import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } 
 import { projectRequest, projectRequestId, ProjectRequestError, sessionPath, busyRun, toolLabels } from './api';
 import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
+import { CodeBlock, MessageText } from './Transcript';
 
 type Pending = { requestId: string; revision: number; text: string };
 function readPending(key: string): Pending | null {
@@ -14,8 +15,9 @@ function merge(previous: SessionItem[], value: SessionItem) {
   return previous.some((p) => itemKey(p) === itemKey(value)) ? previous.map((p) => itemKey(p) === itemKey(value) ? value : p) : [...previous, value];
 }
 
-export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth }: {
+export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth, dirtyChanged, busyChanged }: {
   projectId: string; sessionId: string; token: string; changed: () => void; refreshAuth: () => Promise<void>;
+  dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
 }) {
   const base = sessionPath(projectId, sessionId), pendingKey = 'studio.session.run.' + sessionId, draftKey = 'studio.session.draft.' + sessionId;
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
@@ -114,11 +116,17 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
       {items.map((i) => i.type === 'tool' || i.type === 'terminal' ? <details key={itemKey(i)} className={`agent-tool ${i.status ?? ''}`}>
         <summary><span>{i.type === 'terminal' ? 'Terminal' : toolLabels[i.tool ?? ''] ?? 'Tool call'}</span><span className="agent-tool-status">{i.status}</span></summary>
-        <pre className="agent-arguments">{JSON.stringify(i.arguments, null, 2)}</pre>
-        {i.output && <pre>{i.output}</pre>}{i.truncated === true && <p>Output truncated.</p>}
+        <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />
+        {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
+        {typeof i.nextLine === 'number' && <p>More lines available from line {i.nextLine}.</p>}
+        {typeof i.lineTruncated === 'number' && <p>Line {i.lineTruncated} exceeds the output limit.</p>}
+        {typeof i.nextOffset === 'number' && <p>More entries available from offset {i.nextOffset}.</p>}
+        {typeof i.skippedFiles === 'number' && i.skippedFiles > 0 && <p>{i.skippedFiles} files were not searched.</p>}
+        {i.partialChangesPossible === true && <p>Partial changes may remain.</p>}
+        {i.files != null && typeof i.files === 'object' && <CodeBlock text={JSON.stringify(i.files, null, 2)} label="Copy changed files" language="Files" />}
         {i.exitCode != null && <p>Exit code {i.exitCode}</p>}{i.error && <p>{i.error}</p>}
       </details> : <article key={itemKey(i)} className={`agent-message ${i.type}`}>
-        {i.type !== 'notice' && <div className="agent-message-role">{i.type === 'user' ? 'You' : 'Agent'}</div>}<div className="agent-message-text">{i.text}</div>
+        {i.type !== 'notice' && <div className="agent-message-role">{i.type === 'user' ? 'You' : 'Agent'}</div>}<MessageText text={i.text ?? ''} markdown={i.type === 'assistant'} />
       </article>)}
     </div>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
@@ -130,6 +138,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <div className="agent-compose-actions">{active && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
         <button className="agent-send" disabled={sending || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
     </form>
-    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
+    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;
 }

@@ -73,6 +73,67 @@ class Runs(unittest.TestCase):
             self.assertEqual(values, ['user-' + self.data['requestId']] + ['large-' + str(i) for i in range(5)])
             self.assertTrue(all(len(encode(page).encode()) < 530000 for page in pages))
 
+    def test_stop_commit_closes_tool_admission_before_signal_delivery(self):
+        with self.open() as store:
+            run, _ = admit(store, self.sid, self.data, self.providers)
+        worker = Worker({'projects': str(self.projects), 'r4os': str(self.r4os), 'projectId': self.pid, 'runId': run['id']})
+        worker.thread_id = 'thread'; worker.turn_id = 'turn'; calls = []
+        async def execute(*args): calls.append(args); return {'success': True, 'output': 'unexpected'}
+        worker.execute = execute
+        with self.open() as store: transition(store, run['id'], 'stopping')
+        self.assertFalse(worker.stopping)  # SIGTERM has not arrived in this process.
+        params = {'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_write_file', 'callId': 'after-stop',
+                  'arguments': {'path': 'not-created.txt', 'content': 'must not execute', 'expectedSha256': None}}
+        try:
+            result = asyncio.run(worker.tool(params))
+            self.assertFalse(result['success']); self.assertIn('interrupted', result['contentItems'][0]['text'])
+            self.assertEqual(calls, [])
+            receipt = worker.store.db.execute("SELECT result FROM tools WHERE call_id='after-stop'").fetchone()[0]
+            self.assertEqual(json.loads(receipt)['error'], 'interrupted')
+        finally: worker.store.close()
+
+    def test_mutating_io_failure_preserves_effect_and_closes_following_calls(self):
+        with self.open() as store:
+            run, _ = admit(store, self.sid, self.data, self.providers)
+        worker = Worker({'projects': str(self.projects), 'r4os': str(self.r4os), 'projectId': self.pid, 'runId': run['id']})
+        worker.thread_id = 'thread'; worker.turn_id = 'turn'; calls = []
+        file = worker.store.workspace/'effect.txt'
+        async def execute(*args):
+            calls.append(args); file.write_text('one effect'); raise OSError('fsync failed after publication')
+        worker.execute = execute
+        params = {'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_write_file', 'callId': 'uncertain',
+                  'arguments': {'path': 'effect.txt', 'content': 'one effect', 'expectedSha256': None}}
+        async def scenario():
+            result = await worker.tool(params); self.assertFalse(result['success'])
+            self.assertEqual(json.loads(result['contentItems'][0]['text'])['error'], 'unknown')
+            later = await worker.tool({**params, 'callId': 'automatic-retry'})
+            self.assertEqual(json.loads(later['contentItems'][0]['text'])['error'], 'interrupted')
+            self.assertEqual(len(calls), 1); self.assertEqual(file.read_text(), 'one effect')
+            await asyncio.sleep(0)
+            self.assertEqual(worker.outcome, 'unknown'); self.assertTrue(worker.done.is_set())
+            self.assertEqual(worker.store.db.execute("SELECT state FROM tools WHERE call_id='uncertain'").fetchone()[0], 'unknown')
+        try: asyncio.run(scenario())
+        finally: worker.store.close()
+
+    def test_tool_projection_preserves_partial_results_and_bounds_escaped_output(self):
+        with self.open() as store:
+            run, _ = admit(store, self.sid, self.data, self.providers)
+        worker = Worker({'projects': str(self.projects), 'r4os': str(self.r4os), 'projectId': self.pid, 'runId': run['id']})
+        worker.thread_id = 'thread'; worker.turn_id = 'turn'
+        async def execute(*args):
+            return {'success': False, 'error': 'patchFailed', 'output': '\x01'*50000, 'partialChangesPossible': True,
+                    'files': {'changed.c': 'a'*64}, 'nextLine': 12, 'truncated': True}
+        worker.execute = execute
+        params = {'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_apply_patch', 'callId': 'partial',
+                  'arguments': {'patch': '*** Begin Patch\n*** End Patch', 'expectedHashes': {}}}
+        try:
+            result = asyncio.run(worker.tool(params)); self.assertFalse(result['success'])
+            value = next(i for i in worker.store.history(self.sid)['items'] if i['id']=='partial')
+            self.assertTrue(value['partialChangesPossible']); self.assertTrue(value['truncated'])
+            self.assertEqual(value['files'], {'changed.c': 'a'*64}); self.assertEqual(value['nextLine'], 12)
+            self.assertLess(len(encode(value).encode()), 262144)
+        finally: worker.store.close()
+
     def test_tool_denial_and_unconfirmed_receipt_never_execute(self):
         with self.open() as s:
             run, _ = admit(s, self.sid, self.data, self.providers)

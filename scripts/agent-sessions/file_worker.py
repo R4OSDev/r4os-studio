@@ -34,7 +34,9 @@ def parent(root, path, create=False):
     try:
         for name in names[:-1]:
             if create:
-                try: os.mkdir(name, 0o755, dir_fd=fd)
+                try:
+                    os.mkdir(name, 0o755, dir_fd=fd)
+                    os.fsync(fd)
                 except FileExistsError: pass
             child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             os.close(fd); fd = child
@@ -105,7 +107,7 @@ def patch(root, args):
     for path in dict.fromkeys(targets):
         try: changed[path] = sha(read(root, path)[0])
         except FileNotFoundError: changed[path] = None
-        except OSError: changed[path] = 'unavailable'
+        except (OSError, Fault): changed[path] = 'unavailable'
     return {'success': result.returncode == 0, 'output': (result.stdout+result.stderr).decode('utf8', 'replace')[:24000],
             'files': changed, **({'error': 'patchFailed', 'partialChangesPossible': True} if result.returncode else {})}
 
@@ -116,9 +118,22 @@ def execute(tool, args):
         if tool == 'read_file':
             data, _ = read(root, args['path']); lines = data.decode('utf8').splitlines()
             start = args.get('startLine', 1); selected = lines[start-1:start-1+args.get('maxLines', 200)]
-            output = '\n'.join(f'{i}: {s}' for i, s in enumerate(selected, start))
-            truncated = len(output.encode()) > 60000
-            return {'success': True, 'output': output.encode()[:60000].decode('utf8', 'ignore'), 'sha256': sha(data), 'totalLines': len(lines), 'truncated': truncated}
+            rendered = []; used = 0; next_line = None; line_truncated = None
+            for index, line in enumerate(selected, start):
+                raw = f'{index}: {line}'.encode()
+                if used + len(raw) + bool(rendered) > 60000:
+                    if rendered: next_line = index
+                    else:
+                        rendered.append(raw[:60000].decode('utf8', 'ignore')); line_truncated = index
+                        next_line = index+1 if index < len(lines) else None
+                    break
+                rendered.append(raw.decode()); used += len(raw) + (len(rendered)>1)
+            else:
+                end = start+len(selected)
+                next_line = end if end <= len(lines) else None
+            return {'success': True, 'output': '\n'.join(rendered), 'sha256': sha(data), 'totalLines': len(lines),
+                    'truncated': next_line is not None or line_truncated is not None, 'nextLine': next_line,
+                    'lineTruncated': line_truncated}
         if tool == 'list_directory':
             fd = directory(root, args['path'])
             try:
@@ -131,7 +146,7 @@ def execute(tool, args):
                 return {'success': True, 'output': json.dumps(values, ensure_ascii=False), 'nextOffset': offset+100 if offset+100 < len(names) else None}
             finally: os.close(fd)
         if tool == 'search':
-            query = args['query']; results = []; scanned = 0; used = 0; truncated = False
+            query = args['query']; results = []; scanned = 0; used = 0; truncated = False; skipped = 0
             base = args.get('path', '.'); fd = directory(root, base); os.close(fd)
             stack = [base]
             while stack and len(results) < 100 and scanned < 2000 and used < 8*1024*1024:
@@ -142,7 +157,9 @@ def execute(tool, args):
                     for name in names:
                         path = relative.rstrip('/') + '/' + name; info = os.stat(name, dir_fd=fd, follow_symlinks=False)
                         if stat.S_ISDIR(info.st_mode):
-                            if name not in ('.git', '.studio-cache', '.zig-cache', 'target', 'node_modules') and len(stack) < 2000: stack.append(path)
+                            if name not in ('.git', '.studio-cache', '.zig-cache', 'target', 'node_modules'):
+                                if len(stack) < 2000: stack.append(path)
+                                else: truncated = True
                         elif stat.S_ISREG(info.st_mode):
                             scanned += 1
                             if args.get('filenames'):
@@ -153,10 +170,11 @@ def execute(tool, args):
                                     for index, line in enumerate(content.decode('utf8').splitlines(), 1):
                                         if query in line: results.append({'path': path, 'line': index, 'text': line[:500]})
                                         if len(results) >= 100: break
-                                except (UnicodeError, OSError, Fault): pass
+                                except (UnicodeError, OSError, Fault): skipped += 1
+                            else: skipped += 1
                         if len(results) >= 100 or scanned >= 2000 or used >= 8*1024*1024: truncated = True; break
                 finally: os.close(fd)
-            return {'success': True, 'output': json.dumps(results, ensure_ascii=False), 'truncated': truncated or bool(stack)}
+            return {'success': True, 'output': json.dumps(results, ensure_ascii=False), 'truncated': truncated or bool(stack) or bool(skipped), 'skippedFiles': skipped}
         if root_name != 'workspace': raise Fault('This component root is read-only.')
         if tool == 'write_file':
             content = args['content'].encode()
@@ -189,10 +207,17 @@ def execute(tool, args):
     finally: os.close(root)
 
 
+def failure(tool, error):
+    uncertain = tool in ('write_file', 'apply_patch', 'create_directory') and isinstance(error, (OSError, subprocess.SubprocessError))
+    return {'success': False, 'error': 'unknown' if uncertain else 'fileError', 'output': str(error)[:1000],
+            **({'partialChangesPossible': True} if uncertain else {})}
+
+
 if __name__ == '__main__':
+    value = {}
     try:
         value = json.load(sys.stdin)
         result = execute(value['tool'], value['arguments'])
     except (Fault, UnicodeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as e:
-        result = {'success': False, 'error': 'fileError', 'output': str(e)[:1000]}
+        result = failure(value.get('tool'), e)
     print(json.dumps(result, ensure_ascii=False))

@@ -5,12 +5,24 @@ import { ProjectField } from '../projects/ProjectField';
 import { projectRequest, sessionPath, busyRun, toolLabels } from './api';
 
 const tools = Object.keys(toolLabels) as AgentToolId[];
-export function SessionSettings({ session, token, projectId, close, saved }: {
+const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, tools.map((id) => s.permissions[id])]);
+export function SessionSettings({ session, token, projectId, close, saved, dirtyChanged, busyChanged }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
+  dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
 }) {
   const [draft, setDraft] = useState(session), [options, setOptions] = useState<SessionOptions | null>(null);
+  const [baseline, setBaseline] = useState(session);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false), [reloading, setReloading] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null), [tab, setTab] = useState<'General' | 'Tools'>('General');
+  const dirty = editable(draft) !== editable(baseline);
+  useEffect(() => { dirtyChanged(dirty); return () => dirtyChanged(false); }, [dirty, dirtyChanged]);
+  useEffect(() => { busyChanged(saving || reloading); return () => busyChanged(false); }, [saving, reloading, busyChanged]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  const requestClose = () => { if (!saving && (!dirty || window.confirm('Discard unsaved session settings?'))) close(); };
   useEffect(() => {
     const element = dialog.current!, opener = document.activeElement; element.showModal();
     return () => { element.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
@@ -37,13 +49,13 @@ export function SessionSettings({ session, token, projectId, close, saved }: {
   async function reload() {
     if (!window.confirm('Reload saved settings and discard these changes?')) return;
     setReloading(true);
-    try { const r = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id)); setDraft(r.session); setError(''); }
+    try { const r = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id)); setDraft(r.session); setBaseline(r.session); setError(''); }
     catch (e) { setError((e as Error).message); }
     finally { setReloading(false); }
   }
-  return <dialog className="project-dialog agent-settings-dialog" ref={dialog} aria-labelledby="session-settings-title" onCancel={(e) => { e.preventDefault(); if (!saving) close(); }}>
+  return <dialog className="project-dialog agent-settings-dialog" ref={dialog} aria-labelledby="session-settings-title" onCancel={(e) => { e.preventDefault(); requestClose(); }}>
     <form onSubmit={(e) => void submit(e)}>
-      <header className="project-dialog-header"><h2 id="session-settings-title">Session settings</h2><button type="button" className="project-close" aria-label="Close" disabled={saving} onClick={close}>×</button></header>
+      <header className="project-dialog-header"><h2 id="session-settings-title">Session settings</h2><button type="button" className="project-close" aria-label="Close" disabled={saving} onClick={requestClose}>×</button></header>
       <div className="agent-settings-tabs" role="tablist" aria-label="Session settings sections">{(['General', 'Tools'] as const).map((name) => <button type="button" key={name} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`session-settings-${name}`} className={tab === name ? 'selected' : ''} onClick={() => setTab(name)} onKeyDown={(e) => {
         if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); const next = e.key === 'Home' ? 'General' : e.key === 'End' ? 'Tools' : tab === 'General' ? 'Tools' : 'General'; setTab(next); const buttons = e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button'); buttons?.[next === 'General' ? 0 : 1].focus(); }
       }}>{name}</button>)}</div>
@@ -61,7 +73,7 @@ export function SessionSettings({ session, token, projectId, close, saved }: {
         </> : <div className="agent-permissions">{(['Files', 'Terminal'] as const).map((group) => <fieldset key={group}><legend>{group}</legend>
           {tools.filter((id) => ['studio.exec_command', 'studio.write_stdin', 'studio.terminate_process'].includes(id) === (group === 'Terminal')).map((id) => <label key={id} className="agent-permission">
             <span>{toolLabels[id]}</span><input type="checkbox" role="switch" aria-label={toolLabels[id]} checked={draft.permissions[id]} onChange={(e) => patch({ permissions: { ...draft.permissions, [id]: e.target.checked } })} /><span className="agent-switch" aria-hidden="true" />
-          </label>)}</fieldset>)}</div>}
+          </label>)}{group === 'Terminal' && <p className="agent-terminal-hint">Terminal commands can read and change files in this workspace.</p>}</fieldset>)}</div>}
       </fieldset>
       {busyRun(draft.latestRun?.state) && <p className="project-dialog-error">Stop the current run before saving settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
