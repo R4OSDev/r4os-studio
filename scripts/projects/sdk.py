@@ -53,6 +53,7 @@ def profile(root, projects, pinned=None):
         if not re.fullmatch('[a-f0-9]{64}', record.get('sha256', '')):
             raise ValueError('Missing component checksum.')
         pins[kind] = {key: record[key] for key in ('version', 'revision', 'sha256', 'url') if key in record}
+        pins[kind]['url'] = record.get('url') or record['archiveUrl']
         if kind != 'zig':
             pins[kind]['zigPackageHash'] = record.get('zigPackageHash') or record.get('packageHash')
     pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig')

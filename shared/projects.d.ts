@@ -22,3 +22,15 @@ export interface ProjectOptions {
     languages: ProjectLanguage[]; available: boolean }[];
   vms: { id: string; name: string }[]; vmsAvailable: boolean;
 }
+
+export interface ProjectInput {
+  name: string; description: string; language: ProjectLanguage; template: ProjectTemplate;
+  vmId: string | null; optionsRevision: string; requestId: string; guestFormats: string[];
+}
+export interface Project extends ProjectSummary {
+  description: string; language: ProjectLanguage; template: ProjectTemplate; moduleName: string;
+  vmId: string | null; pins: ProjectPins; revision: number; createdAt: string; updatedAt: string;
+}
+export interface ProjectUpdate {
+  revision: number; name?: string; description?: string; vmId?: string | null;
+}

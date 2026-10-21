@@ -15,22 +15,26 @@ export class ProjectError extends Error {
   constructor(message: string, public statusCode = 503) { super(message); }
 }
 
-export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' = 'store'): Promise<T> {
+export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' | 'create' = 'store'): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL(`../../../../scripts/projects/${helper}.py`, import.meta.url)), directory, componentRoot()],
-      { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
+      { detached: true, stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
     let output = '', settled = false;
+    const terminate = () => {
+      try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); }
+      catch { child.kill('SIGKILL'); }
+    };
     const finish = (error?: Error, result?: T) => {
       if (settled) return;
       settled = true; clearTimeout(timer);
       if (error) reject(error); else resolve(result!);
     };
-    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new ProjectError('Project service did not respond.')); }, helper === 'sdk' ? 180_000 : 10_000);
+    const timer = setTimeout(() => { terminate(); finish(new ProjectError('Project service did not respond.')); }, helper === 'store' ? 10_000 : 180_000);
     child.on('error', () => finish(new ProjectError('Project storage is unavailable.')));
     child.stdin.on('error', () => { /* Process exit is handled below. */ });
     child.stdout.on('data', (chunk) => {
       output += chunk.toString();
-      if (output.length > 2 * 1024 * 1024) { child.kill('SIGKILL'); finish(new ProjectError('Project inventory is too large.')); }
+      if (output.length > 2 * 1024 * 1024) { terminate(); finish(new ProjectError('Project inventory is too large.')); }
     });
     child.on('close', () => {
       try {

@@ -1,5 +1,11 @@
 # R4OS Studio · App
 
+## Project creation and Settings API (0.3.4)
+
+The session/CSRF-protected `POST /api/projects` creates a pinned project with a server-generated immutable UUID. A durable SQLite request reserves its identity and inputs, generated files are validated in private staging, synchronized and hashed, then published with Linux `renameat2(RENAME_NOREPLACE)`. Only ready entries appear in the list. Startup and a repeated request resume interrupted work, including publication before the final DB commit. Reusing a request ID with different data is rejected. Changed/foreign files and interrupted staging are retained for review. Completed retries keep the original project identity and pins even if defaults change.
+
+`GET/PATCH /api/projects/:id` reads or updates Name, Description and VM reference with a project revision. Stale saves fail; metadata saves never move the directory or rewrite manifests, technical names or pins. `GET /api/projects/vms` supplies read-only VM choices independently of SDK availability. VM references can be assigned, changed or removed; unavailable references remain visible. Creation/settings never start, stop, deploy to or change a VM. The browser workflow follows in 0.3.5.
+
 ## Standalone project templates (0.3.3)
 
 The SDK adapter now generates complete module skeletons: Zig/C Terminal, Desktop, Service, Runtime library and Subsystem host; Zig Driver and Protocol module. Each offered combination is checked with the official parser and a real minimal artifact build for both supported SDK/Contract profiles. This verifies build/container correctness, not guest behavior. Rust and pure C driver/protocol templates remain unavailable.
@@ -22,7 +28,7 @@ For managed deployments run `python3 scripts/install-project-support.py` as root
 
 ## Geplant: Projekterstellung (Roadmap 0.3.X)
 
-Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Die Roadmap umfasst sieben Unterversionen mit 25 Aufgaben für SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. SQLite-Katalog, SDK-Adapter und Vorlagen sind umgesetzt; die Create-/Settings-API und die Oberfläche folgen in den nächsten Unterversionen.
+Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Die Roadmap umfasst sieben Unterversionen mit 25 Aufgaben für SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. SQLite-Katalog, SDK-Adapter, Vorlagen und Create-/Settings-API sind umgesetzt; die Browseroberfläche folgt in 0.3.5.
 
 Studio-Metadaten sollen zentral in `Data/Projects/Projects.sqlite` liegen; jeder Projektordner erhält eine unveränderliche serverseitige UUID. Anzeigename, Beschreibung, Sprache, VM-ID und Profilpins bleiben außerhalb des einzelnen Projektordners. Das erzeugte `module.R4MF` bleibt die R4OS-Buildwahrheit im Projekt. Der bestehende Node-20-Host benötigt dafür kein implizites Upgrade: ein kleiner fester Python-3-Adapter mit sqlite3 ist vorgesehen. Gezielte Schreibrechte für Projects bedürfen einer eigenen Hosteinrichtung; vorhandene Bootstrap-Konfiguration und andere Datenrechte bleiben erhalten.
 

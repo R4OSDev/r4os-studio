@@ -180,4 +180,10 @@ def render(context, directory, project):
 
 
 def hashes(directory):
-    return {str(path.relative_to(directory)): digest(path) for path in sorted(directory.rglob('*')) if path.is_file()}
+    result = {}
+    for path in sorted(directory.rglob('*')):
+        if path.is_symlink():
+            raise ValueError('Unexpected symbolic link in project files.')
+        if path.is_file():
+            result[str(path.relative_to(directory))] = digest(path)
+    return result
