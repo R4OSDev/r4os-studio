@@ -1,6 +1,6 @@
 # R4OS Studio · App
 
-## Projects, sessions and agent runs (0.3.16)
+## Projects, sessions and agent runs (0.3.17)
 
 Projects store their immutable UUID and SDK/Contract/compiler pins in
 `Data/Projects/Projects.sqlite`. Sources, manifests and build outputs live in
@@ -68,8 +68,10 @@ back explicitly before using a pre-Workspace build helper.
 
 Session/run endpoints reuse Projects browser sessions, CSRF and Host/Origin
 checks. SSE replays durable sequence IDs after reconnect; uncertain submissions
-retain the original request UUID in browser session storage. All transcript
-content renders as text. Source audit and implementation evidence are under
+retain the original request UUID in browser session storage. Assistant messages
+render CommonMark with raw HTML and automatic image requests disabled; other
+transcript fields render as text. Code and output can be copied, with ANSI/OSC
+control sequences removed. Source audit and implementation evidence are under
 `Research/R4OS/Agent-Sessions/` in the development workspace; architecture and
 operating details are documented in `Docs/Agent-Sessions.md` outside this Git repo.
 
@@ -103,7 +105,7 @@ Validated: Rust/Cargo 1.99.1 and 1.99.0, including the older download through th
 
 New Project opens a compact modal with Name, Description, Language, Module type and optional Virtual machine. Subsystem host adds Guest formats. The native dialog manages focus, Escape and background input; narrow layouts stack fields. Rust availability follows the verified SDK capabilities and local tools. A stable request is saved in browser session storage before submission, so an unconfirmed response can be retried after reload without duplicate projects. Request IDs also work on the private HTTP LAN origin.
 
-The first column lists projects after New Project; the second contains Sessions, Editor and Settings. Sessions lists New Session and saved sessions in the third column; Editor keeps it empty. Settings offers General and Virtual machine, with forms in the main area. Name/description and VM assignment can be saved or cancelled; project/tab changes protect unsaved work, and late responses remain bound to the original UUID. Agent Sessions and editor functionality are deferred.
+The first column lists projects after New Project; the second contains Sessions, Editor and Settings. Sessions lists New Session and saved sessions in the third column; Editor keeps it empty. Settings offers General and Virtual machine, with forms in the main area. Name/description and VM assignment can be saved or cancelled; project/tab changes protect unsaved work, and late responses remain bound to the original UUID. Sessions are implemented; editor functionality remains planned.
 
 Verified in the browser through a deliberately lost creation response and reload/retry, Zig/C creation, Settings Save/Cancel, project isolation, tab navigation, modal focus/Escape and layouts down to 320 px. Tests use separate temporary project catalogs, including provider/update fixtures; the production Projects directory is never a test fixture.
 
@@ -247,7 +249,7 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
 
-Die Projektliste, OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Projektanlage, Editor und Projekt-Builds sind noch nicht in die WebApp integriert; die VM-Verwaltung startet bereits QEMU. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+Projektanlage, Sessions mit Agent-Runs, OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Editor und allgemeine Projekt-Build-/Deploy-Endpunkte bleiben geplant; die VM-Verwaltung startet bereits QEMU. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
 
 ## OpenAI mit ChatGPT-Abonnement
 
@@ -257,7 +259,7 @@ Die Projektliste, OpenAI-Provider- und unabhängige VM-Verwaltung sind implement
 4. **Open OpenAI sign-in** öffnet die offizielle OpenAI-Anmeldung in einem eigenen Tab. Dort anmelden und den Code bestätigen.
 5. R4OS Studio erkennt den Abschluss automatisch und zeigt Konto, Plan und **Connected**. Die Verbindung bleibt nach einem Dienstneustart gespeichert.
 
-Es wird kein API-Key benötigt. Die Zugangsmöglichkeiten hängen vom ChatGPT-Konto und dessen Codex-Berechtigungen ab. Der Provider kann lokal getrennt und erneut verbunden oder vollständig entfernt werden. **Disconnect** und **Remove** löschen die lokalen Zugangsdaten dieser Verbindung; eine globale Abmeldung oder bestätigte Remote-Widerrufung wird nicht behauptet. Bestehende Codex-CLI-Anmeldungen bleiben getrennt. Derzeit werden Kontoverbindungen verwaltet; ein Chat-/Inference-Endpunkt ist noch nicht implementiert.
+Es wird kein API-Key benötigt. Die Zugangsmöglichkeiten hängen vom ChatGPT-Konto und dessen Codex-Berechtigungen ab. Der Provider kann lokal getrennt und erneut verbunden oder vollständig entfernt werden. **Disconnect** und **Remove** beenden zugehörige Agent-Runs vor dem Löschen lokaler Zugangsdaten; eine globale Abmeldung oder bestätigte Remote-Widerrufung wird nicht behauptet. Bestehende Codex-CLI-Anmeldungen bleiben getrennt. Projektbezogene Chat-/Inference-Aufträge laufen über die Sessions-API.
 
 Die Anmeldung verwendet ausschließlich die Account-RPCs des offiziellen Codex-App-Servers, keine nachgebauten OpenAI-OAuth-Endpunkte oder kopierten Client-IDs. Getestete Binary: **codex-cli 0.162.1**. Der Dienst-Installer kopiert die vorhandene eigenständige CLI-Binary nach `/opt/r4os-studio/bin/codex`; auf neuen Hosts vorher die offizielle eigenständige Codex CLI installieren. Für die Entwicklung lässt sich deren Pfad über `CODEX_BINARY` setzen. `STUDIO_DATA_DIR` bestimmt direkt das Provider-Datenverzeichnis; ohne Vorgabe wird `App/Data/LLMProvider/` verwendet. Diese Vorgabe gilt für Entwicklung und Produktion. Die Anwendung ist für den privaten LAN-/VPN-Betrieb eingerichtet. Für öffentliche oder kommerziell gehostete Angebote ist der reguläre, von OpenAI freigegebene **Sign in with ChatGPT**-Web-Client erforderlich; der aktuelle Device-Code-Adapter ist dafür nicht vorgesehen.
 
@@ -620,3 +622,14 @@ mutating I/O results stop the run as unknown, preserve possible effects and clos
 further admission; they cannot silently continue with another automatic call.
 A lost turn/start RPC reply is reconciled with native started/completed events,
 without resubmitting the turn or reporting a false timeout after confirmed end.
+
+Validation for 0.3.17: all 28 backend tests passed, with focused Python tests for
+durable Stop, uncertain I/O, lost start replies, pagination, official patch
+partial changes and interactive terminals. Build/TypeScript and lint passed.
+The installed bundle passed copy/HTML/ANSI, settings dirty-guard and 320 px checks
+using controlled API fixtures. Real native runs separately verified file-page
+metadata, terminal output, browser Copy, context after worker restart and Stop
+of a running process with no remaining cgroup. The temporary project, session,
+three runs and worker bindings were removed; existing data and defaults remain.
+The requirement-by-requirement audit and evidence are retained in
+Research/R4OS/Agent-Sessions/Completion-Audit.json in the development workspace.
