@@ -36,3 +36,21 @@ def specifications():
     # the known set stable on resume; disabled/unavailable calls fail in the host
     # dispatcher BEFORE execution, even if the model retains their declarations.
     return [{'name': 'studio_' + name, 'description': DEFS[name][0], 'inputSchema': DEFS[name][1]} for name in TOOLS]
+
+
+def validate_arguments(name, value):
+    def validate(rule, v):
+        types = rule['type'] if isinstance(rule['type'], list) else [rule['type']]
+        actual = 'null' if v is None else ('boolean' if type(v) is bool else ('integer' if type(v) is int else ('string' if isinstance(v, str) else ('object' if isinstance(v, dict) else 'invalid'))))
+        if actual not in types: raise ValueError('Invalid tool argument type.')
+        if actual == 'string':
+            if '\x00' in v or len(v.encode()) > rule.get('maxLength', 8192): raise ValueError('Tool argument exceeds its limit.')
+            if 'enum' in rule and v not in rule['enum']: raise ValueError('Unknown tool argument.')
+        if actual == 'integer' and not rule.get('minimum', 0) <= v <= rule.get('maximum', 1000000): raise ValueError('Tool argument exceeds its range.')
+        if actual == 'object':
+            if len(v) > 64 or not set(rule.get('required', [])).issubset(v): raise ValueError('Missing tool arguments.')
+            for key, entry in v.items():
+                spec = rule.get('properties', {}).get(key, rule.get('additionalProperties', False))
+                if not isinstance(spec, dict): raise ValueError('Unknown tool argument.')
+                validate(spec, entry)
+    validate(DEFS[name][1], value)

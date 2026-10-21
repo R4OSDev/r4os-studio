@@ -23,7 +23,10 @@ def main():
     target = Path('/opt/r4os-studio/bin/agent-launch.py')
     shutil.copyfile(Path(__file__).parent / 'launch.py', target); target.chmod(0o755)
     def quote(path): return '"' + str(path).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
-    common = '[Service]\nUser=r4os-studio\nGroup=r4os-studio\nUMask=0077\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nRestrictSUIDSGID=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\nCapabilityBoundingSet=\n'
+    # These two systemd filters break rootless Bubblewrap on this host:
+    # ProtectKernelTunables denies its private proc mount; RestrictSUIDSGID
+    # returns ENOSYS for open_tree. The inner namespace remains authoritative.
+    common = '[Service]\nUser=r4os-studio\nGroup=r4os-studio\nUMask=0077\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\nCapabilityBoundingSet=\n'
     common += 'ReadWritePaths=' + quote(projects) + '\nReadWritePaths=' + quote(providers) + '\n'
     common += 'InaccessiblePaths=-' + quote(r4os / 'Instances') + '\nInaccessiblePaths=-/run/r4os-studio-vms\n'
     coordinator = '[Unit]\nDescription=R4OS Studio agent coordinator\nAfter=network-online.target\n\n' + common

@@ -475,3 +475,18 @@ A browser session UI and actual project tool handlers follow in later subversion
 Nine dynamic tool declarations are stable across native conversation resume;
 permissions are enforced before each host call. Native shell, patch, web search,
 plugins, skills and project instruction discovery are disabled in this profile.
+
+0.3.11 implements the six file tools in a separate Bubblewrap namespace: bounded
+UTF-8 reads, directory listing, literal search, atomic file writes, directories
+and patches through the qualified Codex patch parser. Only `Workspace/` is
+writable; selected SDK/Contract/compiler roots are read-only. Provider credentials,
+session state, other projects and VM instances are absent. File writes require
+the SHA-256 of the version read; Studio serializes file calls. A failed multi-file
+patch may leave partial edits, which its result reports; unconfirmed calls are
+never replayed. External administrator/terminal edits are not an atomic compare
+and swap transaction with these file tools.
+
+On this host, `ProtectKernelTunables` prevents rootless Bubblewrap's private proc
+mount and `RestrictSUIDSGID` filters `open_tree`. The agent installer omits those
+two incompatible systemd filters; empty capabilities, NoNewPrivileges, read-only
+host mounts and the inner mount/PID/network namespaces enforce execution scope.

@@ -12,7 +12,8 @@ from profile import prepare, write_json, TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
-from tool_catalog import specifications
+from tool_catalog import specifications, validate_arguments
+from sandbox import Sandbox
 
 
 class Worker:
@@ -24,6 +25,7 @@ class Worker:
         self.client = None; self.turn_id = None; self.thread_id = None
         self.done = asyncio.Event(); self.stopping = False; self.outcome = 'unknown'; self.error = None
         self.items = {}; self.lease = None
+        self.sandbox = Sandbox(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
@@ -76,8 +78,8 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
-        # Subsequent tool releases implement these handlers. Declarations remain
-        # stable on native thread resume, but an absent handler never executes.
+        if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
+            return await self.sandbox.file(name, arguments)
         return {'success': False, 'error': 'unavailable', 'output': 'This tool is not available in this Studio release.'}
 
     async def tool(self, params):
@@ -90,6 +92,8 @@ class Worker:
         call_id = params['callId']; arguments = params['arguments']
         if not isinstance(arguments, dict) or len(encode(arguments).encode()) > 131072:
             return output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
+        try: validate_arguments(name[7:], arguments)
+        except ValueError as e: return output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
         previous = self.store.db.execute('SELECT * FROM tools WHERE run_id=? AND call_id=?', (self.run_id, call_id)).fetchone()

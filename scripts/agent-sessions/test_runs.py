@@ -68,7 +68,7 @@ class Runs(unittest.TestCase):
         calls = []
         async def execute(*args): calls.append(args); return {'success': True, 'output': 'done'}
         w.execute = execute
-        params = {'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_write_file', 'callId': 'call', 'arguments': {'path': 'x'}}
+        params = {'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_write_file', 'callId': 'call', 'arguments': {'path': 'x', 'content': 'x', 'expectedSha256': None}}
         async def scenario():
             first = await w.tool(params); second = await w.tool(params)
             self.assertEqual(first, second); self.assertFalse(first['success']); self.assertFalse(calls)
