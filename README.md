@@ -1,8 +1,14 @@
 # R4OS Studio · App
 
+## Project catalog (0.3.1)
+
+Projects now lists ready entries from `Data/Projects/Projects.sqlite`, using immutable UUIDs and display names. Foreign folders are preserved and are not imported automatically. The bounded Python sqlite3 helper runs as the Studio service user; Node 20 remains supported. The catalog uses schema version 1, full SQLite synchronization and a project revision for future Settings changes. Unknown or corrupt databases fail without reinitialization. Project creation is not exposed yet.
+
+For managed deployments run `python3 scripts/install-project-support.py` as root once. It grants the web service write access only to the persistent Projects directory and takes effect on the next Studio start; it preserves existing update configuration, SDK/image permissions and VM services. All project data remains excluded from Git. Rolling back preserves the DB and project files; older folder-only releases do not understand the DB catalog.
+
 ## Geplant: Projekterstellung (Roadmap 0.3.X)
 
-Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Sieben offene Unterversionen mit 25 Aufgaben behandeln SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. Die laufende App bleibt während der Planung auf 0.2.9.
+Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Sieben offene Unterversionen mit 25 Aufgaben behandeln SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. Die Umsetzung hat mit dem SQLite-Projektkatalog in 0.3.1 begonnen.
 
 Studio-Metadaten sollen zentral in `Data/Projects/Projects.sqlite` liegen; jeder Projektordner erhält eine unveränderliche serverseitige UUID. Anzeigename, Beschreibung, Sprache, VM-ID und Profilpins bleiben außerhalb des einzelnen Projektordners. Das erzeugte `module.R4MF` bleibt die R4OS-Buildwahrheit im Projekt. Der bestehende Node-20-Host benötigt dafür kein implizites Upgrade: ein kleiner fester Python-3-Adapter mit sqlite3 ist vorgesehen. Gezielte Schreibrechte für Projects bedürfen einer eigenen Hosteinrichtung; vorhandene Bootstrap-Konfiguration und andere Datenrechte bleiben erhalten.
 

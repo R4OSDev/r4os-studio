@@ -5,4 +5,5 @@ export interface ProjectSummary {
 
 export interface ProjectsResponse {
   projects: ProjectSummary[];
+  csrfToken: string;
 }
