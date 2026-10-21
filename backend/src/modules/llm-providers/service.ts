@@ -28,6 +28,7 @@ export class ProviderManager {
   private locks = new Map<string, Promise<unknown>>();
   private usages = new Map<string, ProviderUsage>();
   private loginTimeout: number;
+  private closing = false;
 
   constructor(private options: ProviderOptions) {
     this.store = new ProviderStore(options.directory);
@@ -65,6 +66,7 @@ export class ProviderManager {
   async list(): Promise<Provider[]> { return (await this.store.list()).map((record) => this.present(record)); }
 
   private async runtime(id: string): Promise<Runtime> {
+    if (this.closing) throw new ProviderError('The provider service is stopping.', 503);
     const existing = this.runtimes.get(id);
     if (existing && !existing.unavailable && !existing.retired) return existing;
     if (existing) { await existing.client.close(); this.runtimes.delete(id); }
@@ -74,6 +76,7 @@ export class ProviderManager {
     const runtime = {} as Runtime;
     runtime.unavailable = false;
     runtime.client = factory(home, (method, params) => {
+      if (this.closing) return;
       if (method === 'account/rateLimits/updated' || method === 'account/updated') {
         this.usages.delete(id);
         return;
@@ -269,8 +272,15 @@ export class ProviderManager {
   }
 
   private async disconnectLocked(id: string): Promise<Provider> {
-    await this.record(id);
-    await this.options.beforeDisconnect?.(id);
+    const previous = await this.record(id);
+    // Close run admission before asking the independent host to stop workers.
+    // Otherwise a new run could start between cancellation and credential removal.
+    await this.store.change((records) => { const record = records.find((r) => r.id === id); if (record) record.connected = false; });
+    try { await this.options.beforeDisconnect?.(id); }
+    catch (error) {
+      await this.store.change((records) => { const record = records.find((r) => r.id === id); if (record) record.connected = previous.connected; });
+      throw error;
+    }
     this.usages.delete(id);
     const runtime = this.runtimes.get(id);
     if (runtime?.login) this.finish(runtime.login, 'cancelled');
@@ -299,7 +309,9 @@ export class ProviderManager {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     for (const runtime of this.runtimes.values()) clearTimeout(runtime.login?.timer);
+    await Promise.allSettled([...this.locks.values()]);
     await Promise.all([...this.runtimes.values()].map((runtime) => runtime.client.close()));
     this.runtimes.clear();
     this.usages.clear();

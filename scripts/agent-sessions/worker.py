@@ -4,6 +4,7 @@ import asyncio
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import sys
@@ -25,6 +26,7 @@ class Worker:
         self.session_id = self.row['session_id']; self.config = json.loads(self.row['config'])
         self.client = None; self.turn_id = None; self.thread_id = None
         self.done = asyncio.Event(); self.stopping = False; self.outcome = 'unknown'; self.error = None
+        self.turn_requested = False
         self.items = {}; self.lease = None
         self.sandbox = Sandbox(self)
         self.terminals = Terminals(self)
@@ -49,6 +51,9 @@ class Worker:
                        'rateLimitExceeded': 'The model service is rate limited. Try again later.',
                        'unauthorized': 'The provider needs to sign in again.',
                        'contextWindowExceeded': 'The conversation exceeds the model context limit.'}.get(code if isinstance(code, str) else '', 'The model service reported an error.')
+            raw_message = str(params.get('error', {}).get('message', ''))
+            if re.search(r'\b401\b|\bunauthorized\b', raw_message, re.I): message = 'The provider needs to sign in again.'
+            elif re.search(r'\b429\b|usage limit|quota exceeded', raw_message, re.I): message = 'This provider has reached its usage limit.'
             event(self.store, self.session_id, self.run_id, 'notice', {'text': message, 'retrying': bool(params.get('willRetry'))})
             if not params.get('willRetry'): self.error = message
         elif method in ('item/started', 'item/completed'):
@@ -104,7 +109,7 @@ class Worker:
         except ValueError as e: return output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
-        previous = self.store.db.execute('SELECT * FROM tools WHERE run_id=? AND call_id=?', (self.run_id, call_id)).fetchone()
+        previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
         if previous:
             if previous['arguments_hash'] != hashed:
                 return output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
@@ -164,7 +169,9 @@ class Worker:
             await self.client.start()
             self.thread_id = self.store.row(self.session_id)['thread_id']
             if self.thread_id:
-                await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model']})
+                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model']})
+                except Exception:
+                    self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'],
                            'ephemeral': False, 'dynamicTools': specifications()})
@@ -172,6 +179,7 @@ class Worker:
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
             if self.stopping: self.outcome = 'interrupted'; return
+            self.turn_requested = True
             result = await self.client.request('turn/start', {'threadId': self.thread_id,
                          'clientUserMessageId': self.row['request_id'], 'input': [{'type': 'text', 'text': request_text(self.store, self.run_id)}],
                          'model': self.config['model'], 'effort': self.config['effort']})
@@ -183,13 +191,33 @@ class Worker:
             self.error = 'The agent run reached the host time limit.'; await self.stop()
         except Exception:
             if self.outcome == 'unknown':
-                self.outcome = 'unknown' if self.turn_id else 'failed'
+                self.outcome = 'unknown' if self.turn_requested else 'failed'
             self.error = self.error or 'The agent service could not confirm this run. Existing data was preserved.'
         finally:
             await self.cleanup()
             if self.lease: self.lease.close()
+            reconcile_items(self.store, self.run_id, self.outcome)
             transition(self.store, self.run_id, self.outcome, self.error)
             self.store.close()
+
+
+def reconcile_items(store, run_id, outcome='unknown'):
+    row = get_run(store, run_id)
+    values = store.db.execute('SELECT payload FROM items WHERE run_id=?', (run_id,)).fetchall()
+    for r in values:
+        value = json.loads(r['payload'])
+        if value.get('status') in ('running', 'pending'):
+            receipt = store.db.execute('SELECT result FROM tools WHERE run_id=? AND call_id=?', (run_id, value['id'])).fetchone() if value.get('type') == 'tool' else None
+            if receipt and receipt['result']:
+                result = json.loads(receipt['result'])
+                value.update(status='completed' if result['success'] else ('denied' if result.get('error') == 'disabled' else 'failed'),
+                             output=result.get('output', ''), error=result.get('error'))
+            else:
+                value['status'] = 'interrupted' if outcome == 'interrupted' else 'unknown'
+                value['error'] = 'This item ended without a confirmed result; partial effects may remain.'
+            store.db.execute('UPDATE items SET payload=? WHERE run_id=? AND item_id=?', (encode(value), run_id, value['id']))
+            event(store, row['session_id'], run_id, 'itemStatus', {'itemId': value['id'], 'status': value['status'], 'error': value['error']})
+    with store.db: store.db.execute("UPDATE tools SET state='unknown' WHERE run_id=? AND result IS NULL", (run_id,))
 
 
 def finalize(manifest):
@@ -199,6 +227,7 @@ def finalize(manifest):
         if row['busy']:
             stopped = row['state'] == 'stopping'
             state = 'interrupted' if stopped else ('failed' if row['state'] == 'queued' else 'unknown')
+            reconcile_items(store, row['id'], state)
             transition(store, row['id'], state, 'Run stopped.' if stopped else 'The run service exited without a confirmed result; tool effects were not repeated.')
     finally: store.close()
 

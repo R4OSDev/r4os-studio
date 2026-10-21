@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { navigation } from './navigation';
@@ -27,6 +27,14 @@ export function App() {
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => setProjectNavigation((previous) => ({ ...previous, [id]: value })), []);
+  useEffect(() => {
+    const restore = () => {
+      const route = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
+      if (route && projectLeaveGuard.current()) { setProjectId(route[1]); navigateProject(route[1], { section: 'Sessions', settingsView: 'General', sessionId: route[2] }); setTab('Projects'); }
+    };
+    window.addEventListener('hashchange', restore);
+    return () => window.removeEventListener('hashchange', restore);
+  }, [navigateProject]);
   const [providerView, setProviderView] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>({
     group: window.location.hash === '#updates' ? 2 : 0, item: 0, view: 0,
@@ -69,6 +77,8 @@ export function App() {
   }
   function switchTab(value: Tab) {
     if (tab === 'Projects' && value !== tab && !projectLeaveGuard.current()) return false;
+    const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
+    window.history.replaceState(null, '', value === 'Projects' && session ? `#projects/${projectId}/sessions/${session}` : window.location.pathname);
     setTab(value); return true;
   }
 

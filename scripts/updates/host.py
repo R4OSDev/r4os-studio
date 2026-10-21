@@ -35,6 +35,13 @@ TAG = re.compile(r'^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')
 SHA = re.compile(r'^[a-f0-9]{40}$')
 BUSY = {'checking', 'downloading', 'building', 'activating', 'recovering'}
 COMPATIBILITY = {'hostProtocol': 1, 'dataSchema': 1, 'vmWorkerProtocol': 1}
+AGENT_COMPATIBILITY = {'agentHostProtocol': 1, 'agentWorkerProtocol': 1, 'agentDataSchema': 1}
+
+
+def compatible(value):
+    # Legacy releases remain valid rollback targets. New agent protocols require
+    # this explicit host maintenance, never a downloaded privileged installer.
+    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY})
 
 
 def now():
@@ -275,7 +282,7 @@ class Updater:
         if source.is_symlink() or not source.resolve().is_relative_to(build.resolve()):
             raise RuntimeError('Invalid build output directory.')
         version = read_json(source / 'shared/version.json')['version']
-        if read_json(source / 'shared/update-host.json') != COMPATIBILITY:
+        if not compatible(read_json(source / 'shared/update-host.json')):
             raise RuntimeError('This release requires host support or a data migration. Manual maintenance is required.')
         if version != latest['version'] or not (source / 'backend/dist/server.js').is_file() or not (source / 'frontend/dist/index.html').is_file():
             raise RuntimeError('The built application does not match its published version.')
@@ -340,7 +347,7 @@ def build():
     if (directory / 'Data').exists() or read_json(directory / 'shared/version.json')['version'] != release['version']:
         raise RuntimeError('Release metadata does not match the selected version.')
     package = read_json(directory / 'package.json')
-    if read_json(directory / 'shared/update-host.json') != COMPATIBILITY:
+    if not compatible(read_json(directory / 'shared/update-host.json')):
         raise RuntimeError('This release requires host support or a data migration. Manual maintenance is required.')
     if package.get('packageManager') != 'pnpm@10.18.3':
         raise RuntimeError('This release needs a different package manager. Update host support manually.')

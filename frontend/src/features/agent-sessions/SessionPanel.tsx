@@ -38,6 +38,10 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       if (event.seq <= last.current) return;
       last.current = event.seq;
       if (event.kind === 'item') setItems((old) => merge(old, event.payload as SessionItem));
+      if (event.kind === 'itemStatus') {
+        const p = event.payload as { itemId: string; status: string; error: string };
+        setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, status: p.status, error: p.error } : i));
+      }
       if (event.kind === 'delta') {
         const p = event.payload as { itemId: string; text: string; field?: string };
         const field = p.field === 'output' ? 'output' : 'text';
@@ -117,7 +121,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         {i.type !== 'notice' && <div className="agent-message-role">{i.type === 'user' ? 'You' : 'Agent'}</div>}<div className="agent-message-text">{i.text}</div>
       </article>)}
     </div>
-    {run?.error && <p className="agent-error" role="alert">{run.error}</p>}
+    {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}
     <form className="agent-composer" onSubmit={(e) => void send(e)}>
       <textarea aria-label="Message" placeholder="Message the agent…" rows={3} maxLength={65536} value={pending?.text ?? text} disabled={sending || !!pending || active || !session}

@@ -11,7 +11,7 @@ def event(store, session_id, run_id, kind, payload, commit=True):
     if len(raw.encode()) > 262144: raise ProjectFault('Agent event exceeds the output limit.')
     # Hard bounds preserve old data instead of silently truncating native history.
     total = store.db.execute('SELECT COALESCE(SUM(length(payload)),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]
-    terminal = kind == 'run' and payload.get('state') in ('completed', 'failed', 'interrupted', 'unknown')
+    terminal = (kind == 'run' and payload.get('state') in ('completed', 'failed', 'interrupted', 'unknown')) or kind == 'itemStatus'
     if total + len(raw) > 96 * 1024 * 1024 and not terminal: raise ProjectFault('Session history reached its storage limit.')
     cursor = store.db.execute('INSERT INTO events(session_id,run_id,kind,payload,created_at) VALUES (?,?,?,?,?)',
                               (session_id, run_id, kind, raw, now())).lastrowid
@@ -83,6 +83,10 @@ def _transition(store, run_id, state, error=None, turn_id=None, worker=None):
                          (state, 0 if terminal else 1, error, turn_id, encode(worker) if worker else None, now() if terminal else None, run_id))
         value = store.run_present(get_run(store, run_id))
         event(store, row['session_id'], run_id, 'run', value, False)
+        if terminal and error:
+            notice = {'id': 'run-result-' + run_id, 'runId': run_id, 'type': 'notice', 'text': error, 'status': state}
+            store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
+                             (row['session_id'], run_id, notice['id'], encode(notice)))
         store.db.execute('UPDATE sessions SET updated_at=? WHERE id=?', (now(), row['session_id']))
     return value
 

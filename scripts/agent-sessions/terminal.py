@@ -17,6 +17,7 @@ class Process:
         self.manager = manager; self.id = ident; self.proc = proc; self.master = master
         self.pending = ''; self.dropped = False; self.bytes = 0; self.reason = None
         self.changed = asyncio.Event(); self.finished = asyncio.Event(); self.readers = []
+        self.io_lock = asyncio.Lock()
         self.value = {'id': 'process-' + ident, 'runId': manager.worker.run_id, 'type': 'terminal',
                       'processId': ident, 'tool': 'studio.exec_command', 'arguments': {'cmd': cmd}, 'output': '', 'status': 'running'}
         self.publish()
@@ -77,7 +78,8 @@ class Process:
         code = self.proc.returncode
         self.value.update(status='completed' if code == 0 and not self.reason else 'failed', exitCode=code,
                           signal=-code if code is not None and code < 0 else None, reason=self.reason)
-        self.publish(); self.finished.set(); self.changed.set()
+        try: self.publish()
+        finally: self.finished.set(); self.changed.set()
 
     async def terminate(self, reason='terminated'):
         self.reason = self.reason or reason
@@ -169,9 +171,10 @@ class Terminals:
             return await process.result(args.get('yield_time_ms', 1000))
         process = self.processes.get(args['processId'])
         if process is None: return {'success': False, 'error': 'unknownProcess', 'output': 'This handle does not belong to an active process in this run.'}
-        if name == 'write_stdin': return await process.input(args)
-        if name == 'terminate_process':
-            await process.terminate(); await process.finished.wait(); return await process.result(100)
+        async with process.io_lock:
+            if name == 'write_stdin': return await process.input(args)
+            if name == 'terminate_process':
+                await process.terminate(); await process.finished.wait(); return await process.result(100)
         raise ValueError('Unknown terminal tool.')
 
     async def close(self):

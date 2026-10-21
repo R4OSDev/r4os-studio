@@ -1,32 +1,77 @@
 # R4OS Studio · App
 
-## Persistent session API (0.3.9)
+## Projects, sessions and agent runs (0.3.15)
 
-Each registered Workspace-layout project now has a private `Sessions/Sessions.sqlite` catalog. Session UUIDs, display names, provider/model/effort, nine default-on tool permissions, revisions and the qualified engine identity are durable. The initial schema also reserves run/request/event/item/tool journals for the next releases; opening a session does not start Codex or inference. Project metadata and pins remain in Projects.sqlite. Native Codex files will live in the session's own private UUID directory when the first run starts.
+Projects store their immutable UUID and SDK/Contract/compiler pins in
+`Data/Projects/Projects.sqlite`. Sources, manifests and build outputs live in
+`<project-uuid>/Workspace/`; session metadata/events/receipts in
+`<project-uuid>/Sessions/Sessions.sqlite` and native Codex history in
+`Sessions/<session-uuid>/Codex/`. Opening or creating a session starts no inference.
 
-The Projects session/CSRF/Host/Origin boundary protects fixed `/api/projects/:id/sessions` routes for options, list, idempotent creation, detail, paginated history and revision-protected settings. Model/effort values come from the selected connected provider's Codex model catalog. A new session requires the selected, checksum-verified qualified Codex installation; unknown defaults are not silently substituted. Settings reject unknown tool IDs and stale revisions. Name-only edits/history remain available when a provider is removed. No filesystem paths, credentials or arbitrary upstream RPCs are exposed.
+Projects → Sessions lists New Session and saved sessions. The main pane provides
+chat/history, live file/terminal results, Send/Stop and Session settings. Nine
+independent tool switches default on. Each explicit run maps to one native Codex
+turn, with durable request identity and a frozen settings/pin snapshot. One run
+uses a project's shared workspace at a time; at most two runs execute per host.
+Editor and general build/deploy endpoints remain planned.
 
-The browser Session UI and actual run endpoints follow in later releases. Integration checks cover concurrent create retries, changed-payload conflicts, persisted disabled permissions, restart, project isolation, CSRF/Origin checks, invalid tools and corrupt-store preservation. Existing project/provider/VM/update tests, build/TypeScript and lint are included in release checks.
+The unchanged official Codex 0.163.0 binary is bound to SHA-256
+`399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215`.
+A qualified model catalog and feature profile disable native I/O tools and
+instruction/extension discovery. Only registered Studio dynamic tools perform
+project I/O, in a separate bounded Bubblewrap namespace. The credential-bearing
+Codex process sees an empty virtual cwd; project commands see the selected
+workspace and read-only pinned components, without credentials or session data.
+Native history/compaction remain owned by Codex. Studio neither copies tokens nor
+reconstructs context from the visible chat. Provider auth/refresh locks use the
+one original physical Codex-managed provider store.
 
-## Workspace layout and qualified Codex profile (0.3.8)
+Linux/systemd, rootless Bubblewrap and the existing unprivileged Studio user are
+required. Explicit host maintenance (never run automatically from a download):
 
-New projects place manifests, sources, build files and outputs under `Data/Projects/<uuid>/Workspace/`. The SQLite catalog and immutable project pins are unchanged. Creation/retry/recovery hash the complete published directory, including its Workspace subtree. The local Rust build helper resolves both the new and legacy layouts. Existing projects are not silently moved on startup or update. As the data owner, explicitly run `python3 scripts/projects/migrate-workspaces.py <uuid>` for a registered legacy project; `--rollback` restores an unchanged migrated source tree. A durable per-project journal preserves file identity/edits and resumes interrupted moves in either direction; ambiguous layouts and changed rollback targets fail with all data preserved. Old releases still read project metadata, but their old build helper cannot build the new source layout. Roll back sources explicitly before using an older build helper; no data-schema version or host updater configuration was changed.
+```sh
+sudo python3 /opt/r4os-studio/current/scripts/agent-sessions/install.py
+# When upgrading the pre-agent updater to the declared agent protocol 1:
+sudo python3 /path/to/reviewed/App/scripts/agent-sessions/install-update-compatibility.py
+```
 
-A qualified host adapter uses the unchanged official Codex 0.163.0 binary, SHA-256 `399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215`. A supported startup `model_catalog_json` preserves provider model identities/base instructions while disabling native shell/patch/extra tools and selecting direct dynamic tool calls. Fixed feature switches exclude extensions, AGENTS.md, skills, plugins, hooks, memory and agents. The adapter rejects unqualified binaries and validates its stored model tool profile. Bubblewrap gives Codex an empty virtual cwd: project configuration cannot add tools. Separate tool executors will own actual project I/O.
+The installer preserves existing bootstrap/configuration and running workers/VMs.
+A fixed Unix-socket coordinator starts separate bounded run units. Worker and
+ExecStopPost stay bound to their original immutable release. A compatible newer
+coordinator is adopted at idle; older coordinators need one explicit service
+restart after their current runs finish. Neither browser close nor web update
+stops a run. Host boot reconciles state without launching new inference. Queued
+or incomplete outcomes become unknown/interrupted; tools with unconfirmed receipts
+are never automatically repeated. Actual effects and native history remain intact.
+Send an explicit follow-up after inspecting an uncertain result.
 
-Provider credentials remain in the one original Codex-managed directory, bind-mounted privately into the runtime; native sessions/archives and SQLite state are mounted into the project session's private state. Original credential files are neither parsed/copied by Studio nor linked into workspaces. Codex uses the same physical credential directory/lock files as the account client. Runtime configuration is masked in the private mount namespace without rewriting the original provider config. Linux user namespaces and Bubblewrap are required; missing isolation fails closed. Live qualification used one existing provider, one dynamic tool, and a second turn after process restart; the original marker survived from native history. A local fake-model negative probe advertised only the registered dynamic tool and rejected a guessed native `exec_command` without execution. No Codex fork or internal token API is required.
+`shared/update-host.json` declares host/data/VM-worker protocol 1 plus agent
+host/worker/data protocol 1. The targeted compatibility maintenance retains old
+releases as rollback targets and rejects unknown/newer contracts. It adds no root
+execution path for downloaded service scripts. New agent workers follow the
+current compatible release; existing sessions retain their qualified engine pins.
 
-Validated: recoverable forward/rollback migration and edit/name-conflict preservation, real Zig/C/Rust project creation and minimal Workspace builds, project integration tests, TypeScript/build and lint. This release prepares the profile and source layout; session/agent APIs and browser controls follow in subsequent subversions. Evidence in the workspace: `Research/R4OS/Agent-Sessions/Implementation/0.3.8/`.
+File writes require current hashes; individual writes are atomic. Multi-file
+patches use the official parser and may leave reported partial changes. An enabled
+terminal can perform file operations independently of the file-tool switches.
+Commands have no network, bounded output/time, four simultaneous process handles,
+a 256 MiB file limit and a run cgroup limited to 2 GiB/256 tasks/200% CPU. Stop is
+available independently of the agent termination permission. This provides host
+app development, not a guest/deploy runner. Skills/AGENTS.md/system-prompt
+management, plugins, hooks, memory and subagents are outside this increment.
 
-## Planned sessions and agent runs (0.3.8–0.3.15)
+Legacy projects are never moved automatically. As the data owner run
+`python3 scripts/projects/migrate-workspaces.py <uuid>`; `--rollback` restores an
+unchanged migrated tree. The migration preserves identities, pins and individual
+edits, journals interrupted moves and refuses ambiguous layouts. Roll sources
+back explicitly before using a pre-Workspace build helper.
 
-The following plan is being implemented in order. Workspace/profile foundations are in 0.3.8; later session/run subversions remain open. Roadmap 14 / 0.3.X retains its seven completed subversions and 25 completed tasks; The new plan adds 26 tasks through 0.3.15; 0.3.8–0.3.9 implement the first seven, leaving 19 for the later run/UI releases. No roadmap was archived or replaced.
-
-The planned layout separates `Data/Projects/<project-uuid>/Workspace/` from `Sessions/`. Existing sources currently live directly in the project directory; generators, pinned SDK/build helpers and recoverable layout migration must change together. Each Studio session maps to a durable Codex thread, and each explicitly started run maps to one turn. The official Codex engine owns the agent/model loop; Studio owns persistent requests, tool permissions, bounded host execution, event replay and the browser UI. Initially only one run may edit a project's shared workspace at a time, while different projects may run in parallel within host limits.
-
-The initial tool set covers command execution, process input/termination, directory listing/creation, file reading/search/writing and patches. Each registered call has a separate session setting, enabled by default, and must be checked before execution. An enabled terminal can itself perform file operations inside its workspace; disabling a file tool is not a global filesystem restriction. User Stop remains available independently of the agent's process-termination tool. Skills, AGENTS.md management, custom system prompts, plugins, hooks, memory and subagents are outside this increment; automatic imports must be excluded from the qualified runtime profile.
-
-Research used public Codex source revision `8c076942cb70fba8e5c4732c23f1faabc4aed484` and offline experimental schemas from the selected Codex 0.163.0 binary. Two integration details require practical qualification before enabling runs: the core tool allowlist is a Rust embedding interface rather than a regular app-server request field, and native Codex history derives from the same `CODEX_HOME` that currently owns provider credentials. The implementation must prove enforceable native/dynamic tool boundaries and project-local native history with one managed provider credential lifecycle. Approval policy alone is insufficient; no private token interface, copied credentials or assumed allowlist RPC is selected. This planning step made no model calls, account requests or production data changes. Workspace documentation: `Docs/Agent-Sessions.md`; source/protocol evidence: `Research/R4OS/Agent-Sessions/`. Official references: [App Server](https://learn.chatgpt.com/docs/app-server), [permissions](https://learn.chatgpt.com/docs/permissions).
+Session/run endpoints reuse Projects browser sessions, CSRF and Host/Origin
+checks. SSE replays durable sequence IDs after reconnect; uncertain submissions
+retain the original request UUID in browser session storage. All transcript
+content renders as text. Source audit and implementation evidence are under
+`Research/R4OS/Agent-Sessions/` in the development workspace; architecture and
+operating details are documented in `Docs/Agent-Sessions.md` outside this Git repo.
 
 ## Rust projects with SDK 0.64.66 (0.3.7)
 
@@ -58,7 +103,7 @@ Validated: Rust/Cargo 1.99.1 and 1.99.0, including the older download through th
 
 New Project opens a compact modal with Name, Description, Language, Module type and optional Virtual machine. Subsystem host adds Guest formats. The native dialog manages focus, Escape and background input; narrow layouts stack fields. Rust availability follows the verified SDK capabilities and local tools. A stable request is saved in browser session storage before submission, so an unconfirmed response can be retried after reload without duplicate projects. Request IDs also work on the private HTTP LAN origin.
 
-The first column lists projects after New Project; the second contains Sessions, Editor and Settings. Sessions/Editor keep the third column empty. Settings offers General and Virtual machine, with forms in the main area. Name/description and VM assignment can be saved or cancelled; project/tab changes protect unsaved work, and late responses remain bound to the original UUID. Agent Sessions and editor functionality are deferred.
+The first column lists projects after New Project; the second contains Sessions, Editor and Settings. Sessions lists New Session and saved sessions in the third column; Editor keeps it empty. Settings offers General and Virtual machine, with forms in the main area. Name/description and VM assignment can be saved or cancelled; project/tab changes protect unsaved work, and late responses remain bound to the original UUID. Agent Sessions and editor functionality are deferred.
 
 Verified in the browser through a deliberately lost creation response and reload/retry, Zig/C creation, Settings Save/Cancel, project isolation, tab navigation, modal focus/Escape and layouts down to 320 px. Tests use separate temporary project catalogs, including provider/update fixtures; the production Projects directory is never a test fixture.
 
@@ -90,11 +135,11 @@ For managed deployments run `python3 scripts/install-project-support.py` as root
 
 ## Projektverwaltung – Roadmap 0.3.X
 
-Roadmap 14 / 0.3.X: 0.3.1–0.3.7 implementieren Projektkatalog, offizielle Manifestvalidierung, geprüfte Zig-/C-/Rust-Vorlagen, wiederaufnehmbare Create-/Settings-API, Browseroberfläche sowie C-/Rust-Werkzeuge. 0.3.7 hat die gelieferte SDK-/Contract-Unterstützung nach Quellprüfung, tatsächlichen Builds und produktiver Prüfung übernommen. Diese sieben Unterversionen und ihre 25 Aufgaben sind abgeschlossen. Auf Benutzerauftrag ist dieselbe Roadmap ab 0.3.8 um acht Unterversionen/26 Aufgaben für Sessions und Agent-Runs erweitert, insgesamt 51 Aufgaben. 0.3.8–0.3.9 ergänzen Workspace-Ablage, qualifiziertes Hostprofil und Session-API (sieben Aufgaben), weitere 19 Aufgaben bleiben offen; keine Archivierung oder neue Hauptversion. Editorfunktion und allgemeine Build-/Deploy-Endpunkte bleiben separat geplant.
+Roadmap 14 / 0.3.X: 0.3.1–0.3.7 implementieren Projektkatalog, offizielle Manifestvalidierung, geprüfte Zig-/C-/Rust-Vorlagen, wiederaufnehmbare Create-/Settings-API, Browseroberfläche sowie C-/Rust-Werkzeuge. 0.3.7 hat die gelieferte SDK-/Contract-Unterstützung nach Quellprüfung, tatsächlichen Builds und produktiver Prüfung übernommen. Diese sieben Unterversionen und ihre 25 Aufgaben sind abgeschlossen. Auf Benutzerauftrag ist dieselbe Roadmap ab 0.3.8 um acht Unterversionen/26 Aufgaben für Sessions und Agent-Runs erweitert, insgesamt 51 Aufgaben. 0.3.8–0.3.15 ergänzen Workspace-Ablage, qualifiziertes Codex-Profil, persistente Sessions/Runs, Datei-/Terminalwerkzeuge, Browseroberfläche, Rechte und Wiederherstellung; keine Archivierung oder neue Hauptversion. Editorfunktion und allgemeine Build-/Deploy-Endpunkte bleiben separat geplant.
 
-Studio-Metadaten liegen in `Data/Projects/Projects.sqlite`; Projektdateien unter `Data/Projects/<immutable-uuid>/`. Ein kleiner fester Python-sqlite3-Adapter erhält Node-20-Kompatibilität. Name/Beschreibung und VM-Zuweisung können geändert werden, ohne UUID, Ordner, technischen Modulnamen, Manifest oder Compiler-/SDK-/Contract-Pins umzuschreiben. Der Browser hält Formular und Navigation; der unprivilegierte Host übernimmt SQLite, Dateierzeugung und offizielle SDK-Werkzeuge. Alle Daten bleiben von Git ausgeschlossen. Gezielte Hosteinrichtung: `scripts/install-project-support.py`.
+Studio-Metadaten liegen in `Data/Projects/Projects.sqlite`; Projektquellen unter `Data/Projects/<immutable-uuid>/Workspace/`, Sessiondaten daneben unter `Sessions/`. Ein kleiner fester Python-sqlite3-Adapter erhält Node-20-Kompatibilität. Name/Beschreibung und VM-Zuweisung können geändert werden, ohne UUID, Ordner, technischen Modulnamen, Manifest oder Compiler-/SDK-/Contract-Pins umzuschreiben. Der Browser hält Formular und Navigation; der unprivilegierte Host übernimmt SQLite, Dateierzeugung und offizielle SDK-Werkzeuge. Alle Daten bleiben von Git ausgeschlossen. Gezielte Hosteinrichtung: `scripts/install-project-support.py`.
 
-Die Menüführung lautet Projects/New Project → Sessions, Editor, Settings. Bei Sessions/Editor bleibt Spalte drei leer; unter Settings enthält sie General und Virtual machine. Formulare liegen im Hauptbereich. Drei gleich breite Navigationsspalten und englische UI bleiben erhalten. Das Overlay enthält ausschließlich erforderliche Eingaben und konkrete Status-/Fehlermeldungen.
+Die Menüführung lautet Projects/New Project → Sessions, Editor, Settings. Bei Sessions enthält Spalte drei New Session und gespeicherte Sessions; bei Editor bleibt sie leer; unter Settings enthält sie General und Virtual machine. Formulare liegen im Hauptbereich. Drei gleich breite Navigationsspalten und englische UI bleiben erhalten. Das Overlay enthält ausschließlich erforderliche Eingaben und konkrete Status-/Fehlermeldungen.
 
 R4OS-Modularten: R4X mit console/gui/service, R4D, R4P und R4L; Subsystem host ist eine GUI-R4X-Rolle. Verfügbar sind Zig/C für Terminal/Desktop/Service/Runtime library/Subsystem host und Zig für Driver/Protocol module. Alle zwölf Kombinationen wurden mit beiden unterstützten SDK-/Contract-Profilen tatsächlich minimal gebaut. Rust ergänzt seit 0.3.7 die drei nachgewiesenen R4X-Appklassen mit passender Manifest-/Start-/Buildunterstützung; weitere Rust-Rollen bleiben gesperrt.
 
@@ -108,7 +153,7 @@ Dieser Abschnitt beschreibt den früheren Ordnerkatalog. Seit 0.3.1 ersetzt ihn 
 
 Im **Projects**-Tab heißt die erste Spalte **Projects** und listet die direkten Projektordner unter `Data/Projects/` alphabetisch mit natürlicher Zahlensortierung auf. Ordnername und Projekt-ID stimmen vorerst überein; pro Projekt liegen Quellen und spätere Build-Ausgaben unter `Data/Projects/<project-id>/`. Dateien und Symlinks werden nicht als Projekte angezeigt. Ohne Projekte erscheint **No projects yet.**; die bisherigen Platzhalter Workspace, Example Project sowie deren Components und Views entfallen. Die zweite und dritte Spalte behalten ihre Breite und bleiben ohne Überschrift und Inhalt. Eine Auswahl zeigt zunächst nur den Projektnamen im Hauptbereich.
 
-Der Browser lädt die Liste beim Öffnen des Tabs über das ausschließlich lesende `GET /api/projects`. Der Host liest nur die direkten Ordnernamen; Host/Origin-Prüfung und `Cache-Control: no-store` schützen den Zugriff. Fehlender Speicher ergibt eine leere Liste, andere Lesefehler eine eigene Fehlermeldung. Im verwalteten Deployment wird `Projects/` neben dem bereits konfigurierten `STUDIO_R4OS_DIR` aufgelöst, sodass alle Releases denselben vorhandenen `App/Data/Projects/`-Speicher verwenden. Es entstehen keine Projektkopien im Release-Verzeichnis; `Data/` bleibt vollständig ignoriert. Projektanlage, Editor, Build und die weitere Navigation sind weiterhin geplant.
+Der Browser lädt die Liste beim Öffnen des Tabs über das ausschließlich lesende `GET /api/projects`. Der Host listet nur fertige registrierte SQLite-Projekte; Host/Origin-Prüfung und `Cache-Control: no-store` schützen den Zugriff. Fehlender Speicher ergibt eine leere Liste, andere Lesefehler eine eigene Fehlermeldung. Im verwalteten Deployment wird `Projects/` neben dem bereits konfigurierten `STUDIO_R4OS_DIR` aufgelöst, sodass alle Releases denselben vorhandenen `App/Data/Projects/`-Speicher verwenden. Es entstehen keine Projektkopien im Release-Verzeichnis; `Data/` bleibt vollständig ignoriert. Projektanlage, Settings und Sessions sind implementiert; Editor und allgemeine Build-/Deploy-Endpunkte bleiben geplant.
 
 Geprüft: 21 Backendtests, Produktionsbuild/TypeScript und Lint. Im Browser leere und gefüllte Projektliste aus echten isolierten Ordnern, Ausschluss von Dateien/Symlinks/Unterordnern, Sortierung, erhaltene Auswahl beim Tabwechsel, unveränderte System-Navigation und gesonderte Fehleranzeige. Desktop, 390 und 320 px ohne horizontales Überlaufen; drei gleich breite Spalten. Lokale Belege im Workspace unter `Research/R4OS/Projects/`.
 

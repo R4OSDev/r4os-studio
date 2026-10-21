@@ -8,6 +8,7 @@ import { createApp } from '../src/app.js';
 import type { AuthClient, AuthClientFactory, AuthNotification } from '../src/modules/llm-providers/openai/codex-client.js';
 import type { Provider, ProviderLogin, ResetOutcome } from '../../shared/llm-providers.js';
 import { normalizeUsage } from '../src/modules/llm-providers/openai/usage.js';
+import { ProviderError } from '../src/modules/llm-providers/errors.js';
 
 const secret = 'test-token-must-never-reach-the-browser';
 class FakeClient implements AuthClient {
@@ -61,7 +62,7 @@ class FakeClient implements AuthClient {
   async close() { this.closed = true; }
 }
 
-async function setup(loginTimeoutMs?: number) {
+async function setup(loginTimeoutMs?: number, beforeDisconnect?: (id: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), 'r4os-provider-test-'));
   const clients = new Map<string, FakeClient>();
   let nextBadUrl = false;
@@ -72,7 +73,7 @@ async function setup(loginTimeoutMs?: number) {
     clients.set(basename(home), client);
     return client;
   };
-  const makeApp = () => createApp({ projectDirectory: join(directory, 'Projects'), providers: { directory, binary: '/unused', clientFactory, loginTimeoutMs } });
+  const makeApp = () => createApp({ projectDirectory: join(directory, 'Projects'), providers: { directory, binary: '/unused', clientFactory, loginTimeoutMs, ...(beforeDisconnect ? { beforeDisconnect } : {}) } });
   const app = makeApp();
   await app.ready();
   return { app, directory, clients, makeApp,
@@ -305,4 +306,28 @@ test('reset retries retain idempotency and successful outcomes survive a subsequ
     const response = await post({ ...payload, idempotencyKey: `00000000-0000-4000-8000-00000000000${index + 3}` });
     assert.equal(response.json().outcome, outcome);
   }
+});
+
+
+test('provider disconnect closes admission before stopping workers and preserves credentials if stop fails', async (context) => {
+  let allow = true, observed = 0;
+  const result = await setup(undefined, async (id) => {
+    const records = JSON.parse(await readFile(join(result.directory, 'providers.json'), 'utf8'));
+    assert.equal(records.find((r: { id: string }) => r.id === id).connected, false);
+    observed++;
+    if (!allow) throw new ProviderError('Agent stop is unavailable.', 503);
+  });
+  context.after(result.cleanup);
+  const b = await browser(result.app), provider = await b.create();
+  await b.start(provider.id); const client = result.clients.get(provider.id)!;
+  await client.complete(); await waitForConnected(result.app, provider.id, b.headers);
+  allow = false; observed = 0;
+  const file = join(client.home, 'auth.json'), original = await readFile(file, 'utf8');
+  const disconnect = () => result.app.inject({ method: 'POST', url: `/api/providers/${provider.id}/disconnect`, headers: b.headers });
+  assert.equal((await disconnect()).statusCode, 503);
+  assert.equal(await readFile(file, 'utf8'), original); assert.equal(client.closed, false);
+  assert.equal(JSON.parse(await readFile(join(result.directory, 'providers.json'), 'utf8'))[0].connected, true);
+  allow = true;
+  assert.equal((await disconnect()).statusCode, 200); assert.equal(client.closed, true);
+  await assert.rejects(readFile(file, 'utf8')); assert.equal(observed, 2);
 });

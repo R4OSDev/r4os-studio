@@ -9,6 +9,14 @@ import host
 
 
 class HostTests(unittest.TestCase):
+    def test_agent_protocol_requires_explicit_supported_contract(self):
+        legacy = host.COMPATIBILITY.copy()
+        self.assertTrue(host.compatible(legacy))
+        self.assertTrue(host.compatible({**legacy, **host.AGENT_COMPATIBILITY}))
+        self.assertFalse(host.compatible({**legacy, 'agentWorkerProtocol': 1}))
+        self.assertFalse(host.compatible({**legacy, **host.AGENT_COMPATIBILITY, 'agentDataSchema': 2}))
+        self.assertFalse(host.compatible({**legacy, 'unknownProtocol': 1}))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)

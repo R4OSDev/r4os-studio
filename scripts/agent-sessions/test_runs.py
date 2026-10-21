@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 import json
 from pathlib import Path
 import tempfile
@@ -17,7 +18,7 @@ class Runs(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
         self.projects = self.root / 'Projects'; self.r4os = self.root / 'R4OS'
         self.pid, self.sid, self.provider = (str(uuid.uuid4()) for _ in range(3))
-        with connect(self.projects) as db:
+        with closing(connect(self.projects)) as db, db:
             db.execute("INSERT INTO projects VALUES (?,?,'','C','terminal',?,NULL,'{}','now','now',1,'ready')", (self.pid, 'Fixture', 'fixture'))
         (self.projects / self.pid / 'Workspace').mkdir(parents=True)
         (self.projects / self.pid / 'Workspace/module.R4MF').write_text('R4OS_MODULE_MANIFEST=2\n')

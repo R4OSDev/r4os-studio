@@ -32,7 +32,7 @@ def main():
     coordinator = '[Unit]\nDescription=R4OS Studio agent coordinator\nAfter=network-online.target\n\n' + common
     coordinator += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py\nRuntimeDirectory=r4os-studio-agents\nRuntimeDirectoryMode=0700\nRestart=on-failure\nMemoryMax=512M\nTasksMax=64\nTimeoutStopSec=25\n\n[Install]\nWantedBy=multi-user.target\n'
     worker = '[Unit]\nDescription=R4OS Studio agent run %i\nAfter=network-online.target\n\n' + common
-    worker += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py %i\nExecStopPost=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py %i --finalize\nKillMode=mixed\nTimeoutStopSec=15\nMemoryMax=2G\nTasksMax=256\nCPUQuota=200%\nRestart=no\n'
+    worker += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py %i\nExecStopPost=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py %i --finalize\nKillMode=mixed\nTimeoutStopSec=15\nMemoryMax=2G\nTasksMax=256\nCPUQuota=200%\nLimitFSIZE=268435456\nRestart=no\n'
     Path('/etc/systemd/system/r4os-studio-agents.service').write_text(coordinator)
     Path('/etc/systemd/system/r4os-studio-agent@.service').write_text(worker)
     polkit = '''polkit.addRule(function(action, subject) {
