@@ -1,5 +1,32 @@
 # R4OS Studio · App
 
+## Development qualification and contracts (0.3.18)
+
+Studio now records exact execution qualification profiles separately from SDK
+build capabilities. The pinned SDK 0.64.66/Zig 0.16.0 profiles were exercised in
+private Full 0.84.47 and 0.86.42 VMs: Zig, C and Rust console modules, SFTP
+create-only publication and complete byte readback, actual exit status, owned
+generation-bound process handles, stale-generation rejection, completed output,
+graceful close, timeout and owned kill/reap. Existing VM bindings and all defaults
+were preserved. Full 0.86.42 was downloaded through the normal Updates UI.
+
+The checked-in `guest/development-probe/` imports R4SYS and R4DESK; isolated child
+console creation is a R4DESK API. Its output is collected explicitly so child
+output cannot mix with guest control replies. The qualified SSH service closes
+its connection after a completed session channel, so the adapter does not assume
+OpenSSH multiplex reuse. Exact image/component hashes, not version labels, select
+the profiles in `shared/r4os/development-profiles.json`.
+
+`shared/project-development.d.ts`, `shared/development-host.json` and
+`guest/PROTOCOL.md` define the Studio job/evidence/target contracts and limits.
+Jobs, deployments, guest processes and check verdicts are distinct identities and
+states; native u64 process generations remain decimal strings. Unknown roles,
+images or changed pins fail closed. GUI/service and other role adapters remain
+unqualified here. These foundations do not yet expose general Build/Deploy/Run
+endpoints or new agent tools; implementation continues in the following releases.
+Source, qualification and retained evidence are documented in the workspace's
+Docs/Project-Build-Run.md and Research/R4OS/Agent-VM-Development/.
+
 ## Projects, sessions and agent runs (0.3.17)
 
 Projects store their immutable UUID and SDK/Contract/compiler pins in

@@ -1,0 +1,135 @@
+import type { ProjectPins, ProjectTemplate } from './projects.js';
+
+/** Studio contracts; these are not R4OS ABI or SDK interfaces. */
+export type DevelopmentJobKind = 'build' | 'deploy' | 'execution';
+export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
+  | 'completed' | 'failed' | 'interrupted' | 'unknown';
+export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
+export type DevelopmentToolId = 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project'
+  | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input';
+
+export interface DevelopmentCapability {
+  available: boolean;
+  reason?: string;
+}
+export interface DevelopmentOptions {
+  revision: string;
+  build: DevelopmentCapability;
+  deploy: DevelopmentCapability;
+  execute: DevelopmentCapability;
+  capture: DevelopmentCapability;
+  input: DevelopmentCapability;
+  profileId: string | null;
+  assignedVm: { id: string; name: string; imageId: string; ready: boolean } | null;
+}
+
+export interface SourceFileIdentity { path: string; sha256: string; bytes: number }
+export interface DevelopmentSource {
+  id: string;
+  sha256: string;
+  manifestSha256: string;
+  files: SourceFileIdentity[];
+  pins: ProjectPins;
+}
+export interface DevelopmentArtifact {
+  id: string;
+  projectId: string;
+  buildId: string;
+  sourceSha256: string;
+  manifestSha256: string;
+  packageSha256: string;
+  kind: 'R4X' | 'R4L' | 'R4D' | 'R4P';
+  role: ProjectTemplate;
+  entry: string;
+  files: SourceFileIdentity[];
+  createdAt: string;
+}
+export interface DevelopmentTarget {
+  vmId: string;
+  vmRevision: string;
+  imageId: string;
+  imageSha256: string;
+  bootId: string;
+  profileId: string;
+  helperSha256: string;
+  helperProtocol: number;
+}
+export interface GuestProcessIdentity {
+  instanceId: number;
+  /** Decimal string: R4OS generations are u64, beyond JavaScript integer precision. */
+  generation: string;
+  windowId?: number;
+  serviceName?: string;
+}
+export interface DevelopmentEvidence {
+  id: string;
+  kind: 'console' | 'diagnostic' | 'screenshot' | 'file';
+  sha256: string;
+  bytes: number;
+  createdAt: string;
+  bootId?: string;
+  process?: GuestProcessIdentity;
+  width?: number;
+  height?: number;
+}
+export interface DevelopmentCheck {
+  state: DevelopmentCheckState;
+  criteria: { expectedExitCode?: number; outputContains?: string[]; visual?: string };
+  findings: string[];
+  evidenceIds: string[];
+  /** Visual judgement is distinguished from host assertions. */
+  assessment: 'host' | 'agent' | null;
+}
+export interface DevelopmentJob {
+  id: string;
+  projectId: string;
+  kind: DevelopmentJobKind;
+  state: DevelopmentJobState;
+  revision: number;
+  sessionId: string | null;
+  agentRunId: string | null;
+  artifactId: string | null;
+  deploymentId: string | null;
+  target: DevelopmentTarget | null;
+  process: GuestProcessIdentity | null;
+  exitCode: number | null;
+  error: string | null;
+  phase: string;
+  check: DevelopmentCheck | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+export interface DevelopmentJobPage {
+  job: DevelopmentJob;
+  output: string;
+  nextOffset: number;
+  truncated: boolean;
+  /** SSH console transport does not imply independently captured stderr. */
+  outputKind: 'build' | 'console' | 'diagnostic';
+  evidence: DevelopmentEvidence[];
+}
+export interface DevelopmentSettings {
+  revision: number;
+  arguments: string;
+  workingDirectory: string;
+  timeoutSeconds: number;
+  expectedExitCode: number | null;
+  outputContains: string[];
+  visualCriteria: string;
+}
+
+/** The server derives project and VM scope; none of these accept a host path or VM ID. */
+export interface DevelopmentSubmission {
+  requestId: string;
+  projectRevision: number;
+  settingsRevision: number;
+}
+export interface DevelopmentBuildInput extends DevelopmentSubmission {
+  artifactId?: never;
+}
+export interface DevelopmentDeployInput extends DevelopmentSubmission {
+  artifactId: string;
+}
+export interface DevelopmentRunInput extends DevelopmentSubmission {
+  deploymentId: string;
+}

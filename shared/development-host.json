@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "interface": "r4os-studio-development",
+  "hostProtocol": 1,
+  "workerProtocol": 1,
+  "dataSchema": 1,
+  "guestProtocol": 1,
+  "limits": {
+    "activeHostJobs": 2,
+    "inputFiles": 4096,
+    "inputBytes": 268435456,
+    "fileBytes": 67108864,
+    "packageBytes": 134217728,
+    "outputBytes": 2097152,
+    "pageBytes": 65536,
+    "buildTimeoutSeconds": 600,
+    "transferTimeoutSeconds": 300,
+    "executionTimeoutSeconds": 300,
+    "guestFrameBytes": 65536,
+    "screenshotBytes": 393216,
+    "screenshotMaxWidth": 1280,
+    "screenshotMaxHeight": 1024
+  }
+}
