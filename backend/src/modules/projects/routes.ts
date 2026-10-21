@@ -3,6 +3,7 @@ import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResp
 import { listProjects, projectStore, ProjectError } from './store.js';
 import { ProjectSessions } from './sessions.js';
 import { agentSessionRoutes } from '../agent-sessions/routes.js';
+import { runRoutes } from '../agent-sessions/run-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -39,6 +40,7 @@ function validateFields(value: unknown, allowed: string[]) {
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
   agentSessionRoutes(app, directory, sessions, providerDirectory);
+  runRoutes(app, sessions);
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
   app.addHook('onReady', async () => {
     void projectStore<{ id: string; recovered: boolean }[]>(directory, { operation: 'recover' }, 'create')

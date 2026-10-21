@@ -11,6 +11,7 @@ export function sessionStore<T>(directory: string, request: Record<string, unkno
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/agent-sessions/session_store.py', import.meta.url)),
       directory, componentRoot(), providers], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
+    child.stdout.setEncoding('utf8');
     let output = '', settled = false;
     const finish = (error?: Error, value?: T) => {
       if (settled) return;

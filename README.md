@@ -450,3 +450,28 @@ Der versionierte Bootstrap enthält die benötigten neuen Dienstdefinitionen und
 Root-Status/Transaktion und Verlauf: `/var/lib/r4os-studio-updates/`. Privater Build-Cache: `/var/cache/r4os-studio-updates/`. Diagnose: `journalctl -u r4os-studio-updates -u r4os-studio-update-build -u r4os-studio`. Für Entwicklung weiterhin den App-Checkout mit `pnpm dev` nutzen; ein einfaches Bauen des Checkouts ändert die aktive unveränderliche Release nicht. `Tools/start.sh`, `stop.sh` und `restart.sh` steuern weiterhin ausschließlich den Webdienst. Host-Reboot lässt VMs wie bisher ausgeschaltet.
 
 Prüfen: `corepack pnpm build`, `corepack pnpm lint`, `corepack pnpm test` sowie `python3 scripts/updates/test_host.py`. Python-Tests simulieren Aktivierung/Fehlstart/unterbrochene Wiederherstellung, prüfen Dateninhalte/Inodes und verhindern echte Host-Kommandos. Backend-Tests prüfen Sitzung, CSRF, Origin/Host, feste Release-Eingaben und nicht konfigurierte Host-Unterstützung.
+
+### Agent sessions (0.3.10)
+
+Projects store session metadata and replayable events in `Sessions/Sessions.sqlite`,
+with native Codex conversation state in `Sessions/<session-id>/Codex/`. Project
+sources live in `Workspace/`. The browser/API never receives provider credentials.
+Run admission is idempotent by request UUID and freezes settings and project pins;
+one run may use a project at a time, with two active runs per host. Native Codex
+0.163.0 is qualified by binary hash; unsupported binaries fail closed.
+
+The host requires Linux/systemd, Bubblewrap and the existing `r4os-studio` user.
+After installing a release, explicitly provision its fixed unprivileged services:
+`sudo python3 /opt/r4os-studio/current/scripts/agent-sessions/install.py`.
+This preserves the existing bootstrap and running VMs. The coordinator communicates
+through a private Unix socket. Each run has its own bounded systemd unit and pinned
+release; closing the browser or restarting Studio does not stop it. Stop interrupts
+the native turn and cleans the run unit. Unconfirmed outcomes remain visible and
+are never automatically resubmitted. Provider disconnect stops its runs first.
+
+Session/create/settings/history and run/start/stop/event endpoints reuse Projects
+sessions, CSRF and Host/Origin checks. SSE resumes using persisted event IDs.
+A browser session UI and actual project tool handlers follow in later subversions.
+Nine dynamic tool declarations are stable across native conversation resume;
+permissions are enforced before each host call. Native shell, patch, web search,
+plugins, skills and project instruction discovery are disabled in this profile.

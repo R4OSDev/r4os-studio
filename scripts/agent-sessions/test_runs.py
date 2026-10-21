@@ -1,0 +1,82 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import json
+from pathlib import Path
+import tempfile
+import unittest
+import uuid
+
+from session_store import SessionStore, TOOL_IDS, encode
+from run_store import admit, get_run, transition, events
+from store import connect, ProjectFault
+from worker import Worker
+
+
+class Runs(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.projects = self.root / 'Projects'; self.r4os = self.root / 'R4OS'
+        self.pid, self.sid, self.provider = (str(uuid.uuid4()) for _ in range(3))
+        with connect(self.projects) as db:
+            db.execute("INSERT INTO projects VALUES (?,?,'','C','terminal',?,NULL,'{}','now','now',1,'ready')", (self.pid, 'Fixture', 'fixture'))
+        (self.projects / self.pid / 'Workspace').mkdir(parents=True)
+        (self.projects / self.pid / 'Workspace/module.R4MF').write_text('R4OS_MODULE_MANIFEST=2\n')
+        self.providers = self.root / 'Providers'; (self.providers / self.provider).mkdir(parents=True)
+        (self.providers / 'providers.json').write_text(encode([{'id': self.provider, 'name': 'Fixture', 'type': 'openai', 'connected': True}]))
+        (self.providers / self.provider / 'models_cache.json').write_text(encode({'models': [{'slug': 'fixture', 'visibility': 'list', 'supported_reasoning_levels': [{'effort': 'low'}]}]}))
+        self.settings = {'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'permissions': {t: True for t in TOOL_IDS}}
+        with self.open() as s:
+            s.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (self.sid, self.pid, 'Fixture', encode(self.settings), '{}')); s.db.commit()
+        self.data = {'requestId': str(uuid.uuid4()), 'revision': 1, 'text': 'Concurrent input'}
+
+    def open(self):
+        from contextlib import closing
+        return closing(SessionStore(self.projects, self.r4os, self.pid))
+
+    def tearDown(self): self.tmp.cleanup()
+
+    def test_concurrent_retry_snapshot_stop_and_replay(self):
+        def send():
+            with self.open() as s: return admit(s, self.sid, self.data, self.providers)
+        with ThreadPoolExecutor(2) as pool: results = list(pool.map(lambda _: send(), range(2)))
+        self.assertEqual(results[0][0]['id'], results[1][0]['id']); self.assertEqual(sum(f for _, f in results), 1)
+        rid = results[0][0]['id']
+        with self.open() as s:
+            with self.assertRaises(ProjectFault): admit(s, self.sid, {**self.data, 'text': 'Changed'}, self.providers)
+            with self.assertRaises(ProjectFault): admit(s, self.sid, {**self.data, 'requestId': str(uuid.uuid4())}, self.providers)
+            with self.assertRaises(ProjectFault): s.update(self.sid, {'revision': 1, 'name': 'Busy'}, self.providers)
+            self.assertEqual(json.loads(get_run(s, rid)['config'])['permissions'], self.settings['permissions'])
+            transition(s, rid, 'stopping'); transition(s, rid, 'running', turn_id='late')
+            self.assertEqual(get_run(s, rid)['state'], 'stopping')
+            transition(s, rid, 'interrupted'); transition(s, rid, 'running')
+            self.assertEqual(get_run(s, rid)['busy'], 0)
+            history = s.history(self.sid)
+            self.assertEqual(len(history['items']), 1)
+            self.assertEqual(events(s, self.sid, history['cursor'])['events'], [])
+            self.assertEqual(len(events(s, self.sid)['events']), 4)
+            # A new process sees the same run; retries never add a user message.
+        with self.open() as s:
+            result, fresh = admit(s, self.sid, self.data, self.providers)
+            self.assertFalse(fresh); self.assertEqual(result['state'], 'interrupted')
+            self.assertEqual(len(s.history(self.sid)['items']), 1)
+
+    def test_tool_denial_and_unconfirmed_receipt_never_execute(self):
+        with self.open() as s:
+            run, _ = admit(s, self.sid, self.data, self.providers)
+        w = Worker({'projects': str(self.projects), 'r4os': str(self.r4os), 'projectId': self.pid, 'runId': run['id']})
+        w.thread_id = 'thread'; w.turn_id = 'turn'; w.config['permissions']['studio.write_file'] = False
+        calls = []
+        async def execute(*args): calls.append(args); return {'success': True, 'output': 'done'}
+        w.execute = execute
+        params = {'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_write_file', 'callId': 'call', 'arguments': {'path': 'x'}}
+        async def scenario():
+            first = await w.tool(params); second = await w.tool(params)
+            self.assertEqual(first, second); self.assertFalse(first['success']); self.assertFalse(calls)
+            w.store.db.execute("UPDATE tools SET result=NULL,state='intent'"); w.store.db.commit()
+            result = await w.tool(params)
+            self.assertIn('unknown', result['contentItems'][0]['text']); self.assertFalse(calls)
+        try: asyncio.run(scenario())
+        finally: w.store.close()
+
+
+if __name__ == '__main__': unittest.main()

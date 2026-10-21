@@ -1,5 +1,6 @@
 """Bounded project session catalog. Fixed operations, never arbitrary SQL or paths."""
 import datetime
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -102,7 +103,7 @@ def validate_settings(data, provider_dir):
 class SessionStore:
     def __init__(self, projects, r4os, project_id):
         self.projects, self.r4os, self.project_id = Path(projects), Path(r4os), identity(project_id)
-        with project_connect(self.projects) as db:
+        with closing(project_connect(self.projects)) as db:
             self.project = project_operation(db, {'operation': 'get', 'id': project_id}, self.r4os)
         self.workspace = workspace(self.projects, project_id, require_current=True)
         self.directory = self.workspace.parent / 'Sessions'
@@ -220,12 +221,14 @@ PRAGMA user_version=1;
     def history(self, session_id, before=None, limit=50):
         self.row(session_id)
         if type(limit) is not int or not 1 <= limit <= 100: raise ProjectFault('Invalid history page.', 400)
+        self.db.execute('BEGIN')
         rows = self.db.execute('SELECT rowid,* FROM items WHERE session_id=? AND rowid < ? ORDER BY rowid DESC LIMIT ?',
                                (session_id, before or 9223372036854775807, limit + 1)).fetchall()
         more = len(rows) > limit; rows = rows[:limit]
         cursor = rows[-1]['rowid'] if more else None
-        return {'items': [json.loads(r['payload']) for r in reversed(rows)], 'before': cursor,
-                'cursor': self.db.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]}
+        event_cursor = self.db.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]
+        self.db.commit()
+        return {'items': [json.loads(r['payload']) for r in reversed(rows)], 'before': cursor, 'cursor': event_cursor}
 
     @staticmethod
     def run_present(r):

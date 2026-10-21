@@ -9,6 +9,7 @@ import { version } from './version.js';
 import { activeTool } from './modules/components/tools.js';
 import { projectRoutes } from './modules/projects/routes.js';
 import { projectsDirectory } from './modules/projects/store.js';
+import { cancelProviderRuns } from './modules/agent-sessions/host.js';
 
 export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory() }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
@@ -24,6 +25,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
     release: process.env.STUDIO_RELEASE_ID ?? null }));
   app.register(providerRoutes, {
     prefix: '/api/providers',
+    beforeDisconnect: (id: string) => cancelProviderRuns(projectDirectory, id),
     directory: process.env.STUDIO_DATA_DIR ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url)),
     binary: codexOverride || legacyCodex,
     ...(selectedCodex ? { binaryResolver: async () => (await activeTool('codex')).binary } : {}),

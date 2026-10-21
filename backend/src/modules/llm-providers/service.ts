@@ -19,6 +19,7 @@ export interface ProviderOptions {
   binaryResolver?: () => Promise<string>;
   clientFactory?: AuthClientFactory;
   loginTimeoutMs?: number;
+  beforeDisconnect?: (id: string) => Promise<void>;
 }
 
 export class ProviderManager {
@@ -269,6 +270,7 @@ export class ProviderManager {
 
   private async disconnectLocked(id: string): Promise<Provider> {
     await this.record(id);
+    await this.options.beforeDisconnect?.(id);
     this.usages.delete(id);
     const runtime = this.runtimes.get(id);
     if (runtime?.login) this.finish(runtime.login, 'cancelled');
