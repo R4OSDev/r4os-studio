@@ -82,4 +82,5 @@ export class PointerControllers {
     }).catch(() => { void close(); });
   }
   async close() { await Promise.allSettled([...this.controllers.values()].map((close) => close())); }
+  async closeVm(id: string) { await this.controllers.get(id)?.(); }
 }

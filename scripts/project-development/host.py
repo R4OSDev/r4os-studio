@@ -31,6 +31,9 @@ class Host:
     def __init__(self, config):
         self.config = config; self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set()
         self.root = folder(Path(config['projects']) / '.studio/development')
+        from boot import BootWatch
+        from access import Access
+        self.boots = BootWatch(config['projects']); self.access = Access(config['projects'], config['r4os'], self.boots)
 
     def store(self, project_id): return Jobs(self.config['projects'], self.config['r4os'], project_id)
 
@@ -89,17 +92,29 @@ class Host:
                 vm = json.loads(path.read_text()); image = {'id': vm['imageId'], 'sha256': vm['imageSha256']}
             except (OSError, ValueError, KeyError): pass
         match = eligible(project, image)
-        unavailable = {'available': False, 'reason': 'Guest development access is not configured.'}
+        access = self.access.public(project['vmId']) if image else None
+        unavailable = {'available': False, 'reason': 'The guest deployment adapter is not installed yet.'}
+        if not match['available']: unavailable = {'available': False, 'reason': match['reason']}
+        elif access and not access['available']: unavailable = {'available': False, 'reason': access['reason']}
         if project['vmId'] and not image:
             unavailable = {'available': False, 'reason': 'Assigned VM metadata is unavailable. Development host maintenance is required.'}
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
             'build': {'available': True}, 'deploy': unavailable, 'execute': unavailable,
             'capture': unavailable, 'input': unavailable, 'profileId': match['profileId'],
-            'qualification': match, 'assignedVm': {'id': vm['id'], 'name': vm['name'],
-                'imageId': image['id'], 'ready': False} if vm and image else None}
+            'qualification': match, 'transport': {'available': bool(access and access['available']),
+                'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},
+            'assignedVm': {'id': vm['id'], 'name': vm['name'],
+                'imageId': image['id'], 'ready': bool(access and access['ready'])} if vm and image else None}
 
     async def handle(self, request, peer_pid=None):
         op = request.get('operation')
+        if op in ('access_read', 'access_save', 'access_check'):
+            allowed = {'operation', 'vmId'} | ({'input'} if op == 'access_save' else set())
+            if set(request) != allowed: raise DevelopmentFault('Unexpected guest access fields.', 400)
+            vm_id = identity(request['vmId'])
+            if op == 'access_read': return self.access.public(vm_id)
+            if op == 'access_save': return self.access.configure(vm_id, request['input'])
+            return await self.access.check(vm_id)
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
@@ -218,6 +233,7 @@ async def main():
     if host.connections:
         try: await asyncio.wait_for(asyncio.gather(*host.connections, return_exceptions=True), 25)
         except asyncio.TimeoutError: pass
+    await host.boots.close()
     if replacement: os.execv('/usr/bin/python3', ['/usr/bin/python3', '-B', str(replacement)])
 
 

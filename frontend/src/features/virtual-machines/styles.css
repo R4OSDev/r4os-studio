@@ -67,3 +67,6 @@
 .vm-release select { max-width: 100%; }
 .vm-release .vm-alert { margin: 0; width: 100%; box-sizing: border-box; }
 .vm-release .vm-alert button { margin-top: 10px; }
+.vm-development-access .vm-form { width: min(100%, 520px); }
+.vm-access-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.vm-access-fingerprint { overflow-wrap: anywhere; max-width: 100%; color: var(--muted); font-size: 11px; }

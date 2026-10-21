@@ -150,6 +150,10 @@
         "timeout": true,
         "ownedKillReap": true,
         "realGuiOrServiceClaimed": false
+      },
+      "guest": {
+        "release": "0.86.42",
+        "kernel": "0.1.381"
       }
     },
     {
@@ -300,6 +304,10 @@
         "timeout": true,
         "ownedKillReap": true,
         "realGuiOrServiceClaimed": false
+      },
+      "guest": {
+        "release": "0.84.47",
+        "kernel": "0.1.331"
       }
     }
   ]

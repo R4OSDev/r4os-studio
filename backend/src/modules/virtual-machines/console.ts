@@ -53,4 +53,5 @@ export class ConsoleBridge {
     });
   }
   close() { for (const peer of this.peers) peer.close(); }
+  closeVm(id: string) { for (const peer of this.peers) if (peer.id === id) peer.close(); }
 }

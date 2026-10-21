@@ -21,6 +21,7 @@ async function run() {
   if (image.sha256 !== config.imageSha256) throw new Error('The base image identity changed.');
   await mkdir(runtimePath(id), { recursive: true, mode: 0o700 });
   await rm(join(runtimePath(id), 'qmp.sock'), { force: true });
+  await rm(join(runtimePath(id), 'development-qmp.sock'), { force: true });
   await rm(join(runtimePath(id), 'vnc.sock'), { force: true });
   await prepareShare(directory);
   let kvm = false;
@@ -34,7 +35,8 @@ async function run() {
     '-drive', 'file=Disks/exchange.img,if=none,id=exchange,format=raw,cache=writethrough',
     '-device', 'qemu-xhci,id=exchange-usb', '-device', 'usb-storage,drive=exchange,bus=exchange-usb.0,removable=on',
     '-audiodev', 'driver=none,id=silent', '-device', 'ich9-intel-hda', '-device', 'hda-duplex,audiodev=silent',
-    '-serial', 'file:Logs/serial.log', '-qmp', `unix:${join(runtimePath(id), 'qmp.sock')},server=on,wait=off`];
+    '-serial', 'file:Logs/serial.log', '-qmp', `unix:${join(runtimePath(id), 'qmp.sock')},server=on,wait=off`,
+    '-qmp', `unix:${join(runtimePath(id), 'development-qmp.sock')},server=on,wait=off`];
   const tool = await activeTool('qemu');
   try {
     const pinPath = join(runtimePath(id), 'worker.json');

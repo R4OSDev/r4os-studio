@@ -22,3 +22,13 @@ export interface VmReleaseChange {
   confirm: true; expectedRevision: string; expectedImageId: string; expectedImageSha256: string;
   imageId: string; imageSha256: string;
 }
+
+export interface VmDevelopmentAccess {
+  revision: number; vmRevision: string; enabled: boolean; username: string;
+  credentialsStored: boolean; hostKeyFingerprint: string | null; imageId: string;
+  available: boolean; ready: boolean; reason: string | null; lastCheckedAt: string | null;
+  guestRelease: string | null; guestKernel: string | null;
+}
+export interface VmDevelopmentAccessInput {
+  revision: number; vmRevision: string; enabled: boolean; username: string; password?: string; resetHostKey?: boolean;
+}

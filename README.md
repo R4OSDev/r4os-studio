@@ -1,5 +1,37 @@
 # R4OS Studio · App
 
+## Private VM development access (0.3.20)
+
+VM Settings includes Development access, explicit guest authentication and Check
+access. Credentials and host keys remain in private Studio storage outside the
+workspace; responses return credential presence and the public fingerprint only.
+Network must already be enabled explicitly. Readiness requires authenticated VER,
+the exact release and active kernel, a pinned host key and the current observed
+VM boot. QEMU running alone is not readiness. The SSH/SFTP client hashes are part
+of the qualified execution profile; completed connections are not multiplexed.
+
+VM operations share cross-process flock reservations. Manual VM changes, reset,
+stop, exchange writes, deletion and console admission respect a development
+reservation; distinct VMs remain independent. The private VM bridge reuses the
+existing manager and RAM admission, checks VM/image/project revisions and a held
+private reservation token, and exposes fixed operations only. Neither it nor
+credentials/QMP/VNC sockets are mounted into agent/compiler namespaces.
+
+A separate private development-qmp.sock observes resets without occupying the
+original management monitor. New VM starts create both sockets. Existing running
+VM workers are preserved and need an ordinary stop/start before development access
+can use this observer. A changed/lost boot invalidates previous readiness and
+targets. Guest SSH forwarding binds an ephemeral loopback port only and is removed
+after the access operation; uncertain forwarding intents remain recorded privately
+for explicit recovery. No guest services are exposed to the LAN or VPN.
+
+Run the updated scripts/project-development/install.py as explicit host maintenance.
+For an existing 0.3.19 host, restart only the idle development coordinator after
+installation so its systemd namespace gains read access to fixed VM metadata and
+the private monitor. Build workers retain inaccessible VM/provider mounts. The
+installer preserves existing bootstrap, workers and VMs. Actual guest deployment,
+owned execution and agent tools follow in the remaining roadmap releases.
+
 ## Durable project builds (0.3.19)
 
 Projects expose scoped development options, settings, build admission, job output,
