@@ -1,5 +1,11 @@
 # R4OS Studio · App
 
+## SDK manifest adapter and C tools (0.3.2)
+
+The session-bound `GET /api/projects/options` exposes the pinned language/type catalog. Studio builds and caches the official ModuleCatalog as the service user, validates SDK/Contract package hashes with the selected Zig compiler, and consumes its JSON plan and contract plan. Verified profiles currently use SDK 0.64.35/Contract 0.64.20 or SDK 0.64.58/Contract 0.64.41 with Zig 0.16.0; unknown combinations remain unavailable. Rust remains unavailable until its separate SDK integration. Template creation is enabled in the next increment.
+
+System → Updates → Tools → C shows the shared Zig C compiler installation, downloads and default. It delegates to the same Zig inventory and creates no duplicate compiler installation. A real C console skeleton was built and inspected with the active profile.
+
 ## Project catalog (0.3.1)
 
 Projects now lists ready entries from `Data/Projects/Projects.sqlite`, using immutable UUIDs and display names. Foreign folders are preserved and are not imported automatically. The bounded Python sqlite3 helper runs as the Studio service user; Node 20 remains supported. The catalog uses schema version 1, full SQLite synchronization and a project revision for future Settings changes. Unknown or corrupt databases fail without reinitialization. Project creation is not exposed yet.

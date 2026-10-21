@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ProjectSummary } from '../../../../shared/projects.js';
+import { componentRoot } from '../components/tools.js';
 
 // Releases share the persistent data root already configured for R4OS components.
 export function projectsDirectory() {
@@ -14,9 +15,9 @@ export class ProjectError extends Error {
   constructor(message: string, public statusCode = 503) { super(message); }
 }
 
-export function projectStore<T>(directory: string, request: Record<string, unknown>): Promise<T> {
+export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' = 'store'): Promise<T> {
   return new Promise((resolve, reject) => {
-    const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/projects/store.py', import.meta.url)), directory],
+    const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL(`../../../../scripts/projects/${helper}.py`, import.meta.url)), directory, componentRoot()],
       { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
     let output = '', settled = false;
     const finish = (error?: Error, result?: T) => {
@@ -24,7 +25,7 @@ export function projectStore<T>(directory: string, request: Record<string, unkno
       settled = true; clearTimeout(timer);
       if (error) reject(error); else resolve(result!);
     };
-    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new ProjectError('Project storage did not respond.')); }, 10_000);
+    const timer = setTimeout(() => { child.kill('SIGKILL'); finish(new ProjectError('Project service did not respond.')); }, helper === 'sdk' ? 180_000 : 10_000);
     child.on('error', () => finish(new ProjectError('Project storage is unavailable.')));
     child.stdin.on('error', () => { /* Process exit is handled below. */ });
     child.stdout.on('data', (chunk) => {

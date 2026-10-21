@@ -1,0 +1,132 @@
+"""Pinned SDK adapter; Studio never reimplements the R4MF grammar."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+SUPPORTED = {
+    '2fdc71e11d6a26fd1998dfddb43923f9d707abda': '03195b2a2e7461c72a4d0d6b645ae24319ba6315',
+    '0508853ba75f4d6e8b7bbe8515fa63ed0d314da1': '95f762623e6ac2025e9a8aa781713c7c957629a8',
+}
+TYPES = [
+    ('terminal', 'Terminal application', 'R4X', 'console', ['Zig', 'C']),
+    ('desktop', 'Desktop application', 'R4X', 'gui', ['Zig', 'C']),
+    ('service', 'Service', 'R4X', 'service', ['Zig', 'C']),
+    ('driver', 'Driver', 'R4D', None, ['Zig']),
+    ('protocol', 'Protocol module', 'R4P', None, ['Zig']),
+    ('library', 'Runtime library', 'R4L', None, ['Zig', 'C']),
+    ('subsystem', 'Subsystem host', 'R4X', 'gui', ['Zig', 'C']),
+]
+
+
+def digest(path):
+    with Path(path).open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def run(args, env, timeout=120):
+    result = subprocess.run([str(a) for a in args], capture_output=True, text=True, env=env, timeout=timeout, cwd=env['HOME'])
+    if result.returncode:
+        raise ValueError((result.stderr or result.stdout)[-1600:])
+    return result.stdout.strip()
+
+
+def profile(root, projects, pinned=None):
+    defaults = pinned or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
+    sdk_id = defaults['sdk'].get('revision')
+    contract_id = defaults['contract'].get('revision')
+    zig_id = defaults['zig'].get('version')
+    if SUPPORTED.get(sdk_id) != contract_id or zig_id != '0.16.0':
+        raise ValueError('Select a verified SDK/Contract profile with Zig 0.16.0.')
+    paths = {'sdk': root / 'SDK' / sdk_id, 'contract': root / 'Contract' / contract_id,
+             'zig': root / 'Toolchains/Zig' / zig_id}
+    pins = {}
+    for kind, path in paths.items():
+        if path.resolve(strict=True) != path.absolute():
+            raise ValueError('Invalid component path.')
+        marker = path / '.studio-component.json'
+        record = json.loads(marker.read_text())
+        if not re.fullmatch('[a-f0-9]{64}', record.get('sha256', '')):
+            raise ValueError('Missing component checksum.')
+        pins[kind] = {key: record[key] for key in ('version', 'revision', 'sha256', 'zigPackageHash', 'url') if key in record}
+    pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig')
+    if pinned and pins != pinned:
+        raise ValueError('Pinned project components changed.')
+    key = hashlib.sha256(json.dumps(pins, sort_keys=True).encode()).hexdigest()
+    cache = projects / '.studio/tools' / key
+    cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+    env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(cache),
+           'ZIG_LOCAL_CACHE_DIR': str(cache / 'local'), 'ZIG_GLOBAL_CACHE_DIR': str(cache / 'global')}
+    (cache / 'build.zig').write_text('pub fn build(b: *@import("std").Build) void { _ = b; }\n')
+    zig = paths['zig'] / 'zig'
+    with (cache / 'lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if run([zig, 'version'], env) != zig_id:
+            raise ValueError('Compiler version does not match the selected profile.')
+        for kind in ('sdk', 'contract'):
+            if run([zig, 'fetch', paths[kind]], env) != pins[kind]['zigPackageHash']:
+                raise ValueError('Component package checksum changed.')
+        tool = cache / 'module-catalog'
+        marker = cache / 'tool.json'
+        if not tool.is_file() or not marker.is_file() or digest(tool) != json.loads(marker.read_text()).get('sha256'):
+            temp = cache / 'module-catalog.new'
+            run([zig, 'build-exe', '-OReleaseSafe', '--dep', 'contract_bundle',
+                 '-Mroot=' + str(paths['sdk'] / 'Tools/ModuleCatalog/src/main.zig'), '--dep', 'r4os_contract',
+                 '-Mcontract_bundle=' + str(paths['sdk'] / 'r4os/r4cp_convert.zig'),
+                 '-Mr4os_contract=' + str(paths['contract'] / 'Generated/SDK/Zig/package.zig'),
+                 '-femit-bin=' + str(temp)], env)
+            os.replace(temp, tool)
+            marker.write_text(json.dumps({'sha256': digest(tool)}))
+    return {'pins': pins, 'revision': key, 'paths': paths, 'cache': cache, 'env': env, 'tool': tool}
+
+
+def options(context):
+    return {'revision': context['revision'], 'profile': context['pins'],
+            'languages': [{'id': language, 'available': language != 'Rust',
+                           **({'reason': 'Rust projects require a compatible SDK.'} if language == 'Rust' else {})}
+                          for language in ('Rust', 'Zig', 'C')],
+            'moduleTypes': [{'id': ident, 'label': label, 'kind': kind, 'appClass': app_class,
+                             'languages': languages, 'available': False}
+                            for ident, label, kind, app_class, languages in TYPES],
+            'vms': [], 'vmsAvailable': True}
+
+
+def validate(context, directory):
+    run([context['tool'], 'validate', '--manifest', directory / 'module.R4MF'], context['env'])
+    catalog = json.loads(run([context['tool'], 'catalog', '--root', directory], context['env']))
+    if len(catalog['entries']) != 1:
+        raise ValueError('Expected one project manifest.')
+    plan = json.loads(run([context['tool'], 'plan', '--manifest', directory / 'module.R4MF'], context['env'])) if catalog['entries'][0]['kind'] == 'R4X' else None
+    contract_plan = run([context['tool'], 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if plan else None
+    return {'catalog': catalog, 'plan': plan, 'contractPlan': contract_plan}
+
+
+def main():
+    os.umask(0o077)
+    request = json.loads(sys.stdin.buffer.read(131073))
+    projects, root = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
+    context = profile(root, projects, request.get('pins'))
+    if request['operation'] == 'options':
+        result = options(context)
+    elif request['operation'] == 'validate':
+        directory = Path(request['directory'])
+        if directory.resolve(strict=True) != directory.absolute() or not directory.is_relative_to(projects):
+            raise ValueError('Invalid project validation path.')
+        result = validate(context, directory)
+    else:
+        raise ValueError('Unsupported SDK operation.')
+    print(json.dumps({'result': result}))
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as error:
+        print(str(error), file=sys.stderr)
+        message = str(error) if str(error).startswith(('Select a verified', 'Pinned project', 'Component package', 'Compiler version')) else 'The SDK profile could not be validated. Check the installed SDK, Contract and Zig versions.'
+        print(json.dumps({'error': message, 'code': 503}))
+        sys.exit(1)

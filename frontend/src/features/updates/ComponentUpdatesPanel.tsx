@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import type { ComponentKind, ComponentsStatus } from '../../../../shared/components';
 import './styles.css';
 
-export const componentNames: Record<ComponentKind, string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', qemu: 'QEMU', codex: 'Codex', r4os: 'R4OS Releases' };
+export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', qemu: 'QEMU', codex: 'Codex', r4os: 'R4OS Releases' };
 
-export function ComponentUpdatesPanel({ kind }: { kind: ComponentKind }) {
+export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
+  const kind: ComponentKind = viewKind === 'c' ? 'zig' : viewKind;
   const [status, setStatus] = useState<ComponentsStatus | null>(null);
   const [error, setError] = useState('');
   const [requesting, setRequesting] = useState(false);
@@ -42,10 +43,11 @@ export function ComponentUpdatesPanel({ kind }: { kind: ComponentKind }) {
     finally { setRequesting(false); }
   }
   const versions = [...(inventory?.available ?? []).map((remote) => ({ ...remote, ...inventory?.installed.find((local) => local.id === remote.id) })), ...(inventory?.installed ?? []).filter((local) => !inventory?.available.some((remote) => remote.id === local.id))];
-  return <section className="updates-content" aria-label={`${componentNames[kind]} updates`}>
+  return <section className="updates-content" aria-label={`${componentNames[viewKind]} updates`}>
     <div className="updates-card">
-      <div className="updates-title"><h2>{componentNames[kind]}</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
+      <div className="updates-title"><h2>{componentNames[viewKind]}</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
       <p className="updates-help">Download versions and choose which installed version to use by default. Projects can use their own versions when project profiles are available.</p>
+      {viewKind === 'c' && <p className="updates-help">C uses the C compiler included with Zig. Downloads and the active default are shared with Zig.</p>}
       {kind === 'sdk' && <p className="updates-help">Selecting an SDK also selects its required installed Contract and compiler. Existing project pins stay in place.</p>}
       {kind === 'codex' && <p className="updates-help">Only the latest Codex version is available to download. Previously installed versions remain selectable.</p>}
       {kind === 'r4os' && <p className="updates-help">The default is used for new virtual machines. Existing virtual machines keep their selected release.</p>}

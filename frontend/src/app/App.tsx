@@ -38,11 +38,11 @@ export function App() {
   const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK', 'Contract', 'Libraries'] : item === 'Tools' ? ['Zig', 'QEMU', 'Codex'] : []) : [];
+  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK', 'Contract', 'Libraries'] : item === 'Tools' ? ['Zig', 'C', 'QEMU', 'Codex'] : []) : [];
   const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : selected.view;
   const view = availableViews[selectedView];
-  const componentKind: ComponentKind | undefined = updatePage && item !== 'R4OS Studio'
-    ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', QEMU: 'qemu', Codex: 'codex', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind>)[view ?? item] : undefined;
+  const componentKind: ComponentKind | 'c' | undefined = updatePage && item !== 'R4OS Studio'
+    ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', C: 'c', QEMU: 'qemu', Codex: 'codex', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind | 'c'>)[view ?? item] : undefined;
 
   function select(patch: Partial<Selection>) {
     setSelected((previous) => ({ ...previous, ...patch }));
