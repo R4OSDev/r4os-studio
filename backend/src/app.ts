@@ -7,9 +7,11 @@ import type { ProviderOptions } from './modules/llm-providers/service.js';
 import { updateRoutes } from './modules/updates/routes.js';
 import { version } from './version.js';
 import { activeTool } from './modules/components/tools.js';
+import { projectRoutes } from './modules/projects/routes.js';
+import { projectsDirectory } from './modules/projects/store.js';
 
-export function createApp({ serveFrontend = false, logger = false, providers = {} }: {
-  serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>;
+export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory() }: {
+  serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
 } = {}) {
   const app = Fastify({ logger });
   const legacyCodex = '/opt/r4os-studio/bin/codex';
@@ -30,6 +32,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
 
   app.register(vmRoutes, { prefix: '/api/vms' });
   app.register(updateRoutes, { prefix: '/api/updates' });
+  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

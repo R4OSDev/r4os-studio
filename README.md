@@ -1,5 +1,13 @@
 # R4OS Studio · App
 
+## Projects-Navigation (0.2.9, außerhalb der Roadmap)
+
+Im **Projects**-Tab heißt die erste Spalte **Projects** und listet die direkten Projektordner unter `Data/Projects/` alphabetisch mit natürlicher Zahlensortierung auf. Ordnername und Projekt-ID stimmen vorerst überein; pro Projekt liegen Quellen und spätere Build-Ausgaben unter `Data/Projects/<project-id>/`. Dateien und Symlinks werden nicht als Projekte angezeigt. Ohne Projekte erscheint **No projects yet.**; die bisherigen Platzhalter Workspace, Example Project sowie deren Components und Views entfallen. Die zweite und dritte Spalte behalten ihre Breite und bleiben ohne Überschrift und Inhalt. Eine Auswahl zeigt zunächst nur den Projektnamen im Hauptbereich.
+
+Der Browser lädt die Liste beim Öffnen des Tabs über das ausschließlich lesende `GET /api/projects`. Der Host liest nur die direkten Ordnernamen; Host/Origin-Prüfung und `Cache-Control: no-store` schützen den Zugriff. Fehlender Speicher ergibt eine leere Liste, andere Lesefehler eine eigene Fehlermeldung. Im verwalteten Deployment wird `Projects/` neben dem bereits konfigurierten `STUDIO_R4OS_DIR` aufgelöst, sodass alle Releases denselben vorhandenen `App/Data/Projects/`-Speicher verwenden. Es entstehen keine Projektkopien im Release-Verzeichnis; `Data/` bleibt vollständig ignoriert. Projektanlage, Editor, Build und die weitere Navigation sind weiterhin geplant.
+
+Geprüft: 21 Backendtests, Produktionsbuild/TypeScript und Lint. Im Browser leere und gefüllte Projektliste aus echten isolierten Ordnern, Ausschluss von Dateien/Symlinks/Unterordnern, Sortierung, erhaltene Auswahl beim Tabwechsel, unveränderte System-Navigation und gesonderte Fehleranzeige. Desktop, 390 und 320 px ohne horizontales Überlaufen; drei gleich breite Spalten. Lokale Belege im Workspace unter `Research/R4OS/Projects/`.
+
 ## Codex-Standard in bestehenden Deployments (0.2.8)
 
 Die vom alten Host-Installer gesetzte CODEX_BINARY-Vorgabe blockiert die verwaltete Standardwahl nicht mehr. Neue Provider-Prozesse lösen den ausgewählten, geprüften Codex-Pfad auf; bestehende Clients bleiben bestehen. Abweichende explizite Administrator-Pfade und injizierte Test-Clients behalten ihre Vorgabe. Die Regression für Legacy-Dienstvariable und eigenen Override wird im bestehenden Werkzeugtest geprüft. Echte isolierte Account-Clients mit der Legacy-Dienstvariable starten nach Standardwahl mit Codex 0.163.0 beziehungsweise 0.162.1; der erste Client bleibt bei erneutem Standardwechsel bestehen. Danach Standards zurückgestellt und QA-Provider entfernt. Ausschließlich account/read, ohne Login-Anfrage, Modellaufruf oder Zugriff auf bestehende Konten. Build/Lint und 20 Backendtests bestanden.
@@ -81,15 +89,16 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Purple/Dark-Design mit dunkelvioletten Flächen, lavendelfarbener Schrift und violetten Akzenten für Auswahl, Tabs und Tastaturfokus. Favicon und Browser-Theme-Farbe sind darauf abgestimmt.
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
-- Links drei gleich breite Navigationsspalten: **Areas → Components → Views**. Die Spaltenüberschriften zeigen ausschließlich ihre Bezeichnung ohne Zähler. Die Spalten enthalten keine wiederholten Kontextüberschriften und keine Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
+- Links drei gleich breite Navigationsspalten: im System-Tab **Areas → Components → Views**, im Projects-Tab **Projects** und zwei leere Spalten ohne Überschriften. Keine Zähler, wiederholten Kontextüberschriften oder Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
 - Im Tab **System** gibt es **Settings → LLM Provider**, **Virtual Machines** und **Updates → R4OS Studio**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
+- Im Tab **Projects** listet die erste Spalte die lokalen Projektordner unter `Data/Projects/`; die früheren Workspace-/Example-Project-Platzhalter sind entfernt.
 - Rechts ein Hauptbereich mit Seitentitel und Inhalt, ohne Breadcrumb-Navigation oder zusätzliche Kontextüberschrift über dem Seitentitel.
 - Die untere Leiste zeigt **R4OS Studio** horizontal mittig und **Version …** rechtsbündig. Die Versionsnummer stammt aus `shared/version.json`.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
 
-Die Projektansichten einschließlich „Example Project“ sind Dummys. OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Projekt-Builds sind noch nicht in die WebApp integriert; die VM-Verwaltung startet bereits QEMU. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+Die Projektliste, OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Projektanlage, Editor und Projekt-Builds sind noch nicht in die WebApp integriert; die VM-Verwaltung startet bereits QEMU. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
 
 ## OpenAI mit ChatGPT-Abonnement
 

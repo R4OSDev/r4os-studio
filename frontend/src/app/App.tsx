@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
-import { navigation, views } from './navigation';
+import { navigation } from './navigation';
 import type { Tab } from './navigation';
 import { useProviders } from '../features/llm-providers/useProviders';
 import { ProviderPanel } from '../features/llm-providers/components/ProviderPanel';
@@ -12,6 +12,7 @@ import { version } from '../../../shared/version.json';
 import { UpdatesPanel } from '../features/updates/UpdatesPanel';
 import { ComponentUpdatesPanel } from '../features/updates/ComponentUpdatesPanel';
 import type { ComponentKind } from '../../../shared/components';
+import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };
@@ -19,14 +20,13 @@ type Selection = { group: number; item: number; view: number };
 export function App() {
   const [tab, setTab] = useState<Tab>('System');
   const [vmId, setVmId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [providerView, setProviderView] = useState<string | null>(null);
-  const [selections, setSelections] = useState<Record<Tab, Selection>>({
-    System: { group: window.location.hash === '#updates' ? 2 : 0, item: 0, view: 0 },
-    Projects: { group: 0, item: 0, view: 0 },
+  const [selected, setSelected] = useState<Selection>({
+    group: window.location.hash === '#updates' ? 2 : 0, item: 0, view: 0,
   });
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const selected = selections[tab];
-  const groups = navigation[tab];
+  const groups = navigation;
   const group = groups[selected.group];
   const vmPage = tab === 'System' && group.name === 'Virtual Machines';
   const updatePage = tab === 'System' && group.name === 'Updates';
@@ -38,14 +38,14 @@ export function App() {
   const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK', 'Contract', 'Libraries'] : item === 'Tools' ? ['Zig', 'QEMU', 'Codex'] : []) : views[tab];
+  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK', 'Contract', 'Libraries'] : item === 'Tools' ? ['Zig', 'QEMU', 'Codex'] : []) : [];
   const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : selected.view;
   const view = availableViews[selectedView];
   const componentKind: ComponentKind | undefined = updatePage && item !== 'R4OS Studio'
     ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', QEMU: 'qemu', Codex: 'codex', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind>)[view ?? item] : undefined;
 
   function select(patch: Partial<Selection>) {
-    setSelections((previous) => ({ ...previous, [tab]: { ...previous[tab], ...patch } }));
+    setSelected((previous) => ({ ...previous, ...patch }));
   }
 
   function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -83,6 +83,7 @@ export function App() {
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
+        {tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId} /> : <>
         <aside className="navigation" aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
             <div className="column-heading">Areas</div>
@@ -134,16 +135,9 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : <div className="empty-state" key={`${tab}-${group.name}-${item}-${view}`}>
-            {view && <>
-            <div className="empty-icon"><Icon name={tab === 'System' ? 'system' : 'folder'} /><span className="icon-corner" /></div>
-            <span className="empty-eyebrow">IT ALL STARTS HERE</span>
-            <h2>Room for your {tab === 'System' ? 'system' : 'projects'}.</h2>
-            <p>This view is empty.<br /><span>{item} · {view}</span> will appear here.</p>
-            <div className="empty-label"><Icon name="grid" />App shell · Content coming soon</div>
-            </>}
-          </div>}
+          {updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
         </main>
+        </>}
       </div>
 
       <footer className="statusbar">
