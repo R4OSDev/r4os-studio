@@ -36,6 +36,10 @@ await test('component downloads/defaults require session and CSRF and accept onl
     assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/default', headers: { ...headers, origin: 'https://evil.test' }, payload: { kind: 'zig', id: '0.16.0' } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/default', headers, payload: { kind: 'zig', id: '0.16.0' } })).statusCode, 200);
     assert.deepEqual(received.at(-1), { command: 'default', kind: 'zig', id: '0.16.0' });
+    assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/check', headers, payload: { kind: 'rust' } })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { command: 'check', kind: 'rust' });
+    assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/download', headers,
+      payload: { kind: 'rust', id: '1.99.1', url: 'https://evil.test/rust.tar.xz' } })).statusCode, 400);
   } finally {
     await app.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
     delete process.env.STUDIO_COMPONENT_SOCKET; await rm(directory, { recursive: true, force: true });

@@ -4,13 +4,13 @@ import type { ComponentKind, ComponentsStatus } from '../../../../shared/compone
 import type { UpdateSessions } from './sessions.js';
 import { UpdateError } from './client.js';
 
-const kinds: ComponentKind[] = ['sdk', 'contract', 'libraries', 'zig', 'qemu', 'codex', 'r4os'];
+const kinds: ComponentKind[] = ['sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4os'];
 const identity = { type: 'string', pattern: '^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,127}$' };
 function command(value: Record<string, unknown>): Promise<ComponentsStatus> {
   return new Promise((resolve, reject) => {
     const socket = createConnection(process.env.STUDIO_COMPONENT_SOCKET ?? '/run/r4os-studio-components/control.sock');
     let pending = '', settled = false;
-    socket.setTimeout(5_000);
+    socket.setTimeout(value.command === 'default' && value.kind === 'rust' ? 60_000 : 5_000);
     socket.on('connect', () => socket.write(JSON.stringify(value) + '\n'));
     socket.on('data', (chunk) => {
       pending += chunk.toString();

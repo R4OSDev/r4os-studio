@@ -18,9 +18,9 @@ import sys
 import threading
 import time
 
-KINDS = ('sdk', 'contract', 'libraries', 'zig', 'qemu', 'codex', 'r4os')
+KINDS = ('sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4os')
 FOLDERS = {'sdk': 'SDK', 'contract': 'Contract', 'libraries': 'Libraries',
-           'zig': 'Toolchains/Zig', 'qemu': 'Toolchains/QEMU', 'codex': 'Toolchains/Codex', 'r4os': 'Images'}
+           'zig': 'Toolchains/Zig', 'rust': 'Toolchains/Rust', 'qemu': 'Toolchains/QEMU', 'codex': 'Toolchains/Codex', 'r4os': 'Images'}
 IDENTITY = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,127}$')
 
 
@@ -79,7 +79,7 @@ def parse_package_info(text):
 
 
 def public(record):
-    return {key: value for key, value in record.items() if key not in ('directory', 'binary', 'imageBinary', 'archiveUrl', 'size', 'signatureUrl', 'metadataHash')}
+    return {key: value for key, value in record.items() if key not in ('directory', 'binary', 'imageBinary', 'archiveUrl', 'size', 'signatureUrl', 'metadataHash', 'fileHashes', 'symlinks')}
 
 
 class Manager:
@@ -106,7 +106,7 @@ class Manager:
                     identity = Path(pin['path']).name if pin.get('path') else None
                     preferred = next((value for value in installed if value['id'] == identity), None)
                     preferred = preferred or self.external.get(kind)
-                    if kind == 'libraries' and not pin:
+                    if kind in ('libraries', 'rust') and not pin:
                         continue
                     self.state['defaults'][kind] = preferred or installed[0]
             atomic(self.profile, self.state)
@@ -140,6 +140,10 @@ class Manager:
                     record.update(id=path.name, directory=str(path))
                     if kind == 'zig':
                         record['binary'] = str(path / 'zig')
+                    elif kind == 'rust':
+                        if not (path / 'bin/rustc').is_file() or not (path / 'bin/cargo').is_file() or not record.get('fileHashes'):
+                            continue
+                        record['binary'] = str(path / 'bin/rustc')
                     elif kind in ('qemu', 'codex'):
                         binary = path / ('bin/qemu-system-x86_64' if kind == 'qemu' else 'codex')
                         if not binary.is_file():
@@ -234,6 +238,9 @@ class Manager:
             record = next((value for value in self.installed(kind) if value['id'] == identity), None)
             if not record:
                 raise ValueError('Only a complete local installation can be selected as default.')
+            if kind == 'rust':
+                from rust import verify_installation
+                verify_installation(self.root / FOLDERS[kind] / identity, record)
             defaults = copy.deepcopy(self.state['defaults'])
             defaults[kind] = record
             if kind == 'sdk' and record.get('dependencies', {}).get('contract'):

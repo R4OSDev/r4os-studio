@@ -9,7 +9,7 @@ import urllib.request
 
 HOSTS = {'github.com', 'api.github.com', 'codeload.github.com', 'raw.githubusercontent.com',
          'release-assets.githubusercontent.com', 'objects.githubusercontent.com',
-         'ziglang.org', 'download.qemu.org', 'www.qemu.org', 'keys.openpgp.org'}
+         'ziglang.org', 'static.rust-lang.org', 'download.qemu.org', 'www.qemu.org', 'keys.openpgp.org'}
 
 
 def safe_url(url):

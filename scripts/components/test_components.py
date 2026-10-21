@@ -3,12 +3,42 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from common import safe_url
 from service import Manager, atomic
+from service import digest
+from rust import HOST, TARGET, manifest
 
 
 class ComponentTests(unittest.TestCase):
+    def test_rust_manifest_checksum_is_required_before_any_archive_is_trusted(self):
+        with patch('rust.read_url', side_effect=[b'altered manifest', b'0' * 64 + b'  channel.toml\n']):
+            with self.assertRaisesRegex(ValueError, 'manifest SHA-256'):
+                manifest('1.99.1')
+
+    def test_rust_default_requires_verified_components_and_does_not_activate_on_discovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = root / 'Toolchains/Rust/1.99.1'
+            files = ['bin/rustc', 'bin/cargo', f'lib/rustlib/{HOST}/bin/rust-lld', f'lib/rustlib/{TARGET}/lib/libcore-fixture.rlib', 'release/channel.toml']
+            for relative in files:
+                path = prefix / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative)
+            atomic(prefix / '.studio-component.json', {'version': '1.99.1', 'linker': files[2],
+                   'sha256': digest(prefix / files[4]), 'manifestSha256': digest(prefix / files[4]),
+                   'fileHashes': {relative: digest(prefix / relative) for relative in files}})
+            manager = Manager(root)
+            self.assertNotIn('rust', manager.state['defaults'])
+            manager.set_default('rust', '1.99.1')
+            self.assertEqual(manager.state['defaults']['rust']['id'], '1.99.1')
+            before = manager.profile.read_bytes()
+            (prefix / 'bin/rustc').write_text('changed compiler')
+            with self.assertRaisesRegex(ValueError, 'checksum changed'):
+                manager.set_default('rust', '1.99.1')
+            self.assertEqual(manager.profile.read_bytes(), before)
+
     def test_defaults_require_local_versions_and_preserve_profile_after_failure(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

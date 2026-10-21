@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ComponentKind, ComponentsStatus } from '../../../../shared/components';
 import './styles.css';
 
-export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', qemu: 'QEMU', codex: 'Codex', r4os: 'R4OS Releases' };
+export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', rust: 'Rust', qemu: 'QEMU', codex: 'Codex', r4os: 'R4OS Releases' };
 
 export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
   const kind: ComponentKind = viewKind === 'c' ? 'zig' : viewKind;
@@ -50,6 +50,7 @@ export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind 
       {viewKind === 'c' && <p className="updates-help">C uses the C compiler included with Zig. Downloads and the active default are shared with Zig.</p>}
       {kind === 'sdk' && <p className="updates-help">Selecting an SDK also selects its required installed Contract and compiler. Existing project pins stay in place.</p>}
       {kind === 'codex' && <p className="updates-help">Only the latest Codex version is available to download. Previously installed versions remain selectable.</p>}
+      {kind === 'rust' && <p className="updates-help">Rust toolchains include Cargo and target components. Rust projects require a compatible R4OS SDK.</p>}
       {kind === 'r4os' && <p className="updates-help">The default is used for new virtual machines. Existing virtual machines keep their selected release.</p>}
       {!loaded && !error && <p role="status">Loading component versions…</p>}
       {status && !status.enabled && <p className="updates-alert">{status.message}</p>}
@@ -73,7 +74,9 @@ export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind 
           const downloadable = inventory?.available.some((remote) => remote.id === value.id) && (kind !== 'codex' || value.id === inventory?.latestId);
           return <div className="component-version" key={value.id}>
             <div><strong>{value.version}</strong>{value.id === inventory?.latestId && <span className="component-label">Latest</span>}{value.id === inventory?.activeId && <span className="component-label">Default</span>}
-              {value.revision && <small>{value.revision}</small>}{value.sha256 && <small>{value.external ? 'Binary' : kind === 'r4os' && installed ? 'Disk' : 'Archive'} SHA-256: {value.sha256}</small>}</div>
+              {value.revision && <small>{value.revision}</small>}
+              {kind === 'rust' && value.cargoVersion && <small>Cargo {value.cargoVersion} · {value.targets?.join(', ')}</small>}
+              {value.sha256 && <small>{value.external ? 'Binary' : kind === 'rust' ? 'Manifest' : kind === 'r4os' && installed ? 'Disk' : 'Archive'} SHA-256: {value.sha256}</small>}</div>
             {installed ? <span className="component-label">Installed</span> : <button type="button" disabled={!downloadable || busy} onClick={() => void action('download', value.id)}>Download</button>}
           </div>;
         })}

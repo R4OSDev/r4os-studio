@@ -1,5 +1,13 @@
 # R4OS Studio · App
 
+## Rust toolchains (0.3.6)
+
+System → Updates → Tools → Rust manages stable Rust toolchains and explicitly loaded older releases. Sources are the official Rust release index and SHA-256-checked immutable channel manifests; each required archive is checked against that manifest. An installation contains rustc, Cargo, the bundled linker, host libraries and the declared `x86_64-unknown-none` target component under `Data/R4OS/Toolchains/Rust/<version>/`. This target is a toolchain profile, not proof of Rust R4OS application support.
+
+The existing unprivileged component service installs verified official component archives into private temporary storage, checks compiler/Cargo identities and a real `no_std` object build, then verifies relocation and publishes the directory atomically. The official installer runs without root in a temporary path without spaces. Saved release metadata, licenses and per-file/component checksums remain with each installation. No global rustup or host PATH changes. Downloads activate nothing; deliberate Use as default updates only the tool selection after integrity checks. Existing project pins and running jobs retain their versions. The project options API still rejects Rust until roadmap 0.3.7 integrates a verified SDK/Contract release.
+
+Validated: Rust 1.99.1 and Cargo 1.99.1, target libraries/linker, compilation before and after relocation, manifest/checksum rejection and default selection in an isolated profile. Production defaults remain unchanged.
+
 ## Projects in the browser (0.3.5)
 
 New Project opens a compact modal with Name, Description, Language, Module type and optional Virtual machine. Subsystem host adds Guest formats. The native dialog manages focus, Escape and background input; narrow layouts stack fields. Rust remains visible with a specific SDK capability limit. A stable request is saved in browser session storage before submission, so an unconfirmed response can be retried after reload without duplicate projects. Request IDs also work on the private HTTP LAN origin.
@@ -34,23 +42,19 @@ Projects now lists ready entries from `Data/Projects/Projects.sqlite`, using imm
 
 For managed deployments run `python3 scripts/install-project-support.py` as root once. It grants the web service write access only to the persistent Projects directory and takes effect on the next Studio start; it preserves existing update configuration, SDK/image permissions and VM services. All project data remains excluded from Git. Rolling back preserves the DB and project files; older folder-only releases do not understand the DB catalog.
 
-## Geplant: Projekterstellung (Roadmap 0.3.X)
+## Projektverwaltung – Roadmap 0.3.X
 
-Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Die Roadmap umfasst sieben Unterversionen mit 25 Aufgaben für SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. SQLite-Katalog, SDK-Adapter, Vorlagen und Create-/Settings-API sind umgesetzt; Browser-Projektanlage, Navigation und Settings sind ebenfalls umgesetzt. Rust-Toolchains folgen in 0.3.6; Rust-Projektintegration bleibt separat offen.
+0.3.1–0.3.6 implementieren Projektkatalog, offizielle Manifestvalidierung, geprüfte Zig-/C-Vorlagen, wiederaufnehmbare Create-/Settings-API, Browseroberfläche sowie C-/Rust-Werkzeuge. 0.3.7 bleibt als getrennte Rust-Projektintegration bis zur externen SDK-/Contract-Lieferung und deren Nachweis offen. Agent Sessions, Editorfunktion und allgemeine Build-/Deploy-Endpunkte folgen separat.
 
-Studio-Metadaten sollen zentral in `Data/Projects/Projects.sqlite` liegen; jeder Projektordner erhält eine unveränderliche serverseitige UUID. Anzeigename, Beschreibung, Sprache, VM-ID und Profilpins bleiben außerhalb des einzelnen Projektordners. Das erzeugte `module.R4MF` bleibt die R4OS-Buildwahrheit im Projekt. Der bestehende Node-20-Host benötigt dafür kein implizites Upgrade: ein kleiner fester Python-3-Adapter mit sqlite3 ist vorgesehen. Gezielte Schreibrechte für Projects bedürfen einer eigenen Hosteinrichtung; vorhandene Bootstrap-Konfiguration und andere Datenrechte bleiben erhalten.
+Studio-Metadaten liegen in `Data/Projects/Projects.sqlite`; Projektdateien unter `Data/Projects/<immutable-uuid>/`. Ein kleiner fester Python-sqlite3-Adapter erhält Node-20-Kompatibilität. Name/Beschreibung und VM-Zuweisung können geändert werden, ohne UUID, Ordner, technischen Modulnamen, Manifest oder Compiler-/SDK-/Contract-Pins umzuschreiben. Der Browser hält Formular und Navigation; der unprivilegierte Host übernimmt SQLite, Dateierzeugung und offizielle SDK-Werkzeuge. Alle Daten bleiben von Git ausgeschlossen. Gezielte Hosteinrichtung: `scripts/install-project-support.py`.
 
-R4OS kennt R4X-Anwendungen mit den Klassen console/gui/service, R4D-Treiber, R4P-Protokolle und R4L-Runtime-Libraries. Ein Subsystem host ist eine GUI-R4X-Rolle. Der [offizielle SDK-Parser](https://github.com/R4OSDev/r4os-sdk/blob/0508853ba75f4d6e8b7bbe8515fa63ed0d314da1/r4os/module_manifest.zig) und [ModuleCatalog](https://github.com/R4OSDev/r4os-sdk/blob/0508853ba75f4d6e8b7bbe8515fa63ed0d314da1/Tools/ModuleCatalog/src/main.zig) liefern Validierung und maschinenlesbare Katalog-/Plandaten. Kein separates Manifest-JSON-Schema wurde im geprüften SDK/Contract gefunden. Die Formularoptionen müssen zur konkret gebundenen Revision und einer geprüften Vorlage passen.
+Die Menüführung lautet Projects/New Project → Sessions, Editor, Settings. Bei Sessions/Editor bleibt Spalte drei leer; unter Settings enthält sie General und Virtual machine. Formulare liegen im Hauptbereich. Drei gleich breite Navigationsspalten und englische UI bleiben erhalten. Das Overlay enthält ausschließlich erforderliche Eingaben und konkrete Status-/Fehlermeldungen.
 
-Der aktuelle Parser akzeptiert Zig/C und weist `LANGUAGE=Rust` ab; Rust-ABI-Bindings allein schaffen keine Rust-Appvorlage. Deshalb ist Rust eine eigene offene Umsetzungsaufgabe. Nicht unterstützte Kombinationen bleiben kurz erklärt gesperrt; keine falschen Manifeste oder stillen Sprachwechsel als Erfolg. Auch ein C-Manifest beweist noch keinen reinen C-Treiber-/Protokoll-Buildpfad. Compiler-/SDK-/Contract-Pins gemeinsam erhalten, Libraries nur bei Bedarf laden.
+R4OS-Modularten: R4X mit console/gui/service, R4D, R4P und R4L; Subsystem host ist eine GUI-R4X-Rolle. Verfügbar sind Zig/C für Terminal/Desktop/Service/Runtime library/Subsystem host und Zig für Driver/Protocol module. Alle zwölf Kombinationen wurden mit beiden unterstützten SDK-/Contract-Profilen tatsächlich minimal gebaut. Rust-ABI-Bindings und ein installierter Rust-Compiler ersetzen die noch fehlende Manifest-/Start-/Buildunterstützung nicht.
 
-Die Compilerverwaltung gehört ausdrücklich zu **System → Updates → Tools**: C in 0.3.2 als sichtbares Profil des vorhandenen Zig-C-Compilers mit gemeinsamem Installations-/Download-/Standardpfad; Rust in 0.3.6 mit rustc/Cargo und deklarierten Zielkomponenten unter `Data/R4OS/Toolchains/Rust/<version-or-toolchain-id>/`. Für Rust neueste/ältere Versionen, parallele lokale Installationen, offizielle geprüfte Quellen, Prüfsummen, Download und bewusste Standardwahl über den vorhandenen unprivilegierten Komponenten-Dienst ergänzen. Download aktiviert nichts, Projektpins bleiben bei Standardwechsel erhalten; Cargo-/gegebenenfalls Rustup-Homes isolieren. SDK/Toolchains/C beschreibt den nativen R4CC-Gastcompiler, keinen separaten Linux-Hostcompiler. Die notwendige allgemeine Rust-SDK-/Contract-Erweiterung ist in einer separaten R4OS-Session beauftragt und wird voraussichtlich später geliefert. 0.3.7 übernimmt anschließend geprüfte veröffentlichte Revisionen, das endgültige R4OS-App-Zielprofil, offizielle Vorlagen und belegte Sprache-/Typfähigkeiten. Der Abschluss der Compilerverwaltung in 0.3.6 schaltet Rust-Projekte noch nicht frei.
+Geprüfte Profile: SDK 0.64.35 (`2fdc71e11d6a26fd1998dfddb43923f9d707abda`) mit Contract 0.64.20 (`03195b2a2e7461c72a4d0d6b645ae24319ba6315`) oder SDK 0.64.58 (`0508853ba75f4d6e8b7bbe8515fa63ed0d314da1`) mit Contract 0.64.41 (`95f762623e6ac2025e9a8aa781713c7c957629a8`), jeweils Zig 0.16.0. Unbekannte Kombinationen bleiben gesperrt. Der offizielle ModuleCatalog validiert Manifeste und liefert Katalog Schema 4 sowie für R4X App-Plan Schema 1 und den semantischen Contract-Plan. Ein separates Formular-JSON-Schema liegt in diesen Revisionen nicht vor. Aktive SDK-/Contract-/Zig-Standards wurden nicht umgestellt.
 
-`New Project` soll ganz oben in der ersten Projects-Spalte ein kompaktes englisches Overlay mit Name, Description, Language, Module type und optionaler Virtual machine öffnen; zusätzliche Gastformatfelder nur bei Subsystem host. UUID und interne Pfade gehören nicht ins Formular. Nach Erfolg Dialog schließen, Projektliste erneuern und das neue Projekt mit Sessions auswählen. SQLite und Projektdateien benötigen einen dauerhaften Erstellauftrag mit Idempotenz, Staging, Veröffentlichung ohne Überschreiben und Wiederaufnahme nach Unterbrechung. VM-Zuordnung führt keine Gastaktion aus.
-
-Geplante Menüführung in 0.3.5: Spalte 1 zeigt Projects mit New Project vor der Projektliste, Spalte 2 für das gewählte Projekt exakt Sessions, Editor und Settings. Spalte 3 bleibt bei Sessions/Editor leer; unter Settings enthält sie zunächst General und Virtual machine. Die Formulare im Hauptbereich erlauben Name/Beschreibung beziehungsweise das Zuweisen, Wechseln oder Entfernen einer VM mit Save changes/Cancel. Die Detail-/Settings-API aus 0.3.4 speichert erlaubte Metadaten konfliktgeschützt in SQLite; Umbenennen verändert weder UUID/Projektordner/technischen Modulnamen noch Manifest oder Compiler-/SDK-/Contract-Pins. Ohne Projektauswahl bleiben Spalten zwei/drei leer. Agent Sessions, Editorfunktion und allgemeine Build-/Deploy-Oberfläche folgen separat.
-
-Quellstand der Recherche: aktiver SDK 0.64.35 / Contract 0.64.20 sowie installierter aktueller SDK 0.64.58 (`0508853…`) / Contract 0.64.41 (`95f762…`), jeweils mit Zig 0.16.0. Den offiziellen ModuleCatalog für den neueren Stand isoliert gebaut: acht Manifest-/Dateiexistenzprüfungen erfolgreich, Rust erwartungsgemäß mit InvalidLanguage abgewiesen, JSON-Katalog Schema 4 und App-Plan Schema 1 tatsächlich erzeugt. Das belegt Parser und Schnittstelle, keine gebauten Apps oder Gastläufe. Vollständige Planung und Belege im übergeordneten Workspace: `Docs/Project-Creation.md`, `Research/R4OS/Projects/Manifests/`.
+Planung und Prüfbelege im übergeordneten Workspace: `Docs/Project-Creation.md`, `Research/R4OS/Projects/Implementation/`. Build-/Containerprüfungen belegen keinen Gastlauf.
 
 ## Projects-Navigation (0.2.9, außerhalb der Roadmap)
 
@@ -141,9 +145,9 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Purple/Dark-Design mit dunkelvioletten Flächen, lavendelfarbener Schrift und violetten Akzenten für Auswahl, Tabs und Tastaturfokus. Favicon und Browser-Theme-Farbe sind darauf abgestimmt.
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
-- Links drei gleich breite Navigationsspalten: im System-Tab **Areas → Components → Views**, im Projects-Tab **Projects** und zwei leere Spalten ohne Überschriften. Keine Zähler, wiederholten Kontextüberschriften oder Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
+- Links drei gleich breite Navigationsspalten: im System-Tab **Areas → Components → Views**, im Projects-Tab **Projects → Sessions / Editor / Settings → Settings-Unterpunkte**; die dritte Spalte bleibt bei Sessions/Editor leer. Keine Zähler, wiederholten Kontextüberschriften oder Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
 - Im Tab **System** gibt es **Settings → LLM Provider**, **Virtual Machines** und **Updates → R4OS Studio**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
-- Im Tab **Projects** listet die erste Spalte die lokalen Projektordner unter `Data/Projects/`; die früheren Workspace-/Example-Project-Platzhalter sind entfernt.
+- Im Tab **Projects** steht **New Project** vor dem SQLite-Projektkatalog. Die Einträge zeigen Anzeigenamen und bleiben über unveränderliche UUIDs mit ihren Ordnern unter `Data/Projects/` verbunden.
 - Rechts ein Hauptbereich mit Seitentitel und Inhalt, ohne Breadcrumb-Navigation oder zusätzliche Kontextüberschrift über dem Seitentitel.
 - Die untere Leiste zeigt **R4OS Studio** horizontal mittig und **Version …** rechtsbündig. Die Versionsnummer stammt aus `shared/version.json`.
 - Die Auswahl bleibt pro Tab im Speicher erhalten; Neuladen setzt sie zurück.
@@ -273,17 +277,21 @@ Die vollständige Quellen-/Abhängigkeitsprüfung und alle untersuchten Hauptzwe
 Data/
 ├── R4OS/
 │   ├── Toolchains/Zig/0.16.0/
+│   ├── Toolchains/Rust/<version>/
 │   ├── SDK/2fdc71e11d6a26fd1998dfddb43923f9d707abda/
 │   ├── Contract/03195b2a2e7461c72a4d0d6b645ae24319ba6315/
-│   ├── Libraries/                 leer
-│   ├── Images/                    leer
-│   ├── Instances/                 leer
+│   ├── Libraries/<revision>/
+│   ├── Images/<image-id>/
+│   ├── Instances/<uuid>/
 │   └── Profiles/minimal.json
-├── Projects/                      leer, für eigene App-Projekte
+├── Projects/
+│   ├── Projects.sqlite
+│   ├── .studio/                   private Arbeits-/Werkzeugablage
+│   └── <uuid>/                    Projektquellen und Build-Ausgaben
 └── LLMProvider/                   bestehende Provider-Daten
 ```
 
-Die versionierte Profilvorlage [`shared/r4os/minimal-profile.json`](shared/r4os/minimal-profile.json) bindet Zig 0.16.0, SDK 0.64.35 und Contract 0.64.20 mit Quell-URLs, Archiv-SHA-256 und SDK-/Contract-Zig-Pakethashes. Die installierte Profilkopie unter `Data/R4OS/Profiles/minimal.json` verwendet relative Pfade zum R4OS-Ordner. Dieses Minimalprofil enthält ausschließlich die Build-Werkzeuge; QEMU und Full-Abbild sind inzwischen separat für die VM-Verwaltung eingerichtet. Zusätzliche Libraries und UEFI-Firmware sind nicht installiert.
+Die versionierte Profilvorlage [`shared/r4os/minimal-profile.json`](shared/r4os/minimal-profile.json) bindet Zig 0.16.0, SDK 0.64.35 und Contract 0.64.20 mit Quell-URLs, Archiv-SHA-256 und SDK-/Contract-Zig-Pakethashes. Die installierte Profilkopie unter `Data/R4OS/Profiles/minimal.json` verwendet relative Pfade zum R4OS-Ordner. Dieses Minimalprofil enthält ausschließlich die Build-Werkzeuge; QEMU und Full-Abbild sind inzwischen separat für die VM-Verwaltung eingerichtet. Weitere Libraries und Werkzeuge sind über Updates separat verwaltet; Projekte laden zusätzliche Bindings nur bei konkretem Bedarf.
 
 Das Setup benötigt Linux x86_64 und Python ab 3.12. Aus dem App-Verzeichnis als Besitzer von `Data/`:
 

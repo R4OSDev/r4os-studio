@@ -1,8 +1,9 @@
-export type ComponentKind = 'sdk' | 'contract' | 'libraries' | 'zig' | 'qemu' | 'codex' | 'r4os';
+export type ComponentKind = 'sdk' | 'contract' | 'libraries' | 'zig' | 'rust' | 'qemu' | 'codex' | 'r4os';
 export interface ComponentVersion {
   id: string; version: string; revision?: string; sha256?: string; packageHash?: string;
   sourceUrl?: string; minZigVersion?: string; installedAt?: string; external?: boolean;
   dependencies?: { contract?: { revision: string; packageHash: string } };
+  cargoVersion?: string; host?: string; targets?: string[]; manifestSha256?: string;
 }
 export interface ComponentInventory {
   installed: ComponentVersion[]; available: ComponentVersion[]; activeId: string | null;
