@@ -32,7 +32,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
 
   app.register(vmRoutes, { prefix: '/api/vms' });
   app.register(updateRoutes, { prefix: '/api/updates' });
-  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory });
+  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

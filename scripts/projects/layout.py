@@ -71,6 +71,10 @@ def migrate(projects, identity, rollback=False):
     if journal.is_symlink(): raise ProjectFault('Invalid layout journal.')
     data = json.loads(journal.read_text()) if journal.exists() else None
     if data and data.get('projectId') != identity: raise ProjectFault('Invalid layout journal identity.')
+    if data and data['phase'] == 'rolledBack' and not rollback:
+        archive = journals / (identity + '.previous.' + str(__import__('time').time_ns()) + '.json')
+        os.rename(journal, archive); sync(journals)
+        data = None
     if data is None:
         if target.exists() or target.is_symlink():
             workspace(projects, identity, True)

@@ -35,6 +35,8 @@ class LayoutTests(unittest.TestCase):
             self.assertEqual(migrate(root, ident, True)['layout'], 1)
             self.assertEqual(source.stat().st_ino, inode)
             self.assertEqual(source.read_text(), 'user changes')
+            self.assertEqual(migrate(root, ident)['layout'], 2)
+            self.assertEqual((project / 'Workspace/src/main.c').stat().st_ino, inode)
 
     def test_conflicts_and_changed_files_are_preserved(self):
         with tempfile.TemporaryDirectory() as temp:

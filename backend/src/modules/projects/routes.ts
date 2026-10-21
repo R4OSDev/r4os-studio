@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResponse } from '../../../../shared/projects.js';
 import { listProjects, projectStore, ProjectError } from './store.js';
 import { ProjectSessions } from './sessions.js';
+import { agentSessionRoutes } from '../agent-sessions/routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -35,8 +36,9 @@ function validateFields(value: unknown, allowed: string[]) {
   if (Object.hasOwn(body, 'vmId') && body.vmId !== null && typeof body.vmId !== 'string') throw new ProjectError('Invalid virtual machine.', 400);
 }
 
-export async function projectRoutes(app: FastifyInstance, { directory }: { directory: string }) {
+export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
+  agentSessionRoutes(app, directory, sessions, providerDirectory);
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
   app.addHook('onReady', async () => {
     void projectStore<{ id: string; recovered: boolean }[]>(directory, { operation: 'recover' }, 'create')
