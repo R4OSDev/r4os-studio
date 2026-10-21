@@ -585,3 +585,18 @@ were verified with explicit pinned SDK/Contract/tools/install/cache/output roots
 Terminal text limits count its encoded JSON representation, including control
 bytes; history pages also have a byte budget so long source/tool transcripts stay
 loadable through the bounded helper. Existing schema/protocols and pins remain 1.
+
+Release validation completed through 0.3.16: all nine real dynamic tools, saved
+permission denial/re-enable, native context continuation, pinned Zig/C/Rust R4X
+builds, parallel projects and same-workspace exclusion. A live worker retained
+its PID and old release through a real Studio update. Web/coordinator restart,
+SSE reauthentication without duplicate messages, user Stop, queued startup without
+inference, corrupt-history preservation and SIGKILL after an effect but before
+its receipt were exercised. Explicit recovery did not repeat the command.
+The full 25-test backend suite and an additional provider-disconnect race case,
+focused agent tests, Python/namespace/recovery/update checks, build, TypeScript
+and lint passed. Temporary QA projects, sessions, worker bindings and scratch trees
+were removed; shared components/defaults, provider stores and VM instances remain.
+The existing OpenAI Main provider returned HTTP 401 and needs sign-in; OpenAI Work
+was used successfully. No host reboot, guest execution or deploy capability is
+claimed by these agent tests. Roadmap 14 / 0.3.X retains all 51 completed tasks.
