@@ -158,7 +158,7 @@ class Worker:
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
             args, profile = prepare(binary, provider_home, state,
-                                    json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'])
+                                    json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'])
             self.client = CodexRPC(args, self.notify, self.tool)
             self.client.version = self.manifest['version']
             await self.client.start()

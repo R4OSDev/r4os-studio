@@ -38,3 +38,20 @@
 @media (max-width:1050px) { .agent-session { margin:22px 20px; } .agent-header,.agent-log { padding:16px; } }
 @media (max-width:800px) { .agent-session { flex:initial; height:min(750px,85dvh); min-height:430px; } }
 @media (max-width:440px) { .agent-session { margin:18px 10px; } .agent-header { padding:14px 12px; gap:8px; } .agent-header h2 { font-size:15px; } .agent-log { padding:16px 12px; } .agent-composer { padding:12px; } .agent-message.user { margin-left:10px; padding:12px; } }
+.agent-header-actions { display:flex; align-items:center; gap:12px; }
+.agent-settings-button { display:grid; place-items:center; width:30px; height:30px; border:1px solid #4b375c; border-radius:6px; background:#2c2037; color:#c5aedc; }
+.agent-settings-button:disabled { opacity:.4; }
+.agent-settings-tabs { display:flex; padding:12px 26px 0; gap:16px; border-bottom:1px solid #3b2c4b; }
+.agent-settings-tabs button { background:transparent; padding:10px 2px 12px; font-size:12px; color:#aa98bb; border-bottom:2px solid transparent; }
+.agent-settings-tabs button.selected { color:#dfc8f7; border-color:#ba91e7; }
+.agent-permissions { display:grid; gap:24px; }
+.agent-permissions fieldset { padding:0; margin:0; border:0; min-width:0; }
+.agent-permissions legend { font-size:11px; font-weight:650; color:#b8a0cd; margin-bottom:9px; }
+.agent-permission { position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #3a2b47; color:#d4c3e2; font-size:12px; cursor:pointer; }
+.agent-permission input { position:absolute; right:0; width:40px; height:24px; opacity:0; cursor:pointer; z-index:1; }
+.agent-switch { width:34px; height:19px; border-radius:12px; border:1px solid #675175; background:#3c2d48; transition:background .15s; flex-shrink:0; }
+.agent-switch::after { content:''; display:block; width:13px; height:13px; margin:2px; background:#a795b4; border-radius:50%; transition:transform .15s; }
+.agent-permission input:checked + .agent-switch { background:#aa7ed2; border-color:#bc8ee3; }
+.agent-permission input:checked + .agent-switch::after { transform:translateX(15px); background:#22132f; }
+.agent-permission input:focus-visible + .agent-switch { outline:2px solid #d1a6f8; outline-offset:3px; }
+.agent-permission:has(input:disabled) { opacity:.5; }

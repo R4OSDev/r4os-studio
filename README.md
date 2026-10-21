@@ -519,3 +519,15 @@ therefore resolves the same run, including a lost start response. SSE reconnects
 from its last stored sequence and refreshes browser authentication after a Studio
 restart. All transcript content renders as text, without executing model HTML.
 Session settings and tool toggles follow in 0.3.14; Editor remains unimplemented.
+
+0.3.14 exposes Session settings from the session header: General selects name,
+provider, model and reasoning; Tools provides nine independent switches, initially
+on. Save uses the stored revision and is rejected during that session's active
+run. Cancel leaves persisted settings untouched; stale/error reload is explicit
+and never silently resets disabled permissions. Each new run freezes the saved
+rights and checks them before every call, including resumed native conversations.
+Known dynamic declarations remain stable because Codex restores them with its
+native thread; an advertised disabled tool still receives a host denial and causes
+no execution. Explicit provider/model changes use that connected provider's
+nonsecret model metadata and original credential store while preserving native
+conversation state. Codex binary/profile pins are unchanged by settings edits.

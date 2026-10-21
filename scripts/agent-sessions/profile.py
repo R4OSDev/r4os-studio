@@ -45,7 +45,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None):
     binary = regular(binary)
     if digest(binary) != CODEX_SHA256:
         raise ValueError('This Codex version has not been qualified for agent runs.')
@@ -63,7 +63,10 @@ def prepare(binary, provider_home, state, features, model=None):
     for name in ('native', 'archived', 'state', 'logs', 'home'):
         directory(state / name)
     catalog = state / 'models.json'
-    if not catalog.exists():
+    source = state / 'models.provider.json'
+    previous_source = json.loads(regular(source).read_text()) if source.exists() else None
+    missing_model = catalog.exists() and model and not any(v.get('slug') == model for v in json.loads(regular(catalog).read_text())['models'])
+    if not catalog.exists() or missing_model or (catalog_source and previous_source and previous_source['providerId'] != catalog_source):
         # Only non-secret model metadata is read. AuthManager continues to use
         # the one original credential store and its original physical locks.
         cache = json.loads(regular(provider_home / 'models_cache.json').read_text())
@@ -76,6 +79,7 @@ def prepare(binary, provider_home, state, features, model=None):
                          supports_search_tool=False, include_skills_usage_instructions=False,
                          include_plugin_usage_instructions=False, include_apps_usage_instructions=False)
         write_json(catalog, {'models': models})
+    if catalog_source: write_json(source, {'providerId': catalog_source})
     data = json.loads(regular(catalog).read_text())
     for value in data['models']:
         if (value.get('shell_type') != 'disabled' or value.get('apply_patch_tool_type') is not None

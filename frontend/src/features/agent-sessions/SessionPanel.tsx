@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
 import { projectRequest, projectRequestId, ProjectRequestError, sessionPath, busyRun, toolLabels } from './api';
+import { SessionSettings } from './SessionSettings';
+import { Icon } from '../../app/Icon';
 
 type Pending = { requestId: string; revision: number; text: string };
 function readPending(key: string): Pending | null {
@@ -23,6 +25,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [text, setText] = useState(() => { try { return sessionStorage.getItem(draftKey) ?? ''; } catch { return ''; } });
   const log = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
   const [older, setOlder] = useState(false);
+  const [settings, setSettings] = useState(false);
   const load = useCallback(async (signal: AbortSignal) => {
     const h = await projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal);
     const r = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal);
@@ -100,7 +103,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><div><h2>{session?.name ?? 'Session'}</h2><span className="agent-model">{session?.model}</span></div>
-      <span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.state ?? 'Ready') : connection}</span></header>
+      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.state ?? 'Ready') : connection}</span>
+        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
@@ -122,5 +126,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <div className="agent-compose-actions">{active && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
         <button className="agent-send" disabled={sending || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
     </form>
+    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;
 }
