@@ -72,7 +72,7 @@ async function setup(loginTimeoutMs?: number) {
     clients.set(basename(home), client);
     return client;
   };
-  const makeApp = () => createApp({ providers: { directory, binary: '/unused', clientFactory, loginTimeoutMs } });
+  const makeApp = () => createApp({ projectDirectory: join(directory, 'Projects'), providers: { directory, binary: '/unused', clientFactory, loginTimeoutMs } });
   const app = makeApp();
   await app.ready();
   return { app, directory, clients, makeApp,

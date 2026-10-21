@@ -23,7 +23,7 @@ await test('component downloads/defaults require session and CSRF and accept onl
     });
   });
   server.listen(process.env.STUDIO_COMPONENT_SOCKET); await once(server, 'listening');
-  const app = createApp();
+  const app = createApp({ projectDirectory: join(directory, 'Projects') });
   try {
     const result = await app.inject('/api/updates/components');
     const headers = { cookie: String(result.headers['set-cookie']).split(';')[0], 'x-csrf-token': result.json().csrfToken };
@@ -66,7 +66,7 @@ await test('active tools reject changed binaries and paths outside the versioned
     try {
       for (const [override, available] of [['/opt/r4os-studio/bin/codex', false], ['/usr/bin/true', true]] as const) {
         process.env.CODEX_BINARY = override;
-        const app = createApp({ providers: { directory: join(directory, 'providers') } });
+        const app = createApp({ projectDirectory: join(directory, 'Projects'), providers: { directory: join(directory, 'providers') } });
         try { assert.equal((await app.inject('/api/providers')).json().signInAvailable, available); }
         finally { await app.close(); }
       }

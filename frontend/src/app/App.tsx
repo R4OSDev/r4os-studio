@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { navigation } from './navigation';
@@ -13,6 +13,7 @@ import { UpdatesPanel } from '../features/updates/UpdatesPanel';
 import { ComponentUpdatesPanel } from '../features/updates/ComponentUpdatesPanel';
 import type { ComponentKind } from '../../../shared/components';
 import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
+import type { ProjectNavigation } from '../features/projects/ProjectsWorkspace';
 
 const tabs: Tab[] = ['System', 'Projects'];
 type Selection = { group: number; item: number; view: number };
@@ -21,6 +22,10 @@ export function App() {
   const [tab, setTab] = useState<Tab>('System');
   const [vmId, setVmId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>({});
+  const projectLeaveGuard = useRef<() => boolean>(() => true);
+  const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
+  const navigateProject = useCallback((id: string, value: ProjectNavigation) => setProjectNavigation((previous) => ({ ...previous, [id]: value })), []);
   const [providerView, setProviderView] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>({
     group: window.location.hash === '#updates' ? 2 : 0, item: 0, view: 0,
@@ -58,8 +63,12 @@ export function App() {
       default: return;
     }
     event.preventDefault();
-    setTab(tabs[next]);
+    if (!switchTab(tabs[next])) return;
     tabRefs.current[next]?.focus();
+  }
+  function switchTab(value: Tab) {
+    if (tab === 'Projects' && value !== tab && !projectLeaveGuard.current()) return false;
+    setTab(value); return true;
   }
 
   return (
@@ -75,7 +84,7 @@ export function App() {
               id={`tab-${name}`} className={`tab ${tab === name ? 'active' : ''}`}
               type="button" role="tab" aria-selected={tab === name}
               aria-controls={`panel-${name}`} tabIndex={tab === name ? 0 : -1}
-              onClick={() => setTab(name)} onKeyDown={(event) => handleTabKey(event, index)}>
+              onClick={() => switchTab(name)} onKeyDown={(event) => handleTabKey(event, index)}>
               <Icon name={name === 'System' ? 'system' : 'folder'} />{name}
             </button>
           ))}
@@ -83,7 +92,8 @@ export function App() {
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        {tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId} /> : <>
+        {tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId}
+          navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <aside className="navigation" aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
             <div className="column-heading">Areas</div>

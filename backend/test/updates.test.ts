@@ -25,7 +25,7 @@ await test('update administration binds browser session, validates release selec
     });
   });
   server.listen(process.env.STUDIO_UPDATE_SOCKET); await once(server, 'listening');
-  const app = createApp();
+  const app = createApp({ projectDirectory: join(directory, 'Projects') });
   try {
     const initial = await app.inject({ url: '/api/updates' });
     assert.equal(initial.statusCode, 200);
@@ -56,8 +56,9 @@ await test('update administration binds browser session, validates release selec
 });
 
 await test('missing host update support is shown as unavailable and never starts an install', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'studio-update-missing-'));
   process.env.STUDIO_UPDATE_SOCKET = '/nonexistent/studio-update-test.sock';
-  const app = createApp();
+  const app = createApp({ projectDirectory: join(directory, 'Projects') });
   try {
     const result = await app.inject('/api/updates');
     assert.equal(result.json().enabled, false);
@@ -66,5 +67,5 @@ await test('missing host update support is shown as unavailable and never starts
       cookie: String(result.headers['set-cookie']).split(';')[0], 'x-csrf-token': result.json().csrfToken,
     }, payload: { tag: 'v0.1.16', commit: 'a'.repeat(40) } });
     assert.equal(install.statusCode, 503);
-  } finally { await app.close(); delete process.env.STUDIO_UPDATE_SOCKET; }
+  } finally { await app.close(); delete process.env.STUDIO_UPDATE_SOCKET; await rm(directory, { recursive: true, force: true }); }
 });

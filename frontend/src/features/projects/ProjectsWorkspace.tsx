@@ -1,34 +1,71 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import { useProjects } from './useProjects';
+import { NewProjectDialog } from './NewProjectDialog';
+import { ProjectSettings } from './ProjectSettings';
+import type { ProjectSettingsView } from './ProjectSettings';
 import './styles.css';
 
-export function ProjectsWorkspace({ selectedId, select }: {
+export interface ProjectNavigation {
+  section: 'Sessions' | 'Editor' | 'Settings'; settingsView: ProjectSettingsView;
+}
+export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
   selectedId: string | null; select: (id: string) => void;
+  navigation: Record<string, ProjectNavigation>; navigate: (id: string, value: ProjectNavigation) => void;
+  setLeaveGuard: (guard: () => boolean) => void;
 }) {
-  const { projects, loading, error } = useProjects();
-  const selected = projects.find((project) => project.id === selectedId);
+  const api = useProjects();
+  const selected = api.projects.find((project) => project.id === selectedId);
+  const current = navigation[selectedId ?? ''] ?? { section: 'Sessions', settingsView: 'General' };
+  const [newProject, setNewProject] = useState(false);
+  const [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [epoch, setEpoch] = useState(0);
+  const leave = useCallback(() => !saving && (!dirty || window.confirm('Discard unsaved changes?')), [dirty, saving]);
+  useEffect(() => { setLeaveGuard(leave); return () => setLeaveGuard(() => true); }, [leave, setLeaveGuard]);
 
   return <>
     <aside className="navigation" aria-label="Projects navigation">
       <nav className="nav-column" aria-label="Projects">
         <div className="column-heading">Projects</div>
-        <div className="nav-items" aria-busy={loading}>
-          {loading ? <p className="project-nav-message" role="status">Loading projects…</p>
-            : error ? <p className="project-nav-message" role="alert">{error}</p>
-              : projects.length === 0 ? <p className="project-nav-message" role="status">No projects yet.</p>
-                : projects.map((project) => <button type="button" key={project.id}
+        <div className="nav-items" aria-busy={api.loading}>
+          <button type="button" className="nav-item project-new" disabled={!api.token || saving} onClick={() => {
+            if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewProject(true); }
+          }}><span className="project-plus" aria-hidden="true">+</span><span>New Project</span></button>
+          {api.loading ? <p className="project-nav-message" role="status">Loading projects…</p>
+            : api.error ? <><p className="project-nav-message" role="alert">{api.error}</p><button className="nav-item" onClick={() => void api.reload()}>Retry</button></>
+              : api.projects.length === 0 ? <p className="project-nav-message" role="status">No projects yet.</p>
+                : api.projects.map((project) => <button type="button" key={project.id} disabled={saving}
                   className={`nav-item ${selectedId === project.id ? 'selected' : ''}`}
                   aria-current={selectedId === project.id ? 'true' : undefined}
-                  onClick={() => select(project.id)}>
+                  onClick={() => { if (project.id !== selectedId && leave()) select(project.id); }}>
                   <Icon name="folder" /><span>{project.name}</span>
                 </button>)}
         </div>
       </nav>
-      <div className="nav-column" aria-hidden="true" />
-      <div className="nav-column" aria-hidden="true" />
+      {selected ? <nav className="nav-column" aria-label="Project sections">
+        <div className="column-heading" aria-hidden="true" />
+        <div className="nav-items">{(['Sessions', 'Editor', 'Settings'] as const).map((section) =>
+          <button key={section} type="button" disabled={saving} className={`nav-item ${current.section === section ? 'selected' : ''}`}
+            aria-current={current.section === section ? 'true' : undefined} onClick={() => {
+              if (section !== current.section && leave()) navigate(selected.id, { section, settingsView: 'General' });
+            }}><Icon name={section === 'Sessions' ? 'terminal' : section === 'Editor' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
+      </nav> : <div className="nav-column" aria-hidden="true" />}
+      {selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
+        <div className="column-heading" aria-hidden="true" />
+        <div className="nav-items">{(['General', 'Virtual machine'] as const).map((view) => <button key={view} type="button" disabled={saving}
+          className={`nav-item ${current.settingsView === view ? 'selected' : ''}`} aria-current={current.settingsView === view ? 'page' : undefined}
+          onClick={() => { if (view !== current.settingsView && leave()) navigate(selected.id, { ...current, settingsView: view }); }}><span>{view}</span></button>)}</div>
+      </nav> : <div className="nav-column" aria-hidden="true" />}
     </aside>
     <main className="main-area" aria-label="Project content">
-      {selected && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
+      {selected && <>
+        <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>
+        {current.section === 'Settings' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
+          id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload} />}
+      </>}
     </main>
+    {newProject && <NewProjectDialog token={api.token} close={() => setNewProject(false)} created={async (project) => {
+      api.remember(project); await api.reload(); select(project.id);
+      navigate(project.id, { section: 'Sessions', settingsView: 'General' }); setNewProject(false);
+    }} />}
   </>;
 }

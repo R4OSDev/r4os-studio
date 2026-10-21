@@ -1,5 +1,13 @@
 # R4OS Studio · App
 
+## Projects in the browser (0.3.5)
+
+New Project opens a compact modal with Name, Description, Language, Module type and optional Virtual machine. Subsystem host adds Guest formats. The native dialog manages focus, Escape and background input; narrow layouts stack fields. Rust remains visible with a specific SDK capability limit. A stable request is saved in browser session storage before submission, so an unconfirmed response can be retried after reload without duplicate projects. Request IDs also work on the private HTTP LAN origin.
+
+The first column lists projects after New Project; the second contains Sessions, Editor and Settings. Sessions/Editor keep the third column empty. Settings offers General and Virtual machine, with forms in the main area. Name/description and VM assignment can be saved or cancelled; project/tab changes protect unsaved work, and late responses remain bound to the original UUID. Agent Sessions and editor functionality are deferred.
+
+Verified in the browser through a deliberately lost creation response and reload/retry, Zig/C creation, Settings Save/Cancel, project isolation, tab navigation, modal focus/Escape and layouts down to 320 px. Tests use separate temporary project catalogs, including provider/update fixtures; the production Projects directory is never a test fixture.
+
 ## Project creation and Settings API (0.3.4)
 
 The session/CSRF-protected `POST /api/projects` creates a pinned project with a server-generated immutable UUID. A durable SQLite request reserves its identity and inputs, generated files are validated in private staging, synchronized and hashed, then published with Linux `renameat2(RENAME_NOREPLACE)`. Only ready entries appear in the list. Startup and a repeated request resume interrupted work, including publication before the final DB commit. Reusing a request ID with different data is rejected. Changed/foreign files and interrupted staging are retained for review. Completed retries keep the original project identity and pins even if defaults change.
@@ -28,7 +36,7 @@ For managed deployments run `python3 scripts/install-project-support.py` as root
 
 ## Geplant: Projekterstellung (Roadmap 0.3.X)
 
-Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Die Roadmap umfasst sieben Unterversionen mit 25 Aufgaben für SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. SQLite-Katalog, SDK-Adapter, Vorlagen und Create-/Settings-API sind umgesetzt; die Browseroberfläche folgt in 0.3.5.
+Die Projekterstellung und Projektverwaltung sind geplant, noch nicht implementiert. Die Roadmap umfasst sieben Unterversionen mit 25 Aufgaben für SQLite-Katalog/UUIDs, SDK-Fähigkeiten und C-Compilerprofil, Projektgerüste, wiederaufnehmbare Create-/Settings-API mit optionaler VM-ID, New-Project-Overlay und Projektnavigation sowie eigenständige Rust-Toolchainverwaltung und die spätere Rust-SDK-Integration. 0.3.1–0.3.6 können ohne die externe Rust-SDK-Lieferung umgesetzt werden; 0.3.7 bleibt bis zu deren Prüfung und tatsächlicher Integration offen. SQLite-Katalog, SDK-Adapter, Vorlagen und Create-/Settings-API sind umgesetzt; Browser-Projektanlage, Navigation und Settings sind ebenfalls umgesetzt. Rust-Toolchains folgen in 0.3.6; Rust-Projektintegration bleibt separat offen.
 
 Studio-Metadaten sollen zentral in `Data/Projects/Projects.sqlite` liegen; jeder Projektordner erhält eine unveränderliche serverseitige UUID. Anzeigename, Beschreibung, Sprache, VM-ID und Profilpins bleiben außerhalb des einzelnen Projektordners. Das erzeugte `module.R4MF` bleibt die R4OS-Buildwahrheit im Projekt. Der bestehende Node-20-Host benötigt dafür kein implizites Upgrade: ein kleiner fester Python-3-Adapter mit sqlite3 ist vorgesehen. Gezielte Schreibrechte für Projects bedürfen einer eigenen Hosteinrichtung; vorhandene Bootstrap-Konfiguration und andere Datenrechte bleiben erhalten.
 
