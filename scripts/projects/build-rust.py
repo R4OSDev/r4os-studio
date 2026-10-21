@@ -8,6 +8,7 @@ import re
 from store import connect, operation
 from sdk import profile
 from rust_projects import build
+from layout import workspace
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('project_id')
@@ -22,4 +23,4 @@ with connect(projects) as db:
 if project['language'] != 'Rust' or 'rust' not in project['pins']:
     parser.error('The selected project has no verified Rust profile.')
 context = profile(root, projects, project['pins'])
-print(build(context, projects / args.project_id))
+print(build(context, workspace(projects, args.project_id)))

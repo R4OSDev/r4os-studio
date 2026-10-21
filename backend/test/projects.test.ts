@@ -86,7 +86,7 @@ await test('project creation is pinned and idempotent; settings preserve files a
     assert.equal(requests[1].json().project.id, project.id);
     assert.equal((await app.inject({ url: '/api/projects', headers })).json().projects.length, 1);
     assert.equal((await app.inject({ method: 'POST', url: '/api/projects', headers, payload: { ...payload, name: 'Changed request' } })).statusCode, 409);
-    const manifest = await readFile(join(directory, project.id, 'module.R4MF'), 'utf8');
+    const manifest = await readFile(join(directory, project.id, 'Workspace', 'module.R4MF'), 'utf8');
     assert.match(manifest, /LANGUAGE=Zig/);
     assert.equal(project.pins.sdk.revision, options.profile.sdk.revision);
     const updated = await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}`, headers,
@@ -94,7 +94,7 @@ await test('project creation is pinned and idempotent; settings preserve files a
     assert.equal(updated.statusCode, 200, updated.body);
     assert.equal(updated.json().project.id, project.id);
     assert.deepEqual(updated.json().project.pins, project.pins);
-    assert.equal(await readFile(join(directory, project.id, 'module.R4MF'), 'utf8'), manifest);
+    assert.equal(await readFile(join(directory, project.id, 'Workspace', 'module.R4MF'), 'utf8'), manifest);
     assert.equal((await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}`, headers,
       payload: { revision: 1, name: 'Stale' } })).statusCode, 409);
     // VM references are metadata only: no QEMU or VM manager calls.
@@ -128,7 +128,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal((await app.inject({ url: `/api/projects/${project.id}`, headers })).json().project.id, project.id);
     }
     // A changed target is retained, and recovery must not publish it as success.
-    await writeFile(join(directory, project.id, 'src/main.zig'), '// Changed after interrupted publication');
+    await writeFile(join(directory, project.id, 'Workspace', 'src/main.zig'), '// Changed after interrupted publication');
     await promisify(execFile)('/usr/bin/python3', ['-c', `
 import sqlite3,sys
 with sqlite3.connect(sys.argv[1]) as db:
@@ -136,7 +136,7 @@ with sqlite3.connect(sys.argv[1]) as db:
  db.execute("UPDATE requests SET phase='prepared'")
 `, join(directory, 'Projects.sqlite')]);
     assert.deepEqual(await projectStore(directory, { operation: 'recover' }, 'create'), [{ id: project.id, recovered: false }]);
-    assert.equal(await readFile(join(directory, project.id, 'src/main.zig'), 'utf8'), '// Changed after interrupted publication');
+    assert.equal(await readFile(join(directory, project.id, 'Workspace', 'src/main.zig'), 'utf8'), '// Changed after interrupted publication');
   } finally {
     if (priorRoot === undefined) delete process.env.STUDIO_R4OS_DIR; else process.env.STUDIO_R4OS_DIR = priorRoot;
     await app.close();
@@ -167,11 +167,11 @@ await test('Rust creation uses SDK capabilities and official templates; pins and
     const project = created.json().project as Project;
     assert.equal(project.pins.rust?.id, 'sdk-0.64.66');
     assert.equal(project.pins.contract.revision, '50a38becae5765e0f85f6af6713fc72e00583952');
-    const manifest = await readFile(join(directory, project.id, 'module.R4MF'), 'utf8');
+    const manifest = await readFile(join(directory, project.id, 'Workspace', 'module.R4MF'), 'utf8');
     assert.match(manifest, /LANGUAGE=Rust/);
-    const lock = await readFile(join(directory, project.id, 'Cargo.lock'), 'utf8');
+    const lock = await readFile(join(directory, project.id, 'Workspace', 'Cargo.lock'), 'utf8');
     assert.match(lock, /r4os-sdk/);
-    assert.doesNotMatch(await readFile(join(directory, project.id, 'Build.ps1'), 'utf8'), /-ProjectPin/);
+    assert.doesNotMatch(await readFile(join(directory, project.id, 'Workspace', 'Build.ps1'), 'utf8'), /-ProjectPin/);
     assert(!existsSync(join(directory, project.id, 'r4os-project.json')));
     const retry = await app.inject({ method: 'POST', url: '/api/projects', headers, payload: input });
     assert.equal(retry.json().project.id, project.id);
@@ -179,7 +179,7 @@ await test('Rust creation uses SDK capabilities and official templates; pins and
       payload: { revision: project.revision, name: 'Rust renamed' } });
     assert.equal(saved.statusCode, 200, saved.body);
     assert.deepEqual(saved.json().project.pins, project.pins);
-    assert.equal(await readFile(join(directory, project.id, 'module.R4MF'), 'utf8'), manifest);
-    assert.equal(await readFile(join(directory, project.id, 'Cargo.lock'), 'utf8'), lock);
+    assert.equal(await readFile(join(directory, project.id, 'Workspace', 'module.R4MF'), 'utf8'), manifest);
+    assert.equal(await readFile(join(directory, project.id, 'Workspace', 'Cargo.lock'), 'utf8'), lock);
   } finally { await app.close(); await rm(root, { recursive: true, force: true }); }
 });

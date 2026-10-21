@@ -78,7 +78,9 @@ def finish(db, projects, root, request):
         context = profile(root, projects, project['pins'])
         if document.get('templateRevision', document['input']['optionsRevision']) != context['templateRevision']:
             raise ProjectFault('The saved template revision is unavailable. All pending files were preserved.')
-        render(context, stage, {**document['input'], 'id': project['id'], 'moduleName': project['moduleName']})
+        stage.mkdir(mode=0o700, parents=True)
+        source = stage / 'Workspace' if document.get('layout', 1) == 2 else stage
+        render(context, source, {**document['input'], 'id': project['id'], 'moduleName': project['moduleName']})
         sync_tree(stage)
         document['files'] = hashes(stage)
         with db:
@@ -137,7 +139,7 @@ def create(db, projects, root, data):
                    (identity, data['name'], data['description'], data['language'], data['template'], module_name,
                     data['vmId'], json.dumps(context['pins']), now, now))
         db.execute("INSERT INTO requests VALUES (?,?,?,'reserved',?,NULL)",
-                   (request_key, request_hash, identity, json.dumps({'input': data, 'templateRevision': context['templateRevision']})))
+                   (request_key, request_hash, identity, json.dumps({'input': data, 'templateRevision': context['templateRevision'], 'layout': 2})))
     request = db.execute('SELECT * FROM requests WHERE request_key=?', (request_key,)).fetchone()
     return finish(db, projects, root, request)
 
