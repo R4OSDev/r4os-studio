@@ -14,6 +14,7 @@ import { ComponentUpdatesPanel } from '../features/updates/ComponentUpdatesPanel
 import type { ComponentKind } from '../../../shared/components';
 import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
 import type { ProjectNavigation } from '../features/projects/ProjectsWorkspace';
+import { SystemPromptPanel } from '../features/settings/SystemPromptPanel';
 
 const tabs: Tab[] = ['System', 'Projects'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
@@ -25,19 +26,21 @@ export function App() {
   const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? null);
   const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
   const projectLeaveGuard = useRef<() => boolean>(() => true);
+  const settingsLeaveGuard = useRef<() => boolean>(() => true);
+  const setSettingsLeaveGuard = useCallback((guard: () => boolean) => { settingsLeaveGuard.current = guard; }, []);
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => setProjectNavigation((previous) => ({ ...previous, [id]: value })), []);
   useEffect(() => {
     const restore = () => {
       const route = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
-      if (route && projectLeaveGuard.current()) { setProjectId(route[1]); navigateProject(route[1], { section: 'Sessions', settingsView: 'General', sessionId: route[2] }); setTab('Projects'); }
+      if (route && settingsLeaveGuard.current() && projectLeaveGuard.current()) { setProjectId(route[1]); navigateProject(route[1], { section: 'Sessions', settingsView: 'General', sessionId: route[2] }); setTab('Projects'); }
     };
     window.addEventListener('hashchange', restore);
     return () => window.removeEventListener('hashchange', restore);
   }, [navigateProject]);
   const [providerView, setProviderView] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>({
-    group: window.location.hash === '#updates' ? 2 : 0, item: 0, view: 0,
+    group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : 0, view: 0,
   });
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const groups = navigation;
@@ -50,6 +53,7 @@ export function App() {
   const selectedComponent = vmPage ? (activeVm ? vms.vms.indexOf(activeVm) + 1 : 0) : selected.item;
   const item = componentItems[selectedComponent];
   const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
+  const systemPromptPage = tab === 'System' && group.name === 'Settings' && item === 'System Prompt';
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
   const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK', 'Contract', 'Libraries'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex'] : []) : [];
@@ -59,6 +63,10 @@ export function App() {
     ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', C: 'c', Rust: 'rust', QEMU: 'qemu', Codex: 'codex', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind | 'c'>)[view ?? item] : undefined;
 
   function select(patch: Partial<Selection>) {
+    if (!settingsLeaveGuard.current()) return;
+    const next = { ...selected, ...patch };
+    if (next.group === 0 && next.item === 1) window.history.replaceState(null, '', '#system-prompt');
+    else if (window.location.hash === '#system-prompt') window.history.replaceState(null, '', window.location.pathname);
     setSelected((previous) => ({ ...previous, ...patch }));
   }
 
@@ -76,6 +84,7 @@ export function App() {
     tabRefs.current[next]?.focus();
   }
   function switchTab(value: Tab) {
+    if (tab === 'System' && value !== tab && !settingsLeaveGuard.current()) return false;
     if (tab === 'Projects' && value !== tab && !projectLeaveGuard.current()) return false;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
     window.history.replaceState(null, '', value === 'Projects' && session ? `#projects/${projectId}/sessions/${session}` : window.location.pathname);
@@ -156,7 +165,7 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
+          {systemPromptPage ? <SystemPromptPanel setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
         </main>
         </>}
       </div>

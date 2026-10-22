@@ -10,6 +10,7 @@ import { activeTool } from './modules/components/tools.js';
 import { projectRoutes } from './modules/projects/routes.js';
 import { projectsDirectory } from './modules/projects/store.js';
 import { cancelProviderRuns } from './modules/agent-sessions/host.js';
+import { settingsRoutes } from './modules/settings/routes.js';
 
 export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory() }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
@@ -35,6 +36,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(vmRoutes, { prefix: '/api/vms' });
   app.register(updateRoutes, { prefix: '/api/updates' });
   app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory });
+  app.register(settingsRoutes, { prefix: '/api/settings', directory: projectDirectory });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

@@ -1,5 +1,35 @@
 # R4OS Studio · App
 
+Version 0.3.26 adds **System → Settings → System Prompt**. One shared prompt
+applies to every project and both new and existing sessions. Save changes stores
+it globally; Reset to default immediately restores the shipped R4OS development
+prompt. Cancel discards editor changes. Updates apply from the next accepted run;
+already accepted/running runs retain their captured instructions.
+
+The default lives in `shared/system-prompt.json`; the private override and its
+revision live in `Data/Projects/.studio/Settings.sqlite`, outside every workspace
+and tool mount. No SDK, project sources, pins or provider credentials are changed.
+The settings API uses its own browser session, CSRF token, host/origin checks,
+UTF-8 limit of 32 KiB and optimistic revision checks. Identical retries return the
+stored result. Conflicting edits retain the draft and require an explicit reload.
+Invalid or corrupt storage is preserved and reported, never reset implicitly.
+
+Each durable run config captures prompt text, revision and SHA-256. Workers pass
+that capture as native `baseInstructions` on `thread/start` and `thread/resume`;
+the user message stays separate. Native thread IDs, history and v1/v2 tool
+declarations are preserved. This field was qualified with the pinned Codex
+0.163.0 binary: separate processes used prompt A, prompt B and the restored
+default in the same thread while retaining its context. `developerInstructions`
+alone accepted a resume override but retained the earlier behavior in that live
+probe, so Studio does not use it for this feature. Versioned source:
+[thread parameters](https://github.com/openai/codex/blob/129b8ec7ee6f4511557a4856279f529025c25af4/codex-rs/app-server-protocol/src/protocol/v2/thread.rs).
+
+No host maintenance is needed. Data/worker protocols remain 1 with an additive
+run-config field and a separate settings store schema 1. A new worker admitted
+by an older coordinator captures a missing prompt once before inference. Older
+workers keep their original release; rolling back to a release without this
+feature preserves the settings store but does not apply the global prompt.
+
 Version 0.3.25 completes the qualified agent → build → deploy → run → inspect
 workflow with conservative recovery, VM job serialization and release continuity.
 Reconcile receipts checks the original immutable worker binding and committed
@@ -294,8 +324,9 @@ terminal can perform file operations independently of the file-tool switches.
 Commands have no network, bounded output/time, four simultaneous process handles,
 a 256 MiB file limit and a run cgroup limited to 2 GiB/256 tasks/200% CPU. Stop is
 available independently of the agent termination permission. This provides host
-app development, not a guest/deploy runner. Skills/AGENTS.md/system-prompt
-management, plugins, hooks, memory and subagents are outside this increment.
+app development, not a guest/deploy runner in that original increment. Global
+system prompt management is available from 0.3.26; Skills/AGENTS.md management,
+plugins, hooks, memory and subagents remain outside its scope.
 
 Legacy projects are never moved automatically. As the data owner run
 `python3 scripts/projects/migrate-workspaces.py <uuid>`; `--rollback` restores an

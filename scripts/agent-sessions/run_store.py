@@ -4,6 +4,7 @@ import json
 import uuid
 from session_store import encode, now, identity, validate_settings
 from store import ProjectFault
+from system_prompt import snapshot as prompt_snapshot
 
 
 def event(store, session_id, run_id, kind, payload, commit=True):
@@ -52,6 +53,7 @@ def admit(store, session_id, data, provider_dir):
         validate_settings(session, provider_dir)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'permissions', 'engine', 'revision')}
         snapshot['projectPins'] = store.project['pins']
+        snapshot['systemPrompt'] = prompt_snapshot(store.projects)
         ident = str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))

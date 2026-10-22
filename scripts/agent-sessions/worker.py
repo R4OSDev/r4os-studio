@@ -18,6 +18,7 @@ from codex_rpc import CodexRPC
 from tool_catalog import specifications, validate_arguments
 from sandbox import Sandbox
 from terminal import Terminals, bounded_text
+from system_prompt import snapshot as prompt_snapshot, validate_text
 
 
 class Worker:
@@ -26,6 +27,12 @@ class Worker:
         self.store = SessionStore(manifest['projects'], manifest['r4os'], manifest['projectId'])
         self.run_id = manifest['runId']; self.row = get_run(self.store, self.run_id)
         self.session_id = self.row['session_id']; self.config = json.loads(self.row['config'])
+        # A previous coordinator may admit a new-release worker while older
+        # workers finish. Freeze its prompt once, before starting any inference.
+        if self.row['busy'] and 'systemPrompt' not in self.config:
+            self.config['systemPrompt'] = prompt_snapshot(self.store.projects)
+            with self.store.db:
+                self.store.db.execute('UPDATE runs SET config=? WHERE id=?', (encode(self.config), self.run_id))
         self.client = None; self.turn_id = None; self.thread_id = None
         self.done = asyncio.Event(); self.stopping = False; self.outcome = 'unknown'; self.error = None
         self.turn_requested = False
@@ -207,13 +214,16 @@ class Worker:
             self.client.version = self.manifest['version']
             await self.client.start()
             self.thread_id = self.store.row(self.session_id)['thread_id']
+            instructions = ('These are the current global R4OS Studio instructions. '
+                            'They replace any earlier R4OS Studio system prompt.\n\n'
+                            + validate_text(self.config['systemPrompt']['text']))
             if self.thread_id:
-                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model']})
+                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'baseInstructions': instructions})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'],
-                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE))})
+                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions})
                 self.thread_id = response['thread']['id']
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))

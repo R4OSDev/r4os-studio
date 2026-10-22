@@ -112,5 +112,47 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
             self.assertIn('unknown', result['contentItems'][0]['text']); w.execute.assert_not_called()
         finally: w.store.close()
 
+    async def test_global_prompt_is_frozen_per_run_and_replaced_on_same_native_thread(self):
+        from system_prompt import update, default_text
+        f = self.fixture
+        update(f.projects, {'revision': 0, 'text': 'Global prompt A'})
+        rid = self.admit()
+        update(f.projects, {'revision': 1, 'text': 'Global prompt B'})
+        seen = []
+        class Native:
+            def __init__(self, args, notify, tool): self.notify = notify
+            async def start(self): pass
+            async def close(self): pass
+            async def request(self, method, params, **kwargs):
+                seen.append((method, params))
+                if method.startswith('thread/'):
+                    return {'thread': {'id': 'same-native-thread'}}
+                if method == 'turn/start':
+                    await self.notify('turn/completed', {'threadId': 'same-native-thread', 'turn': {'id': 'turn', 'status': 'completed'}})
+                    return {'turn': {'id': 'turn'}}
+                return {}
+        async def run(ident):
+            worker = Worker({**self.config, 'projectId': f.pid, 'runId': ident, 'release': 'fixture', 'version': '0.3.26'})
+            worker.config['engine'] = {'version': '0.163.0'}
+            with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
+        await run(rid)
+        self.assertTrue(seen[0][1]['baseInstructions'].endswith('Global prompt A'))
+        self.assertEqual(seen[0][0], 'thread/start')
+        with f.open() as store:
+            row = get_run(store, rid)
+            self.assertEqual(json.loads(row['config'])['systemPrompt']['revision'], 1)
+            duplicate, fresh = admit(store, f.sid, {**f.data, 'requestId': row['request_id']}, f.providers)
+            self.assertFalse(fresh); self.assertEqual(duplicate['id'], rid)
+        await run(self.admit())
+        resumes = [p for m, p in seen if m == 'thread/resume']
+        self.assertEqual(resumes[0]['threadId'], 'same-native-thread')
+        self.assertTrue(resumes[0]['baseInstructions'].endswith('Global prompt B'))
+        update(f.projects, {'revision': 2}, reset=True)
+        await run(self.admit())
+        self.assertTrue([p for m, p in seen if m == 'thread/resume'][-1]['baseInstructions'].endswith(default_text()))
+        with f.open() as store:
+            self.assertEqual(store.row(f.sid)['thread_id'], 'same-native-thread')
+            self.assertEqual(len([i for i in store.history(f.sid)['items'] if i['type'] == 'user']), 3)
+
 
 if __name__ == '__main__': unittest.main()
