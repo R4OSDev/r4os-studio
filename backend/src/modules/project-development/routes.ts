@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { DevelopmentBuildInput, DevelopmentDeployInput, DevelopmentRunInput, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development.js';
+import type { DevelopmentBuildInput, DevelopmentDeployInput, DevelopmentRunInput, DevelopmentSettings, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { developmentHost } from './host.js';
@@ -17,6 +17,36 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
       return developmentHost({ operation, projectId: request.params.id });
     });
   }
+  app.patch<{ Params: { id: string }; Body: DevelopmentSettings }>(base + '/settings', {
+    bodyLimit: 16384, schema: { params, body: { type: 'object', additionalProperties: true } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    return developmentHost<DevelopmentSettings>({ operation: 'save_settings', projectId: request.params.id, input: request.body });
+  });
+  for (const operation of ['capture', 'input', 'assess'] as const) {
+    const suffix = operation === 'assess' ? 'assessment' : operation;
+    app.post<{ Params: { id: string; jobId: string }; Body: Record<string, unknown> }>(base + '/jobs/:jobId/' + suffix, {
+      bodyLimit: 16384, schema: { params: jobParams, body: { type: 'object', additionalProperties: true } },
+    }, async (request, reply) => {
+      security.mutation(request, reply);
+      return developmentHost({ operation, projectId: request.params.id, id: request.params.jobId, input: request.body });
+    });
+  }
+  app.get<{ Params: { id: string; jobId: string; evidenceId: string } }>(base + '/jobs/:jobId/evidence/:evidenceId', {
+    schema: { params: { ...jobParams, required: ['id', 'jobId', 'evidenceId'], properties: { ...jobParams.properties, evidenceId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    const value = await developmentHost<{ metadata: { kind: string }; base64: string }>({ operation: 'evidence',
+      projectId: request.params.id, id: request.params.jobId, evidenceId: request.params.evidenceId });
+    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
+      .type(value.metadata.kind === 'screenshot' ? 'image/png' : 'application/octet-stream').send(Buffer.from(value.base64, 'base64'));
+  });
+  app.get<{ Params: { id: string; jobId: string }; Querystring: { before?: number } }>(base + '/jobs/:jobId/evidence', {
+    schema: { params: jobParams, querystring: { type: 'object', additionalProperties: false, properties: { before: revision } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    return developmentHost({ operation: 'evidence_history', projectId: request.params.id, id: request.params.jobId, before: request.query.before ?? null });
+  });
   app.post<{ Params: { id: string }; Body: DevelopmentBuildInput }>(base + '/builds', {
     bodyLimit: 8192,
     preValidation: async (request) => {

@@ -42,3 +42,12 @@ untouched. Console descendants linked by R4OS are covered by native tree stop;
 independently launched services or GUI processes are outside that tree contract.
 Library, driver, protocol and subsystem execution require separate qualified
 hosts and remain unavailable. Original SDK notices remain alongside the source.
+
+0.3.23 extends the same control contract with generation-owned logical GUI input
+and an explicit service self-test. GUI input checks WINSVC visibility/focus and
+the current GUI revision before dispatch; the host additionally requires a recent
+job-bound image. Keys are bounded logical key-down events; a click queues both
+down and up, with an owned-generation release retry. No global QMP input, physical
+held modifiers, paste, arbitrary service operation or guest shell is exposed.
+Service operation 1 runs once with a 500 ms deadline and at most 512 reply bytes.
+Its response is compared with explicit host settings, separately from readiness.

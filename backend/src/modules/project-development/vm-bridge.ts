@@ -55,7 +55,7 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           const request = JSON.parse(pending.split('\n')[0]);
           if (!request || typeof request !== 'object' || Object.keys(request).some((k) => !['operation', 'leaseId', 'token', 'port'].includes(k))
             || !validId(request.leaseId) || !/^[a-f0-9]{64}$/.test(request.token)) throw new VmError('Invalid private VM request.', 400);
-          if (!['info', 'start', 'forward_open', 'forward_close'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
+          if (!['info', 'start', 'forward_open', 'forward_close', 'capture'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
           const lease = await inspectLease(request.leaseId, request.token, request.operation !== 'forward_close'), id = lease.vmId;
           const config = await manager.config(id), scope = lease.scope;
           if ((config.revision ?? config.imageSha256) !== scope.vmRevision || config.imageId !== scope.imageId || config.imageSha256 !== scope.imageSha256)
@@ -73,6 +73,10 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           if (request.operation === 'info') {
             const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=InvocationID', '--value'], { timeout: 5000 });
             result = { vm: await manager.get(id), invocationId: stdout.trim() };
+          } else if (request.operation === 'capture') {
+            const limits = JSON.parse(await readFile(new URL('../../../../shared/development-host.json', import.meta.url), 'utf8')).limits;
+            const data = await manager.screen(id, limits.screenshotBytes);
+            result = { base64: data.toString('base64') };
           } else {
             consoles.closeVm(id); await pointers.closeVm(id);
             if (request.operation === 'start') result = { vm: await manager.action(id, 'start') };

@@ -58,13 +58,15 @@ class Jobs:
                 ''')
                 self.db.execute('INSERT INTO settings VALUES(1,?)', (encode({'revision': 1,
                     'arguments': '', 'workingDirectory': '.', 'timeoutSeconds': 60,
-                    'expectedExitCode': 0, 'outputContains': [], 'visualCriteria': ''}),))
+                    'expectedExitCode': None, 'outputContains': [], 'visualCriteria': ''}),))
         # Additive schema-1 extension: earlier build workers ignore this table.
         with self.db:
             self.db.execute('CREATE TABLE IF NOT EXISTS deployments(id TEXT PRIMARY KEY, job_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
 
     def close(self): self.db.close()
-    def settings(self): return json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0])
+    def settings(self):
+        from settings import DEFAULTS
+        return {**DEFAULTS, **json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0])}
 
     def get(self, job_id):
         row = self.db.execute('SELECT payload FROM jobs WHERE id=?', (identity(job_id),)).fetchone()
@@ -133,6 +135,15 @@ class Jobs:
             self.db.commit(); return job
         except BaseException: self.db.rollback(); raise
 
+    def annotate(self, job_id, **fields):
+        if set(fields) - {'check', 'visualAssessment'}: raise ValueError('Invalid job annotation.')
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            job = self.get(job_id); job.update(fields); job['revision'] += 1
+            self.db.execute('UPDATE jobs SET revision=?,payload=? WHERE id=?', (job['revision'], encode(job), job_id))
+            self.db.commit(); return job
+        except BaseException: self.db.rollback(); raise
+
     def page(self, job_id, offset=0):
         job = self.get(job_id)
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
@@ -147,9 +158,10 @@ class Jobs:
                 try: data.decode('utf-8')
                 except UnicodeDecodeError as error:
                     if error.reason == 'unexpected end of data' and error.end == len(data): data = data[:error.start]
+        from evidence import list_for
         return {'job': job, 'output': data.decode('utf-8', errors='replace'), 'nextOffset': offset + len(data),
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
-                'outputKind': 'build' if job['kind'] == 'build' else 'console', 'evidence': []}
+                'outputKind': 'build' if job['kind'] == 'build' else 'console', 'evidence': list_for(self, job_id)}
 
     def artifact(self, artifact_id):
         row = self.db.execute('SELECT payload FROM artifacts WHERE id=?', (identity(artifact_id),)).fetchone()

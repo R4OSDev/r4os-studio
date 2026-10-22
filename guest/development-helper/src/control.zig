@@ -13,6 +13,11 @@ pub const Request = struct {
     input: []const u8 = "",
     generation: []const u8 = "",
     serviceName: []const u8 = "",
+    inputKind: []const u8 = "text",
+    key: u32 = 0,
+    x: i32 = 0,
+    y: i32 = 0,
+    expectedRevision: u32 = 0,
 };
 
 pub fn emit(sys: r4os.r4sys.Context, instance: []const u8, sequence: u32, success: bool, result: anytype) void {
@@ -46,6 +51,9 @@ const State = struct {
     stopReason: ?[]const u8 = null,
     closeConfirmed: bool = false,
     inputAccepted: ?u32 = null,
+    guiRevision: u32 = 0,
+    serviceCheckPassed: ?bool = null,
+    serviceResponseBase64: []const u8 = "",
     exitEvidenceUnavailable: bool = false,
 };
 
@@ -72,6 +80,9 @@ const Controller = struct {
     generation_buf: [24]u8 = undefined,
     output: [6145]u8 = undefined,
     encoded: [8196]u8 = undefined,
+    service_response: [512]u8 = undefined,
+    service_encoded: [684]u8 = undefined,
+    mouse_pending: bool = false,
     state: State = .{},
 
     fn clock(self: *Controller) u64 { return self.sys.monotonicNanoseconds() orelse 0; }
@@ -140,23 +151,55 @@ const Controller = struct {
         return true;
     }
     fn input(self: *Controller, req: Request) bool {
-        if (!self.console_role or self.process == null or self.completed != null or self.stopped != null or
+        if (self.process == null or self.completed != null or self.state.closeConfirmed or self.stopped != null or
             !std.mem.eql(u8, req.generation, self.state.generation) or req.input.len > 1024) return false;
         switch (self.process.?.status()) { .value => {}, else => return false }
-        const view = std.unicode.Utf8View.init(req.input) catch return false;
-        var iterator = view.iterator();
-        var events: [64]abi.ConsoleInputEvent = undefined;
-        var count: usize = 0;
-        while (iterator.nextCodepoint()) |point| {
-            if (count == events.len) return false;
-            events[count] = .{ .kind = abi.console_input_event_text, .value = point };
-            count += 1;
+        if (self.console_role) {
+            if (!std.mem.eql(u8, req.inputKind, "text")) return false;
+            const view = std.unicode.Utf8View.init(req.input) catch return false;
+            var iterator = view.iterator(); var events: [64]abi.ConsoleInputEvent = undefined; var count: usize = 0;
+            while (iterator.nextCodepoint()) |point| {
+                if (count == events.len) return false;
+                events[count] = .{ .kind = abi.console_input_event_text, .value = point }; count += 1;
+            }
+            const accepted = self.sys.consolePushEvents(self.raw(), events[0..count]);
+            if (accepted < 0) return false;
+            self.state.inputAccepted = @intCast(accepted); return true;
         }
-        const accepted = self.sys.consolePushEvents(self.raw(), events[0..count]);
-        if (accepted < 0) return false;
-        self.state.inputAccepted = @intCast(accepted);
-        return true;
+        if (self.service_owned) return false;
+        self.windowState();
+        if (!self.state.windowVisible or !self.state.windowFocused or req.expectedRevision != self.state.guiRevision) return false;
+        var event = abi.GuiEvent{ .window_id = self.state.windowId, .tick = self.sys.ticks() };
+        if (std.mem.eql(u8, req.inputKind, "key")) {
+            if (req.key != 9 and req.key != 13 and req.key != 27 and req.key != 32) return false;
+            event.kind = @intFromEnum(abi.GuiEventKind.key_down); event.key = req.key;
+            if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) return false;
+            self.state.inputAccepted = 1; return true;
+        }
+        if (!std.mem.eql(u8, req.inputKind, "click") or req.x < 0 or req.y < 0 or
+            req.x >= self.state.windowWidth or req.y >= self.state.windowHeight) return false;
+        event.kind = @intFromEnum(abi.GuiEventKind.mouse_down); event.x = req.x; event.y = req.y; event.buttons = 1;
+        if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) return false;
+        self.mouse_pending = true;
+        event.kind = @intFromEnum(abi.GuiEventKind.mouse_up); event.buttons = 0;
+        if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) { self.state.inputAccepted = 1; return true; }
+        self.mouse_pending = false; self.state.inputAccepted = 2; return true;
     }
+    fn serviceCheck(self: *Controller) void {
+        self.state.serviceCheckPassed = false; self.state.serviceResponseBase64 = "";
+        if (!self.ownsService() or self.process == null or self.state.closeConfirmed) return;
+        const services = r4os.Services{ .sys = self.sys };
+        var connection = switch (services.open(&self.service)) { .connection => |c| c, else => return };
+        defer { _ = connection.close(); }
+        switch (connection.call(1, "", &self.service_response, r4os.time_contract.timeoutFinite(.{ .nanoseconds = 500_000_000 }))) {
+            .response => |response| {
+                const length = std.base64.standard.Encoder.calcSize(response.bytes);
+                self.state.serviceResponseBase64 = std.base64.standard.Encoder.encode(self.service_encoded[0..length], self.service_response[0..response.bytes]);
+                self.state.serviceCheckPassed = true;
+            }, else => {},
+        }
+    }
+
     fn stop(self: *Controller, reason: []const u8) void {
         if (self.stopped != null or self.completed != null) return;
         self.stopped = reason;
@@ -165,6 +208,13 @@ const Controller = struct {
         if (self.process) |*p| { _ = p.requestClose(); }
     }
     fn cleanup(self: *Controller) void {
+        if (self.mouse_pending and self.process != null) {
+            switch (self.process.?.status()) { .value => {
+                var event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.mouse_up), .window_id = self.state.windowId, .buttons = 0, .tick = self.sys.ticks() };
+                _ = self.desk.guiPushEvent(self.process.?.raw, &event);
+            }, else => {} }
+            self.mouse_pending = false;
+        }
         if (self.process) |*p| {
             if (p.valid() and self.completed == null) {
                 _ = p.requestClose();
@@ -185,6 +235,7 @@ const Controller = struct {
     fn windowState(self: *Controller) void {
         self.state.windowVisible = false;
         self.state.windowFocused = false;
+        self.state.guiRevision = if (self.process != null) self.desk.guiRevision(self.process.?.raw) else 0;
         if (self.state.windowId < 0 or self.process == null) return;
         const services = r4os.Services{ .sys = self.sys };
         var connection = switch (services.open("WINSVC")) { .connection => |c| c, else => return };
@@ -210,6 +261,12 @@ const Controller = struct {
     }
     fn observe(self: *Controller) State {
         self.state.outputBase64 = "";
+        if (self.mouse_pending and self.process != null) {
+            switch (self.process.?.status()) { .value => {
+                var release_event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.mouse_up), .window_id = self.state.windowId, .buttons = 0, .tick = self.sys.ticks() };
+                if (self.desk.guiPushEvent(self.process.?.raw, &release_event) >= 0) self.mouse_pending = false;
+            }, else => { self.mouse_pending = false; } }
+        }
         if (self.state.closeConfirmed) return self.state;
         if (self.process) |*p| {
             if (self.completed == null) {
@@ -360,6 +417,8 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         sequence = req.sequence; heartbeat = current;
         if (std.mem.eql(u8, req.operation, "start")) {
             if (!controller.start(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The owned role could not be started." }); return 77; }
+        } else if (std.mem.eql(u8, req.operation, "service_check")) {
+            controller.serviceCheck();
         } else if (std.mem.eql(u8, req.operation, "input")) {
             if (!controller.input(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "Input was not accepted for this owned console." }); continue; }
         } else if (std.mem.eql(u8, req.operation, "stop")) {

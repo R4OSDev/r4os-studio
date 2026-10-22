@@ -1,16 +1,44 @@
 # R4OS Studio · App
 
-Version 0.3.22 adds durable, bounded R4OS executions from verified deployments.
-Terminal, Desktop and manual Service adapters use exact-generation handles,
-combined console output, explicit completion/exit uncertainty and owned cleanup.
-An independent guest watchdog survives SSH terminal loss; unconfirmed effects
-block new development work on that VM until reconciliation or an explicit VM
-stop. Linked console descendants are stopped by R4OS; independently launched
-services/GUI processes are outside that tree contract. Desktop visibility is
-confirmed by WINSVC, not by an accepted spawn. The Desktop can consume GUI exit
-receipts first, leaving the exit code unknown. Library/driver/protocol/subsystem
-execution remains unavailable without qualified test hosts. Agent tools and the
-Run & Test UI follow in 0.3.24. See guest/development-helper/README.md.
+Version 0.3.23 adds image-backed observation, owned console/GUI input and explicit
+Run & Test assertions to the durable build/deploy/execution pipeline. Settings
+freeze arguments, the deployment working directory, a 1–300 second limit, optional
+exit/output/file/service-response criteria and a visual criterion. No criteria
+means `not-run`; missing evidence means `inconclusive`, never an invented pass.
+Automatic assertions and attributed user/agent image assessments remain distinct.
+
+Only registered uppercase 8.3 output files in the owned deployment are collected
+(up to eight, 64 KiB each), with content hashes and source receipts. Service checks
+invoke the SDK's bounded operation 1 and compare its actual response; endpoint
+availability alone is an observation. Console output remains combined, bounded,
+paged and explicitly incomplete when the guest loses bytes. Crash/exit/timeout
+and cleanup evidence remain associated with their exact process generation.
+
+Job capture reuses QMP PNG through the private VM broker, bounded to 384 KiB and
+1280×1024. Each immutable receipt records time, VM boot, process and GUI revision.
+Protected evidence endpoints provide bytes and 32-item history pages; each job
+retains at most 128 attachments. No credentials or base64 enter browser logs.
+Native Codex 0.163.0 image responses use `inputImage.imageUrl`, qualified against
+an actual image-capable model. Seven agent calls and their UI follow in 0.3.24.
+
+GUI input targets the owned exact-generation process through public R4DESK logical
+events, with a currently focused visible window and a matching image no older than
+30 seconds. Supported keys are Enter, Tab, Escape and Space; clicks use bounded
+client coordinates and paired down/up events. Pending button release is retried
+only for that generation. This is not global physical-key or clipboard emulation.
+Console text uses typed native events (64 Unicode characters per request), consumed
+through the SDK console-event reader with an explicit R4DESK import. Applications must declare that input dependency in their manifest; accepting an
+event does not prove that application code consumed it. Manual
+controller admission respects the active VM lease. Duplicate action IDs return
+the original receipt; lost input replies are never automatically replayed.
+
+An independent guest watchdog survives SSH loss. Library, driver, protocol and
+subsystem execution remain unavailable without qualified test hosts. Desktop can
+consume a GUI completion before Studio: process closure is confirmed separately
+and the exit code then stays unknown. An intentional invalid-opcode fixture in
+Full 0.86.42 halted the whole guest; Studio preserved `unknown`, its screenshot and
+the VM quarantine, without replay. Guest crash isolation is an external R4OS
+limitation. See guest/development-helper/README.md.
 
 ## Verified project deployment (0.3.21)
 

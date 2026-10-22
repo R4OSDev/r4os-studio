@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, readdir, rm, lstat, open } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir, rm, lstat, open, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -203,9 +203,11 @@ export class VmManager {
       } finally { await file.close(); }
     } catch { return ''; }
   }
-  async screen(id: string) {
+  async screen(id: string, maxBytes?: number) {
     await this.config(id); const path = join(runtimePath(id), `screen-${randomUUID()}.png`);
-    try { await qmp(id, 'screendump', { filename: path, format: 'png' }); return await readFile(path); }
+    try { await qmp(id, 'screendump', { filename: path, format: 'png' });
+      if (maxBytes !== undefined && (await stat(path)).size > maxBytes) throw new VmError('The VM screenshot exceeds its image budget.');
+      return await readFile(path); }
     finally { await rm(path, { force: true }); }
   }
 }

@@ -184,6 +184,16 @@ async def main():
         message = str(error) if isinstance(error, DevelopmentFault) else 'The VM operation did not complete. Inspect its preserved transfer receipts before retrying.'
         uncertain = bool(getattr(error, 'uncertain', False))
         state = 'unknown' if uncertain else ('interrupted' if interrupted else 'failed')
+        if job['kind'] == 'execution':
+            from checks import evaluate
+            current = store.get(job['id'])
+            output = store.evidence(job['id']) / 'output.log'
+            check = evaluate(job['settings'], current.get('guestState') or {'state': 'unknown'},
+                output.read_bytes() if output.exists() else b'', current.get('outputFiles', []), current.get('visualAssessment'))
+            if uncertain:
+                check = {**check, 'state': 'not-run' if check['state'] == 'not-run' else 'inconclusive',
+                    'findings': [*check['findings'], 'Guest control ended without a confirmed process result.']}
+            store.update(job['id'], check=check)
         store.update(job['id'], state, phase='stopped' if interrupted else 'failed', error=message,
                      exitCode=getattr(error, 'exit_code', None))
     finally: store.close()

@@ -88,7 +88,7 @@ export interface DevelopmentCheck {
   findings: string[];
   evidenceIds: string[];
   /** Visual judgement is distinguished from host assertions. */
-  assessment: 'host' | 'agent' | null;
+  assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
   id: string;
@@ -127,6 +127,8 @@ export interface DevelopmentSettings {
   expectedExitCode: number | null;
   outputContains: string[];
   visualCriteria: string;
+  outputFiles: { name: string; contains: string | null; sha256: string | null }[];
+  serviceResponseContains: string | null;
 }
 
 /** The server derives project and VM scope; none of these accept a host path or VM ID. */

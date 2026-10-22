@@ -48,6 +48,16 @@ await test('development API binds project scope and protects build and stop', as
     assert.deepEqual(calls.at(-1), { operation: 'execution', projectId: id, input: execution });
     assert.equal((await app.inject({ method: 'GET', url: url + '/deployments/' + deploymentId, headers })).statusCode, 200);
     assert.deepEqual(calls.at(-1), { operation: 'deployment', projectId: id, id: deploymentId });
+    const action = { requestId: randomUUID() };
+    for (const endpoint of ['capture', 'input', 'assessment']) {
+      const target = url + `/jobs/${jobId}/${endpoint}`;
+      assert.equal((await app.inject({ method: 'POST', url: target, payload: action })).statusCode, 403);
+      assert.equal((await app.inject({ method: 'POST', url: target, headers, payload: action })).statusCode, 200);
+    }
+    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', payload: {} })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: {} })).statusCode, 200);
+    assert.deepEqual(calls.at(-1), { operation: 'save_settings', projectId: id, input: {} });
+    assert.equal((await app.inject(url + `/jobs/${jobId}/evidence/${randomUUID()}`)).statusCode, 403);
   } finally {
     await app.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
     if (previous === undefined) delete process.env.STUDIO_DEVELOPMENT_SOCKET; else process.env.STUDIO_DEVELOPMENT_SOCKET = previous;

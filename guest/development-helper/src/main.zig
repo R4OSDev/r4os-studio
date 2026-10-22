@@ -33,6 +33,8 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .modulePath = path[0..@intCast(count)],
             .processHandles = resources.available(),
             .consoleInput = true,
+            .guiInput = true,
+            .serviceSelfTest = true,
             .consoleRead = true,
             .completionRead = sys.hasFn("program_completion_read"),
             .fileRead = sys.hasFn("file_read_at"),

@@ -110,7 +110,7 @@ class Host:
                 deploy = {'available': True}
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason')}),
-            'capture': unavailable, 'input': unavailable, 'profileId': match['profileId'],
+            'capture': deploy, 'input': ({'available': True} if match['available'] and deploy['available'] and project['template'] in ('terminal', 'desktop') else {'available': False, 'reason': match.get('reason') or 'This module has no qualified interactive target.'}), 'profileId': match['profileId'],
             'qualification': match, 'transport': {'available': bool(access and access['available']),
                 'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},
             'assignedVm': {'id': vm['id'], 'name': vm['name'],
@@ -153,19 +153,54 @@ class Host:
             return {'enabled': not self.unbound, 'protocol': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId'}
-        if op in ('read_job', 'stop_job', 'artifact', 'deployment'): allowed.add('id')
+        if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): allowed.add('id')
+        if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.add('offset')
         if op in ('build', 'deploy', 'execution'): allowed.update(('input', 'owner'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution'):
+        if op in ('save_settings', 'capture', 'input', 'assess'): allowed.add('input')
+        if op == 'evidence': allowed.add('evidenceId')
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
             if op == 'options': return self.options(store)
             if op == 'settings': return store.settings()
+            if op == 'save_settings':
+                from settings import update
+                return update(store, request['input'])
             if op == 'jobs': return store.list()
             if op == 'read_job': return store.page(request['id'], request.get('offset', 0))
             if op == 'artifact': return store.artifact(request['id'])
             if op == 'deployment': return store.deployment(request['id'])
+            if op == 'assess':
+                from assessment import record
+                return record(store, request['id'], request['input'])
+            if op == 'evidence':
+                from evidence import read
+                return read(store, request['id'], request['evidenceId'])
+            if op == 'evidence_history':
+                from evidence import history
+                return history(store, request['id'], request.get('before'))
+            if op in ('capture', 'input'):
+                from actions import previous, admit, finish
+                from evidence import read
+                from observation import capture
+                from job_control import call
+                job = store.get(request['id']); message = {'operation': op, **request['input']}
+                expected = {'operation', 'requestId'} | ({'input'} if op == 'input' else set())
+                if set(message) != expected: raise DevelopmentFault('Unexpected execution action fields.', 400)
+                identity(message['requestId']); recorded = previous(store, job['id'], message)
+                if recorded is not None:
+                    if recorded.get('error'): raise DevelopmentFault(recorded['error'], recorded.get('code', 409))
+                    return read(store, job['id'], recorded['evidenceId']) if op == 'capture' else recorded
+                if job['kind'] == 'execution' and job['state'] == 'running':
+                    result = await call(job['id'], message)
+                elif op == 'capture' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown'):
+                    admit(store, job['id'], message); result = await capture(store, job)
+                    finish(store, message['requestId'], {'evidenceId': result['metadata']['id']})
+                else: raise DevelopmentFault('This job has no active guest input target.')
+                if result.get('error'): raise DevelopmentFault(result['error'], result.get('code', 409))
+                return result
             async with self.lock:
                 await self.refresh()
                 if self.unbound: raise DevelopmentFault('A development worker has no confirmed binding. Restore host support.', 503)
