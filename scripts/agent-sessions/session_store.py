@@ -102,6 +102,13 @@ def validate_settings(data, provider_dir):
 
 class SessionStore:
     def __init__(self, projects, r4os, project_id):
+        from project_use import acquire
+        self.project_use = acquire(projects, project_id)
+        try: self.open(projects, r4os, project_id)
+        except BaseException:
+            self.project_use.close(); raise
+
+    def open(self, projects, r4os, project_id):
         self.projects, self.r4os, self.project_id = Path(projects), Path(r4os), identity(project_id)
         with closing(project_connect(self.projects)) as db:
             self.project = project_operation(db, {'operation': 'get', 'id': project_id}, self.r4os)
@@ -147,7 +154,8 @@ PRAGMA user_version=1;
                     if statement.strip(): self.db.execute(statement)
         self.db.commit()
 
-    def close(self): self.db.close()
+    def close(self):
+        self.db.close(); self.project_use.close()
 
     def row(self, session_id):
         row = self.db.execute('SELECT * FROM sessions WHERE id=? AND project_id=?',

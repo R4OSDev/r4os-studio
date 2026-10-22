@@ -86,7 +86,10 @@ class Host:
     async def refresh(self):
         for job_id, meta in list(self.active.items()):
             if await self.alive(job_id, meta.get('kind', 'build')): continue
-            store = self.store(meta['projectId'])
+            try: store = self.store(meta['projectId'])
+            except ProjectFault as error:
+                if error.code != 404: raise
+                self.active.pop(job_id, None); continue
             try: store.update(job_id, 'unknown', phase='recovery', error='The worker ended without a confirmed result. It was not restarted.')
             finally: store.close()
             self.active.pop(job_id, None)
@@ -161,7 +164,7 @@ class Host:
                 store.update(job['id'], target=target); return target
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
-            return {'enabled': not self.unbound, 'protocol': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
+            return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
                     'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}

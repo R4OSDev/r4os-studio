@@ -1,7 +1,9 @@
 export interface ProjectSummary {
   id: string;
   name: string;
+  deleting?: boolean;
 }
+export interface ProjectDeleted { id: string; deleted: true }
 
 export interface ProjectsResponse {
   projects: ProjectSummary[];

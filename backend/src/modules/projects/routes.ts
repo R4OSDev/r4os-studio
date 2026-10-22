@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResponse } from '../../../../shared/projects.js';
+import { existsSync } from 'node:fs';
+import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResponse, ProjectDeleted } from '../../../../shared/projects.js';
 import { listProjects, projectStore, ProjectError } from './store.js';
 import { ProjectSessions } from './sessions.js';
 import { agentSessionRoutes } from '../agent-sessions/routes.js';
 import { runRoutes } from '../agent-sessions/run-routes.js';
 import { developmentRoutes } from '../project-development/routes.js';
+import { agentHost } from '../agent-sessions/host.js';
+import { developmentHost } from '../project-development/host.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -44,11 +47,19 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   runRoutes(app, sessions);
   developmentRoutes(app, sessions);
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
+  let recovery: Promise<void> = Promise.resolve();
   app.addHook('onReady', async () => {
-    void projectStore<{ id: string; recovered: boolean }[]>(directory, { operation: 'recover' }, 'create')
-      .then((result) => { if (result.some((item) => !item.recovered)) app.log.warn('Some project creations require retry; all pending files were preserved.'); })
-      .catch(() => app.log.warn('Project creation recovery is unavailable. Pending data was preserved.'));
+    recovery = projectStore<{ id: string; deleted: boolean }[]>(directory, { operation: 'recover' }, 'delete')
+      .then((result) => { if (result.some((item) => !item.deleted)) app.log.warn('Some confirmed project deletions need retry. Their progress was preserved.'); })
+      .catch(() => app.log.warn('Some confirmed project deletions need retry. Their progress was preserved.'))
+      .then(async () => {
+        try {
+          const result = await projectStore<{ id: string; recovered: boolean }[]>(directory, { operation: 'recover' }, 'create');
+          if (result.some((item) => !item.recovered)) app.log.warn('Some project creations require retry; all pending files were preserved.');
+        } catch { app.log.warn('Project creation recovery is unavailable. Pending data was preserved.'); }
+      });
   });
+  app.addHook('onClose', async () => { await recovery; });
   app.get('/options', async (request, reply) => {
     sessions.session(request, reply);
     const [options, vms] = await Promise.all([
@@ -63,7 +74,33 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   });
   app.get<{ Params: { id: string } }>('/:id', { schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } } }, async (request, reply) => {
     sessions.session(request, reply);
-    return { project: await projectStore<Project>(directory, { operation: 'get', id: request.params.id }) };
+    return { project: await projectStore<Project>(directory, { operation: 'get_settings', id: request.params.id }) };
+  });
+  app.delete<{ Params: { id: string }; Body: { revision: number; confirm: true } }>('/:id', {
+    bodyLimit: 4096,
+    preValidation: async (request, reply) => {
+      sessions.mutation(request, reply);
+      const body = request.body;
+      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 2
+        || Object.keys(body).some((key) => key !== 'revision' && key !== 'confirm')
+        || !Number.isSafeInteger(body.revision) || body.revision < 1 || body.confirm !== true) {
+        throw new ProjectError('Confirm deletion of the selected project.', 400);
+      }
+    },
+    schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } },
+  }, async (request) => {
+    const supports = async (read: () => Promise<{ enabled: boolean; projectDeletionLocks?: number }>, socket: string) => {
+      try {
+        const status = await read(), ready = status.enabled && status.projectDeletionLocks === 1;
+        return { ready, unsafe: !ready };
+      } catch { return { ready: false, unsafe: existsSync(socket) }; }
+    };
+    const [agents, development] = await Promise.all([
+      supports(() => agentHost({ operation: 'capabilities' }), process.env.STUDIO_AGENTS_SOCKET ?? '/run/r4os-studio-agents/host.sock'),
+      supports(() => developmentHost({ operation: 'capabilities' }), process.env.STUDIO_DEVELOPMENT_SOCKET ?? '/run/r4os-studio-development/host.sock'),
+    ]);
+    return projectStore<ProjectDeleted>(directory, { operation: 'delete', id: request.params.id,
+      input: request.body, hosts: { agents: agents.ready, development: development.ready, unsafe: agents.unsafe || development.unsafe } }, 'delete');
   });
   app.post<{ Body: ProjectInput }>('/', {
     bodyLimit: 32 * 1024,

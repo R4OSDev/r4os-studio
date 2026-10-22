@@ -7,6 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { once } from 'node:events';
 import { createApp } from '../src/app.js';
 import { projectStore } from '../src/modules/projects/store.js';
 import type { Project } from '../../shared/projects.js';
@@ -56,6 +58,73 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.deepEqual(failure.json(), { message: 'Projects could not be loaded.' });
   } finally {
     await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+await test('permanent project deletion requires confirmation, current revision and CSRF; removes only the selected project', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'studio-delete-'));
+  const directory = join(root, 'Projects'), id = randomUUID(), foreignId = randomUUID(), vmId = randomUUID();
+  const priorAgentSocket = process.env.STUDIO_AGENTS_SOCKET, priorDevelopmentSocket = process.env.STUDIO_DEVELOPMENT_SOCKET;
+  const socket = join(root, 'host.sock');
+  let deletionLocks = 0;
+  const host = createServer((connection) => {
+    let pending = '';
+    connection.on('data', (chunk) => {
+      pending += chunk;
+      if (!pending.includes('\n')) return;
+      assert.equal(JSON.parse(pending.split('\n')[0]).operation, 'capabilities');
+      connection.end(JSON.stringify({ result: { enabled: true, projectDeletionLocks: deletionLocks } }) + '\n');
+    });
+  });
+  host.listen(socket); await once(host, 'listening');
+  process.env.STUDIO_AGENTS_SOCKET = socket; process.env.STUDIO_DEVELOPMENT_SOCKET = socket;
+  const app = createApp({ projectDirectory: directory, providers: { directory: join(root, 'Providers') } });
+  try {
+    const session = await app.inject('/api/projects');
+    const headers = { cookie: String(session.headers['set-cookie']).split(';')[0], 'x-csrf-token': session.json().csrfToken };
+    await mkdir(join(directory, id, 'Workspace', 'nested'), { recursive: true });
+    await writeFile(join(directory, id, 'Workspace', 'nested', 'source.c'), 'project source');
+    await mkdir(join(directory, foreignId));
+    await writeFile(join(directory, foreignId, 'keep'), 'foreign project');
+    await symlink(join(directory, foreignId), join(directory, id, 'Workspace', 'external'));
+    const vmFile = join(root, 'R4OS', 'Instances', vmId, 'vm.json');
+    await mkdir(join(root, 'R4OS', 'Instances', vmId), { recursive: true });
+    await writeFile(vmFile, JSON.stringify({ id: vmId, name: 'Keep this VM' }));
+    await promisify(execFile)('/usr/bin/python3', ['-c', `
+import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+ db.execute("INSERT INTO projects VALUES (?,?, '', 'C','terminal','delete_fixture',?,'{}','now','now',2,'ready')",(sys.argv[2],'Delete fixture',sys.argv[3]))
+ db.execute("INSERT INTO requests VALUES ('fixture-request','fixture-hash',?,'complete','{}',NULL)",(sys.argv[2],))
+`, join(directory, 'Projects.sqlite'), id, vmId]);
+    const url = `/api/projects/${id}`, payload = { revision: 2, confirm: true };
+    for (const invalidHeaders of [
+      {}, { cookie: headers.cookie }, { ...headers, origin: 'http://foreign.test' },
+      { ...headers, host: 'foreign.test' }, { ...headers, 'sec-fetch-site': 'cross-site' },
+    ]) assert.equal((await app.inject({ method: 'DELETE', url, headers: invalidHeaders, payload })).statusCode, 403);
+    for (const invalid of [{ revision: 2 }, { ...payload, confirm: false }, { ...payload, revision: '2' },
+      { ...payload, path: '/' }, { ...payload, hosts: { agents: true } }]) {
+      assert.equal((await app.inject({ method: 'DELETE', url, headers, payload: invalid })).statusCode, 400);
+    }
+    assert.equal((await app.inject({ method: 'DELETE', url, headers, payload: { ...payload, revision: 1 } })).statusCode, 409);
+    assert(existsSync(join(directory, id, 'Workspace', 'nested', 'source.c')));
+    assert.equal((await app.inject({ method: 'DELETE', url, headers, payload })).statusCode, 503);
+    assert(existsSync(join(directory, id, 'Workspace', 'nested', 'source.c')));
+    deletionLocks = 1;
+    const deleted = await app.inject({ method: 'DELETE', url, headers, payload });
+    assert.equal(deleted.statusCode, 200, deleted.body);
+    assert.deepEqual(deleted.json(), { id, deleted: true });
+    assert(!existsSync(join(directory, id)));
+    assert.equal((await app.inject('/api/projects')).json().projects.length, 0);
+    assert.equal((await app.inject({ url, headers })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'DELETE', url, headers, payload })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'DELETE', url: `/api/projects/${foreignId}`, headers, payload })).statusCode, 409);
+    assert.equal(await readFile(join(directory, foreignId, 'keep'), 'utf8'), 'foreign project');
+    assert.equal(JSON.parse(await readFile(vmFile, 'utf8')).name, 'Keep this VM');
+  } finally {
+    await app.close(); await new Promise<void>((resolve) => host.close(() => resolve()));
+    if (priorAgentSocket === undefined) delete process.env.STUDIO_AGENTS_SOCKET; else process.env.STUDIO_AGENTS_SOCKET = priorAgentSocket;
+    if (priorDevelopmentSocket === undefined) delete process.env.STUDIO_DEVELOPMENT_SOCKET; else process.env.STUDIO_DEVELOPMENT_SOCKET = priorDevelopmentSocket;
     await rm(root, { recursive: true, force: true });
   }
 });

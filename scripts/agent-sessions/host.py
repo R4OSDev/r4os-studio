@@ -97,7 +97,10 @@ class Host:
     async def refresh(self):
         for run_id, meta in list(self.active.items()):
             if await self.active_unit(run_id): continue
-            store = self.store(meta['projectId'])
+            try: store = self.store(meta['projectId'])
+            except ProjectFault as error:
+                if error.code != 404: raise
+                self.active.pop(run_id, None); continue
             try:
                 row = get_run(store, run_id)
                 if row['busy']:
@@ -110,7 +113,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:

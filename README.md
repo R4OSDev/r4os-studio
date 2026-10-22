@@ -1,5 +1,35 @@
 # R4OS Studio · App
 
+Version 0.3.27 adds **Projects → Settings → General → Delete project**.
+A separate dialog names the selected project and asks for confirmation. Deletion
+removes its UUID directory, workspace, sessions/native history, build artifacts,
+and attributed worker/runtime records. The assigned VM and files already deployed
+to it are kept, as are other projects, shared components and global settings.
+
+The DELETE API requires the Projects browser session, CSRF, allowed host/origin,
+`{ revision, confirm: true }` and the current project revision. Active runs/jobs,
+held workspace reservations and unconfirmed guest effects block deletion. A shared
+project lifetime lock prevents new sessions/jobs racing with deletion; a still
+running older coordinator must adopt this release before deletion is admitted.
+Projects without host support can be deleted if no agent/development history needs
+reconciliation. No model turn, build, guest connection or VM action is started.
+
+A durable catalog journal records confirmed intent before removing any data.
+Interrupted deletions remain visible as **Deleting…**, open General with **Retry
+deletion**, and resume on startup. Completed deletion removes project metadata and
+creation responses, retaining only opaque original request ID/hash fingerprints
+to prevent a delayed create retry from restoring a deleted project. This is not
+an archive. Shared SDK caches/releases are not garbage-collected. Browser drafts
+for this project's known sessions are cleared from the current tab on success.
+The catalog remains schema 1 with additive tables; no privileged host maintenance
+is required. Older releases preserve but cannot finish pending deletion journals.
+
+Validated: 32 backend tests, three focused deletion tests, 27 unprivileged agent
+tests and 34 development tests, build/TypeScript and lint. Browser confirmation,
+Cancel/Escape, active/stale guards, interrupted-deletion retry, draft cleanup and
+layouts down to 320 px passed. SDK creation integration uses an isolated copy of
+the qualified 0.64.66 profile; user-selected component defaults are preserved.
+
 Version 0.3.26 adds **System → Settings → System Prompt**. One shared prompt
 applies to every project and both new and existing sessions. Save changes stores
 it globally; Reset to default immediately restores the shipped R4OS development

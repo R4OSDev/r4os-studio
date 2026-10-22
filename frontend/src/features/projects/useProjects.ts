@@ -30,5 +30,6 @@ export function useProjects() {
 
   const remember = useCallback((project: ProjectSummary) => setProjects((previous) =>
     [...previous.filter((value) => value.id !== project.id), project].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }))), []);
-  return { projects, loading, error, token, reload, remember };
+  const forget = useCallback((id: string) => setProjects((previous) => previous.filter((project) => project.id !== id)), []);
+  return { projects, loading, error, token, reload, remember, forget };
 }

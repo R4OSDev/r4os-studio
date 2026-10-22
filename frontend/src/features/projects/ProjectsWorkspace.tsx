@@ -16,13 +16,13 @@ export interface ProjectNavigation {
   section: 'Sessions' | 'Editor' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string;
 }
 export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
-  selectedId: string | null; select: (id: string) => void;
+  selectedId: string | null; select: (id: string | null) => void;
   navigation: Record<string, ProjectNavigation>; navigate: (id: string, value: ProjectNavigation) => void;
   setLeaveGuard: (guard: () => boolean) => void;
 }) {
   const api = useProjects();
   const selected = api.projects.find((project) => project.id === selectedId);
-  const current = navigation[selectedId ?? ''] ?? { section: 'Sessions', settingsView: 'General' };
+  const current: ProjectNavigation = selected?.deleting ? { section: 'Settings', settingsView: 'General' } : navigation[selectedId ?? ''] ?? { section: 'Sessions', settingsView: 'General' };
   const [newProject, setNewProject] = useState(false);
   const [newSession, setNewSession] = useState(false);
   const sessions = useSessions(selected?.id ?? null);
@@ -50,21 +50,21 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
                   className={`nav-item ${selectedId === project.id ? 'selected' : ''}`}
                   aria-current={selectedId === project.id ? 'true' : undefined}
                   onClick={() => { if (project.id !== selectedId && leave()) select(project.id); }}>
-                  <Icon name="folder" /><span>{project.name}</span>
+                  <Icon name="folder" /><span>{project.name}{project.deleting ? ' · Deleting…' : ''}</span>
                 </button>)}
         </div>
       </nav>
       {selected ? <nav className="nav-column" aria-label="Project sections">
         <div className="column-heading" aria-hidden="true" />
         <div className="nav-items">{(['Sessions', 'Editor', 'Settings'] as const).map((section) =>
-          <button key={section} type="button" disabled={saving} className={`nav-item ${current.section === section ? 'selected' : ''}`}
+          <button key={section} type="button" disabled={saving || selected.deleting} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
             }}><Icon name={section === 'Sessions' ? 'terminal' : section === 'Editor' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
       {selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['General', 'Virtual machine', 'Run & Test'] as const).map((view) => <button key={view} type="button" disabled={saving}
+        <div className="nav-items">{(['General', 'Virtual machine', 'Run & Test'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
           className={`nav-item ${current.settingsView === view ? 'selected' : ''}`} aria-current={current.settingsView === view ? 'page' : undefined}
           onClick={() => { if (view !== current.settingsView && leave()) navigate(selected.id, { ...current, settingsView: view }); }}><span>{view}</span></button>)}</div>
       </nav> : selected && current.section === 'Sessions' ? <nav className="nav-column" aria-label="Project sessions">
@@ -83,7 +83,18 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>
         {current.section === 'Settings' && current.settingsView === 'Run & Test' && <RunTestSettings key={selected.id + ':' + epoch} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Settings' && current.settingsView !== 'Run & Test' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
-          id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload} />}
+          id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload}
+          deleted={(id) => {
+            api.forget(id); select(null); setDirty(false); setSaving(false);
+            window.history.replaceState(null, '', window.location.pathname);
+            try {
+              const keys = new Set(sessions.sessions.flatMap((session) => ['studio.session.run.' + session.id, 'studio.session.draft.' + session.id]));
+              for (let index = sessionStorage.length - 1; index >= 0; index--) {
+                const key = sessionStorage.key(index);
+                if (key && ((key.startsWith('studio.') && key.includes(id)) || keys.has(key))) sessionStorage.removeItem(key);
+              }
+            } catch { /* Server deletion does not depend on browser storage access. */ }
+          }} />}
         {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} dirtyChanged={setDirty} busyChanged={setSaving} /> : <p className="session-empty">Select a session or create one.</p>)}
       </>}
     </main>

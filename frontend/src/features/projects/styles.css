@@ -44,3 +44,11 @@
 .development-file-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .development-file { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--border-color, #303440); border-radius: 8px; padding: 14px; }
 .development-file input { min-width: 0; width: 100%; }
+.project-delete-section { padding: 20px 25px; border-top: 1px solid #49303e; display: grid; justify-items: start; gap: 14px; }
+.project-danger { padding: 10px 17px; border: 1px solid #96505f; border-radius: 6px; background: #3c202d; color: #ffbccb; font-size: 12px; }
+.project-actions .project-danger { border-color: #ba596f; background: #8d3149; color: #fff1f5; }
+.project-danger:hover:not(:disabled) { filter: brightness(1.1); }
+.project-delete-dialog { max-width: 480px; }
+.project-delete-description { padding: 0 28px 18px; color: #c8b9d6; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.project-delete-description strong { color: #f0e7fa; font-weight: 600; }
+@media (max-width: 600px) { .project-delete-section { padding: 18px 20px; } .project-delete-description { padding: 0 20px 18px; } }

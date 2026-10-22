@@ -27,6 +27,13 @@ def folder(path):
 
 class Jobs:
     def __init__(self, projects, r4os, project_id):
+        from project_use import acquire
+        self.project_use = acquire(projects, project_id)
+        try: self.open(projects, r4os, project_id)
+        except BaseException:
+            self.project_use.close(); raise
+
+    def open(self, projects, r4os, project_id):
         self.projects, self.r4os, self.id = Path(projects), Path(r4os), identity(project_id)
         db = connect(self.projects)
         try:
@@ -63,7 +70,8 @@ class Jobs:
         with self.db:
             self.db.execute('CREATE TABLE IF NOT EXISTS deployments(id TEXT PRIMARY KEY, job_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
 
-    def close(self): self.db.close()
+    def close(self):
+        self.db.close(); self.project_use.close()
     def settings(self):
         from settings import DEFAULTS
         return {**DEFAULTS, **json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0])}

@@ -107,8 +107,14 @@ def create(db, projects, root, data):
     request_key = data['requestId']
     encoded = json.dumps({k: v for k, v in data.items() if k != 'requestId'}, sort_keys=True, separators=(',', ':'))
     request_hash = hashlib.sha256(encoded.encode()).hexdigest()
+    retired = db.execute('SELECT request_hash FROM retired_project_requests WHERE request_key=?', (request_key,)).fetchone()
+    if retired:
+        if retired['request_hash'] != request_hash: raise ProjectFault('This request ID belongs to another submission.')
+        raise ProjectFault('This project was deleted. Start a new project request.', 410)
     old = db.execute('SELECT * FROM requests WHERE request_key=?', (request_key,)).fetchone()
     if old:
+        if db.execute('SELECT 1 FROM project_deletions WHERE project_id=?', (old['project_id'],)).fetchone():
+            raise ProjectFault('This project is being deleted.', 409)
         if old['request_hash'] != request_hash:
             raise ProjectFault('This request ID belongs to a different project submission.')
         return finish(db, projects, root, old)

@@ -92,16 +92,25 @@ def connect(root):
             )''')
             db.execute('PRAGMA user_version=1')
     db.commit()
+    with db:
+        db.execute('CREATE TABLE IF NOT EXISTS project_deletions(project_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS retired_project_requests(request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL)')
     return db
 
 
 def operation(db, request, root):
     if request == {'operation': 'list'}:
-        return [dict(row) for row in db.execute("SELECT id,name FROM projects WHERE state='ready'")]
+        return [{'id': row['id'], 'name': row['name'], **({'deleting': True} if row['deleting'] else {})}
+                for row in db.execute("SELECT p.id,p.name,d.project_id AS deleting FROM projects p LEFT JOIN project_deletions d ON d.project_id=p.id WHERE p.state='ready' OR d.project_id IS NOT NULL")]
     if request.get('operation') == 'vms' and len(request) == 1:
         return vm_choices(root)
     if request.get('operation') == 'get' and set(request) == {'operation', 'id'}:
         return public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone())
+    if request.get('operation') == 'get_settings' and set(request) == {'operation', 'id'}:
+        row = db.execute('SELECT * FROM projects WHERE id=?', (request['id'],)).fetchone()
+        deleting = db.execute('SELECT 1 FROM project_deletions WHERE project_id=?', (request['id'],)).fetchone()
+        if row is None or (row['state'] != 'ready' and not deleting): raise ProjectFault('Project not found.', 404)
+        return {**public(row), **({'deleting': True} if deleting else {})}
     if request.get('operation') == 'update' and set(request) == {'operation', 'id', 'input'}:
         data = request['input']
         if not set(data).issubset({'name', 'description', 'vmId', 'revision'}) or 'revision' not in data:
