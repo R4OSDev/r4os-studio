@@ -9,6 +9,7 @@ CODEX_VERSION = '0.163.0'
 CODEX_SHA256 = '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
 LEGACY_PROFILE = 'studio-tools-v1'
 PROFILE = 'studio-tools-v2'
+SANDBOX_MODE = 'workspace-write'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
          'search', 'write_file', 'apply_patch', 'create_directory')
 DEVELOPMENT_TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
@@ -108,7 +109,9 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'tools.experimental_request_user_input.enabled': False,
         'skills.include_instructions': False, 'skills.bundled.enabled': False,
         'cloud.skills.enabled': False, 'plugins._default.enabled': False,
-        'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': 'read-only',
+        # Reflect the writable workspace exposed by Studio's dynamic tools.
+        # Native tools stay disabled; their virtual cwd contains no project data.
+        'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
     settings['features.sqlite'] = True

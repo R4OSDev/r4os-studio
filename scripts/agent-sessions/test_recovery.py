@@ -138,6 +138,8 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         await run(rid)
         self.assertTrue(seen[0][1]['baseInstructions'].endswith('Global prompt A'))
         self.assertEqual(seen[0][0], 'thread/start')
+        self.assertEqual(seen[0][1]['sandbox'], 'workspace-write')
+        self.assertEqual(seen[0][1]['approvalPolicy'], 'never')
         with f.open() as store:
             row = get_run(store, rid)
             self.assertEqual(json.loads(row['config'])['systemPrompt']['revision'], 1)
@@ -146,6 +148,8 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         await run(self.admit())
         resumes = [p for m, p in seen if m == 'thread/resume']
         self.assertEqual(resumes[0]['threadId'], 'same-native-thread')
+        self.assertEqual(resumes[0]['sandbox'], 'workspace-write')
+        self.assertEqual(resumes[0]['approvalPolicy'], 'never')
         self.assertTrue(resumes[0]['baseInstructions'].endswith('Global prompt B'))
         update(f.projects, {'revision': 2}, reset=True)
         await run(self.admit())

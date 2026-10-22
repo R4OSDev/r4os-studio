@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import prepare, write_json, TOOLS, PROFILE, tools_for, DEVELOPMENT_TOOLS
+from profile import prepare, write_json, TOOLS, PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -218,12 +218,13 @@ class Worker:
                             'They replace any earlier R4OS Studio system prompt.\n\n'
                             + validate_text(self.config['systemPrompt']['text']))
             if self.thread_id:
-                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'baseInstructions': instructions})
+                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'],
-                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions})
+                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions,
+                           'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))

@@ -1,5 +1,13 @@
 # R4OS Studio · App
 
+Version 0.3.30 corrects the Codex sandbox context sent to new and resumed
+sessions. Studio exposes a writable project through its dynamic tools; Codex
+now receives `workspace-write` instead of the contradictory `read-only` policy.
+Resume explicitly replaces the saved policy, preserving the thread and context.
+Native tools remain disabled, the inference process keeps an empty virtual cwd,
+and Studio still enforces every frozen tool permission and filesystem boundary.
+SDK, Contract and compiler roots remain read-only. No host maintenance is needed.
+
 Version 0.3.29 removes VM-image, release/kernel and project-component approval
 lists from development access, job admission, deployment and execution workers.
 The runner uses one image-independent SSH/SFTP and process adapter. Authenticated
