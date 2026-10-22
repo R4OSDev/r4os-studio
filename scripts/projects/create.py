@@ -11,7 +11,7 @@ import sys
 import uuid
 from store import connect, public, check_vm, ProjectFault
 from sdk import profile, TYPES
-from templates import render, hashes
+from templates import render, hashes, revision as template_revision
 
 
 def validate_input(data):
@@ -130,7 +130,7 @@ def create(db, projects, root, data):
     if data['language'] == 'Rust':
         if not context.get('rust'): raise ProjectFault(context.get('rustError', 'Rust tools are unavailable.'), 400)
         context['pins']['rust'] = context['rust']['pin']
-        context['templateRevision'] = hashlib.sha256((json.dumps(context['pins'], sort_keys=True) + ':templates-v3').encode()).hexdigest()
+        context['templateRevision'] = template_revision(context['pins'])
     check_vm(root, data['vmId'])
     identity = str(uuid.uuid4())
     prefix = re.sub('[^A-Z0-9]', '', data['name'].upper())[:16] or 'PROJECT'

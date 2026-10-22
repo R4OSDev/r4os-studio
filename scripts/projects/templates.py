@@ -1,5 +1,12 @@
 """Project skeletons use the selected SDK's canonical file maps and creator."""
 import hashlib
+import json
+
+REVISION = 'templates-v4'
+
+
+def revision(pins):
+    return hashlib.sha256((json.dumps(pins, sort_keys=True) + ':' + REVISION).encode()).hexdigest()
 
 BUILD = '''const std = @import("std");
 pub fn build(b: *std.Build) void {

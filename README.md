@@ -1,5 +1,19 @@
 # R4OS Studio · App
 
+Version 0.3.32 adapts newly generated Zig/C desktop and subsystem starters in
+the project workspace. A small Studio helper opens the first paint with a
+480 × 240 canvas when Desktop has not published a positive client size yet.
+Once available, the actual client size is used unchanged, including smaller
+windows. Frame failures still propagate through the SDK's normal paint lifecycle.
+Rust's separate drawing facade is unchanged.
+
+Installed SDK/Contract files, manifests and component pins are unchanged. There
+is no launch delay or change to the guest starter. Existing project sources are
+not automatically migrated; the reported Hello World project was explicitly
+adapted. Compiler-backed startup/resize/error regression checks, real C-header
+compilation, application build and lint passed. The user will perform the VM and
+screenshot test; this release does not claim a newly verified guest run.
+
 Version 0.3.31 binds development credentials to the VM UUID. Existing saved
 logins work after an image change without re-entry or another Save access.
 The replacement image must accept that login. Studio reports authentication

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from templates import revision as template_revision
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'components'))
 
@@ -77,7 +78,7 @@ def profile(root, projects, pinned=None, resolve_rust=True):
         for kind in ('sdk', 'contract'):
             if run([zig, 'fetch', paths[kind]], env) != pins[kind]['zigPackageHash']:
                 raise ValueError('Component package checksum changed.')
-    revision = hashlib.sha256((key + ':templates-v3').encode()).hexdigest()
+    revision = template_revision(pins)
     context = {'pins': pins, 'revision': revision, 'templateRevision': revision,
                'paths': paths, 'cache': cache, 'env': env}
     from rust_projects import local, runner
@@ -106,7 +107,7 @@ def profile(root, projects, pinned=None, resolve_rust=True):
                 if (pinned or {}).get('rust'): raise ValueError('Pinned project Rust tools changed: ' + str(error)) from error
                 context['rustError'] = str(error)
         if (pinned or {}).get('rust'): context['pins']['rust'] = context['rust']['pin']
-    context['templateRevision'] = hashlib.sha256((json.dumps(context['pins'], sort_keys=True) + ':templates-v3').encode()).hexdigest()
+    context['templateRevision'] = template_revision(context['pins'])
     context['revision'] = hashlib.sha256((context['templateRevision'] + json.dumps(context['rust']['pin'] if context.get('rust') else context.get('rustError'), sort_keys=True)).encode()).hexdigest()
     return context
 
