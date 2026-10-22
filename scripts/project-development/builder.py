@@ -40,7 +40,7 @@ class Builder:
             path = source / relative(item['path'])
             if path.resolve(strict=True) != path or path.stat().st_size != item['bytes'] or digest(path) != item['sha256']:
                 raise DevelopmentFault('The captured build input changed. Start a new build.')
-        self.context = await asyncio.to_thread(profile, self.store.r4os, self.store.projects, self.job['pins'])
+        self.context = await asyncio.to_thread(profile, self.store.r4os, self.store.projects, self.job['pins'], self.store.project['language'] == 'Rust')
         shutil.copytree(source, self.root / 'source')
         for path in (self.root / 'source').rglob('*'):
             if path.is_file(): path.chmod(0o600)

@@ -109,8 +109,7 @@ class Host:
             if hash_value(project['pins']) == hash_value(profile['components']['pinSets'].get(project['language'])):
                 deploy = {'available': True}
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
-            'build': {'available': True}, 'deploy': deploy, 'execute': {'available': False,
-                'reason': match.get('reason') or 'The guest execution adapter is not installed yet.'},
+            'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason')}),
             'capture': unavailable, 'input': unavailable, 'profileId': match['profileId'],
             'qualification': match, 'transport': {'available': bool(access and access['available']),
                 'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},
@@ -139,7 +138,7 @@ class Host:
             store = self.store(request['projectId'])
             try:
                 job = store.get(request['jobId']); vm = vm_config(self.config['r4os'], lease['vmId'])
-                if job['kind'] != 'deploy' or job['state'] != 'running' or job['binding']['id'] != vm['id']:
+                if job['kind'] not in ('deploy', 'execution') or job['state'] != 'running' or job['binding']['id'] != vm['id']:
                     raise DevelopmentFault('This job has no active target admission.')
                 if not re.fullmatch('[a-f0-9]{64}', request['helperSha256']): raise DevelopmentFault('Invalid helper identity.', 400)
                 info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
@@ -156,8 +155,8 @@ class Host:
         allowed = {'operation', 'projectId'}
         if op in ('read_job', 'stop_job', 'artifact', 'deployment'): allowed.add('id')
         if op == 'read_job': allowed.add('offset')
-        if op in ('build', 'deploy'): allowed.update(('input', 'owner'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy'):
+        if op in ('build', 'deploy', 'execution'): allowed.update(('input', 'owner'))
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -192,20 +191,26 @@ class Host:
                     finally: db.close()
                     if not row or not row[0] or row[1] == 'stopping' or json.loads(row[2] or '{}').get('pid') != peer_pid:
                         raise DevelopmentFault('This build is not delegated by the active workspace owner.', 403)
-                    permission = 'studio.build_project' if op == 'build' else 'studio.deploy_project'
+                    permission = {'build': 'studio.build_project', 'deploy': 'studio.deploy_project', 'execution': 'studio.run_project'}[op]
                     if not json.loads(row[3])['permissions'].get(permission, False):
                         raise DevelopmentFault('This development operation is disabled for this agent run.', 403)
                 if not previous:
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None
-                if op == 'deploy' and not previous:
+                if op in ('deploy', 'execution') and not previous:
                     from access import vm_config, image_profile
                     from contracts import hash_value
                     if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings before deploying.')
                     binding = vm_config(self.config['r4os'], store.project['vmId']); profile = image_profile(binding)
                     if hash_value(store.project['pins']) != hash_value(profile['components']['pinSets'].get(store.project['language'])):
                         raise DevelopmentFault('This project component identity has not been qualified with the VM image.')
+                    if op == 'execution':
+                        from profiles import require_profile
+                        require_profile(store.project, {'id': binding['imageId'], 'sha256': binding['imageSha256']})
+                        deployed = store.deployment(request['input'].get('deploymentId'))
+                        if deployed.get('helperCapabilities', {}).get('controlVersion') != 2 or deployed.get('helperCapabilities', {}).get('watchdogVersion') != 1:
+                            raise DevelopmentFault('This deployment has an older guest helper. Deploy the artifact again before running.')
                     status = self.access.public(binding['id'])
                     if not status['available']: raise DevelopmentFault(status['reason'])
                 job, fresh = store.admit(op, request['input'], owner, binding)

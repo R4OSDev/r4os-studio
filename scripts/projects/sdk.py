@@ -36,7 +36,7 @@ def run(args, env, timeout=120):
     return result.stdout.strip()
 
 
-def profile(root, projects, pinned=None):
+def profile(root, projects, pinned=None, resolve_rust=True):
     defaults = pinned or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
     sdk_id = defaults['sdk'].get('revision')
     contract_id = defaults['contract'].get('revision')
@@ -91,7 +91,7 @@ def profile(root, projects, pinned=None):
     revision = hashlib.sha256((key + ':templates-v1').encode()).hexdigest()
     context = {'pins': pins, 'revision': revision, 'templateRevision': revision,
                'paths': paths, 'cache': cache, 'env': env, 'tool': tool}
-    if sdk_id == '41770f2c354e461a5663ad805b7b2955dab1d5a9':
+    if resolve_rust and sdk_id == '41770f2c354e461a5663ad805b7b2955dab1d5a9':
         from rust_projects import local, prepare
         from rust_sdk import SPEC
         context['templateRevision'] = hashlib.sha256((key + ':templates-v2').encode()).hexdigest()

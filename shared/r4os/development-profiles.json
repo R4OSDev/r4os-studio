@@ -114,11 +114,19 @@
           "Zig",
           "C",
           "Rust"
+        ],
+        "desktop": [
+          "Zig",
+          "C",
+          "Rust"
+        ],
+        "service": [
+          "Zig",
+          "C",
+          "Rust"
         ]
       },
       "roleReasons": {
-        "desktop": "The desktop execution adapter has not been qualified yet.",
-        "service": "The service execution adapter has not been qualified yet.",
         "library": "Runtime libraries require a qualified consumer or conformance host.",
         "driver": "Drivers require a qualified isolated loader and diagnostic profile.",
         "protocol": "Protocol modules require a qualified loader and diagnostic profile.",
@@ -149,11 +157,21 @@
         "gracefulClose": true,
         "timeout": true,
         "ownedKillReap": true,
-        "realGuiOrServiceClaimed": false
+        "realGuiOrServiceClaimed": true,
+        "ownedRootProcessOnly": true,
+        "watchdogProtocol": 1,
+        "consoleTreeStopQualified": true
       },
       "guest": {
         "release": "0.86.42",
         "kernel": "0.1.381"
+      },
+      "desktopAdapter": {
+        "kind": "generation-window-adoption",
+        "admissionWindowId": 1,
+        "desktopRevision": "af339ec95950e6a077c6bbe0c0cc24fbd6e49c12",
+        "visibility": "WINSVC snapshot and exact process generation",
+        "exitCodeMayBeUnavailable": true
       }
     },
     {
@@ -268,11 +286,19 @@
           "Zig",
           "C",
           "Rust"
+        ],
+        "desktop": [
+          "Zig",
+          "C",
+          "Rust"
+        ],
+        "service": [
+          "Zig",
+          "C",
+          "Rust"
         ]
       },
       "roleReasons": {
-        "desktop": "The desktop execution adapter has not been qualified yet.",
-        "service": "The service execution adapter has not been qualified yet.",
         "library": "Runtime libraries require a qualified consumer or conformance host.",
         "driver": "Drivers require a qualified isolated loader and diagnostic profile.",
         "protocol": "Protocol modules require a qualified loader and diagnostic profile.",
@@ -303,11 +329,21 @@
         "gracefulClose": true,
         "timeout": true,
         "ownedKillReap": true,
-        "realGuiOrServiceClaimed": false
+        "realGuiOrServiceClaimed": true,
+        "ownedRootProcessOnly": true,
+        "watchdogProtocol": 1,
+        "consoleTreeStopQualified": true
       },
       "guest": {
         "release": "0.84.47",
         "kernel": "0.1.331"
+      },
+      "desktopAdapter": {
+        "kind": "generation-window-adoption",
+        "admissionWindowId": 1,
+        "desktopRevision": "146d4bc147cfd8623c1574756450bc4765a19a78",
+        "visibility": "WINSVC snapshot and exact process generation",
+        "exitCodeMayBeUnavailable": true
       }
     }
   ]

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { DevelopmentBuildInput, DevelopmentDeployInput, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development.js';
+import type { DevelopmentBuildInput, DevelopmentDeployInput, DevelopmentRunInput, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { developmentHost } from './host.js';
@@ -49,6 +49,22 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
   }, async (request, reply) => {
     security.mutation(request, reply);
     return reply.code(202).send({ job: await developmentHost<DevelopmentJob>({ operation: 'deploy', projectId: request.params.id, input: request.body }) });
+  });
+  app.post<{ Params: { id: string }; Body: DevelopmentRunInput }>(base + '/executions', {
+    bodyLimit: 8192,
+    preValidation: async (request) => {
+      const value = request.body;
+      if (!value || typeof value !== 'object' || Array.isArray(value)
+        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'deploymentId'].includes(key)))
+        throw new ProjectError('Unexpected deployment fields.', 400);
+    },
+    schema: { params, body: { type: 'object', additionalProperties: false,
+      required: ['requestId', 'projectRevision', 'settingsRevision', 'deploymentId'], properties: {
+        requestId: identity, projectRevision: revision, settingsRevision: revision, deploymentId: identity,
+      } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    return reply.code(202).send({ job: await developmentHost<DevelopmentJob>({ operation: 'execution', projectId: request.params.id, input: request.body }) });
   });
   app.get<{ Params: { id: string; deploymentId: string } }>(base + '/deployments/:deploymentId', {
     schema: { params: { ...params, required: ['id', 'deploymentId'], properties: { ...params.properties, deploymentId: identity } } },

@@ -78,8 +78,8 @@ class Jobs:
         return values
 
     def admit(self, kind, request, owner=None, binding=None):
-        if kind not in ('build', 'deploy'): raise DevelopmentFault('This development operation is not available.', 400)
-        expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else set())
+        if kind not in ('build', 'deploy', 'execution'): raise DevelopmentFault('This development operation is not available.', 400)
+        expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
         if set(request) != expected:
             raise DevelopmentFault('Unexpected development fields.', 400)
         identity(request['requestId'])
@@ -97,11 +97,16 @@ class Jobs:
                 raise DevelopmentFault('Project or Run & Test settings changed. Reload before starting.')
             if self.db.execute('SELECT id FROM jobs WHERE busy=1').fetchone():
                 raise DevelopmentFault('This project already has an active development job.')
-            artifact = self.artifact(request['artifactId']) if kind == 'deploy' else None
+            deployment = self.deployment(request['deploymentId']) if kind == 'execution' else None
+            artifact = self.artifact(request['artifactId'] if kind == 'deploy' else deployment['artifactId']) if kind in ('deploy', 'execution') else None
+            if deployment and (deployment['target']['vmId'] != self.project['vmId'] or deployment.get('pins') != self.project['pins']):
+                raise DevelopmentFault('This deployment belongs to a different project target or component identity.')
+            if kind == 'execution' and self.settings()['workingDirectory'] != '.':
+                raise DevelopmentFault('Only the deployment directory is a qualified R4OS working directory.')
             if artifact and artifact.get('pins') != self.project['pins']:
                 raise DevelopmentFault('The artifact pins differ from the current project identity.')
             job = {'id': str(uuid.uuid4()), 'projectId': self.id, 'kind': kind, 'state': 'queued',
-                'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': None,
+                'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': deployment['id'] if deployment else None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
                 'phase': 'queued', 'check': None, 'createdAt': now(), 'completedAt': None,
                 'source': None, 'projectRevision': self.project['revision'],

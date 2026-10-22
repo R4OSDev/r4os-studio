@@ -41,6 +41,11 @@ await test('development API binds project scope and protects build and stop', as
     assert.equal((await app.inject({ method: 'POST', url: url + '/deployments', headers, payload: deployment })).statusCode, 202);
     assert.deepEqual(calls.at(-1), { operation: 'deploy', projectId: id, input: deployment });
     const deploymentId = randomUUID();
+    const execution = { ...payload, requestId: randomUUID(), deploymentId };
+    assert.equal((await app.inject({ method: 'POST', url: url + '/executions', payload: execution })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/executions', headers, payload: { ...execution, command: 'foreign.R4X' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/executions', headers, payload: execution })).statusCode, 202);
+    assert.deepEqual(calls.at(-1), { operation: 'execution', projectId: id, input: execution });
     assert.equal((await app.inject({ method: 'GET', url: url + '/deployments/' + deploymentId, headers })).statusCode, 200);
     assert.deepEqual(calls.at(-1), { operation: 'deployment', projectId: id, id: deploymentId });
   } finally {

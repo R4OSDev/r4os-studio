@@ -1,5 +1,17 @@
 # R4OS Studio · App
 
+Version 0.3.22 adds durable, bounded R4OS executions from verified deployments.
+Terminal, Desktop and manual Service adapters use exact-generation handles,
+combined console output, explicit completion/exit uncertainty and owned cleanup.
+An independent guest watchdog survives SSH terminal loss; unconfirmed effects
+block new development work on that VM until reconciliation or an explicit VM
+stop. Linked console descendants are stopped by R4OS; independently launched
+services/GUI processes are outside that tree contract. Desktop visibility is
+confirmed by WINSVC, not by an accepted spawn. The Desktop can consume GUI exit
+receipts first, leaving the exit code unknown. Library/driver/protocol/subsystem
+execution remains unavailable without qualified test hosts. Agent tools and the
+Run & Test UI follow in 0.3.24. See guest/development-helper/README.md.
+
 ## Verified project deployment (0.3.21)
 
 Projects expose scoped deployment admission and receipts under

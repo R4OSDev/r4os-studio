@@ -33,8 +33,8 @@ async def broker_call(request):
         writer.close(); await writer.wait_closed()
 
 
-def guard(store, job, lease=None):
-    if store.get(job['id'])['state'] != 'running': raise DevelopmentFault('The development job is stopping.')
+def guard(store, job, lease=None, allow_stopping=False):
+    if store.get(job['id'])['state'] not in (('running', 'stopping') if allow_stopping else ('running',)): raise DevelopmentFault('The development job is stopping.')
     db = connect(store.projects)
     try: current = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (store.id,)).fetchone())
     finally: db.close()
@@ -66,6 +66,8 @@ class Deployment:
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
         with VmLease(store.projects, vm['id'], scope) as lease:
             self.phase('preparing_vm'); info = await vm_call(lease, 'info'); guard(store, job)
+            from quarantine import admission
+            admission(store.projects, vm['id'], info['vm']['state'])
             if info['vm']['state'] in ('stopped', 'failed'):
                 self.note('Starting the assigned VM'); await vm_call(lease, 'start')
             for _ in range(120):
@@ -119,7 +121,7 @@ class Deployment:
         self.phase('transferring'); receipts = []
         module = artifact['files'][0]
         source = store.root / 'Artifacts' / artifact['id'] / artifact['entry']
-        for path, name, checksum in ((source, 'APP.' + artifact['kind'], module['sha256']), (helper['path'], 'STHELP.R4X', helper['sha256'])):
+        for path, name, checksum in ((source, 'APP.' + artifact['kind'], module['sha256']), (helper['path'], 'STHELP.R4X', helper['sha256']), (helper['watchdog']['path'], 'STWATCH.R4X', helper['watchdog']['sha256'])):
             guard(store, job, lease)
             receipt = await publish_file(ssh, path, guest_dir + '/' + name, checksum); receipts.append(receipt)
             self.note('Verified ' + name + ' · ' + checksum)
@@ -161,17 +163,23 @@ async def main():
     if len(sys.argv) > 2:
         if job['state'] in ACTIVE: store.update(job['id'], 'unknown', phase='recovery', error='The VM worker ended without a confirmed result. No guest action was replayed.')
         store.close(); return
-    task = asyncio.current_task(); interrupted = False
+    task = asyncio.current_task(); interrupted = False; execution = None
     def stop():
         nonlocal interrupted
-        interrupted = True; store.update(job['id'], 'stopping', phase='stopping'); task.cancel()
+        interrupted = True; store.update(job['id'], 'stopping', phase='stopping')
+        if execution is not None: execution.stop_requested = True
+        else: task.cancel()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, stop)
     try:
         if job['state'] not in ('queued', 'starting'): return
-        if job['kind'] != 'deploy': raise DevelopmentFault('This VM worker does not support this job kind.')
         store.update(job['id'], 'running', phase='preparing')
-        await asyncio.wait_for(Deployment(store, job).run(), 600)
+        if job['kind'] == 'deploy': await asyncio.wait_for(Deployment(store, job).run(), 600)
+        elif job['kind'] == 'execution':
+            from execution import Execution
+            execution = Execution(store, job)
+            await asyncio.wait_for(execution.run(), job['settings']['timeoutSeconds'] + 60)
+        else: raise DevelopmentFault('This VM worker does not support this job kind.')
     except BaseException as error:
         message = str(error) if isinstance(error, DevelopmentFault) else 'The VM operation did not complete. Inspect its preserved transfer receipts before retrying.'
         uncertain = bool(getattr(error, 'uncertain', False))
