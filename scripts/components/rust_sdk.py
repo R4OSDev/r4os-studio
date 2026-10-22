@@ -19,13 +19,29 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def record():
-    release = SPEC['release']
-    return {'id': SPEC['id'], 'version': SPEC['version'], 'cargoVersion': SPEC['version'],
+def record(spec=None):
+    spec = spec or SPEC
+    release = spec['release']
+    return {'id': spec['id'], 'version': spec['version'], 'cargoVersion': spec['version'],
             'toolchainProfile': 'r4os-sdk', 'sdkVersion': release['sdk']['package_version'],
             'sdkRevision': release['sdk']['source_commit'], 'host': 'x86_64-unknown-linux-gnu',
-            'targets': ['x86_64-unknown-none'], 'sha256': SPEC['releaseSha256'],
-            'sourceUrl': SPEC['releaseUrl'], 'manifestSha256': release['devkit']['profile_sha256']}
+            'targets': ['x86_64-unknown-none'], 'sha256': spec['releaseSha256'],
+            'sourceUrl': spec['releaseUrl'], 'manifestSha256': release['devkit']['profile_sha256']}
+
+
+def for_sdk(sdk):
+    import re
+    version = sdk['version']
+    if not re.fullmatch(r'\d+\.\d+\.\d+', version): raise ValueError('Invalid SDK package version.')
+    url = 'https://github.com/R4OSDev/r4os-sdk/releases/download/v' + version + '/SDK-Release.json'
+    raw = read_url(url, 2 * 1024**2); release = json.loads(raw)
+    if release.get('schema') != 1 or release.get('interface') != 'r4os-sdk-release' or release['sdk']['source_commit'] != sdk['revision']:
+        raise ValueError('The SDK tool release differs from its selected sources.')
+    item = release['capabilities']['package']; data = read_url(item['url'], 2 * 1024**2)
+    if hashlib.sha256(data).hexdigest() != item['sha256']: raise ValueError('The SDK capability checksum changed.')
+    cap = json.loads(data)
+    return {'id': 'sdk-' + version, 'version': cap['tools']['rust_version'], 'releaseUrl': url,
+            'releaseSha256': hashlib.sha256(raw).hexdigest(), 'release': release, 'powershell': SPEC['powershell']}
 
 
 def environment(prefix, work):
@@ -48,15 +64,28 @@ def verify_files(prefix, values):
             raise ValueError('The SDK Rust toolchain checksum changed. Choose a verified installation.')
 
 
+def compiler_path(prefix):
+    profile = json.loads((Path(prefix) / 'Tools/RustToolsProfile.json').read_text())
+    version = profile['rust_version']; triple = profile['hosts']['Linux']['triple']
+    if not all(isinstance(v, str) and '/' not in v and '..' not in v for v in (version, triple)):
+        raise ValueError('Invalid Rust compiler identity.')
+    return Path('Install/Toolchains/Rust/rustup/toolchains') / (version + '-' + triple) / 'bin/rustc'
+
+
 def verify(prefix, value):
     prefix = Path(prefix)
-    if any(value.get(key) != expected for key, expected in record().items()):
-        raise ValueError('The SDK Rust profile identity changed.')
+    release_path = prefix / 'SDK-Release.json'; profile_path = prefix / 'Tools/RustToolsProfile.json'
+    if digest(release_path) != value.get('sha256') or digest(profile_path) != value.get('manifestSha256'):
+        raise ValueError('The installed Rust component metadata changed.')
+    release = json.loads(release_path.read_text()); profile = json.loads(profile_path.read_text())
+    if (value.get('sdkRevision') != release['sdk']['source_commit'] or value.get('version') != profile['rust_version']
+        or value.get('cargoVersion') != profile['cargo_version']): raise ValueError('The installed Rust compiler identity changed.')
+    compiler = compiler_path(prefix)
     files = value.get('fileHashes', {})
-    if not all(path in files for path in (COMPILER, 'PowerShell/pwsh', 'Tools/RustToolsProfile.json')):
+    if not all(path in files for path in (str(compiler), 'PowerShell/pwsh', 'Tools/RustToolsProfile.json')):
         raise ValueError('The SDK Rust installation is incomplete.')
-    toolchain = prefix / Path(COMPILER).parent.parent
-    required = [(prefix / COMPILER, 'the Rust compiler'), (toolchain / 'bin/cargo', 'Cargo'),
+    toolchain = prefix / compiler.parent.parent
+    required = [(prefix / compiler, 'the Rust compiler'), (toolchain / 'bin/cargo', 'Cargo'),
                 (prefix / 'PowerShell/pwsh', 'the PowerShell runner'),
                 (prefix / 'Tools/bin/x86_64-unknown-linux-gnu/module-catalog', 'the SDK capability tool')]
     required += [(toolchain / 'lib/rustlib/x86_64-unknown-linux-gnu/bin' / name, 'required LLVM tools')
@@ -74,16 +103,17 @@ def verify(prefix, value):
             raise ValueError('An SDK Rust component link changed.')
 
 
-def install(manager):
+def install(manager, spec=None):
+    spec = spec or SPEC
     from service import now, atomic
-    release = SPEC['release']
-    raw = read_url(SPEC['releaseUrl'])
-    if hashlib.sha256(raw).hexdigest() != SPEC['releaseSha256']:
+    release = spec['release']
+    raw = read_url(spec['releaseUrl'])
+    if hashlib.sha256(raw).hexdigest() != spec['releaseSha256']:
         raise ValueError('The published SDK release manifest changed.')
     root = manager.root / 'Toolchains/Rust'
     root.mkdir(parents=True, exist_ok=True)
-    pending = {'schema': 1, 'owner': 'R4OS Studio', 'id': SPEC['id'], 'releaseSha256': SPEC['releaseSha256']}
-    destination = root / SPEC['id']
+    pending = {'schema': 1, 'owner': 'R4OS Studio', 'id': spec['id'], 'releaseSha256': spec['releaseSha256']}
+    destination = root / spec['id']
     if destination.is_symlink():
         raise ValueError('An existing SDK Rust directory was preserved.')
     if destination.exists():
@@ -91,7 +121,7 @@ def install(manager):
         if ((destination / '.studio-component.json').exists() or not marker.is_file()
                 or json.loads(marker.read_text()) != pending):
             raise ValueError('An existing SDK Rust directory was preserved. Select a verified installation.')
-        destination.rename(root / ('.incomplete-' + SPEC['id'] + '-' + uuid.uuid4().hex))
+        destination.rename(root / ('.incomplete-' + spec['id'] + '-' + uuid.uuid4().hex))
     with tempfile.TemporaryDirectory(prefix='.sdk-download-', dir=root) as temporary:
         work = Path(temporary)
         prefix = work / 'installed'
@@ -123,9 +153,10 @@ def install(manager):
             download(manager, item['url'], archive, item['sha256'], limit=64 * 1024**2)
             source = unpack(archive, work / 'contract-unpacked')
             verify_files(source, {v['path']: v['sha256'] for v in profile['contract']['inputs']})
-            compiler = next((v for v in manager.installed('zig') if v['version'] == '0.16.0'), None)
+            required_zig = json.loads((tools / 'Profile/ZigToolchain.json').read_text())['version']
+            compiler = next((v for v in manager.installed('zig') if v['version'] == required_zig), None)
             if not compiler:
-                raise ValueError('Install Zig 0.16.0 to verify the SDK Contract package.')
+                raise ValueError('Install Zig ' + required_zig + ' to verify the SDK Contract package.')
             verification = work / 'contract-check'
             verification.mkdir()
             (verification / 'build.zig').write_text('pub fn build(_: *@import("std").Build) void {}\n')
@@ -139,7 +170,7 @@ def install(manager):
         verify_files(contract, {v['path']: v['sha256'] for v in profile['contract']['inputs']})
         for key in ('catalog', 'packager'):
             (tools / profile['hosts']['Linux'][key]).chmod(0o755)
-        item = SPEC['powershell']
+        item = spec['powershell']
         archive = work / 'powershell.tar.gz'
         download(manager, item['url'], archive, item['sha256'], limit=128 * 1024**2)
         unpack(archive, work / 'powershell-unpacked').rename(prefix / 'PowerShell')
@@ -155,22 +186,22 @@ def install(manager):
                 '--root', prefix / 'Install', '--cache-root', work / 'cache']
         command(args + ['setup'], env, work, timeout=900)
         description = json.loads(command(args + ['check'], env, work))
-        if not description['complete_toolset'] or description['rust_version'] != SPEC['version']:
+        if not description['complete_toolset'] or description['rust_version'] != spec['version']:
             raise ValueError('The SDK toolchain readiness check failed.')
         # The query is deliberately compiler-free; the SDK validates its own export.
         catalog = tools / profile['hosts']['Linux']['catalog']
         output = command([catalog, 'capabilities', '--json', '--profile', profile_path], {'PATH': '', 'HOME': str(work)}, work)
         if json.loads(output) != json.loads((prefix / 'capabilities.json').read_text()):
             raise ValueError('The SDK capability query differs from the published catalog.')
-        value = {**record(), 'installedAt': now(), 'installationMethod': 'r4os-sdk-profile',
-                 'binarySha256': digest(prefix / COMPILER), 'powershellVersion': actual,
+        value = {**record(spec), 'installedAt': now(), 'installationMethod': 'r4os-sdk-profile',
+                 'binarySha256': digest(prefix / compiler_path(prefix)), 'powershellVersion': actual,
                  'fileHashes': {str(p.relative_to(prefix)): digest(p) for p in prefix.rglob('*') if p.is_file() and not p.is_symlink()},
                  'symlinks': {str(p.relative_to(prefix)): os.readlink(p) for p in prefix.rglob('*') if p.is_symlink()}}
         verify(prefix, value)
         atomic(prefix / '.studio-installing.json', pending)
-        publish(prefix, root / SPEC['id'])
+        publish(prefix, root / spec['id'])
     # rustup and the PS7 runner must work at the published path as well.
-    prefix = root / SPEC['id']
+    prefix = root / spec['id']
     check = [prefix / 'PowerShell/pwsh', '-NoLogo', '-NoProfile', '-File', prefix / 'Tools/Setup/Rust.ps1',
              '--root', prefix / 'Install', '--cache-root', prefix / 'Install/.cache', 'check']
     result = json.loads(command(check, environment(prefix, prefix / 'Install'), prefix / 'Install'))

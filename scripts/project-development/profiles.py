@@ -16,17 +16,13 @@ def eligible(project, image):
     """Never interpret matching version labels as matching component identities."""
     if not image:
         return {'available': False, 'profileId': None, 'reason': 'Assign an available virtual machine in Project settings.'}
-    pins = project['pins']
     for profile in catalog()['profiles']:
         target = profile['image']
         if image.get('id') != target['id'] or image.get('sha256') != target['sha256']:
             continue
         language = project['language']
-        expected = profile['components']['pinSets'].get(language)
-        matches = expected is not None and hash_value(pins) == hash_value(expected)
-        if not matches:
-            return {'available': False, 'profileId': None,
-                    'reason': 'This project component identity has not been qualified with the selected VM image.'}
+        # SDK/compiler identities are project pins checked by preparation and
+        # build receipts. The runner qualifies the image and role adapter only.
         roles = profile.get('qualifiedRoles', {})
         if language not in roles.get(project['template'], []):
             return {'available': False, 'profileId': profile['id'],

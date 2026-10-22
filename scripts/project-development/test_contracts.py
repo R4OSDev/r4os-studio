@@ -15,16 +15,16 @@ class Contracts(unittest.TestCase):
         with self.assertRaises(DevelopmentFault): identity('chosen-host-path')
         self.assertEqual(protocol(APP)['guestProtocol'], 1)
 
-    def test_exact_pins_and_image_hash_qualify_independently_from_labels(self):
+    def test_image_and_role_adapter_do_not_gate_sdk_or_compiler_revisions(self):
         profile = catalog()['profiles'][0];c = profile['components'];image = profile['image']
         for language in ('Zig', 'C', 'Rust'):
             pins = copy.deepcopy(c['pinSets'][language])
             project = {'language':language, 'template':'terminal', 'pins':pins}
             self.assertTrue(eligible(project,image)['available'])
             changed = copy.deepcopy(project);changed['pins']['contract']['revision'] = '0'*40
-            self.assertFalse(eligible(changed,image)['available'])
+            self.assertTrue(eligible(changed,image)['available'])
             changed = copy.deepcopy(project);changed['pins']['zig']['binarySha256'] = '0'*64
-            self.assertFalse(eligible(changed,image)['available'])
+            self.assertTrue(eligible(changed,image)['available'])
             self.assertFalse(eligible(project,{**image,'sha256':'0'*64})['available'])
             self.assertFalse(eligible(project,{'id':'0.84.47-full','sha256':image['sha256']})['available'])
             self.assertFalse(eligible({**project,'template':'driver'},image)['available'])

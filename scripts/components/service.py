@@ -142,8 +142,8 @@ class Manager:
                         record['binary'] = str(path / 'zig')
                     elif kind == 'rust':
                         if record.get('installationMethod') == 'r4os-sdk-profile':
-                            from rust_sdk import COMPILER
-                            binary = path / COMPILER
+                            from rust_sdk import compiler_path
+                            binary = path / compiler_path(path)
                         else:
                             binary = path / 'bin/rustc'
                         if not binary.is_file() or not record.get('fileHashes'):

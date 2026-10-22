@@ -16,7 +16,7 @@ from templates import render, hashes
 
 def validate_input(data):
     template = next((value for value in TYPES if value[0] == data['template']), None)
-    if not template or (data['language'] != 'Rust' and data['language'] not in template[4]):
+    if not template or data['language'] not in ('Rust', 'Zig', 'C'):
         raise ProjectFault('This language and module type are not supported.', 400)
     if (data['template'] == 'subsystem') != bool(data.get('guestFormats')):
         raise ProjectFault('Guest formats are required only for a subsystem host.', 400)
@@ -122,17 +122,15 @@ def create(db, projects, root, data):
     context = profile(root, projects)
     if data['optionsRevision'] != context['revision']:
         raise ProjectFault('Project options changed. Reload the available options.')
+    from toolset import combination
+    template = next(value for value in TYPES if value[0] == data['template'])
+    match = combination(context, template, data['language'])
+    if not match or not match['supported']:
+        raise ProjectFault(match['reason'] if match else 'The SDK template is unavailable.', 400)
     if data['language'] == 'Rust':
-        from rust_projects import combination
-        if not context.get('rust'):
-            raise ProjectFault(context.get('rustError', 'Rust projects require a compatible SDK.'), 400)
-        template = next(value for value in TYPES if value[0] == data['template'])
-        match = combination(context, template)
-        if not match or not match['supported'] or not match['qualified']:
-            raise ProjectFault(match['reason'] if match else context.get('rustError', 'Rust projects require a compatible SDK.'), 400)
+        if not context.get('rust'): raise ProjectFault(context.get('rustError', 'Rust tools are unavailable.'), 400)
         context['pins']['rust'] = context['rust']['pin']
-        context['pins']['contract'] = context['rust']['contractPin']
-        context['templateRevision'] = hashlib.sha256((json.dumps(context['pins'], sort_keys=True) + ':rust-templates-v2').encode()).hexdigest()
+        context['templateRevision'] = hashlib.sha256((json.dumps(context['pins'], sort_keys=True) + ':templates-v3').encode()).hexdigest()
     check_vm(root, data['vmId'])
     identity = str(uuid.uuid4())
     prefix = re.sub('[^A-Z0-9]', '', data['name'].upper())[:16] or 'PROJECT'

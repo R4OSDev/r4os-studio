@@ -13,6 +13,7 @@ export interface ProjectsResponse {
 export type ProjectLanguage = 'Rust' | 'Zig' | 'C';
 export type ProjectTemplate = 'terminal' | 'desktop' | 'service' | 'driver' | 'protocol' | 'library' | 'subsystem';
 export interface ProjectPins {
+  sdkTools?: { url: string; releaseSha256: string; archiveSha256: string; profileSha256: string; capabilitiesSha256: string };
   sdk: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
   contract: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
   zig: { version: string; sha256: string; binarySha256: string; url: string };

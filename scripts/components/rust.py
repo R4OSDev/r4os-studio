@@ -103,18 +103,20 @@ class Rust:
         for version in versions[:count]:
             manager.progress('Checking official Rust ' + version + '…')
             values.append(release(version))
-        from rust_sdk import record as sdk_record
-        sdk = sdk_record()
-        if any(value.get('revision') == sdk['sdkRevision'] for value in manager.installed('sdk')):
-            values.append(sdk)
+        from rust_sdk import record as sdk_record, for_sdk
+        selected = manager.state['defaults'].get('sdk')
+        if selected:
+            sdk = sdk_record(for_sdk(selected)); values.append(sdk)
         return {'versions': values, 'latestId': latest, 'hasMore': len(versions) > count}
 
     def install(self, manager, kind, record):
-        from rust_sdk import record as sdk_record, install as install_sdk
-        if record['id'] == sdk_record()['id']:
-            if record != sdk_record():
-                raise ValueError('The SDK Rust release profile changed.')
-            return install_sdk(manager)
+        from rust_sdk import record as sdk_record, install as install_sdk, for_sdk
+        if record['id'].startswith('sdk-'):
+            sdk = next((v for v in manager.installed('sdk') if v['version'] == record['sdkVersion']), None)
+            if not sdk: raise ValueError('Install the matching SDK before its Rust toolchain.')
+            spec = for_sdk(sdk)
+            if record != sdk_record(spec): raise ValueError('The SDK Rust release profile changed. Check for updates again.')
+            return install_sdk(manager, spec)
         # Re-read the immutable release manifest before trusting saved catalog URLs.
         verified = release(record['version'])
         if verified != record:

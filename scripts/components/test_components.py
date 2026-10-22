@@ -14,6 +14,25 @@ from rust_sdk import SPEC, install as install_sdk
 
 
 class ComponentTests(unittest.TestCase):
+    def test_sdk_rust_catalog_uses_selected_release_and_rejects_changed_capabilities(self):
+        from rust_sdk import for_sdk, record
+        capability = json.dumps({'tools': {'rust_version': '99.2.3'}}).encode()
+        release = {'schema': 1, 'interface': 'r4os-sdk-release',
+                   'sdk': {'source_commit': 'f' * 40, 'package_version': '99.1.0'},
+                   'devkit': {'profile_sha256': 'a' * 64},
+                   'capabilities': {'package': {'url': 'https://github.com/R4OSDev/r4os-sdk/releases/download/v99.1.0/cap.json',
+                                              'sha256': hashlib.sha256(capability).hexdigest()}}}
+        raw = json.dumps(release).encode(); sdk = {'version': '99.1.0', 'revision': 'f' * 40}
+        with patch('rust_sdk.read_url', side_effect=[raw, capability]):
+            selected = record(for_sdk(sdk))
+        self.assertEqual(selected['id'], 'sdk-99.1.0')
+        self.assertEqual(selected['version'], '99.2.3')
+        self.assertEqual(selected['sdkRevision'], 'f' * 40)
+        with patch('rust_sdk.read_url', side_effect=[raw, capability + b'changed']):
+            with self.assertRaisesRegex(ValueError, 'checksum changed'): for_sdk(sdk)
+        with patch('rust_sdk.read_url', return_value=raw):
+            with self.assertRaisesRegex(ValueError, 'differs from its selected sources'): for_sdk({**sdk, 'revision': 'e' * 40})
+
     def test_interrupted_sdk_install_is_preserved_for_retry_and_foreign_directories_are_not_replaced(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

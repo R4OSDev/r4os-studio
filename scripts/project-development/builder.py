@@ -75,8 +75,7 @@ class Builder:
         for name, path in context['paths'].items(): args += ['--ro-bind', str(path), '/' + name]
         rust_bin = '/rust/Install/Rust/1.99.0/bin'
         if context.get('rust'):
-            from rust_sdk import COMPILER
-            rust_bin = '/rust/' + str(Path(COMPILER).parent)
+            rust_bin = '/rust/' + str(context['rust']['compiler'].parent)
             args += ['--ro-bind', str(context['rust']['prefix']), '/rust',
                      '--bind', str(self.root / 'tools'), '/tools']
         args += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/cache/home',
@@ -140,6 +139,7 @@ class Builder:
             command = ['/rust/PowerShell/pwsh', '-NoLogo', '-NoProfile', '-File', '/sdk/Tools/Build-RustModule.ps1',
                 '-ProjectRoot', '/workspace', '-SdkRoot', '/sdk', '-ContractRoot', '/contract', '-ToolsRoot', '/tools',
                 '-InstallRoot', '/rust/Install', '-CacheRoot', '/cache/rust-build', '-OutputRoot', '/output']
+            if self.context.get('sdkTools'): command += ['-ZigRoot', '/zig']
         else:
             (self.root / 'source/build.zig').write_text(BUILD)
             pin = self.job['pins']['sdk']
@@ -167,7 +167,7 @@ class Builder:
             proof_path = self.root / 'output/build.json'
             if proof_path.stat().st_size > 2 * 1024 * 1024: raise DevelopmentFault('The SDK build receipt exceeds the limit.')
             proof = json.loads(proof_path.read_text())
-            if (proof.get('schema') != 1 or proof.get('status') != 'success' or proof.get('technical') is not False
+            if (proof.get('schema') not in (1, 2) or proof.get('status') != 'success' or proof.get('technical') is not False
                 or proof['module']['name'] != self.store.project['moduleName']
                 or proof['artifact']['sha256'] != files[0]['sha256']
                 or proof['sdk']['source']['commit'] != self.job['pins']['sdk']['revision']

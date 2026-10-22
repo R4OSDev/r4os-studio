@@ -1,5 +1,40 @@
 # R4OS Studio · App
 
+Version 0.3.28 removes Studio's SDK/Contract/compiler revision approval list.
+New projects use the selected components and their published SDK metadata;
+SDK/Contract source hashes, compiler requirements and existing project pins
+remain binding. There is no new language minimum-version policy.
+
+The adapter resolves `SDK-Release.json` for the selected SDK, checks its exact
+SDK/Contract identities, and verifies the exported host toolset and capability
+catalog. The first preparation downloads these small official SDK assets into
+`Projects/.studio/tools/<component-fingerprint>/`; subsequent project creation,
+builds and isolated agent tools reuse the checked cache. Shared SDK/Contract
+folders remain read-only. Accepted projects also pin the release, tools profile,
+archive and capability hashes. Compatible new revisions need no Studio entry.
+
+Zig, C and Rust use the SDK's common project creator and canonical template file
+maps. SDK 0.64.90 exposes all seven Studio module types for all three languages.
+Studio preserves entered subsystem identity/formats when expanding SDK examples.
+The verified private PowerShell runner is reused; SDK-pinned compiler versions
+still come from SDK tooling metadata. Rust toolchain update profiles are derived
+from the selected SDK release, with no fixed SDK revision selection. A compatible
+installed compiler can serve a newer SDK without changing the user's defaults.
+
+Build and agent namespaces expose the selected SDK tools and verified compiler
+layout. Rust build receipts support the current SDK receipt schema 2. VM
+admission no longer compares application SDK pins against a Studio revision list;
+artifact/input identity checks and the image/role-specific runner adapters remain.
+Existing guest helpers retain their own Studio infrastructure dependencies.
+Project pins, global standards, existing sessions and running VMs are not migrated.
+
+Validated with the actual selected SDK 0.64.90 / Contract 0.64.44: all 21
+language/module combinations created and SDK-validated, isolated Zig/C/Rust
+terminal builds passed, browser creation including a Rust subsystem through
+320 px. 32 backend, six project, 27 agent, 34 development and seven component
+tests, build/TypeScript and lint passed. Future synthetic SDK/compiler identities
+are accepted while mismatched dependencies, hashes and changed pins are rejected.
+
 Version 0.3.27 adds **Projects → Settings → General → Delete project**.
 A separate dialog names the selected project and asks for confirmation. Deletion
 removes its UUID directory, workspace, sessions/native history, build artifacts,

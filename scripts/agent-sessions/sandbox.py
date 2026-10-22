@@ -28,11 +28,12 @@ class Sandbox:
             package_link = self.cache / 'zig/p'
             if not package_link.exists() and not package_link.is_symlink(): package_link.symlink_to('/packages')
             if os.readlink(package_link) != '/packages': raise ValueError('Invalid tool package cache.')
-            if context.get('rust'):
+            exports = context.get('sdkTools') or context.get('rust')
+            if exports:
                 # Official build scripts chmod their catalog; shared tools stay
                 # read-only. This checked copy is private to the current run.
                 target = self.cache / 'tools'
-                if not target.exists(): shutil.copytree(context['rust']['tools'], target, symlinks=False)
+                if not target.exists(): shutil.copytree(exports['tools'], target, symlinks=False)
             self.context = context
 
     def command(self, command, workdir='/workspace'):
@@ -52,14 +53,16 @@ class Sandbox:
             args += ['--ro-bind', str(path), '/' + name]
         if self.context.get('rust'):
             args += ['--ro-bind', str(self.context['rust']['prefix']), '/rust']
+        if self.context.get('sdkTools') or self.context.get('rust'):
             args += ['--bind', str(self.cache / 'tools'), '/tools']
-        rust_bin = '/rust/Install/Rust/1.99.1/bin'
+        if self.context.get('runner'):
+            args += ['--ro-bind', str(self.context['runner'].parent), '/pwsh']
+        rust_bin = ''
         if self.context.get('rust'):
-            from rust_sdk import COMPILER
-            rust_bin = '/rust/' + str(Path(COMPILER).parent)
+            rust_bin = '/rust/' + str(self.context['rust']['compiler'].parent)
         args += ['--dir', '/runner', '--ro-bind', str(Path(__file__).parent / 'file_worker.py'), '/runner/file_worker.py',
                  '--ro-bind', str(self.binary), '/runner/codex', '--chdir', workdir, '--clearenv',
-                 '--setenv', 'HOME', '/cache/home', '--setenv', 'PATH', '/zig:' + rust_bin + ':/usr/bin:/bin',
+                 '--setenv', 'HOME', '/cache/home', '--setenv', 'PATH', '/pwsh:/zig:' + rust_bin + ':/usr/bin:/bin',
                  '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'SDK_ROOT', '/sdk', '--setenv', 'CONTRACT_ROOT', '/contract',
                  '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_TOOLCHAIN', 'studio-pinned',
                  '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig',
