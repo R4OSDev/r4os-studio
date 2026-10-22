@@ -1,5 +1,46 @@
 # R4OS Studio · App
 
+Version 0.3.25 completes the qualified agent → build → deploy → run → inspect
+workflow with conservative recovery, VM job serialization and release continuity.
+Reconcile receipts checks the original immutable worker binding and committed
+artifact/readback/guest-close evidence. It never recompiles, transfers or launches
+an application. Missing or damaged receipts remain preserved as unknown. A known
+VM stop can confirm process end while the application result stays inconclusive.
+Startup only adopts live workers and matching local committed receipts; it starts
+no model turn, VM, build or guest test.
+
+Jobs sharing a VM wait for its reservation, bounded to 180 seconds, and recheck
+scope before the first guest action. Independent VMs can run in parallel. Lost
+input/start replies are not replayed. Unknown effects close further agent tool
+admission; generation-owned guest cleanup remains independently bounded. A lost
+boot observer cannot certify continuity: redeploy or reconcile explicitly.
+
+QEMU forwarding removal recognizes its exact success/missing-rule responses.
+Under the VM reservation, stale owned rules and their temporary authentication
+files are retired; live/foreign reservations stay intact. Primary interface:
+https://github.com/qemu/qemu/blob/v10.0.0/net/slirp.c . No guest service is exposed
+outside loopback. VM input still targets the owned SDK process/window only.
+
+Successful, hash-verified builds retire their private Work scratch. Captured
+Inputs, Artifacts, Evidence, publication/close receipts, failed/unknown scratch,
+components and original releases remain available until explicit maintenance.
+Input/package/output/image budgets continue to apply; there is no automatic
+project/session deletion or component/release garbage collection.
+
+Explicit host maintenance before installing this release:
+`python3 scripts/project-development/install.py`,
+`python3 scripts/agent-sessions/install.py`, and
+`python3 scripts/project-development/install-update-compatibility.py` as root.
+These preserve the existing bootstrap/configuration and active workers/VMs.
+Agent/development runtime directories survive full coordinator stop/start. The
+last script only upgrades a recognized host updater while idle; downloaded
+updates never run a privileged installer. Host/worker/data contracts remain 1,
+with explicit v1/v2 agent-profile support; old v1-only releases remain read/rollback
+targets and cannot silently replace a v2 conversation. Running workers retain
+their original release, inputs, pins and guest helper across a web update.
+
+## Agent development tools and settings (0.3.24)
+
 Version 0.3.24 connects the development pipeline to seven qualified agent tools:
 `studio.build_project`, `studio.deploy_project`, `studio.run_project`,
 `studio.read_development_job`, `studio.stop_development_job`, `studio.capture_vm`

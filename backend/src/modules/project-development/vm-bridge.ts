@@ -14,7 +14,7 @@ import { exec } from '../virtual-machines/systemd.js';
 
 interface Lease {
   id: string; vmId: string;
-  scope: { kind: 'access' | 'job'; projectId?: string; projectRevision?: number;
+  scope: { kind: 'access' | 'job' | 'recovery'; projectId?: string; projectRevision?: number;
     vmRevision: string; imageId: string; imageSha256: string; bootId?: string };
 }
 
@@ -87,7 +87,12 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
                 ? `hostfwd_add studio-net tcp:127.0.0.1:${request.port}-:22`
                 : `hostfwd_remove studio-net tcp:127.0.0.1:${request.port}`;
               const response: unknown = await qmp(id, 'human-monitor-command', { 'command-line': command });
-              if (typeof response !== 'string' || response.trim()) throw new VmError('The private guest forwarding operation failed.');
+              const removal = `host forwarding rule for tcp:127.0.0.1:${request.port} `;
+              // QEMU reports successful removal as text; a missing exact rule
+              // is the idempotent result after a lost removal response.
+              const removed = request.operation === 'forward_close' && typeof response === 'string'
+                && [removal + 'removed', removal + 'not found'].includes(response.trim());
+              if (typeof response !== 'string' || (response.trim() && !removed)) throw new VmError('The private guest forwarding operation failed.');
               result = { configured: true };
             }
           }

@@ -19,6 +19,9 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         self.fixture = test_runs.Runs(); self.fixture.setUp(); f = self.fixture
         self.config = {'projects': str(f.projects), 'r4os': str(f.r4os), 'providers': str(f.providers), 'uid': 1000}
         self.host = Host(self.config)
+        # These cases exercise coordinator liveness, with the independent
+        # immutable-release contract covered in test_protocol.py.
+        validator = patch('host.validate_release'); validator.start(); self.addCleanup(validator.stop)
 
     def tearDown(self): self.fixture.tearDown()
 

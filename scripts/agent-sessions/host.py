@@ -13,7 +13,7 @@ import sys
 from profile import write_json, directory
 from session_store import SessionStore, identity, encode
 from run_store import admit, get_run, transition, events
-from protocol import release_protocol
+from protocol import release_protocol, supported_profiles, validate_release
 from store import ProjectFault
 
 UNIT = 'r4os-studio-agent@{}.service'
@@ -46,6 +46,7 @@ class Host:
         if path.parent.name != value['runId'] or value['schema'] != 1: raise ValueError('Invalid worker record.')
         for key in ('projects', 'r4os', 'providers'):
             if value[key] != self.config[key]: raise ValueError('Invalid worker storage binding.')
+        validate_release(value)
         return value
 
     async def recover(self):
@@ -143,6 +144,7 @@ class Host:
                         release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if not release.is_relative_to('/opt/r4os-studio/releases'): raise ProjectFault('Invalid agent worker release.', 503)
                         release_protocol(release)
+                        if store.get(session_id)['engine']['profile'] not in supported_profiles(release): raise ProjectFault('This conversation needs a newer Studio release; its native thread was preserved.', 409)
                         info = json.loads((release / 'release.json').read_text())
                         meta = {'schema': 1, 'runId': run['id'], 'projectId': project_id, 'sessionId': session_id,
                                 'providerId': store.get(session_id)['providerId'], 'projects': self.config['projects'],

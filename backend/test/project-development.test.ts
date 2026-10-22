@@ -58,6 +58,11 @@ await test('development API binds project scope and protects build and stop', as
     assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: {} })).statusCode, 200);
     assert.deepEqual(calls.at(-1), { operation: 'save_settings', projectId: id, input: {} });
     assert.equal((await app.inject(url + `/jobs/${jobId}/evidence/${randomUUID()}`)).statusCode, 403);
+    const recovery = url + `/jobs/${jobId}/reconcile`, recoveryInput = { requestId: randomUUID() };
+    assert.equal((await app.inject({ method: 'POST', url: recovery, payload: recoveryInput })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: recovery, headers, payload: { ...recoveryInput, command: 'foreign' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: recovery, headers, payload: recoveryInput })).statusCode, 200);
+    assert.deepEqual(calls.at(-1), { operation: 'reconcile', projectId: id, id: jobId, input: recoveryInput });
   } finally {
     await app.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
     if (previous === undefined) delete process.env.STUDIO_DEVELOPMENT_SOCKET; else process.env.STUDIO_DEVELOPMENT_SOCKET = previous;

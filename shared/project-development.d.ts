@@ -91,6 +91,8 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  guestState?: { closeConfirmed?: boolean; [key: string]: unknown };
+  recovery?: { id: string; source: string; reason?: string; replayed: false; guestEndConfirmed?: boolean };
   settingsRevision: number;
   id: string;
   projectId: string;

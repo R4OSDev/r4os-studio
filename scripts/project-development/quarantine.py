@@ -31,3 +31,14 @@ def claim(projects, vm_id, value):
 def release(projects, vm_id, job_id):
     file = path(projects, vm_id)
     if file.exists() and json.loads(file.read_text())['jobId'] == job_id: file.unlink()
+
+
+def resolve(projects, vm_id, job_id, source):
+    file = path(projects, vm_id)
+    if not file.exists(): return
+    if file.resolve(strict=True) != file: raise DevelopmentFault('Invalid guest recovery record.', 503)
+    value = json.loads(file.read_text())
+    if value['jobId'] != job_id: return
+    save(folder(file.parent / 'Resolved') / (identity(job_id) + '.json'),
+        {**value, 'resolvedAt': now(), 'resolution': source, 'replayed': False})
+    file.unlink()

@@ -54,7 +54,12 @@ async def main():
         store.update(job['id'], 'interrupted' if interrupted else 'failed', phase='stopped' if interrupted else 'failed',
             error=text, exitCode=getattr(error, 'exit_code', None))
     finally:
-        await builder.stop(); store.close()
+        await builder.stop()
+        try:
+            from scratch import retire
+            retire(store, store.get(job['id']))
+        except Exception: pass  # Cleanup failure never invalidates the verified artifact.
+        store.close()
 
 
 if __name__ == '__main__': asyncio.run(main())

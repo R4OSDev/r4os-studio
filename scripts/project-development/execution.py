@@ -114,7 +114,8 @@ class Execution:
             raise DevelopmentFault('This module needs a qualified role-specific test host. Direct execution is unavailable.')
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
-        with VmLease(store.projects, vm['id'], scope) as lease:
+        from queue_lease import reserve
+        async with reserve(store, job, scope) as lease:
             info = await vm_call(lease, 'info')
             from quarantine import admission, claim, release
             admission(store.projects, vm['id'], info['vm']['state'])
@@ -142,13 +143,13 @@ class Execution:
                     return store.update(job['id'], 'interrupted', phase='stopped', error='Stopped before guest launch.')
                 execution_id = str(uuid.uuid4()); control = GuestControl(ssh, deployment, execution_id); self.control = control
                 intent = {'schema': 1, 'executionId': execution_id, 'jobId': job['id'], 'deploymentId': deployment['id'],
-                    'target': target, 'role': deployment['role'], 'settings': job['settings'], 'state': 'intent', 'createdAt': now()}
+                    'target': target, 'vmInvocationId': info['invocationId'], 'role': deployment['role'], 'settings': job['settings'], 'state': 'intent', 'createdAt': now()}
                 save(self.work / 'intent.json', intent)
                 claim(store.projects, vm['id'], {'jobId': job['id'], 'projectId': store.id, 'executionId': execution_id,
                     'target': target, 'deploymentId': deployment['id']})
-                start_sent = False
+                start_sent = False; hello_ready = False
                 try:
-                    hello = await control.open(); save(self.work / 'controller.json', hello)
+                    hello = await control.open(); hello_ready = True; save(self.work / 'controller.json', hello)
                     guard(store, job, lease, allow_stopping=True)
                     if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                         closed = await control.call('finish')
@@ -192,7 +193,11 @@ class Execution:
                             closed = await control.call('finish')
                             if not closed.get('closed') or not closed.get('serviceRemoved', False) or not closed.get('watchdogRemoved'):
                                 raise UnconfirmedGuestEffect('Owned service cleanup was not confirmed.')
-                            intent['state'] = 'closed'; save(self.work / 'closed.json', {**intent, 'completion': state})
+                            import os, hashlib
+                            with self.log.open('ab') as output_stream: output_stream.flush(); os.fsync(output_stream.fileno())
+                            data = self.log.read_bytes()
+                            intent['state'] = 'closed'; save(self.work / 'closed.json', {**intent, 'completion': state, 'cleanupReceipt': closed,
+                                'outputReceipt': {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}})
                             release(store.projects, vm['id'], job['id'])
                             stopped = state.get('stopReason'); terminal = 'interrupted' if stopped == 'user_stop' else ('failed' if stopped == 'timeout' else ('unknown' if state['exitCode'] is None else ('failed' if state['exitCode'] != 0 else 'completed')))
                             return store.update(job['id'], terminal, phase='timeout' if stopped == 'timeout' else ('stopped' if stopped else 'guest_completed'),
@@ -214,6 +219,13 @@ class Execution:
                                     if not future.done(): future.set_exception(error)
                                     if getattr(error, 'uncertain', False): raise
                 except BaseException as error:
+                    if hello_ready and not start_sent and not (self.work / 'closed.json').exists():
+                        try:
+                            closed = await control.call('finish')
+                            if closed.get('closed') and closed.get('watchdogRemoved'):
+                                save(self.work / 'closed.json', {**intent, 'state': 'closed', 'applicationStarted': False, 'cleanupReceipt': closed})
+                                release(store.projects, vm['id'], job['id'])
+                        except Exception: pass
                     if start_sent and not (self.work / 'closed.json').exists():
                         raise UnconfirmedGuestEffect('Guest control ended without a confirmed cleanup receipt. Its watchdog remains responsible; no start was replayed.') from error
                     raise

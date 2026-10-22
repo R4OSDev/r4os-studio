@@ -20,5 +20,10 @@
     "screenshotBytes": 393216,
     "screenshotMaxWidth": 1280,
     "screenshotMaxHeight": 1024
+  },
+  "features": {
+    "agentTools": 2,
+    "reconciliation": 1,
+    "leaseQueue": 1
   }
 }

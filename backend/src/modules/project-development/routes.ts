@@ -11,6 +11,18 @@ const jobParams = { ...params, required: ['id', 'jobId'], properties: { ...param
 
 export function developmentRoutes(app: FastifyInstance, security: ProjectSessions) {
   const base = '/:id/development';
+  app.post<{ Params: { id: string; jobId: string }; Body: { requestId: string } }>(base + '/jobs/:jobId/reconcile', {
+    bodyLimit: 1024,
+    preValidation: async (request) => {
+      if (!request.body || typeof request.body !== 'object' || Object.keys(request.body).some((k) => k !== 'requestId')) throw new ProjectError('Unexpected recovery fields.', 400);
+    },
+    schema: { params: jobParams, body: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: identity } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    const result = await developmentHost<{ error?: string; code?: number }>({ operation: 'reconcile', projectId: request.params.id, id: request.params.jobId, input: request.body });
+    if (result.error) throw new ProjectError(result.error, result.code);
+    return result;
+  });
   for (const operation of ['options', 'settings', 'jobs'] as const) {
     app.get<{ Params: { id: string } }>(base + '/' + operation, { schema: { params } }, async (request, reply) => {
       security.session(request, reply);

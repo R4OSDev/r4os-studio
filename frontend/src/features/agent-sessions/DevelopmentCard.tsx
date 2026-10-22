@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DevelopmentEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
-import { busyRun, projectRequest } from './api';
+import { busyRun, projectRequest, projectRequestId } from './api';
 import { CodeBlock } from './Transcript';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 export function developmentRef(value: unknown): { jobId: string } | null {
@@ -19,6 +19,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
   const [job, setJob] = useState<DevelopmentJob | null>(null), [error, setError] = useState(''), [stopping, setStopping] = useState(false);
   const [open, setOpen] = useState(false), [output, setOutput] = useState(''), [more, setMore] = useState(false), [loading, setLoading] = useState(false);
   const cursor = useRef(0), [kind, setKind] = useState('Output'), [truncated, setTruncated] = useState(false);
+  const recoveryId = useRef<string | null>(null);
   const path = `/${projectId}/development/jobs/${jobId}`;
   useEffect(() => {
     const controller = new AbortController(); let timer: number | undefined;
@@ -44,10 +45,18 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     try { const r = await projectRequest<{ job: DevelopmentJob }>(path + '/stop', token, 'POST'); setJob(r.job); setError(''); }
     catch (e) { setError((e as Error).message); } finally { setStopping(false); }
   }
+  async function reconcile() {
+    setStopping(true); recoveryId.current ??= projectRequestId();
+    try { const r = await projectRequest<{ job: DevelopmentJob }>(path + '/reconcile', token, 'POST', { requestId: recoveryId.current }); setJob(r.job); recoveryId.current = null; setError(''); }
+    catch (e) { setError((e as Error).message); } finally { setStopping(false); }
+  }
   return <section className="development-card" aria-label="Development job">
     <div className="development-card-header"><strong>{job?.kind === 'execution' ? 'Run' : job?.kind === 'deploy' ? 'Deploy' : 'Build'}</strong><span role="status">{job?.state ?? 'Loading'}</span>{job && busyRun(job.state) && <button type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? 'Stopping…' : 'Stop job'}</button>}</div>
     {job && <><p className="development-phase">{job.phase.replaceAll('_', ' ')}</p>{job.check && <p>Checks: {job.check.state}{job.check.assessment ? ` · ${job.check.assessment}` : ''}</p>}
       {job.check?.findings.map((text, i) => <p key={i}>{text}</p>)}{job.error && <p className="agent-error">{job.error}</p>}</>}
+    {job?.state === 'unknown' && !job.guestState?.closeConfirmed && <button type="button" disabled={stopping} onClick={() => void reconcile()}>{stopping ? 'Reconciling…' : 'Reconcile receipts'}</button>}
+    {job?.state === 'unknown' && job.guestState?.closeConfirmed && <p>Process end confirmed. Exit status unavailable.</p>}
+    {job?.recovery?.reason && <p>{job.recovery.reason}</p>}
     <button type="button" aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !output) void readOutput(); }}>{open ? 'Hide details' : 'Show details'}</button>
     {open && <><CodeBlock text={output} label="Copy job output" language={kind} />{truncated && <p>Output limit reached.</p>}{(more || !!job && busyRun(job.state)) && <button type="button" disabled={loading} onClick={() => void readOutput()}>{loading ? 'Loading…' : 'Load more output'}</button>}</>}
     {error && <p className="agent-error" role="alert">{error}</p>}

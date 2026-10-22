@@ -30,10 +30,13 @@ def main():
     # Compiler workers retain the stricter inaccessible VM mounts below.
     coordinator_common = common.replace('InaccessiblePaths=-' + quote(r4os / 'Instances') + '\n', '').replace('InaccessiblePaths=-/run/r4os-studio-vms\n', '')
     coordinator = '[Unit]\nDescription=R4OS Studio development coordinator\nAfter=network-online.target\n\n' + coordinator_common
-    coordinator += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py\nRuntimeDirectory=r4os-studio-development\nRuntimeDirectoryMode=0700\nRuntimeDirectoryPreserve=restart\nRestart=on-failure\nMemoryMax=512M\nTasksMax=64\nTimeoutStopSec=25\n\n[Install]\nWantedBy=multi-user.target\n'
+    coordinator += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py\nRuntimeDirectory=r4os-studio-development\nRuntimeDirectoryMode=0700\nRuntimeDirectoryPreserve=yes\nRestart=on-failure\nMemoryMax=512M\nTasksMax=64\nTimeoutStopSec=25\n\n[Install]\nWantedBy=multi-user.target\n'
     worker = '[Unit]\nDescription=R4OS Studio development job %i\n\n' + common
     worker += 'ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py %i\nExecStopPost=/usr/bin/python3 -B /opt/r4os-studio/bin/development-launch.py %i --finalize\nKillMode=mixed\nTimeoutStopSec=15\nMemoryMax=3G\nTasksMax=256\nCPUQuota=200%\nLimitFSIZE=268435456\nRuntimeMaxSec=660\nRestart=no\n'
     Path('/etc/systemd/system/r4os-studio-development.service').write_text(coordinator)
+    legacy_runtime = Path('/etc/systemd/system/r4os-studio-development.service.d/20-runtime.conf')
+    if legacy_runtime.exists() and legacy_runtime.read_text().strip() == '[Service]\nRuntimeDirectoryPreserve=restart':
+        legacy_runtime.write_text('[Service]\nRuntimeDirectoryPreserve=yes\n')
     Path('/etc/systemd/system/r4os-studio-development@.service').write_text(worker)
     vm_worker = worker.replace('Description=R4OS Studio development job %i', 'Description=R4OS Studio VM development job %i')
     vm_worker += 'ReadWritePaths=-/run/r4os-studio-development\n'

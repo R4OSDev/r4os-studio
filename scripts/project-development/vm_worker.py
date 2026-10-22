@@ -70,7 +70,8 @@ class Deployment:
         self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile); guard(store, job)
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
-        with VmLease(store.projects, vm['id'], scope) as lease:
+        from queue_lease import reserve
+        async with reserve(store, job, scope) as lease:
             self.phase('preparing_vm'); info = await vm_call(lease, 'info'); guard(store, job)
             from quarantine import admission
             admission(store.projects, vm['id'], info['vm']['state'])
@@ -184,7 +185,7 @@ async def main():
         elif job['kind'] == 'execution':
             from execution import Execution
             execution = Execution(store, job)
-            await asyncio.wait_for(execution.run(), job['settings']['timeoutSeconds'] + 60)
+            await asyncio.wait_for(execution.run(), job['settings']['timeoutSeconds'] + 240)
         else: raise DevelopmentFault('This VM worker does not support this job kind.')
     except BaseException as error:
         message = str(error) if isinstance(error, DevelopmentFault) else 'The VM operation did not complete. Inspect its preserved transfer receipts before retrying.'

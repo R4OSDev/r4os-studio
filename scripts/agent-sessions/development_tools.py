@@ -87,7 +87,8 @@ class DevelopmentTools:
     def result(self, job, page=None):
         from session_store import encode
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
-        return {'success': True, 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
+        uncertain = job['state'] == 'unknown' and not (job.get('guestState') or {}).get('closeConfirmed')
+        return {'success': not uncertain, **({'error': 'unknown'} if uncertain else {}), 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
 
     async def stop_owned(self):
         try: await self.request('cancel_owned')

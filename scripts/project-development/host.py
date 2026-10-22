@@ -50,6 +50,10 @@ class Host:
         for key in ('jobId', 'projectId'): identity(value[key])
         if value['schema'] != 1 or path.parent.name != value['jobId']: raise ValueError('Invalid worker identity.')
         if any(value[k] != self.config[k] for k in ('projects', 'r4os')): raise ValueError('Invalid worker storage.')
+        release = Path(value['releaseRoot']).resolve(strict=True)
+        if not release.is_relative_to('/opt/r4os-studio/releases'): raise ValueError('Invalid original worker release.')
+        protocol(release); info = json.loads((release / 'release.json').read_text())
+        if (info['id'], info['version']) != (value['release'], value['version']): raise ValueError('The worker release identity changed.')
         return value
 
     async def recover(self):
@@ -69,6 +73,13 @@ class Host:
                     meta = manifests.get(row['id'])
                     if meta and meta['projectId'] == project_id and await self.alive(row['id'], meta.get('kind', 'build')): self.active[row['id']] = meta
                     else: store.update(row['id'], 'unknown', phase='recovery', error='The job ended without a confirmed result. It was not restarted.')
+                from recovery import local
+                for row in store.db.execute("SELECT id FROM jobs WHERE state='unknown'").fetchall():
+                    meta = manifests.get(row['id'])
+                    if not meta or meta['projectId'] != project_id: continue
+                    if meta and await self.alive(row['id'], meta.get('kind', 'build')): continue
+                    try: local(store, store.get(row['id']))
+                    except Exception: pass  # Preserve damaged/incomplete records; never replay a job.
             finally: store.close()
         await self.refresh()
 
@@ -151,15 +162,16 @@ class Host:
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
+                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned'): allowed.add('id')
+        if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.add('offset')
         if op in ('build', 'deploy', 'execution'): allowed.update(('input', 'owner'))
-        if op in ('save_settings', 'capture', 'input', 'assess'): allowed.add('input')
+        if op in ('save_settings', 'capture', 'input', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.add('evidenceId')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -185,6 +197,26 @@ class Host:
                         await systemctl('stop', '--no-block', job_unit(job['id'], job['kind'])); stopped.append(job['id'])
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
+            if op == 'reconcile':
+                from actions import admit, finish
+                from recovery import reconcile
+                if not isinstance(request['input'], dict) or set(request['input']) != {'requestId'}: raise DevelopmentFault('Unexpected recovery fields.', 400)
+                job = store.get(request['id'])
+                if await self.alive(job['id'], job['kind']): raise DevelopmentFault('This worker is still active. Reconnect to its current job instead.')
+                try:
+                    meta = self.metadata(self.root / job['id'] / 'worker.json')
+                    if meta['projectId'] != store.id: raise ValueError()
+                except Exception: raise DevelopmentFault('The original worker release binding is missing or damaged. Existing receipts were preserved.', 409) from None
+                previous = admit(store, job['id'], {'operation': 'reconcile', **request['input']})
+                if previous is not None: return previous
+                if job['state'] != 'unknown':
+                    result = {'job': store.page(job['id'])['job'], 'reconciled': False}
+                else:
+                    try: await reconcile(store, job)
+                    except DevelopmentFault as error:
+                        finish(store, request['input']['requestId'], {'error': str(error), 'code': error.code}); raise
+                    result = {'job': store.page(job['id'])['job'], 'reconciled': True}
+                return finish(store, request['input']['requestId'], result)
             if op == 'settings': return store.settings()
             if op == 'save_settings':
                 from settings import update

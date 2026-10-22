@@ -148,6 +148,8 @@ class SshTransport:
 
     async def __aenter__(self):
         try:
+            from forwards import cleanup
+            await cleanup(self.lease)
             if not self.record['enabled'] or (self.record['imageId'], self.record['imageSha256']) != (self.vm['imageId'], self.vm['imageSha256']):
                 raise DevelopmentFault('Guest credentials do not belong to this VM image.')
             secret = self.runtime / 'password'; secret.write_text(self.record['password']); secret.chmod(0o600)

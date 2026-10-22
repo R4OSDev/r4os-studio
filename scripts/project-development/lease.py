@@ -11,6 +11,8 @@ from contracts import DevelopmentFault, encode, identity
 from jobs import folder, now
 from layout import save
 
+class VmBusy(DevelopmentFault): pass
+
 
 def birth(pid):
     return (Path('/proc') / str(pid) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
@@ -28,7 +30,7 @@ class VmLease:
         try: fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             self.stream.close(); self.stream = None
-            raise DevelopmentFault('This VM is reserved by another operation. Stop its development job before controlling it.', 409)
+            raise VmBusy('This VM is reserved by another operation. Stop its development job before controlling it.', 409)
         self.value = {'schema': 1, 'id': self.id, 'token': self.token, 'vmId': self.vm_id,
             'pid': os.getpid(), 'birth': birth(os.getpid()), 'scope': self.scope,
             'createdAt': now(), 'closedAt': None}

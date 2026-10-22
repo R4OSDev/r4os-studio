@@ -4,5 +4,12 @@
   "vmWorkerProtocol": 1,
   "agentHostProtocol": 1,
   "agentWorkerProtocol": 1,
-  "agentDataSchema": 1
+  "agentDataSchema": 1,
+  "agentToolProfiles": [
+    "studio-tools-v1",
+    "studio-tools-v2"
+  ],
+  "developmentHostProtocol": 1,
+  "developmentWorkerProtocol": 1,
+  "developmentDataSchema": 1
 }

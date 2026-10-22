@@ -175,12 +175,12 @@ class Jobs:
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
                 'outputKind': 'build' if job['kind'] == 'build' else 'console', 'evidence': list_for(self, job_id)}
 
-    def artifact(self, artifact_id):
+    def artifact(self, artifact_id, recovering=False):
         row = self.db.execute('SELECT payload FROM artifacts WHERE id=?', (identity(artifact_id),)).fetchone()
         if not row: raise DevelopmentFault('Development artifact not found.', 404)
         record = json.loads(row[0]); root = self.root / 'Artifacts' / artifact_id
         build = self.get(record['buildId'])
-        if build['kind'] != 'build' or build['state'] != 'completed' or build['artifactId'] != artifact_id:
+        if build['kind'] != 'build' or (not recovering and (build['state'] != 'completed' or build['artifactId'] != artifact_id)):
             raise DevelopmentFault('This artifact has no completed build receipt.')
         try:
             if root.resolve(strict=True) != root or json.loads((root / 'artifact.json').read_text()) != record:
@@ -209,14 +209,27 @@ class Jobs:
         with self.db: self.db.execute('INSERT INTO deployments VALUES(?,?,?)', (record['id'], job_id, encode(record)))
         return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], exitCode=0)
 
-    def deployment(self, deployment_id):
+    def deployment(self, deployment_id, recovering=False):
         row = self.db.execute('SELECT payload FROM deployments WHERE id=?', (identity(deployment_id),)).fetchone()
         if not row: raise DevelopmentFault('Deployment not found.', 404)
         value = json.loads(row[0]); job = self.get(value['jobId'])
-        if job['state'] != 'completed' or job['deploymentId'] != deployment_id:
+        if not recovering and (job['state'] != 'completed' or job['deploymentId'] != deployment_id):
             raise DevelopmentFault('The deployment has no completed verification receipt.')
         self.artifact(value['artifactId'])
         return value
+
+    def recovered(self, job_id, state, receipt, **fields):
+        with self.db: self.db.execute('CREATE TABLE IF NOT EXISTS recoveries(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,previous TEXT NOT NULL,receipt TEXT NOT NULL)')
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            previous = self.get(job_id)
+            if previous['state'] != 'unknown': raise DevelopmentFault('Only an unconfirmed job can be reconciled.')
+            self.db.execute('INSERT INTO recoveries VALUES(?,?,?,?)', (identity(receipt['id']), job_id, encode(previous), encode(receipt)))
+            job = {**previous, **fields, 'state': state, 'phase': 'reconciled', 'recovery': receipt,
+                'revision': previous['revision'] + 1, 'completedAt': previous['completedAt'] or now()}
+            self.db.execute('UPDATE jobs SET state=?,busy=0,revision=?,payload=? WHERE id=?', (state, job['revision'], encode(job), job_id))
+            self.db.commit(); return job
+        except BaseException: self.db.rollback(); raise
 
     def evidence(self, job_id): return folder(self.root / 'Evidence' / identity(job_id))
 
