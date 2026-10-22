@@ -4,7 +4,7 @@ import type { FormEvent } from 'react';
 import type { Project, ProjectOptions, ProjectUpdate } from '../../../../shared/projects';
 import { projectRequest, ProjectRequestError } from './api';
 
-export type ProjectSettingsView = 'General' | 'Virtual machine';
+export type ProjectSettingsView = 'General' | 'Virtual machine' | 'Run & Test';
 export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, saved }: {
   id: string; view: ProjectSettingsView; token: string; dirtyChanged: (value: boolean) => void;
   busyChanged: (value: boolean) => void;

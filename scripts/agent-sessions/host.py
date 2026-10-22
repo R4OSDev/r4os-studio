@@ -140,7 +140,7 @@ class Host:
                     run, fresh = admit(store, session_id, request['input'], self.config['providers'])
                     if not fresh: return run
                     try:
-                        release = Path('/opt/r4os-studio/current').resolve(strict=True)
+                        release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if not release.is_relative_to('/opt/r4os-studio/releases'): raise ProjectFault('Invalid agent worker release.', 503)
                         release_protocol(release)
                         info = json.loads((release / 'release.json').read_text())

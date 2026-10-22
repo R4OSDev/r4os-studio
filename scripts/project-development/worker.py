@@ -36,6 +36,8 @@ async def main():
         if job['projectRevision'] != store.project['revision']: raise DevelopmentFault('Project settings changed before build admission.')
         store.update(job['id'], 'running', phase='capturing')
         if job['agentRunId']:
+            from authorization import authorize_job
+            authorize_job(store, job)
             from agent_snapshot import delegated
             source, directory = await delegated(store, job)
         else:

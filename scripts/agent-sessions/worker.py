@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import prepare, write_json, TOOLS
+from profile import prepare, write_json, TOOLS, PROFILE, tools_for, DEVELOPMENT_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -35,6 +35,8 @@ class Worker:
         self.terminals = Terminals(self)
         from agent_snapshot import AgentSnapshots
         self.build_snapshots = AgentSnapshots(self)
+        from development_tools import DevelopmentTools
+        self.development = DevelopmentTools(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
@@ -95,6 +97,7 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in DEVELOPMENT_TOOLS: return await self.development.call(name, arguments, call_id)
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
@@ -109,32 +112,32 @@ class Worker:
         asyncio.create_task(self.stop())
 
     async def tool(self, params):
-        def output(result):
-            return {'success': result['success'], 'contentItems': [{'type': 'inputText', 'text': encode(result)}]}
+        async def output(result):
+            return await self.development.native_output(result)
         name = params.get('tool', '')
-        if (not name.startswith('studio_') or name[7:] not in TOOLS or params.get('namespace') is not None
+        if (not name.startswith('studio_') or name[7:] not in tools_for(self.config['engine'].get('profile', PROFILE)) or params.get('namespace') is not None
             or params.get('threadId') != self.thread_id or params.get('turnId') != self.turn_id):
-            return output({'success': False, 'error': 'invalidCall', 'output': 'This call does not belong to the active Studio run.'})
+            return await output({'success': False, 'error': 'invalidCall', 'output': 'This call does not belong to the active Studio run.'})
         call_id = params['callId']; arguments = params['arguments']
         if not isinstance(arguments, dict) or len(encode(arguments).encode()) > 131072:
-            return output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
+            return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
         try: validate_arguments(name[7:], arguments)
-        except ValueError as e: return output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
+        except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
         previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
         if previous:
             if previous['arguments_hash'] != hashed:
-                return output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
+                return await output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
             if previous['result']:
                 result = json.loads(previous['result'])
-                if result.get('error') != 'unknown': return output(result)
+                if result.get('error') != 'unknown': return await output(result)
             result = {'success': False, 'error': 'unknown', 'output': 'The previous tool outcome is unconfirmed; it was not repeated.', 'partialChangesPossible': True}
             self.unconfirmed()
             value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': name.replace('studio_', 'studio.', 1),
                      'arguments': arguments, 'status': 'unknown', 'output': result['output'], 'error': 'unknown', 'partialChangesPossible': True}
             self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
-            return output(result)
+            return await output(result)
         with self.store.db:
             self.store.db.execute('BEGIN IMMEDIATE')
             row = get_run(self.store, self.run_id)
@@ -161,17 +164,18 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'partialChangesPossible', 'files'):
+        for key in ('development', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'partialChangesPossible', 'files'):
             if key in result: value[key] = result[key]
         value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
         base_size = len(encode({**value, 'output': ''}).encode())
         value['output'], clipped = bounded_text(str(value['output']), max(2, 261000-base_size))
         value['truncated'] = value['truncated'] or clipped
         self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
-        return output(result)
+        return await output(result)
 
     async def stop(self):
         self.stopping = True
+        if self.config['engine'].get('profile') == PROFILE: await self.development.stop_owned()
         if self.client and self.turn_id:
             try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
             except Exception: pass
@@ -193,12 +197,12 @@ class Worker:
             self.lease = (self.store.projects / '.studio' / ('workspace-' + self.manifest['projectId'] + '.lock')).open('a')
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
             await self.build_snapshots.start()
-            transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid()})
+            transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())})
             state = self.store.directory / self.session_id / 'Codex'
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
             args, profile = prepare(binary, provider_home, state,
-                                    json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'])
+                                    json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE))
             self.client = CodexRPC(args, self.notify, self.tool)
             self.client.version = self.manifest['version']
             await self.client.start()
@@ -209,7 +213,7 @@ class Worker:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'],
-                           'ephemeral': False, 'dynamicTools': specifications()})
+                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE))})
                 self.thread_id = response['thread']['id']
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
@@ -221,7 +225,7 @@ class Worker:
                              'model': self.config['model'], 'effort': self.config['effort']})
                 self.turn_id = result['turn']['id']
                 if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
-                                                       worker={'release': self.manifest['release'], 'pid': os.getpid(), 'profile': profile})
+                                                       worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid()), 'profile': profile})
             except asyncio.TimeoutError:
                 # A missing RPC reply does not negate a native started/completed
                 # event. Continue observing this one turn; never send it again.

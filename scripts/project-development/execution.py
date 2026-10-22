@@ -33,8 +33,12 @@ class Execution:
         from observation import capture
         from vm_worker import guard
         import datetime
+        authorization = None
+        if message.get('owner') is not None:
+            from authorization import authorize
+            authorization = authorize(self.store, message['owner'], message['operation'], message['peerPid'], self.store.get(self.job['id']))
         operation = message.get('operation')
-        if operation not in ('capture', 'input') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation == 'input' else set())):
+        if operation not in ('capture', 'input') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation == 'input' else set()) | ({'owner', 'peerPid'} if authorization else set())):
             raise DevelopmentFault('Invalid execution action.', 400)
         previous = admit(self.store, self.job['id'], message)
         if previous is not None:
@@ -48,7 +52,7 @@ class Execution:
         job = self.store.get(self.job['id'])
         try:
             if operation == 'capture':
-                result = await capture(self.store, job, lease, state)
+                result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None)
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']
@@ -85,6 +89,7 @@ class Execution:
                         raise DevelopmentFault('Invalid client coordinates.', 400)
                     request.update(x=value['x'], y=value['y'])
             guard(self.store, self.job, lease)
+            if authorization: authorize(self.store, message['owner'], 'input', message['peerPid'], job)
             state = await control.call('input', **request)
             result = {'accepted': state.get('inputAccepted', 0), 'kind': kind, 'process': process,
                 'delivery': 'owned-event-queue', 'consumptionConfirmed': False,
@@ -152,6 +157,7 @@ class Execution:
                         release(store.projects, vm['id'], job['id'])
                         return store.update(job['id'], 'interrupted', phase='stopped', error='Stopped before application launch.')
                     store.update(job['id'], phase='starting_guest', executionId=execution_id)
+                    guard(store, job, lease)
                     # The start is sent once. Missing acknowledgements become unknown.
                     start_sent = True
                     state = await control.call('start', role=deployment['role'], arguments=job['settings']['arguments'],
@@ -177,7 +183,8 @@ class Execution:
                             continue
                         current = store.get(job['id'])
                         output = self.log.read_bytes() if self.log.exists() else b''
-                        store.update(job['id'], check=evaluate(job['settings'], state, output, visual=current.get('visualAssessment')))
+                        if state['state'] != 'completed':
+                            store.update(job['id'], check=evaluate(job['settings'], state, output, visual=current.get('visualAssessment')))
                         if state['state'] == 'completed':
                             if not state['closeConfirmed']: raise UnconfirmedGuestEffect('The process completion was not fully reaped.')
                             files = await collect(store, store.get(job['id']), deployment, ssh, self.work)

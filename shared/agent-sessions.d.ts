@@ -1,6 +1,8 @@
 export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio.terminate_process'
   | 'studio.list_directory' | 'studio.read_file' | 'studio.search' | 'studio.write_file'
-  | 'studio.apply_patch' | 'studio.create_directory';
+  | 'studio.apply_patch' | 'studio.create_directory'
+  | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
+  | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input';
 export type ToolPermissions = Record<AgentToolId, boolean>;
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface AgentRun { id: string; sessionId: string; state: RunState; error: string | null; createdAt: string; completedAt: string | null }
@@ -14,6 +16,7 @@ export interface SessionUpdate {
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; permissions?: ToolPermissions;
 }
 export interface SessionOptions {
+  development?: import('./project-development.js').DevelopmentOptions;
   providers: { id: string; name: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean }[];
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };

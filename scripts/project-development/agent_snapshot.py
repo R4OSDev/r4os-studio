@@ -39,6 +39,8 @@ class AgentSnapshots:
             store = Jobs(worker.manifest['projects'], worker.manifest['r4os'], worker.manifest['projectId'])
             try:
                 job = store.get(value['jobId'])
+                from authorization import authorize_job
+                authorize_job(store, job)
                 if job['agentRunId'] != worker.run_id or job['sessionId'] != worker.session_id or worker.stopping:
                     raise DevelopmentFault('The snapshot does not belong to the active agent.')
                 # Terminal admission and file tools use these same locks. Existing

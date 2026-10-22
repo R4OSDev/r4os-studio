@@ -36,3 +36,11 @@
 .project-settings > .project-message, .project-settings > .project-error { padding: 15px 25px; }
 .project-settings > .project-reload { margin: 0 25px 20px; }
 @media (max-width: 600px) { .project-dialog-header { padding: 18px 20px 15px; } .project-fields { padding: 21px 20px; gap: 19px; } .project-form-row { grid-template-columns: 1fr; gap: 19px; } .project-language-options { min-height: 43px; } .project-actions { padding: 16px 20px; } .project-dialog-error, .project-dialog-status { padding: 0 20px 18px; } .project-settings { width: calc(100% - 28px); margin: 22px 14px; } }
+
+.development-target { display: grid; gap: 8px; font-size: 13px; margin-bottom: 22px; }
+.development-target div { display: flex; flex-wrap: wrap; gap: 8px; }
+.development-target dt { color: var(--text-muted, #999); min-width: 70px; }
+.development-target dd { margin: 0; overflow-wrap: anywhere; }
+.development-file-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.development-file { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--border-color, #303440); border-radius: 8px; padding: 14px; }
+.development-file input { min-width: 0; width: 100%; }

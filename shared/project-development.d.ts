@@ -91,6 +91,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  settingsRevision: number;
   id: string;
   projectId: string;
   kind: DevelopmentJobKind;

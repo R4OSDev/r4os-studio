@@ -39,7 +39,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
     const opts = await app.inject({ url: base + '/options', headers });
     assert.equal(opts.statusCode, 200, opts.body);
-    assert.equal(opts.json().tools.length, 9);
+    assert.equal(opts.json().tools.length, 16);
     assert.equal(opts.json().providers[0].models[0].id, 'fixture-model');
     assert.equal(opts.json().engine.available, true);
     const payload = { name: 'First session', providerId: provider, model: 'fixture-model', effort: 'low', requestId: randomUUID() };
@@ -48,7 +48,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     for (const reply of replies) assert.equal(reply.statusCode, 201, reply.body);
     const session = replies[0].json().session;
     assert.equal(replies[1].json().session.id, session.id);
-    assert.equal(Object.keys(session.permissions).length, 9);
+    assert.equal(Object.keys(session.permissions).length, 16);
     assert(Object.values(session.permissions).every((value) => value === true));
     assert.equal(session.latestRun, null);
     assert.equal((await app.inject({ url: base, headers })).json().sessions.length, 1);

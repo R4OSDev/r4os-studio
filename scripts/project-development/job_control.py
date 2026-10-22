@@ -21,7 +21,9 @@ async def call(job_id, message):
         writer.write((encode(message) + '\n').encode()); await writer.drain()
         raw = await asyncio.wait_for(reader.readline(), 20)
         value = json.loads(raw)
-        if value.get('error'): raise DevelopmentFault(value['error'], value.get('code', 409))
+        if value.get('error'):
+            if value.get('uncertain'): raise UnconfirmedGuestEffect(value['error'])
+            raise DevelopmentFault(value['error'], value.get('code', 409))
         return value['result']
     except (OSError, ValueError, asyncio.TimeoutError): raise UnconfirmedGuestEffect('The execution action receipt was lost. The action was not replayed.') from None
     finally: writer.close(); await writer.wait_closed()
@@ -53,7 +55,7 @@ class Mailbox:
             except asyncio.QueueFull: raise DevelopmentFault('The execution action queue is full.') from None
             result = await asyncio.wait_for(asyncio.shield(future), 18)
             writer.write((encode({'result': result}) + '\n').encode())
-        except DevelopmentFault as error: writer.write((encode({'error': str(error), 'code': error.code}) + '\n').encode())
+        except DevelopmentFault as error: writer.write((encode({'error': str(error), 'code': error.code, 'uncertain': bool(getattr(error, 'uncertain', False))}) + '\n').encode())
         except Exception: writer.write(b'{"error":"The execution action result is unconfirmed.","code":503}\n')
         finally:
             try: await writer.drain()

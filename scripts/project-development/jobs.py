@@ -82,6 +82,7 @@ class Jobs:
     def admit(self, kind, request, owner=None, binding=None):
         if kind not in ('build', 'deploy', 'execution'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
+        if kind == 'execution' and 'overrides' in request: expected.add('overrides')
         if set(request) != expected:
             raise DevelopmentFault('Unexpected development fields.', 400)
         identity(request['requestId'])
@@ -107,13 +108,24 @@ class Jobs:
                 raise DevelopmentFault('Only the deployment directory is a qualified R4OS working directory.')
             if artifact and artifact.get('pins') != self.project['pins']:
                 raise DevelopmentFault('The artifact pins differ from the current project identity.')
+            settings = self.settings()
+            if 'overrides' in request:
+                from settings import validate
+                overrides = request['overrides']
+                if not isinstance(overrides, dict) or set(overrides) - {'arguments', 'timeoutSeconds', 'expectedExitCode', 'outputContains', 'outputFiles', 'serviceResponseContains', 'visualCriteria'}:
+                    raise DevelopmentFault('Unexpected execution overrides.', 400)
+                settings = validate({**settings, **overrides})
+                if self.project['template'] == 'service' and len(settings['arguments'].encode()) > 95:
+                    raise DevelopmentFault('Service arguments are limited to 95 bytes.', 400)
+                if settings.get('serviceResponseContains') and self.project['template'] != 'service':
+                    raise DevelopmentFault('This project is not a service.', 400)
             job = {'id': str(uuid.uuid4()), 'projectId': self.id, 'kind': kind, 'state': 'queued',
                 'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': deployment['id'] if deployment else None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
                 'phase': 'queued', 'check': None, 'createdAt': now(), 'completedAt': None,
                 'source': None, 'projectRevision': self.project['revision'],
                 'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
-                'settings': self.settings()}
+                'settings': settings}
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))
             self.db.commit(); return job, True

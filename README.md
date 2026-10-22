@@ -1,5 +1,37 @@
 # R4OS Studio · App
 
+Version 0.3.24 connects the development pipeline to seven qualified agent tools:
+`studio.build_project`, `studio.deploy_project`, `studio.run_project`,
+`studio.read_development_job`, `studio.stop_development_job`, `studio.capture_vm`
+and `studio.send_vm_input`. Each new session uses `studio-tools-v2` with sixteen
+independent permissions, initially on. Original `studio-tools-v1` conversations
+retain their nine declarations and exact native thread; additional tools there
+require a new session. Settings never silently replace or migrate a thread.
+
+The private broker rechecks the active worker PID/birth, run/settings snapshot,
+profile, project pins, individual permission and session ownership. Artifacts and
+deployments cannot be borrowed from another session. Queued input rechecks the
+caller immediately before the guest effect. Terminal namespaces remain isolated
+from VM sockets, broker sockets and credentials. A completed agent turn leaves
+an admitted bounded execution running; User Stop closes admission and stops its
+owned development jobs even with the agent stop-tool permission disabled.
+
+Run calls may override arguments, time limit and explicit criteria for that job
+without rewriting saved project settings. Native image responses are generated
+only for models whose catalog declares image input. Studio history stores opaque
+hash-bound attachment references; the RPC image is transient. An agent visual
+assessment records its model/run identity and an image captured in that same run.
+Job assertions, visual assessments and lifecycle outcomes remain separate.
+
+Projects → Settings → Run & Test provides the pinned target, arguments, time limit,
+exit/output/file/service/visual criteria and explicit Save/Cancel with revisions
+and dirty-navigation protection. Session settings groups rights into Files,
+Terminal, Build and VM, with capability reasons independent of switches. Tool
+cards show live durable jobs, paged diagnostics, trusted PNG attachments and an
+independent Stop job action. Reopening/reconnecting reads state and starts no job.
+
+## VM observation and explicit checks (0.3.23)
+
 Version 0.3.23 adds image-backed observation, owned console/GUI input and explicit
 Run & Test assertions to the durable build/deploy/execution pipeline. Settings
 freeze arguments, the deployment working directory, a 1–300 second limit, optional

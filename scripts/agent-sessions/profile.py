@@ -7,9 +7,18 @@ import stat
 
 CODEX_VERSION = '0.163.0'
 CODEX_SHA256 = '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
-PROFILE = 'studio-tools-v1'
-TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
+LEGACY_PROFILE = 'studio-tools-v1'
+PROFILE = 'studio-tools-v2'
+LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
          'search', 'write_file', 'apply_patch', 'create_directory')
+DEVELOPMENT_TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
+    'stop_development_job', 'capture_vm', 'send_vm_input')
+TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS
+
+def tools_for(profile):
+    if profile == LEGACY_PROFILE: return LEGACY_TOOLS
+    if profile == PROFILE: return TOOLS
+    raise ValueError('This session profile needs compatible Studio host support.')
 
 
 def digest(path):
@@ -45,7 +54,8 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE):
+    tools_for(selected_profile)
     binary = regular(binary)
     if digest(binary) != CODEX_SHA256:
         raise ValueError('This Codex version has not been qualified for agent runs.')
@@ -123,5 +133,5 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
              '--setenv', 'LANG', 'C.UTF-8', '/bin/codex', 'app-server', '--listen', 'stdio://']
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
-    return args, {'profile': PROFILE, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
+    return args, {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
                   'catalogSha256': digest(catalog)}

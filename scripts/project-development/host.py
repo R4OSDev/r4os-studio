@@ -152,17 +152,38 @@ class Host:
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
-        allowed = {'operation', 'projectId'}
-        if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): allowed.add('id')
+        allowed = {'operation', 'projectId', 'owner'}
+        if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.add('offset')
         if op in ('build', 'deploy', 'execution'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'assess'): allowed.add('input')
         if op == 'evidence': allowed.add('evidenceId')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
+            owner = request.get('owner'); authorization = None
+            if owner is not None:
+                from authorization import authorize
+                bound = None
+                if op == 'artifact': bound = store.get(store.artifact(request['id'])['buildId'])
+                elif op == 'deployment': bound = store.get(store.deployment(request['id'])['jobId'])
+                elif op in ('read_job', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
+                if op in ('deploy', 'execution'):
+                    artifact = store.artifact(request['input']['artifactId']) if op == 'deploy' else store.deployment(request['input']['deploymentId'])
+                    parent = store.get(artifact['buildId'] if op == 'deploy' else artifact['jobId'])
+                    if parent.get('sessionId') != owner['sessionId']: raise DevelopmentFault('This input belongs to another session.', 403)
+            if op == 'cancel_owned':
+                if owner is None: raise DevelopmentFault('An active agent owner is required.', 403)
+                stopped = []
+                for row in store.db.execute('SELECT payload FROM jobs WHERE busy=1').fetchall():
+                    job = json.loads(row[0])
+                    if job.get('agentRunId') == owner['agentRunId'] and job.get('sessionId') == owner['sessionId']:
+                        store.update(job['id'], 'stopping', phase='stopping')
+                        await systemctl('stop', '--no-block', job_unit(job['id'], job['kind'])); stopped.append(job['id'])
+                return {'stopping': stopped}
             if op == 'options': return self.options(store)
             if op == 'settings': return store.settings()
             if op == 'save_settings':
@@ -174,7 +195,15 @@ class Host:
             if op == 'deployment': return store.deployment(request['id'])
             if op == 'assess':
                 from assessment import record
-                return record(store, request['id'], request['input'])
+                if owner is not None:
+                    from evidence import read
+                    image = read(store, request['id'], request['input'].get('evidenceId'))['metadata']
+                    if (image.get('observer') or {}).get('agentRunId') != owner['agentRunId']:
+                        raise DevelopmentFault('Capture and inspect an image in this run before assessing it.', 403)
+                    if set(request['input']) != {'requestId', 'evidenceId', 'state', 'notes'}: raise DevelopmentFault('Unexpected agent assessment fields.', 400)
+                    request['input']['settingsRevision'] = store.get(request['id'])['settingsRevision']
+                return record(store, request['id'], request['input'], actor='agent' if owner else 'user',
+                    actor_id={'agentRunId': owner['agentRunId'], 'model': authorization['model']} if owner else None)
             if op == 'evidence':
                 from evidence import read
                 return read(store, request['id'], request['evidenceId'])
@@ -189,14 +218,16 @@ class Host:
                 job = store.get(request['id']); message = {'operation': op, **request['input']}
                 expected = {'operation', 'requestId'} | ({'input'} if op == 'input' else set())
                 if set(message) != expected: raise DevelopmentFault('Unexpected execution action fields.', 400)
-                identity(message['requestId']); recorded = previous(store, job['id'], message)
+                identity(message['requestId'])
+                if owner is not None: message.update(owner=owner, peerPid=peer_pid)
+                recorded = previous(store, job['id'], message)
                 if recorded is not None:
                     if recorded.get('error'): raise DevelopmentFault(recorded['error'], recorded.get('code', 409))
                     return read(store, job['id'], recorded['evidenceId']) if op == 'capture' else recorded
                 if job['kind'] == 'execution' and job['state'] == 'running':
                     result = await call(job['id'], message)
                 elif op == 'capture' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown'):
-                    admit(store, job['id'], message); result = await capture(store, job)
+                    admit(store, job['id'], message); result = await capture(store, job, observer={**owner, 'model': authorization['model']} if owner else None)
                     finish(store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 else: raise DevelopmentFault('This job has no active guest input target.')
                 if result.get('error'): raise DevelopmentFault(result['error'], result.get('code', 409))
@@ -212,23 +243,7 @@ class Host:
                         store.update(job_id, 'interrupted', phase='stopped', error='Job stopped.')
                     self.active.pop(job_id, None); return store.get(job_id)
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
-                owner = request.get('owner')
-                if owner is not None:
-                    if not isinstance(owner, dict) or set(owner) != {'sessionId', 'agentRunId'}:
-                        raise DevelopmentFault('Invalid delegated build owner.', 400)
-                    for value in owner.values(): identity(value)
-                    path = store.projects / store.id / 'Sessions/Sessions.sqlite'
-                    if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid delegated session data.')
-                    db = sqlite3.connect('file:' + str(path) + '?mode=ro', uri=True)
-                    try:
-                        row = db.execute('SELECT busy,state,worker,config FROM runs WHERE id=? AND session_id=?',
-                            (owner['agentRunId'], owner['sessionId'])).fetchone()
-                    finally: db.close()
-                    if not row or not row[0] or row[1] == 'stopping' or json.loads(row[2] or '{}').get('pid') != peer_pid:
-                        raise DevelopmentFault('This build is not delegated by the active workspace owner.', 403)
-                    permission = {'build': 'studio.build_project', 'deploy': 'studio.deploy_project', 'execution': 'studio.run_project'}[op]
-                    if not json.loads(row[3])['permissions'].get(permission, False):
-                        raise DevelopmentFault('This development operation is disabled for this agent run.', 403)
+                if owner is not None: authorize(store, owner, op, peer_pid)
                 if not previous:
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
@@ -280,7 +295,7 @@ class Host:
             if len(raw) > 131072: raise DevelopmentFault('Development request too large.', 400)
             result = await self.handle(json.loads(raw), peer_pid); writer.write((encode({'result': result}) + '\n').encode())
         except (DevelopmentFault, ProjectFault) as error:
-            writer.write((encode({'error': str(error), 'code': error.code}) + '\n').encode())
+            writer.write((encode({'error': str(error), 'code': error.code, 'uncertain': bool(getattr(error, 'uncertain', False))}) + '\n').encode())
         except Exception:
             writer.write(b'{"error":"The development coordinator is unavailable.","code":503}\n')
         finally:

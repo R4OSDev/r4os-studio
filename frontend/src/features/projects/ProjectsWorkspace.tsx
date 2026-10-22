@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import { useProjects } from './useProjects';
 import { NewProjectDialog } from './NewProjectDialog';
+import { RunTestSettings } from './RunTestSettings';
 import { ProjectSettings } from './ProjectSettings';
 import type { ProjectSettingsView } from './ProjectSettings';
 import { useSessions } from '../agent-sessions/useSessions';
@@ -63,7 +64,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav> : <div className="nav-column" aria-hidden="true" />}
       {selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['General', 'Virtual machine'] as const).map((view) => <button key={view} type="button" disabled={saving}
+        <div className="nav-items">{(['General', 'Virtual machine', 'Run & Test'] as const).map((view) => <button key={view} type="button" disabled={saving}
           className={`nav-item ${current.settingsView === view ? 'selected' : ''}`} aria-current={current.settingsView === view ? 'page' : undefined}
           onClick={() => { if (view !== current.settingsView && leave()) navigate(selected.id, { ...current, settingsView: view }); }}><span>{view}</span></button>)}</div>
       </nav> : selected && current.section === 'Sessions' ? <nav className="nav-column" aria-label="Project sessions">
@@ -80,7 +81,8 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
     <main className="main-area" aria-label="Project content">
       {selected && <>
         <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>
-        {current.section === 'Settings' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
+        {current.section === 'Settings' && current.settingsView === 'Run & Test' && <RunTestSettings key={selected.id + ':' + epoch} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
+        {current.section === 'Settings' && current.settingsView !== 'Run & Test' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
           id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload} />}
         {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} dirtyChanged={setDirty} busyChanged={setSaving} /> : <p className="session-empty">Select a session or create one.</p>)}
       </>}

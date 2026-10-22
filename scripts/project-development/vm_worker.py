@@ -27,13 +27,19 @@ async def broker_call(request):
     try:
         writer.write((encode(request) + '\n').encode()); await writer.drain()
         value = json.loads(await asyncio.wait_for(reader.readline(), 20))
-        if value.get('error'): raise DevelopmentFault(value['error'], value.get('code', 503))
+        if value.get('error'):
+            from contracts import UnconfirmedGuestEffect
+            if value.get('uncertain'): raise UnconfirmedGuestEffect(value['error'])
+            raise DevelopmentFault(value['error'], value.get('code', 503))
         return value['result']
     finally:
         writer.close(); await writer.wait_closed()
 
 
 def guard(store, job, lease=None, allow_stopping=False):
+    if not allow_stopping or store.get(job['id'])['state'] != 'stopping':
+        from authorization import authorize_job
+        authorize_job(store, job, allow_stopping=allow_stopping)
     if store.get(job['id'])['state'] not in (('running', 'stopping') if allow_stopping else ('running',)): raise DevelopmentFault('The development job is stopping.')
     db = connect(store.projects)
     try: current = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (store.id,)).fetchone())

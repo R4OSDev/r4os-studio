@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import uuid
+import json
+from contextlib import closing
 
 from agent_snapshot import AgentSnapshots, delegated
 from contracts import DevelopmentFault
@@ -21,6 +23,11 @@ class DelegationTest(unittest.IsolatedAsyncioTestCase):
         worker_db.execute('CREATE TABLE runs(id TEXT, busy INTEGER, state TEXT)')
         run_id, session_id = str(uuid.uuid4()), str(uuid.uuid4())
         worker_db.execute('INSERT INTO runs VALUES(?,1,?)', (run_id, 'running'))
+        directory = fixture.root / fixture.id / 'Sessions'; directory.mkdir()
+        with closing(sqlite3.connect(directory / 'Sessions.sqlite')) as authorization, authorization:
+            authorization.execute('CREATE TABLE runs(id TEXT, session_id TEXT, state TEXT, config TEXT)')
+            authorization.execute('INSERT INTO runs VALUES(?,?,?,?)', (run_id, session_id, 'running', json.dumps({
+                'engine': {'profile': 'studio-tools-v2'}, 'projectPins': fixture.store.project['pins'], 'permissions': {'studio.build_project': True}})))
         job, _ = fixture.store.admit('build', fixture.input(), {'sessionId': session_id, 'agentRunId': run_id})
         fake = SimpleNamespace(manifest={'projects': str(fixture.root), 'r4os': str(fixture.root / 'R4OS'), 'projectId': fixture.id},
             run_id=run_id, session_id=session_id, stopping=False, store=SimpleNamespace(db=worker_db),

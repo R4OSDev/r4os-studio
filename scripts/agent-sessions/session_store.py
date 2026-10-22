@@ -14,7 +14,7 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, TOOLS
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, TOOLS, tools_for
 
 TOOL_IDS = tuple('studio.' + name for name in TOOLS)
 TERMINAL_STATES = ('completed', 'failed', 'interrupted')
@@ -96,7 +96,7 @@ def validate_settings(data, provider_dir):
     model = next((m for m in provider_models(provider_dir, data['providerId']) if m['id'] == data['model']), None)
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)
-    if not isinstance(data['permissions'], dict) or set(data['permissions']) != set(TOOL_IDS) or any(type(v) is not bool for v in data['permissions'].values()):
+    if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in tools_for(data.get('engine', {}).get('profile', PROFILE))} or any(type(v) is not bool for v in data['permissions'].values()):
         raise ProjectFault('Invalid tool permissions.', 400)
 
 

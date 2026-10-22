@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AgentSession, SessionCreate, SessionHistory, SessionOptions, SessionUpdate } from '../../../../shared/agent-sessions.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { sessionStore } from './store.js';
+import { developmentHost } from '../project-development/host.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -16,7 +17,9 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   const route = '/:id/sessions';
   app.get<{ Params: { id: string } }>(route + '/options', { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);
-    return sessionStore<SessionOptions>(directory, { operation: 'options', projectId: request.params.id }, providers);
+    const result = await sessionStore<SessionOptions>(directory, { operation: 'options', projectId: request.params.id }, providers);
+    result.development = await developmentHost<NonNullable<SessionOptions['development']>>({ operation: 'options', projectId: request.params.id }).catch(() => undefined);
+    return result;
   });
   app.get<{ Params: { id: string } }>(route, { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);
@@ -36,7 +39,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
       ...fields, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-      permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9, maxProperties: 9 },
+      permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9, maxProperties: 16 },
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);

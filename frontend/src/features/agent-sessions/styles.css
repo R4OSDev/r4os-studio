@@ -71,3 +71,11 @@
 .agent-markdown :not(pre)>code { padding:2px 5px; border-radius:3px; background:#33243f; color:#e0c8f6; font-size:.92em; }
 .agent-markdown .agent-code-block pre { line-height:1.7; }
 .agent-terminal-hint { color:#ac9bbb; font-size:11px; line-height:1.6; margin:12px 0 0; }
+
+.development-card { margin: 10px 0; padding: 12px; border: 1px solid var(--border-color, #303440); border-radius: 8px; min-width: 0; overflow-wrap: anywhere; }
+.development-card-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.development-card-header button { margin-left: auto; }
+.development-phase { color: var(--text-muted, #999); }
+.development-image { margin: 12px 0; min-width: 0; }
+.development-image img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
+.development-image figcaption { font-size: 12px; opacity: .7; margin-top: 6px; }
