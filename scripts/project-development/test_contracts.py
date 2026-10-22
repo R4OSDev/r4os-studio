@@ -1,7 +1,7 @@
-import copy
 import unittest
 from contracts import APP, DevelopmentFault, generation, identity, protocol, relative
-from profiles import catalog, eligible
+from profiles import runner, eligible
+from access import guest_version
 
 
 class Contracts(unittest.TestCase):
@@ -15,19 +15,21 @@ class Contracts(unittest.TestCase):
         with self.assertRaises(DevelopmentFault): identity('chosen-host-path')
         self.assertEqual(protocol(APP)['guestProtocol'], 1)
 
-    def test_image_and_role_adapter_do_not_gate_sdk_or_compiler_revisions(self):
-        profile = catalog()['profiles'][0];c = profile['components'];image = profile['image']
+    def test_runner_does_not_gate_image_sdk_or_compiler_revisions(self):
         for language in ('Zig', 'C', 'Rust'):
-            pins = copy.deepcopy(c['pinSets'][language])
-            project = {'language':language, 'template':'terminal', 'pins':pins}
-            self.assertTrue(eligible(project,image)['available'])
-            changed = copy.deepcopy(project);changed['pins']['contract']['revision'] = '0'*40
-            self.assertTrue(eligible(changed,image)['available'])
-            changed = copy.deepcopy(project);changed['pins']['zig']['binarySha256'] = '0'*64
-            self.assertTrue(eligible(changed,image)['available'])
-            self.assertFalse(eligible(project,{**image,'sha256':'0'*64})['available'])
-            self.assertFalse(eligible(project,{'id':'0.84.47-full','sha256':image['sha256']})['available'])
+            project = {'language':language, 'template':'terminal', 'pins':{'sdk':{'revision':'f'*40},'zig':{'binarySha256':'f'*64}}}
+            for image in ({'id':'0.84.46-full','sha256':'a'*64}, {'id':'99.99.99-full','sha256':'b'*64}):
+                self.assertTrue(eligible(project,image)['available'])
             self.assertFalse(eligible({**project,'template':'driver'},image)['available'])
+            self.assertFalse(eligible(project,None)['available'])
+        self.assertNotIn('image', runner())
+
+    def test_guest_readiness_reads_versions_without_a_release_or_kernel_list(self):
+        for release, kernel in [('0.84.46', '0.1.330'), ('99.99.99', '9.8.7')]:
+            value = guest_version({'exitCode':0,'output':'R4OS Release '+release+'\nKernel active '+kernel})
+            self.assertEqual(value, {'release':release,'kernel':kernel})
+        for result in ({'exitCode':0,'output':'another guest'}, {'exitCode':1,'output':'R4OS Release 99.99.99\nKernel active 9.8.7'}):
+            with self.assertRaises(DevelopmentFault): guest_version(result)
 
 
 if __name__ == '__main__': unittest.main()

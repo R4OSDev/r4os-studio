@@ -48,7 +48,7 @@ class LeaseAndAccessTests(unittest.TestCase):
             vm = {'id': vm_id, 'revision': str(uuid.uuid4()), 'imageId': 'test-full', 'imageSha256': 'a' * 64, 'networkEnabled': False}
             path.write_text(encode(vm)); access = Access(projects, r4os, SimpleNamespace(values={}))
             request = {'revision': 0, 'vmRevision': vm['revision'], 'enabled': True, 'username': 'guest', 'password': 'private-fixture'}
-            with patch('access.image_profile', return_value={}):
+            with patch('access.transport_profile', return_value={}):
                 with self.assertRaises(DevelopmentFault): access.configure(vm_id, request)
                 self.assertFalse(json.loads(path.read_text())['networkEnabled'])
                 vm['networkEnabled'] = True; path.write_text(encode(vm))

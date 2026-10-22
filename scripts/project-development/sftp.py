@@ -1,4 +1,4 @@
-"""Bounded create-only transfer with complete byte readback on qualified guests."""
+"""Bounded create-only transfer with complete byte readback from the guest."""
 import asyncio
 import os
 from pathlib import Path

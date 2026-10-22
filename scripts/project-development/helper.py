@@ -27,7 +27,7 @@ async def prepare_one(projects, r4os, execution_profile, watcher):
         content['module.R4MF'] = content['module.R4MF'].replace(b'NAME=STHELP', b'NAME=STWATCH').replace(b'APP_CLASS=console', b'APP_CLASS=service')
         content['src/main.zig'] = b'const r4os=@import("r4os"); pub fn r4_app_main(app:*r4os.App)i32{return @import("bootstrap.zig").run(app);}'
     files = [{'path': path, 'sha256': hashlib.sha256(data).hexdigest()} for path, data in sorted(content.items())]
-    pins = execution_profile['components']['pinSets']['Zig']
+    pins = execution_profile['helperPins']
     key = hash_value({'source': files, 'pins': pins, 'protocol': 1})
     root = folder(Path(projects) / '.studio/development/Helpers' / key)
     with (root / 'build.lock').open('a') as lock:

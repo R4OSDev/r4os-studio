@@ -1,5 +1,20 @@
 # R4OS Studio · App
 
+Version 0.3.29 removes VM-image, release/kernel and project-component approval
+lists from development access, job admission, deployment and execution workers.
+The runner uses one image-independent SSH/SFTP and process adapter. Authenticated
+`VER` responses supply guest release/kernel information without version matching.
+New images and project SDK revisions need no Studio qualification entry.
+
+Project pins still identify build inputs; VM revision/image/boot bindings, explicit
+Development access, host keys, leases, full transfer readback and owned process
+handles remain enforced. The guest helper keeps its own reproducible build pins
+in `shared/r4os/development-runner.json`; these are not compared with application
+pins. The runner implements Terminal, Desktop and Service execution. Other roles
+still need their corresponding loader or test host. Runtime failures remain
+visible rather than being inferred from a release approval list. Existing
+deployment labels do not invalidate an otherwise unchanged target on update.
+
 Version 0.3.28 removes Studio's SDK/Contract/compiler revision approval list.
 New projects use the selected components and their published SDK metadata;
 SDK/Contract source hashes, compiler requirements and existing project pins

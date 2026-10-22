@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "interface": "r4os-studio-development-runner",
+  "id": "r4os-process-v1",
+  "helperPins": {
+    "sdk": {
+      "version": "0.64.66",
+      "revision": "41770f2c354e461a5663ad805b7b2955dab1d5a9",
+      "sha256": "ceefe7dfcb24de6a04b486a635e8c06f8aef4ebee31ae4554fe1daa00371d6be",
+      "url": "https://codeload.github.com/R4OSDev/r4os-sdk/tar.gz/41770f2c354e461a5663ad805b7b2955dab1d5a9",
+      "zigPackageHash": "r4os_sdk-0.64.66-NnPzAmmyHAEFQ063lYoN7Kkfw1ZM7Pe2guJQ1T0VN0dj"
+    },
+    "contract": {
+      "version": "0.64.41",
+      "revision": "95f762623e6ac2025e9a8aa781713c7c957629a8",
+      "sha256": "f724215744132c7ce654771bed0d9d90bcf7f935d197c37ed5df8976d26854f1",
+      "url": "https://codeload.github.com/R4OSDev/r4os-contract/tar.gz/95f762623e6ac2025e9a8aa781713c7c957629a8",
+      "zigPackageHash": "r4os_contract-0.64.41-ELhbYWSDHQEJOXYyn-1ekF7KRsCWoyuQsPe-vNdnm4Ob"
+    },
+    "zig": {
+      "version": "0.16.0",
+      "sha256": "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
+      "url": "https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz",
+      "binarySha256": "2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c"
+    }
+  },
+  "roles": [
+    "terminal",
+    "desktop",
+    "service"
+  ],
+  "roleReasons": {
+    "library": "Runtime libraries need a consumer or conformance test host.",
+    "driver": "Drivers need an isolated loader and diagnostic adapter.",
+    "protocol": "Protocol modules need a loader and diagnostic adapter.",
+    "subsystem": "Subsystem hosts need a host adapter and an actual supported test input."
+  },
+  "transport": {
+    "kind": "openssh-sftp-v3",
+    "clientSha256": "af3b04ec5653755032fc18ad02445e4e51170e75d8bac4265647d423caa9a83e",
+    "sftpSha256": "82db87c4c00f6c817eb771b8a273bf81d35107f70c2bdb6c6af75a5f85c81e29",
+    "multiplexCompletedSessions": false,
+    "createOnly": true,
+    "fullReadbackRequired": true
+  }
+}

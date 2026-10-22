@@ -118,14 +118,11 @@ class Host:
             unavailable = {'available': False, 'reason': 'Assigned VM metadata is unavailable. Development host maintenance is required.'}
         deploy = unavailable
         if image and access and access['available']:
-            from access import image_profile
-            profile = image_profile(vm)
-            if hash_value(project['pins']) == hash_value(profile['components']['pinSets'].get(project['language'])):
-                deploy = {'available': True}
+            deploy = {'available': True}
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason')}),
-            'capture': deploy, 'input': ({'available': True} if match['available'] and deploy['available'] and project['template'] in ('terminal', 'desktop') else {'available': False, 'reason': match.get('reason') or 'This module has no qualified interactive target.'}), 'profileId': match['profileId'],
-            'qualification': match, 'transport': {'available': bool(access and access['available']),
+            'capture': deploy, 'input': ({'available': True} if match['available'] and deploy['available'] and project['template'] in ('terminal', 'desktop') else {'available': False, 'reason': match.get('reason') or 'This module has no interactive target adapter.'}), 'profileId': match['profileId'],
+            'runner': match, 'transport': {'available': bool(access and access['available']),
                 'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},
             'assignedVm': {'id': vm['id'], 'name': vm['name'],
                 'imageId': image['id'], 'ready': bool(access and access['ready'])} if vm and image else None}
@@ -143,7 +140,7 @@ class Host:
             if set(request) != {'operation', 'projectId', 'jobId', 'leaseId', 'token', 'helperSha256'}:
                 raise DevelopmentFault('Invalid private target binding request.', 400)
             from lease import inspect
-            from access import vm_config, image_profile
+            from access import vm_config, transport_profile
             from vm_client import vm_call
             from types import SimpleNamespace
             lease = inspect(self.config['projects'], request['leaseId'], request['token'], check_boot=False)
@@ -157,7 +154,7 @@ class Host:
                 if not re.fullmatch('[a-f0-9]{64}', request['helperSha256']): raise DevelopmentFault('Invalid helper identity.', 400)
                 info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
                 if info['vm']['state'] != 'running': raise DevelopmentFault('The target VM is not running.')
-                boot = await self.boots.ensure(vm, info['invocationId']); profile = image_profile(vm)
+                boot = await self.boots.ensure(vm, info['invocationId']); profile = transport_profile()
                 target = {'vmId': vm['id'], 'vmRevision': vm['revision'], 'imageId': vm['imageId'],
                     'imageSha256': vm['imageSha256'], 'bootId': boot['bootId'], 'profileId': profile['id'],
                     'helperSha256': request['helperSha256'], 'helperProtocol': 1}
@@ -284,12 +281,9 @@ class Host:
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None
                 if op in ('deploy', 'execution') and not previous:
-                    from access import vm_config, image_profile
-                    from contracts import hash_value
+                    from access import vm_config
                     if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings before deploying.')
-                    binding = vm_config(self.config['r4os'], store.project['vmId']); profile = image_profile(binding)
-                    if hash_value(store.project['pins']) != hash_value(profile['components']['pinSets'].get(store.project['language'])):
-                        raise DevelopmentFault('This project component identity has not been qualified with the VM image.')
+                    binding = vm_config(self.config['r4os'], store.project['vmId'])
                     if op == 'execution':
                         from profiles import require_profile
                         require_profile(store.project, {'id': binding['imageId'], 'sha256': binding['imageSha256']})

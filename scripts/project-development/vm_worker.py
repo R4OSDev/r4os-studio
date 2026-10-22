@@ -10,12 +10,11 @@ import signal
 import sys
 import uuid
 
-from contracts import ACTIVE, APP, DevelopmentFault, LIMITS, digest, encode, hash_value, protocol
+from contracts import ACTIVE, APP, DevelopmentFault, LIMITS, digest, encode, protocol
 from jobs import Jobs, folder, now
 from store import connect, public
 from layout import save
-from access import Access, SshTransport
-from profiles import catalog
+from access import Access, SshTransport, transport_profile, guest_version
 from lease import VmLease, inspect
 from vm_client import vm_call
 from helper import prepare_helper
@@ -63,10 +62,7 @@ class Deployment:
 
     async def run(self):
         store, job = self.store, self.job; artifact = store.artifact(job['artifactId']); vm = job['binding']
-        profile = next((p for p in catalog()['profiles'] if p['image']['id'] == vm['imageId'] and p['image']['sha256'] == vm['imageSha256']), None)
-        if not profile: raise DevelopmentFault('The assigned VM image has no qualified deployment profile.')
-        if hash_value(job['pins']) != hash_value(profile['components']['pinSets'].get(store.project['language'])):
-            raise DevelopmentFault('Project component pins do not match the qualified guest profile.')
+        profile = transport_profile()
         self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile); guard(store, job)
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
@@ -94,8 +90,7 @@ class Deployment:
                 try:
                     async with SshTransport(access, vm, lease) as ssh:
                         version = await ssh.exec('VER')
-                        if version['exitCode'] or ('R4OS Release ' + profile['guest']['release']) not in version['output'] or ('Kernel active ' + profile['guest']['kernel']) not in version['output']:
-                            raise DevelopmentFault('The authenticated guest release/kernel differs from its qualified profile.')
+                        guest_version(version)
                         ssh.publish_host_key(); return await self.transfer(ssh, lease, artifact, helper, target)
                 except DevelopmentFault as error:
                     last_error = error

@@ -6,7 +6,7 @@ from contracts import DevelopmentFault, UnconfirmedGuestEffect, LIMITS, digest
 from jobs import folder, now
 from layout import save
 from lease import VmLease
-from access import Access, SshTransport, image_profile
+from access import Access, SshTransport, guest_version
 from vm_client import vm_call
 from guest_control import GuestControl
 from sftp import download
@@ -105,13 +105,13 @@ class Execution:
     async def run(self):
         from vm_worker import broker_call, guard
         store, job = self.store, self.job
-        deployment = store.deployment(job['deploymentId']); vm = job['binding']; profile = image_profile(vm)
+        deployment = store.deployment(job['deploymentId']); vm = job['binding']
         if deployment.get('helperCapabilities', {}).get('controlVersion') != 2 or deployment.get('helperCapabilities', {}).get('watchdogVersion') != 1:
             raise DevelopmentFault('Deploy again with the current guest controller before running.')
         if job['settings'].get('serviceResponseContains') and not deployment.get('helperCapabilities', {}).get('serviceSelfTest'):
             raise DevelopmentFault('Deploy again with a self-test-capable guest helper before running these criteria.')
         if deployment['role'] not in ('terminal', 'desktop', 'service') or deployment['kind'] != 'R4X':
-            raise DevelopmentFault('This module needs a qualified role-specific test host. Direct execution is unavailable.')
+            raise DevelopmentFault('This module needs a role-specific test host. Direct execution is unavailable.')
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
         from queue_lease import reserve
@@ -122,14 +122,17 @@ class Execution:
             if info['vm']['state'] != 'running': raise DevelopmentFault('The deployment boot has ended. Deploy again to the prepared VM before running.')
             target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],
                 'leaseId': lease.id, 'token': lease.token, 'helperSha256': deployment['target']['helperSha256']})
-            if target != deployment['target']: raise DevelopmentFault('The deployment belongs to an older VM boot or revision. Deploy again before running.')
+            # Profile labels are descriptive metadata, not a VM qualification.
+            # Existing deployments retain their recorded label across updates.
+            previous = {k: v for k, v in deployment['target'].items() if k != 'profileId'}
+            if {k: v for k, v in target.items() if k != 'profileId'} != previous:
+                raise DevelopmentFault('The deployment belongs to an older VM boot or revision. Deploy again before running.')
             scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
             guard(store, job, lease, allow_stopping=True)
             access = Access(store.projects, store.r4os, None)
             async with SshTransport(access, vm, lease) as ssh:
                 version = await ssh.exec('VER')
-                if version['exitCode'] or ('R4OS Release ' + profile['guest']['release']) not in version['output'] or ('Kernel active ' + profile['guest']['kernel']) not in version['output']:
-                    raise DevelopmentFault('The authenticated runtime differs from the deployment guest profile.')
+                guest_version(version)
                 ssh.publish_host_key()
                 store.update(job['id'], phase='verifying_deployment')
                 for index, item in enumerate(deployment['files']):

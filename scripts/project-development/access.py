@@ -12,7 +12,7 @@ import socket
 from contracts import APP, DevelopmentFault, digest, identity
 from jobs import folder, now
 from layout import save
-from profiles import catalog
+from profiles import runner
 from lease import VmLease
 from vm_client import vm_call
 
@@ -28,14 +28,21 @@ def vm_config(r4os, vm_id):
     except (OSError, ValueError, KeyError): raise DevelopmentFault('The selected VM metadata is unavailable.', 404) from None
 
 
-def image_profile(vm):
-    result = next((p for p in catalog()['profiles'] if p['image']['id'] == vm['imageId'] and p['image']['sha256'] == vm['imageSha256']), None)
-    if not result: raise DevelopmentFault('This VM image has no qualified development transport.')
+def transport_profile():
+    result = runner()
     for path, field in (('/usr/bin/ssh', 'clientSha256'), ('/usr/bin/sftp', 'sftpSha256')):
         try: current = digest(path)
-        except OSError: raise DevelopmentFault('The qualified SSH/SFTP clients are missing from this host.', 503) from None
-        if current != result['transport'][field]: raise DevelopmentFault('The installed SSH client does not match the qualified transport profile.', 503)
+        except OSError: raise DevelopmentFault('The SSH/SFTP clients are missing from this host.', 503) from None
+        if current != result['transport'][field]: raise DevelopmentFault('The installed SSH client differs from the pinned transport tool.', 503)
     return result
+
+
+def guest_version(result):
+    release = re.search(r'R4OS Release\s+(\d+\.\d+\.\d+)', result['output'])
+    kernel = re.search(r'Kernel active\s+(\d+\.\d+\.\d+)', result['output'])
+    if result['exitCode'] != 0 or not release or not kernel:
+        raise DevelopmentFault('The authenticated guest did not return the R4OS version interface.')
+    return {'release': release[1], 'kernel': kernel[1]}
 
 
 class Access:
@@ -56,7 +63,7 @@ class Access:
     def public(self, vm_id):
         vm = vm_config(self.r4os, vm_id); record = self.record(vm_id); reason = None
         try:
-            image_profile(vm)
+            transport_profile()
             if not vm.get('networkEnabled'): raise DevelopmentFault('Network is disabled in VM settings.')
             if not record['enabled']: raise DevelopmentFault('Development access is disabled.')
             if not record['password']: raise DevelopmentFault('Guest credentials are missing.')
@@ -92,7 +99,7 @@ class Access:
             raise DevelopmentFault('Invalid guest password.', 400)
         same = (old['imageId'], old['imageSha256']) == (vm['imageId'], vm['imageSha256'])
         if request['enabled']:
-            image_profile(vm)
+            transport_profile()
             if not vm.get('networkEnabled'): raise DevelopmentFault('Enable Network explicitly in VM settings first.')
             if not password and same: password = old['password']
             if not password: raise DevelopmentFault('Enter the guest password for this VM image.', 400)
@@ -127,23 +134,19 @@ class Access:
             scope['bootId'] = boot['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
             async with SshTransport(self, vm, lease) as ssh:
                 result = await ssh.exec('VER')
-                release = re.search(r'R4OS Release\s+(\d+\.\d+\.\d+)', result['output'])
-                kernel = re.search(r'Kernel active\s+(\d+\.\d+\.\d+)', result['output'])
-                expected = image_profile(vm)['guest']
-                if result['exitCode'] != 0 or not release or not kernel or release[1] != expected['release'] or kernel[1] != expected['kernel']:
-                    raise DevelopmentFault('The authenticated guest does not match the qualified release and kernel interface.')
+                version = guest_version(result)
                 if not self.boots.values[vm_id]['connected'] or self.boots.values[vm_id]['bootId'] != boot['bootId']:
                     raise DevelopmentFault('The VM restarted during its access check.')
                 ssh.publish_host_key()
                 record = self.record(vm_id); record.pop('lastError', None); record['readiness'] = {'checkedAt': now(), 'vmRevision': vm['revision'],
-                    'bootId': boot['bootId'], 'release': release[1], 'kernel': kernel[1]}
+                    'bootId': boot['bootId'], **version}
                 save(self.directory(vm_id) / 'access.json', record)
         return self.public(vm_id)
 
 class SshTransport:
     def __init__(self, access, vm, lease):
         self.access, self.vm, self.lease = access, vm, lease
-        self.profile = image_profile(vm); self.record = access.record(vm['id']); self.port = None; self.processes = set(); self.forward_opened = False
+        self.profile = transport_profile(); self.record = access.record(vm['id']); self.port = None; self.processes = set(); self.forward_opened = False
         self.runtime = folder(Path('/run/r4os-studio-development/auth') / lease.id)
 
     async def __aenter__(self):
