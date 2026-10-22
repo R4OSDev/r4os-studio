@@ -45,6 +45,12 @@ def guest_version(result):
     return {'release': release[1], 'kernel': kernel[1]}
 
 
+def same_host_image(record, vm):
+    # These legacy image fields scope host-key trust and readiness only.
+    # Credentials belong to the VM directory and survive image replacement.
+    return (record.get('imageId'), record.get('imageSha256')) == (vm['imageId'], vm['imageSha256'])
+
+
 class Access:
     def __init__(self, projects, r4os, boots):
         self.projects, self.r4os, self.boots = Path(projects), Path(r4os), boots
@@ -54,10 +60,12 @@ class Access:
 
     def record(self, vm_id):
         path = self.directory(vm_id) / 'access.json'
-        if not path.exists(): return {'schema': 1, 'revision': 0, 'enabled': False, 'username': '', 'password': '', 'imageId': None, 'imageSha256': None}
+        if not path.exists(): return {'schema': 1, 'vmId': vm_id, 'revision': 0, 'enabled': False, 'username': '', 'password': '', 'imageId': None, 'imageSha256': None}
         if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid guest credential storage.', 503)
         record = json.loads(path.read_text())
         if record.get('schema') != 1: raise DevelopmentFault('Guest access maintenance is required.', 503)
+        if record.get('vmId', vm_id) != vm_id: raise DevelopmentFault('Guest credentials do not belong to this VM.', 503)
+        record.setdefault('vmId', vm_id)  # Existing per-VM records need no credential migration.
         return record
 
     def public(self, vm_id):
@@ -67,15 +75,14 @@ class Access:
             if not vm.get('networkEnabled'): raise DevelopmentFault('Network is disabled in VM settings.')
             if not record['enabled']: raise DevelopmentFault('Development access is disabled.')
             if not record['password']: raise DevelopmentFault('Guest credentials are missing.')
-            if (record['imageId'], record['imageSha256']) != (vm['imageId'], vm['imageSha256']):
-                raise DevelopmentFault('The VM image changed. Configure development access for this image.')
         except DevelopmentFault as error: reason = str(error)
-        readiness = record.get('readiness'); boot = self.boots.values.get(vm_id)
+        same = same_host_image(record, vm)
+        readiness = record.get('readiness') if same else None; boot = self.boots.values.get(vm_id)
         current = bool(not reason and readiness and boot and boot['connected'] and readiness['bootId'] == boot['bootId']
             and readiness['vmRevision'] == vm['revision'])
         return {'revision': record['revision'], 'vmRevision': vm['revision'], 'enabled': record['enabled'],
             'username': record['username'], 'credentialsStored': bool(record['password']),
-            'hostKeyFingerprint': record.get('hostKeyFingerprint'), 'imageId': vm['imageId'],
+            'hostKeyFingerprint': record.get('hostKeyFingerprint') if same else None, 'imageId': vm['imageId'],
             'available': not bool(reason), 'ready': current, 'reason': reason or (None if current else
                 (record.get('lastError') if record.get('lastErrorVmRevision') == vm['revision'] else None) or 'Access has not been checked for the current boot.'),
             'lastCheckedAt': readiness.get('checkedAt') if readiness else None,
@@ -97,13 +104,13 @@ class Access:
         password = request.get('password', '')
         if not isinstance(password, str) or len(password.encode()) > 256 or any(ord(c) < 32 or ord(c) == 127 for c in password):
             raise DevelopmentFault('Invalid guest password.', 400)
-        same = (old['imageId'], old['imageSha256']) == (vm['imageId'], vm['imageSha256'])
+        same = same_host_image(old, vm)
         if request['enabled']:
             transport_profile()
             if not vm.get('networkEnabled'): raise DevelopmentFault('Enable Network explicitly in VM settings first.')
-            if not password and same: password = old['password']
-            if not password: raise DevelopmentFault('Enter the guest password for this VM image.', 400)
-        value = {'schema': 1, 'revision': old['revision'] + 1, 'enabled': request['enabled'],
+            if not password: password = old['password']
+            if not password: raise DevelopmentFault('Enter the guest password for this VM.', 400)
+        value = {'schema': 1, 'vmId': vm_id, 'revision': old['revision'] + 1, 'enabled': request['enabled'],
             'username': name, 'password': password if request['enabled'] else '',
             'imageId': vm['imageId'], 'imageSha256': vm['imageSha256']}
         if same and not request.get('resetHostKey'):
@@ -147,17 +154,20 @@ class SshTransport:
     def __init__(self, access, vm, lease):
         self.access, self.vm, self.lease = access, vm, lease
         self.profile = transport_profile(); self.record = access.record(vm['id']); self.port = None; self.processes = set(); self.forward_opened = False
+        if not same_host_image(self.record, vm): self.record.pop('hostKeyFingerprint', None)
         self.runtime = folder(Path('/run/r4os-studio-development/auth') / lease.id)
 
     async def __aenter__(self):
         try:
             from forwards import cleanup
             await cleanup(self.lease)
-            if not self.record['enabled'] or (self.record['imageId'], self.record['imageSha256']) != (self.vm['imageId'], self.vm['imageSha256']):
-                raise DevelopmentFault('Guest credentials do not belong to this VM image.')
+            if not self.record['enabled'] or not self.record['password']:
+                raise DevelopmentFault('Development access is disabled or guest credentials are missing.')
             secret = self.runtime / 'password'; secret.write_text(self.record['password']); secret.chmod(0o600)
             known = self.access.directory(self.vm['id']) / 'known_hosts'
-            if known.exists():
+            if known.is_symlink() or (known.exists() and not known.is_file()):
+                raise DevelopmentFault('Invalid guest host-key storage.', 503)
+            if known.exists() and same_host_image(self.record, self.vm):
                 if known.resolve(strict=True) != known: raise DevelopmentFault('Invalid guest host-key storage.', 503)
                 shutil.copyfile(known, self.runtime / 'known_hosts')
             with socket.socket() as port:
@@ -233,8 +243,13 @@ class SshTransport:
             fingerprint = 'SHA256:' + base64.b64encode(hashlib.sha256(key).digest()).decode().rstrip('=')
             old = self.record.get('hostKeyFingerprint')
             if old and old != fingerprint: raise ValueError()
-            shutil.copyfile(path, self.access.directory(self.vm['id']) / 'known_hosts')
-            record = self.access.record(self.vm['id']); record['hostKeyFingerprint'] = fingerprint
+            known = self.access.directory(self.vm['id']) / 'known_hosts'
+            if known.is_symlink() or (known.exists() and not known.is_file()): raise ValueError()
+            shutil.copyfile(path, known)
+            record = self.access.record(self.vm['id'])
+            if not same_host_image(record, self.vm):
+                for field in ('readiness', 'lastError', 'lastErrorVmRevision'): record.pop(field, None)
+            record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'])
             save(self.access.directory(self.vm['id']) / 'access.json', record)
-            self.record['hostKeyFingerprint'] = fingerprint
+            self.record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'])
         except (OSError, ValueError, IndexError): raise DevelopmentFault('The guest host-key receipt could not be confirmed.') from None

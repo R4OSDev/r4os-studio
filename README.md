@@ -1,5 +1,16 @@
 # R4OS Studio · App
 
+Version 0.3.31 binds development credentials to the VM UUID. Existing saved
+logins work after an image change without re-entry or another Save access.
+The replacement image must accept that login. Studio reports authentication
+failures without discarding the stored credentials.
+
+Image identity now scopes SSH host-key trust and readiness only. A replacement
+image is authenticated with the VM login and its host key is learned again;
+unexpected key changes within the same image still fail verification. Existing
+per-VM records remain compatible; no setup, migration or host maintenance is
+required. Project/image/boot leases and job bindings remain enforced.
+
 Version 0.3.30 corrects the Codex sandbox context sent to new and resumed
 sessions. Studio exposes a writable project through its dynamic tools; Codex
 now receives `workspace-write` instead of the contradictory `read-only` policy.

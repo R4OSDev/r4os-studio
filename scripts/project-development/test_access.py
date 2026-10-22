@@ -1,11 +1,12 @@
 import asyncio
+import base64
 import json
 import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 import uuid
 
 from access import Access, SshTransport
@@ -58,7 +59,15 @@ class LeaseAndAccessTests(unittest.TestCase):
                 self.assertEqual((access.directory(vm_id) / 'access.json').stat().st_mode & 0o777, 0o600)
                 with self.assertRaises(DevelopmentFault): access.configure(vm_id, request)
                 vm['imageSha256'] = 'b' * 64; path.write_text(encode(vm))
-                value = access.public(vm_id); self.assertFalse(value['available']); self.assertIn('image changed', value['reason'])
+                value = access.public(vm_id); self.assertTrue(value['available']); self.assertTrue(value['credentialsStored'])
+                self.assertFalse(value['ready']); self.assertIsNone(value['hostKeyFingerprint'])
+                # Saving other settings with a blank password also retains the VM login.
+                access.configure(vm_id, {**request, 'revision':1, 'password':''})
+                self.assertEqual(access.record(vm_id)['password'], 'private-fixture')
+                self.assertEqual(access.record(vm_id)['vmId'], vm_id)
+                other = str(uuid.uuid4()); self.assertFalse(access.record(other)['password'])
+                save(access.directory(other) / 'access.json', access.record(vm_id))
+                with self.assertRaises(DevelopmentFault): access.record(other)
 
     def test_ssh_argv_and_environment_do_not_contain_credentials(self):
         transport = object.__new__(SshTransport)
@@ -72,6 +81,43 @@ class LeaseAndAccessTests(unittest.TestCase):
 
 
 class BootTests(unittest.IsolatedAsyncioTestCase):
+    async def test_image_change_reuses_legacy_vm_login_and_relearns_only_host_key(self):
+        import access as module
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); vm_id = str(uuid.uuid4())
+            vm = {'id':vm_id,'revision':'new-revision','imageId':'new-full','imageSha256':'b'*64}
+            access = Access(root/'Projects',root/'R4OS',SimpleNamespace(values={}))
+            # An existing schema-1 record predates the explicit vmId field.
+            old = {'schema':1,'revision':1,'enabled':True,'username':'guest','password':'private-fixture',
+                'imageId':'old-full','imageSha256':'a'*64,'hostKeyFingerprint':'SHA256:old',
+                'readiness':{'bootId':'old','vmRevision':'old-revision'}}
+            save(access.directory(vm_id)/'access.json',old)
+            (access.directory(vm_id)/'known_hosts').write_text('old host key\n')
+            original = module.folder
+            def folder(path):
+                return original(root/'runtime' if str(path).startswith('/run/r4os-studio-development/auth/') else path)
+            lease = SimpleNamespace(id=str(uuid.uuid4()),vm_id=vm_id,token='private-token',root=root/'state',scope={})
+            with patch('access.folder',side_effect=folder), patch('access.transport_profile',return_value={}), patch('access.vm_call',new=AsyncMock()):
+                transport = SshTransport(access,vm,lease)
+                async with transport:
+                    self.assertIn('StrictHostKeyChecking=accept-new',transport.argv())
+                    self.assertEqual((transport.runtime/'password').read_text(),'private-fixture')
+                    self.assertFalse((transport.runtime/'known_hosts').exists())
+                    (transport.runtime/'known_hosts').write_text('new-host ssh-ed25519 '+base64.b64encode(b'new-key').decode()+'\n')
+                    transport.publish_host_key()
+                saved = access.record(vm_id)
+                self.assertEqual(saved['password'],old['password']); self.assertEqual(saved['username'],old['username'])
+                self.assertEqual(saved['vmId'],vm_id); self.assertEqual(saved['imageId'],vm['imageId'])
+                self.assertNotIn('readiness',saved)
+                pinned = saved['hostKeyFingerprint']
+                # A key change within that same image still fails verification.
+                transport = SshTransport(access,vm,lease)
+                async with transport:
+                    self.assertIn('StrictHostKeyChecking=yes',transport.argv())
+                    (transport.runtime/'known_hosts').write_text('new-host ssh-ed25519 '+base64.b64encode(b'unexpected-key').decode()+'\n')
+                    with self.assertRaises(DevelopmentFault): transport.publish_host_key()
+                self.assertEqual(access.record(vm_id)['hostKeyFingerprint'],pinned)
+
     async def test_qmp_reset_invalidates_the_previous_boot_binding(self):
         with tempfile.TemporaryDirectory() as root:
             path = str(Path(root) / 'qmp.sock'); writers = []

@@ -39,6 +39,9 @@ await test('VM guest access requires VM session/CSRF and keeps stored credential
     const saved = await app.inject({ method: 'PATCH', url, payload, headers });
     assert.equal(saved.statusCode, 200); assert(!Object.hasOwn(saved.json(), 'password')); assert(!saved.body.includes('fixture-private'));
     assert.deepEqual(calls.at(-1), { operation: 'access_save', vmId: id, input: payload });
+    const withoutPassword = { revision: 1, vmRevision: revision, enabled: true, username: 'guest' };
+    assert.equal((await app.inject({ method: 'PATCH', url, payload: withoutPassword, headers })).statusCode, 200);
+    assert.deepEqual(calls.at(-1), { operation: 'access_save', vmId: id, input: withoutPassword });
     assert.equal((await app.inject({ method: 'POST', url: url + '/check', headers })).statusCode, 200);
     assert.deepEqual(calls.at(-1), { operation: 'access_check', vmId: id });
   } finally {
