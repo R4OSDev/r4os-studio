@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { VirtualMachine, VmFile } from '../../../../shared/virtual-machines.js';
+import type { VirtualMachine, VmFile, VmResetInput } from '../../../../shared/virtual-machines.js';
 import type { VmApi } from './useVms';
 import { Icon } from '../../app/Icon';
 import { ReleaseSettings } from './ReleaseSettings';
 import { VmConsole } from './Console';
 import { DevelopmentAccess } from './DevelopmentAccess';
+import { vmRequestId } from './api';
 import './styles.css';
 
 function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: (id: string | null) => void }) {
@@ -90,9 +91,20 @@ function Logs({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
 }
 export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMachine; view: string; select: (id: string | null) => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirm, setConfirm] = useState(''), [notice, setNotice] = useState('');
+  const [reset, setReset] = useState<VmResetInput | null>(null);
+  function confirmReset(kind: VmResetInput['kind']) {
+    if (!vm) return;
+    setReset({ kind, requestId: vmRequestId(), expectedRevision: vm.revision ?? vm.imageSha256, confirm: true });
+    setConfirm('reset-' + kind); setError('');
+  }
   async function action(name: string) {
     if (!vm) return; setBusy(true); setError(''); setNotice('');
     try { if (name === 'delete') { await api.request(`/${vm.id}`, 'DELETE', { confirm: true }); select(null); }
+      else if (name.startsWith('reset-')) {
+        if (!reset || name !== 'reset-' + reset.kind) throw new Error('Review the reset request again.');
+        await api.request(`/${vm.id}/reset`, 'POST', reset);
+        setReset(null); setNotice(reset.kind === 'system' ? 'System disks reset. The VM remains stopped.' : 'Exchange partition cleared. The VM remains stopped.');
+      }
       else { await api.request(`/${vm.id}/actions`, 'POST', { action: name });
         if (name === 'shutdown') setNotice('Shutdown requested. Wait for the guest to power off. If it does not respond, use Force Stop.'); }
       setConfirm(''); await api.reload();
@@ -114,13 +126,19 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
     {!api.loading && !api.available && <p className="vm-alert">VM host support is not installed. See the host setup documentation.</p>}
     <section className={`vm-card ${view === 'Console' && vm ? 'vm-card-console' : ''}`}>
       {!vm ? <><h2>New virtual machine</h2><p className="vm-help">Create an independent R4OS instance. Multiple VMs can run at the same time.</p><VmForm api={api} select={select} /></> : <>
-        {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
-          <button className="button-danger" disabled={busy} onClick={() => void action(confirm)}>Confirm {confirm}</button><button className="button-secondary" disabled={busy} onClick={() => setConfirm('')}>Cancel</button></div>}
+        {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'reset-system'
+          ? `Reset the system disks of “${vm.name}”? All C:/D: changes and installed programs will be deleted. Exchange and VM settings will be kept.`
+          : confirm === 'reset-exchange' ? `Clear the Exchange partition of “${vm.name}”? All shared files, guest exchange files, conflicts and pending sync data will be deleted. System disks will be kept.`
+            : confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
+          <button className="button-danger" disabled={busy} onClick={() => void action(confirm)}>Confirm {confirm.replace('reset-', '')}{confirm.startsWith('reset-') ? ' reset' : ''}</button><button className="button-secondary" disabled={busy} onClick={() => { setConfirm(''); setReset(null); }}>Cancel</button></div>}
         {notice && <p className="vm-help" role="status">{notice}</p>}
         {vm.shareSync?.error && view !== 'Exchange' && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
         {(error || vm.error) && <p className="vm-alert" role="alert">{error || vm.error}</p>}
         {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
-          <VmForm api={api} vm={vm} select={select} /><DevelopmentAccess api={api} vm={vm} /><ReleaseSettings api={api} vm={vm} /><div className="vm-actions"><button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
+          <VmForm api={api} vm={vm} select={select} /><DevelopmentAccess api={api} vm={vm} /><ReleaseSettings api={api} vm={vm} /><div className="vm-actions vm-settings-actions">
+            <button className="button-danger" disabled={busy || !stopped} onClick={() => confirmReset('system')}>Reset virtual machine</button>
+            <button className="button-danger" disabled={busy || !stopped} onClick={() => confirmReset('exchange')}>Reset Exchange Partition</button>
+            <button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
           <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', vm.networkEnabled ? 'Enabled' : 'Disabled'], ['Exchange drive', 'Persistent writable FAT32'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
             <p className="vm-help">System and data partitions are private to this VM. The base release is shared read-only. Project assignment will be added later.</p></>}
       </>}

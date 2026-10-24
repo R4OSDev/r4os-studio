@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { runtimePath, VmError } from './paths.js';
 import { ConsoleTickets, ConsoleBridge } from './console.js';
 import { PointerControllers } from './pointer.js';
-import type { VmInput, VmReleaseChange, VmDevelopmentAccessInput } from '../../../../shared/virtual-machines.js';
+import type { VmInput, VmReleaseChange, VmDevelopmentAccessInput, VmResetInput } from '../../../../shared/virtual-machines.js';
 import { VmManager, images, defaultImage } from './service.js';
 import { VmSessions } from './sessions.js';
 import { networkAvailable } from './network.js';
@@ -82,6 +82,23 @@ export async function vmRoutes(app: FastifyInstance) {
   }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await withVmLease(request.params.id, () => manager.action(request.params.id, request.body.action)) }; });
   app.get<{ Params: { id: string } }>('/:id/files', async (request, reply) => {
     sessions.get(request, reply); return { files: await manager.files(request.params.id) };
+  });
+  app.post<{ Params: { id: string }; Body: VmResetInput }>('/:id/reset', {
+    bodyLimit: 2048, schema: { body: { type: 'object', additionalProperties: false,
+      required: ['kind', 'requestId', 'expectedRevision', 'confirm'], properties: {
+        kind: { enum: ['system', 'exchange'] }, requestId: { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' },
+        expectedRevision: { type: 'string', minLength: 1, maxLength: 64 }, confirm: { const: true },
+      } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    const support = await developmentHost<{ features?: { vmReset?: number } }>({ operation: 'capabilities' });
+    if (support.features?.vmReset !== 1) throw new VmError('Wait for the development coordinator to adopt this Studio release.', 503);
+    return withVmLease(request.params.id, async (guard) => {
+      await developmentHost({ operation: 'reset_admission', vmId: request.params.id });
+      const vm = await manager.reset(request.params.id, request.body, guard);
+      if (vm.state === 'stopped' || vm.state === 'failed') await developmentHost({ operation: 'reset_completed', vmId: vm.id, revision: vm.revision ?? vm.imageSha256 });
+      return { vm };
+    }, 'reset');
   });
   app.post<{ Params: { id: string }; Body: { name: string; content: string } }>('/:id/files', {
     bodyLimit: 12 * 1024 * 1024, schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'content'], properties: {

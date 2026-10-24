@@ -48,7 +48,8 @@ def guest_version(result):
 def same_host_image(record, vm):
     # These legacy image fields scope host-key trust and readiness only.
     # Credentials belong to the VM directory and survive image replacement.
-    return (record.get('imageId'), record.get('imageSha256')) == (vm['imageId'], vm['imageSha256'])
+    return ((record.get('imageId'), record.get('imageSha256')) == (vm['imageId'], vm['imageSha256'])
+            and record.get('systemGeneration') == vm.get('systemGeneration'))
 
 
 class Access:
@@ -112,7 +113,7 @@ class Access:
             if not password: raise DevelopmentFault('Enter the guest password for this VM.', 400)
         value = {'schema': 1, 'vmId': vm_id, 'revision': old['revision'] + 1, 'enabled': request['enabled'],
             'username': name, 'password': password if request['enabled'] else '',
-            'imageId': vm['imageId'], 'imageSha256': vm['imageSha256']}
+            'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'systemGeneration': vm.get('systemGeneration')}
         if same and not request.get('resetHostKey'):
             value['hostKeyFingerprint'] = old.get('hostKeyFingerprint')
         else: (self.directory(vm_id) / 'known_hosts').unlink(missing_ok=True)
@@ -249,7 +250,7 @@ class SshTransport:
             record = self.access.record(self.vm['id'])
             if not same_host_image(record, self.vm):
                 for field in ('readiness', 'lastError', 'lastErrorVmRevision'): record.pop(field, None)
-            record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'])
+            record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'], systemGeneration=self.vm.get('systemGeneration'))
             save(self.access.directory(self.vm['id']) / 'access.json', record)
-            self.record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'])
+            self.record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'], systemGeneration=self.vm.get('systemGeneration'))
         except (OSError, ValueError, IndexError): raise DevelopmentFault('The guest host-key receipt could not be confirmed.') from None

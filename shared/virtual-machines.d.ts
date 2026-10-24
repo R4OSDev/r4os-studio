@@ -4,7 +4,7 @@ export interface VmImage {
 }
 export interface VmConfig {
   schema: 1; id: string; name: string; imageId: string; imageSha256: string;
-  cpus: number; memoryMiB: number; networkEnabled?: boolean; revision?: string; createdAt: string;
+  cpus: number; memoryMiB: number; networkEnabled?: boolean; revision?: string; systemGeneration?: string; createdAt: string;
 }
 export type VmState = 'stopped' | 'starting' | 'running' | 'paused' | 'stopping' | 'failed';
 export interface VirtualMachine extends VmConfig {
@@ -21,6 +21,10 @@ export interface VmPointerInput { dx: number; dy: number; buttons: number }
 export interface VmReleaseChange {
   confirm: true; expectedRevision: string; expectedImageId: string; expectedImageSha256: string;
   imageId: string; imageSha256: string;
+}
+
+export interface VmResetInput {
+  kind: 'system' | 'exchange'; requestId: string; expectedRevision: string; confirm: true;
 }
 
 export interface VmDevelopmentAccess {

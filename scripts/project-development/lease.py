@@ -35,6 +35,8 @@ class VmLease:
             'pid': os.getpid(), 'birth': birth(os.getpid()), 'scope': self.scope,
             'createdAt': now(), 'closedAt': None}
         save(folder(self.root / 'leases') / (self.id + '.json'), self.value)
+        if self.scope.get('purpose') == 'reset':
+            save(folder(self.root / 'maintenance') / (self.vm_id + '.json'), {'leaseId': self.id})
         return self
 
     def __exit__(self, *args):
@@ -43,7 +45,25 @@ class VmLease:
                 if self.scope.get('kind') == 'manual': (self.root / 'leases' / (self.id + '.json')).unlink(missing_ok=True)
                 else:
                     self.value['closedAt'] = now(); save(self.root / 'leases' / (self.id + '.json'), self.value)
-            finally: self.stream.close(); self.stream = None
+            finally:
+                try:
+                    if self.scope.get('purpose') == 'reset':
+                        (self.root / 'maintenance' / (self.vm_id + '.json')).unlink(missing_ok=True)
+                finally: self.stream.close(); self.stream = None
+
+
+def maintenance_active(projects, vm_id):
+    path = Path(projects) / '.studio/development/maintenance' / (identity(vm_id) + '.json')
+    if not path.exists() and not path.is_symlink(): return False
+    if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid VM maintenance reservation.', 503)
+    marker = json.loads(path.read_text())
+    try: lease = inspect(projects, marker['leaseId'], check_boot=False)
+    except DevelopmentFault as error:
+        if error.code == 409: return False
+        raise
+    if lease['vmId'] != vm_id or lease['scope'].get('purpose') != 'reset':
+        raise DevelopmentFault('Invalid VM maintenance identity.', 503)
+    return True
 
 
 def inspect(projects, lease_id, token=None, check_boot=True):
@@ -80,7 +100,9 @@ def main():
     if op == 'manual':
         if not installed:
             print(encode({'locked': True, 'developmentHost': False}), flush=True); sys.stdin.buffer.read(1); return
-        with VmLease(projects, sys.argv[3], {'kind': 'manual'}):
+        purpose = sys.argv[4] if len(sys.argv) > 4 else None
+        if purpose not in (None, 'reset'): raise DevelopmentFault('Invalid manual VM purpose.', 400)
+        with VmLease(projects, sys.argv[3], {'kind': 'manual', **({'purpose': purpose} if purpose else {})}):
             print(encode({'locked': True, 'developmentHost': True}), flush=True); sys.stdin.buffer.read(1)
     elif op == 'inspect':
         request = json.loads(sys.stdin.buffer.read(8193)); value = inspect(projects, request['leaseId'], request['token'], request.get('checkBoot', True))

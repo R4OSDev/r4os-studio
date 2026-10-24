@@ -4,10 +4,10 @@ import { projectsDirectory } from '../projects/store.js';
 import { validId, VmError } from '../virtual-machines/paths.js';
 
 /** The child holds flock until the bounded server operation releases its pipe. */
-export async function withVmLease<T>(id: string, work: () => Promise<T>): Promise<T> {
+export async function withVmLease<T>(id: string, work: (guard: () => void) => Promise<T>, purpose?: 'reset'): Promise<T> {
   if (!validId(id)) throw new VmError('Invalid virtual machine ID.', 400);
   const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/project-development/lease.py', import.meta.url)),
-    'manual', projectsDirectory(), id], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
+    'manual', projectsDirectory(), id, ...(purpose ? [purpose] : [])], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
   child.stdin.on('error', () => {});
   let alive = true;
   child.on('close', () => { alive = false; });
@@ -27,7 +27,8 @@ export async function withVmLease<T>(id: string, work: () => Promise<T>): Promis
       });
     });
     if (!alive) throw new VmError('The VM reservation ended.', 503);
-    return await work();
+    const guard = () => { if (!alive) throw new VmError('The VM reservation ended before the operation completed.', 409); };
+    return await work(guard);
   } finally {
     child.stdin.end();
     const cleanup = setTimeout(() => child.kill('SIGKILL'), 1000); cleanup.unref();

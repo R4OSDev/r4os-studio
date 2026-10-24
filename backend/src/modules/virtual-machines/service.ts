@@ -3,9 +3,10 @@ import { createReadStream } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { totalmem } from 'node:os';
-import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState, VmReleaseChange } from '../../../../shared/virtual-machines.js';
+import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState, VmReleaseChange, VmResetInput } from '../../../../shared/virtual-machines.js';
 import { networkAvailable } from './network.js';
 import { recoverRelease, replaceRelease } from './release.js';
+import { recoverReset, resetDisks, completedReset } from './reset.js';
 import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
@@ -69,7 +70,7 @@ export class VmManager {
   async config(id: string): Promise<VmConfig> {
     const path = vmPath(id);
     let pending = this.recovery.get(id);
-    if (!pending) { pending = recoverRelease(id); this.recovery.set(id, pending); void pending.catch(() => this.recovery.delete(id)); }
+    if (!pending) { pending = recoverReset(id).then(() => recoverRelease(id)); this.recovery.set(id, pending); void pending.catch(() => this.recovery.delete(id)); }
     await pending;
     try { return JSON.parse(await readFile(join(path, 'vm.json'), 'utf8')); }
     catch { throw new VmError('Virtual machine not found.', 404); }
@@ -84,7 +85,7 @@ export class VmManager {
       state = 'starting';
       try { const status = await qmp(id, 'query-status'); state = status.running ? 'running' : 'paused'; } catch { /* booting */ }
     }
-    const sync = await shareState(vmPath(id));
+    const sync = await shareState(vmPath(id)).catch(() => ({ pending: true, error: 'The exchange sync state is invalid. Inspect it or explicitly reset the Exchange partition.', lastSyncedAt: undefined }));
     return { ...config, networkEnabled: config.networkEnabled ?? false, state, shareSync: sync && { pending: sync.pending, error: sync.error, lastSyncedAt: sync.lastSyncedAt }, shareMode: 'fat32-persistent', sharePath: join(vmPath(id), 'Exchange/Share'),
       ...(state === 'failed' ? { error: 'The VM stopped with an error. Check Logs.' } : {}) };
   }
@@ -169,6 +170,31 @@ export class VmManager {
         if (!['running', 'paused'].includes(vm.state)) throw new VmError('The VM is not running.');
         await qmp(id, action === 'shutdown' ? 'system_powerdown' : 'system_reset');
       }
+      return this.get(id);
+    }));
+  }
+  async reset(id: string, input: VmResetInput, leaseGuard: () => void) {
+    return this.locked('admission', () => this.locked(id, async () => {
+      await recoverReset(id);
+      await recoverRelease(id);
+      if (await completedReset(id, input)) return this.get(id);
+      const config = await this.config(id);
+      const stopped = async () => {
+        leaseGuard();
+        const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=ActiveState,MainPID,ControlPID'], { timeout: 5000 });
+        const state = Object.fromEntries(stdout.trim().split('\n').map((line) => line.split('=')));
+        if (!['inactive', 'failed'].includes(state.ActiveState) || state.MainPID !== '0' || state.ControlPID !== '0')
+          throw new VmError('Stop the VM and wait for its export worker before resetting it.');
+        leaseGuard();
+      };
+      await stopped();
+      if (input.kind === 'system') {
+        const share = await shareState(vmPath(id));
+        if (share?.pending || share?.error) await finishShare(vmPath(id));
+        const settled = await shareState(vmPath(id));
+        if (settled?.pending || settled?.error) throw new VmError('Resolve the pending Exchange sync before resetting the system disks.');
+      }
+      await resetDisks(id, config, input, (await activeTool('qemu')).imageBinary!, stopped, leaseGuard);
       return this.get(id);
     }));
   }

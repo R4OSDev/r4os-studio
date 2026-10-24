@@ -129,6 +129,38 @@ class Host:
 
     async def handle(self, request, peer_pid=None):
         op = request.get('operation')
+        if op in ('reset_admission', 'reset_completed'):
+            if set(request) != ({'operation', 'vmId'} | ({'revision'} if op == 'reset_completed' else set())):
+                raise DevelopmentFault('Invalid VM reset admission.', 400)
+            from lease import maintenance_active
+            from access import vm_config
+            vm_id = identity(request['vmId'])
+            if not maintenance_active(self.config['projects'], vm_id):
+                raise DevelopmentFault('An exclusive VM reset reservation is required.', 409)
+            async with self.lock:
+                await self.refresh()
+                if self.unbound: raise DevelopmentFault('Reconcile unbound development workers before resetting a VM.', 409)
+                db = connect(Path(self.config['projects']))
+                try: projects = [row[0] for row in db.execute("SELECT id FROM projects WHERE state='ready'")]
+                finally: db.close()
+                from contextlib import closing
+                from project_maintenance import database
+                for project_id in projects:
+                    path = Path(self.config['projects']) / project_id / 'Development/Development.sqlite'
+                    if not path.exists() and not path.is_symlink(): continue
+                    with closing(database(path)) as state:
+                        for row in state.execute('SELECT payload FROM jobs WHERE busy=1'):
+                            job = json.loads(row[0])
+                            if (job.get('binding') or {}).get('id') == vm_id:
+                                raise DevelopmentFault('Wait for VM development jobs to finish before resetting it.', 409)
+                if op == 'reset_completed':
+                    if vm_config(self.config['r4os'], vm_id)['revision'] != request['revision']:
+                        raise DevelopmentFault('The reset VM revision changed.', 409)
+                    state = await systemctl('show', 'r4os-studio-vm@' + vm_id + '.service', '--property=ActiveState', '--value')
+                    if state not in ('inactive', 'failed'): raise DevelopmentFault('The reset VM is no longer stopped.', 409)
+                    from quarantine import admission
+                    admission(self.config['projects'], vm_id, 'stopped')
+                return {'allowed': True}
         if op in ('access_read', 'access_save', 'access_check'):
             allowed = {'operation', 'vmId'} | ({'input'} if op == 'access_save' else set())
             if set(request) != allowed: raise DevelopmentFault('Unexpected guest access fields.', 400)
@@ -168,7 +200,7 @@ class Host:
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1},
+                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
@@ -294,6 +326,9 @@ class Host:
                 if op in ('deploy', 'execution') and not previous:
                     from access import vm_config
                     if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings before deploying.')
+                    from lease import maintenance_active
+                    if maintenance_active(self.config['projects'], store.project['vmId']):
+                        raise DevelopmentFault('This VM is being reset. Wait for maintenance to finish.', 409)
                     binding = vm_config(self.config['r4os'], store.project['vmId'])
                     if op == 'execution':
                         from profiles import require_profile
