@@ -12,7 +12,7 @@ export interface VirtualMachine extends VmConfig {
   shareSync?: { pending: boolean; error?: string; lastSyncedAt?: string };
   error?: string;
 }
-export interface VmFile { name: string; size: number }
+export interface VmFile { name: string; size: number; kind?: 'file' | 'directory' }
 export interface VmList { vms: VirtualMachine[]; images: VmImage[]; defaultImageId: string | null; csrfToken: string; available: boolean; networkAvailable: boolean }
 export interface VmInput { name: string; cpus: number; memoryMiB: number; imageId?: string; networkEnabled?: boolean }
 

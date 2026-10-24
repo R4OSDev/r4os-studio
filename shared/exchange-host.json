@@ -2,6 +2,14 @@
   "interface": "r4os-studio-exchange",
   "schema": 1,
   "identityVersion": 1,
-  "buildTreeVersion": 0,
-  "marker": "STXCHG.JSN"
+  "buildTreeVersion": 1,
+  "marker": "STXCHG.JSN",
+  "dataSchema": 2,
+  "limits": {
+    "files": 128,
+    "bytes": 100663296,
+    "directories": 128,
+    "depth": 6,
+    "syncSeconds": 120
+  }
 }

@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.58 ergänzt den begrenzten Exchange-Build-Unterbaum mit rekursivem Offline-Import/-Export, atomarem journalgestütztem Baumwechsel und Browsernavigation. Laufende alte VM-Worker werden vor neuen verschachtelten Deployments gesperrt.
+
 Version 0.3.57 führt die journalgestützte Exchange-Identität, read-only SFTP-Zielauflösung und getrennte Deployment-/Bereitschaftsverträge ein. Bestehende C:-Belege bleiben lesbar; Desktopstart benötigt weiterhin einen öffentlichen Gastvertrag.
 
 Version 0.3.56 supplies the fixed R4OS SSH login automatically: user `r4os`,
@@ -1306,3 +1308,5 @@ Research/R4OS/Agent-Sessions/Completion-Audit.json in the development workspace.
 ### Exchange deployment contract
 
 New offline Exchange imports reserve `STXCHG.JSN` for a journaled VM/volume identity. Exchange reset renews the generation; image/system reset keeps it. Guest target discovery uses exact marker bytes across fixed SFTP drive candidates, never a hardcoded F: or volume serial. The immutable VM worker pinned at boot determines recursive Exchange support. Existing deployments remain historical records. Native headless desktop launch still needs a public R4OS launch/initialization contract; SSH alone does not provide it. See `shared/exchange-host.json` and the development contracts. No guest runtime validation was performed for this change.
+
+Exchange sync schema 2 stores files and empty directories under `Build`, with 128 files/96 MiB, 128 directories and six path levels across the whole disk. Metadata and interrupted uploads count toward those limits. All traversals are bounded; extraction has an OS file-size limit. Conflicts preserve both host and guest trees. Publication exchanges two complete directories atomically with a durable inode journal, so recovery never repeats a completed exchange. Existing schema 1 baselines remain readable. Older workers cannot interpret schema 2 and must preserve/block it; restart a running VM normally with the new worker before nested guest uploads. Never change its pinned worker or edit `exchange.img` live. The browser displays the last offline host copy and permits stopped-VM uploads and individual file/empty-folder removal.

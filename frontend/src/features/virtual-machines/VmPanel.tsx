@@ -36,6 +36,7 @@ function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: 
   </form>;
 }
 function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
+  const [path, setPath] = useState('');
   const [files, setFiles] = useState<VmFile[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const stopped = ['stopped', 'failed'].includes(vm.state);
   useEffect(() => {
@@ -47,7 +48,7 @@ function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
   }, [vm.id, vm.state, vm.shareSync?.lastSyncedAt]);
   async function refresh() { setFiles((await api.request<{ files: VmFile[] }>(`/${vm.id}/files`)).files); }
   return <div>
-    <p className="vm-help">F: (R4SHARE) is a persistent, writable FAT32 exchange drive. Guest changes are copied to this folder after the VM stops. Host changes are imported at the next start. C: and D: remain intact. Edit host files only while the VM is stopped; this is not a live shared folder.</p>
+    <p className="vm-help">R4SHARE is a persistent FAT32 exchange drive. The guest assigns its drive letter. Guest changes are copied to this folder after the VM stops. Host changes are imported at the next start. C: and D: remain intact. Edit host files only while the VM is stopped; this is not a live shared folder.</p>
     <code className="vm-path">{vm.sharePath}</code>
     {vm.shareSync?.pending && <p className="vm-help">{stopped ? 'Guest changes still need synchronization.' : 'Guest changes will be synchronized after QEMU stops. The folder below shows the last host copy.'}</p>}
     {vm.shareSync?.error && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
@@ -55,6 +56,7 @@ function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
       setBusy(true); setError(''); void api.request(`/${vm.id}/actions`, 'POST', { action: 'sync-exchange' }).then(async () => { await api.reload(); await refresh(); }).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
     }}>Retry exchange sync</button>}
     {vm.shareSync?.lastSyncedAt && <p className="vm-help">Last synchronized: {new Date(vm.shareSync.lastSyncedAt).toLocaleString()}</p>}
+    <nav aria-label="Exchange folder"><button className="button-secondary" disabled={!path} onClick={() => setPath(path.split('/').slice(0, -1).join('/'))}>Up</button><code>{path || '/'}</code></nav>
     <label className="vm-upload">Upload artifact (up to 8 MiB)
       <input type="file" disabled={!stopped || busy} onChange={(event) => {
         const file = event.target.files?.[0]; if (!file) return;
@@ -63,17 +65,17 @@ function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
           if (file.size > 8 * 1024 * 1024) throw new Error('Files are limited to 8 MiB per upload.');
           const bytes = new Uint8Array(await file.arrayBuffer()); let binary = '';
           for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
-          await api.request(`/${vm.id}/files`, 'POST', { name: file.name, content: btoa(binary) }); await refresh();
+          await api.request(`/${vm.id}/files`, 'POST', { name: path ? path + '/' + file.name : file.name, content: btoa(binary) }); await refresh();
         })().catch((cause) => setError(cause.message)).finally(() => setBusy(false));
       }} />
     </label>
     {error && <p className="vm-alert" role="alert">{error}</p>}
-    <ul className="vm-files">{files.map((file) => <li key={file.name}><span>{file.name}<small>{file.size.toLocaleString()} bytes</small></span>
+    <ul className="vm-files">{files.filter((file) => file.name.split('/').slice(0, -1).join('/') === path).map((file) => <li key={file.name}><span>{file.kind === 'directory' ? <button className="button-secondary" onClick={() => setPath(file.name)}>{file.name.split('/').pop()}/</button> : file.name.split('/').pop()}<small>{file.kind === 'directory' ? 'Folder' : `${file.size.toLocaleString()} bytes`}</small></span>
       <button className="button-secondary" disabled={!stopped || busy} onClick={() => {
         setBusy(true); setError(''); void api.request(`/${vm.id}/files/${encodeURIComponent(file.name)}`, 'DELETE').then(refresh).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
       }}>Remove</button></li>)}</ul>
-    {!files.length && <p className="vm-help">The exchange folder is empty.</p>}
-    <p className="vm-help">Files in the root folder only; no folders or symlinks. ASCII filenames only. Up to 128 files and 96 MiB total. Files can also be placed in the folder directly on the host.</p>
+    {!files.some((file) => file.name.split('/').slice(0, -1).join('/') === path) && <p className="vm-help">The exchange folder is empty.</p>}
+    <p className="vm-help">Root files and Build subfolders only. ASCII names; no links. Up to 128 files, 96 MiB, 128 folders and 6 levels, including reserved metadata. STXCHG.JSN is managed by Studio. Remove folders after emptying them.</p>
   </div>;
 }
 function Logs({ api, vm }: { api: VmApi; vm: VirtualMachine }) {

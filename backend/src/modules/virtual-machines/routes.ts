@@ -102,7 +102,7 @@ export async function vmRoutes(app: FastifyInstance) {
   });
   app.post<{ Params: { id: string }; Body: { name: string; content: string } }>('/:id/files', {
     bodyLimit: 12 * 1024 * 1024, schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'content'], properties: {
-      name: { type: 'string', minLength: 1, maxLength: 100 }, content: { type: 'string', maxLength: 12 * 1024 * 1024, pattern: '^[A-Za-z0-9+/]*={0,2}$' },
+      name: { type: 'string', minLength: 1, maxLength: 605 }, content: { type: 'string', maxLength: 12 * 1024 * 1024, pattern: '^[A-Za-z0-9+/]*={0,2}$' },
     } } },
   }, async (request, reply) => { sessions.mutation(request, reply); await withVmLease(request.params.id, () => manager.upload(request.params.id, request.body.name, request.body.content)); return reply.code(204).send(); });
   app.delete<{ Params: { id: string; name: string } }>('/:id/files/:name', async (request, reply) => {

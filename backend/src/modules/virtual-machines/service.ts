@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, readdir, rm, lstat, open, stat } from 'node:fs/promises';
+import { rmdir, mkdir, readFile, writeFile, rename, readdir, rm, lstat, open, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -12,7 +12,7 @@ import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
 import { qmp } from './qmp.js';
 import { reservedExchangeName } from './exchange-identity.js';
-import { shareFiles, validFilename } from './share.js';
+import { shareFiles, validSharePath, boundShare } from './share.js';
 import { finishShare, shareState } from './share-sync.js';
 
 async function atomic(path: string, data: unknown) {
@@ -207,19 +207,24 @@ export class VmManager {
   async upload(id: string, name: string, content: string) {
     return this.locked(id, async () => {
       await this.stopped(id);
-      if (!validFilename(name) || reservedExchangeName(name)) throw new VmError('Use an ASCII filename with letters, digits, dots, underscores or hyphens.', 400);
+      if (!validSharePath(name) || reservedExchangeName(name)) throw new VmError('Use an ASCII filename with letters, digits, dots, underscores or hyphens.', 400);
       const data = Buffer.from(content, 'base64');
       if (data.length > 8 * 1024 * 1024) throw new VmError('Files are limited to 8 MiB per upload.', 400);
-      const files = await this.files(id);
+      const files = await shareFiles(join(vmPath(id), 'Exchange/Share'));
       if (files.some((f) => f.name.toLowerCase() === name.toLowerCase())) throw new VmError('A file with this name already exists.');
-      if (files.length >= 128 || files.reduce((sum, f) => sum + f.size, data.length) > 96 * 1024 * 1024) throw new VmError('The exchange folder is full.');
+      boundShare([...files, { name, size: data.length, kind: 'file' }]);
+      const parent = name.split('/').slice(0, -1).join('/');
+      if (parent && !files.some((entry) => entry.name === parent && entry.kind === 'directory')) throw new VmError('The Exchange destination folder does not exist.');
       await writeFile(join(vmPath(id), 'Exchange/Share', name), data, { mode: 0o600, flag: 'wx' });
     });
   }
   async removeFile(id: string, name: string) {
     return this.locked(id, async () => {
-      await this.stopped(id); if (!validFilename(name) || reservedExchangeName(name)) throw new VmError('Invalid filename.', 400);
-      await rm(join(vmPath(id), 'Exchange/Share', name));
+      await this.stopped(id); if (!validSharePath(name) || reservedExchangeName(name)) throw new VmError('Invalid filename.', 400);
+      const entry = (await shareFiles(join(vmPath(id), 'Exchange/Share'))).find((file) => file.name === name);
+      if (!entry) throw new VmError('Exchange entry not found.', 404);
+      if (entry.kind === 'directory') await rmdir(join(vmPath(id), 'Exchange/Share', name));
+      else await rm(join(vmPath(id), 'Exchange/Share', name));
     });
   }
   async log(id: string, name: 'serial' | 'qemu') {
