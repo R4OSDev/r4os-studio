@@ -132,6 +132,8 @@ class Deployment:
         deployment_id = str(uuid.uuid4()); guest_dir = directory(target, project_name, 'D' + deployment_id.replace('-', '')[:7].upper())
         save(self.work / 'intent.json', {'deploymentId': deployment_id, 'projectId': store.id, 'guestDirectory': guest_dir,
             'artifactId': artifact['id'], 'target': target, 'helperSha256': helper['sha256']})
+        store.update(job['id'], package={'format': 'exchange-build-v1', 'relativeDirectory': '/'.join(guest_dir.split('/')[2:]),
+            'guestDirectory': exchange['drive'] + ':' + chr(92) + chr(92).join(guest_dir.split('/')[2:])})
         guard(store, job, lease); await batch(ssh, ['mkdir ' + quote(guest_dir)])
         self.phase('transferring'); receipts = []
         ownership = self.work / 'DEPLOY.JSN'

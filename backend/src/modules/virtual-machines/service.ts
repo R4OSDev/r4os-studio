@@ -151,7 +151,7 @@ export class VmManager {
         throw new VmError('The VM changed after confirmation. Review its current release and confirm again.');
       const image = (await images()).find((image) => image.id === input.imageId && image.sha256 === input.imageSha256);
       if (!image) throw new VmError('The selected release is no longer available locally.');
-      if (vm.shareSync?.pending) await finishShare(vmPath(id));
+      await finishShare(vmPath(id));
       await replaceRelease(id, config, image, (await activeTool('qemu')).imageBinary!);
       return this.get(id);
     }));
@@ -191,8 +191,8 @@ export class VmManager {
       };
       await stopped();
       if (input.kind === 'system') {
-        const share = await shareState(vmPath(id));
-        if (share?.pending || share?.error) await finishShare(vmPath(id));
+        // Finish even a committed merge whose old-tree cleanup was interrupted.
+        await finishShare(vmPath(id));
         const settled = await shareState(vmPath(id));
         if (settled?.pending || settled?.error) throw new VmError('Resolve the pending Exchange sync before resetting the system disks.');
       }

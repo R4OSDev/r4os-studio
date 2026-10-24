@@ -45,7 +45,7 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
     {options && !options.execute.available && <p className="project-message">{options.execute.reason}</p>}
     {!draft && !error && <p role="status">Loading settings…</p>}
     {draft && <fieldset className="project-fields" disabled={busy}>
-      <ProjectField id="run-arguments" label="Arguments"><input id="run-arguments" maxLength={project?.template === 'service' ? 95 : 1024} value={draft.arguments} onChange={(e) => patch({ arguments: e.target.value })} /></ProjectField>
+      <ProjectField id="run-arguments" label="Arguments (UTF-8: 127 bytes, services 95)"><input id="run-arguments" maxLength={project?.template === 'service' ? 95 : 1024} value={draft.arguments} onChange={(e) => patch({ arguments: e.target.value })} /></ProjectField>
       <div className="project-form-row">
         <ProjectField id="run-cwd" label="Working directory"><input id="run-cwd" value="Deployment directory" readOnly /></ProjectField>
         <ProjectField id="run-timeout" label="Time limit (seconds)"><input id="run-timeout" type="number" min={1} max={300} required value={draft.timeoutSeconds} onChange={(e) => patch({ timeoutSeconds: Number(e.target.value) })} /></ProjectField>

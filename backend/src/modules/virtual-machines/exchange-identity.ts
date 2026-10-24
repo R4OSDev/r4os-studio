@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import { open, lstat, rename, readFile, readdir } from 'node:fs/promises';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
+import { shareFiles, boundShare } from './share.js';
 import { runtimePath, validId, VmError } from './paths.js';
 
 export const exchangeMarker = 'STXCHG.JSN';
@@ -45,6 +46,7 @@ export async function prepareExchangeIdentity(directory: string) {
   if (current && !current.equals(bytes(value))) throw new VmError('The reserved Exchange marker changed. Preserve the image and restore its identity.');
   if (!current) {
     if (value.published) throw new VmError('The reserved Exchange marker is missing. Preserve the image and restore its identity.');
+    boundShare([...(await shareFiles(join(directory, 'Exchange/Share'))), { name: exchangeMarker, size: bytes(value).length, kind: 'file' }]);
     await durable(marker, bytes(value)); await sync(join(directory, 'Exchange/Share'));
   }
   if (!value.published) {

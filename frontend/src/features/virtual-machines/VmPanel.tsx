@@ -136,7 +136,7 @@ export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMac
         {notice && <p className="vm-help" role="status">{notice}</p>}
         {vm.shareSync?.error && view !== 'Exchange' && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
         {(error || vm.error) && <p className="vm-alert" role="alert">{error || vm.error}</p>}
-        {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
+        {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange key={vm.id} vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
           <VmForm api={api} vm={vm} select={select} /><DevelopmentAccess api={api} vm={vm} /><ReleaseSettings api={api} vm={vm} /><div className="vm-actions vm-settings-actions">
             <button className="button-danger" disabled={busy || !stopped} onClick={() => confirmReset('system')}>Reset virtual machine</button>
             <button className="button-danger" disabled={busy || !stopped} onClick={() => confirmReset('exchange')}>Reset Exchange Partition</button>

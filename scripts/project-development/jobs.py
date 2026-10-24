@@ -171,6 +171,14 @@ class Jobs:
 
     def page(self, job_id, offset=0):
         job = self.get(job_id)
+        # Presentation-only projection for historical records; never migrate a saved deployment.
+        if not job.get('package') and job.get('deploymentId'):
+            try:
+                deployment = self.deployment_metadata(job['deploymentId'], recovering=True)
+                directory = deployment['guestDirectory']
+                job['package'] = {'format': deployment.get('format', 'legacy-c'), 'guestDirectory': directory,
+                    'relativeDirectory': directory[3:].replace(chr(92), '/')}
+            except (DevelopmentFault, KeyError, ValueError): pass
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
         if type(offset) != int or offset < 0 or offset > LIMITS['outputBytes']:
             raise DevelopmentFault('Invalid development output offset.', 400)
@@ -186,7 +194,7 @@ class Jobs:
         from evidence import list_for
         return {'job': job, 'output': data.decode('utf-8', errors='replace'), 'nextOffset': offset + len(data),
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
-                'outputKind': 'build' if job['kind'] == 'build' else 'diagnostic' if job['kind'] == 'vm_start' else 'console', 'evidence': list_for(self, job_id)}
+                'outputKind': 'build' if job['kind'] == 'build' else 'console' if job['kind'] == 'execution' else 'diagnostic', 'evidence': list_for(self, job_id)}
 
     def artifact_metadata(self, artifact_id, recovering=False):
         """Private ownership lookup; callers must verify bytes before using files."""

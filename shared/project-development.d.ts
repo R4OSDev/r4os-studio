@@ -88,6 +88,7 @@ export interface GuestProcessIdentity {
 export interface DevelopmentEvidence {
   id: string;
   kind: 'console' | 'diagnostic' | 'screenshot' | 'file';
+  name?: string;
   sha256: string;
   bytes: number;
   createdAt: string;
@@ -105,6 +106,8 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  package?: { format: 'exchange-build-v1' | 'legacy-c'; relativeDirectory: string; guestDirectory: string };
+
   vmStart?: {
     ready: boolean; started: boolean; checkedAt?: string; guestRelease?: string; guestKernel?: string;
     vmId?: string; vmRevision?: string; imageId?: string; imageSha256?: string; bootId?: string; accessRevision?: number;

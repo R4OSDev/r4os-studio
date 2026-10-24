@@ -150,7 +150,9 @@ class Execution:
                 info = bound.get('exchangeInfo') if 'bound' in locals() else None
                 if info is None: info = await vm_call(lease, 'info')
                 deployment, owner_path = await rebind(ssh, info, target, deployment, store.id)
-                target = deployment['target']; store.update(job['id'], target=target, phase='verifying_deployment')
+                target = deployment['target']; store.update(job['id'], target=target, phase='verifying_deployment',
+                    package={'format': 'exchange-build-v1', 'guestDirectory': deployment['guestDirectory'],
+                        'relativeDirectory': deployment['guestDirectory'][3:].replace(chr(92), '/')})
                 ssh.package_root = owner_path.rsplit('/', 1)[0]
                 entries = await inventory(ssh, target['exchange'])
                 preflight(entries, [16384, 4096], 2, 0, len(job['settings'].get('outputFiles', [])))

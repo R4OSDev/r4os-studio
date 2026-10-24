@@ -103,3 +103,6 @@
 .development-image { margin: 12px 0; min-width: 0; }
 .development-image img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 .development-image figcaption { font-size: 12px; opacity: .7; margin-top: 6px; }
+
+.development-package code { display: block; overflow-wrap: anywhere; }
+.development-package small { display: block; margin-top: .25rem; color: var(--text-muted, #999); }
