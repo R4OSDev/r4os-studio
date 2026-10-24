@@ -127,6 +127,11 @@ class Jobs:
                     raise DevelopmentFault('Service arguments are limited to 95 bytes.', 400)
                 if settings.get('serviceResponseContains') and self.project['template'] != 'service':
                     raise DevelopmentFault('This project is not a service.', 400)
+            if kind == 'execution':
+                from settings import validate
+                settings = validate(settings)
+                if artifact['role'] == 'service' and len(settings['arguments'].encode()) > 95:
+                    raise DevelopmentFault('Service arguments are limited to 95 UTF-8 bytes.', 400)
             job = {'id': str(uuid.uuid4()), 'projectId': self.id, 'kind': kind, 'state': 'queued',
                 'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': deployment['id'] if deployment else None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
@@ -221,7 +226,7 @@ class Jobs:
 
     def publish_deployment(self, job_id, record):
         with self.db: self.db.execute('INSERT INTO deployments VALUES(?,?,?)', (record['id'], job_id, encode(record)))
-        return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], exitCode=0)
+        return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], readiness=record.get('readiness'), exitCode=0)
 
     def deployment_metadata(self, deployment_id, recovering=False):
         """Private ownership lookup without reading an artifact's bytes."""

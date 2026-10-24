@@ -8,7 +8,8 @@ from sftp import download
 async def collect(store, job, deployment, ssh, work):
     values = []
     parts = deployment['guestDirectory'].replace('\\', '/').split('/')
-    directory = '/C/' + '/'.join(part for part in parts[1:] if part)
+    from exchange import sftp_directory
+    directory = sftp_directory(deployment)
     for index, spec in enumerate(job['settings'].get('outputFiles', [])):
         local = work / ('result-' + str(index))
         try:

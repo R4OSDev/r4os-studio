@@ -106,6 +106,14 @@ class Execution:
         from vm_worker import broker_call, guard
         store, job = self.store, self.job
         deployment = store.deployment(job['deploymentId']); vm = job['binding']
+        if deployment.get('format') != 'exchange-build-v1':
+            raise DevelopmentFault('This historical C: deployment remains readable. Deploy the artifact to Exchange Build before running.')
+        if deployment['role'] == 'desktop':
+            store.update(job['id'], readiness={'state': 'unsupported', 'reasonCode': 'native_desktop_launch_contract_missing',
+                'reason': 'A public headless Desktop launch and initialization contract is required.', 'checkedAt': now()})
+            raise DevelopmentFault('Desktop start requires a public headless launch and window-initialization contract. No application was started.')
+        if deployment.get('helperCapabilities', {}).get('exchangeRunVersion') != 1:
+            raise DevelopmentFault('Deploy again with an Exchange-run-capable controller before running.')
         if deployment.get('helperCapabilities', {}).get('controlVersion') != 2 or deployment.get('helperCapabilities', {}).get('watchdogVersion') != 1:
             raise DevelopmentFault('Deploy again with the current guest controller before running.')
         if job['settings'].get('serviceResponseContains') and not deployment.get('helperCapabilities', {}).get('serviceSelfTest'):
@@ -131,11 +139,6 @@ class Execution:
                 if info['vm']['state'] != 'running': raise DevelopmentFault('The deployment boot has ended. Deploy again to the prepared VM before running.')
                 target = await broker_call({'operation': 'bind_target', **binding})
                 invocation_id = info['invocationId']
-            # Profile labels are descriptive metadata, not a VM qualification.
-            # Existing deployments retain their recorded label across updates.
-            previous = {k: v for k, v in deployment['target'].items() if k != 'profileId'}
-            if {k: v for k, v in target.items() if k != 'profileId'} != previous:
-                raise DevelopmentFault('The deployment belongs to an older VM boot or revision. Deploy again before running.')
             scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
             guard(store, job, lease, allow_stopping=True)
             access = Access(store.projects, store.r4os, None)
@@ -143,10 +146,21 @@ class Execution:
                 version = await ssh.exec('VER')
                 guest_version(version)
                 ssh.publish_host_key()
-                store.update(job['id'], phase='verifying_deployment')
+                from exchange import rebind, inventory, preflight
+                info = bound.get('exchangeInfo') if 'bound' in locals() else None
+                if info is None: info = await vm_call(lease, 'info')
+                deployment, owner_path = await rebind(ssh, info, target, deployment, store.id)
+                target = deployment['target']; store.update(job['id'], target=target, phase='verifying_deployment')
+                ssh.package_root = owner_path.rsplit('/', 1)[0]
+                entries = await inventory(ssh, target['exchange'])
+                preflight(entries, [16384, 4096], 2, 0, len(job['settings'].get('outputFiles', [])))
                 guard(store, job, lease, allow_stopping=True)
-                await download_many(ssh, [(item['path'], self.work / ('verify-' + str(index)), item['bytes'])
+                await download_many(ssh, [(owner_path, self.work / 'project-owner.json', 4096)] + [(item['path'], self.work / ('verify-' + str(index)), item['bytes'])
                     for index, item in enumerate(deployment['files'])])
+                import json
+                owner = json.loads((self.work / 'project-owner.json').read_text())
+                if owner != {'schema': 1, 'interface': 'r4os-studio-project', 'projectId': store.id, 'exchangeGeneration': target['exchange']['generation']}:
+                    raise DevelopmentFault('The Exchange project owner changed. No application was started.')
                 for index, item in enumerate(deployment['files']):
                     guard(store, job, lease, allow_stopping=True)
                     path = self.work / ('verify-' + str(index))
@@ -176,12 +190,13 @@ class Execution:
                     # The start is sent once. Missing acknowledgements become unknown.
                     start_sent = True
                     state = await control.call('start', role=deployment['role'], arguments=job['settings']['arguments'],
-                        timeoutSeconds=job['settings']['timeoutSeconds'], serviceName=store.project['moduleName'] if deployment['role'] == 'service' else '')
+                        timeoutSeconds=job['settings']['timeoutSeconds'], serviceName=('S' + execution_id.replace('-', '')[:24]) if deployment['role'] == 'service' else '')
                     process = {'instanceId': state['instanceId'], 'generation': state['generation'], 'windowId': state['windowId'], 'serviceName': state.get('serviceName')}
                     if not process['instanceId'] or not process['generation'].isdigit() or int(process['generation']) < 1:
                         raise UnconfirmedGuestEffect('The guest start did not confirm a generation-owned process.')
                     save(self.work / 'started.json', {**intent, 'state': 'started', 'process': process})
-                    store.update(job['id'], process=process, phase='guest_running')
+                    store.update(job['id'], process=process, phase='guest_running',
+                        readiness={'state': 'started', 'process': process, 'checkedAt': now()})
                     from job_control import Mailbox
                     from checks import evaluate
                     from output_files import collect
@@ -191,7 +206,8 @@ class Execution:
                         self.output(state); state['outputBase64'] = ''; self.last = state
                         save(self.work / 'observation.json', state)
                         process['windowId'] = state['windowId']
-                        store.update(job['id'], process=process, phase=('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running')), guestState={k: v for k, v in state.items() if k != 'outputBase64'})
+                        readiness = {'state': 'ready' if state.get('serviceEndpointReady') else 'started', 'process': process, 'checkedAt': now()}
+                        store.update(job['id'], process=process, readiness=readiness, phase=('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running')), guestState={k: v for k, v in state.items() if k != 'outputBase64'})
                         if job['settings'].get('serviceResponseContains') and state.get('serviceEndpointReady') and not service_checked and not self.stop_requested and store.get(job['id'])['state'] == 'running':
                             service_checked = True
                             state = await control.call('service_check')
@@ -214,7 +230,7 @@ class Execution:
                                 'outputReceipt': {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}})
                             release(store.projects, vm['id'], job['id'])
                             stopped = state.get('stopReason'); terminal = 'interrupted' if stopped == 'user_stop' else ('failed' if stopped == 'timeout' else ('unknown' if state['exitCode'] is None else ('failed' if state['exitCode'] != 0 else 'completed')))
-                            return store.update(job['id'], terminal, phase='timeout' if stopped == 'timeout' else ('stopped' if stopped else 'guest_completed'),
+                            return store.update(job['id'], terminal, readiness={'state': 'unknown' if terminal == 'unknown' else 'completed', 'process': process, 'checkedAt': now()}, phase='timeout' if stopped == 'timeout' else ('stopped' if stopped else 'guest_completed'),
                                 exitCode=state['exitCode'], guestState={k: v for k, v in state.items() if k != 'outputBase64'},
                                 error='Guest execution exceeded its time limit.' if stopped == 'timeout' else None)
                         if state['state'] == 'unknown': raise UnconfirmedGuestEffect('The generation-owned process status became unknown.')

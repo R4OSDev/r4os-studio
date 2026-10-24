@@ -104,10 +104,10 @@ const Controller = struct {
         return true;
     }
     fn start(self: *Controller, req: Request) bool {
-        if (self.started or req.arguments.len > 1024 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300 or
+        if (self.started or req.arguments.len > 127 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300 or
             std.mem.indexOfScalar(u8, req.arguments, 0) != null) return false;
         const is_service = std.mem.eql(u8, req.role, "service");
-        if (!is_service and !std.mem.eql(u8, req.role, "terminal") and !std.mem.eql(u8, req.role, "desktop")) return false;
+        if (!is_service and !std.mem.eql(u8, req.role, "terminal")) return false;
         var args: [1025:0]u8 = .{0} ** 1025;
         @memcpy(args[0..req.arguments.len], req.arguments);
         self.console_role = std.mem.eql(u8, req.role, "terminal");
@@ -133,17 +133,10 @@ const Controller = struct {
                 .process => |p| p, else => return false,
             };
         } else {
-            const desktop = std.mem.eql(u8, req.role, "desktop");
             const path = r4os.path.PathZ{ .ptr = &self.path, .len = @intCast(std.mem.sliceTo(&self.path, 0).len) };
-            self.process = switch (resources.spawnWithConsoleHost(path, &args, if (desktop) .gui else .console,
-                if (desktop) .none else .terminal_mode)) { .process => |p| p, else => return false };
-            // Both image-pinned Desktop hosts adopt exact-generation GUI
-            // processes after their public window binding is assigned. This
-            // only marks our process; the Desktop chooses its free host slot.
-            if (desktop) {
-                var handle = self.raw();
-                if (self.desk.programSetWindowHandle(&handle, 1) != 0) return false;
-            }
+            self.process = switch (resources.spawnWithConsoleHost(path, &args, .console, .terminal_mode)) {
+                .process => |p| p, else => return false,
+            };
         }
         self.state.instanceId = self.process.?.raw;
         self.state.generation = std.fmt.bufPrint(&self.generation_buf, "{d}", .{self.process.?.generation}) catch return false;

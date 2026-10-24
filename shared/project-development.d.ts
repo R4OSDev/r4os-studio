@@ -52,7 +52,7 @@ export interface DevelopmentExchangeTarget {
   drive: string; bootId: string; accessRevision: number;
 }
 export interface DevelopmentReadiness {
-  state: 'transferred' | 'ready' | 'started' | 'completed' | 'unsupported' | 'unknown';
+  state: 'transferred' | 'ready' | 'started' | 'completed' | 'unsupported' | 'unknown' | 'failed' | 'interrupted';
   reasonCode?: string; reason?: string; checkedAt: string;
   process?: GuestProcessIdentity;
 }

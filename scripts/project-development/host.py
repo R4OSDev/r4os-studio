@@ -201,7 +201,7 @@ class Host:
                     'imageSha256': vm['imageSha256'], 'bootId': boot['bootId'], 'profileId': profile['id'],
                     'helperSha256': request['helperSha256'], 'helperProtocol': 1}
                 store.update(job['id'], target=target)
-                return {'target': target, 'vmInvocationId': info['invocationId']} if op == 'bind_execution' else target
+                return {'target': target, 'vmInvocationId': info['invocationId'], 'exchangeInfo': {key: info.get(key) for key in ('exchange', 'exchangeWorker')}} if op == 'bind_execution' else target
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],

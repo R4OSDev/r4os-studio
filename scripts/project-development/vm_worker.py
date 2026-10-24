@@ -220,7 +220,10 @@ async def main():
                 check = {**check, 'state': 'not-run' if check['state'] == 'not-run' else 'inconclusive',
                     'findings': [*check['findings'], 'Guest control ended without a confirmed process result.']}
             store.update(job['id'], check=check)
-        store.update(job['id'], state, phase='stopped' if interrupted else 'failed', error=message,
+        readiness = store.get(job['id']).get('readiness')
+        if job['kind'] == 'execution' and (not readiness or readiness.get('state') != 'unsupported'):
+            readiness = {'state': state, 'checkedAt': now(), 'reason': message}
+        store.update(job['id'], state, readiness=readiness, phase='stopped' if interrupted else 'failed', error=message,
                      exitCode=getattr(error, 'exit_code', None))
     finally: store.close()
 
