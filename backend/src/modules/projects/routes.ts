@@ -8,6 +8,7 @@ import { runRoutes } from '../agent-sessions/run-routes.js';
 import { developmentRoutes } from '../project-development/routes.js';
 import { agentHost } from '../agent-sessions/host.js';
 import { developmentHost } from '../project-development/host.js';
+import { editorRoutes } from '../project-editor/routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -57,6 +58,7 @@ async function maintenanceHosts() {
 
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
+  editorRoutes(app, directory, sessions);
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);
   developmentRoutes(app, sessions);

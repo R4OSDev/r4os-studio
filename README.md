@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.48 adds the protected project editor read API with paginated Workspace directories, stable bounded UTF-8 reads and byte identities. The editor can read a Workspace whose manifest needs repair, without creating sessions or development jobs. Links, hardlinks, unsupported formats and oversized files remain unavailable for editing.
+
 Version 0.3.47 Project Settings → General now includes Clear build cache. The fixed project operation waits for idle agents, jobs and workers, owns the project lifetime lock, and removes only the detached private compiler cache. Persistent request receipts protect retries and newly rebuilt caches; source files, pins, sessions, artifacts, VMs and shared packages stay in place. Unsaved settings remain unchanged.
 
 Version 0.3.46 Components now has one SDK view with its matching Contract and Libraries, installation states and shared download/default actions. Previously selected Contract/Libraries views lead to SDK. Interrupted browser requests retain their operation identity for explicit retry, including after a page reload; existing project pins remain unchanged.
