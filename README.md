@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.40 creates Workspace/Agents.md with Titel and Beschreibung during durable project publication. A fixed protected API reads/saves the 32 KiB UTF-8 file with hash conflicts and exclusive project maintenance locks. Existing files and pins remain unchanged; reading a missing file returns a draft. Reserved v4 creation requests retain their original file map. Syntax/build/TypeScript/lint checked; no tests or project/agent/guest runs.
+
 Version 0.3.39 combines execution target binding and its VM observation. All
 deployment files are downloaded through one authenticated SFTP batch, then each
 size and SHA-256 is checked before launch. Host keys, project/VM/image/boot/lease

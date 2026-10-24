@@ -46,6 +46,22 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);
   developmentRoutes(app, sessions);
+  app.get<{ Params: { id: string } }>('/:id/agents', {
+    schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } },
+  }, async (request, reply) => {
+    sessions.session(request, reply);
+    return projectStore(directory, { operation: 'get', id: request.params.id }, 'project_agents');
+  });
+  app.patch<{ Params: { id: string }; Body: { text: string; sha256: string | null } }>('/:id/agents', {
+    bodyLimit: 262144,
+    schema: { params: { type: 'object', required: ['id'], properties: { id: identity } },
+      body: { type: 'object', additionalProperties: false, required: ['text', 'sha256'], properties: {
+        text: { type: 'string', maxLength: 32768 }, sha256: { anyOf: [{ type: 'null' }, { type: 'string', pattern: '^[a-f0-9]{64}$' }] },
+      } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return projectStore(directory, { operation: 'save', id: request.params.id, input: request.body }, 'project_agents');
+  });
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
   let recovery: Promise<void> = Promise.resolve();
   app.addHook('onReady', async () => {

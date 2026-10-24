@@ -2,11 +2,11 @@
 import hashlib
 import json
 
-REVISION = 'templates-v4'
+REVISION = 'templates-v5'
 
 
-def revision(pins):
-    return hashlib.sha256((json.dumps(pins, sort_keys=True) + ':' + REVISION).encode()).hexdigest()
+def revision(pins, variant=REVISION):
+    return hashlib.sha256((json.dumps(pins, sort_keys=True) + ':' + variant).encode()).hexdigest()
 
 BUILD = '''const std = @import("std");
 pub fn build(b: *std.Build) void {
@@ -18,10 +18,14 @@ pub fn build(b: *std.Build) void {
 '''
 
 
-def render(context, directory, project):
+def render(context, directory, project, include_agents=True):
     from sdk import TYPES
     from toolset import render as sdk_render
-    return sdk_render(context, directory, project, next(value for value in TYPES if value[0] == project['template']))
+    result = sdk_render(context, directory, project, next(value for value in TYPES if value[0] == project['template']))
+    if include_agents:
+        from project_agents import ensure_at
+        ensure_at(directory, project)
+    return result
 
 
 def digest(path):

@@ -45,3 +45,7 @@ export interface Project extends ProjectSummary {
 export interface ProjectUpdate {
   revision: number; name?: string; description?: string; vmId?: string | null;
 }
+
+export interface ProjectAgents {
+  path: 'Agents.md'; text: string; sha256: string | null; exists: boolean; editable: boolean;
+}

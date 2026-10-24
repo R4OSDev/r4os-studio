@@ -15,7 +15,7 @@ export class ProjectError extends Error {
   constructor(message: string, public statusCode = 503) { super(message); }
 }
 
-export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' | 'create' | 'system_prompt' | 'delete' = 'store'): Promise<T> {
+export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' | 'create' | 'system_prompt' | 'delete' | 'project_agents' = 'store'): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL(`../../../../scripts/projects/${helper}.py`, import.meta.url)), directory, componentRoot()],
       { detached: true, stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
@@ -29,7 +29,7 @@ export function projectStore<T>(directory: string, request: Record<string, unkno
       settled = true; clearTimeout(timer);
       if (error) reject(error); else resolve(result!);
     };
-    const timer = setTimeout(() => { terminate(); finish(new ProjectError('Project service did not respond.')); }, helper === 'store' || helper === 'system_prompt' ? 10_000 : 180_000);
+    const timer = setTimeout(() => { terminate(); finish(new ProjectError('Project service did not respond.')); }, ['store', 'system_prompt', 'project_agents'].includes(helper) ? 10_000 : 180_000);
     child.on('error', () => finish(new ProjectError('Project storage is unavailable.')));
     child.stdin.on('error', () => { /* Process exit is handled below. */ });
     child.stdout.on('data', (chunk) => {
