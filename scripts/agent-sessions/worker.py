@@ -18,7 +18,7 @@ from codex_rpc import CodexRPC
 from tool_catalog import specifications, validate_arguments
 from sandbox import Sandbox
 from terminal import Terminals, bounded_text
-from system_prompt import snapshot as prompt_snapshot, validate_text
+from system_prompt import snapshot as prompt_snapshot
 
 
 class Worker:
@@ -220,13 +220,12 @@ class Worker:
             args, profile = prepare(binary, provider_home, state,
                                     json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE),
                                     fast_mode=self.config.get('fastMode', False))
+            from instructions import compose
+            instructions = compose(self.config)
             self.client = CodexRPC(args, self.notify, self.tool)
             self.client.version = self.manifest['version']
             await self.client.start()
             self.thread_id = self.store.row(self.session_id)['thread_id']
-            instructions = ('These are the current global R4OS Studio instructions. '
-                            'They replace any earlier R4OS Studio system prompt.\n\n'
-                            + validate_text(self.config['systemPrompt']['text']))
             # Explicit default clears a Fast tier saved by an earlier native turn.
             service_tier = 'priority' if self.config.get('fastMode', False) else 'default'
             if self.thread_id:

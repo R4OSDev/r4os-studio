@@ -5,6 +5,7 @@ import uuid
 from session_store import encode, now, identity, validate_settings
 from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
+from project_agents import snapshot as project_snapshot
 
 
 def event(store, session_id, run_id, kind, payload, commit=True):
@@ -35,11 +36,13 @@ def get_run(store, run_id):
 
 
 def admit(store, session_id, data, provider_dir):
-    if set(data) != {'requestId', 'revision', 'text'} or type(data['revision']) is not int:
+    if (set(data) not in ({'requestId', 'revision', 'text'}, {'requestId', 'revision', 'text', 'projectInstructions'})
+        or type(data['revision']) is not int or ('projectInstructions' in data and (type(data['projectInstructions']) is not int or data['projectInstructions'] != 1))):
         raise ProjectFault('Unexpected run fields.', 400)
     if not isinstance(data['text'], str) or not data['text'].strip() or len(data['text'].encode()) > 65536 or '\x00' in data['text']:
         raise ProjectFault('Enter a message of at most 64 KiB.', 400)
-    key = identity(data['requestId']); request_hash = hashlib.sha256(encode({'sessionId': session_id, **data}).encode()).hexdigest()
+    key = identity(data['requestId']); request_hash = hashlib.sha256(encode({'sessionId': session_id,
+        **{k: v for k, v in data.items() if k != 'projectInstructions'}}).encode()).hexdigest()
     store.db.execute('BEGIN IMMEDIATE')
     try:
         previous = store.db.execute('SELECT * FROM runs WHERE request_id=?', (key,)).fetchone()
@@ -54,6 +57,7 @@ def admit(store, session_id, data, provider_dir):
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
         snapshot['projectPins'] = store.project['pins']
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
+        snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
         ident = str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
