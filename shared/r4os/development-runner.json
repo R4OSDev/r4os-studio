@@ -26,14 +26,14 @@
   },
   "roles": [
     "terminal",
-    "desktop",
     "service"
   ],
   "roleReasons": {
     "library": "Runtime libraries need a consumer or conformance test host.",
     "driver": "Drivers need an isolated loader and diagnostic adapter.",
     "protocol": "Protocol modules need a loader and diagnostic adapter.",
-    "subsystem": "Subsystem hosts need a host adapter and an actual supported test input."
+    "subsystem": "Subsystem hosts need a host adapter and an actual supported test input.",
+    "desktop": "Desktop start requires a public headless launch receipt and native window-initialization barrier. This guest contract has no Studio adapter yet."
   },
   "transport": {
     "kind": "openssh-sftp-v3",
@@ -42,5 +42,13 @@
     "multiplexCompletedSessions": false,
     "createOnly": true,
     "fullReadbackRequired": true
+  },
+  "roleReasonCodes": {
+    "desktop": "native_desktop_launch_contract_missing"
+  },
+  "deployment": {
+    "format": "exchange-build-v1",
+    "root": "Build",
+    "startsApplication": false
   }
 }

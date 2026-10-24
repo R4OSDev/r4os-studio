@@ -15,9 +15,10 @@ TERMINAL = ('completed', 'failed', 'interrupted', 'unknown')
 
 
 class DevelopmentFault(Exception):
-    def __init__(self, message, code=409):
+    def __init__(self, message, code=409, reason_code=None):
         super().__init__(message)
         self.code = code
+        self.reason_code = reason_code
 
 
 class UnconfirmedGuestEffect(DevelopmentFault):

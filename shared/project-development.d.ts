@@ -9,6 +9,7 @@ export type DevelopmentToolId = 'studio.build_project' | 'studio.deploy_project'
   | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
 
 export interface DevelopmentCapability {
+  reasonCode?: string | null;
   available: boolean;
   reason?: string;
 }

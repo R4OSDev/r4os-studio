@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.61 weist Desktopstart ausdrücklich mit native_desktop_launch_contract_missing zurück. Die drei Integrationsaufgaben bleiben offen, bis ein öffentlicher nativer Gastvertrag vorliegt; Deployment, Terminal und Service bleiben unabhängig nutzbar.
+
 Version 0.3.60 startet bestätigte Exchange-Pakete mit eigener Prozessgeneration als Terminal oder Service. Normale Bootwechsel werden nach neuer SSH-Authentifizierung und vollständiger Paketprüfung gebunden; Desktop bleibt bis zum nativen Gastvertrag gesperrt.
 
 Version 0.3.59 überträgt neue Pakete per create-only SFTP ausschließlich in den nachgewiesenen Exchange-Build-Ordner. Eigentumsbelege, vollständiges Rücklesen, begrenzte Inventur und Quotenprüfung erhalten alte oder teilweise übertragene Dateien.

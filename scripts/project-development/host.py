@@ -122,7 +122,7 @@ class Host:
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
-            'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason')}),
+            'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),
             'capture': deploy, 'input': ({'available': True} if match['available'] and deploy['available'] and project['template'] in ('terminal', 'desktop') else {'available': False, 'reason': match.get('reason') or 'This module has no interactive target adapter.'}), 'profileId': match['profileId'],
             'runner': match, 'transport': {'available': bool(access and access['available']),
                 'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},
@@ -387,7 +387,7 @@ class Host:
             if len(raw) > 131072: raise DevelopmentFault('Development request too large.', 400)
             result = await self.handle(json.loads(raw), peer_pid); writer.write((encode({'result': result}) + '\n').encode())
         except (DevelopmentFault, ProjectFault) as error:
-            writer.write((encode({'error': str(error), 'code': error.code, 'uncertain': bool(getattr(error, 'uncertain', False))}) + '\n').encode())
+            writer.write((encode({'error': str(error), 'code': error.code, 'reasonCode': getattr(error, 'reason_code', None), 'uncertain': bool(getattr(error, 'uncertain', False))}) + '\n').encode())
         except Exception:
             writer.write(b'{"error":"The development coordinator is unavailable.","code":503}\n')
         finally:

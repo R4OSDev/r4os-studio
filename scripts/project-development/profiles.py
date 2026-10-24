@@ -18,11 +18,12 @@ def eligible(project, image):
     profile = runner()
     if project['template'] not in profile['roles']:
         return {'available': False, 'profileId': profile['id'],
+                'reasonCode': profile.get('roleReasonCodes', {}).get(project['template'], 'role_adapter_missing'),
                 'reason': profile.get('roleReasons', {}).get(project['template'], 'This module role needs its own execution or test-host adapter.')}
     return {'available': True, 'profileId': profile['id'], 'adapterSha256': hash_value(profile)}
 
 
 def require_profile(project, image):
     result = eligible(project, image)
-    if not result['available']: raise DevelopmentFault(result['reason'])
+    if not result['available']: raise DevelopmentFault(result['reason'], reason_code=result.get('reasonCode'))
     return runner()
