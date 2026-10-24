@@ -72,7 +72,7 @@ class Deployment:
             from quarantine import admission
             admission(store.projects, vm['id'], info['vm']['state'])
             if info['vm']['state'] != 'running':
-                raise DevelopmentFault('Start the assigned VM with Start project VM before deploying. Deployment does not have VM-start permission.')
+                raise DevelopmentFault('Start the assigned VM with Start project VM before deploying. If this session has no VM-start tool, start it in Virtual Machines or create a new session. Deployment does not have VM-start permission.', reason_code='vm_start_required')
             from exchange import require_tree
             require_tree(info)
             target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],

@@ -69,6 +69,7 @@ class DevelopmentTools:
                     if overrides: body['overrides'] = overrides
                 job = await self.request(operation, input=body)
                 if name == 'start_project_vm': return await self.wait_for_vm(job, call_id, value)
+                if name in ('deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
@@ -93,7 +94,7 @@ class DevelopmentTools:
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
-                    **({'development': {'jobId': job['id']}} if name == 'start_project_vm' and job else {})}
+                    **({'development': {'jobId': job['id']}} if job else {})}
 
     async def wait_for_vm(self, job, call_id, arguments):
         from contracts import ACTIVE, DevelopmentFault, LIMITS, UnconfirmedGuestEffect
@@ -123,11 +124,37 @@ class DevelopmentTools:
             result.update(success=False, error='interrupted' if job['state'] == 'interrupted' else 'failed')
         return result
 
+    async def wait_for_job(self, name, job, call_id, arguments):
+        from contracts import ACTIVE, DevelopmentFault, UnconfirmedGuestEffect
+        from run_store import item
+        worker = self.worker; operation = 'wait_deploy' if name == 'deploy_project' else 'wait_execution'
+        value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.' + name,
+                 'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id']}}
+        worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
+        timeout = 660 if name == 'deploy_project' else job['settings']['timeoutSeconds'] + 300
+        deadline = asyncio.get_running_loop().time() + timeout; page = None
+        while job['state'] in ACTIVE:
+            if worker.stopping:
+                return {'success': False, 'error': 'interrupted', 'output': 'Development wait stopped. Inspect the saved job for process cleanup.',
+                        'development': {'jobId': job['id']}}
+            if asyncio.get_running_loop().time() >= deadline:
+                raise UnconfirmedGuestEffect('The original development job did not return a receipt before the harness deadline. Nothing was submitted again.')
+            try:
+                page = await self.request(operation, id=job['id']); job = page['job']
+            except DevelopmentFault as error:
+                if error.code != 503 or getattr(error, 'uncertain', False): raise
+                # Reconnect to the same read-only job wait only. Never resubmit.
+                await asyncio.sleep(1); continue
+            if name == 'run_project' and job['state'] == 'running' and (job.get('readiness') or {}).get('state') == 'ready' and (job.get('guestState') or {}).get('serviceEndpointReady'):
+                break
+        return self.result(job, page)
+
     def result(self, job, page=None):
         from session_store import encode
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
-        uncertain = job['state'] == 'unknown' and not (job.get('guestState') or {}).get('closeConfirmed')
-        return {'success': not uncertain, **({'error': 'unknown'} if uncertain else {}), 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
+        uncertain = job['state'] == 'unknown'
+        failure = job['state'] in ('failed', 'interrupted', 'unknown')
+        return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
 
     async def stop_owned(self):
         try: await self.request('cancel_owned')

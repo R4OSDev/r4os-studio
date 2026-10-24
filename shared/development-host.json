@@ -27,6 +27,7 @@
     "agentTools": 2,
     "reconciliation": 1,
     "leaseQueue": 1,
-    "vmStart": 1
+    "vmStart": 1,
+    "jobWait": 1
   }
 }

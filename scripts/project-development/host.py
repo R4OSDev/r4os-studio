@@ -205,16 +205,16 @@ class Host:
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1},
+                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'wait_vm_start', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        if op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.add('offset')
         if op in ('build', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.add('evidenceId')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -225,7 +225,7 @@ class Host:
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'wait_vm_start', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                elif op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
                 if op in ('deploy', 'execution'):
                     artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
@@ -252,6 +252,21 @@ class Host:
                     await asyncio.sleep(.5); job = store.get(job['id'])
                 authorize(store, owner, op, peer_pid, job)
                 return job
+            if op in ('wait_deploy', 'wait_execution'):
+                from authorization import authorize
+                job = store.get(request['id']); expected = 'deploy' if op == 'wait_deploy' else 'execution'
+                if owner is None or job['kind'] != expected or job.get('agentRunId') != owner['agentRunId']:
+                    raise DevelopmentFault('Wait only for this active run\'s original development job.', 403)
+                deadline = asyncio.get_running_loop().time() + 12
+                while job['state'] in ACTIVE and asyncio.get_running_loop().time() < deadline:
+                    authorize(store, owner, op, peer_pid, job)
+                    # Only service endpoint readiness can release a running job.
+                    # Terminal jobs return their actual final exit/output receipt.
+                    if expected == 'execution' and job['state'] == 'running' and (job.get('readiness') or {}).get('state') == 'ready' and (job.get('guestState') or {}).get('serviceEndpointReady'):
+                        break
+                    await asyncio.sleep(.25); job = store.get(job['id'])
+                authorize(store, owner, op, peer_pid, job)
+                return store.page(job['id'])
             if op == 'reconcile':
                 from actions import admit, finish
                 from recovery import reconcile
