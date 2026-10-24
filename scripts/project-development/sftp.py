@@ -49,9 +49,13 @@ async def download(ssh, guest, local, maximum=LIMITS['packageBytes'], allow_miss
     if local.exists() or local.is_symlink(): raise DevelopmentFault('The verification destination already exists.')
     ok = await batch(ssh, ['get ' + quote(remote(guest)) + ' ' + quote(local)], allow_failure=allow_missing)
     if not ok: return False
-    if not local.is_file() or local.is_symlink() or local.stat().st_size > maximum:
-        raise DevelopmentFault('The guest verification file is invalid or oversized.')
+    validate_download(local, maximum)
     return True
+
+
+def validate_download(path, maximum):
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > maximum:
+        raise DevelopmentFault('The guest verification file is invalid or oversized.')
 
 
 async def publish_file(ssh, source, guest, expected_sha256):
@@ -60,10 +64,13 @@ async def publish_file(ssh, source, guest, expected_sha256):
         raise DevelopmentFault('The local deployment file changed before transfer.')
     # The guest SFTP server implements create-only writes. Never request rename
     # over an existing path or use OpenSSH's ordinary overwrite assumptions.
-    await batch(ssh, ['put ' + quote(source) + ' ' + quote(guest)])
     verify = ssh.runtime / ('verify-' + uuid.uuid4().hex)
+    if verify.exists() or verify.is_symlink(): raise DevelopmentFault('The verification destination already exists.')
     try:
-        await download(ssh, guest, verify)
+        # One authenticated SFTP session, with close/publication before readback.
+        await batch(ssh, ['put ' + quote(source) + ' ' + quote(guest),
+                          'get ' + quote(guest) + ' ' + quote(verify)])
+        validate_download(verify, LIMITS['packageBytes'])
         if verify.stat().st_size != source.stat().st_size or digest(verify) != expected_sha256:
             raise DevelopmentFault('Guest bytes do not match the deployment package. No start was authorized.')
     finally: verify.unlink(missing_ok=True)

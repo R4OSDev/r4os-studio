@@ -1,5 +1,27 @@
 # R4OS Studio · App
 
+Version 0.3.38 reduces repeated build/deploy validation and retains private
+compiler caches across jobs. Session ownership uses database metadata; artifact
+bytes and provenance remain fully checked at admission and in the worker.
+Cached helper cleanup can reuse its just-verified receipt. Catalog discovery and
+the semantic/contract plans retain manifest checks without a separate validate
+process. Source capture hashes while copying; the build worker independently
+checks the captured bytes before compiling.
+
+Each deployment file is uploaded and completely read back in one authenticated
+SFTP batch. Local/remote hashes, size limits, create-only publication, host keys,
+VM/boot/lease bindings and uncertain-effect handling remain required.
+Zig local/global and SDK Rust target caches live under
+`Development/Cache/<identity>/`, scoped to the project, exact component pins,
+language/role and build/cache implementation. An exclusive host lock covers each
+use. Only compiler cache directories enter the sandbox; sources, output, HOME,
+Cargo configuration and trusted SDK tools remain fresh per job. Changed bindings
+use another cache; successful scratch cleanup retains caches and project deletion
+removes them with the project. No cached success replaces a fresh SDK build,
+container inspection or artifact receipt. No SDK or host protocol migration.
+Build/TypeScript, Python syntax and lint checked; no tests or project/guest/agent
+runs at the user's request. Workspace details: Docs/Build-Deploy-Optimization.md.
+
 Version 0.3.37 avoids repeated full component checks when creating a project.
 The options dialog reads installation metadata and the checksum-checked published
 SDK capability catalog without running compilers or scanning the Rust installation.

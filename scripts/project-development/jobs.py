@@ -108,7 +108,7 @@ class Jobs:
                 raise DevelopmentFault('Project or Run & Test settings changed. Reload before starting.')
             if self.db.execute('SELECT id FROM jobs WHERE busy=1').fetchone():
                 raise DevelopmentFault('This project already has an active development job.')
-            deployment = self.deployment(request['deploymentId']) if kind == 'execution' else None
+            deployment = self.deployment_metadata(request['deploymentId']) if kind == 'execution' else None
             artifact = self.artifact(request['artifactId'] if kind == 'deploy' else deployment['artifactId']) if kind in ('deploy', 'execution') else None
             if deployment and (deployment['target']['vmId'] != self.project['vmId'] or deployment.get('pins') != self.project['pins']):
                 raise DevelopmentFault('This deployment belongs to a different project target or component identity.')
@@ -183,13 +183,19 @@ class Jobs:
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
                 'outputKind': 'build' if job['kind'] == 'build' else 'console', 'evidence': list_for(self, job_id)}
 
-    def artifact(self, artifact_id, recovering=False):
+    def artifact_metadata(self, artifact_id, recovering=False):
+        """Private ownership lookup; callers must verify bytes before using files."""
         row = self.db.execute('SELECT payload FROM artifacts WHERE id=?', (identity(artifact_id),)).fetchone()
         if not row: raise DevelopmentFault('Development artifact not found.', 404)
-        record = json.loads(row[0]); root = self.root / 'Artifacts' / artifact_id
+        record = json.loads(row[0])
         build = self.get(record['buildId'])
         if build['kind'] != 'build' or (not recovering and (build['state'] != 'completed' or build['artifactId'] != artifact_id)):
             raise DevelopmentFault('This artifact has no completed build receipt.')
+        return record
+
+    def artifact(self, artifact_id, recovering=False):
+        record = self.artifact_metadata(artifact_id, recovering)
+        root = self.root / 'Artifacts' / artifact_id
         try:
             if root.resolve(strict=True) != root or json.loads((root / 'artifact.json').read_text()) != record:
                 raise ValueError()
@@ -217,12 +223,17 @@ class Jobs:
         with self.db: self.db.execute('INSERT INTO deployments VALUES(?,?,?)', (record['id'], job_id, encode(record)))
         return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], exitCode=0)
 
-    def deployment(self, deployment_id, recovering=False):
+    def deployment_metadata(self, deployment_id, recovering=False):
+        """Private ownership lookup without reading an artifact's bytes."""
         row = self.db.execute('SELECT payload FROM deployments WHERE id=?', (identity(deployment_id),)).fetchone()
         if not row: raise DevelopmentFault('Deployment not found.', 404)
         value = json.loads(row[0]); job = self.get(value['jobId'])
         if not recovering and (job['state'] != 'completed' or job['deploymentId'] != deployment_id):
             raise DevelopmentFault('The deployment has no completed verification receipt.')
+        return value
+
+    def deployment(self, deployment_id, recovering=False):
+        value = self.deployment_metadata(deployment_id, recovering)
         self.artifact(value['artifactId'])
         return value
 

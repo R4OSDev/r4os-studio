@@ -179,12 +179,12 @@ class Host:
             if owner is not None:
                 from authorization import authorize
                 bound = None
-                if op == 'artifact': bound = store.get(store.artifact(request['id'])['buildId'])
-                elif op == 'deployment': bound = store.get(store.deployment(request['id'])['jobId'])
+                if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
+                elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
                 elif op in ('read_job', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
                 if op in ('deploy', 'execution'):
-                    artifact = store.artifact(request['input']['artifactId']) if op == 'deploy' else store.deployment(request['input']['deploymentId'])
+                    artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
                     parent = store.get(artifact['buildId'] if op == 'deploy' else artifact['jobId'])
                     if parent.get('sessionId') != owner['sessionId']: raise DevelopmentFault('This input belongs to another session.', 403)
             if op == 'cancel_owned':
@@ -287,7 +287,7 @@ class Host:
                     if op == 'execution':
                         from profiles import require_profile
                         require_profile(store.project, {'id': binding['imageId'], 'sha256': binding['imageSha256']})
-                        deployed = store.deployment(request['input'].get('deploymentId'))
+                        deployed = store.deployment_metadata(request['input'].get('deploymentId'))
                         if deployed.get('helperCapabilities', {}).get('controlVersion') != 2 or deployed.get('helperCapabilities', {}).get('watchdogVersion') != 1:
                             raise DevelopmentFault('This deployment has an older guest helper. Deploy the artifact again before running.')
                     status = self.access.public(binding['id'])

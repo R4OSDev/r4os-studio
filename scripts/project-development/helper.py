@@ -61,7 +61,7 @@ async def build_locked(root, content, files, pins, key, r4os, watcher):
             try:
                 artifact = store.artifact(row['id'])
                 from scratch import retire
-                try: retire(store, store.get(artifact['buildId']))
+                try: retire(store, store.get(artifact['buildId']), verified_artifact=artifact)
                 except (DevelopmentFault, OSError): pass
                 return {'protocol': 1, 'sourceSha256': hash_value(files), 'sha256': artifact['files'][0]['sha256'],
                         'path': store.root / 'Artifacts' / artifact['id'] / artifact['entry'],
@@ -79,7 +79,7 @@ async def build_locked(root, content, files, pins, key, r4os, watcher):
             store.update(job['id'], 'failed', error='The pinned Studio guest helper could not be built.'); raise
         artifact = store.artifact(result['artifactId'])
         from scratch import retire
-        try: retire(store, store.get(job['id']))
+        try: retire(store, store.get(job['id']), verified_artifact=artifact)
         except (DevelopmentFault, OSError): pass
         return {'protocol': 1, 'sourceSha256': hash_value(files), 'sha256': artifact['files'][0]['sha256'],
                 'path': store.root / 'Artifacts' / artifact['id'] / artifact['entry'],

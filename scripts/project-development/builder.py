@@ -13,12 +13,13 @@ from jobs import folder, now
 from layout import save, sync
 from sdk import profile, run
 from templates import BUILD
+from build_cache import BuildCache
 
 
 class Builder:
     def __init__(self, store, job):
         self.store, self.job = store, job
-        self.context = None; self.process = None; self.stopping = False
+        self.context = None; self.process = None; self.stopping = False; self.cache = None
         self.root = folder(store.root / 'Work' / job['id'])
         self.log = store.evidence(job['id']) / 'output.log'
         self.written = self.log.stat().st_size if self.log.exists() else 0
@@ -44,8 +45,8 @@ class Builder:
         shutil.copytree(source, self.root / 'source')
         for path in (self.root / 'source').rglob('*'):
             if path.is_file(): path.chmod(0o600)
-        for name in ('home', 'zig', 'output', 'tools', 'cargo'): folder(self.root / name)
-        (self.root / 'zig/p').symlink_to('/packages')
+        for name in ('home', 'zig', 'zig-local', 'output', 'tools', 'cargo', 'rust-build'): folder(self.root / name)
+        self.cache = BuildCache(self.store, self.job)
         # SDK build scripts are trusted, pinned component files. User build.zig,
         # Build.ps1 and package URLs do not select a different SDK/compiler.
         if self.context.get('rust'):
@@ -70,6 +71,10 @@ class Builder:
                  '--bind', str(self.root / 'output'), '/output', '--bind', str(self.root), '/cache',
                  '--ro-bind', str(context['cache'] / 'global/p'), '/packages',
                  '--ro-bind', str(context['tool']), '/catalog', '--ro-bind', str(self.inspector), '/inspector']
+        # Only compiler artifacts persist. Sources, outputs, HOME, Cargo config,
+        # the cache identity and its host lock stay outside these shared mounts.
+        for name in ('zig', 'zig-local', 'rust-build'):
+            args += ['--bind', str(self.cache.root / name), '/cache/' + name]
         for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
             if Path(path).exists(): args += ['--ro-bind', path, path]
         for name, path in context['paths'].items(): args += ['--ro-bind', str(path), '/' + name]
@@ -80,7 +85,8 @@ class Builder:
                      '--bind', str(self.root / 'tools'), '/tools']
         args += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/cache/home',
             '--setenv', 'PATH', '/zig:' + rust_bin + ':/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8',
-            '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig', '--setenv', 'CARGO_HOME', '/cache/cargo',
+            '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig', '--setenv', 'ZIG_LOCAL_CACHE_DIR', '/cache/zig-local',
+            '--setenv', 'CARGO_HOME', '/cache/cargo',
             '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_TOOLCHAIN', 'studio-pinned',
             '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1', '--setenv', 'POWERSHELL_TELEMETRY_OPTOUT', '1']
         return args + command
@@ -112,12 +118,20 @@ class Builder:
             self.process = None
 
     async def build(self, source):
+        try:
+            return await self.build_locked(source)
+        finally:
+            if self.cache is not None:
+                self.cache.close()
+
+    async def build_locked(self, source):
         await self.prepare(source)
         rust = self.store.project['language'] == 'Rust'
         catalog = '/tools/ModuleCatalog' if rust else '/catalog'
         if rust:
             catalog = '/tools/' + self.context['rust']['profile']['hosts']['Linux']['catalog']
-        await self.execute([catalog, 'validate', '--manifest', '/workspace/module.R4MF'])
+        # Catalog discovery already parses manifests and validates their source
+        # paths. The R4X plan below supplies the remaining startup/role checks.
         declared = json.loads(await self.execute([catalog, 'catalog', '--root', '/workspace'], True))
         if len(declared['entries']) != 1: raise DevelopmentFault('Build input must contain exactly one project manifest.')
         entry = declared['entries'][0]
@@ -146,7 +160,8 @@ class Builder:
             (self.root / 'source/build.zig.zon').write_text('.{ .name = .r4os_studio_project, .version = "0.1.0", '
                 '.fingerprint = 0x17b105fe7653a449, .minimum_zig_version = "0.16.0", .dependencies = .{ .r4os_sdk = .{ '
                 '.url = "https://github.com/R4OSDev/r4os-sdk/archive/' + pin['revision'] + '.tar.gz", .hash = "' + pin['zigPackageHash'] + '" } }, .paths = .{""} }\n')
-            command = ['/zig/zig', 'build', '--prefix', '/output', '--summary', 'all']
+            command = ['/zig/zig', 'build', '--cache-dir', '/cache/zig-local',
+                       '--global-cache-dir', '/cache/zig', '--prefix', '/output', '--summary', 'all']
         self.store.update(self.job['id'], phase='compiling')
         await self.execute(command)
         name = self.store.project['moduleName'] + '.' + expected_kind
