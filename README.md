@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.44 SDK version checks now resolve the published SDK-Release.json into an exact SDK, Contract and Libraries set. The bounded metadata cache retains archive origins and checksums separately from existing installations; status polling stays local and existing defaults and project pins remain unchanged.
+
 Version 0.3.43 adds Reset virtual machine and Reset Exchange Partition beside Delete in VM settings. Confirmed stopped-only resets atomically replace the system overlay on the bound image or the entire Exchange image/share/sync state, preserving the other storage and VM identity/settings/login. Durable request receipts prevent repeated resets. Cross-process maintenance reservations block new VM jobs; active jobs/exports prevent reset. System generations invalidate old host-key/readiness trust even for the same image; credentials remain bound to the VM. Syntax/build/TypeScript/lint checked; no tests and no VMs reset or started.
 
 Version 0.3.42 adds Projects → Settings → Agents.md with a plain text editor, Save changes and Cancel. Hash conflicts retain the draft, reload/discard is explicit, navigation/reload protects unsaved edits and saving is disabled while project runs/jobs are busy. Missing files show the title/description draft and are created on Save. The current frozen file supplements the global prompt from the next accepted run. Syntax/build/TypeScript/lint checked; no tests, browser, agent or guest runs.

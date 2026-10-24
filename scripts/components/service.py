@@ -91,6 +91,7 @@ class Manager:
         self.busy = False
         self.job = None
         self.catalogs = {}
+        self.sdk_sets = {}
         self.profile = self.root / 'Profiles/versions.json'
         self.root.joinpath('Profiles').mkdir(parents=True, exist_ok=True)
         self.state = json.loads(self.profile.read_text()) if self.profile.exists() else {'schema': 1, 'defaults': {}}
@@ -110,6 +111,12 @@ class Manager:
                         continue
                     self.state['defaults'][kind] = preferred or installed[0]
             atomic(self.profile, self.state)
+        from sdk_sets import resolve
+        for selected in self.installed('sdk'):
+            try:
+                self.sdk_sets[selected['id']] = resolve(self, selected, fetch=False)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                self.sdk_sets[selected['id']] = {'state': 'unavailable', 'reason': str(error)[:500]}
 
     def installed(self, kind):
         records = []
@@ -170,18 +177,24 @@ class Manager:
         return sorted(records, key=lambda record: tuple(map(int, record['version'].split('.'))), reverse=True)
 
     def status(self):
+        from sdk_sets import profile_revision, summary
         with self.lock:
             components = {}
+            inventories = {kind: self.installed(kind) for kind in KINDS}
             for kind in KINDS:
                 catalog = self.catalogs.get(kind, {})
                 active = self.state['defaults'].get(kind)
-                installed = self.installed(kind)
+                installed = inventories[kind]
                 components[kind] = {'installed': [public(record) for record in installed],
                                     'available': [public(record) for record in catalog.get('versions', [])],
                                     'activeId': active['id'] if active else None,
                                     'latestId': catalog.get('latestId'), 'checkedAt': catalog.get('checkedAt'),
                                     'error': catalog.get('error'), 'hasMore': catalog.get('hasMore', False)}
+            for record in components['sdk']['installed'] + components['sdk']['available']:
+                value = self.sdk_sets.get(record['id'], {'state': 'unresolved', 'reason': 'Check SDK versions to resolve the matching packages.'})
+                record['sdkSet'] = summary(value, inventories, self.state['defaults'])
             return {'enabled': True, 'components': components, 'job': copy.deepcopy(self.job),
+                    'features': {'sdkSets': 1}, 'profileRevision': profile_revision(self.state),
                     'message': 'Downloads and active defaults are managed independently.'}
 
     def progress(self, message, **values):
@@ -210,6 +223,16 @@ class Manager:
             if action == 'check':
                 self.progress('Checking official versions…')
                 catalog = adapter.catalog(self, kind, older)
+                if kind == 'sdk':
+                    from sdk_sets import resolve
+                    for selected in catalog.get('versions', []):
+                        self.progress(f'Reading SDK {selected["version"]} release dependencies…')
+                        try:
+                            value = resolve(self, selected)
+                        except Exception as error:
+                            value = {'state': 'unavailable', 'reason': str(error)[:500]}
+                        with self.lock:
+                            self.sdk_sets[selected['id']] = value
                 with self.lock:
                     self.catalogs[kind] = {**catalog, 'checkedAt': now(), 'error': None}
             else:
