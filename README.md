@@ -1,5 +1,11 @@
 # R4OS Studio · App
 
+Version 0.3.36 makes the session fill its content area without outer margins,
+border or rounded corners at every breakpoint. Narrow layouts can grow beyond
+their preferred session height to fill the available space. Internal message
+and composer spacing stays readable. Build/TypeScript and lint passed; no tests
+were run, as requested.
+
 Version 0.3.35 removes the project heading above an open session and the model
 subtitle below its title. The session title is now the main heading, leaving
 more vertical space for the conversation. Model selection stays in the composer.
