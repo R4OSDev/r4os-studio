@@ -1,4 +1,4 @@
-"""Explicit private SSH access configuration and authenticated readiness checks."""
+"""Fixed R4OS guest login, private SSH trust and authenticated readiness checks."""
 import asyncio
 import base64
 import hashlib
@@ -15,6 +15,10 @@ from layout import save
 from profiles import runner
 from lease import VmLease
 from vm_client import vm_call
+
+DEFAULT_USERNAME = 'r4os'
+DEFAULT_PASSWORD = 'rosebud'
+CREDENTIAL_POLICY = 'r4os-default-v1'
 
 
 def vm_config(r4os, vm_id):
@@ -47,7 +51,7 @@ def guest_version(result):
 
 def same_host_image(record, vm):
     # These legacy image fields scope host-key trust and readiness only.
-    # Credentials belong to the VM directory and survive image replacement.
+    # The fixed login is independent of VM image and system generation.
     return ((record.get('imageId'), record.get('imageSha256')) == (vm['imageId'], vm['imageSha256'])
             and record.get('systemGeneration') == vm.get('systemGeneration'))
 
@@ -61,13 +65,27 @@ class Access:
 
     def record(self, vm_id):
         path = self.directory(vm_id) / 'access.json'
-        if not path.exists(): return {'schema': 1, 'vmId': vm_id, 'revision': 0, 'enabled': False, 'username': '', 'password': '', 'imageId': None, 'imageSha256': None}
-        if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid guest credential storage.', 503)
-        record = json.loads(path.read_text())
+        if not path.exists():
+            record = {'schema': 1, 'vmId': vm_id, 'revision': 0, 'enabled': True, 'imageId': None, 'imageSha256': None}
+        else:
+            if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid guest access storage.', 503)
+            record = json.loads(path.read_text())
         if record.get('schema') != 1: raise DevelopmentFault('Guest access maintenance is required.', 503)
-        if record.get('vmId', vm_id) != vm_id: raise DevelopmentFault('Guest credentials do not belong to this VM.', 503)
-        record.setdefault('vmId', vm_id)  # Existing per-VM records need no credential migration.
+        if record.get('vmId', vm_id) != vm_id: raise DevelopmentFault('Guest access does not belong to this VM.', 503)
+        record.setdefault('vmId', vm_id)
+        if record.get('credentialPolicy') != CREDENTIAL_POLICY:
+            # A result obtained using configurable credentials cannot attest the
+            # fixed login. Keep VM-bound host-key trust and explicit disablement.
+            for field in ('readiness', 'lastError', 'lastErrorVmRevision'): record.pop(field, None)
+        record.update(username=DEFAULT_USERNAME, password=DEFAULT_PASSWORD, credentialPolicy=CREDENTIAL_POLICY)
         return record
+
+    def save_record(self, vm_id, record):
+        # Preserve schema-1 fields for pinned workers and rollback releases, but
+        # always write the fixed login, never legacy configurable credentials.
+        value = {**record, 'username': DEFAULT_USERNAME, 'password': DEFAULT_PASSWORD,
+                 'credentialPolicy': CREDENTIAL_POLICY}
+        save(self.directory(vm_id) / 'access.json', value)
 
     def public(self, vm_id):
         vm = vm_config(self.r4os, vm_id); record = self.record(vm_id); reason = None
@@ -75,14 +93,13 @@ class Access:
             transport_profile()
             if not vm.get('networkEnabled'): raise DevelopmentFault('Network is disabled in VM settings.')
             if not record['enabled']: raise DevelopmentFault('Development access is disabled.')
-            if not record['password']: raise DevelopmentFault('Guest credentials are missing.')
         except DevelopmentFault as error: reason = str(error)
         same = same_host_image(record, vm)
         readiness = record.get('readiness') if same else None; boot = self.boots.values.get(vm_id)
         current = bool(not reason and readiness and boot and boot['connected'] and readiness['bootId'] == boot['bootId']
             and readiness['vmRevision'] == vm['revision'])
         return {'revision': record['revision'], 'vmRevision': vm['revision'], 'enabled': record['enabled'],
-            'username': record['username'], 'credentialsStored': bool(record['password']),
+            'username': DEFAULT_USERNAME, 'credentialPolicy': CREDENTIAL_POLICY,
             'hostKeyFingerprint': record.get('hostKeyFingerprint') if same else None, 'imageId': vm['imageId'],
             'available': not bool(reason), 'ready': current, 'reason': reason or (None if current else
                 (record.get('lastError') if record.get('lastErrorVmRevision') == vm['revision'] else None) or 'Access has not been checked for the current boot.'),
@@ -91,7 +108,7 @@ class Access:
             'guestKernel': readiness.get('kernel') if readiness else None}
 
     def configure(self, vm_id, request):
-        if not isinstance(request, dict) or set(request) - {'revision', 'vmRevision', 'enabled', 'username', 'password', 'resetHostKey'}:
+        if not isinstance(request, dict) or set(request) - {'revision', 'vmRevision', 'enabled', 'resetHostKey'}:
             raise DevelopmentFault('Unexpected development access fields.', 400)
         vm = vm_config(self.r4os, vm_id); old = self.record(vm_id)
         if type(request.get('revision')) is not int: raise DevelopmentFault('Invalid development access revision.', 400)
@@ -99,25 +116,16 @@ class Access:
             raise DevelopmentFault('VM or development access settings changed. Reload before saving.')
         if type(request.get('enabled')) is not bool or type(request.get('resetHostKey', False)) is not bool:
             raise DevelopmentFault('Invalid development access setting.', 400)
-        name = request.get('username', '')
-        if not isinstance(name, str) or (request['enabled'] and not re.fullmatch(r'[A-Za-z0-9_.-]{1,32}', name)):
-            raise DevelopmentFault('Enter a valid guest username.', 400)
-        password = request.get('password', '')
-        if not isinstance(password, str) or len(password.encode()) > 256 or any(ord(c) < 32 or ord(c) == 127 for c in password):
-            raise DevelopmentFault('Invalid guest password.', 400)
         same = same_host_image(old, vm)
         if request['enabled']:
             transport_profile()
-            if not vm.get('networkEnabled'): raise DevelopmentFault('Enable Network explicitly in VM settings first.')
-            if not password: password = old['password']
-            if not password: raise DevelopmentFault('Enter the guest password for this VM.', 400)
+            if not vm.get('networkEnabled'): raise DevelopmentFault('Enable Network in VM settings first.')
         value = {'schema': 1, 'vmId': vm_id, 'revision': old['revision'] + 1, 'enabled': request['enabled'],
-            'username': name, 'password': password if request['enabled'] else '',
             'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'systemGeneration': vm.get('systemGeneration')}
         if same and not request.get('resetHostKey'):
             value['hostKeyFingerprint'] = old.get('hostKeyFingerprint')
         else: (self.directory(vm_id) / 'known_hosts').unlink(missing_ok=True)
-        save(self.directory(vm_id) / 'access.json', value)
+        self.save_record(vm_id, value)
         return self.public(vm_id)
 
     async def check(self, vm_id):
@@ -128,7 +136,7 @@ class Access:
             except DevelopmentFault as error:
                 record = self.record(vm_id); record['readiness'] = None; record['lastError'] = str(error)
                 record['lastErrorVmRevision'] = vm_config(self.r4os, vm_id)['revision']
-                save(self.directory(vm_id) / 'access.json', record)
+                self.save_record(vm_id, record)
                 raise
 
     async def check_once(self, vm_id):
@@ -148,7 +156,7 @@ class Access:
                 ssh.publish_host_key()
                 record = self.record(vm_id); record.pop('lastError', None); record['readiness'] = {'checkedAt': now(), 'vmRevision': vm['revision'],
                     'bootId': boot['bootId'], **version}
-                save(self.directory(vm_id) / 'access.json', record)
+                self.save_record(vm_id, record)
         return self.public(vm_id)
 
 class SshTransport:
@@ -162,8 +170,8 @@ class SshTransport:
         try:
             from forwards import cleanup
             await cleanup(self.lease)
-            if not self.record['enabled'] or not self.record['password']:
-                raise DevelopmentFault('Development access is disabled or guest credentials are missing.')
+            if not self.record['enabled']:
+                raise DevelopmentFault('Development access is disabled.')
             secret = self.runtime / 'password'; secret.write_text(self.record['password']); secret.chmod(0o600)
             known = self.access.directory(self.vm['id']) / 'known_hosts'
             if known.is_symlink() or (known.exists() and not known.is_file()):
@@ -227,7 +235,7 @@ class SshTransport:
             if code == 255:
                 if b'HOST IDENTIFICATION HAS CHANGED' in error or b'Host key verification failed' in error:
                     raise DevelopmentFault('The guest host key does not match the saved VM identity.')
-                if b'Permission denied' in error: raise DevelopmentFault('Guest authentication failed. Check the saved credentials.')
+                if b'Permission denied' in error: raise DevelopmentFault('The guest rejected the R4OS default login.')
                 raise SshNotReady('The guest SSH service is not ready or the connection was lost.')
             return {'exitCode': code, 'output': out.decode('utf-8', errors='replace')}
         except asyncio.TimeoutError: raise SshNotReady('The authenticated guest did not respond in time.') from None
@@ -251,6 +259,6 @@ class SshTransport:
             if not same_host_image(record, self.vm):
                 for field in ('readiness', 'lastError', 'lastErrorVmRevision'): record.pop(field, None)
             record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'], systemGeneration=self.vm.get('systemGeneration'))
-            save(self.access.directory(self.vm['id']) / 'access.json', record)
+            self.access.save_record(self.vm['id'], record)
             self.record.update(hostKeyFingerprint=fingerprint, imageId=self.vm['imageId'], imageSha256=self.vm['imageSha256'], systemGeneration=self.vm.get('systemGeneration'))
         except (OSError, ValueError, IndexError): raise DevelopmentFault('The guest host-key receipt could not be confirmed.') from None

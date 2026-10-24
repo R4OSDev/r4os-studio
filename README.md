@@ -1,8 +1,40 @@
 # R4OS Studio · App
 
+Version 0.3.56 supplies the fixed R4OS SSH login automatically: user `r4os`,
+password `rosebud`. VM Settings no longer accepts a guest username/password, and
+new VMs need no Save access step. Existing explicit SSH disablement, Network
+settings, VM identity and host-key verification remain in force. No tests or
+VM/SSH/agent runs were performed; Python syntax, Studio build/TypeScript and lint
+are checked.
+
+## Automatic R4OS guest login (0.3.56)
+
+All new SSH/SFTP and guest-control connections use the fixed R4OS default account.
+Existing configurable login values are ignored, including values in legacy VM
+access records. New VMs default to enabled development access without a saved
+access record; an explicitly saved disabled setting remains disabled. Network
+must still be enabled. Guest authentication failure reports a rejected default
+login and never asks the user to enter another password.
+
+VM Settings → Development access retains Enable SSH access, host-key inspection/
+reset and Check access. Username/password inputs and API fields are removed.
+Readiness from the previous configurable-login policy is invalidated, while the
+VM-bound SSH host key and its image/system-generation binding are retained.
+Metadata writes record credential policy `r4os-default-v1` and preserve schema-1
+login fields with the fixed values for pinned workers and rollback releases.
+Legacy records are not rewritten on reads; configurable values are ignored and
+replaced on the next ordinary access-settings/readiness write. The password is
+passed through the existing private temporary SSH askpass mechanism, not
+returned by VM APIs or mounted into project/agent workspaces.
+
+Existing session/tool profiles and component pins are unchanged. Development and
+agent coordinators adopt the installed compatible release when idle; existing
+workers keep their pinned release. No new host compatibility maintenance is
+needed. This changes authentication only; deployment remains unchanged.
+
 Version 0.3.55 enables Network by default for new VMs and adds Start project VM
-in new agent sessions. The harness holds this single tool call until saved VM
-credentials authenticate over SSH and R4OS answers VER, then resumes the same
+in new agent sessions. The harness holds this single tool call until the fixed R4OS
+default account authenticates over SSH and R4OS answers VER, then resumes the same
 agent turn. Progress and the durable job remain visible while it waits. Existing
 VM settings and session profiles are preserved. Deployment is unchanged.
 
@@ -15,8 +47,8 @@ LAN/VPN guest listener.
 
 New sessions use studio-tools-v3 and offer **Start project VM** under Session
 settings → Tools → VM, enabled by default. The call selects only the project's
-assigned VM. Save its guest credentials under VM Settings → Development access
-first; Network and development access must be enabled. It starts a stopped VM
+assigned VM. Studio supplies the R4OS default login automatically since 0.3.56;
+Network and development access must be enabled. It starts a stopped VM
 once, or observes the current boot of an already running VM. It does not compile,
 upload files, build a guest helper, start an application or change VM settings.
 
@@ -544,9 +576,11 @@ build workers ignore it.
 
 ## Private VM development access (0.3.20)
 
-VM Settings includes Development access, explicit guest authentication and Check
-access. Credentials and host keys remain in private Studio storage outside the
-workspace; responses return credential presence and the public fingerprint only.
+VM Settings includes Development access and Check access. Since 0.3.56 Studio
+automatically supplies the fixed R4OS login, r4os / rosebud. Only VM access settings,
+host-key trust and readiness receipts persist in private Studio storage outside
+the workspace, together with fixed schema-1 login fields for older workers.
+Responses return the username, policy and public fingerprint only.
 Network must be enabled (new VMs default to enabled since 0.3.55). Readiness requires authenticated VER,
 the exact release and active kernel, a pinned host key and the current observed
 VM boot. QEMU running alone is not readiness. The SSH/SFTP client hashes are part

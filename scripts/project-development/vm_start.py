@@ -56,7 +56,7 @@ async def bind(host, request, peer_pid):
             checked = now()
             record.pop('lastError', None); record.pop('lastErrorVmRevision', None)
             record['readiness'] = {'checkedAt': checked, 'vmRevision': vm['revision'], 'bootId': boot['bootId'], **version}
-            save(host.access.directory(vm['id']) / 'access.json', record)
+            host.access.save_record(vm['id'], record)
             target = {**target, 'ready': True, 'checkedAt': checked, 'guestRelease': version['release'], 'guestKernel': version['kernel']}
             save(folder(store.root / 'VmStartWork' / job['id']) / 'ready.json', target)
             return store.update(job['id'], 'completed', phase='ssh_ready', vmStart=target, exitCode=0, error=None)
@@ -121,7 +121,7 @@ class VmStart:
                 while True:
                     guard(store, job, lease)
                     remaining = deadline - asyncio.get_running_loop().time()
-                    if remaining <= 0: raise DevelopmentFault('SSH readiness timed out. The VM remains running; check its console and saved access settings.')
+                    if remaining <= 0: raise DevelopmentFault('SSH readiness timed out. The VM remains running; check its console and development access settings.')
                     try:
                         response = await ssh.exec('VER', timeout=min(10, remaining))
                         version = guest_version(response); guard(store, job, lease)

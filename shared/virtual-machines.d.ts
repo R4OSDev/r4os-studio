@@ -29,10 +29,10 @@ export interface VmResetInput {
 
 export interface VmDevelopmentAccess {
   revision: number; vmRevision: string; enabled: boolean; username: string;
-  credentialsStored: boolean; hostKeyFingerprint: string | null; imageId: string;
+  credentialPolicy: 'r4os-default-v1'; hostKeyFingerprint: string | null; imageId: string;
   available: boolean; ready: boolean; reason: string | null; lastCheckedAt: string | null;
   guestRelease: string | null; guestKernel: string | null;
 }
 export interface VmDevelopmentAccessInput {
-  revision: number; vmRevision: string; enabled: boolean; username: string; password?: string; resetHostKey?: boolean;
+  revision: number; vmRevision: string; enabled: boolean; resetHostKey?: boolean;
 }

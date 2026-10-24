@@ -44,10 +44,10 @@ export async function vmRoutes(app: FastifyInstance) {
   });
   app.patch<{ Params: { id: string }; Body: VmDevelopmentAccessInput }>('/:id/development-access', {
     bodyLimit: 4096, schema: { body: { type: 'object', additionalProperties: false,
-      required: ['revision', 'vmRevision', 'enabled', 'username'], properties: {
+      required: ['revision', 'vmRevision', 'enabled'], properties: {
         revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
         vmRevision: { type: 'string', minLength: 1, maxLength: 64 }, enabled: { type: 'boolean' },
-        username: { type: 'string', maxLength: 32 }, password: { type: 'string', maxLength: 256 }, resetHostKey: { type: 'boolean' },
+        resetHostKey: { type: 'boolean' },
       } } },
   }, async (request, reply) => {
     sessions.mutation(request, reply);
