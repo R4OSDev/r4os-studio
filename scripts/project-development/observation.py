@@ -2,7 +2,7 @@
 from contracts import DevelopmentFault
 from lease import VmLease, inspect
 from vm_client import vm_call
-from evidence import png, publish, read
+from evidence import png, publish, response
 
 
 async def capture(store, job, lease=None, state=None, observer=None):
@@ -16,11 +16,17 @@ async def capture(store, job, lease=None, state=None, observer=None):
         with VmLease(store.projects, target['vmId'], scope) as held:
             return await capture(store, job, held, state, observer)
     inspect(store.projects, lease.id, lease.token)
-    info = await vm_call(lease, 'info')
-    if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM is not running.')
-    data, width, height = png(await vm_call(lease, 'capture'))
+    try: captured = await vm_call(lease, 'capture_running')
+    except DevelopmentFault as error:
+        # A rollback may leave this worker connected to an older web bridge.
+        if error.code != 400 or str(error) != 'Unsupported private VM operation.': raise
+        info = await vm_call(lease, 'info')
+        if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM is not running.')
+        captured = await vm_call(lease, 'capture')
+    data, width, height = png(captured)
     inspect(store.projects, lease.id, lease.token)
     value = publish(store, job, 'screenshot', data, width=width, height=height,
         observer=observer, scope='assigned-vm-screen', source='qmp-png', guestRevision=(state or {}).get('guiRevision'),
         windowVisible=bool((state or {}).get('windowVisible')), windowFocused=bool((state or {}).get('windowFocused')))
-    return read(store, job['id'], value['id'])
+    # Publication has fsynced these exact immutable bytes and their receipt.
+    return response(value, data)

@@ -53,6 +53,19 @@ async def download(ssh, guest, local, maximum=LIMITS['packageBytes'], allow_miss
     return True
 
 
+async def download_many(ssh, files):
+    """Read known deployment files over one connection; preserve partial failures."""
+    files = [(guest, Path(local), maximum) for guest, local, maximum in files]
+    lines = []
+    for guest, local, maximum in files:
+        if local.exists() or local.is_symlink(): raise DevelopmentFault('The verification destination already exists.')
+        if type(maximum) is not int or not 0 <= maximum <= LIMITS['packageBytes']:
+            raise DevelopmentFault('Invalid guest verification size.')
+        lines.append('get ' + quote(remote(guest)) + ' ' + quote(local))
+    if lines: await batch(ssh, lines)
+    for _, local, maximum in files: validate_download(local, maximum)
+
+
 def validate_download(path, maximum):
     if not path.is_file() or path.is_symlink() or path.stat().st_size > maximum:
         raise DevelopmentFault('The guest verification file is invalid or oversized.')

@@ -10,7 +10,7 @@ import type { VmManager } from '../virtual-machines/service.js';
 import type { ConsoleBridge } from '../virtual-machines/console.js';
 import type { PointerControllers } from '../virtual-machines/pointer.js';
 import { qmp } from '../virtual-machines/qmp.js';
-import { exec } from '../virtual-machines/systemd.js';
+import { exec, unitState } from '../virtual-machines/systemd.js';
 
 interface Lease {
   id: string; vmId: string;
@@ -55,7 +55,7 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           const request = JSON.parse(pending.split('\n')[0]);
           if (!request || typeof request !== 'object' || Object.keys(request).some((k) => !['operation', 'leaseId', 'token', 'port'].includes(k))
             || !validId(request.leaseId) || !/^[a-f0-9]{64}$/.test(request.token)) throw new VmError('Invalid private VM request.', 400);
-          if (!['info', 'start', 'forward_open', 'forward_close', 'capture'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
+          if (!['info', 'start', 'forward_open', 'forward_close', 'capture', 'capture_running'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
           const lease = await inspectLease(request.leaseId, request.token, request.operation !== 'forward_close'), id = lease.vmId;
           const config = await manager.config(id), scope = lease.scope;
           if ((config.revision ?? config.imageSha256) !== scope.vmRevision || config.imageId !== scope.imageId || config.imageSha256 !== scope.imageSha256)
@@ -73,7 +73,12 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           if (request.operation === 'info') {
             const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=InvocationID', '--value'], { timeout: 5000 });
             result = { vm: await manager.get(id), invocationId: stdout.trim() };
-          } else if (request.operation === 'capture') {
+          } else if (request.operation === 'capture' || request.operation === 'capture_running') {
+            if (request.operation === 'capture_running') {
+              const unit = await unitState(id);
+              if (!['active', 'activating'].includes(unit.ActiveState) || (await qmp(id, 'query-status')).running !== true)
+                throw new VmError('The assigned VM is not running.');
+            }
             const limits = JSON.parse(await readFile(new URL('../../../../shared/development-host.json', import.meta.url), 'utf8')).limits;
             const data = await manager.screen(id, limits.screenshotBytes);
             result = { base64: data.toString('base64') };

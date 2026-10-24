@@ -136,7 +136,7 @@ class Host:
             if op == 'access_read': return self.access.public(vm_id)
             if op == 'access_save': return self.access.configure(vm_id, request['input'])
             return await self.access.check(vm_id)
-        if op == 'bind_target':
+        if op in ('bind_target', 'bind_execution'):
             if set(request) != {'operation', 'projectId', 'jobId', 'leaseId', 'token', 'helperSha256'}:
                 raise DevelopmentFault('Invalid private target binding request.', 400)
             from lease import inspect
@@ -151,14 +151,20 @@ class Host:
                 job = store.get(request['jobId']); vm = vm_config(self.config['r4os'], lease['vmId'])
                 if job['kind'] not in ('deploy', 'execution') or job['state'] != 'running' or job['binding']['id'] != vm['id']:
                     raise DevelopmentFault('This job has no active target admission.')
+                if op == 'bind_execution' and (job['kind'] != 'execution' or lease['scope'].get('jobId') != job['id']):
+                    raise DevelopmentFault('This reservation has no matching execution job.', 403)
                 if not re.fullmatch('[a-f0-9]{64}', request['helperSha256']): raise DevelopmentFault('Invalid helper identity.', 400)
                 info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
+                if op == 'bind_execution':
+                    from quarantine import admission
+                    admission(self.config['projects'], vm['id'], info['vm']['state'])
                 if info['vm']['state'] != 'running': raise DevelopmentFault('The target VM is not running.')
                 boot = await self.boots.ensure(vm, info['invocationId']); profile = transport_profile()
                 target = {'vmId': vm['id'], 'vmRevision': vm['revision'], 'imageId': vm['imageId'],
                     'imageSha256': vm['imageSha256'], 'bootId': boot['bootId'], 'profileId': profile['id'],
                     'helperSha256': request['helperSha256'], 'helperProtocol': 1}
-                store.update(job['id'], target=target); return target
+                store.update(job['id'], target=target)
+                return {'target': target, 'vmInvocationId': info['invocationId']} if op == 'bind_execution' else target
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
@@ -263,6 +269,11 @@ class Host:
                     finish(store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 else: raise DevelopmentFault('This job has no active guest input target.')
                 if result.get('error'): raise DevelopmentFault(result['error'], result.get('code', 409))
+                if op == 'capture' and owner is not None:
+                    # Replace the authorization formerly performed by a second
+                    # evidence fetch after capture. Older agents ignore the hint.
+                    authorize(store, owner, op, peer_pid, job)
+                    result = {**result, 'authorizedForAgentOutput': True}
                 return result
             async with self.lock:
                 await self.refresh()

@@ -9,7 +9,7 @@ from lease import VmLease
 from access import Access, SshTransport, guest_version
 from vm_client import vm_call
 from guest_control import GuestControl
-from sftp import download
+from sftp import download_many
 
 class Execution:
     def __init__(self, store, job):
@@ -116,12 +116,21 @@ class Execution:
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
         from queue_lease import reserve
         async with reserve(store, job, scope) as lease:
-            info = await vm_call(lease, 'info')
-            from quarantine import admission, claim, release
-            admission(store.projects, vm['id'], info['vm']['state'])
-            if info['vm']['state'] != 'running': raise DevelopmentFault('The deployment boot has ended. Deploy again to the prepared VM before running.')
-            target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],
-                'leaseId': lease.id, 'token': lease.token, 'helperSha256': deployment['target']['helperSha256']})
+            from quarantine import claim, release
+            binding = {'projectId': store.id, 'jobId': job['id'], 'leaseId': lease.id,
+                'token': lease.token, 'helperSha256': deployment['target']['helperSha256']}
+            try:
+                bound = await broker_call({'operation': 'bind_execution', **binding})
+                target, invocation_id = bound['target'], bound['vmInvocationId']
+            except DevelopmentFault as error:
+                # Only an explicit old-protocol rejection permits the legacy reads.
+                if error.code != 400 or str(error) != 'Unsupported development coordinator operation.': raise
+                from quarantine import admission
+                info = await vm_call(lease, 'info')
+                admission(store.projects, vm['id'], info['vm']['state'])
+                if info['vm']['state'] != 'running': raise DevelopmentFault('The deployment boot has ended. Deploy again to the prepared VM before running.')
+                target = await broker_call({'operation': 'bind_target', **binding})
+                invocation_id = info['invocationId']
             # Profile labels are descriptive metadata, not a VM qualification.
             # Existing deployments retain their recorded label across updates.
             previous = {k: v for k, v in deployment['target'].items() if k != 'profileId'}
@@ -135,10 +144,12 @@ class Execution:
                 guest_version(version)
                 ssh.publish_host_key()
                 store.update(job['id'], phase='verifying_deployment')
+                guard(store, job, lease, allow_stopping=True)
+                await download_many(ssh, [(item['path'], self.work / ('verify-' + str(index)), item['bytes'])
+                    for index, item in enumerate(deployment['files'])])
                 for index, item in enumerate(deployment['files']):
                     guard(store, job, lease, allow_stopping=True)
                     path = self.work / ('verify-' + str(index))
-                    await download(ssh, item['path'], path, maximum=item['bytes'])
                     if path.stat().st_size != item['bytes'] or digest(path) != item['sha256']:
                         raise DevelopmentFault('The guest deployment changed. No project process was started.')
                     path.unlink()
@@ -146,7 +157,7 @@ class Execution:
                     return store.update(job['id'], 'interrupted', phase='stopped', error='Stopped before guest launch.')
                 execution_id = str(uuid.uuid4()); control = GuestControl(ssh, deployment, execution_id); self.control = control
                 intent = {'schema': 1, 'executionId': execution_id, 'jobId': job['id'], 'deploymentId': deployment['id'],
-                    'target': target, 'vmInvocationId': info['invocationId'], 'role': deployment['role'], 'settings': job['settings'], 'state': 'intent', 'createdAt': now()}
+                    'target': target, 'vmInvocationId': invocation_id, 'role': deployment['role'], 'settings': job['settings'], 'state': 'intent', 'createdAt': now()}
                 save(self.work / 'intent.json', intent)
                 claim(store.projects, vm['id'], {'jobId': job['id'], 'projectId': store.id, 'executionId': execution_id,
                     'target': target, 'deploymentId': deployment['id']})

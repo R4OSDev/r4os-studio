@@ -1,5 +1,25 @@
 # R4OS Studio · App
 
+Version 0.3.39 combines execution target binding and its VM observation. All
+deployment files are downloaded through one authenticated SFTP batch, then each
+size and SHA-256 is checked before launch. Host keys, project/VM/image/boot/lease
+bindings, quarantine, stop checks and the single acknowledged start remain required.
+
+Screenshot readiness and capture share one private VM request. The bridge checks
+the VM service and QMP running status; lease checks still bracket capture. Validated
+PNG bytes are durably published and forwarded directly to the native agent reply,
+without rereading the file or issuing another evidence request. The coordinator
+reauthorizes the agent before returning the image; native model/tool permissions
+are still checked. Tool receipts and UI events retain only image references.
+Later evidence retrieval and resumed replies open the stored file once, check its
+type, size and SHA-256 against exactly those bytes, and return the same buffer.
+Existing operations remain available to old workers. New workers use the legacy
+path only after an explicit unsupported-operation response, never after timeouts
+or lost receipts. No SDK changes, host maintenance or data migration.
+Build/TypeScript, Python syntax and lint checked; no tests, browser, project,
+agent or guest runs at the user's request. No new timing measurements.
+Workspace details: Docs/Run-Capture-Optimization.md.
+
 Version 0.3.38 reduces repeated build/deploy validation and retains private
 compiler caches across jobs. Session ownership uses database metadata; artifact
 bytes and provenance remain fully checked at admission and in the worker.

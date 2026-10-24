@@ -125,8 +125,8 @@ class Worker:
         asyncio.create_task(self.stop())
 
     async def tool(self, params):
-        async def output(result):
-            return await self.development.native_output(result)
+        async def output(result, image_data=None):
+            return await self.development.native_output(result, image_data)
         name = params.get('tool', '')
         if (not name.startswith('studio_') or name[7:] not in tools_for(self.config['engine'].get('profile', PROFILE)) or params.get('namespace') is not None
             or params.get('threadId') != self.thread_id or params.get('turnId') != self.turn_id):
@@ -169,6 +169,9 @@ class Worker:
                 uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The project tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
+        # Strip image bytes before any durable tool result, item or SSE event.
+        # Replayed results have only the image reference and revalidate its file.
+        image_data = result.pop('_transientImage', None)
         if result.get('error') == 'unknown':
             self.unconfirmed()
         with self.store.db:
@@ -184,7 +187,7 @@ class Worker:
         value['output'], clipped = bounded_text(str(value['output']), max(2, 261000-base_size))
         value['truncated'] = value['truncated'] or clipped
         self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
-        return await output(result)
+        return await output(result, image_data)
 
     async def stop(self):
         self.stopping = True

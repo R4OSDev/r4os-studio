@@ -27,15 +27,17 @@ class DevelopmentTools:
             return 'image' in next(v for v in models if v['slug'] == worker.config['model']).get('input_modalities', [])
         except (OSError, ValueError, KeyError, StopIteration): return False
 
-    async def native_output(self, result):
+    async def native_output(self, result, image_data=None):
         from session_store import encode
         content = [{'type': 'inputText', 'text': encode(result)}]
         if result.get('image'):
             if not self.image_capable() or not self.worker.config['permissions'].get('studio.capture_vm'):
                 return {'success': False, 'contentItems': [{'type': 'inputText', 'text': 'Image inspection is unavailable for this model or permission.'}]}
             image = result['image']
-            data = await self.request('evidence', id=image['jobId'], evidenceId=image['id'])
-            if data['metadata']['sha256'] != image['sha256']: raise ValueError('Image identity changed.')
+            data = image_data if image_data is not None else await self.request('evidence', id=image['jobId'], evidenceId=image['id'])
+            if data['metadata']['sha256'] != image['sha256'] or (image_data is not None and (
+                data['metadata'] != image or image['projectId'] != self.worker.manifest['projectId'] or image['kind'] != 'screenshot')):
+                raise ValueError('Image identity changed.')
             # Transient RPC image only. Durable tools/events retain opaque refs.
             content.append({'type': 'inputImage', 'imageUrl': 'data:image/png;base64,' + data['base64']})
         return {'success': result['success'], 'contentItems': content}
@@ -76,7 +78,8 @@ class DevelopmentTools:
                 if set(value) - {'jobId', 'action'}: raise DevelopmentFault('Unexpected capture fields.', 400)
                 data = await self.request('capture', id=value['jobId'], input={'requestId': request_id})
                 metadata = data['metadata']
-                return {'success': True, 'output': encode(metadata), 'development': {'jobId': value['jobId']}, 'image': metadata}
+                return {'success': True, 'output': encode(metadata), 'development': {'jobId': value['jobId']}, 'image': metadata,
+                    **({'_transientImage': data} if data.get('authorizedForAgentOutput') is True else {})}
             if name == 'send_vm_input':
                 data = await self.request('input', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
                 return {'success': True, 'output': encode(data), 'development': {'jobId': value['jobId']}}

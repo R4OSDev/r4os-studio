@@ -3,10 +3,10 @@ import base64
 import hashlib
 import json
 import os
-from pathlib import Path
+import stat
 import struct
 import uuid
-from contracts import DevelopmentFault, LIMITS, digest, encode, identity
+from contracts import DevelopmentFault, LIMITS, encode, identity
 from jobs import now
 from layout import save, sync
 
@@ -51,9 +51,26 @@ def read(store, job_id, evidence_id):
     if not row: raise DevelopmentFault('Development evidence not found.', 404)
     value = json.loads(row[0]); extension = '.png' if value['kind'] == 'screenshot' else '.bin'
     path = store.evidence(job_id) / (evidence_id + extension)
-    if path.resolve(strict=True) != path or path.stat().st_size != value['bytes'] or digest(path) != value['sha256']:
+    maximum = LIMITS['screenshotBytes'] if value['kind'] == 'screenshot' else LIMITS['fileBytes']
+    expected = value['bytes']
+    if type(expected) is not int or not 0 <= expected <= maximum:
+        raise DevelopmentFault('The evidence file exceeds its byte limit.')
+    try:
+        if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid evidence file path.')
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size != expected:
+                raise DevelopmentFault('The evidence file is missing or its checksum changed.')
+            data = stream.read(expected + 1)
+    except OSError: raise DevelopmentFault('The evidence file is missing or unavailable.') from None
+    if len(data) != expected or hashlib.sha256(data).hexdigest() != value['sha256']:
         raise DevelopmentFault('The evidence file is missing or its checksum changed.')
-    return {'metadata': value, 'base64': base64.b64encode(path.read_bytes()).decode()}
+    return response(value, data)
+
+
+def response(value, data):
+    return {'metadata': value, 'base64': base64.b64encode(data).decode()}
 
 
 def png(value):
