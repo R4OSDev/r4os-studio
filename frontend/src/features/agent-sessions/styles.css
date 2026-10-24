@@ -1,7 +1,6 @@
 .agent-session { display:flex; flex-direction:column; flex:1; min-height:360px; min-width:0; margin:24px 30px 22px; border:1px solid #392b49; border-radius:12px; background:#19131f; overflow:hidden; }
 .agent-header { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:18px 23px; border-bottom:1px solid #382b46; }
-.agent-header h2 { margin:0 0 5px; font-size:17px; font-weight:550; overflow-wrap:anywhere; }
-.agent-model { font-size:11px; color:#a99ab9; overflow-wrap:anywhere; }
+.agent-header h1 { margin:0; font-size:17px; font-weight:550; overflow-wrap:anywhere; }
 .agent-state { padding:5px 9px; border:1px solid #463551; border-radius:20px; font-size:10px; color:#b5a3c6; text-transform:capitalize; white-space:nowrap; }
 .agent-state.active { color:#ddbdff; border-color:#79529b; background:#ae83de13; }
 .agent-log { flex:1; min-height:170px; overflow:auto; overscroll-behavior:contain; padding:20px 24px; scrollbar-gutter:stable; }
@@ -62,7 +61,7 @@
 .session-empty { margin:35px; font-size:13px; color:#ab99bc; }
 @media (max-width:1050px) { .agent-session { margin:22px 20px; } .agent-header,.agent-log { padding:16px; } }
 @media (max-width:800px) { .agent-session { flex:initial; height:min(750px,85dvh); min-height:430px; } }
-@media (max-width:440px) { .agent-session { margin:18px 10px; } .agent-header { padding:14px 12px; gap:8px; } .agent-header h2 { font-size:15px; } .agent-log { padding:16px 12px; } .agent-composer { padding:12px; } .agent-message.user { margin-left:10px; padding:12px; } }
+@media (max-width:440px) { .agent-session { margin:18px 10px; } .agent-header { padding:14px 12px; gap:8px; } .agent-header h1 { font-size:15px; } .agent-log { padding:16px 12px; } .agent-composer { padding:12px; } .agent-message.user { margin-left:10px; padding:12px; } }
 .agent-header-actions { display:flex; align-items:center; gap:12px; }
 .agent-settings-button { display:grid; place-items:center; width:30px; height:30px; border:1px solid #4b375c; border-radius:6px; background:#2c2037; color:#c5aedc; }
 .agent-settings-button:disabled { opacity:.4; }

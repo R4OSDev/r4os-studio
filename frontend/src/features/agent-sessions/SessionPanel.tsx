@@ -113,7 +113,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     } catch (e) { setError((e as Error).message); } finally { setOlder(false); }
   }
   return <section className="agent-session" aria-label="Agent session">
-    <header className="agent-header"><div><h2>{session?.name ?? 'Session'}</h2><span className="agent-model">{session?.model}</span></div>
+    <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.state ?? 'Ready') : connection}</span>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>

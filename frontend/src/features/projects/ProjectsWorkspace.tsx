@@ -80,7 +80,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
     </aside>
     <main className="main-area" aria-label="Project content">
       {selected && <>
-        <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>
+        {!(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Settings' && current.settingsView === 'Run & Test' && <RunTestSettings key={selected.id + ':' + epoch} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Settings' && current.settingsView !== 'Run & Test' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
           id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload}

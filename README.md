@@ -1,5 +1,10 @@
 # R4OS Studio · App
 
+Version 0.3.35 removes the project heading above an open session and the model
+subtitle below its title. The session title is now the main heading, leaving
+more vertical space for the conversation. Model selection stays in the composer.
+Build/TypeScript and lint passed; no tests were run, as requested.
+
 Version 0.3.34 places Account, Model, Reasoning and Fast Mode dropdowns below the
 message field, aligned left beside the send controls. Choices save immediately
 with the session revision and apply to the next run. Selection is locked during
