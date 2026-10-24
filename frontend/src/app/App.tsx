@@ -15,12 +15,17 @@ import type { ComponentKind } from '../../../shared/components';
 import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
 import type { ProjectNavigation } from '../features/projects/ProjectsWorkspace';
 import { SystemPromptPanel } from '../features/settings/SystemPromptPanel';
+import { editorRegistry } from '../features/project-editor/registry';
 
 const tabs: Tab[] = ['System', 'Projects'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
 export function App() {
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
+    window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
+  }, []);
   const [tab, setTab] = useState<Tab>(sessionRoute ? 'Projects' : 'System');
   const [vmId, setVmId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? null);

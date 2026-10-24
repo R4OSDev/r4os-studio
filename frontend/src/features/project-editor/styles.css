@@ -9,3 +9,37 @@
 .editor-code .cm-textfield { background: #120f18; color: #eee5fa; }
 .editor-code .cm-button { background: #39254b; color: #eee5fa; }
 .editor-status { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 14px; padding: 7px 14px; border-top: 1px solid #32283f; color: #b8a7ca; font-size: 10px; }
+.editor-main { overflow: hidden; }
+.editor-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; margin: 0; padding: 0; }
+.editor-tabs { display: flex; flex-shrink: 0; overflow-x: auto; min-height: 39px; border-bottom: 1px solid #32283f; background: #191420; }
+.editor-tab-group { display: flex; flex-shrink: 0; border-right: 1px solid #32283f; }
+.editor-tab-group button { background: transparent; padding: 10px; font-size: 11px; color: #b8a7ca; }
+.editor-tab-group button.selected { background: #352345; color: #eee5fa; }
+.editor-tab-group button:first-child { max-width: 270px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.editor-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #32283f; font-size: 11px; flex-shrink: 0; }
+.editor-toolbar > span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: #b8a7ca; }
+.editor-toolbar button, .editor-message button, .editor-file-actions button, .editor-dialog-actions button, .editor-tree-more { background: #30213e; border: 1px solid #61467d; border-radius: 4px; padding: 6px 9px; font-size: 11px; }
+.editor-panel button:disabled, .editor-files button:disabled { opacity: .45; cursor: default; }
+.editor-message { padding: 9px 12px; color: #baa8cc; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; flex-shrink: 0; }
+.editor-message.error { color: #f1c5de; background: #372336; }
+.editor-message button { margin-left: 12px; }
+.editor-empty { display: grid; place-items: center; flex: 1; padding: 24px; color: #aa9dbb; font-size: 13px; text-align: center; }
+.editor-files { overflow: hidden; }
+.editor-file-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 8px; flex-shrink: 0; }
+.editor-file-actions button { font-size: 10px; padding: 5px 6px; }
+.editor-tree { overflow: auto; flex: 1; min-height: 0; padding-bottom: 14px; }
+.editor-tree-list { margin: 0; padding: 0; list-style: none; }
+.editor-tree-entry { display: flex; gap: 6px; text-align: left; background: transparent; width: 100%; padding: 7px 6px; font-size: 11px; line-height: 1.45; }
+.editor-tree-entry > span:last-child { overflow-wrap: anywhere; min-width: 0; }
+.editor-tree-entry > span:first-child { flex-shrink: 0; }
+.editor-tree-entry:hover { background: #bf9aff0c; }
+.editor-tree-entry.selected { background: #352345; color: #dfc9fa; }
+.editor-tree-more { margin: 8px; }
+.editor-tree-message { padding: 10px; color: #aa9dbb; font-size: 11px; }
+.editor-dialog { width: min(480px, calc(100vw - 32px)); max-height: 85dvh; overflow: auto; background: #21182b; color: #eee5fa; border: 1px solid #61467d; border-radius: 8px; padding: 24px; box-shadow: 0 20px 60px #0008; }
+.editor-dialog::backdrop { background: #0c0813c9; backdrop-filter: blur(5px); }
+.editor-dialog h2 { font-size: 19px; margin: 0 0 18px; }
+.editor-dialog p, .editor-dialog label { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.editor-dialog input { display: block; width: 100%; min-width: 0; margin-top: 8px; padding: 10px; border: 1px solid #61467d; border-radius: 4px; background: #120f18; color: #eee5fa; }
+.editor-dialog-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 20px; }
+@media (max-width:800px) { .editor-panel { min-height: 480px; height: 65dvh; flex: none; } .editor-tree { max-height: 320px; } .editor-toolbar { flex-wrap: wrap; } }

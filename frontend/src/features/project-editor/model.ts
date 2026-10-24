@@ -20,6 +20,7 @@ export async function createDocument(projectId: string, file: EditorNode): Promi
     bracketMatching(), indentOnInput(), highlightSelectionMatches(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, indentWithTab]),
     EditorView.lineWrapping, EditorState.tabSize.of(4), language.of(await languageFor(file.path)),
+    EditorState.transactionFilter.of((transaction) => transaction.newDoc.length > 524288 ? [] : transaction),
     readOnly.of([EditorState.readOnly.of(!file.editable), EditorView.editable.of(file.editable)]), viewConfig.of([]),
   ] });
   return { projectId, path: file.path, file, state, baseText: state.doc, language, readOnly, viewConfig, scrollTop: 0, scrollLeft: 0 };
