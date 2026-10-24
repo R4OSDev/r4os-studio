@@ -62,6 +62,10 @@ def local(store, job):
         value = store.deployment(row[0], recovering=True)
         artifact = store.artifact(value['artifactId'])
         directory = 'C:\\P' + hashlib.sha256(store.id.encode()).hexdigest()[:7].upper() + '\\D' + identity(value['id']).replace('-', '')[:7].upper()
+        if value.get('format') == 'exchange-build-v1':
+            from exchange import directory as exchange_directory
+            path = exchange_directory(value['target'], 'P' + hashlib.sha256(store.id.encode()).hexdigest()[:7].upper(), 'D' + identity(value['id']).replace('-', '')[:7].upper())
+            directory = path[1] + ':' + chr(92) + chr(92).join(path.split('/')[2:])
         normalize = lambda text: re.sub(r'\\+', lambda _: chr(92), text.replace('/', chr(92))).upper()
         if (read(store.root / 'DeployWork' / job['id'] / 'deployment.json') != value
             or value['projectId'] != store.id or value['artifactId'] != job['artifactId'] or value['pins'] != job['pins']

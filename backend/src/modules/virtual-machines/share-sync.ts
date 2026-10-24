@@ -56,11 +56,12 @@ async function extract(directory: string, target: string) {
     return exec(command, args, { timeout, maxBuffer: 64 * 1024 });
   };
   async function scan(parent = '') {
-    const { stdout } = await run('/usr/bin/mdir', ['-b', '-i', imagePath(directory) + '@@1048576', '::/' + (parent ? parent + '/' : '')]);
+    const { stdout } = await run('/usr/bin/mdir', ['-a', '-b', '-i', imagePath(directory) + '@@1048576', '::/' + (parent ? parent + '/' : '')]);
     const lines = stdout.split(/\r?\n/).filter(Boolean);
     if (lines.length > exchangeLimits.files + exchangeLimits.directories) throw new VmError('Too many guest Exchange entries.');
     for (const line of lines) {
       const isDir = line.endsWith('/'), name = line.slice(3, isDir ? -1 : undefined);
+      if (name === (parent ? parent + '/.' : '.') || name === (parent ? parent + '/..' : '..')) continue;
       if (!line.startsWith('::/') || !validSharePath(name, isDir) || dirname(name) !== (parent || '.'))
         throw new VmError('Unsupported guest Exchange path. Preserve exchange.img and recover the files before restarting.');
       if (entries.some((e) => e.name.toLowerCase() === name.toLowerCase())) throw new VmError('Guest Exchange paths conflict ignoring case.');

@@ -18,7 +18,7 @@ async def resolve(ssh, info, target):
     # All lookups are read-only, on fixed drive candidates, in one bounded batch.
     candidates = [(drive, ssh.runtime / ('marker-' + uuid.uuid4().hex)) for drive in string.ascii_uppercase]
     try:
-        await batch(ssh, ['-get ' + quote('/' + drive + '/STXCHG.JSN') + ' ' + quote(local) for drive, local in candidates])
+        await batch(ssh, ['-get ' + quote('/' + drive + '/STXCHG.JSN') + ' ' + quote(local) for drive, local in candidates], maximum=4096)
         matches = []
         for drive, local in candidates:
             if not local.exists(): continue
@@ -26,9 +26,11 @@ async def resolve(ssh, info, target):
             if local.read_bytes() == data: matches.append(drive)
         if len(matches) != 1:
             raise DevelopmentFault('Exchange marker is missing or ambiguous. No guest files were changed.')
-        return {'schema': 1, 'vmId': target['vmId'], 'generation': expected['generation'],
+        result = {'schema': 1, 'vmId': target['vmId'], 'generation': expected['generation'],
             'markerSha256': expected['markerSha256'], 'drive': matches[0], 'bootId': target['bootId'],
             'accessRevision': ssh.record['revision']}
+        ssh.exchange_target = result
+        return result
     finally:
         for _, local in candidates: local.unlink(missing_ok=True)
 
@@ -46,3 +48,21 @@ def directory(target, project_name, deployment_name=None):
         if not re.fullmatch('D[A-F0-9]{7}', deployment_name): raise DevelopmentFault('Invalid deployment directory.')
         path += '/' + deployment_name
     return path
+
+from sftp_inventory import inventory
+
+
+def preflight(entries, sizes, new_files, new_directories, output_files=0):
+    files = [item for item in entries if not item['directory']]
+    # Include create-only SFTP stage/backup slots, final receipts, and registered
+    # bounded runtime output. No old package is silently removed to make room.
+    required = sum(sizes) + max(sizes, default=0) + 32768 + output_files * 65536
+    if len(files) + new_files + 2 + output_files > 128 or len(entries) - len(files) + new_directories > 128 or sum(item['bytes'] for item in files) + required > 96 * 1024 * 1024:
+        raise DevelopmentFault('Exchange has insufficient quota for this package, receipts, transfer staging and output. Existing files were preserved.')
+
+
+def sftp_directory(deployment):
+    guest = deployment['guestDirectory'].replace('\\', '/')
+    drive, separator, path = guest.partition(':/')
+    if not separator or not re.fullmatch('[A-Z]', drive): raise DevelopmentFault('Invalid saved guest directory.')
+    return '/' + drive + '/' + path

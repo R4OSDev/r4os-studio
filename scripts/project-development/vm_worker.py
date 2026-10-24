@@ -71,14 +71,10 @@ class Deployment:
             self.phase('preparing_vm'); info = await vm_call(lease, 'info'); guard(store, job)
             from quarantine import admission
             admission(store.projects, vm['id'], info['vm']['state'])
-            if info['vm']['state'] in ('stopped', 'failed'):
-                self.note('Starting the assigned VM'); await vm_call(lease, 'start')
-            for _ in range(120):
-                guard(store, job); info = await vm_call(lease, 'info')
-                if info['vm']['state'] == 'running': break
-                if info['vm']['state'] == 'failed': raise DevelopmentFault('The assigned VM failed to start.')
-                await asyncio.sleep(.5)
-            else: raise DevelopmentFault('The VM did not become ready for guest preparation.')
+            if info['vm']['state'] != 'running':
+                raise DevelopmentFault('Start the assigned VM with Start project VM before deploying. Deployment does not have VM-start permission.')
+            from exchange import require_tree
+            require_tree(info)
             target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],
                 'leaseId': lease.id, 'token': lease.token, 'helperSha256': helper['sha256']})
             scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
@@ -101,10 +97,25 @@ class Deployment:
             raise last_error or DevelopmentFault('The guest did not become ready.')
 
     async def transfer(self, ssh, lease, artifact, helper, target):
-        store, job = self.store, self.job; guard(store, job, lease); self.phase('preparing_directory')
+        store, job = self.store, self.job; guard(store, job, lease); self.phase('resolving_exchange')
+        from exchange import resolve, require_tree, directory, inventory, preflight
+        info = await vm_call(lease, 'info'); require_tree(info)
+        exchange = await resolve(ssh, info, target); target = {**target, 'exchange': exchange}
+        store.update(job['id'], target=target)
+        guard(store, job, lease); self.phase('checking_exchange_capacity')
+        entries = await inventory(ssh, exchange)
+        build = next((item for item in entries if item['path'].lower() == 'build'), None)
+        if build and not build['directory']: raise DevelopmentFault('Build is an existing file. No guest files were changed.')
+        self.phase('preparing_directory')
         project_name = 'P' + hashlib.sha256(store.id.encode()).hexdigest()[:7].upper()
-        project_dir = '/C/' + project_name
-        expected = {'schema': 1, 'interface': 'r4os-studio-project', 'projectId': store.id}
+        project_dir = directory(target, project_name); ssh.package_root = project_dir
+        project_relative = 'build/' + project_name.lower()
+        project_exists = any(item['path'].lower() == project_relative and item['directory'] for item in entries)
+        preflight(entries, [artifact['files'][0]['bytes'], helper['bytes'], helper['watchdog']['bytes']],
+                  5 + (0 if project_exists else 1), 1 + (0 if project_exists else 1) + (0 if build else 1), len(job['settings'].get('outputFiles', [])))
+        if not build:
+            guard(store, job, lease); await batch(ssh, ['mkdir ' + quote('/' + exchange['drive'] + '/Build')])
+        expected = {'schema': 1, 'interface': 'r4os-studio-project', 'projectId': store.id, 'exchangeGeneration': exchange['generation']}
         owner = self.work / 'OWNER.JSN'; owner.write_text(encode(expected) + '\n')
         existing = self.work / 'existing-owner.json'
         if await download(ssh, project_dir + '/OWNER.JSN', existing, maximum=4096, allow_missing=True):
@@ -112,15 +123,21 @@ class Deployment:
             except (OSError, ValueError): raise DevelopmentFault('The guest project ownership receipt is invalid.')
             if actual != expected: raise DevelopmentFault('The guest project directory belongs to another owner. All files were preserved.')
         else:
+            if project_exists: raise DevelopmentFault('The existing project folder has no matching ownership receipt. Its files were preserved.')
             guard(store, job, lease)
             await batch(ssh, ['mkdir ' + quote(project_dir)])
             save(self.work / 'project-directory.json', {'path': project_dir, 'created': True, 'owner': expected})
+            guard(store, job, lease)
             await publish_file(ssh, owner, project_dir + '/OWNER.JSN', digest(owner))
-        deployment_id = str(uuid.uuid4()); guest_dir = project_dir + '/D' + deployment_id.replace('-', '')[:7].upper()
+        deployment_id = str(uuid.uuid4()); guest_dir = directory(target, project_name, 'D' + deployment_id.replace('-', '')[:7].upper())
         save(self.work / 'intent.json', {'deploymentId': deployment_id, 'projectId': store.id, 'guestDirectory': guest_dir,
             'artifactId': artifact['id'], 'target': target, 'helperSha256': helper['sha256']})
         guard(store, job, lease); await batch(ssh, ['mkdir ' + quote(guest_dir)])
         self.phase('transferring'); receipts = []
+        ownership = self.work / 'DEPLOY.JSN'
+        ownership.write_text(encode({'interface': 'r4os-studio-deployment-owner', 'schema': 1, 'projectId': store.id, 'deploymentId': deployment_id, 'exchangeGeneration': exchange['generation']}) + '\n')
+        guard(store, job, lease)
+        receipts.append(await publish_file(ssh, ownership, guest_dir + '/DEPLOY.JSN', digest(ownership)))
         module = artifact['files'][0]
         source = store.root / 'Artifacts' / artifact['id'] / artifact['entry']
         for path, name, checksum in ((source, 'APP.' + artifact['kind'], module['sha256']), (helper['path'], 'STHELP.R4X', helper['sha256']), (helper['watchdog']['path'], 'STWATCH.R4X', helper['watchdog']['sha256'])):
@@ -129,11 +146,13 @@ class Deployment:
             self.note('Verified ' + name + ' · ' + checksum)
         descriptor = {'schema': 1, 'interface': 'r4os-studio-deployment', 'projectId': store.id,
             'deploymentId': deployment_id, 'artifactId': artifact['id'], 'packageSha256': artifact['packageSha256'],
-            'sourceSha256': artifact['sourceSha256'], 'files': receipts, 'helperSha256': helper['sha256']}
+            'sourceSha256': artifact['sourceSha256'], 'manifestSha256': artifact['manifestSha256'],
+            'target': target, 'pins': job['pins'], 'helperPins': helper['pins'],
+            'watchdogSha256': helper['watchdog']['sha256'], 'files': receipts, 'helperSha256': helper['sha256']}
         package = self.work / 'PACKAGE.JSN'; package.write_text(encode(descriptor) + '\n')
         guard(store, job, lease); receipts.append(await publish_file(ssh, package, guest_dir + '/PACKAGE.JSN', digest(package)))
         self.phase('checking_helper'); instance = str(uuid.uuid4())
-        guest_path = 'C:' + chr(92) + chr(92).join(guest_dir.split('/')[2:])
+        guest_path = exchange['drive'] + ':' + chr(92) + chr(92).join(guest_dir.split('/')[2:])
         response = await ssh.exec(guest_path + chr(92) + 'STHELP.R4X ' + instance)
         try: hello = json.loads(response['output'].strip())
         except ValueError: raise DevelopmentFault('The verified guest helper did not return a valid handshake.')
@@ -148,7 +167,8 @@ class Deployment:
         if normalize(hello['result'].get('modulePath')) != normalize(guest_path + chr(92) + 'STHELP.R4X'):
             raise DevelopmentFault('The helper handshake belongs to another guest module path.')
         guard(store, job, lease); self.phase('publishing')
-        record = {'id': deployment_id, 'projectId': store.id, 'jobId': job['id'], 'artifactId': artifact['id'],
+        record = {'format': 'exchange-build-v1', 'readiness': {'state': 'transferred', 'checkedAt': now()},
+            'helperPins': helper['pins'], 'watchdogSha256': helper['watchdog']['sha256'], 'id': deployment_id, 'projectId': store.id, 'jobId': job['id'], 'artifactId': artifact['id'],
             'packageSha256': artifact['packageSha256'], 'sourceSha256': artifact['sourceSha256'],
             'manifestSha256': artifact['manifestSha256'], 'target': target, 'role': artifact['role'], 'kind': artifact['kind'],
             'guestDirectory': guest_path, 'entry': 'APP.' + artifact['kind'], 'helper': 'STHELP.R4X',
