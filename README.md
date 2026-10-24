@@ -1,5 +1,83 @@
 # R4OS Studio · App
 
+Version 0.3.53 completes the project editor with Quick Open (Ctrl/Cmd+P), literal saved-source search (Ctrl/Cmd+Shift+F), version-aware result navigation and documented limits. Search runs without a shell or index, skips generated/cache/Git directories, and reports incomplete or skipped results. All six editor subversions are implemented without tests or user-project feature runs.
+
+## Project source editor (0.3.48–0.3.53)
+
+Projects → project → Editor opens the Workspace file tree in navigation column
+three and source tabs in the full main area. Folders load on expansion, with
+100-entry pages. Click a file to edit it; tabs show relative paths and unsaved
+changes. New file, New folder, Rename, Delete and Refresh are available in Files.
+Deletion requires confirmation; folders must be empty, and creation/rename never
+overwrites an existing target. Open destination drafts are preserved.
+
+- Ctrl/Cmd+S saves the current file; closing a dirty tab offers Save/Discard/Cancel.
+- Ctrl/Cmd+F opens in-file find/replace; standard undo/redo and indentation keys
+  use each document's retained CodeMirror state.
+- Ctrl/Cmd+P opens Quick Open by file name/path; Ctrl/Cmd+Shift+F searches saved
+  Workspace text. Arrow keys select results; Enter opens the selected result.
+- Files changed on disk keep the editor draft and offer Compare, explicit Reload
+  and Save as. Save as creates a new file and keeps the original draft open.
+- Navigation to Sessions, Settings, another project or System retains open files,
+  undo and cursor/scroll state. Reload/closing the browser warns about drafts and
+  uncertain operations. Unsaved drafts are held in memory, not crash-recovered.
+
+The browser owns editor state and display; fixed unprivileged Python operations
+under `scripts/projects/editor*.py` own file access. The Fastify module
+`backend/src/modules/project-editor/` uses Projects browser sessions, allowed
+Host/Origin and CSRF. Public contracts are in `shared/project-editor.d.ts`.
+The API exposes tree/file reads, batched status, mutations, operation receipts
+and bounded search under `/api/projects/<uuid>/editor`. It cannot select a host
+root, shell command, SDK directory or VM. No LLM account/session or VM is needed.
+
+Only `Data/Projects/<uuid>/Workspace/` is accessible. Every path is resolved with
+no-follow directory descriptors; symlinks, hardlinks and special files cannot be
+edited. A missing `module.R4MF` can be repaired without layout migration. The
+512 KiB UTF-8 file limit, 20 open/loading documents across Studio and 10,000
+entries per directory bound the initial scope. Binary/non-UTF-8/oversized files
+show a status. UTF-8 BOM, LF/CRLF and absence of a final newline are retained;
+mixed line endings are read-only. Root `Agents.md` uses the existing 32 KiB
+validation and filename rules shared with Settings. Manifest/Cargo edits do not
+change project component pins or bypass SDK validation.
+
+Save binds both byte SHA-256 and file revision. Mutations take the exclusive
+project lifetime lock and confirm idle runs/jobs and stopped historical workers.
+Reads and local drafts remain available during runs; only saved files enter a
+build's existing source snapshot. Save does not start build/deploy/run. File
+staging and durable request journals live outside Workspace under the private
+project `.studio/editor/` directory. Atomic publication uses fsync; create and
+rename do not replace targets. Lost responses retain the same request in browser
+session storage; Retry operation checks/reuses its receipt rather than issuing
+a new mutation. Interrupted requests are never replayed automatically at startup.
+Project deletion removes these private records with the UUID directory, warns
+about drafts and waits for unresolved local editor operations.
+
+Visible editor status runs as one batched request for open-file metadata every
+five seconds and on focus/save, paused while the browser is hidden. There is no
+recursive polling, filesystem watcher, shell search or index. Project search is
+literal and limited to 2,000 files, 2,000 directories, 10,000 entries, 16 MiB read,
+200 results and three seconds per request, with one browser search in flight per
+project. It excludes `.git`, `.zig-cache`, `zig-out`, `zig-pkg`, `target`, `build`,
+`.R4OSRust` and `node_modules`. Skipped entries and incomplete results are shown.
+Result navigation rereads the current version and preserves dirty tabs; stale
+line numbers are not applied to a changed file or draft. There is no project-wide
+replace, recursive deletion, executable preview, LSP or compiler process.
+
+CodeMirror is bundled locally and loaded on demand, without a React wrapper or
+CDN. Exact MIT dependencies and resolved transitive packages are pinned in
+`package.json`/`pnpm-lock.yaml`: state 6.7.6, view 6.43.15, commands 6.11.1,
+language 6.13.1, search 6.7.2, lang-rust 6.0.2, lang-cpp 6.0.3, lang-json 6.0.2,
+lang-markdown 6.5.2 and legacy-modes 6.5.5. Rust/C use official language modules;
+Zig/.zon and R4MF use local token modes; JSON, Markdown and TOML are supported,
+with plain UTF-8 text as fallback. Syntax highlighting is not type checking.
+
+Validation for these six subversions: source review, Python syntax compilation,
+Studio build/TypeScript and lint. No tests, sample projects, browser/agent/guest
+runs or user-project build/deploy/file operations were performed. Each subversion
+is separately published, tagged and installed through the regular updater.
+Workspace documentation: `Docs/Project-Editor.md`; release evidence:
+`Research/R4OS/Roadmap-Implementation/0.3.48/` through `0.3.53/`.
+
 Version 0.3.52 adds batched visible-editor file status, focus refresh and explicit conflict comparison, reload and Save as. Dirty drafts survive section/project changes and active agent jobs; lost mutation responses retain the original request. Project deletion warns about editor drafts and waits for unresolved operations.
 
 Version 0.3.51 integrates the Workspace file tree, source tabs and explicit save into Projects → Editor. New file/folder, rename and confirmed deletion use version-bound receipts and the existing project lifetime locks. Drafts survive navigation within Studio; file operations remain independent of agent tools and VM access.
@@ -737,7 +815,7 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Purple/Dark-Design mit dunkelvioletten Flächen, lavendelfarbener Schrift und violetten Akzenten für Auswahl, Tabs und Tastaturfokus. Favicon und Browser-Theme-Farbe sind darauf abgestimmt.
 - Vollständig englische Benutzeroberfläche, einschließlich zugänglicher Beschriftungen und Browser-Metadaten (`lang="en"`). Neue UI-Texte werden auf Englisch ergänzt.
 - Obere Tab-Leiste mit **System** und **Projects**, ohne Workspace-Kennung rechts. Auch mit Pfeiltasten, Pos1 und Ende bedienbar.
-- Links drei gleich breite Navigationsspalten: im System-Tab **Areas → Components → Views**, im Projects-Tab **Projects → Sessions / Editor / Settings → Settings-Unterpunkte**; die dritte Spalte bleibt bei Sessions/Editor leer. Keine Zähler, wiederholten Kontextüberschriften oder Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
+- Links drei gleich breite Navigationsspalten: im System-Tab **Areas → Components → Views**, im Projects-Tab **Projects → Sessions / Editor / Settings → Sessions / Files / Settings-Unterpunkte**; Editor zeigt den Files-Baum und rechts die volle Codefläche. Keine Zähler, wiederholten Kontextüberschriften oder Management-Fußnoten. Ihre Breite entspricht auf dem Desktop der bisherigen dritten Spalte; der übrige Platz steht dem Hauptbereich zur Verfügung.
 - Im Tab **System** gibt es **Settings → LLM Provider**, **Virtual Machines** und **Updates → R4OS Studio**. **New Provider** steht in **Views** immer zuerst, darunter stehen die gespeicherten Provider ohne Nummerierung. Verbundene OpenAI-Abonnements zeigen rechts im Provider-Button den verbleibenden Quotenanteil.
 - Im Tab **Projects** steht **New Project** vor dem SQLite-Projektkatalog. Die Einträge zeigen Anzeigenamen und bleiben über unveränderliche UUIDs mit ihren Ordnern unter `Data/Projects/` verbunden.
 - Rechts ein Hauptbereich mit Seitentitel und Inhalt, ohne Breadcrumb-Navigation oder zusätzliche Kontextüberschrift über dem Seitentitel.
@@ -746,7 +824,7 @@ Frontend: <http://127.0.0.1:5173> · Backend: <http://127.0.0.1:3001/api/health>
 - Auf schmalen Bildschirmen stehen die drei Navigationsspalten oberhalb des Hauptbereichs.
 - Ein Fastify-Backend mit `GET /api/health`. Der Status beschreibt ausschließlich den Studio-Server, keine R4OS-Instanz.
 
-Projektanlage, Sessions mit Agent-Runs, OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Editor und allgemeine Projekt-Build-/Deploy-Endpunkte bleiben geplant; die VM-Verwaltung startet bereits QEMU. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
+Projektanlage, Browser-Editor, Sessions mit Agent-Runs, isolierte Projekt-Build-/Deploy-/Run-Aufträge, OpenAI-Provider- und unabhängige VM-Verwaltung sind implementiert. Die Oberfläche lädt keine externen Schriftarten oder anderen Medien.
 
 ## OpenAI mit ChatGPT-Abonnement
 
@@ -821,7 +899,7 @@ React und TypeScript strukturieren die interaktive Studio-Oberfläche. Vite übe
 
 Browser: Layout, Navigation, Provider-Verwaltung und Anmeldecode. Der Feature-API-Client ist von React getrennt; `useProviders.ts` verwaltet den React-Zustand. Server: Health-Endpunkt, Provider-API, isolierte Codex-Kindprozesse, Persistenz und statische Frontend-Dateien. Ausschließlich `frontend/dist/` wird statisch ausgeliefert; `Data/` ist über HTTP nicht zugänglich. Im Entwicklungsbetrieb leitet Vite `/api` zum Backend weiter; dadurch ist keine zusätzliche CORS-Freigabe nötig. Die Entwicklungsserver binden an `127.0.0.1`. Im Produktionsbetrieb liefert ein gemeinsamer Server Frontend und API über `0.0.0.0:5010` aus. `HOST` und `PORT` überschreiben die jeweiligen Vorgaben.
 
-Projektpersistenz, Manifestvalidierung und eigenständige Projektgerüste sind implementiert; die unabhängige VM-Verwaltung besitzt einen eigenen Runner. Geplant bleiben Agent Sessions, Browser-Editor, versioniertes API-Wissen sowie Projekt-Build-/Deploy-Endpunkte. Zig, SDK und Contract werden zur Projekterstellung bereits geprüft und gebunden; die Vorlagen wurden isoliert minimal gebaut.
+Projektpersistenz, Manifestvalidierung und eigenständige Projektgerüste sind implementiert; die unabhängige VM-Verwaltung besitzt einen eigenen Runner. Agent Sessions, Browser-Editor und isolierte Projekt-Build-/Deploy-/Run-Aufträge sind ebenfalls implementiert; versioniertes API-Wissen bleibt ein späterer Umfang. Zig, SDK und Contract werden zur Projekterstellung bereits geprüft und gebunden; die Vorlagen wurden isoliert minimal gebaut.
 
 ## R4OS: einzelne Apps statt Gesamtworkspace
 

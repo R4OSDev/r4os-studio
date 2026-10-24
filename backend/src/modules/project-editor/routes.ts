@@ -2,12 +2,24 @@ import type { FastifyInstance } from 'fastify';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { projectStore, ProjectError } from '../projects/store.js';
 import { maintenanceHosts } from '../projects/maintenance.js';
-import type { EditorMutation } from '../../../../shared/project-editor.js';
+import type { EditorMutation, EditorSearchInput } from '../../../../shared/project-editor.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const path = { type: 'string', maxLength: 1024 };
 const params = { type: 'object', required: ['id'], properties: { id: identity } };
 export function editorRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions) {
+  app.post<{ Params: { id: string }; Body: EditorSearchInput }>('/:id/editor/search', {
+    bodyLimit: 16384,
+    preValidation: async (request) => {
+      if (request.body && Object.keys(request.body).some((key) => !['query', 'mode', 'caseSensitive'].includes(key))) throw new ProjectError('Unexpected search fields.', 400);
+    },
+    schema: { params, body: { type: 'object', additionalProperties: false, required: ['query', 'mode'], properties: {
+      query: { type: 'string', maxLength: 200 }, mode: { enum: ['name', 'content'] }, caseSensitive: { type: 'boolean' },
+    } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return projectStore(directory, { operation: 'search', id: request.params.id, input: request.body }, 'editor');
+  });
   app.post<{ Params: { id: string }; Body: EditorMutation }>('/:id/editor/mutations', {
     bodyLimit: 2 * 1024 * 1024,
     preValidation: async (request) => {

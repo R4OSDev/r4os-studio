@@ -1,9 +1,9 @@
 import type { EditorState } from '@codemirror/state';
-import type { EditorMutation, EditorNode, EditorReceipt, EditorStatus, EditorTree } from '../../../../shared/project-editor';
+import type { EditorMutation, EditorNode, EditorReceipt, EditorStatus, EditorTree, EditorSearchInput, EditorSearchResult } from '../../../../shared/project-editor';
 import type { EditorDocument } from './model';
 import { projectRequest, projectRequestId, ProjectRequestError } from '../projects/api';
 
-interface Pending { body: EditorMutation; documents?: { path: string; revision?: string }[] }
+interface Pending { body: EditorMutation; documents?: { path: string; revision?: string }[]; initialRejection?: string }
 export interface EditorProject {
   id: string; token: string; docs: EditorDocument[]; active: string; selection?: EditorNode;
   trees: Map<string, EditorTree>; expanded: Set<string>; loading: Set<string>; status?: EditorStatus;
@@ -24,6 +24,7 @@ export class EditorRegistry {
   private projects = new Map<string, EditorProject>();
   private listeners = new Set<() => void>();
   private epoch = 0;
+  private searches = new Map<string, Promise<unknown>>();
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   snapshot = () => this.epoch;
   changed = () => { this.epoch++; this.listeners.forEach((listener) => listener()); };
@@ -40,6 +41,13 @@ export class EditorRegistry {
   hasWorking = () => [...this.projects.values()].some((p) => p.working);
   private request<T>(p: EditorProject, path: string, method = 'GET', body?: unknown) {
     return projectRequest<T>(`/${p.id}/editor${path}`, p.token, method, body);
+  }
+  search(id: string, input: EditorSearchInput, active: () => boolean) {
+    const previous = this.searches.get(id) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => active() ? this.request<EditorSearchResult>(this.project(id), '/search', 'POST', input) : undefined);
+    this.searches.set(id, next);
+    void next.finally(() => { if (this.searches.get(id) === next) this.searches.delete(id); }).catch(() => undefined);
+    return next;
   }
   activate(id: string, token: string) {
     const p = this.project(id); p.token = token;
@@ -90,10 +98,23 @@ export class EditorRegistry {
     else { p.expanded.add(entry.path); if (!p.trees.has(entry.path)) void this.loadTree(id, entry.path); }
     this.changed();
   }
-  async open(id: string, path: string, line?: number) {
+  async open(id: string, path: string, line?: number, expectedRevision?: string) {
     const p = this.project(id);
     const existing = p.docs.find((doc) => doc.path === path);
-    if (existing) { p.active = path; if (line) this.goto(existing, line); this.changed(); return; }
+    if (existing) {
+      p.active = path;
+      if (expectedRevision) {
+        try {
+          const current = await this.current(id, path);
+          if (p.deleted || !p.docs.includes(existing)) return;
+          existing.external = current.revision !== existing.file.revision || current.kind !== existing.file.kind ? current : undefined;
+          if (dirty(existing) || existing.external || expectedRevision !== current.revision) {
+            p.notice = 'Search uses saved files. The open draft is kept; review its current contents.'; this.goto(existing);
+          } else this.goto(existing, line);
+        } catch (error) { p.error = (error as Error).message; }
+      } else this.goto(existing, line);
+      this.changed(); return;
+    }
     if (p.loading.has('file:' + path) || p.deleted) return;
     if ([...this.projects.values()].reduce((n, item) => n + item.docs.length + [...item.loading].filter((key) => key.startsWith('file:')).length, 0) >= 20) { p.error = 'Close a file before opening more than 20 documents.'; this.changed(); return; }
     p.loading.add('file:' + path); p.error = ''; this.changed();
@@ -105,13 +126,16 @@ export class EditorRegistry {
       if (p.deleted) return;
       if (!p.docs.some((item) => item.path === path)) p.docs.push(doc);
       p.active = path; p.selection = file;
-      if (line) this.goto(doc, line);
+      if (expectedRevision && expectedRevision !== file.revision) { p.notice = 'This file changed since the search. Showing its current version.'; this.goto(doc); }
+      else this.goto(doc, line);
     } catch (error) { p.error = (error as Error).message; }
     finally { p.loading.delete('file:' + path); this.changed(); }
   }
-  private goto(doc: EditorDocument, line: number) {
-    const pos = doc.state.doc.line(Math.max(1, Math.min(doc.state.doc.lines, line))).from;
-    doc.state = doc.state.update({ selection: { anchor: pos }, scrollIntoView: true }).state;
+  private goto(doc: EditorDocument, line?: number) {
+    doc.navigation = { line };
+  }
+  navigated(doc: EditorDocument, navigation: EditorDocument['navigation']) {
+    if (doc.navigation === navigation) doc.navigation = undefined;
   }
   state(doc: EditorDocument, state: EditorState) { doc.state = state; this.changed(); }
   focus(id: string, path: string) { this.project(id).active = path; this.changed(); }
@@ -184,6 +208,9 @@ export class EditorRegistry {
     try {
       let result: EditorReceipt | undefined;
       if (reconcile) result = await this.request<EditorReceipt>(p, '/operations/' + pending.body.requestId);
+      if (result?.state === 'missing' && result.requestId === pending.body.requestId && pending.initialRejection) {
+        this.clearPending(p); throw new Error(pending.initialRejection);
+      }
       if (!result || result.state === 'missing' || result.state === 'unknown')
         result = await this.request<EditorReceipt>(p, '/mutations', 'POST', pending.body);
       if (result.requestId !== pending.body.requestId) throw new Error('The operation receipt identity changed.');
@@ -197,6 +224,8 @@ export class EditorRegistry {
       // An explicit initial 4xx response plus a missing journal proves this
       // request ended before publication. Lost responses remain pending.
       if (!reconcile && error instanceof ProjectRequestError && error.status >= 400 && error.status < 500) {
+        pending.initialRejection = error.message;
+        try { sessionStorage.setItem(pendingKey(p.id), JSON.stringify(pending)); } catch { /* Keep the original request in memory. */ }
         try {
           const receipt = await this.request<EditorReceipt>(p, '/operations/' + pending.body.requestId);
           if (receipt.requestId === pending.body.requestId && (receipt.state === 'missing' || receipt.state === 'rejected')) this.clearPending(p);

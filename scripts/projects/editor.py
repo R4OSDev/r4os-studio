@@ -40,6 +40,9 @@ def main():
             elif operation == 'receipt' and set(data) == {'requestId'}:
                 from editor_mutations import receipt
                 result = receipt(projects, identity, data['requestId'])
+            elif operation == 'search':
+                from editor_search import search
+                result = search(root, data)
             else: raise ProjectFault('Unsupported editor operation.', 400)
             current = path.stat()
             opened = os.fstat(root)

@@ -69,7 +69,7 @@ def metadata(path, info):
     return result
 
 
-def node(root, path, content=False):
+def node(root, path, content=False, byte_limit=MAX_TEXT):
     names = parts(path)
     missing = {'path': path, 'name': names[-1], 'kind': 'missing', 'editable': False,
                'reason': 'This file or its parent directory is no longer available.'}
@@ -82,14 +82,15 @@ def node(root, path, content=False):
         except FileNotFoundError: return {'path': path, 'name': name, 'kind': 'missing', 'editable': False, 'reason': 'This file no longer exists.'}
         result = metadata(path, info)
         if not content or result['kind'] != 'file' or info.st_nlink != 1: return result
-        if info.st_size > MAX_TEXT:
+        limit = min(MAX_TEXT, byte_limit)
+        if info.st_size > limit:
             return {**result, 'reason': 'This file exceeds the 512 KiB text editor limit.'}
         file = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
         with os.fdopen(file, 'rb') as stream:
             if signature(os.fstat(stream.fileno())) != signature(info):
                 raise ProjectFault('The file changed while being read. Refresh it.', 409)
-            raw = stream.read(MAX_TEXT + 1)
-            if len(raw) > MAX_TEXT or signature(os.fstat(stream.fileno())) != signature(info):
+            raw = stream.read(limit + 1)
+            if len(raw) > limit or signature(os.fstat(stream.fileno())) != signature(info):
                 raise ProjectFault('The file changed while being read. Refresh it.', 409)
         if signature(os.stat(name, dir_fd=descriptor, follow_symlinks=False)) != signature(info):
             raise ProjectFault('The file changed while being read. Refresh it.', 409)

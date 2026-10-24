@@ -44,10 +44,11 @@ export default function EditorPanel({ id, token }: { id: string; token: string }
     {(p.error || p.accessError || p.notice || p.status?.reason) && <div className={p.error || p.accessError ? 'editor-message error' : 'editor-message'} role={p.error || p.accessError ? 'alert' : 'status'}>{p.error || p.accessError || p.status?.reason || p.notice}</div>}
     {doc?.external && <div className="editor-message editor-conflict" role="status">{doc.external.kind === 'missing' ? 'This file is no longer on disk. Your draft is kept.' : 'This file changed on disk. Your editor text is kept.'}
       <button type="button" onClick={() => setModal('compare')}>Compare</button></div>}
+    {doc?.file.reason && 'text' in doc.file && <div className="editor-message" role="status">{doc.file.reason}</div>}
     {p.pending && <div className="editor-message" role="status">{p.working ? 'Saving operation…' : `Unconfirmed ${p.pending.body.kind}: ${p.pending.body.path}`}
       {!p.working && <button type="button" onClick={() => void editorRegistry.retry(id)}>Retry operation</button>}</div>}
     {doc ? 'text' in doc.file ? <EditorCore key={id + ':' + doc.path} doc={doc} readOnly={!doc.file.editable || p.loading.has('reload:' + doc.path)}
-      onState={(state) => editorRegistry.state(doc, state)} save={() => { if (writable) void editorRegistry.save(id, doc); }} />
+      onState={(state) => editorRegistry.state(doc, state)} navigated={(navigation) => editorRegistry.navigated(doc, navigation)} save={() => { if (writable) void editorRegistry.save(id, doc); }} />
       : <div className="editor-empty">{doc.file.reason ?? 'This file is unavailable for text editing.'}</div>
       : <div className="editor-empty">{p.loading.size ? 'Loading…' : 'Open a file from Files.'}</div>}
     {closing && <EditorDialog label="Unsaved file changes" busy={p.working} close={() => setClosing(null)}>

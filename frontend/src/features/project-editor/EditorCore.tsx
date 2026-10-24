@@ -5,14 +5,15 @@ import type { EditorDocument } from './model';
 import { languageName } from './languages';
 import './styles.css';
 
-export function EditorCore({ doc, readOnly, onState, save }: {
+export function EditorCore({ doc, readOnly, onState, save, navigated }: {
   doc: EditorDocument; readOnly: boolean; onState: (state: EditorState) => void; save: () => void;
+  navigated: (navigation: EditorDocument['navigation']) => void;
 }) {
   const parent = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
-  const callbacks = useRef({ onState, save });
+  const callbacks = useRef({ onState, save, navigated });
   const head = doc.state.selection.main.head, currentLine = doc.state.doc.lineAt(head);
   const caret = { line: currentLine.number, column: head - currentLine.from + 1 };
-  useLayoutEffect(() => { callbacks.current = { onState, save }; });
+  useLayoutEffect(() => { callbacks.current = { onState, save, navigated }; });
   useLayoutEffect(() => {
     if (!parent.current) return;
     const initial = doc.state.update({ effects: doc.viewConfig.reconfigure([
@@ -25,7 +26,8 @@ export function EditorCore({ doc, readOnly, onState, save }: {
     const instance = new EditorView({ state: initial, parent: parent.current });
     view.current = instance;
     callbacks.current.onState(initial);
-    const frame = requestAnimationFrame(() => { instance.scrollDOM.scrollTop = doc.scrollTop; instance.scrollDOM.scrollLeft = doc.scrollLeft; });
+    const restoreScroll = !doc.navigation?.line;
+    const frame = requestAnimationFrame(() => { if (restoreScroll) { instance.scrollDOM.scrollTop = doc.scrollTop; instance.scrollDOM.scrollLeft = doc.scrollLeft; } });
     return () => {
       cancelAnimationFrame(frame); doc.scrollTop = instance.scrollDOM.scrollTop; doc.scrollLeft = instance.scrollDOM.scrollLeft;
       instance.destroy(); view.current = null;
@@ -35,6 +37,16 @@ export function EditorCore({ doc, readOnly, onState, save }: {
     const instance = view.current;
     if (instance && instance.state !== doc.state) instance.setState(doc.state);
   });
+  useLayoutEffect(() => {
+    const instance = view.current, navigation = doc.navigation;
+    if (!instance || !navigation) return;
+    if (navigation.line) {
+      const line = instance.state.doc.line(Math.max(1, Math.min(instance.state.doc.lines, navigation.line)));
+      instance.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+    }
+    instance.focus();
+    callbacks.current.navigated(navigation);
+  }, [doc, doc.navigation]);
   useLayoutEffect(() => {
     view.current?.dispatch({ effects: doc.readOnly.reconfigure([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]) });
   }, [doc, readOnly]);

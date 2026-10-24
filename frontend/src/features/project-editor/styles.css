@@ -49,4 +49,14 @@
 .editor-comparison h3 { font-size: 12px; }
 .editor-comparison pre { overflow: auto; max-height: 50dvh; padding: 12px; background: #120f18; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
 @media (max-width:600px) { .editor-comparison { grid-template-columns: minmax(0, 1fr); } .editor-comparison pre { max-height: 25dvh; } }
+.editor-navigation-actions { padding-bottom: 0; }
+.editor-search-status { color: #baa8cc; font-size: 11px; line-height: 1.6; margin: 12px 0; }
+.editor-search-status p { font-size: 11px; margin: 6px 0; }
+.editor-search-status summary { cursor: pointer; }
+.editor-dialog .editor-search-case { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.editor-dialog .editor-search-case input { width: auto; margin: 0; }
+.editor-search-results { list-style: none; padding: 0; margin: 14px 0; max-height: 40dvh; overflow: auto; }
+.editor-search-results button { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; padding: 9px; background: transparent; font-size: 11px; overflow-wrap: anywhere; }
+.editor-search-results button[aria-selected=true] { background: #352345; color: #eee5fa; }
+.editor-search-results code { font: 10px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; color: #b7a4cb; }
 @media (max-width:800px) { .editor-panel { min-height: 480px; height: 65dvh; flex: none; } .editor-tree { max-height: 320px; } .editor-toolbar { flex-wrap: wrap; } }

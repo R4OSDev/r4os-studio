@@ -11,12 +11,13 @@ export interface EditorDocument {
   projectId: string; path: string; file: EditorNode; state: EditorState; baseText: Text;
   language: Compartment; readOnly: Compartment; viewConfig: Compartment; scrollTop: number; scrollLeft: number;
   external?: EditorNode; error?: string;
+  navigation?: { line?: number };
 }
 export function isDirty(doc: EditorDocument) { return !doc.state.doc.eq(doc.baseText); }
 export async function createDocument(projectId: string, file: EditorNode): Promise<EditorDocument> {
   const language = new Compartment(), readOnly = new Compartment(), viewConfig = new Compartment();
   const state = EditorState.create({ doc: file.text ?? '', extensions: [
-    history(), lineNumbers(), foldGutter(), drawSelection(), highlightSpecialChars(), highlightActiveLine(),
+    history({ minDepth: 40 }), lineNumbers(), foldGutter(), drawSelection(), highlightSpecialChars(), highlightActiveLine(),
     bracketMatching(), indentOnInput(), highlightSelectionMatches(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, indentWithTab]),
     EditorView.lineWrapping, EditorState.tabSize.of(4), language.of(await languageFor(file.path)),
