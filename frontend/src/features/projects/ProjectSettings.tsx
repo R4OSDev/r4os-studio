@@ -5,7 +5,7 @@ import type { Project, ProjectOptions, ProjectUpdate } from '../../../../shared/
 import { projectRequest, ProjectRequestError } from './api';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 
-export type ProjectSettingsView = 'General' | 'Virtual machine' | 'Run & Test';
+export type ProjectSettingsView = 'General' | 'Virtual machine' | 'Run & Test' | 'Agents.md';
 export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, saved, deleted }: {
   id: string; view: ProjectSettingsView; token: string; dirtyChanged: (value: boolean) => void;
   busyChanged: (value: boolean) => void;

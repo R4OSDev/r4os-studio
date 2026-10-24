@@ -52,3 +52,16 @@
 .project-delete-description { padding: 0 28px 18px; color: #c8b9d6; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .project-delete-description strong { color: #f0e7fa; font-weight: 600; }
 @media (max-width: 600px) { .project-delete-section { padding: 18px 20px; } .project-delete-description { padding: 0 20px 18px; } }
+.project-agents-editor {
+  display: block;
+  width: 100%;
+  min-height: 24rem;
+  padding: 1rem;
+  resize: vertical;
+  color: inherit;
+  background: var(--input-bg, #15121d);
+  border: 1px solid var(--border, #393242);
+  border-radius: .5rem;
+  font: .875rem/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  tab-size: 2;
+}

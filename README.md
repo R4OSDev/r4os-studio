@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.42 adds Projects → Settings → Agents.md with a plain text editor, Save changes and Cancel. Hash conflicts retain the draft, reload/discard is explicit, navigation/reload protects unsaved edits and saving is disabled while project runs/jobs are busy. Missing files show the title/description draft and are created on Save. The current frozen file supplements the global prompt from the next accepted run. Syntax/build/TypeScript/lint checked; no tests, browser, agent or guest runs.
+
 Version 0.3.41 freezes Workspace/Agents.md text and SHA-256 at run admission alongside the global system prompt. Start/resume applies both explicitly, with global instructions taking precedence and new versions replacing earlier Studio instructions. Native file discovery stays disabled. Existing admitted runs retain their old snapshot; new web requests require coordinator support and cannot silently fall back. Thread/history and project pins are preserved. Syntax/build/TypeScript/lint checked; no tests or native runs.
 
 Version 0.3.40 creates Workspace/Agents.md with Titel and Beschreibung during durable project publication. A fixed protected API reads/saves the 32 KiB UTF-8 file with hash conflicts and exclusive project maintenance locks. Existing files and pins remain unchanged; reading a missing file returns a draft. Reserved v4 creation requests retain their original file map. Syntax/build/TypeScript/lint checked; no tests or project/agent/guest runs.

@@ -4,6 +4,7 @@ import { useProjects } from './useProjects';
 import { NewProjectDialog } from './NewProjectDialog';
 import { RunTestSettings } from './RunTestSettings';
 import { ProjectSettings } from './ProjectSettings';
+import { ProjectAgentsSettings } from './ProjectAgentsSettings';
 import type { ProjectSettingsView } from './ProjectSettings';
 import { useSessions } from '../agent-sessions/useSessions';
 import { NewSessionDialog } from '../agent-sessions/NewSessionDialog';
@@ -64,7 +65,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav> : <div className="nav-column" aria-hidden="true" />}
       {selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['General', 'Virtual machine', 'Run & Test'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
+        <div className="nav-items">{(['General', 'Virtual machine', 'Run & Test', 'Agents.md'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
           className={`nav-item ${current.settingsView === view ? 'selected' : ''}`} aria-current={current.settingsView === view ? 'page' : undefined}
           onClick={() => { if (view !== current.settingsView && leave()) navigate(selected.id, { ...current, settingsView: view }); }}><span>{view}</span></button>)}</div>
       </nav> : selected && current.section === 'Sessions' ? <nav className="nav-column" aria-label="Project sessions">
@@ -82,7 +83,9 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       {selected && <>
         {!(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Settings' && current.settingsView === 'Run & Test' && <RunTestSettings key={selected.id + ':' + epoch} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
-        {current.section === 'Settings' && current.settingsView !== 'Run & Test' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
+        {current.section === 'Settings' && current.settingsView === 'Agents.md' && <ProjectAgentsSettings key={`${selected.id}:${epoch}`}
+          id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
+        {current.section === 'Settings' && current.settingsView !== 'Run & Test' && current.settingsView !== 'Agents.md' && <ProjectSettings key={`${selected.id}:${current.settingsView}:${epoch}`}
           id={selected.id} view={current.settingsView} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} saved={api.reload}
           deleted={(id) => {
             api.forget(id); select(null); setDirty(false); setSaving(false);
