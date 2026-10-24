@@ -5,6 +5,7 @@ import { projectRequest, projectRequestId, ProjectRequestError, sessionPath, bus
 import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
+import { ComposerSettings } from './ComposerSettings';
 
 type Pending = { requestId: string; revision: number; text: string };
 function readPending(key: string): Pending | null {
@@ -28,6 +29,10 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const log = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [choiceSaving, setChoiceSaving] = useState(false);
+  useEffect(() => {
+    if (choiceSaving) { busyChanged(true); return () => busyChanged(false); }
+  }, [choiceSaving, busyChanged]);
   const load = useCallback(async (signal: AbortSignal) => {
     const h = await projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal);
     const r = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal);
@@ -75,7 +80,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }, [items]);
   const run = session?.latestRun, active = busyRun(run?.state);
   async function send(event: FormEvent) {
-    event.preventDefault(); if (!session || sending || (!pending && (active || !text.trim()))) return;
+    event.preventDefault(); if (!session || sending || choiceSaving || settings || (!pending && (active || !text.trim()))) return;
     const data = pending ?? { requestId: projectRequestId(), revision: session.revision, text };
     try { sessionStorage.setItem(pendingKey, JSON.stringify(data)); } catch { setError('Enable session storage before sending.'); return; }
     setPending(data); setSending(true); setError('');
@@ -110,7 +115,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><div><h2>{session?.name ?? 'Session'}</h2><span className="agent-model">{session?.model}</span></div>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.state ?? 'Ready') : connection}</span>
-        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
+        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
@@ -122,8 +127,12 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <textarea aria-label="Message" placeholder="Message the agent…" rows={3} maxLength={65536} value={pending?.text ?? text} disabled={sending || !!pending || active || !session}
         onChange={(e) => { setText(e.target.value); try { sessionStorage.setItem(draftKey, e.target.value); } catch { /* send reports storage failure */ } }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-      <div className="agent-compose-actions">{active && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
-        <button className="agent-send" disabled={sending || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
+      <div className="agent-composer-footer">
+        {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings}
+          busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
+        <div className="agent-compose-actions">{active && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
+          <button className="agent-send" disabled={sending || choiceSaving || settings || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
+      </div>
     </form>
     {settings && session && <SessionSettings session={session} projectId={projectId} token={token} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;

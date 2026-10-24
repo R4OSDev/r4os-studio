@@ -7,17 +7,17 @@ export type ToolPermissions = Record<AgentToolId, boolean>;
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface AgentRun { id: string; sessionId: string; state: RunState; error: string | null; createdAt: string; completedAt: string | null }
 export interface AgentSession {
-  id: string; projectId: string; name: string; providerId: string; model: string; effort: string;
+  id: string; projectId: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
 }
-export interface SessionCreate { name: string; providerId: string; model: string; effort: string; requestId: string }
+export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {
-  revision: number; name?: string; providerId?: string; model?: string; effort?: string; permissions?: ToolPermissions;
+  revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
 }
 export interface SessionOptions {
   development?: import('./project-development.js').DevelopmentOptions;
-  providers: { id: string; name: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string }[] }[];
+  providers: { id: string; name: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean }[];
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }

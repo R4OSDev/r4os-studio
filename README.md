@@ -1,5 +1,21 @@
 # R4OS Studio · App
 
+Version 0.3.34 places Account, Model, Reasoning and Fast Mode dropdowns below the
+message field, aligned left beside the send controls. Choices save immediately
+with the session revision and apply to the next run. Selection is locked during
+runs, uncertain send retries and saves. Model/account changes retain compatible
+reasoning and Fast Mode choices; unsupported choices use the selected model's
+defaults. Session settings now contain the name and tool permissions.
+
+Fast Mode defaults to Off for existing and new sessions. Availability comes from
+the connected account's model catalog. Each run freezes the choice; Codex's native
+Fast Mode feature and `serviceTier` are set explicitly for start, resume and turn
+(`priority` for On, `default` for Off). Switching Off clears a tier remembered by
+the native thread. Existing thread history, tool profiles and provider credential
+storage are preserved. The additive JSON setting needs no database migration or
+host maintenance. Build/TypeScript, Python syntax and lint passed; no automated,
+browser or native agent tests were run, as requested.
+
 Version 0.3.33 groups consecutive tool and terminal calls from the same run into
 expandable blocks between messages. Compact blocks show three single-line tool
 summaries and scroll to additional calls. Each call opens independently; opening

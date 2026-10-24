@@ -63,7 +63,10 @@ def provider_models(directory, provider_id):
         efforts = [x['effort'] for x in m.get('supported_reasoning_levels', [])]
         if not efforts: efforts = [m.get('default_reasoning_level', 'low')]
         result.append({'id': m['slug'], 'name': m.get('display_name') or m['slug'],
-                       'efforts': efforts, 'defaultEffort': m.get('default_reasoning_level') or efforts[0]})
+                       'efforts': efforts, 'defaultEffort': m.get('default_reasoning_level') or efforts[0],
+                       'fastModeAvailable': any(isinstance(tier, dict) and tier.get('id') in ('fast', 'priority')
+                                                for tier in (m.get('service_tiers') or []))
+                           or 'fast' in (m.get('additional_speed_tiers') or [])})
     return result
 
 
@@ -96,6 +99,10 @@ def validate_settings(data, provider_dir):
     model = next((m for m in provider_models(provider_dir, data['providerId']) if m['id'] == data['model']), None)
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)
+    if type(data.get('fastMode', False)) is not bool:
+        raise ProjectFault('Invalid Fast Mode setting.', 400)
+    if data.get('fastMode', False) and not model['fastModeAvailable']:
+        raise ProjectFault('Fast Mode is unavailable for the selected model.', 400)
     if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in tools_for(data.get('engine', {}).get('profile', PROFILE))} or any(type(v) is not bool for v in data['permissions'].values()):
         raise ProjectFault('Invalid tool permissions.', 400)
 
@@ -165,6 +172,7 @@ PRAGMA user_version=1;
 
     def present(self, row):
         settings = json.loads(row['settings'])
+        settings.setdefault('fastMode', False)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         return {'id': row['id'], 'projectId': row['project_id'], 'name': row['name'], **settings,
                 'engine': json.loads(row['engine']), 'revision': row['revision'],
@@ -177,7 +185,7 @@ PRAGMA user_version=1;
     def get(self, session_id): return self.present(self.row(session_id))
 
     def create(self, data, provider_dir):
-        if set(data) != {'name', 'providerId', 'model', 'effort', 'requestId'}:
+        if set(data) - {'fastMode'} != {'name', 'providerId', 'model', 'effort', 'requestId'}:
             raise ProjectFault('Unexpected session fields.', 400)
         key = identity(data['requestId']); payload_hash = hashlib.sha256(encode(data).encode()).hexdigest()
         self.db.execute('BEGIN IMMEDIATE')
@@ -190,6 +198,7 @@ PRAGMA user_version=1;
             if self.db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0] >= 200:
                 raise ProjectFault('The project session limit has been reached.')
             settings = {k: data[k] for k in ('providerId', 'model', 'effort')}
+            settings['fastMode'] = data.get('fastMode', False)
             settings['permissions'] = {v: True for v in TOOL_IDS}
             validate_settings({**settings, 'name': data['name']}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
@@ -205,8 +214,10 @@ PRAGMA user_version=1;
             if self.db.in_transaction: self.db.rollback()
 
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'permissions'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
+        if 'fastMode' in data and type(data['fastMode']) is not bool:
+            raise ProjectFault('Invalid Fast Mode setting.', 400)
         self.db.execute('BEGIN IMMEDIATE')
         try:
             previous = self.get(session_id)
@@ -214,7 +225,7 @@ PRAGMA user_version=1;
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1', (session_id,)).fetchone():
                 raise ProjectFault('Stop or resolve the current run before changing session settings.')
             value = {**previous, **data}
-            settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'permissions')}
+            settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions')}
             value['name'] = text(value['name'], 120)
             changed = value['name'] != previous['name'] or any(value[k] != previous[k] for k in settings)
             if changed:

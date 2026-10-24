@@ -8,6 +8,7 @@ const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-
 const fields = {
   name: { type: 'string', minLength: 1, maxLength: 120 }, providerId: identity,
   model: { type: 'string', minLength: 1, maxLength: 120 }, effort: { type: 'string', minLength: 1, maxLength: 30 },
+  fastMode: { type: 'boolean' },
 };
 const params = { type: 'object', additionalProperties: false, required: ['id', 'sessionId'], properties: { id: identity, sessionId: identity } };
 const projectParams = { type: 'object', required: ['id'], properties: { id: identity } };

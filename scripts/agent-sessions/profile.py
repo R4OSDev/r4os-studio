@@ -55,7 +55,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False):
     tools_for(selected_profile)
     binary = regular(binary)
     if digest(binary) != CODEX_SHA256:
@@ -114,6 +114,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
+    settings['features.fast_mode'] = fast_mode
     settings['features.sqlite'] = True
     settings['features.skip_host_skill_discovery'] = True
     # Hide user config in the runtime mount namespace; the original file is

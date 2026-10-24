@@ -5,7 +5,7 @@ import { ProjectField } from '../projects/ProjectField';
 import { projectRequest, sessionPath, busyRun, toolLabels } from './api';
 
 const tools = Object.keys(toolLabels) as AgentToolId[];
-const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, tools.map((id) => s.permissions[id])]);
+const editable = (s: AgentSession) => JSON.stringify([s.name, tools.map((id) => s.permissions[id])]);
 export function SessionSettings({ session, token, projectId, close, saved, dirtyChanged, busyChanged }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
@@ -34,14 +34,13 @@ export function SessionSettings({ session, token, projectId, close, saved, dirty
       .catch((e: Error) => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [projectId]);
-  const provider = options?.providers.find((p) => p.id === draft.providerId), model = provider?.models.find((m) => m.id === draft.model);
   const patch = (values: Partial<AgentSession>) => setDraft((old) => ({ ...old, ...values }));
   async function submit(e: FormEvent) {
     e.preventDefault(); if (saving || reloading) return;
     setSaving(true); setError('');
     try {
-      const { revision, name, providerId, model, effort, permissions } = draft;
-      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision, name: name.trim(), providerId, model, effort, permissions });
+      const { revision, name, permissions } = draft;
+      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision, name: name.trim(), permissions });
       saved(result.session);
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -62,14 +61,6 @@ export function SessionSettings({ session, token, projectId, close, saved, dirty
       <fieldset className="project-fields" disabled={saving || reloading} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
         {tab === 'General' ? <>
           <ProjectField id="settings-session-name" label="Name"><input id="settings-session-name" required maxLength={120} value={draft.name} onChange={(e) => patch({ name: e.target.value })} /></ProjectField>
-          <ProjectField id="settings-session-provider" label="Provider"><select id="settings-session-provider" value={draft.providerId} onChange={(e) => {
-            const p = options?.providers.find((p) => p.id === e.target.value), m = p?.models[0]; patch({ providerId: e.target.value, model: m?.id ?? '', effort: m?.defaultEffort ?? '' });
-          }}>{!provider && <option value={draft.providerId}>Unavailable provider</option>}{options?.providers.map((p) => <option key={p.id} value={p.id} disabled={!p.models.length}>{p.name}</option>)}</select></ProjectField>
-          <div className="project-form-row">
-            <ProjectField id="settings-session-model" label="Model"><select id="settings-session-model" value={draft.model} onChange={(e) => patch({ model: e.target.value, effort: provider?.models.find((m) => m.id === e.target.value)?.defaultEffort ?? '' })}>
-              {!model && <option value={draft.model}>{draft.model}</option>}{provider?.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></ProjectField>
-            <ProjectField id="settings-session-effort" label="Reasoning"><select id="settings-session-effort" value={draft.effort} onChange={(e) => patch({ effort: e.target.value })}>{!model?.efforts.includes(draft.effort) && <option value={draft.effort}>{draft.effort}</option>}{model?.efforts.map((e) => <option key={e} value={e}>{e}</option>)}</select></ProjectField>
-          </div>
         </> : <div className="agent-permissions">{(['Files', 'Terminal', 'Build', 'VM'] as const).map((group) => <fieldset key={group}><legend>{group}</legend>
           {tools.filter((id) => (['studio.exec_command', 'studio.write_stdin', 'studio.terminate_process'].includes(id) ? 'Terminal' : ['studio.build_project', 'studio.deploy_project', 'studio.run_project', 'studio.read_development_job', 'studio.stop_development_job'].includes(id) ? 'Build' : ['studio.capture_vm', 'studio.send_vm_input'].includes(id) ? 'VM' : 'Files') === group).map((id) => <label key={id} className="agent-permission">
             <span>{toolLabels[id]}</span><input type="checkbox" role="switch" aria-label={toolLabels[id]} checked={!!draft.permissions[id]} disabled={!(id in draft.permissions)} onChange={(e) => patch({ permissions: { ...draft.permissions, [id]: e.target.checked } })} /><span className="agent-switch" aria-hidden="true" />

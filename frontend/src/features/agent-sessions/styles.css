@@ -44,6 +44,18 @@
 .agent-compose-actions .agent-send { background:#ba91e7; border-color:#c49bf0; color:#21132e; font-weight:650; }
 .agent-compose-actions .agent-stop { color:#f3bac7; border-color:#78505e; }
 .agent-compose-actions button:disabled { opacity:.45; cursor:default; }
+.agent-composer-footer { display:flex; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-top:12px; }
+.agent-composer-settings { flex:1 1 auto; min-width:0; max-width:100%; }
+.agent-model-controls { display:flex; justify-content:flex-start; flex-wrap:wrap; gap:9px; min-width:0; margin:0; padding:0; border:0; }
+.agent-model-controls label { display:flex; flex-direction:column; gap:5px; min-width:0; max-width:100%; }
+.agent-model-controls label>span { color:#ac9bbb; font-size:10px; }
+.agent-model-controls select { width:100%; max-width:220px; min-width:80px; height:32px; padding:5px 9px; border:1px solid #4e3a5f; border-radius:6px; background:#211829; color:#ddd0e9; font:inherit; font-size:11px; text-overflow:ellipsis; }
+.agent-account-choice,.agent-model-choice { flex:0 1 180px; }
+.agent-model-controls select:focus-visible { outline:2px solid #b98ce2; outline-offset:2px; }
+.agent-model-controls:disabled { opacity:.55; }
+.agent-composer-footer .agent-compose-actions { flex-shrink:0; margin:0 0 0 auto; }
+.agent-choice-error { margin:8px 0 0; color:#ffb8c6; font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+@media (max-width:440px) { .agent-composer-settings { flex-basis:100%; } .agent-model-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } .agent-model-controls label { max-width:none; } .agent-model-controls select { min-width:0; max-width:100%; } }
 .agent-older { display:block; margin:0 auto 20px; color:#b8a4ce; }
 .agent-error { margin:0; padding:10px 20px; color:#ffb8c6; font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
 .session-nav-status { width:5px; height:5px; flex-shrink:0; border-radius:50%; background:#be91ec; }

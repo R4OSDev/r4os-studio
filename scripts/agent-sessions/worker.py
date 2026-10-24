@@ -33,6 +33,12 @@ class Worker:
             self.config['systemPrompt'] = prompt_snapshot(self.store.projects)
             with self.store.db:
                 self.store.db.execute('UPDATE runs SET config=? WHERE id=?', (encode(self.config), self.run_id))
+        # An older compatible coordinator may still admit a new-release worker.
+        # Settings are locked for this busy run, so freeze the omitted choice once.
+        if self.row['busy'] and 'fastMode' not in self.config:
+            self.config['fastMode'] = self.store.get(self.session_id)['fastMode']
+            with self.store.db:
+                self.store.db.execute('UPDATE runs SET config=? WHERE id=?', (encode(self.config), self.run_id))
         self.client = None; self.turn_id = None; self.thread_id = None
         self.done = asyncio.Event(); self.stopping = False; self.outcome = 'unknown'; self.error = None
         self.turn_requested = False
@@ -209,7 +215,8 @@ class Worker:
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
             args, profile = prepare(binary, provider_home, state,
-                                    json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE))
+                                    json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE),
+                                    fast_mode=self.config.get('fastMode', False))
             self.client = CodexRPC(args, self.notify, self.tool)
             self.client.version = self.manifest['version']
             await self.client.start()
@@ -217,12 +224,14 @@ class Worker:
             instructions = ('These are the current global R4OS Studio instructions. '
                             'They replace any earlier R4OS Studio system prompt.\n\n'
                             + validate_text(self.config['systemPrompt']['text']))
+            # Explicit default clears a Fast tier saved by an earlier native turn.
+            service_tier = 'priority' if self.config.get('fastMode', False) else 'default'
             if self.thread_id:
-                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
+                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
-                response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'],
+                response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
                            'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions,
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
@@ -233,7 +242,7 @@ class Worker:
             try:
                 result = await self.client.request('turn/start', {'threadId': self.thread_id,
                              'clientUserMessageId': self.row['request_id'], 'input': [{'type': 'text', 'text': request_text(self.store, self.run_id)}],
-                             'model': self.config['model'], 'effort': self.config['effort']})
+                             'model': self.config['model'], 'effort': self.config['effort'], 'serviceTier': service_tier})
                 self.turn_id = result['turn']['id']
                 if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
                                                        worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid()), 'profile': profile})
