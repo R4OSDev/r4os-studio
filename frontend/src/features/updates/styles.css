@@ -7,6 +7,13 @@
 .component-version > div { min-width: 0; }
 .component-version small { display: block; margin-top: 7px; color: #b0a2c0; overflow-wrap: anywhere; font-size: 10px; }
 .component-label { color: #c5a0f4; margin-left: 10px; font-size: 10px; }
+.sdk-set-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.sdk-set-parts > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+.sdk-set-parts h3 { margin: 0; color: #b0a2c0; font-size: 12px; font-weight: 400; }
+.sdk-set-parts code { color: #b0a2c0; overflow-wrap: anywhere; font-size: 10px; }
+.sdk-set-parts .component-label { margin: 0; }
+.sdk-pending { margin: 16px 0; font-size: 12px; color: #e0c8ff; }
+@media (max-width:700px) { .sdk-set-parts { grid-template-columns: 1fr; } }
 .updates-card { max-width: 1000px; padding: 28px; border: 1px solid var(--line); border-radius: 10px; background: #1b1623; }
 .updates-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .updates-title h2 { font-size: 21px; margin: 10px 0; }

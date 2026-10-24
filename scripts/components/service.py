@@ -228,7 +228,9 @@ class Manager:
                 catalog = adapter.catalog(self, kind, older)
                 if kind == 'sdk':
                     from sdk_sets import resolve
-                    for selected in catalog.get('versions', []):
+                    selections = {value['id']: value for value in self.installed('sdk')}
+                    selections.update({value['id']: value for value in catalog.get('versions', [])})
+                    for selected in selections.values():
                         self.progress(f'Reading SDK {selected["version"]} release dependencies…')
                         try:
                             value = resolve(self, selected)

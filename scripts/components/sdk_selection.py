@@ -43,7 +43,7 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
             if previous.get('phase') != 'complete':
                 previous.update(phase='complete', completedAt=now())
                 atomic(path, previous)
-            return manager.status()
+            return {**manager.status(), 'sdkOperation': {'requestId': request_id, 'phase': 'complete'}}
         if manager.busy:
             if manager.job.get('requestId') == request_id:
                 return manager.status()

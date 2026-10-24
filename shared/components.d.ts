@@ -29,4 +29,5 @@ export interface ComponentsStatus {
   enabled: boolean; components: Record<ComponentKind, ComponentInventory>; job: ComponentJob | null;
   message: string; csrfToken?: string;
   features?: { sdkSets?: number; sdkSelection?: number }; profileRevision?: string;
+  sdkOperation?: { requestId: string; phase: 'complete' };
 }
