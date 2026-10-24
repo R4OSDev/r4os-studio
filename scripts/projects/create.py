@@ -80,12 +80,11 @@ def finish(db, projects, root, request, context=None):
         elif context['pins'] != project['pins']:
             raise ProjectFault('The prepared profile differs from the saved project pins.')
         saved_revision = document.get('templateRevision', document['input']['optionsRevision'])
-        legacy = saved_revision == template_revision(project['pins'], 'templates-v4')
-        if saved_revision != context['templateRevision'] and not legacy:
+        if saved_revision != context['templateRevision']:
             raise ProjectFault('The saved template revision is unavailable. All pending files were preserved.')
         stage.mkdir(mode=0o700, parents=True)
         source = stage / 'Workspace' if document.get('layout', 1) == 2 else stage
-        render(context, source, {**document['input'], 'id': project['id'], 'moduleName': project['moduleName']}, include_agents=not legacy)
+        render(context, source, {**document['input'], 'id': project['id'], 'moduleName': project['moduleName']})
         sync_tree(stage)
         document['files'] = hashes(stage)
         with db:

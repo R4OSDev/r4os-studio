@@ -107,7 +107,6 @@ def combination(context, template, language):
 
 def render(context, directory, project, template):
     from sdk import validate
-    from gui_startup import adapt
     match = combination(context, template, project['language'])
     if not match or not match['supported']: raise ValueError(match['reason'] if match else 'SDK templates are unavailable.')
     runner = context.get('runner')
@@ -118,7 +117,6 @@ def render(context, directory, project, template):
     if context.get('rust'): args += ['-InstallRoot', context['rust']['prefix'] / 'Install', '-CacheRoot', context['cache'] / 'rust-create']
     command(args, {'PATH': str(runner.parent) + ':/usr/bin:/bin', 'HOME': str(context['cache']),
                    'LANG': 'C.UTF-8', 'POWERSHELL_TELEMETRY_OPTOUT': '1'}, context['cache'])
-    gui_adapted = adapt(directory, project)
     if project['template'] == 'subsystem':
         manifest = directory / 'module.R4MF'; lines = manifest.read_text(encoding='utf-8-sig').splitlines()
         lines = [v for v in lines if not v.startswith(('SUBSYSTEM_ID=', 'SUBSYSTEM_DISPLAY_NAME=', 'GUEST_FORMAT=', 'GUEST_EXTENSION=', 'GUEST_MAGIC=', 'GUEST_FEATURE=', 'TARGET='))]
@@ -128,6 +126,5 @@ def render(context, directory, project, template):
         manifest.write_text('\n'.join(lines) + '\n')
     for name in ('LICENSE', 'NOTICE'):
         if (context['paths']['sdk'] / name).is_file(): shutil.copyfile(context['paths']['sdk'] / name, directory / (name + '.R4OS-SDK'))
-    (directory / 'THIRD_PARTY_NOTICES.md').write_text('Created from the official SDK template at ' + context['pins']['sdk']['revision'] + '.\n' +
-        ('Studio adapts the GUI starter to draw before Desktop publishes its client size; SDK sources are unchanged.\n' if gui_adapted else ''))
+    (directory / 'THIRD_PARTY_NOTICES.md').write_text('Created from the official SDK template at ' + context['pins']['sdk']['revision'] + '.\n')
     return validate(context, directory)

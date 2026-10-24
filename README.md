@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.54 removes the Studio first-frame GUI workaround. New Zig/C desktop and subsystem projects keep the official SDK paint calls; Studio no longer generates or imports studio_gui.zig/studio_gui.h. The existing local Hello World source is restored to Window.beginPaint(), with the unchanged generated helper and its Studio-specific notice removed. Template identity advances to templates-v6; component pins and saved build history are retained. The replacement deployment/run approach is deferred. Python syntax, Studio build/TypeScript and lint checked; no tests or project/VM runs.
+
 Version 0.3.53 completes the project editor with Quick Open (Ctrl/Cmd+P), literal saved-source search (Ctrl/Cmd+Shift+F), version-aware result navigation and documented limits. Search runs without a shell or index, skips generated/cache/Git directories, and reports incomplete or skipped results. All six editor subversions are implemented without tests or user-project feature runs.
 
 ## Project source editor (0.3.48–0.3.53)
@@ -194,7 +196,7 @@ their calls. New calls follow the scroll position while the user stays at the en
 This is a browser presentation change for both saved history and live events.
 Build/TypeScript and lint passed; no tests were run, as requested.
 
-Version 0.3.32 adapts newly generated Zig/C desktop and subsystem starters in
+Historical behavior in 0.3.32 (removed in 0.3.54): Studio adapted newly generated Zig/C desktop and subsystem starters in
 the project workspace. A small Studio helper opens the first paint with a
 480 × 240 canvas when Desktop has not published a positive client size yet.
 Once available, the actual client size is used unchanged, including smaller
