@@ -22,6 +22,19 @@
 .agent-tool pre { margin:0; padding:12px 14px; border-top:1px solid #33283e; max-height:300px; overflow:auto; font-size:11px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; color:#c6bbd0; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .agent-tool .agent-arguments { color:#a89ab5; font-size:10px; }
 .agent-tool p { margin:0; padding:8px 14px; color:#b3a2c2; font-size:11px; }
+.agent-tool-block { --agent-tool-row-height:44px; margin:0 0 24px; min-width:0; border:1px solid #40304f; border-radius:9px; background:#15101c; overflow:hidden; }
+.agent-tool-block-toggle { display:flex; align-items:center; gap:9px; width:100%; padding:11px 13px; border:0; border-bottom:1px solid #3b2d49; background:#241b2e; color:#cdb4e5; text-align:left; font-size:11px; font-weight:550; cursor:pointer; }
+.agent-tool-block-chevron { color:#ac87ce; font-size:18px; line-height:14px; }
+.agent-tool-block.expanded .agent-tool-block-chevron { transform:rotate(90deg); }
+.agent-tool-count { margin-left:auto; padding:2px 7px; border:1px solid #513e61; border-radius:10px; color:#bba5ce; font-size:10px; font-variant-numeric:tabular-nums; }
+.agent-tool-list { max-height:calc(var(--agent-tool-row-height) * 3); min-width:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; scrollbar-gutter:stable; }
+.agent-tool-block.expanded .agent-tool-list { max-height:max(calc(var(--agent-tool-row-height) * 3), min(65dvh, 680px)); }
+.agent-tool-block-toggle:focus-visible,.agent-tool-list:focus-visible { outline:2px solid #b98ce2; outline-offset:-3px; }
+.agent-tool-list .agent-tool { margin:0; border:0; border-radius:0; box-shadow:inset 0 -1px #33283e; }
+.agent-tool-list .agent-tool summary { align-items:center; height:var(--agent-tool-row-height); box-sizing:border-box; padding:0 13px; }
+.agent-tool-list .agent-tool summary span:first-of-type { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agent-tool-list .agent-tool-status { flex-shrink:0; }
+.agent-tool-list .development-card,.agent-tool-list .development-image { margin:12px; }
 .agent-composer { padding:15px 18px; border-top:1px solid #3b2c49; background:#201828; }
 .agent-composer textarea { display:block; width:100%; resize:vertical; min-height:70px; max-height:240px; border:1px solid #4e3a5f; border-radius:7px; background:#15101c; padding:12px 14px; color:#eee5fa; font:inherit; font-size:13px; line-height:1.6; }
 .agent-composer textarea:focus { outline:2px solid #a87ed2; outline-offset:1px; }

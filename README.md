@@ -1,5 +1,14 @@
 # R4OS Studio · App
 
+Version 0.3.33 groups consecutive tool and terminal calls from the same run into
+expandable blocks between messages. Compact blocks show three single-line tool
+summaries and scroll to additional calls. Each call opens independently; opening
+a call also expands its block. Collapsing the block closes its tool details again.
+Arguments, outputs, screenshots and development job cards remain available inside
+their calls. New calls follow the scroll position while the user stays at the end.
+This is a browser presentation change for both saved history and live events.
+Build/TypeScript and lint passed; no tests were run, as requested.
+
 Version 0.3.32 adapts newly generated Zig/C desktop and subsystem starters in
 the project workspace. A small Studio helper opens the first paint with a
 480 × 240 canvas when Desktop has not published a positive client size yet.

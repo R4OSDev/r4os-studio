@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
-import { projectRequest, projectRequestId, ProjectRequestError, sessionPath, busyRun, toolLabels } from './api';
-import { DevelopmentCard, DevelopmentImage, developmentRef } from './DevelopmentCard';
+import { projectRequest, projectRequestId, ProjectRequestError, sessionPath, busyRun } from './api';
 import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
-import { CodeBlock, MessageText } from './Transcript';
+import { SessionTranscript } from './SessionTranscript';
 
 type Pending = { requestId: string; revision: number; text: string };
 function readPending(key: string): Pending | null {
@@ -115,22 +114,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
-      {items.map((i, index) => i.type === 'tool' || i.type === 'terminal' ? <div key={itemKey(i)} className="agent-tool-group"><details className={`agent-tool ${i.status ?? ''}`}>
-        <summary><span>{i.type === 'terminal' ? 'Terminal' : toolLabels[i.tool ?? ''] ?? 'Tool call'}</span><span className="agent-tool-status">{i.status}</span></summary>
-        <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />
-        {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
-        {typeof i.nextLine === 'number' && <p>More lines available from line {i.nextLine}.</p>}
-        {typeof i.lineTruncated === 'number' && <p>Line {i.lineTruncated} exceeds the output limit.</p>}
-        {typeof i.nextOffset === 'number' && <p>More entries available from offset {i.nextOffset}.</p>}
-        {typeof i.skippedFiles === 'number' && i.skippedFiles > 0 && <p>{i.skippedFiles} files were not searched.</p>}
-        {i.partialChangesPossible === true && <p>Partial changes may remain.</p>}
-        {i.files != null && typeof i.files === 'object' && <CodeBlock text={JSON.stringify(i.files, null, 2)} label="Copy changed files" language="Files" />}
-        {i.exitCode != null && <p>Exit code {i.exitCode}</p>}{i.error && <p>{i.error}</p>}
-      </details><DevelopmentImage projectId={projectId} value={i.image} />
-        {developmentRef(i.development) && items.findIndex((v) => developmentRef(v.development)?.jobId === developmentRef(i.development)?.jobId) === index && <DevelopmentCard projectId={projectId} token={token} jobId={developmentRef(i.development)!.jobId} />}
-      </div> : <article key={itemKey(i)} className={`agent-message ${i.type}`}>
-        {i.type !== 'notice' && <div className="agent-message-role">{i.type === 'user' ? 'You' : 'Agent'}</div>}<MessageText text={i.text ?? ''} markdown={i.type === 'assistant'} />
-      </article>)}
+      <SessionTranscript items={items} projectId={projectId} token={token} />
     </div>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}
