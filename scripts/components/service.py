@@ -194,7 +194,7 @@ class Manager:
                 value = self.sdk_sets.get(record['id'], {'state': 'unresolved', 'reason': 'Check SDK versions to resolve the matching packages.'})
                 record['sdkSet'] = summary(value, inventories, self.state['defaults'])
             return {'enabled': True, 'components': components, 'job': copy.deepcopy(self.job),
-                    'features': {'sdkSets': 1}, 'profileRevision': profile_revision(self.state),
+                    'features': {'sdkSets': 1, 'sdkSelection': 1}, 'profileRevision': profile_revision(self.state),
                     'message': 'Downloads and active defaults are managed independently.'}
 
     def progress(self, message, **values):
@@ -202,6 +202,9 @@ class Manager:
             self.job.update(message=message, **values)
 
     def start(self, kind, action, identity=None, older=False):
+        if kind == 'sdk' and action == 'download':
+            from sdk_selection import start
+            return start(self, action, identity)
         if kind not in KINDS or action not in ('check', 'download'):
             raise ValueError('Unsupported component action.')
         if identity is not None and not IDENTITY.fullmatch(identity):
@@ -258,6 +261,9 @@ class Manager:
                 self.busy = False
 
     def set_default(self, kind, identity):
+        if kind == 'sdk':
+            from sdk_selection import start
+            return start(self, 'default', identity)
         if kind not in KINDS or not IDENTITY.fullmatch(identity):
             raise ValueError('Invalid component version.')
         with self.lock:
@@ -266,6 +272,10 @@ class Manager:
             record = next((value for value in self.installed(kind) if value['id'] == identity), None)
             if not record:
                 raise ValueError('Only a complete local installation can be selected as default.')
+            if kind in ('contract', 'libraries') and self.state['defaults'].get('sdk'):
+                if self.state['defaults'].get(kind, {}).get('id') == identity:
+                    return self.status()
+                raise ValueError('Select the SDK to change its Contract and Libraries together.')
             if kind == 'rust':
                 if record.get('installationMethod') == 'r4os-sdk-profile':
                     from rust_sdk import verify as verify_installation
@@ -274,18 +284,6 @@ class Manager:
                 verify_installation(self.root / FOLDERS[kind] / identity, record)
             defaults = copy.deepcopy(self.state['defaults'])
             defaults[kind] = record
-            if kind == 'sdk' and record.get('dependencies', {}).get('contract'):
-                pin = record['dependencies']['contract']
-                contract = next((value for value in self.installed('contract') if value.get('revision', value['id']) == pin['revision']), None)
-                if not contract or contract.get('packageHash') != pin['packageHash']:
-                    raise ValueError('Download the exact Contract required by this SDK before activating it.')
-                defaults['contract'] = contract
-                required = record.get('minZigVersion')
-                compiler = next((value for value in self.installed('zig') if value['version'] == required), None)
-                if required and not compiler:
-                    raise ValueError(f'Download Zig {required} before selecting this SDK.')
-                if compiler:
-                    defaults['zig'] = compiler
             sdk = defaults.get('sdk', {})
             contract = defaults.get('contract', {})
             pin = sdk.get('dependencies', {}).get('contract')
@@ -304,7 +302,7 @@ class Manager:
                 library_pin = library.get('dependencies', {}).get('contract')
                 if library_pin and (contract.get('revision', contract.get('id')) != library_pin['revision'] or contract.get('packageHash') != library_pin['packageHash']):
                     raise ValueError('The selected Libraries require a different Contract profile.')
-            next_state = {'schema': 1, 'defaults': defaults, 'updatedAt': now()}
+            next_state = {**self.state, 'schema': 1, 'defaults': defaults, 'updatedAt': now()}
             atomic(self.profile, next_state)
             self.state = next_state
         return self.status()
@@ -321,13 +319,19 @@ class Handler(socketserver.StreamRequestHandler):
             if len(line) > 4096 or not line.endswith(b'\n'):
                 raise ValueError('Invalid component request.')
             request = json.loads(line)
-            allowed = {'command', 'kind', 'id', 'older'}
+            allowed = {'command', 'kind', 'id', 'older', 'requestId', 'expectedProfileRevision', 'manifestSha256'}
             if not isinstance(request, dict) or set(request) - allowed:
                 raise ValueError('Unsupported component request.')
             command = request.get('command')
             manager = self.server.manager
             if command == 'status' and set(request) == {'command'}:
                 result = manager.status()
+            elif command in ('default', 'download') and request.get('kind') == 'sdk':
+                if not {'command', 'kind', 'id'} <= set(request) or 'older' in request:
+                    raise ValueError('Unsupported SDK operation.')
+                from sdk_selection import start
+                result = start(manager, command, request['id'], request.get('requestId'),
+                               request.get('expectedProfileRevision'), request.get('manifestSha256'))
             elif command == 'default' and set(request) == {'command', 'kind', 'id'}:
                 result = manager.set_default(request['kind'], request['id'])
             elif command in ('check', 'download') and request.get('kind') in KINDS:

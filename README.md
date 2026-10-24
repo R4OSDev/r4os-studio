@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.45 SDK download and default selection now use one durable component-service job for SDK, its exact Contract and Libraries. Existing packages are checked and reused without changing their archive identities; default activation commits the complete set atomically. Request receipts, manifest/profile binding and service capability checks protect retries and mixed releases. Existing project pins remain unchanged.
+
 Version 0.3.44 SDK version checks now resolve the published SDK-Release.json into an exact SDK, Contract and Libraries set. The bounded metadata cache retains archive origins and checksums separately from existing installations; status polling stays local and existing defaults and project pins remain unchanged.
 
 Version 0.3.43 adds Reset virtual machine and Reset Exchange Partition beside Delete in VM settings. Confirmed stopped-only resets atomically replace the system overlay on the bound image or the entire Exchange image/share/sync state, preserving the other storage and VM identity/settings/login. Durable request receipts prevent repeated resets. Cross-process maintenance reservations block new VM jobs; active jobs/exports prevent reset. System generations invalidate old host-key/readiness trust even for the same image; credentials remain bound to the VM. Syntax/build/TypeScript/lint checked; no tests and no VMs reset or started.

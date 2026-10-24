@@ -21,8 +21,9 @@ export interface ComponentInventory {
   latestId: string | null; checkedAt: string | null; error: string | null; hasMore: boolean;
 }
 export interface ComponentJob {
-  kind: ComponentKind; action: 'check' | 'download'; phase: 'working' | 'complete' | 'failed';
+  kind: ComponentKind; action: 'check' | 'download' | 'default'; phase: 'working' | 'complete' | 'failed';
   message: string; error: string | null; received?: number; total?: number;
+  requestId?: string;
 }
 export interface ComponentsStatus {
   enabled: boolean; components: Record<ComponentKind, ComponentInventory>; job: ComponentJob | null;
