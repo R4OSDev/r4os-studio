@@ -8,3 +8,11 @@ export interface EditorTree { path: string; revision: string; entries: EditorNod
 export interface EditorStatus {
   writable: boolean; reason?: string; busy: boolean; maxTextBytes: number; mutations: number; files: EditorNode[];
 }
+export interface EditorMutation {
+  requestId: string; kind: 'save' | 'create' | 'mkdir' | 'rename' | 'delete'; path: string;
+  expected?: { revision: string; sha256?: string }; text?: string; format?: EditorFormat; target?: string; confirm?: true;
+}
+export interface EditorReceipt {
+  requestId: string; state: 'complete' | 'rejected' | 'unknown' | 'missing';
+  kind?: EditorMutation['kind']; path?: string; target?: string; node?: EditorNode; message?: string;
+}

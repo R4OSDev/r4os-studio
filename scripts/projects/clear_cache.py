@@ -23,16 +23,16 @@ def cache_path(directory):
     return path
 
 
-def worker_admission(projects, identity, hosts):
+def worker_admission(projects, identity, hosts, action='clearing the build cache'):
     if not isinstance(hosts, dict) or hosts.get('unsafe'):
-        raise ProjectFault('Wait for the updated project hosts before clearing the build cache.', 503)
+        raise ProjectFault(f'Wait for the updated project hosts before {action}.', 503)
     root = project_directory(projects, identity)
     runs = rows(root / 'Sessions/Sessions.sqlite', 'runs', 'id,busy')
     jobs = rows(root / 'Development/Development.sqlite', 'jobs', 'id,kind,busy')
     if any(value['busy'] for value in runs + jobs):
         raise ProjectFault('Wait for active agent runs and development jobs to finish.', 409)
     if (runs and not hosts.get('agents')) or ((root / 'Development/Development.sqlite').exists() and not hosts.get('development')):
-        raise ProjectFault('Project worker status is unavailable. Restore its host before clearing the build cache.', 503)
+        raise ProjectFault(f'Project worker status is unavailable. Restore its host before {action}.', 503)
     run_ids = {project_id(value['id']) for value in runs}
     job_ids = {project_id(value['id']): value['kind'] for value in jobs}
     for kind in ('agents', 'development'):
@@ -49,7 +49,7 @@ def worker_admission(projects, identity, hosts):
             if key != path.parent.name: raise ProjectFault('Invalid project worker identity.', 503)
             if kind == 'agents': run_ids.add(key)
             else: job_ids[key] = value.get('kind', 'build')
-    worker_check(sorted(run_ids), job_ids, 'clearing the build cache')
+    worker_check(sorted(run_ids), job_ids, action)
 
 
 def hold_cache_locks(path, stack):

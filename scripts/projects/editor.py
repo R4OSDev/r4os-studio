@@ -14,10 +14,13 @@ def main():
     raw = sys.stdin.buffer.read(2 * 1024 * 1024 + 1)
     if len(raw) > 2 * 1024 * 1024: raise ProjectFault('Editor request is too large.', 413)
     request = json.loads(raw)
-    if not isinstance(request, dict) or set(request) != {'operation', 'id', 'input'} or not isinstance(request['input'], dict):
+    if not isinstance(request, dict) or set(request) - {'operation', 'id', 'input', 'hosts'} or not {'operation', 'id', 'input'} <= set(request) or not isinstance(request['input'], dict):
         raise ProjectFault('Invalid editor request.', 400)
     operation, data = request['operation'], request['input']
     projects, identity = Path(sys.argv[1]).absolute(), project_id(request['id'])
+    if operation == 'mutation':
+        from editor_mutations import mutate
+        print(json.dumps({'result': mutate(projects, identity, data, request.get('hosts'))})); return
     with acquire(projects, identity):
         path = root_path(projects, identity)
         root = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -30,9 +33,13 @@ def main():
                 result = node(root, data['path'], content=True)
             elif operation == 'status' and set(data) == {'paths'}:
                 if not isinstance(data['paths'], list) or len(data['paths']) > MAX_OPEN: raise ProjectFault('Too many open files.', 400)
-                result = {'writable': False, 'reason': 'This release provides read-only editor access.',
-                          'busy': busy(projects, identity), 'maxTextBytes': MAX_TEXT, 'mutations': 0,
+                active = busy(projects, identity)
+                result = {'writable': not active, 'reason': 'Wait for active runs and development jobs to finish.' if active else None,
+                          'busy': active, 'maxTextBytes': MAX_TEXT, 'mutations': 1,
                           'files': [node(root, relative) for relative in data['paths']]}
+            elif operation == 'receipt' and set(data) == {'requestId'}:
+                from editor_mutations import receipt
+                result = receipt(projects, identity, data['requestId'])
             else: raise ProjectFault('Unsupported editor operation.', 400)
             current = path.stat()
             opened = os.fstat(root)

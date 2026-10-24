@@ -1,14 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { existsSync } from 'node:fs';
 import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResponse, ProjectDeleted } from '../../../../shared/projects.js';
 import { listProjects, projectStore, ProjectError } from './store.js';
 import { ProjectSessions } from './sessions.js';
 import { agentSessionRoutes } from '../agent-sessions/routes.js';
 import { runRoutes } from '../agent-sessions/run-routes.js';
 import { developmentRoutes } from '../project-development/routes.js';
-import { agentHost } from '../agent-sessions/host.js';
-import { developmentHost } from '../project-development/host.js';
 import { editorRoutes } from '../project-editor/routes.js';
+import { maintenanceHosts } from './maintenance.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -40,20 +38,6 @@ function validateFields(value: unknown, allowed: string[]) {
   }
   if (Object.hasOwn(body, 'revision') && !Number.isSafeInteger(body.revision)) throw new ProjectError('Invalid project revision.', 400);
   if (Object.hasOwn(body, 'vmId') && body.vmId !== null && typeof body.vmId !== 'string') throw new ProjectError('Invalid virtual machine.', 400);
-}
-
-async function maintenanceHosts() {
-  const supports = async (read: () => Promise<{ enabled: boolean; projectDeletionLocks?: number }>, socket: string) => {
-    try {
-      const status = await read(), ready = status.enabled && status.projectDeletionLocks === 1;
-      return { ready, unsafe: !ready };
-    } catch { return { ready: false, unsafe: existsSync(socket) }; }
-  };
-  const [agents, development] = await Promise.all([
-    supports(() => agentHost({ operation: 'capabilities' }), process.env.STUDIO_AGENTS_SOCKET ?? '/run/r4os-studio-agents/host.sock'),
-    supports(() => developmentHost({ operation: 'capabilities' }), process.env.STUDIO_DEVELOPMENT_SOCKET ?? '/run/r4os-studio-development/host.sock'),
-  ]);
-  return { agents: agents.ready, development: development.ready, unsafe: agents.unsafe || development.unsafe };
 }
 
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
