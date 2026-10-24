@@ -45,6 +45,12 @@
 .development-file { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--border-color, #303440); border-radius: 8px; padding: 14px; }
 .development-file input { min-width: 0; width: 100%; }
 .project-delete-section { padding: 20px 25px; border-top: 1px solid #49303e; display: grid; justify-items: start; gap: 14px; }
+.project-cache-section { padding: 20px 25px; border-top: 1px solid #392b49; display: grid; justify-items: start; gap: 12px; font-size: 12px; }
+.project-cache-section h3, .project-cache-section p { margin: 0; }
+.project-cache-section h3 { font-size: 14px; }
+.project-cache-section > p { color: #b8a7ca; line-height: 1.6; }
+.project-cache-section button { padding: 10px 14px; border: 1px solid #725094; border-radius: 5px; background: #30213e; }
+.project-cache-section button:disabled { opacity: .45; cursor: default; }
 .project-danger { padding: 10px 17px; border: 1px solid #96505f; border-radius: 6px; background: #3c202d; color: #ffbccb; font-size: 12px; }
 .project-actions .project-danger { border-color: #ba596f; background: #8d3149; color: #fff1f5; }
 .project-danger:hover:not(:disabled) { filter: brightness(1.1); }

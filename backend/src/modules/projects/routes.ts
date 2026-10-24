@@ -41,11 +41,41 @@ function validateFields(value: unknown, allowed: string[]) {
   if (Object.hasOwn(body, 'vmId') && body.vmId !== null && typeof body.vmId !== 'string') throw new ProjectError('Invalid virtual machine.', 400);
 }
 
+async function maintenanceHosts() {
+  const supports = async (read: () => Promise<{ enabled: boolean; projectDeletionLocks?: number }>, socket: string) => {
+    try {
+      const status = await read(), ready = status.enabled && status.projectDeletionLocks === 1;
+      return { ready, unsafe: !ready };
+    } catch { return { ready: false, unsafe: existsSync(socket) }; }
+  };
+  const [agents, development] = await Promise.all([
+    supports(() => agentHost({ operation: 'capabilities' }), process.env.STUDIO_AGENTS_SOCKET ?? '/run/r4os-studio-agents/host.sock'),
+    supports(() => developmentHost({ operation: 'capabilities' }), process.env.STUDIO_DEVELOPMENT_SOCKET ?? '/run/r4os-studio-development/host.sock'),
+  ]);
+  return { agents: agents.ready, development: development.ready, unsafe: agents.unsafe || development.unsafe };
+}
+
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);
   developmentRoutes(app, sessions);
+  app.get<{ Params: { id: string } }>('/:id/build-cache', {
+    schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } },
+  }, async (request, reply) => {
+    sessions.session(request, reply);
+    return projectStore(directory, { operation: 'status', id: request.params.id }, 'clear_cache');
+  });
+  app.post<{ Params: { id: string }; Body: { requestId: string } }>('/:id/build-cache/clear', {
+    bodyLimit: 4096,
+    preValidation: async (request) => validateFields(request.body, ['requestId']),
+    schema: { params: { type: 'object', required: ['id'], properties: { id: identity } },
+      body: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: identity } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return projectStore(directory, { operation: 'clear', id: request.params.id,
+      requestId: request.body.requestId, hosts: await maintenanceHosts() }, 'clear_cache');
+  });
   app.get<{ Params: { id: string } }>('/:id/agents', {
     schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } },
   }, async (request, reply) => {
@@ -105,18 +135,8 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
     },
     schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } },
   }, async (request) => {
-    const supports = async (read: () => Promise<{ enabled: boolean; projectDeletionLocks?: number }>, socket: string) => {
-      try {
-        const status = await read(), ready = status.enabled && status.projectDeletionLocks === 1;
-        return { ready, unsafe: !ready };
-      } catch { return { ready: false, unsafe: existsSync(socket) }; }
-    };
-    const [agents, development] = await Promise.all([
-      supports(() => agentHost({ operation: 'capabilities' }), process.env.STUDIO_AGENTS_SOCKET ?? '/run/r4os-studio-agents/host.sock'),
-      supports(() => developmentHost({ operation: 'capabilities' }), process.env.STUDIO_DEVELOPMENT_SOCKET ?? '/run/r4os-studio-development/host.sock'),
-    ]);
     return projectStore<ProjectDeleted>(directory, { operation: 'delete', id: request.params.id,
-      input: request.body, hosts: { agents: agents.ready, development: development.ready, unsafe: agents.unsafe || development.unsafe } }, 'delete');
+      input: request.body, hosts: await maintenanceHosts() }, 'delete');
   });
   app.post<{ Body: ProjectInput }>('/', {
     bodyLimit: 32 * 1024,

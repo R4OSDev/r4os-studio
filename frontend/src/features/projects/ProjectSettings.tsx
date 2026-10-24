@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import type { Project, ProjectOptions, ProjectUpdate } from '../../../../shared/projects';
 import { projectRequest, ProjectRequestError } from './api';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
+import { ProjectBuildCache } from './ProjectBuildCache';
 
 export type ProjectSettingsView = 'General' | 'Virtual machine' | 'Run & Test' | 'Agents.md';
 export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, saved, deleted }: {
@@ -18,14 +19,16 @@ export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, sa
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false), [conflict, setConflict] = useState(false), [epoch, setEpoch] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [cacheBusy, setCacheBusy] = useState(false);
+  const working = busy || cacheBusy;
   const dirty = !!project && (view === 'General' ? name !== project.name || description !== project.description : (vmId || null) !== project.vmId);
   useEffect(() => { dirtyChanged(dirty); return () => dirtyChanged(false); }, [dirty, dirtyChanged]);
-  useEffect(() => { busyChanged(busy); return () => busyChanged(false); }, [busy, busyChanged]);
+  useEffect(() => { busyChanged(working); return () => busyChanged(false); }, [working, busyChanged]);
   useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (dirty || busy) event.preventDefault(); };
+    const warn = (event: BeforeUnloadEvent) => { if (dirty || working) event.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty, busy]);
+  }, [dirty, working]);
   useEffect(() => {
     const controller = new AbortController();
     void projectRequest<{ project: Project }>(`/${id}`, '', 'GET', undefined, controller.signal)
@@ -40,7 +43,7 @@ export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, sa
   }, [id, view, epoch]);
 
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!project || busy) return;
+    event.preventDefault(); if (!project || working) return;
     setBusy(true); setError(''); setNotice('');
     const input: ProjectUpdate = { revision: project.revision, ...(view === 'General' ? { name: name.trim(), description } : { vmId: vmId || null }) };
     try {
@@ -57,7 +60,7 @@ export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, sa
   return <><form className="project-settings" onSubmit={(event) => void submit(event)} aria-label={`Project ${view} settings`}>
     <h2>{view}</h2>
     {!project && !error && <p className="project-message" role="status">Loading settings…</p>}
-    {project && <fieldset className="project-fields" disabled={busy || project.deleting}>
+    {project && <fieldset className="project-fields" disabled={working || project.deleting}>
       {view === 'General' ? <>
         <ProjectField id="settings-name" label="Name"><input id="settings-name" required maxLength={120} value={name} onChange={(event) => { setName(event.target.value); setNotice(''); }} /></ProjectField>
         <ProjectField id="settings-description" label="Description"><textarea id="settings-description" rows={4} maxLength={4000} value={description} onChange={(event) => { setDescription(event.target.value); setNotice(''); }} /></ProjectField>
@@ -71,11 +74,12 @@ export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, sa
     </fieldset>}
     {error && <p className="project-error" role="alert">{error}</p>}{notice && <p className="project-message" role="status">{notice}</p>}
     {conflict && <button type="button" className="project-reload" onClick={() => setEpoch((value) => value + 1)}>Reload settings</button>}
-    <div className="project-actions"><button type="button" disabled={busy || !dirty} onClick={cancel}>Cancel</button>
-      <button className="project-primary" type="submit" disabled={busy || !dirty || !project || conflict || project.deleting}>{busy ? 'Saving…' : 'Save changes'}</button></div>
+    <div className="project-actions"><button type="button" disabled={working || !dirty} onClick={cancel}>Cancel</button>
+      <button className="project-primary" type="submit" disabled={working || !dirty || !project || conflict || project.deleting}>{busy ? 'Saving…' : 'Save changes'}</button></div>
+    {project && view === 'General' && <ProjectBuildCache key={id} id={id} token={token} disabled={busy || !!project.deleting} busyChanged={setCacheBusy} />}
     {project && view === 'General' && <section className="project-delete-section" aria-label="Delete project">
       {project.deleting && <p className="project-error" role="status">Deletion is incomplete. Retry to finish removing this project.</p>}
-      <button type="button" className="project-danger" disabled={busy} onClick={() => setDeleting(true)}>{project.deleting ? 'Retry deletion' : 'Delete project'}</button>
+      <button type="button" className="project-danger" disabled={working} onClick={() => setDeleting(true)}>{project.deleting ? 'Retry deletion' : 'Delete project'}</button>
     </section>}
   </form>
     {deleting && project && <DeleteProjectDialog project={project} token={token} close={() => setDeleting(false)} deleted={deleted}

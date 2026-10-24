@@ -35,7 +35,7 @@ def rows(path, table, columns='*'):
         return [dict(r) for r in db.execute('SELECT ' + columns + ' FROM ' + table)]
 
 
-def worker_check(runs, jobs):
+def worker_check(runs, jobs, action='deleting'):
     units = ['r4os-studio-agent@' + value + '.service' for value in runs]
     units += [('r4os-studio-development@' if kind == 'build' else 'r4os-studio-development-vm@') + value + '.service' for value, kind in jobs.items()]
     for start in range(0, len(units), 128):
@@ -43,9 +43,9 @@ def worker_check(runs, jobs):
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=False)
         states = result.stdout.decode().split()
         if result.returncode or len(states) != len(units[start:start+128]):
-            raise ProjectFault('Worker status could not be verified. Restore host support before deleting.', 503)
+            raise ProjectFault(f'Worker status could not be verified. Restore host support before {action}.', 503)
         if any(state not in ('inactive', 'failed') for state in states):
-            raise ProjectFault('Stop this project\'s runs and development jobs before deleting it.', 409)
+            raise ProjectFault(f'Wait for this project\'s runs and development jobs to finish before {action}.', 409)
 
 
 def collect(projects, ident, hosts):

@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.47 Project Settings → General now includes Clear build cache. The fixed project operation waits for idle agents, jobs and workers, owns the project lifetime lock, and removes only the detached private compiler cache. Persistent request receipts protect retries and newly rebuilt caches; source files, pins, sessions, artifacts, VMs and shared packages stay in place. Unsaved settings remain unchanged.
+
 Version 0.3.46 Components now has one SDK view with its matching Contract and Libraries, installation states and shared download/default actions. Previously selected Contract/Libraries views lead to SDK. Interrupted browser requests retain their operation identity for explicit retry, including after a page reload; existing project pins remain unchanged.
 
 Version 0.3.45 SDK download and default selection now use one durable component-service job for SDK, its exact Contract and Libraries. Existing packages are checked and reused without changing their archive identities; default activation commits the complete set atomically. Request receipts, manifest/profile binding and service capability checks protect retries and mixed releases. Existing project pins remain unchanged.

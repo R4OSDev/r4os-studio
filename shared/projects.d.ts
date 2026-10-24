@@ -49,3 +49,5 @@ export interface ProjectUpdate {
 export interface ProjectAgents {
   path: 'Agents.md'; text: string; sha256: string | null; exists: boolean; editable: boolean;
 }
+export interface ProjectBuildCacheState { available: boolean; pendingRequestId: string | null }
+export interface ProjectBuildCacheCleared { requestId: string; cleared: boolean; changed: boolean; superseded: boolean }
