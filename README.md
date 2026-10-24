@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.52 adds batched visible-editor file status, focus refresh and explicit conflict comparison, reload and Save as. Dirty drafts survive section/project changes and active agent jobs; lost mutation responses retain the original request. Project deletion warns about editor drafts and waits for unresolved operations.
+
 Version 0.3.51 integrates the Workspace file tree, source tabs and explicit save into Projects → Editor. New file/folder, rename and confirmed deletion use version-bound receipts and the existing project lifetime locks. Drafts survive navigation within Studio; file operations remain independent of agent tools and VM access.
 
 Version 0.3.50 adds the locally bundled CodeMirror 6 source editor core with independent document state, undo history, cursor/scroll preservation, keyboard save and file search. Rust/C use official language modules; Zig/.zon and R4MF have local syntax modes, with JSON/Markdown/TOML support. Language assets load on demand, without CDN or language-server processes.

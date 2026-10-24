@@ -1,5 +1,6 @@
 """Bounded descriptor-relative Workspace access. Never invokes an agent or shell."""
 import hashlib
+import errno
 import json
 import os
 import stat
@@ -69,7 +70,13 @@ def metadata(path, info):
 
 
 def node(root, path, content=False):
-    descriptor, name = parent(root, path)
+    names = parts(path)
+    missing = {'path': path, 'name': names[-1], 'kind': 'missing', 'editable': False,
+               'reason': 'This file or its parent directory is no longer available.'}
+    try: descriptor, name = parent(root, path)
+    except OSError as error:
+        if error.errno in (errno.ENOENT, errno.ENOTDIR, errno.ELOOP): return missing
+        raise
     try:
         try: info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
         except FileNotFoundError: return {'path': path, 'name': name, 'kind': 'missing', 'editable': False, 'reason': 'This file no longer exists.'}

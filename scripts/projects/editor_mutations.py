@@ -71,7 +71,7 @@ def validate(data):
     kind = data.get('kind')
     required = {'requestId', 'kind', 'path'}
     if kind == 'save': required |= {'expected', 'text', 'format'}
-    elif kind == 'create': required |= {'text'}
+    elif kind == 'create': required |= {'text'} | ({'format'} if 'format' in data else set())
     elif kind == 'mkdir': pass
     elif kind == 'rename': required |= {'expected', 'target'}
     elif kind == 'delete': required |= {'expected', 'confirm'}

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import type { EditorDocument } from './model';
@@ -10,7 +10,8 @@ export function EditorCore({ doc, readOnly, onState, save }: {
 }) {
   const parent = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
   const callbacks = useRef({ onState, save });
-  const [caret, setCaret] = useState({ line: 1, column: 1 });
+  const head = doc.state.selection.main.head, currentLine = doc.state.doc.lineAt(head);
+  const caret = { line: currentLine.number, column: head - currentLine.from + 1 };
   useLayoutEffect(() => { callbacks.current = { onState, save }; });
   useLayoutEffect(() => {
     if (!parent.current) return;
@@ -19,10 +20,6 @@ export function EditorCore({ doc, readOnly, onState, save }: {
       Prec.highest(keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.save(); return true; } }])),
       EditorView.updateListener.of((update) => {
         callbacks.current.onState(update.state);
-        if (update.docChanged || update.selectionSet) {
-          const head = update.state.selection.main.head, line = update.state.doc.lineAt(head);
-          setCaret({ line: line.number, column: head - line.from + 1 });
-        }
       }),
     ]) }).state;
     const instance = new EditorView({ state: initial, parent: parent.current });

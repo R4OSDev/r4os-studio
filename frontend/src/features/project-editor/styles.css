@@ -42,4 +42,11 @@
 .editor-dialog p, .editor-dialog label { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .editor-dialog input { display: block; width: 100%; min-width: 0; margin-top: 8px; padding: 10px; border: 1px solid #61467d; border-radius: 4px; background: #120f18; color: #eee5fa; }
 .editor-dialog-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 20px; }
+.editor-conflict { background: #4b3625; color: #f0d3ad; }
+.editor-dialog:has(.editor-comparison) { width: min(1000px, calc(100vw - 32px)); }
+.editor-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.editor-comparison section { min-width: 0; }
+.editor-comparison h3 { font-size: 12px; }
+.editor-comparison pre { overflow: auto; max-height: 50dvh; padding: 12px; background: #120f18; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+@media (max-width:600px) { .editor-comparison { grid-template-columns: minmax(0, 1fr); } .editor-comparison pre { max-height: 25dvh; } }
 @media (max-width:800px) { .editor-panel { min-height: 480px; height: 65dvh; flex: none; } .editor-tree { max-height: 320px; } .editor-toolbar { flex-wrap: wrap; } }

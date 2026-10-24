@@ -1,13 +1,14 @@
 import type { EditorState } from '@codemirror/state';
 import type { EditorMutation, EditorNode, EditorReceipt, EditorStatus, EditorTree } from '../../../../shared/project-editor';
 import type { EditorDocument } from './model';
-import { projectRequest, projectRequestId } from '../projects/api';
+import { projectRequest, projectRequestId, ProjectRequestError } from '../projects/api';
 
-interface Pending { body: EditorMutation; text?: string }
+interface Pending { body: EditorMutation; documents?: { path: string; revision?: string }[] }
 export interface EditorProject {
   id: string; token: string; docs: EditorDocument[]; active: string; selection?: EditorNode;
   trees: Map<string, EditorTree>; expanded: Set<string>; loading: Set<string>; status?: EditorStatus;
   pending?: Pending; working: boolean; error: string; notice: string; initialized: boolean; deleted: boolean;
+  generation: number; accessError?: string;
 }
 export const dirty = (doc: EditorDocument) => !doc.state.doc.eq(doc.baseText);
 const pendingKey = (id: string) => 'studio.editor.request.' + id;
@@ -30,7 +31,7 @@ export class EditorRegistry {
     let value = this.projects.get(id);
     if (!value) {
       value = { id, token: '', docs: [], active: '', trees: new Map(), expanded: new Set(['']), loading: new Set(),
-        pending: remembered(id), working: false, error: '', notice: '', initialized: false, deleted: false };
+        pending: remembered(id), working: false, error: '', notice: '', initialized: false, deleted: false, generation: 0 };
       this.projects.set(id, value);
     }
     return value;
@@ -53,13 +54,20 @@ export class EditorRegistry {
   }
   async refreshStatus(id: string) {
     const p = this.project(id);
-    if (!p.token || p.deleted || p.working) return;
+    if (!p.token || p.deleted || p.working || p.loading.has('status')) return;
+    p.loading.add('status');
+    const generation = p.generation, docs = p.docs.map((doc) => ({ doc, file: doc.file }));
     try {
-      const status = await this.request<EditorStatus>(p, '/status', 'POST', { paths: p.docs.map((doc) => doc.path) });
-      if (p.deleted) return;
-      p.status = status;
-    } catch (error) { p.status = undefined; p.error = (error as Error).message; }
-    this.changed();
+      const status = await this.request<EditorStatus>(p, '/status', 'POST', { paths: docs.map(({ doc }) => doc.path) });
+      if (p.deleted || p.working || p.generation !== generation) return;
+      p.status = status; p.accessError = '';
+      for (const { doc, file } of docs) {
+        if (!p.docs.includes(doc) || doc.file !== file) continue;
+        const current = status.files.find((entry) => entry.path === doc.path);
+        if (current) doc.external = current.revision !== file.revision || current.kind !== file.kind ? current : undefined;
+      }
+    } catch (error) { if (p.generation === generation && !p.deleted) { p.status = undefined; p.accessError = (error as Error).message; } }
+    finally { p.loading.delete('status'); this.changed(); }
   }
   async loadTree(id: string, path: string, more = false) {
     const p = this.project(id);
@@ -114,26 +122,51 @@ export class EditorRegistry {
   }
   async reload(id: string, path: string) {
     const p = this.project(id), old = p.docs.find((doc) => doc.path === path);
-    if (!old || p.working) return;
+    if (!old || p.working || p.pending || p.loading.has('reload:' + path)) return;
+    const draft = old.state.doc;
+    p.loading.add('reload:' + path); this.changed();
     try {
       const file = await this.request<EditorNode>(p, '/file?' + new URLSearchParams({ path }));
       if (file.kind === 'missing') { old.external = file; throw new Error(file.reason); }
       const { createDocument } = await import('./model');
       const doc = await createDocument(id, file);
-      if (!p.deleted) p.docs = p.docs.map((item) => item === old ? doc : item);
+      if (p.deleted || !p.docs.includes(old)) return;
+      if (!old.state.doc.eq(draft)) { old.external = file; throw new Error('The draft changed while reloading. Its text was preserved.'); }
+      p.docs = p.docs.map((item) => item === old ? doc : item);
       p.error = '';
     } catch (error) { p.error = (error as Error).message; }
-    this.changed();
+    finally { p.loading.delete('reload:' + path); this.changed(); }
+  }
+  async current(id: string, path: string) {
+    return this.request<EditorNode>(this.project(id), '/file?' + new URLSearchParams({ path }));
+  }
+  async saveAs(id: string, doc: EditorDocument, path: string) {
+    if (!doc.file.editable || !doc.file.format || doc.file.format.eol === 'mixed') return false;
+    return this.mutate(id, { kind: 'create', path, text: doc.state.doc.toString(), format: doc.file.format });
   }
   async save(id: string, doc: EditorDocument) {
-    if (!dirty(doc) || !doc.file.editable || !doc.file.revision || !doc.file.sha256 || !doc.file.format) return false;
+    if (doc.external || !dirty(doc) || !doc.file.editable || !doc.file.revision || !doc.file.sha256 || !doc.file.format) return false;
     return this.mutate(id, { kind: 'save', path: doc.path, text: doc.state.doc.toString(), format: doc.file.format,
       expected: { revision: doc.file.revision, sha256: doc.file.sha256 } });
   }
   async mutate(id: string, input: Omit<EditorMutation, 'requestId'>) {
     const p = this.project(id);
     if (p.working || p.pending || !p.status?.writable || p.deleted) return false;
-    const value: Pending = { body: { ...input, requestId: projectRequestId() }, text: input.text };
+    if (input.kind === 'create' && p.docs.some((doc) => doc.path === input.path)) {
+      p.error = 'Close the existing editor draft for this path before creating a file there.'; this.changed(); return false;
+    }
+    if (input.kind === 'rename' && input.target) {
+      const moved = p.docs.filter((doc) => doc.path === input.path || doc.path.startsWith(input.path + '/'));
+      if (moved.some((doc) => p.docs.some((other) => !moved.includes(other) && other.path === input.target + doc.path.slice(input.path.length)))) {
+        p.error = 'Close the editor draft at the destination before renaming this entry.'; this.changed(); return false;
+      }
+    }
+    if (input.text !== undefined) {
+      const encoded = (input.format?.bom ? '\ufeff' : '') + (input.format?.eol === 'crlf' ? input.text.replaceAll('\n', '\r\n') : input.text);
+      if (new TextEncoder().encode(encoded).length > 524288) { p.error = 'The document exceeds the 512 KiB UTF-8 limit.'; this.changed(); return false; }
+    }
+    const value: Pending = { body: { ...input, requestId: projectRequestId() },
+      documents: p.docs.map((doc) => ({ path: doc.path, revision: doc.file.revision })) };
     try { sessionStorage.setItem(pendingKey(id), JSON.stringify(value)); }
     catch { p.error = 'The operation could not be retained. Enable browser session storage and retry.'; this.changed(); return false; }
     p.pending = value;
@@ -147,7 +180,7 @@ export class EditorRegistry {
   private async send(p: EditorProject, reconcile = false) {
     const pending = p.pending;
     if (!pending) return false;
-    p.working = true; p.error = ''; p.notice = ''; this.changed();
+    p.working = true; p.generation++; p.error = ''; p.notice = ''; this.changed();
     try {
       let result: EditorReceipt | undefined;
       if (reconcile) result = await this.request<EditorReceipt>(p, '/operations/' + pending.body.requestId);
@@ -155,17 +188,30 @@ export class EditorRegistry {
         result = await this.request<EditorReceipt>(p, '/mutations', 'POST', pending.body);
       if (result.requestId !== pending.body.requestId) throw new Error('The operation receipt identity changed.');
       if (result.state === 'unknown' || result.state === 'missing') throw new Error(result.message ?? 'The operation result is unknown. Retry the retained request.');
-      p.pending = undefined;
-      try { sessionStorage.removeItem(pendingKey(p.id)); } catch { /* Completed server receipts remain idempotent. */ }
+      this.clearPending(p);
       if (result.state === 'rejected') throw new Error(result.message ?? 'The entry changed. Reload or compare its current version.');
       await this.applied(p, pending, result, reconcile);
       p.notice = pending.body.kind === 'save' ? 'Saved.' : 'Done.';
       return true;
-    } catch (error) { p.error = (error as Error).message; return false; }
+    } catch (error) {
+      // An explicit initial 4xx response plus a missing journal proves this
+      // request ended before publication. Lost responses remain pending.
+      if (!reconcile && error instanceof ProjectRequestError && error.status >= 400 && error.status < 500) {
+        try {
+          const receipt = await this.request<EditorReceipt>(p, '/operations/' + pending.body.requestId);
+          if (receipt.requestId === pending.body.requestId && (receipt.state === 'missing' || receipt.state === 'rejected')) this.clearPending(p);
+        } catch { /* An unavailable receipt cannot prove rejection. */ }
+      }
+      p.error = (error as Error).message; return false;
+    }
     finally {
-      p.working = false; this.changed();
+      p.working = false; p.generation++; this.changed();
       if (!p.deleted) { void this.refreshStatus(p.id); for (const path of p.expanded) void this.loadTree(p.id, path); }
     }
+  }
+  private clearPending(p: EditorProject) {
+    p.pending = undefined;
+    try { sessionStorage.removeItem(pendingKey(p.id)); } catch { /* Completed server receipts remain idempotent. */ }
   }
   private async applied(p: EditorProject, pending: Pending, result: EditorReceipt, reconcile: boolean) {
     const input = pending.body;
@@ -174,23 +220,34 @@ export class EditorRegistry {
       if (doc) {
         if (reconcile) {
           const current = await this.request<EditorNode>(p, '/file?' + new URLSearchParams({ path: input.path }));
-          if (current.text !== pending.text || current.format?.bom !== input.format?.bom || current.format?.eol !== input.format?.eol) { doc.external = current; return; }
+          if (current.text !== input.text || current.format?.bom !== input.format?.bom || current.format?.eol !== input.format?.eol) { doc.external = current; return; }
           doc.file = current;
-        } else doc.file = { ...doc.file, ...result.node, text: pending.text };
+        } else doc.file = { ...doc.file, ...result.node, text: input.text };
         const { EditorState } = await import('@codemirror/state');
-        doc.baseText = EditorState.create({ doc: pending.text ?? '' }).doc; doc.external = undefined;
+        doc.baseText = EditorState.create({ doc: input.text ?? '' }).doc; doc.external = undefined;
       }
     } else if (input.kind === 'rename' && input.target) {
       const target = input.target;
       for (const doc of p.docs) if (doc.path === input.path || doc.path.startsWith(input.path + '/')) {
+        const recorded = pending.documents?.find((item) => item.path === doc.path);
+        if (reconcile && (!recorded || recorded.revision !== doc.file.revision)) continue;
+        const destination = target + doc.path.slice(input.path.length);
+        if (p.docs.some((other) => other !== doc && other.path === destination)) continue;
         const exact = doc.path === input.path;
+        const oldPath = doc.path;
         doc.path = target + doc.path.slice(input.path.length); doc.file = { ...doc.file, path: doc.path, name: doc.path.split('/').at(-1)! };
         if (exact && result.node) doc.file.revision = result.node.revision;
+        const { languageFor } = await import('./languages');
+        doc.state = doc.state.update({ effects: doc.language.reconfigure(await languageFor(doc.path)) }).state;
+        if (p.active === oldPath) p.active = doc.path;
       }
-      if (p.active === input.path || p.active.startsWith(input.path + '/')) p.active = target + p.active.slice(input.path.length);
       p.trees.clear(); p.expanded = new Set(['']); p.selection = undefined;
     } else if (input.kind === 'delete') {
-      p.docs = p.docs.filter((doc) => doc.path !== input.path && !doc.path.startsWith(input.path + '/'));
+      p.docs = p.docs.filter((doc) => {
+        if (doc.path !== input.path && !doc.path.startsWith(input.path + '/')) return true;
+        const recorded = pending.documents?.find((item) => item.path === doc.path);
+        return reconcile && (!recorded || recorded.revision !== doc.file.revision);
+      });
       if (!p.docs.some((doc) => doc.path === p.active)) p.active = p.docs.at(-1)?.path ?? '';
       p.trees.delete(input.path); p.expanded.delete(input.path); p.selection = undefined;
     } else if (input.kind === 'create') await this.open(p.id, input.path);
