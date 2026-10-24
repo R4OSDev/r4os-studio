@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { exec } from './systemd.js';
 import { shareFiles, validFilename, createShareImage } from './share.js';
+import { prepareExchangeIdentity, verifyExchangeMarker } from './exchange-identity.js';
 import { VmError } from './paths.js';
 
 type Entry = { name: string; sha256: string; size: number };
@@ -66,6 +67,7 @@ export async function finishShare(directory: string) {
   const temp = await mkdtemp(join(directory, 'Exchange/.sync-'));
   try {
     const guest = await extract(directory, temp), host = await manifest(share);
+    await verifyExchangeMarker(directory, temp); await verifyExchangeMarker(directory, share);
     const merged: Manifest = { ...host };
     const changed = Object.keys({ ...state.baseline, ...guest }).filter((key) => !equal(state.baseline[key], guest[key]));
     const conflicts = changed.filter((key) => !equal(host[key], state.baseline[key]) && !equal(host[key], guest[key]));
@@ -121,6 +123,7 @@ export async function prepareShare(directory: string) {
       await save(directory, state);
     } finally { await rm(temp, { recursive: true, force: true }); }
   }
+  await prepareExchangeIdentity(directory);
   const host = await manifest(join(directory, 'Exchange/Share'));
   let exists = true;
   try { const info = await lstat(imagePath(directory)); if (!info.isFile() || info.isSymbolicLink() || info.size !== 257 * 1024 * 1024) throw new VmError('Invalid exchange image.'); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') exists = false; else throw error; }

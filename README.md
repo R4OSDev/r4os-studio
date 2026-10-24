@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.57 führt die journalgestützte Exchange-Identität, read-only SFTP-Zielauflösung und getrennte Deployment-/Bereitschaftsverträge ein. Bestehende C:-Belege bleiben lesbar; Desktopstart benötigt weiterhin einen öffentlichen Gastvertrag.
+
 Version 0.3.56 supplies the fixed R4OS SSH login automatically: user `r4os`,
 password `rosebud`. VM Settings no longer accepts a guest username/password, and
 new VMs need no Save access step. Existing explicit SSH disablement, Network
@@ -1300,3 +1302,7 @@ of a running process with no remaining cgroup. The temporary project, session,
 three runs and worker bindings were removed; existing data and defaults remain.
 The requirement-by-requirement audit and evidence are retained in
 Research/R4OS/Agent-Sessions/Completion-Audit.json in the development workspace.
+
+### Exchange deployment contract
+
+New offline Exchange imports reserve `STXCHG.JSN` for a journaled VM/volume identity. Exchange reset renews the generation; image/system reset keeps it. Guest target discovery uses exact marker bytes across fixed SFTP drive candidates, never a hardcoded F: or volume serial. The immutable VM worker pinned at boot determines recursive Exchange support. Existing deployments remain historical records. Native headless desktop launch still needs a public R4OS launch/initialization contract; SSH alone does not provide it. See `shared/exchange-host.json` and the development contracts. No guest runtime validation was performed for this change.

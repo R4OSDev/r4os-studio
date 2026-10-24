@@ -47,7 +47,17 @@ export interface DevelopmentArtifact {
   createdAt: string;
   buildProof: { format: string; sha256: string; bytes: number };
 }
+export interface DevelopmentExchangeTarget {
+  schema: 1; vmId: string; generation: string; markerSha256: string;
+  drive: string; bootId: string; accessRevision: number;
+}
+export interface DevelopmentReadiness {
+  state: 'transferred' | 'ready' | 'started' | 'completed' | 'unsupported' | 'unknown';
+  reasonCode?: string; reason?: string; checkedAt: string;
+  process?: GuestProcessIdentity;
+}
 export interface DevelopmentTarget {
+  exchange?: DevelopmentExchangeTarget;
   vmId: string;
   vmRevision: string;
   imageId: string;
@@ -58,6 +68,8 @@ export interface DevelopmentTarget {
   helperProtocol: number;
 }
 export interface DevelopmentDeployment {
+  format?: 'exchange-build-v1';
+  readiness?: DevelopmentReadiness;
   id: string; projectId: string; jobId: string; artifactId: string;
   packageSha256: string; sourceSha256: string; manifestSha256: string;
   target: DevelopmentTarget; role: ProjectTemplate; kind: DevelopmentArtifact['kind'];
@@ -96,6 +108,7 @@ export interface DevelopmentJob {
     ready: boolean; started: boolean; checkedAt?: string; guestRelease?: string; guestKernel?: string;
     vmId?: string; vmRevision?: string; imageId?: string; imageSha256?: string; bootId?: string; accessRevision?: number;
   };
+  readiness?: DevelopmentReadiness;
   guestState?: { closeConfirmed?: boolean; [key: string]: unknown };
   recovery?: { id: string; source: string; reason?: string; replayed: false; guestEndConfirmed?: boolean };
   settingsRevision: number;

@@ -11,6 +11,7 @@ import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
 import { exec, unitState, control } from './systemd.js';
 import { qmp } from './qmp.js';
+import { reservedExchangeName } from './exchange-identity.js';
 import { shareFiles, validFilename } from './share.js';
 import { finishShare, shareState } from './share-sync.js';
 
@@ -202,11 +203,11 @@ export class VmManager {
   async remove(id: string) {
     return this.locked(id, async () => { await this.stopped(id); await rm(vmPath(id), { recursive: true }); });
   }
-  async files(id: string) { await this.config(id); return shareFiles(join(vmPath(id), 'Exchange/Share')); }
+  async files(id: string) { await this.config(id); return (await shareFiles(join(vmPath(id), 'Exchange/Share'))).filter((file) => !reservedExchangeName(file.name)); }
   async upload(id: string, name: string, content: string) {
     return this.locked(id, async () => {
       await this.stopped(id);
-      if (!validFilename(name)) throw new VmError('Use an ASCII filename with letters, digits, dots, underscores or hyphens.', 400);
+      if (!validFilename(name) || reservedExchangeName(name)) throw new VmError('Use an ASCII filename with letters, digits, dots, underscores or hyphens.', 400);
       const data = Buffer.from(content, 'base64');
       if (data.length > 8 * 1024 * 1024) throw new VmError('Files are limited to 8 MiB per upload.', 400);
       const files = await this.files(id);
@@ -217,7 +218,7 @@ export class VmManager {
   }
   async removeFile(id: string, name: string) {
     return this.locked(id, async () => {
-      await this.stopped(id); if (!validFilename(name)) throw new VmError('Invalid filename.', 400);
+      await this.stopped(id); if (!validFilename(name) || reservedExchangeName(name)) throw new VmError('Invalid filename.', 400);
       await rm(join(vmPath(id), 'Exchange/Share', name));
     });
   }

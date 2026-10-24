@@ -5,7 +5,8 @@ import { chmod, lstat, readFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import { projectsDirectory } from '../projects/store.js';
-import { root, validId, VmError } from '../virtual-machines/paths.js';
+import { exchangeIdentity, exchangeWorkerCapability } from '../virtual-machines/exchange-identity.js';
+import { root, vmPath, validId, VmError } from '../virtual-machines/paths.js';
 import type { VmManager } from '../virtual-machines/service.js';
 import type { ConsoleBridge } from '../virtual-machines/console.js';
 import type { PointerControllers } from '../virtual-machines/pointer.js';
@@ -72,7 +73,8 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           let result: unknown;
           if (request.operation === 'info') {
             const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=InvocationID', '--value'], { timeout: 5000 });
-            result = { vm: await manager.get(id), invocationId: stdout.trim() };
+            result = { vm: await manager.get(id), invocationId: stdout.trim(), exchange: await exchangeIdentity(vmPath(id)),
+              exchangeWorker: await exchangeWorkerCapability(id) };
           } else if (request.operation === 'capture' || request.operation === 'capture_running') {
             if (request.operation === 'capture_running') {
               const unit = await unitState(id);
