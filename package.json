@@ -1,6 +1,6 @@
 {
   "name": "r4os-studio",
-  "version": "0.3.49",
+  "version": "0.3.50",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.3",
@@ -23,6 +23,16 @@
     "start": "node backend/dist/server.js --serve-frontend"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-cpp": "6.0.3",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/lang-rust": "6.0.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/legacy-modes": "6.5.5",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@fastify/static": "^10.0.0",
     "@fastify/websocket": "11.3.4",
     "@novnc/novnc": "1.7.0",

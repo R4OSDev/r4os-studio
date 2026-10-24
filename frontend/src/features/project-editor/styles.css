@@ -1,0 +1,11 @@
+.editor-code { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.editor-code .cm-editor { height: 100%; background: #120f18; color: #e5dfee; }
+.editor-code .cm-scroller { overflow: auto; font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.editor-code .cm-gutters { background: #191420; color: #8e7d9f; border-right: 1px solid #32283f; }
+.editor-code .cm-activeLine, .editor-code .cm-activeLineGutter { background: #bf9aff0a; }
+.editor-code .cm-cursor { border-left-color: #e5caff; }
+.editor-code .cm-selectionBackground, .editor-code .cm-focused .cm-selectionBackground { background: #62428288; }
+.editor-code .cm-panels { background: #251b30; color: #e5dfee; }
+.editor-code .cm-textfield { background: #120f18; color: #eee5fa; }
+.editor-code .cm-button { background: #39254b; color: #eee5fa; }
+.editor-status { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 14px; padding: 7px 14px; border-top: 1px solid #32283f; color: #b8a7ca; font-size: 10px; }

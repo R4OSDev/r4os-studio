@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.50 adds the locally bundled CodeMirror 6 source editor core with independent document state, undo history, cursor/scroll preservation, keyboard save and file search. Rust/C use official language modules; Zig/.zon and R4MF have local syntax modes, with JSON/Markdown/TOML support. Language assets load on demand, without CDN or language-server processes.
+
 Version 0.3.49 adds explicit Workspace save/create/folder/rename/delete operations. Project lifetime and worker admission protect writes; byte/entry identities, private same-filesystem staging, non-overwriting rename and durable receipts preserve newer files across retries. Agents.md keeps its existing instruction rules and project pins remain unchanged.
 
 Version 0.3.48 adds the protected project editor read API with paginated Workspace directories, stable bounded UTF-8 reads and byte identities. The editor can read a Workspace whose manifest needs repair, without creating sessions or development jobs. Links, hardlinks, unsupported formats and oversized files remain unavailable for editing.
