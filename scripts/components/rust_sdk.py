@@ -72,7 +72,8 @@ def compiler_path(prefix):
     return Path('Install/Toolchains/Rust/rustup/toolchains') / (version + '-' + triple) / 'bin/rustc'
 
 
-def verify(prefix, value):
+def inspect_installation(prefix, value):
+    """Inspect installed metadata and required paths without hashing the toolchain."""
     prefix = Path(prefix)
     release_path = prefix / 'SDK-Release.json'; profile_path = prefix / 'Tools/RustToolsProfile.json'
     if digest(release_path) != value.get('sha256') or digest(profile_path) != value.get('manifestSha256'):
@@ -95,12 +96,16 @@ def verify(prefix, value):
             raise ValueError('The SDK Rust toolchain is missing ' + label + '.')
     if not list((toolchain / 'lib/rustlib/x86_64-unknown-none/lib').glob('libcore-*.rlib')):
         raise ValueError('The SDK Rust toolchain is missing target libraries.')
-    verify_files(prefix, files)
     for relative, target in value.get('symlinks', {}).items():
         path = prefix / relative
         if (Path(relative).is_absolute() or '..' in Path(relative).parts or not path.is_symlink()
                 or os.readlink(path) != target or not path.resolve().is_relative_to(prefix.resolve())):
             raise ValueError('An SDK Rust component link changed.')
+
+
+def verify(prefix, value):
+    inspect_installation(prefix, value)
+    verify_files(Path(prefix), value['fileHashes'])
 
 
 def install(manager, spec=None):

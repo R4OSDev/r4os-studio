@@ -34,7 +34,18 @@ def run(args, env, timeout=120):
     return result.stdout.strip()
 
 
-def profile(root, projects, pinned=None, resolve_rust=True):
+def selection_revision(root, defaults, template):
+    # Availability does not require reading compiler/sysroot bytes. Bind the
+    # selection token to installed metadata so the dialog and submit agree.
+    selected = defaults.get('rust', {}).get('id')
+    rust = {'id': selected}
+    if isinstance(selected, str) and selected not in ('', '.', '..') and '/' not in selected:
+        try: rust['metadataSha256'] = digest(root / 'Toolchains/Rust' / selected / '.studio-component.json')
+        except OSError: pass
+    return hashlib.sha256((template + json.dumps(rust, sort_keys=True)).encode()).hexdigest()
+
+
+def profile(root, projects, pinned=None, resolve_rust=True, verify_components=True):
     defaults = pinned or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
     sdk_id = defaults['sdk'].get('revision')
     contract_id = defaults['contract'].get('revision')
@@ -55,7 +66,8 @@ def profile(root, projects, pinned=None, resolve_rust=True):
         pins[kind]['url'] = record.get('url') or record['archiveUrl']
         if kind != 'zig':
             pins[kind]['zigPackageHash'] = record.get('zigPackageHash') or record.get('packageHash')
-    pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig')
+    expected_binary = records['zig'].get('binarySha256')
+    pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig') if verify_components or not expected_binary else expected_binary
     if records['zig'].get('binarySha256', pins['zig']['binarySha256']) != pins['zig']['binarySha256']:
         raise ValueError('Compiler checksum does not match its installed metadata.')
     if pinned and pins != {key: value for key, value in pinned.items() if key not in ('rust', 'sdkTools')}:
@@ -69,15 +81,17 @@ def profile(root, projects, pinned=None, resolve_rust=True):
     cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(cache),
            'ZIG_LOCAL_CACHE_DIR': str(cache / 'local'), 'ZIG_GLOBAL_CACHE_DIR': str(cache / 'global')}
-    (cache / 'build.zig').write_text('pub fn build(b: *@import("std").Build) void { _ = b; }\n')
+    if verify_components:
+        (cache / 'build.zig').write_text('pub fn build(b: *@import("std").Build) void { _ = b; }\n')
     zig = paths['zig'] / 'zig'
-    with (cache / 'lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        if run([zig, 'version'], env) != zig_id:
-            raise ValueError('Compiler version does not match the selected profile.')
-        for kind in ('sdk', 'contract'):
-            if run([zig, 'fetch', paths[kind]], env) != pins[kind]['zigPackageHash']:
-                raise ValueError('Component package checksum changed.')
+    if verify_components:
+        with (cache / 'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if run([zig, 'version'], env) != zig_id:
+                raise ValueError('Compiler version does not match the selected profile.')
+            for kind in ('sdk', 'contract'):
+                if run([zig, 'fetch', paths[kind]], env) != pins[kind]['zigPackageHash']:
+                    raise ValueError('Component package checksum changed.')
     revision = template_revision(pins)
     context = {'pins': pins, 'revision': revision, 'templateRevision': revision,
                'paths': paths, 'cache': cache, 'env': env}
@@ -88,7 +102,7 @@ def profile(root, projects, pinned=None, resolve_rust=True):
         # Older project records retain their original source/pin format. New
         # records bind the SDK's published toolset without a revision registry.
         if not pinned or pinned.get('sdkTools'):
-            tools = prepare_tools(context, (pinned or {}).get('sdkTools'))
+            tools = prepare_tools(context, (pinned or {}).get('sdkTools'), verify_components=verify_components)
             context.update(sdkTools=tools, capabilities=tools['capabilities'], tool=tools['catalog'])
             context['pins']['sdkTools'] = tools['pin']
         else:
@@ -100,15 +114,18 @@ def profile(root, projects, pinned=None, resolve_rust=True):
                      '-Mr4os_contract=' + str(paths['contract'] / 'Generated/SDK/Zig/package.zig'), '-femit-bin=' + str(tool)], env)
                 marker.write_text(json.dumps({'sha256': digest(tool)}))
             context['tool'] = tool
-        context['runner'] = runner(root, defaults)
         if resolve_rust:
-            try: context['rust'] = local(root, defaults, context, (pinned or {}).get('rust'))
+            try: context['rust'] = local(root, defaults, context, (pinned or {}).get('rust'), check_files=verify_components)
             except (OSError, ValueError, KeyError) as error:
                 if (pinned or {}).get('rust'): raise ValueError('Pinned project Rust tools changed: ' + str(error)) from error
                 context['rustError'] = str(error)
+        # A fully verified Rust installation already includes its PowerShell
+        # files. Other languages need only the runner, not the Rust toolchain.
+        context['runner'] = (context['rust']['prefix'] / 'PowerShell/pwsh' if context.get('rust')
+                             else runner(root, defaults, check_files=verify_components))
         if (pinned or {}).get('rust'): context['pins']['rust'] = context['rust']['pin']
     context['templateRevision'] = template_revision(context['pins'])
-    context['revision'] = hashlib.sha256((context['templateRevision'] + json.dumps(context['rust']['pin'] if context.get('rust') else context.get('rustError'), sort_keys=True)).encode()).hexdigest()
+    context['revision'] = selection_revision(root, defaults, context['templateRevision'])
     return context
 
 
@@ -147,7 +164,9 @@ def main():
     os.umask(0o077)
     request = json.loads(sys.stdin.buffer.read(131073))
     projects, root = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
-    context = profile(root, projects, request.get('pins'))
+    is_options = request['operation'] == 'options'
+    needs_rust = is_options or request.get('project', {}).get('language') == 'Rust' or bool((request.get('pins') or {}).get('rust'))
+    context = profile(root, projects, request.get('pins'), resolve_rust=needs_rust, verify_components=not is_options)
     if request['operation'] == 'options':
         result = options(context)
     elif request['operation'] == 'render':

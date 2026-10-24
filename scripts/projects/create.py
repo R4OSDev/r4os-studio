@@ -59,7 +59,7 @@ def publish(source, target):
     sync_directory(target.parent)
 
 
-def finish(db, projects, root, request):
+def finish(db, projects, root, request, context=None):
     project = public(db.execute('SELECT * FROM projects WHERE id=?', (request['project_id'],)).fetchone())
     if not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', project['id']):
         raise ProjectFault('Invalid project journal identity. All files were preserved.')
@@ -75,7 +75,10 @@ def finish(db, projects, root, request):
             # Retain interrupted, not yet verified contents; never delete unknown edits.
             preserved = stage.with_name(stage.name + '.interrupted.' + str(uuid.uuid4()))
             publish(stage, preserved)
-        context = profile(root, projects, project['pins'])
+        if context is None:
+            context = profile(root, projects, project['pins'], resolve_rust=project['language'] == 'Rust')
+        elif context['pins'] != project['pins']:
+            raise ProjectFault('The prepared profile differs from the saved project pins.')
         if document.get('templateRevision', document['input']['optionsRevision']) != context['templateRevision']:
             raise ProjectFault('The saved template revision is unavailable. All pending files were preserved.')
         stage.mkdir(mode=0o700, parents=True)
@@ -119,7 +122,7 @@ def create(db, projects, root, data):
             raise ProjectFault('This request ID belongs to a different project submission.')
         return finish(db, projects, root, old)
     validate_input(data)
-    context = profile(root, projects)
+    context = profile(root, projects, resolve_rust=data['language'] == 'Rust')
     if data['optionsRevision'] != context['revision']:
         raise ProjectFault('Project options changed. Reload the available options.')
     from toolset import combination
@@ -145,7 +148,7 @@ def create(db, projects, root, data):
         db.execute("INSERT INTO requests VALUES (?,?,?,'reserved',?,NULL)",
                    (request_key, request_hash, identity, json.dumps({'input': data, 'templateRevision': context['templateRevision'], 'layout': 2})))
     request = db.execute('SELECT * FROM requests WHERE request_key=?', (request_key,)).fetchone()
-    return finish(db, projects, root, request)
+    return finish(db, projects, root, request, context)
 
 
 def main():

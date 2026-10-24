@@ -6,10 +6,10 @@ from pathlib import Path
 import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'components'))
-from rust_sdk import verify, verify_files, environment, command, digest
+from rust_sdk import verify, inspect_installation, verify_files, environment, command, digest
 
 
-def runner(root, defaults):
+def runner(root, defaults, check_files=True):
     selected = defaults.get('rust', {}).get('id', '')
     prefixes = [root / 'Toolchains/Rust' / selected] if selected and '/' not in selected else []
     prefixes += sorted((root / 'Toolchains/Rust').glob('*'))
@@ -17,20 +17,26 @@ def runner(root, defaults):
         if prefix.resolve() != prefix.absolute() or not (prefix / 'PowerShell/pwsh').is_file(): continue
         value = json.loads((prefix / '.studio-component.json').read_text())
         path = prefix / 'PowerShell/pwsh'
-        if value.get('fileHashes', {}).get('PowerShell/pwsh') == digest(path):
-            verify_files(prefix, {key: checksum for key, checksum in value['fileHashes'].items() if key.startswith('PowerShell/')})
+        if not path.resolve().is_relative_to(prefix):
+            raise ValueError('The SDK PowerShell runner path changed.')
+        checksum = value.get('fileHashes', {}).get('PowerShell/pwsh')
+        if checksum and (not check_files or checksum == digest(path)):
+            if check_files:
+                verify_files(prefix, {key: checksum for key, checksum in value['fileHashes'].items()
+                                      if key.startswith('PowerShell/') and key != 'PowerShell/pwsh'})
             return path
     return None
 
 
-def local(root, defaults, context, pinned=None):
+def local(root, defaults, context, pinned=None, check_files=True):
     from rust_sdk import compiler_path
     selected = pinned or defaults.get('rust')
     if not selected or not isinstance(selected.get('id'), str) or '/' in selected['id'] or selected['id'] in ('.', '..'):
         raise ValueError('Select an installed SDK Rust toolchain in Updates.')
     prefix = root / 'Toolchains/Rust' / selected['id']
     if prefix.resolve(strict=True) != prefix.absolute(): raise ValueError('Invalid SDK Rust installation path.')
-    record = json.loads((prefix / '.studio-component.json').read_text()); verify(prefix, record)
+    record = json.loads((prefix / '.studio-component.json').read_text())
+    (verify if check_files else inspect_installation)(prefix, record)
     compiler = compiler_path(prefix); toolchain = prefix / compiler.parent.parent
     if context.get('sdkTools'):
         tools = context['sdkTools']
@@ -44,15 +50,19 @@ def local(root, defaults, context, pinned=None):
     profile = tools['profile']; release = tools['release']
     if record['version'] != profile['rust_version'] or record['cargoVersion'] != profile['cargo_version']:
         raise ValueError('The selected Rust compiler differs from the SDK requirement: Rust ' + profile['rust_version'] + '.')
-    for kind in ('sdk', 'contract'):
-        verify_files(context['paths'][kind], {v['path']: v['sha256'] for v in profile[kind]['inputs']})
+    # prepare() has already verified the selected SDK/toolset in this operation.
+    if check_files and not context.get('sdkTools'):
+        for kind in ('sdk', 'contract'):
+            verify_files(context['paths'][kind], {v['path']: v['sha256'] for v in profile[kind]['inputs']})
     contract = context['paths']['contract']; linker = toolchain / 'lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld'
     target_prefix = str(compiler.parent.parent / 'lib/rustlib' / profile['bare_target']) + '/'
     sysroot = {key: value for key, value in record['fileHashes'].items() if key.startswith(target_prefix)}
     pin = {'id': selected['id'], 'version': record['version'], 'cargoVersion': record['cargoVersion'],
            'sha256': record['sha256'], 'toolProfileSha256': tools['pin']['profileSha256'],
-           'binarySha256': digest(prefix / compiler), 'cargoSha256': digest(toolchain / 'bin/cargo'),
-           'linkerSha256': digest(linker), 'powershellSha256': digest(prefix / 'PowerShell/pwsh'),
+           'binarySha256': record['fileHashes'][str(compiler)],
+           'cargoSha256': record['fileHashes'][str((toolchain / 'bin/cargo').relative_to(prefix))],
+           'linkerSha256': record['fileHashes'][str(linker.relative_to(prefix))],
+           'powershellSha256': record['fileHashes']['PowerShell/pwsh'],
            'installationSha256': hashlib.sha256(json.dumps({'files': record['fileHashes'], 'symlinks': record['symlinks']}, sort_keys=True).encode()).hexdigest(),
            'sysrootSha256': hashlib.sha256(json.dumps(sysroot, sort_keys=True).encode()).hexdigest(),
            'rustupVersion': profile['rustup_version'], 'powershellVersion': record['powershellVersion'], 'target': profile['bare_target'],

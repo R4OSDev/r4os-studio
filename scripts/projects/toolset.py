@@ -19,7 +19,7 @@ def digest(path):
     with Path(path).open('rb') as stream: return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def prepare(context, pinned=None):
+def prepare(context, pinned=None, verify_components=True):
     base = context['cache']; version = context['pins']['sdk']['version']
     url = 'https://github.com/R4OSDev/r4os-sdk/releases/download/v' + version + '/SDK-Release.json'
     saved = base / 'SDK-Release.json'
@@ -42,6 +42,7 @@ def prepare(context, pinned=None):
     if pinned and pin != pinned: raise ValueError('Pinned SDK tools changed.')
     target = base / 'sdk-tools'
     if target.is_symlink(): raise ValueError('Invalid SDK tool storage.')
+    tools_verified = False
     if not target.exists():
         with tempfile.TemporaryDirectory(prefix='.sdk-tools-', dir=base) as temporary:
             work = Path(temporary); archive = work / 'tools.tar.gz'
@@ -49,23 +50,24 @@ def prepare(context, pinned=None):
             source = unpack(archive, work / 'unpacked', limit=256 * 1024**2)
             if digest(source / 'RustToolsProfile.json') != pin['profileSha256']:
                 raise ValueError('The SDK tool profile checksum changed.')
-            profile = json.loads((source / 'RustToolsProfile.json').read_text())
-            verify_files(source, {v['path']: v['sha256'] for v in profile['files']})
+            if verify_components:
+                profile = json.loads((source / 'RustToolsProfile.json').read_text())
+                verify_files(source, {v['path']: v['sha256'] for v in profile['files']})
+                tools_verified = True
             source.rename(target)
     if digest(target / 'RustToolsProfile.json') != pin['profileSha256']:
         raise ValueError('The SDK tool profile checksum changed.')
     profile = json.loads((target / 'RustToolsProfile.json').read_text())
-    verify_files(target, {v['path']: v['sha256'] for v in profile['files']})
-    for kind in ('sdk', 'contract'):
-        verify_files(context['paths'][kind], {v['path']: v['sha256'] for v in profile[kind]['inputs']})
+    if verify_components:
+        if not tools_verified:
+            verify_files(target, {v['path']: v['sha256'] for v in profile['files']})
+        for kind in ('sdk', 'contract'):
+            verify_files(context['paths'][kind], {v['path']: v['sha256'] for v in profile[kind]['inputs']})
     zig = json.loads((target / 'Profile/ZigToolchain.json').read_text())
     if (zig['version'] != context['pins']['zig']['version']
         or zig['hosts']['Linux']['sha256'] != context['pins']['zig']['sha256']):
         raise ValueError('The selected compiler differs from the SDK toolchain requirement: Zig ' + zig['version'] + '.')
-    catalog = target / profile['hosts']['Linux']['catalog']; catalog.chmod(0o755)
-    raw_capabilities = command([catalog, 'capabilities', '--json', '--profile', target / 'RustToolsProfile.json'],
-                               {'PATH': '', 'HOME': str(base)}, base)
-    capabilities = json.loads(raw_capabilities)
+    catalog = target / profile['hosts']['Linux']['catalog']
     # Check the exact published catalog bytes separately from JSON serialization.
     cap_path = base / 'sdk-capabilities.json'
     if not cap_path.exists():
@@ -73,8 +75,14 @@ def prepare(context, pinned=None):
         if hashlib.sha256(data).hexdigest() != pin['capabilitiesSha256']:
             raise ValueError('The SDK capability checksum changed.')
         cap_path.write_bytes(data)
-    if cap_path.is_symlink() or digest(cap_path) != pin['capabilitiesSha256'] or json.loads(cap_path.read_text()) != capabilities:
+    if cap_path.is_symlink() or digest(cap_path) != pin['capabilitiesSha256']:
         raise ValueError('The SDK capability catalog changed.')
+    capabilities = json.loads(cap_path.read_text())
+    if verify_components:
+        catalog.chmod(0o755)
+        actual = json.loads(command([catalog, 'capabilities', '--json', '--profile', target / 'RustToolsProfile.json'],
+                                    {'PATH': '', 'HOME': str(base)}, base))
+        if actual != capabilities: raise ValueError('The SDK capability catalog changed.')
     if capabilities.get('schema') not in (2, 3) or capabilities.get('interface') != 'r4os-sdk-capabilities' or capabilities.get('technical'):
         raise ValueError('The SDK capability format is not supported.')
     if not saved.exists(): saved.write_bytes(raw)

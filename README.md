@@ -1,5 +1,17 @@
 # R4OS Studio · App
 
+Version 0.3.37 avoids repeated full component checks when creating a project.
+The options dialog reads installation metadata and the checksum-checked published
+SDK capability catalog without running compilers or scanning the Rust installation.
+Older Zig metadata without a binary checksum still needs one compiler-file hash.
+Submitting verifies the required components once and reuses that context through
+publication. Zig/C skip the Rust toolchain; Rust verifies its installation once,
+including PowerShell, and reuses those file hashes for its pins. Interrupted
+creation revalidates the saved pins when resumed. SDK checks and durable file
+publication remain required. No persistent verification cache or data migration.
+Build/TypeScript, Python syntax and lint were checked; no tests or project/agent/VM
+runs were performed at the user's request. Workspace details: Docs/Project-Creation.md.
+
 Version 0.3.36 makes the session fill its content area without outer margins,
 border or rounded corners at every breakpoint. Narrow layouts can grow beyond
 their preferred session height to fill the available space. Internal message
