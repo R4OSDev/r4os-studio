@@ -107,6 +107,9 @@ async def reconcile(store, job):
         result = local(store, job)
         if result: return result
     except (OSError, ValueError, KeyError): raise DevelopmentFault('The saved recovery evidence is damaged. Existing files were preserved.') from None
+    if job['kind'] == 'vm_start':
+        return store.recovered(job['id'], 'unknown', receipt('unconfirmed-vm-start', guestEndConfirmed=False,
+            reason='This VM start has no terminal SSH readiness receipt. Its state remains unknown; no start or SSH probe was repeated.'))
     if job['kind'] != 'execution' or not job.get('binding'):
         return store.recovered(job['id'], 'unknown', receipt('unconfirmed-publication', guestEndConfirmed=False,
             reason='No committed publication receipt. Inputs and partial outputs remain preserved; nothing was repeated.'))

@@ -10,4 +10,5 @@ export const toolLabels: Record<string, string> = {
   'studio.build_project': 'Build project', 'studio.deploy_project': 'Deploy project', 'studio.run_project': 'Run project',
   'studio.read_development_job': 'Read development job', 'studio.stop_development_job': 'Stop development job',
   'studio.capture_vm': 'Capture VM', 'studio.send_vm_input': 'Send VM input',
+  'studio.start_project_vm': 'Start project VM',
 };

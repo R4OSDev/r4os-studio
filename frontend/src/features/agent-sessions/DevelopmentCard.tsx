@@ -36,7 +36,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     if (loading) return; setLoading(true);
     try {
       const page = await projectRequest<DevelopmentJobPage>(path + '?offset=' + cursor.current);
-      setJob(page.job); setOutput((old) => old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : 'Build output');
+      setJob(page.job); setOutput((old) => old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : page.outputKind === 'diagnostic' ? 'Diagnostic output' : 'Build output');
       setMore(page.nextOffset > cursor.current || busyRun(page.job.state)); cursor.current = page.nextOffset; setTruncated(page.truncated); setError('');
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }
@@ -51,9 +51,10 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     catch (e) { setError((e as Error).message); } finally { setStopping(false); }
   }
   return <section className="development-card" aria-label="Development job">
-    <div className="development-card-header"><strong>{job?.kind === 'execution' ? 'Run' : job?.kind === 'deploy' ? 'Deploy' : 'Build'}</strong><span role="status">{job?.state ?? 'Loading'}</span>{job && busyRun(job.state) && <button type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? 'Stopping…' : 'Stop job'}</button>}</div>
+    <div className="development-card-header"><strong>{job?.kind === 'vm_start' ? 'Start VM' : job?.kind === 'execution' ? 'Run' : job?.kind === 'deploy' ? 'Deploy' : 'Build'}</strong><span role="status">{job?.state ?? 'Loading'}</span>{job && busyRun(job.state) && <button type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? 'Stopping…' : 'Stop job'}</button>}</div>
     {job && <><p className="development-phase">{job.phase.replaceAll('_', ' ')}</p>{job.check && <p>Checks: {job.check.state}{job.check.assessment ? ` · ${job.check.assessment}` : ''}</p>}
       {job.check?.findings.map((text, i) => <p key={i}>{text}</p>)}{job.error && <p className="agent-error">{job.error}</p>}</>}
+    {job?.vmStart?.ready && <p>SSH ready · R4OS {job.vmStart.guestRelease}{job.vmStart.checkedAt ? ` · ${new Date(job.vmStart.checkedAt).toLocaleString()}` : ''}</p>}
     {job?.state === 'unknown' && !job.guestState?.closeConfirmed && <button type="button" disabled={stopping} onClick={() => void reconcile()}>{stopping ? 'Reconciling…' : 'Reconcile receipts'}</button>}
     {job?.state === 'unknown' && job.guestState?.closeConfirmed && <p>Process end confirmed. Exit status unavailable.</p>}
     {job?.recovery?.reason && <p>{job.recovery.reason}</p>}

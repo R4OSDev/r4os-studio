@@ -120,6 +120,8 @@ class Host:
         if image and access and access['available']:
             deploy = {'available': True}
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image}),
+            'startVm': ({'available': True} if image and access and access['available'] else
+                {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason')}),
             'capture': deploy, 'input': ({'available': True} if match['available'] and deploy['available'] and project['template'] in ('terminal', 'desktop') else {'available': False, 'reason': match.get('reason') or 'This module has no interactive target adapter.'}), 'profileId': match['profileId'],
             'runner': match, 'transport': {'available': bool(access and access['available']),
@@ -168,6 +170,9 @@ class Host:
             if op == 'access_read': return self.access.public(vm_id)
             if op == 'access_save': return self.access.configure(vm_id, request['input'])
             return await self.access.check(vm_id)
+        if op in ('bind_vm_start', 'complete_vm_start'):
+            from vm_start import bind
+            return await bind(self, request, peer_pid)
         if op in ('bind_target', 'bind_execution'):
             if set(request) != {'operation', 'projectId', 'jobId', 'leaseId', 'token', 'helperSha256'}:
                 raise DevelopmentFault('Invalid private target binding request.', 400)
@@ -200,26 +205,27 @@ class Host:
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1},
+                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        if op in ('read_job', 'wait_vm_start', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.add('offset')
-        if op in ('build', 'deploy', 'execution'): allowed.update(('input', 'owner'))
+        if op in ('build', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.add('evidenceId')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
             owner = request.get('owner'); authorization = None
+            if op == 'vm_start' and owner is None: raise DevelopmentFault('VM start requires an active agent owner.', 403)
             if owner is not None:
                 from authorization import authorize
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                elif op in ('read_job', 'wait_vm_start', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
                 if op in ('deploy', 'execution'):
                     artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
@@ -235,6 +241,17 @@ class Host:
                         await systemctl('stop', '--no-block', job_unit(job['id'], job['kind'])); stopped.append(job['id'])
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
+            if op == 'wait_vm_start':
+                from authorization import authorize
+                job = store.get(request['id'])
+                if owner is None or job['kind'] != 'vm_start' or job.get('agentRunId') != owner['agentRunId']:
+                    raise DevelopmentFault('Wait only for this run\'s own VM start job.', 403)
+                deadline = asyncio.get_running_loop().time() + 12
+                while job['state'] in ACTIVE and asyncio.get_running_loop().time() < deadline:
+                    authorize(store, owner, op, peer_pid, job)
+                    await asyncio.sleep(.5); job = store.get(job['id'])
+                authorize(store, owner, op, peer_pid, job)
+                return job
             if op == 'reconcile':
                 from actions import admit, finish
                 from recovery import reconcile
@@ -323,9 +340,9 @@ class Host:
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None
-                if op in ('deploy', 'execution') and not previous:
+                if op in ('deploy', 'execution', 'vm_start') and not previous:
                     from access import vm_config
-                    if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings before deploying.')
+                    if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings first.')
                     from lease import maintenance_active
                     if maintenance_active(self.config['projects'], store.project['vmId']):
                         raise DevelopmentFault('This VM is being reset. Wait for maintenance to finish.', 409)

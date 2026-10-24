@@ -9,7 +9,7 @@ import re
 import shutil
 import socket
 
-from contracts import APP, DevelopmentFault, digest, identity
+from contracts import APP, DevelopmentFault, SshNotReady, digest, identity
 from jobs import folder, now
 from layout import save
 from profiles import runner
@@ -228,9 +228,9 @@ class SshTransport:
                 if b'HOST IDENTIFICATION HAS CHANGED' in error or b'Host key verification failed' in error:
                     raise DevelopmentFault('The guest host key does not match the saved VM identity.')
                 if b'Permission denied' in error: raise DevelopmentFault('Guest authentication failed. Check the saved credentials.')
-                raise DevelopmentFault('The guest SSH service is not ready or the connection was lost.')
+                raise SshNotReady('The guest SSH service is not ready or the connection was lost.')
             return {'exitCode': code, 'output': out.decode('utf-8', errors='replace')}
-        except asyncio.TimeoutError: raise DevelopmentFault('The authenticated guest did not respond in time.') from None
+        except asyncio.TimeoutError: raise SshNotReady('The authenticated guest did not respond in time.') from None
         finally:
             if process.returncode is None: process.kill(); await process.wait()
             self.processes.discard(process)

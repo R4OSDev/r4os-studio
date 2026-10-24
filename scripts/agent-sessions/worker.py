@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import prepare, write_json, TOOLS, PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS
+from profile import prepare, write_json, TOOLS, PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -166,7 +166,7 @@ class Worker:
             try: result = await self.execute(name[7:], arguments, call_id)
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
-                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process')
+                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The project tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -191,7 +191,7 @@ class Worker:
 
     async def stop(self):
         self.stopping = True
-        if self.config['engine'].get('profile') == PROFILE: await self.development.stop_owned()
+        if self.config['engine'].get('profile') in (PROFILE, DEVELOPMENT_PROFILE): await self.development.stop_owned()
         if self.client and self.turn_id:
             try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
             except Exception: pass

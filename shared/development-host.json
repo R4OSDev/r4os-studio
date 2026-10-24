@@ -19,11 +19,14 @@
     "guestFrameBytes": 65536,
     "screenshotBytes": 393216,
     "screenshotMaxWidth": 1280,
-    "screenshotMaxHeight": 1024
+    "screenshotMaxHeight": 1024,
+    "vmReadyTimeoutSeconds": 180,
+    "vmStartTimeoutSeconds": 300
   },
   "features": {
     "agentTools": 2,
     "reconciliation": 1,
-    "leaseQueue": 1
+    "leaseQueue": 1,
+    "vmStart": 1
   }
 }

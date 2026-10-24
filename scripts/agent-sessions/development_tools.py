@@ -1,4 +1,4 @@
-"""Seven fixed broker calls; no VM credential, path or command reaches the model."""
+"""Fixed broker calls; VM startup waits in the harness, outside model inference."""
 import json
 from pathlib import Path
 import uuid
@@ -16,7 +16,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'capture', 'input', 'assess', 'stop_job', 'cancel_owned'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'assess', 'stop_job', 'cancel_owned'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -46,15 +46,21 @@ class DevelopmentTools:
         from contracts import DevelopmentFault
         from session_store import encode
         request_id = str(uuid.uuid5(uuid.UUID(self.worker.run_id), 'development:' + call_id))
+        job = None
         try:
-            if name in ('build_project', 'deploy_project', 'run_project'):
+            if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm'):
+                if name == 'start_project_vm':
+                    from vm_worker import broker_call
+                    capabilities = await broker_call({'operation': 'capabilities'})
+                    if capabilities.get('features', {}).get('vmStart') != 1:
+                        raise DevelopmentFault('VM start support requires development host maintenance.', 503)
                 settings = await self.request('settings')
                 from jobs import Jobs
                 store = Jobs(self.worker.manifest['projects'], self.worker.manifest['r4os'], self.worker.manifest['projectId'])
                 try: revision = store.project['revision']
                 finally: store.close()
                 body = {'requestId': request_id, 'projectRevision': revision, 'settingsRevision': settings['revision']}
-                operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution'}[name]
+                operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start'}[name]
                 if name == 'deploy_project': body['artifactId'] = value['artifactId']
                 if name == 'run_project':
                     body['deploymentId'] = value['deploymentId']
@@ -62,6 +68,7 @@ class DevelopmentTools:
                     overrides.update(value.get('criteria', {}))
                     if overrides: body['overrides'] = overrides
                 job = await self.request(operation, input=body)
+                if name == 'start_project_vm': return await self.wait_for_vm(job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
@@ -85,7 +92,36 @@ class DevelopmentTools:
                 return {'success': True, 'output': encode(data), 'development': {'jobId': value['jobId']}}
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
-            return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error)}
+            return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error),
+                    **({'development': {'jobId': job['id']}} if name == 'start_project_vm' and job else {})}
+
+    async def wait_for_vm(self, job, call_id, arguments):
+        from contracts import ACTIVE, DevelopmentFault, LIMITS, UnconfirmedGuestEffect
+        from run_store import item
+        worker = self.worker
+        # Publish the durable job link immediately, but hold the native tool
+        # response. Codex resumes this turn only after a terminal receipt.
+        value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.start_project_vm',
+                 'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id']}}
+        worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
+        deadline = asyncio.get_running_loop().time() + LIMITS['vmStartTimeoutSeconds'] + 60
+        while job['state'] in ACTIVE:
+            if worker.stopping:
+                return {'success': False, 'error': 'interrupted', 'output': 'VM readiness wait stopped. The VM may remain running.',
+                        'development': {'jobId': job['id']}}
+            if asyncio.get_running_loop().time() >= deadline:
+                raise UnconfirmedGuestEffect('The VM start outcome could not be read before the harness deadline. Inspect the saved job; no start was repeated.')
+            try: job = await self.request('wait_vm_start', id=job['id'])
+            except DevelopmentFault as error:
+                if error.code != 503 or getattr(error, 'uncertain', False): raise
+                # Reconnect only to the read-only wait for the same job. Never
+                # repeat admission or VM start after a lost coordinator reply.
+                await asyncio.sleep(1)
+        result = self.result(job)
+        ready = job['state'] == 'completed' and (job.get('vmStart') or {}).get('ready') is True
+        if not ready and result['success']:
+            result.update(success=False, error='interrupted' if job['state'] == 'interrupted' else 'failed')
+        return result
 
     def result(self, job, page=None):
         from session_store import encode

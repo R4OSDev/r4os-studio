@@ -9,7 +9,7 @@ APP = Path(__file__).resolve().parents[2]
 CONTRACT = json.loads((APP / 'shared/development-host.json').read_text())
 LIMITS = CONTRACT['limits']
 TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
-         'stop_development_job', 'capture_vm', 'send_vm_input')
+         'stop_development_job', 'capture_vm', 'send_vm_input', 'start_project_vm')
 ACTIVE = ('queued', 'starting', 'running', 'stopping')
 TERMINAL = ('completed', 'failed', 'interrupted', 'unknown')
 
@@ -23,6 +23,10 @@ class DevelopmentFault(Exception):
 class UnconfirmedGuestEffect(DevelopmentFault):
     """A command may have reached the guest; never replay it automatically."""
     uncertain = True
+
+
+class SshNotReady(DevelopmentFault):
+    """A read-only readiness probe may be retried within its original deadline."""
 
 
 def identity(value):

@@ -88,7 +88,7 @@ class Jobs:
         return values
 
     def admit(self, kind, request, owner=None, binding=None):
-        if kind not in ('build', 'deploy', 'execution'): raise DevelopmentFault('This development operation is not available.', 400)
+        if kind not in ('build', 'deploy', 'execution', 'vm_start'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
         if kind == 'execution' and 'overrides' in request: expected.add('overrides')
         if set(request) != expected:
@@ -181,7 +181,7 @@ class Jobs:
         from evidence import list_for
         return {'job': job, 'output': data.decode('utf-8', errors='replace'), 'nextOffset': offset + len(data),
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
-                'outputKind': 'build' if job['kind'] == 'build' else 'console', 'evidence': list_for(self, job_id)}
+                'outputKind': 'build' if job['kind'] == 'build' else 'diagnostic' if job['kind'] == 'vm_start' else 'console', 'evidence': list_for(self, job_id)}
 
     def artifact_metadata(self, artifact_id, recovering=False):
         """Private ownership lookup; callers must verify bytes before using files."""

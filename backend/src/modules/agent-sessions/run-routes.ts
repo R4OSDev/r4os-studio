@@ -24,8 +24,8 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions) {
         revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, text: { type: 'string', minLength: 1, maxLength: 65536 } } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ projectInstructions?: number }>({ operation: 'capabilities' });
-    if (support.projectInstructions !== 1) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
+    const support = await agentHost<{ projectInstructions?: number; vmStartTools?: number }>({ operation: 'capabilities' });
+    if (support.projectInstructions !== 1 || support.vmStartTools !== 1) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
     const run = await agentHost<AgentRun>({ operation: 'start_run', projectId: request.params.id, sessionId: request.params.sessionId,
       input: { ...request.body, projectInstructions: 1 } });
     return reply.code(202).send({ run });

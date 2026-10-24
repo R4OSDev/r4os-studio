@@ -176,7 +176,11 @@ async def main():
     try:
         if job['state'] not in ('queued', 'starting'): return
         store.update(job['id'], 'running', phase='preparing')
-        if job['kind'] == 'deploy': await asyncio.wait_for(Deployment(store, job).run(), 600)
+        if job['kind'] == 'vm_start':
+            from vm_start import VmStart
+            try: await asyncio.wait_for(VmStart(store, job).run(), LIMITS['vmStartTimeoutSeconds'])
+            except asyncio.TimeoutError: raise DevelopmentFault('VM start and SSH readiness exceeded the host deadline. Inspect the saved job before retrying.') from None
+        elif job['kind'] == 'deploy': await asyncio.wait_for(Deployment(store, job).run(), 600)
         elif job['kind'] == 'execution':
             from execution import Execution
             execution = Execution(store, job)

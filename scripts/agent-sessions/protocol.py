@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 EXPECTED = {'agentHostProtocol': 1, 'agentWorkerProtocol': 1, 'agentDataSchema': 1}
-PROFILES = ('studio-tools-v1', 'studio-tools-v2')
+PROFILES = ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3')
 
 
 def supported_profiles(root):
@@ -13,7 +13,7 @@ def supported_profiles(root):
         # The published 0.3.24 release qualified v2 before this declaration was
         # added. Earlier releases remain v1-only rollback targets.
         version = json.loads((root / 'shared/version.json').read_text())['version']
-        return PROFILES if version == '0.3.24' else PROFILES[:1]
+        return PROFILES[:2] if version == '0.3.24' else PROFILES[:1]
     if not isinstance(profiles, list) or not profiles or any(p not in PROFILES for p in profiles): raise ValueError('This release requires a newer agent host.')
     return tuple(profiles)
 

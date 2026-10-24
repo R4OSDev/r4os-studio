@@ -1,12 +1,12 @@
 import type { ProjectPins, ProjectTemplate } from './projects.js';
 
 /** Studio contracts; these are not R4OS ABI or SDK interfaces. */
-export type DevelopmentJobKind = 'build' | 'deploy' | 'execution';
+export type DevelopmentJobKind = 'build' | 'deploy' | 'execution' | 'vm_start';
 export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
   | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
 export type DevelopmentToolId = 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project'
-  | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input';
+  | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
 
 export interface DevelopmentCapability {
   available: boolean;
@@ -19,6 +19,7 @@ export interface DevelopmentOptions {
   execute: DevelopmentCapability;
   capture: DevelopmentCapability;
   input: DevelopmentCapability;
+  startVm?: DevelopmentCapability;
   profileId: string | null;
   assignedVm: { id: string; name: string; imageId: string; ready: boolean } | null;
 }
@@ -91,6 +92,10 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  vmStart?: {
+    ready: boolean; started: boolean; checkedAt?: string; guestRelease?: string; guestKernel?: string;
+    vmId?: string; vmRevision?: string; imageId?: string; imageSha256?: string; bootId?: string; accessRevision?: number;
+  };
   guestState?: { closeConfirmed?: boolean; [key: string]: unknown };
   recovery?: { id: string; source: string; reason?: string; replayed: false; guestEndConfirmed?: boolean };
   settingsRevision: number;

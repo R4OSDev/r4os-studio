@@ -12,7 +12,7 @@ import './styles.css';
 function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: (id: string | null) => void }) {
   const [name, setName] = useState(vm?.name ?? 'R4OS VM');
   const [cpus, setCpus] = useState(vm?.cpus ?? 4), [memory, setMemory] = useState(vm?.memoryMiB ?? 4096);
-  const [networkEnabled, setNetworkEnabled] = useState(vm?.networkEnabled ?? false);
+  const [networkEnabled, setNetworkEnabled] = useState(vm ? vm.networkEnabled ?? false : true);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
   const baseImage = api.images.find((image) => image.id === api.defaultImageId);

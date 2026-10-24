@@ -99,7 +99,8 @@ export class VmManager {
     return this.locked('create', async () => {
       if ((await this.list()).length >= 32) throw new VmError('The workspace is limited to 32 virtual machines.');
       if (!input.name.trim()) throw new VmError('Enter a virtual machine name.', 400);
-      if (input.networkEnabled && !await networkAvailable()) throw new VmError('VM network host support is not installed.');
+      const networkEnabled = input.networkEnabled ?? true;
+      if (networkEnabled && !await networkAvailable()) throw new VmError('VM network host support is not installed.');
       const local = await images();
       const image = input.imageId ? local.find((i) => i.id === input.imageId) : await defaultImage(local);
       if (!image) throw new VmError('Select an installed default release under Updates → R4OS Releases before creating a VM.');
@@ -117,7 +118,7 @@ export class VmManager {
       try {
         await exec((await activeTool('qemu')).imageBinary!, ['create', '-f', 'qcow2', '-F', 'raw', '-b', base, join(directory, 'Disks/disk.qcow2')], { timeout: 30_000 });
         const config: VmConfig = { schema: 1, id, name: input.name.trim(), imageId: image.id, imageSha256: image.sha256,
-          cpus: input.cpus, memoryMiB: input.memoryMiB, networkEnabled: input.networkEnabled ?? false, revision: randomUUID(), createdAt: new Date().toISOString() };
+          cpus: input.cpus, memoryMiB: input.memoryMiB, networkEnabled, revision: randomUUID(), createdAt: new Date().toISOString() };
         await atomic(join(directory, 'vm.json'), config);
         await rename(directory, vmPath(id));
       } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }

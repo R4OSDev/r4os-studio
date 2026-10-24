@@ -1,5 +1,61 @@
 # R4OS Studio · App
 
+Version 0.3.55 enables Network by default for new VMs and adds Start project VM
+in new agent sessions. The harness holds this single tool call until saved VM
+credentials authenticate over SSH and R4OS answers VER, then resumes the same
+agent turn. Progress and the durable job remain visible while it waits. Existing
+VM settings and session profiles are preserved. Deployment is unchanged.
+
+## Agent VM startup and SSH readiness (0.3.55)
+
+New VM forms and API creation default Network to enabled; an explicit false and
+all existing VM configurations retain their value. The connection uses the
+existing private SLIRP network and a temporary loopback SSH forward, with no
+LAN/VPN guest listener.
+
+New sessions use studio-tools-v3 and offer **Start project VM** under Session
+settings → Tools → VM, enabled by default. The call selects only the project's
+assigned VM. Save its guest credentials under VM Settings → Development access
+first; Network and development access must be enabled. It starts a stopped VM
+once, or observes the current boot of an already running VM. It does not compile,
+upload files, build a guest helper, start an application or change VM settings.
+
+The browser displays a durable vm_start job as the native tool stays pending.
+The harness waits internally; the model needs no status-polling or sleep calls.
+A fixed authenticated VER command must succeed with the current image, SSH host
+key and observed boot generation before the tool returns success and Codex
+continues the same turn. This confirms SSH readiness, not GUI/app readiness.
+The VM lease wait is bounded at 90 seconds, readiness at 180 seconds and the VM
+worker at 300 seconds. Invalid credentials, changed host keys/boots, stop and
+timeouts return a clear failure. Stop cancels the owned wait/job and closes its
+private connection; it leaves the VM running. Unconfirmed starts are never
+repeated automatically, including after a coordinator or worker restart.
+
+Existing sessions keep their native tool declarations and saved permissions.
+**Create a new session for Start project VM**; v1/v2 conversations are not rewritten.
+The readiness wait uses the start permission independently of Read development
+job. VM/image/project/boot/lease/agent ownership checks remain enforced; credentials
+and private transport paths are never exposed to the model or workspace.
+
+This tool profile requires explicit additive host maintenance, not bootstrap
+reinstallation. From the workspace root, as root:
+
+```sh
+python3 App/scripts/agent-sessions/install-vm-start-support.py
+# Install Studio 0.3.55 through System → Updates → R4OS Studio.
+python3 App/scripts/agent-sessions/install-vm-start-support.py --adopt
+```
+
+The first step updates only the known updater compatibility implementation and
+keeps v1/v2 rollback releases valid. The second adopts the installed release only
+with idle agent runs/worker units. Neither step restarts VMs, changes configuration
+or rewrites session history. Custom updater code is preserved for review. Fresh
+installations already include the new compatibility; existing coordinators still
+need to adopt the installed release. Syntax, Studio build/TypeScript and lint are
+checked for this release; no tests, VM starts, SSH probes, agent runs or project
+build/deploy runs were performed.
+
+
 Version 0.3.54 removes the Studio first-frame GUI workaround. New Zig/C desktop and subsystem projects keep the official SDK paint calls; Studio no longer generates or imports studio_gui.zig/studio_gui.h. The existing local Hello World source is restored to Window.beginPaint(), with the unchanged generated helper and its Studio-specific notice removed. Template identity advances to templates-v6; component pins and saved build history are retained. The replacement deployment/run approach is deferred. Python syntax, Studio build/TypeScript and lint checked; no tests or project/VM runs.
 
 Version 0.3.53 completes the project editor with Quick Open (Ctrl/Cmd+P), literal saved-source search (Ctrl/Cmd+Shift+F), version-aware result navigation and documented limits. Search runs without a shell or index, skips generated/cache/Git directories, and reports incomplete or skipped results. All six editor subversions are implemented without tests or user-project feature runs.
@@ -491,7 +547,7 @@ build workers ignore it.
 VM Settings includes Development access, explicit guest authentication and Check
 access. Credentials and host keys remain in private Studio storage outside the
 workspace; responses return credential presence and the public fingerprint only.
-Network must already be enabled explicitly. Readiness requires authenticated VER,
+Network must be enabled (new VMs default to enabled since 0.3.55). Readiness requires authenticated VER,
 the exact release and active kernel, a pinned host key and the current observed
 VM boot. QEMU running alone is not readiness. The SSH/SFTP client hashes are part
 of the qualified execution profile; completed connections are not multiplexed.
@@ -750,7 +806,7 @@ Real im unprivilegierten Dienst/Browser mit eigener QA-VM geprüft: C:/D:-Dateie
 
 ## VM-Netzwerk ab 0.2.6
 
-Settings enthält **Network**, je VM dauerhaft gespeichert und zunächst deaktiviert (auch für bestehende Konfigurationen ohne Feld). Änderungen nur bei gestoppter VM, wirksam ab dem nächsten Start; Overview zeigt Enabled/Disabled. QEMU verwendet bei Aktivierung eine RTL8139-Karte mit stabiler lokaler MAC und SLIRP-NAT/DHCP ohne Portweiterleitungen. Bei Deaktivierung weiterhin `-nic none`. Keine Bridge, keine Gastdienste im LAN/VPN. Gastbereitschaft wird nicht aus dem QEMU-Prozessstatus abgeleitet. Grundlage: [QEMU user networking](https://www.qemu.org/docs/master/system/devices/net.html).
+Settings enthält **Network**, je VM dauerhaft gespeichert und seit 0.3.55 für neue VMs standardmäßig aktiviert. Bestehende Werte bleiben erhalten; bestehende Konfigurationen ohne Feld bleiben deaktiviert. Änderungen nur bei gestoppter VM, wirksam ab dem nächsten Start; Overview zeigt Enabled/Disabled. QEMU verwendet bei Aktivierung eine RTL8139-Karte mit stabiler lokaler MAC und SLIRP-NAT/DHCP ohne Portweiterleitungen. Bei Deaktivierung weiterhin `-nic none`. Keine Bridge, keine Gastdienste im LAN/VPN. Gastbereitschaft wird nicht aus dem QEMU-Prozessstatus abgeleitet. Grundlage: [QEMU user networking](https://www.qemu.org/docs/master/system/devices/net.html).
 
 Bestehende Hosts einmal explizit als root mit `python3 scripts/install-vm-network.py` erweitern. Der Installer ergänzt ausschließlich die Socket-Familien im VM-Template per Drop-in und schreibt eine feste Capability-Datei; Dispatcher, Datenpfade und laufende VMs bleiben erhalten. Neue Hosteinrichtungen rufen ihn über `install-vm-support.sh` auf. Ohne diese Unterstützung bleibt das Einschalten gesperrt und wird verständlich angezeigt. Kein allgemeines sudo und keine automatische Root-Ausführung durch Updates.
 

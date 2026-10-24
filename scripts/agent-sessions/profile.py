@@ -8,16 +8,19 @@ import stat
 CODEX_VERSION = '0.163.0'
 CODEX_SHA256 = '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
 LEGACY_PROFILE = 'studio-tools-v1'
-PROFILE = 'studio-tools-v2'
+DEVELOPMENT_PROFILE = 'studio-tools-v2'
+PROFILE = 'studio-tools-v3'
 SANDBOX_MODE = 'workspace-write'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
          'search', 'write_file', 'apply_patch', 'create_directory')
-DEVELOPMENT_TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
+PREVIOUS_DEVELOPMENT_TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
     'stop_development_job', 'capture_vm', 'send_vm_input')
+DEVELOPMENT_TOOLS = PREVIOUS_DEVELOPMENT_TOOLS + ('start_project_vm',)
 TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS
 
 def tools_for(profile):
     if profile == LEGACY_PROFILE: return LEGACY_TOOLS
+    if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
     if profile == PROFILE: return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 
