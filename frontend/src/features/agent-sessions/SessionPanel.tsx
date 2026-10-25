@@ -119,7 +119,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
-      <SessionTranscript items={items} projectId={projectId} token={token} />
+      <SessionTranscript items={items} projectId={projectId} sessionId={sessionId} token={token} />
     </div>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}

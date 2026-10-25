@@ -104,5 +104,25 @@
 .development-image img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 .development-image figcaption { font-size: 12px; opacity: .7; margin-top: 6px; }
 
+.agent-reply-image { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; margin: 12px 0 16px; }
+.agent-image-preview { display: block; align-self: flex-start; max-width: 100%; padding: 0; border: 1px solid #59416b; border-radius: 8px; overflow: hidden; background: #15101c; cursor: zoom-in; }
+.agent-image-preview img { display: block; width: auto; max-width: 100%; max-height: 440px; object-fit: contain; }
+.agent-image-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.agent-image-actions button, .agent-image-actions a, .agent-image-dialog-bar button, .agent-image-dialog-bar a { padding: 6px 10px; border: 1px solid #59416b; border-radius: 5px; background: #30223d; color: #e0c8f6; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.agent-image-preview:focus-visible, .agent-image-actions :focus-visible, .agent-image-dialog :focus-visible { outline: 2px solid #d1a6f8; outline-offset: 3px; }
+.agent-image-loading, .agent-image-unavailable { display: block; margin: 12px 0; color: #b8a9c7; font-size: 12px; }
+.agent-image-dialog { box-sizing: border-box; width: max-content; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); padding: 0; border: 1px solid #59416b; border-radius: 9px; background: #17111f; color: #eee3f7; overflow: hidden; }
+.agent-image-dialog::backdrop { background: rgb(0 0 0 / 78%); }
+.agent-image-dialog-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #3b2d49; }
+.agent-image-dialog-bar h2 { flex: 1 1 180px; min-width: 0; max-width: 50ch; margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+.agent-image-dialog-content { max-width: calc(100vw - 26px); max-height: calc(100dvh - 130px); overflow: auto; padding: 0; }
+.agent-image-dialog-content img { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100dvh - 130px); margin: auto; object-fit: contain; }
+.agent-image-dialog-content.actual img { max-width: none; max-height: none; margin: 0; }
+@media (max-width: 480px) {
+  .agent-image-dialog-bar h2 { flex-basis: 100%; }
+  .agent-image-dialog-content, .agent-image-dialog-content img { max-height: calc(100dvh - 170px); }
+  .agent-image-dialog-content.actual img { max-height: none; }
+}
+
 .development-package code { display: block; overflow-wrap: anywhere; }
 .development-package small { display: block; margin-top: .25rem; color: var(--text-muted, #999); }

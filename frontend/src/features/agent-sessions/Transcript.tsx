@@ -1,8 +1,10 @@
 /** @jsxRuntime automatic */
-import { isValidElement, useState } from 'react';
+import { Children, createContext, isValidElement, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import Markdown from 'react-markdown';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
 import type { Components } from 'react-markdown';
+import type { UrlTransform } from 'react-markdown';
+import { ReplyImage, replyImageReference } from './ReplyImage';
 
 // Render a text transcript, never a live terminal. In particular OSC 52 must
 // never alter the browser clipboard or survive a user copying visible output.
@@ -49,18 +51,31 @@ export function CodeBlock({ text, label = 'Copy code', language = '' }: { text: 
   return <div className="agent-code-block"><div className="agent-code-bar"><span>{language}</span><CopyButton text={visible} label={label} /></div><pre><code>{visible}</code></pre></div>;
 }
 
+const imageScope = createContext<{ projectId: string; sessionId: string } | null>(null);
+function MarkdownImage({ src, alt }: { src?: string | Blob; alt?: string }) {
+  const scope = useContext(imageScope), image = typeof src === 'string' ? replyImageReference(src) : null;
+  return scope && image ? <ReplyImage {...scope} {...image} alt={alt ?? ''} />
+    : <span className="agent-image-alt">{alt || 'Image unavailable.'}</span>;
+}
+function containsImage(children: ReactNode): boolean {
+  return Children.toArray(children).some((child) => isValidElement<{ children?: ReactNode }>(child)
+    && (child.type === MarkdownImage || containsImage(child.props.children)));
+}
+const messageUrl: UrlTransform = (value, key, node) => key === 'src' && node.tagName === 'img'
+  ? (replyImageReference(value) ? value : '') : defaultUrlTransform(value);
 const components: Components = {
   pre({ children }) {
     const code = isValidElement<{ children?: ReactNode; className?: string }>(children) ? children.props : {};
     return <CodeBlock text={typeof code.children === 'string' ? code.children : ''} language={code.className?.replace(/^language-/, '').slice(0, 32)} />;
   },
-  // Images are text: rendering a model message must not issue network requests.
-  img({ alt }) { return <span className="agent-image-alt">{alt || 'Image'}</span>; },
-  a({ href, children }) { return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>; },
+  // Only opaque registered evidence may fetch a fixed authenticated endpoint.
+  img: MarkdownImage,
+  a({ href, children }) { return containsImage(children) ? <>{children}</> : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>; },
 };
 
-export function MessageText({ text, markdown = false }: { text: string; markdown?: boolean }) {
+export function MessageText({ text, markdown = false, projectId, sessionId }: { text: string; markdown?: boolean; projectId?: string; sessionId?: string }) {
   const visible = transcriptText(text);
-  return markdown ? <div className="agent-message-text agent-markdown"><Markdown skipHtml components={components}>{visible}</Markdown></div>
+  const scope = useMemo(() => projectId && sessionId ? { projectId, sessionId } : null, [projectId, sessionId]);
+  return markdown ? <imageScope.Provider value={scope}><div className="agent-message-text agent-markdown"><Markdown skipHtml components={components} urlTransform={messageUrl}>{visible}</Markdown></div></imageScope.Provider>
     : <div className="agent-message-text">{visible}</div>;
 }

@@ -89,7 +89,12 @@ class DevelopmentTools:
                 if set(value) - {'jobId', 'action'}: raise DevelopmentFault('Unexpected capture fields.', 400)
                 data = await self.request('capture', id=value['jobId'], input={'requestId': request_id})
                 metadata = data['metadata']
-                return {'success': True, 'output': encode(metadata), 'development': {'jobId': value['jobId']}, 'image': metadata,
+                if metadata.get('projectId') != self.worker.manifest['projectId'] or (metadata.get('observer') or {}).get('sessionId') != self.worker.session_id:
+                    raise DevelopmentFault('The screenshot does not match this session.', 403)
+                reference = 'studio-image:' + metadata['jobId'] + '/' + metadata['id']
+                presentation = {'reference': reference, 'markdown': '![VM screenshot](' + reference + ')',
+                    'instruction': 'When the user asks to see the screenshot, include this image Markdown in your response. You may supply a descriptive alt text. The saved image is reused; do not capture again just to present it.'}
+                return {'success': True, 'output': encode({**metadata, 'presentation': presentation}), 'development': {'jobId': value['jobId']}, 'image': metadata,
                     **({'_transientImage': data} if data.get('authorizedForAgentOutput') is True else {})}
             if name == 'send_vm_input':
                 data = await self.request('input', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})

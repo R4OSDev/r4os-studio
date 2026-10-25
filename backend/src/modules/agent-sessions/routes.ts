@@ -3,6 +3,8 @@ import type { AgentSession, SessionCreate, SessionHistory, SessionOptions, Sessi
 import type { ProjectSessions } from '../projects/sessions.js';
 import { sessionStore } from './store.js';
 import { developmentHost } from '../project-development/host.js';
+import { ProjectError } from '../projects/store.js';
+import type { DevelopmentJobPage } from '../../../../shared/project-development.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -16,6 +18,31 @@ type SessionParams = { id: string; sessionId: string };
 
 export function agentSessionRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, providers?: string) {
   const route = '/:id/sessions';
+  app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {
+    schema: { params: { ...params, required: ['id', 'sessionId', 'jobId', 'evidenceId'],
+      properties: { ...params.properties, jobId: identity, evidenceId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    const { id, sessionId, jobId, evidenceId } = request.params;
+    await sessionStore<AgentSession>(directory, { operation: 'get', projectId: id, sessionId }, providers);
+    type Image = { metadata: { kind: string; id: string; projectId: string; jobId: string; bytes: number }; base64: string };
+    const read = { operation: 'evidence', projectId: id, id: jobId, evidenceId };
+    let image: Image;
+    try { image = await developmentHost<Image>({ ...read, presentationSessionId: sessionId }); }
+    catch (error) {
+      if (!(error instanceof ProjectError) || error.statusCode !== 400 || error.message !== 'Unsupported development coordinator operation.') throw error;
+      // Older coordinators keep their live workers. Establish session ownership
+      // with a read before fetching exactly the same immutable image once.
+      const page = await developmentHost<DevelopmentJobPage>({ operation: 'read_job', projectId: id, id: jobId });
+      if (page.job.sessionId !== sessionId) throw new ProjectError('This screenshot belongs to another session.', 403);
+      image = await developmentHost<Image>(read);
+    }
+    if (image.metadata.kind !== 'screenshot' || image.metadata.id !== evidenceId || image.metadata.projectId !== id || image.metadata.jobId !== jobId
+      || !Number.isSafeInteger(image.metadata.bytes) || image.metadata.bytes < 1 || image.metadata.bytes > 393216)
+      throw new ProjectError('This reference is not a session screenshot.', 403);
+    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Disposition', 'inline; filename="screenshot.png"').type('image/png').send(Buffer.from(image.base64, 'base64'));
+  });
   app.get<{ Params: { id: string } }>(route + '/options', { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);
     const result = await sessionStore<SessionOptions>(directory, { operation: 'options', projectId: request.params.id }, providers);
@@ -40,7 +67,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
       ...fields, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-      permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9, maxProperties: 17 },
+      permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9, maxProperties: 18 },
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);

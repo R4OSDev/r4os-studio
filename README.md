@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.70 zeigt referenzierte Screenshots direkt in Agentenantworten. Authentifizierte Projekt-/Session-Belege, Vergrößerung mit Fit/Actual size und Original-PNG-Download verwenden dieselben Bilddaten. Reload und paginierte Historie bleiben erhalten; vorhandene Tools und Aufnahmeberechtigungen unverändert.
+
 Version 0.3.69 wartet bei Builds im Harness und reduziert unveränderte Gast-/Zustandsdaten. Adaptive Beobachtung wird bei Stop oder Aktionen geweckt; kritische Quittungen, Watchdogfristen und frische Screenshot-/Eingabeprüfungen bleiben erhalten.
 
 Version 0.3.68 erweitert die Agent-Suche auf reguläre Einzeldateien und Verzeichnisse. Keine Linkverfolgung; begrenzte UTF-8-/Dateinamen-Suche mit präzisen Fehlern, stabilen relativen Treffern und sichtbaren Auslassungen.

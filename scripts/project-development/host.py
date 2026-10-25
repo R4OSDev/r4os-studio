@@ -213,7 +213,7 @@ class Host:
         if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
         if op in ('build', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
-        if op == 'evidence': allowed.add('evidenceId')
+        if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
         if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
@@ -310,7 +310,15 @@ class Host:
                     actor_id={'agentRunId': owner['agentRunId'], 'model': authorization['model']} if owner else None)
             if op == 'evidence':
                 from evidence import read
-                return read(store, request['id'], request['evidenceId'])
+                if 'presentationSessionId' in request:
+                    session_id = identity(request['presentationSessionId'])
+                    if store.get(request['id']).get('sessionId') != session_id:
+                        raise DevelopmentFault('This screenshot belongs to another session.', 403)
+                image = read(store, request['id'], request['evidenceId'])
+                if 'presentationSessionId' in request and (image['metadata']['kind'] != 'screenshot' or
+                    image['metadata'].get('projectId') != store.id or image['metadata'].get('jobId') != request['id']):
+                    raise DevelopmentFault('This reference is not a session screenshot.', 403)
+                return image
             if op == 'evidence_history':
                 from evidence import history
                 return history(store, request['id'], request.get('before'))

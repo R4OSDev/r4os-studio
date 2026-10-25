@@ -50,7 +50,7 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
   </section>;
 }
 
-export function SessionTranscript({ items, projectId, token }: { items: SessionItem[]; projectId: string; token: string }) {
+export function SessionTranscript({ items, projectId, sessionId, token }: { items: SessionItem[]; projectId: string; sessionId: string; token: string }) {
   const entries: TranscriptEntry[] = [], jobs = new Set<string>();
   for (const item of items) {
     const key = itemKey(item);
@@ -67,6 +67,6 @@ export function SessionTranscript({ items, projectId, token }: { items: SessionI
     ? <ToolCallBlock key={entry.key} tools={entry.tools} projectId={projectId} token={token} />
     : <article key={entry.key} className={`agent-message ${entry.item.type}`}>
       {entry.item.type !== 'notice' && <div className="agent-message-role">{entry.item.type === 'user' ? 'You' : 'Agent'}</div>}
-      <MessageText text={entry.item.text ?? ''} markdown={entry.item.type === 'assistant'} />
+      <MessageText text={entry.item.text ?? ''} markdown={entry.item.type === 'assistant'} projectId={projectId} sessionId={sessionId} />
     </article>);
 }

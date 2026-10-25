@@ -222,6 +222,8 @@ class Worker:
                                     fast_mode=self.config.get('fastMode', False))
             from instructions import compose
             instructions = compose(self.config)
+            if 'capture_vm' in tools_for(self.config['engine']['profile']):
+                instructions += '\n\nSTUDIO SCREENSHOT PRESENTATION: When the user requests a screenshot, present it inline in your answer using the exact presentation.markdown reference returned by studio_capture_vm. You can change its descriptive alt text. These stored image references can be reused in later replies; they require no new capture. Use only confirmed references from tool results, never invent an image reference or file URL. Presenting an image does not establish a passed check or complete a live execution.'
             if 'deploy_project' in tools_for(self.config['engine']['profile']):
                 instructions += '\n\nCURRENT STUDIO DEPLOYMENT CONTRACT: These runtime constraints supersede older tool descriptions saved in this conversation. Deployment never starts a VM or application. For requested deployment, build, obtain the assigned VM SSH/VER readiness with the separately permitted studio_start_project_vm when available, then deploy and run. A session without VM-start capability must use an already running VM or ask for manual VM start. Build, deploy and run wait internally for their original receipt/readiness; do not poll, sleep or resubmit while those calls are pending. SSH readiness is not Desktop or application readiness.'
             if 'complete_development_job' in tools_for(self.config['engine']['profile']):
