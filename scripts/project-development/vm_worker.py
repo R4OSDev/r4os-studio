@@ -63,7 +63,6 @@ class Deployment:
     async def run(self):
         store, job = self.store, self.job; artifact = store.artifact(job['artifactId']); vm = job['binding']
         profile = transport_profile()
-        self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile); guard(store, job)
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
         from queue_lease import reserve
@@ -75,11 +74,14 @@ class Deployment:
                 raise DevelopmentFault('Start the assigned VM with Start project VM before deploying. If this session has no VM-start tool, start it in Virtual Machines or create a new session. Deployment does not have VM-start permission.', reason_code='vm_start_required')
             from exchange import require_tree
             require_tree(info)
+            access = Access(store.projects, store.r4os, None)
+            if not vm.get('networkEnabled') or not access.record(vm['id'])['enabled']:
+                raise DevelopmentFault('Enable Network and development access for the assigned VM before deploying.', reason_code='development_access_unavailable')
+            self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile); guard(store, job, lease)
             target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],
                 'leaseId': lease.id, 'token': lease.token, 'helperSha256': helper['sha256']})
             scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
             guard(store, job, lease); self.phase('authenticating')
-            access = Access(store.projects, store.r4os, None)
             last_error = None
             for attempt in range(36):
                 guard(store, job, lease)
@@ -226,6 +228,10 @@ async def main():
         if job['kind'] == 'execution' and (not readiness or readiness.get('state') != 'unsupported'):
             readiness = {'state': state, 'checkedAt': now(), 'reason': message}
         store.update(job['id'], state, readiness=readiness, phase='stopped' if interrupted else 'failed', error=message,
+                     reasonCode=getattr(error, 'reason_code', None),
+                     nextStep={'vm_start_required': 'Start the assigned VM with its permitted VM-start tool, or use Virtual Machines, then deploy again.',
+                         'exchange_worker_upgrade_required': 'Stop and start the assigned VM in Virtual Machines to adopt its current Exchange worker, then deploy again.',
+                         'development_access_unavailable': 'Enable Network and development access in the assigned VM settings before deploying.'}.get(getattr(error, 'reason_code', None)),
                      exitCode=getattr(error, 'exit_code', None))
     finally: store.close()
 

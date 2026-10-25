@@ -36,7 +36,7 @@ async def resolve(ssh, info, target):
 
 def require_tree(info):
     if info.get('exchangeWorker', {}).get('buildTreeVersion') != 1:
-        raise DevelopmentFault('The running VM uses an older Exchange worker. Stop and start this VM before deploying to Build.')
+        raise DevelopmentFault('The running VM uses an older Exchange worker. Stop and start this VM before deploying to Build.', reason_code='exchange_worker_upgrade_required')
 
 def directory(target, project_name, deployment_name=None):
     exchange = target.get('exchange') or {}
