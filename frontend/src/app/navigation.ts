@@ -1,4 +1,4 @@
-export type Tab = 'System' | 'Projects';
+export type Tab = 'System' | 'Projects' | 'Tools';
 
 export interface NavigationGroup {
   name: string;

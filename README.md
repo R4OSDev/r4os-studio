@@ -1,5 +1,15 @@
 # R4OS Studio · App
 
+## Tools and manual skill editing (0.4.4)
+
+The header order is **System, Projects, Tools**. Tools has three equal navigation columns: TOOLS → Skill Manager; SKILLS → + New Skill and saved skills; selected-skill Views → fixed + Session and View Skill. + Session is disabled until the planned session UI is connected in0.4.8. Existing System → Updates → Tools remains a separate navigation item. Skill selection survives reload through #tools/skills/<uuid>.
+
+View Skill shows the draft package with an editable display name, file selector inside the main area, existing CodeMirror editor, safe Markdown preview, Save and Cancel edits. Optional scripts/resources can be created, edited, renamed, removed, uploaded/replaced and downloaded. Executable flags are explicit for script files. Binary assets are downloaded/replaced rather than interpreted as source text. Text editor limit is524288 characters; larger files remain available for download/replacement under the package limits. Package resource links open the corresponding file inside the main area. Markdown HTML is skipped and remote images never auto-fetch. Viewing/saving never executes scripts.
+
+File operations explicitly update the stored draft; **Save skill** writes edited text using expected hashes, checks the full skill/package revision and activates only a valid complete snapshot. Invalid saves retain the draft and previous valid global revision. Cancel edits restores unsaved text/name/mode changes; it does not erase previously stored draft files. External file conflicts preserve local text for a deliberate Reload. Dirty/busy guards cover header/skill navigation, dialogs and reload. No fourth sidebar, model request or project/SDK requirement is introduced.
+
+Validated: build/TypeScript/lint and isolated browser at1440/320 pixels, including narrow initial header, equal columns, draft creation/validation/save, script editing/executable flag/rename/confirmed removal, binary upload/download, safe preview, cancel/leave protection, stale-file conflict/readback, display renaming without identity changes and route/file persistence. Fixtures remain confined to the isolated QA directory and are removed after validation. Skill runtime/session application follows in0.4.5–0.4.10; existing projects, providers, credentials, VMs and component defaults are preserved.
+
 ## Global skill library foundation (0.4.3)
 
 The host API `/api/skills` now manages a Studio-wide skill catalog independently of projects, SDKs, compilers and VMs. The Tools tab and manual browser editor follow in 0.4.4; session activation/inference integration follows in 0.4.5–0.4.10. No arbitrary host/Codex skills are imported or enabled by this release.

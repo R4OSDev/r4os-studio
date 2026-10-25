@@ -1,0 +1,28 @@
+.skill-nav-message { padding: 0 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.skill-draft { margin-left: auto; color: var(--muted); font-size: 10px; }
+.skill-empty { color: var(--muted); padding: 24px; font-size: 13px; }
+.skill-main { min-height: 0; }
+.skill-editor { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 20px; gap: 12px; }
+.skill-heading { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.skill-heading label { font-size: 13px; }
+.skill-heading input { min-width: 0; max-width: 340px; flex: 1 1 180px; }
+.skill-heading p { color: var(--muted); font-size: 12px; margin: 0; }
+.skill-editor input, .skill-editor select { color: #efe8f7; background: #201827; border: 1px solid #4b3b5d; border-radius: 6px; padding: 9px; }
+.skill-editor button { border: 1px solid #4b3b5d; border-radius: 6px; background: #2a2037; padding: 9px 11px; font-size: 12px; }
+.skill-editor button:disabled, .skill-fixed-views button:disabled { opacity: .45; cursor: default; }
+.skill-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.skill-toolbar label { font-size: 12px; }
+.skill-toolbar select { flex: 1 1 200px; width: 0; min-width: 0; }
+.skill-toolbar .skill-executable { display: flex; gap: 6px; align-items: center; }
+.skill-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0; }
+.skill-actions button:last-child { background: #bd94ed; color: #21142f; font-weight: 600; }
+.skill-editor .editor-code { min-height: 300px; flex: 1; border: 1px solid var(--line); }
+.skill-preview { flex: 1; min-height: 240px; overflow: auto; padding: 14px; border: 1px solid var(--line); }
+.skill-message { margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; color: var(--muted); }
+.skill-message.error { color: #ffa7b7; }
+.skill-message button { margin-left: 12px; }
+@media (max-width: 600px) {
+  .skill-editor { padding: 14px; flex: none; min-height: 600px; }
+  .skill-toolbar { gap: 6px; }
+  .skill-heading input { max-width: 100%; }
+}

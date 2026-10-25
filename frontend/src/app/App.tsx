@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { navigation } from './navigation';
@@ -19,8 +19,10 @@ import { editorRegistry } from '../features/project-editor/registry';
 import { useConnections } from '../features/github-connections/useConnections';
 import { ConnectionPanel } from '../features/github-connections/ConnectionPanel';
 
-const tabs: Tab[] = ['System', 'Projects'];
+const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
+const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
+const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
 export function App() {
@@ -28,7 +30,10 @@ export function App() {
     const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const [tab, setTab] = useState<Tab>(sessionRoute ? 'Projects' : 'System');
+  const [tab, setTab] = useState<Tab>(sessionRoute ? 'Projects' : skillRoute ? 'Tools' : 'System');
+  const [skillId, setSkillId] = useState<string | null>(skillRoute?.[1] ?? null);
+  const toolsLeaveGuard = useRef<() => boolean>(() => true);
+  const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? null);
   const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
@@ -40,7 +45,9 @@ export function App() {
   useEffect(() => {
     const restore = () => {
       const route = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
-      if (route && settingsLeaveGuard.current() && projectLeaveGuard.current()) { setProjectId(route[1]); navigateProject(route[1], { section: 'Sessions', settingsView: 'General', sessionId: route[2] }); setTab('Projects'); }
+      if (route && settingsLeaveGuard.current() && projectLeaveGuard.current() && toolsLeaveGuard.current()) { setProjectId(route[1]); navigateProject(route[1], { section: 'Sessions', settingsView: 'General', sessionId: route[2] }); setTab('Projects'); }
+      const skill = /^#tools\/skills\/([a-f0-9-]{36})$/.exec(window.location.hash);
+      if (skill && settingsLeaveGuard.current() && projectLeaveGuard.current() && toolsLeaveGuard.current()) { setSkillId(skill[1]); setTab('Tools'); }
     };
     window.addEventListener('hashchange', restore);
     return () => window.removeEventListener('hashchange', restore);
@@ -97,8 +104,9 @@ export function App() {
   function switchTab(value: Tab) {
     if (tab === 'System' && value !== tab && !settingsLeaveGuard.current()) return false;
     if (tab === 'Projects' && value !== tab && !projectLeaveGuard.current()) return false;
+    if (tab === 'Tools' && value !== tab && !toolsLeaveGuard.current()) return false;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
-    window.history.replaceState(null, '', value === 'Projects' && session ? `#projects/${projectId}/sessions/${session}` : window.location.pathname);
+    window.history.replaceState(null, '', value === 'Projects' && session ? `#projects/${projectId}/sessions/${session}` : value === 'Tools' && skillId ? `#tools/skills/${skillId}` : window.location.pathname);
     setTab(value); return true;
   }
 
@@ -116,14 +124,14 @@ export function App() {
               type="button" role="tab" aria-selected={tab === name}
               aria-controls={`panel-${name}`} tabIndex={tab === name ? 0 : -1}
               onClick={() => switchTab(name)} onKeyDown={(event) => handleTabKey(event, index)}>
-              <Icon name={name === 'System' ? 'system' : 'folder'} />{name}
+              <Icon name={name === 'System' ? 'system' : name === 'Tools' ? 'box' : 'folder'} />{name}
             </button>
           ))}
         </div>
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        {tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId}
+        {tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <aside className="navigation" aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
