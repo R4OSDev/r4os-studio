@@ -2,17 +2,19 @@ import { constants } from 'node:fs';
 import { mkdir, open, rename, unlink, lstat, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { GitHubConnection, GitHubConnectionChange, GitHubConnectionInput } from '../../../../shared/github-connections.js';
+import type { GitHubConnection, GitHubConnectionChange, GitHubConnectionInput, GitHubTestResult } from '../../../../shared/github-connections.js';
 import { ProjectError } from '../projects/store.js';
 
-interface PrivateConnection extends GitHubConnection { token: string }
+interface PrivateConnection extends GitHubConnection { token: string; testSequence?: number }
 interface Catalog { schema: 1; connections: PrivateConnection[]; deletedIds: string[] }
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value);
 const validName = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 120 && !/[\p{Cc}\p{Cs}]/u.test(value);
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[\x21-\x7e]{20,4096}$/.test(value);
 const revision = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
 const publicConnection = (v: PrivateConnection): GitHubConnection => ({ id: v.id, name: v.name, revision: v.revision,
-  hasToken: true, createdAt: v.createdAt, updatedAt: v.updatedAt });
+  hasToken: true, createdAt: v.createdAt, updatedAt: v.updatedAt, tokenRevision: v.tokenRevision ?? 1,
+  ...(v.lastTest ? { lastTest: { status: v.lastTest.status, checkedAt: v.lastTest.checkedAt,
+    ...(v.lastTest.status === 'success' ? { login: v.lastTest.login, userId: v.lastTest.userId } : {}) } } : {}) });
 export const connectionId = (id: unknown) => { if (!uuid(id)) throw new ProjectError('Invalid connection ID.', 400); };
 const exact = (value: unknown, required: string[], optional: string[] = []): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value) && required.every((k) => Object.hasOwn(value, k))
@@ -32,6 +34,10 @@ export function changeInput(value: unknown): GitHubConnectionChange {
 export function deleteInput(value: unknown): number {
   if (!exact(value, ['revision']) || !revision(value.revision)) throw new ProjectError('Invalid connection revision.', 400);
   return value.revision;
+}
+export function tokenInput(value: unknown): string {
+  if (!exact(value, ['token']) || !validToken(value.token)) throw new ProjectError('Enter a token of 20–4096 characters without spaces.', 400);
+  return value.token;
 }
 
 /** Private disk snapshot; only explicit public projections leave this module. */
@@ -58,6 +64,14 @@ export class GitHubStore {
           && typeof v.createdAt === 'string' && typeof v.updatedAt === 'string')
         || new Set(data.connections.map((v) => v.id)).size !== data.connections.length
         || data.connections.some((v) => data.deletedIds.includes(v.id))) throw new Error('Invalid storage.');
+      for (const v of data.connections) {
+        v.tokenRevision ??= 1;
+        if (!revision(v.tokenRevision) || (v.testSequence !== undefined && (!Number.isSafeInteger(v.testSequence) || v.testSequence < 0))
+          || (v.lastTest && (!['success','authentication_failed','forbidden','rate_limited','network_error','timeout','server_error','invalid_response'].includes(v.lastTest.status)
+            || typeof v.lastTest.checkedAt !== 'string' || !Number.isFinite(Date.parse(v.lastTest.checkedAt))
+            || (v.lastTest.status === 'success' && (typeof v.lastTest.login !== 'string' || !/^[a-z\d][a-z\d-]{0,38}(?:\[bot\])?$/i.test(v.lastTest.login)
+              || !Number.isSafeInteger(v.lastTest.userId) || v.lastTest.userId! <= 0))))) throw new Error('Invalid test metadata.');
+      }
       return data;
     } finally { await file.close(); }
   }
@@ -93,7 +107,7 @@ export class GitHubStore {
       if (previous || data.deletedIds.includes(input.id)) throw new ProjectError('This connection ID has already been used. Reload connections.', 409);
       if (data.connections.length >= 1000) throw new ProjectError('The connection limit has been reached.', 409);
       const now = new Date().toISOString();
-      const next = { ...input, revision: 1, hasToken: true, createdAt: now, updatedAt: now };
+      const next = { ...input, revision: 1, tokenRevision: 1, hasToken: true, createdAt: now, updatedAt: now };
       data.connections.push(next); return publicConnection(next);
     });
   }
@@ -103,7 +117,9 @@ export class GitHubStore {
       if (!value) throw new ProjectError('Connection not found. Reload connections.', 404);
       const same = value.name === input.name && (input.token === undefined || input.token === value.token);
       if (value.revision !== input.revision && !(same && value.revision === input.revision + 1)) throw new ProjectError('This connection changed. Reload before saving.', 409);
-      if (!same) { value.name = input.name; if (input.token !== undefined) value.token = input.token;
+      if (!same) { value.name = input.name; if (input.token !== undefined && value.token !== input.token) {
+        value.token = input.token; value.tokenRevision++; delete value.lastTest; value.testSequence = (value.testSequence ?? 0) + 1;
+      }
         value.revision++; value.updatedAt = new Date().toISOString(); }
       return publicConnection(value);
     });
@@ -116,6 +132,24 @@ export class GitHubStore {
       if (value.revision !== expected) throw new ProjectError('This connection changed. Reload before removing.', 409);
       if (data.deletedIds.length >= 10000) throw new ProjectError('Connection history requires host maintenance.', 503);
       data.connections = data.connections.filter((v) => v.id !== id); data.deletedIds.push(id);
+    });
+  }
+  async beginTest(id: string, expected: number) {
+    return this.change((data) => {
+      const v = data.connections.find((v) => v.id === id);
+      if (!v) throw new ProjectError('Connection not found.', 404);
+      if (v.revision !== expected) throw new ProjectError('This connection changed. Reload before testing.', 409);
+      v.testSequence = (v.testSequence ?? 0) + 1;
+      return { token: v.token, tokenRevision: v.tokenRevision, sequence: v.testSequence };
+    });
+  }
+  async finishTest(id: string, binding: { tokenRevision: number; sequence: number }, result: GitHubTestResult) {
+    return this.change((data) => {
+      const v = data.connections.find((v) => v.id === id);
+      if (!v || v.tokenRevision !== binding.tokenRevision || v.testSequence !== binding.sequence) {
+        throw new ProjectError('The connection changed or a newer test started. Discarded the outdated result.', 409);
+      }
+      v.lastTest = result; return publicConnection(v);
     });
   }
 }

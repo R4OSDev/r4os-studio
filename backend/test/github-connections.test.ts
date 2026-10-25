@@ -29,7 +29,7 @@ await test('GitHub connections protect secrets, revisioned changes and restart p
     }
     const added = await app.inject({ method: 'POST', url, payload, headers });
     assert.equal(added.statusCode, 200); assert.equal(added.json().hasToken, true); assert(!added.body.includes(token));
-    assert.deepEqual(Object.keys(added.json()).sort(), ['createdAt', 'hasToken', 'id', 'name', 'revision', 'updatedAt']);
+    assert.deepEqual(Object.keys(added.json()).sort(), ['createdAt', 'hasToken', 'id', 'name', 'revision', 'tokenRevision', 'updatedAt']);
     assert.equal((await app.inject({ method: 'POST', url, payload, headers })).json().id, payload.id);
     const other = await app.inject({ method: 'POST', url, payload: { ...payload, id: randomUUID() }, headers });
     assert.equal(other.statusCode, 200); assert.notEqual(other.json().id, payload.id);

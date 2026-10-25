@@ -1,5 +1,15 @@
 # R4OS Studio · App
 
+## GitHub connection tests (0.4.2)
+
+**Test connection** is available for an unsaved token and for a saved connection. Draft tests do not save credentials. The host sends one authenticated read-only `GET https://api.github.com/user`, using the documented `2026-03-10` API version, recommended JSON Accept header and TLS verification. Redirects are not followed, the total request deadline is ten seconds, response data is bounded to 64 KiB and at most four tests run concurrently. There are no Git/shell commands, repository mutations, background polls or credential imports. Source: [GitHub authenticated user endpoint](https://docs.github.com/en/rest/users/users#get-the-authenticated-user).
+
+Only status, checked time and a successful public login/user ID are projected. Authentication rejection, restrictions, rate limiting, network/TLS failure, timeout, server failure and invalid/oversized responses receive bounded English feedback; raw responses/headers are neither stored nor displayed. Success confirms identity at the test time and does not establish repository, organization or push permissions. Existing 0.4.1 catalogs remain readable without rewriting credentials or inferring prior tests.
+
+Saved results bind the connection UUID, token generation and latest test attempt. Token replacement clears prior results; rename retains the token-bound result. Responses after replacement/removal or a newer test are discarded. Draft edits clear their displayed test result. Existing Settings session/CSRF/Host/Origin checks protect both test paths.
+
+Validated with six targeted backend cases (adapter failures/limits/timeouts, draft non-persistence, token/attempt races, legacy catalog compatibility, storage/security and system-prompt regression), build/TypeScript/lint and isolated browser checks at 1440/320 px. The user explicitly accepted isolated tests without a separate real GitHub test account; no successful live authentication is claimed and the private push token was not accessed. Fixtures were removed. No new application dependency or host permission change is needed beyond 0.4.1.
+
 ## GitHub connections (0.4.1)
 
 System → Settings → GitHub manages named personal-access-token connections. Views starts with **+ Connection**, followed by connection names. Add, rename, explicitly replace a masked token, cancel changes and confirm removal in the browser. Unsaved edits are guarded during navigation/reload. Connection tests follow in 0.4.2; this release performs no GitHub requests or repository actions.

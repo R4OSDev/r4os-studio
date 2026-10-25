@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { GitHubConnection, GitHubConnectionChange, GitHubConnectionInput } from '../../../../shared/github-connections';
+import type { GitHubConnection, GitHubConnectionChange, GitHubConnectionInput, GitHubTestResult } from '../../../../shared/github-connections';
 import { loadConnections, request } from './api';
 
 export function useConnections(active: boolean) {
@@ -27,6 +27,12 @@ export function useConnections(active: boolean) {
     await request('DELETE', '/' + connection.id, { revision: connection.revision }, csrf);
     setConnections((previous) => previous.filter((v) => v.id !== connection.id));
   };
-  return { connections, error, loading: loading || (active && !csrf && !error), ready: !!csrf, refresh, save, remove };
+  const testDraft = (token: string) => request<GitHubTestResult>('POST', '/test', { token }, csrf);
+  const testStored = async (connection: GitHubConnection) => {
+    const result = await request<GitHubConnection>('POST', '/' + connection.id + '/test', { revision: connection.revision }, csrf);
+    setConnections((previous) => previous.map((v) => v.id === result.id && v.tokenRevision === result.tokenRevision ? result : v));
+    return result;
+  };
+  return { connections, error, loading: loading || (active && !csrf && !error), ready: !!csrf, refresh, save, remove, testDraft, testStored };
 }
 export type ConnectionsApi = ReturnType<typeof useConnections>;
