@@ -15,6 +15,7 @@ def record(store, job_id, value, actor='user', actor_id=None):
         raise DevelopmentFault('This image has no matching configured visual criteria.')
     if value['state'] not in ('passed', 'failed', 'inconclusive') or not isinstance(value['notes'], str) or not 0 < len(value['notes'].encode()) <= 1024 or '\x00' in value['notes']:
         raise DevelopmentFault('Enter a bounded visual assessment.', 400)
+    if job.get('checkCompletion'): raise DevelopmentFault('This check result is already completing or closed.')
     receipt = admit(store, job_id, {'operation': 'assess', **value, 'actor': actor, 'actorId': actor_id})
     if receipt is not None: return store.get(job_id)
     assessment = {**value, 'actor': actor, 'actorId': actor_id, 'imageSha256': image['sha256'], 'createdAt': now()}

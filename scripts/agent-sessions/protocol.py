@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 EXPECTED = {'agentHostProtocol': 1, 'agentWorkerProtocol': 1, 'agentDataSchema': 1}
-PROFILES = ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3')
+PROFILES = ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4')
 
 
 def supported_profiles(root):

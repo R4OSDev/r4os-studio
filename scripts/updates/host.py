@@ -37,7 +37,7 @@ BUSY = {'checking', 'downloading', 'building', 'activating', 'recovering'}
 COMPATIBILITY = {'hostProtocol': 1, 'dataSchema': 1, 'vmWorkerProtocol': 1}
 AGENT_COMPATIBILITY = {'agentHostProtocol': 1, 'agentWorkerProtocol': 1, 'agentDataSchema': 1}
 DEVELOPMENT_COMPATIBILITY = {**COMPATIBILITY, **AGENT_COMPATIBILITY,
-    'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3'],
+    'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4'],
     'developmentHostProtocol': 1, 'developmentWorkerProtocol': 1, 'developmentDataSchema': 1}
 
 
@@ -45,7 +45,7 @@ def compatible(value):
     # Legacy releases remain valid rollback targets. New agent protocols require
     # this explicit host maintenance, never a downloaded privileged installer.
     previous = {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2']}
-    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, DEVELOPMENT_COMPATIBILITY)
+    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY)
 
 
 def now():

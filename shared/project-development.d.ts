@@ -6,7 +6,7 @@ export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
   | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
 export type DevelopmentToolId = 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project'
-  | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
+  | 'studio.complete_development_job' | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
 
 export interface DevelopmentCapability {
   reasonCode?: string | null;
@@ -132,6 +132,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  checkCompletion?: { requestId: string; reason: 'criteria_complete'; state: 'closing' | 'completed' | 'failed'; closed?: boolean; completedAt?: string };
   desktopLaunch?: DesktopLaunchReceipt;
   package?: { format: 'exchange-build-v1' | 'legacy-c'; relativeDirectory: string; guestDirectory: string };
 

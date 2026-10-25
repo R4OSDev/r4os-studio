@@ -8,6 +8,7 @@ export const toolLabels: Record<string, string> = {
   'studio.list_directory': 'List directory', 'studio.read_file': 'Read file', 'studio.search': 'Search',
   'studio.write_file': 'Write file', 'studio.apply_patch': 'Apply patch', 'studio.create_directory': 'Create directory',
   'studio.build_project': 'Build project', 'studio.deploy_project': 'Deploy project', 'studio.run_project': 'Run project',
+  'studio.complete_development_job': 'Complete checks',
   'studio.read_development_job': 'Read development job', 'studio.stop_development_job': 'Stop development job',
   'studio.capture_vm': 'Capture VM', 'studio.send_vm_input': 'Send VM input',
   'studio.start_project_vm': 'Start project VM',

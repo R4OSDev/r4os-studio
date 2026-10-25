@@ -205,16 +205,16 @@ class Host:
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1},
+                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        if op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.add('offset')
         if op in ('build', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
-        if op in ('save_settings', 'capture', 'input', 'assess', 'reconcile'): allowed.add('input')
+        if op in ('save_settings', 'capture', 'input', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.add('evidenceId')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -225,7 +225,7 @@ class Host:
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                elif op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
                 if op in ('deploy', 'execution'):
                     artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
@@ -314,7 +314,7 @@ class Host:
             if op == 'evidence_history':
                 from evidence import history
                 return history(store, request['id'], request.get('before'))
-            if op in ('capture', 'input'):
+            if op in ('capture', 'input', 'complete_check'):
                 from actions import previous, admit, finish
                 from evidence import read
                 from observation import capture
@@ -327,7 +327,9 @@ class Host:
                 recorded = previous(store, job['id'], message)
                 if recorded is not None:
                     if recorded.get('error'): raise DevelopmentFault(recorded['error'], recorded.get('code', 409))
-                    return read(store, job['id'], recorded['evidenceId']) if op == 'capture' else recorded
+                    return read(store, job['id'], recorded['evidenceId']) if op == 'capture' else (store.page(job['id']) if op == 'complete_check' else recorded)
+                if op == 'complete_check' and job.get('checkCompletion'):
+                    raise UnconfirmedGuestEffect('This check completion already has an original receipt or pending close. Inspect the saved job without another close.')
                 if job['kind'] == 'execution' and job['state'] == 'running':
                     result = await call(job['id'], message)
                 elif op == 'capture' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown'):
@@ -335,6 +337,7 @@ class Host:
                     finish(store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 else: raise DevelopmentFault('This job has no active guest input target.')
                 if result.get('error'): raise DevelopmentFault(result['error'], result.get('code', 409))
+                if op == 'complete_check': return store.page(job['id'])
                 if op == 'capture' and owner is not None:
                     # Replace the authorization formerly performed by a second
                     # evidence fetch after capture. Older agents ignore the hint.

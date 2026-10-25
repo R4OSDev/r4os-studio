@@ -16,7 +16,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'assess', 'stop_job', 'cancel_owned'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'assess', 'stop_job', 'complete_check', 'cancel_owned'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -74,6 +74,9 @@ class DevelopmentTools:
             if name == 'read_development_job':
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
                 page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0))
+                return self.result(page['job'], page)
+            if name == 'complete_development_job':
+                page = await self.request('complete_check', id=value['jobId'], input={'requestId': request_id})
                 return self.result(page['job'], page)
             if name == 'stop_development_job': return self.result(await self.request('stop_job', id=value['jobId']))
             if name == 'capture_vm':

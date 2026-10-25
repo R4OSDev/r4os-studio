@@ -1,6 +1,6 @@
 """Effect receipts: duplicates return the original result, never another input."""
 import json
-from contracts import DevelopmentFault, encode, hash_value, identity
+from contracts import DevelopmentFault, UnconfirmedGuestEffect, encode, hash_value, identity
 from jobs import now
 
 
@@ -32,5 +32,7 @@ def previous(store, job_id, value):
     row = store.db.execute('SELECT * FROM actions WHERE id=?', (request_id,)).fetchone()
     if row is None: return None
     if row['job_id'] != job_id or row['fingerprint'] != fingerprint: raise DevelopmentFault('This action ID belongs to different input.')
-    if row['state'] != 'completed': raise DevelopmentFault('The previous action is unconfirmed. No effect was replayed.')
+    if row['state'] != 'completed':
+        if value.get('operation') == 'complete_check': raise UnconfirmedGuestEffect('The original check completion is unconfirmed. No close was replayed.')
+        raise DevelopmentFault('The previous action is unconfirmed. No effect was replayed.')
     return json.loads(row['result'])

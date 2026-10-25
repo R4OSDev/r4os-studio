@@ -8,7 +8,8 @@
   "agentToolProfiles": [
     "studio-tools-v1",
     "studio-tools-v2",
-    "studio-tools-v3"
+    "studio-tools-v3",
+    "studio-tools-v4"
   ],
   "developmentHostProtocol": 1,
   "developmentWorkerProtocol": 1,

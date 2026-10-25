@@ -21,6 +21,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
   const [evidence, setEvidence] = useState<DevelopmentEvidence[]>([]);
   const cursor = useRef(0), [kind, setKind] = useState('Output'), [truncated, setTruncated] = useState(false);
   const recoveryId = useRef<string | null>(null);
+  const completionId = useRef<string | null>(null);
   const path = `/${projectId}/development/jobs/${jobId}`;
   useEffect(() => {
     const controller = new AbortController(); let timer: number | undefined;
@@ -51,10 +52,19 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     try { const r = await projectRequest<{ job: DevelopmentJob }>(path + '/reconcile', token, 'POST', { requestId: recoveryId.current }); setJob(r.job); recoveryId.current = null; setError(''); }
     catch (e) { setError((e as Error).message); } finally { setStopping(false); }
   }
+  async function completeChecks() {
+    setStopping(true); completionId.current ??= projectRequestId();
+    try {
+      const page = await projectRequest<DevelopmentJobPage>(path + '/complete', token, 'POST', { requestId: completionId.current });
+      setJob(page.job); completionId.current = null; setError('');
+    } catch (e) { setError((e as Error).message); } finally { setStopping(false); }
+  }
   return <section className="development-card" aria-label="Development job">
+    {job?.kind === 'execution' && job.state === 'running' && job.check?.state === 'passed' && !job.checkCompletion && <button type="button" disabled={stopping} onClick={() => void completeChecks()}>Complete checks and close app</button>}
     <div className="development-card-header"><strong>{job?.kind === 'vm_start' ? 'Start VM' : job?.kind === 'execution' ? 'Run' : job?.kind === 'deploy' ? 'Deploy' : 'Build'}</strong><span role="status">{job?.state ?? 'Loading'}</span>{job && busyRun(job.state) && <button type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? 'Stopping…' : 'Stop job'}</button>}</div>
     {job && <><p className="development-phase">{({ authenticating: 'Authenticating SSH', resolving_exchange: 'Locating Exchange', checking_exchange_capacity: 'Checking Exchange capacity', transferring: 'Uploading and verifying', verifying_deployment: 'Verifying package', starting_guest: 'Starting application', service_ready: 'Service ready', guest_running: 'Application running', guest_completed: 'Application ended', checking_helper: 'Checking controller', publishing: 'Confirming package', desktop_request: 'Confirming launch request', desktop_accepted: 'Desktop request accepted', desktop_starting: 'Desktop starting application', desktop_process: 'Process confirmed', desktop_window: 'Window attached', desktop_content: 'Desktop content confirmed', window_visible: 'Window visible' } as Record<string, string>)[job.phase] ?? job.phase.replaceAll('_', ' ')}</p>{job.check && <p>Checks: {job.check.state}{job.check.assessment ? ` · ${job.check.assessment}` : ''}</p>}
       {job.check?.findings.map((text, i) => <p key={i}>{text}</p>)}{job.error && <p className="agent-error">{job.error}</p>}</>}
+    {job?.checkCompletion && <p>{job.checkCompletion.state === 'completed' ? 'Checks completed · Application closed' : job.checkCompletion.state === 'closing' ? 'Completing checks · Closing application' : 'Check completion failed'}</p>}
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
     {job?.readiness && <p>{({ transferred: 'Package verified', ready: 'Application ready', started: 'Process started', completed: 'Application ended', unsupported: 'Start unavailable', unknown: 'Outcome unconfirmed', failed: 'Start failed', interrupted: 'Interrupted' } as Record<string, string>)[job.readiness.state] ?? job.readiness.state}</p>}
     {job?.readiness?.reasonCode === 'desktop_content_unconfirmed' && <p>{job.readiness.reason}</p>}

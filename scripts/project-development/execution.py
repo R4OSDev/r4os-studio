@@ -18,6 +18,7 @@ class Execution:
         self.log = store.evidence(job['id']) / 'output.log'
         self.mailbox = None
         self.stop_requested = False; self.control = None; self.last = None
+        self.completion = None; self.completion_future = None
 
     def output(self, state):
         try: data = base64.b64decode(state.get('outputBase64', ''), validate=True)
@@ -38,7 +39,8 @@ class Execution:
             from authorization import authorize
             authorization = authorize(self.store, message['owner'], message['operation'], message['peerPid'], self.store.get(self.job['id']))
         operation = message.get('operation')
-        if operation not in ('capture', 'input') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation == 'input' else set()) | ({'owner', 'peerPid'} if authorization else set())):
+        if self.completion and operation != 'complete_check': raise DevelopmentFault('This execution is completing its checks; no further input or capture is admitted.')
+        if operation not in ('capture', 'input', 'complete_check') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation == 'input' else set()) | ({'owner', 'peerPid'} if authorization else set())):
             raise DevelopmentFault('Invalid execution action.', 400)
         previous = admit(self.store, self.job['id'], message)
         if previous is not None:
@@ -51,6 +53,24 @@ class Execution:
         self.last = state
         job = self.store.get(self.job['id'])
         try:
+            if operation == 'complete_check':
+                if self.completion or self.stop_requested: raise DevelopmentFault('This execution is already completing or stopping.')
+                from completion import validate
+                from output_files import collect
+                deployment = self.store.deployment(job['deploymentId'])
+                files = await collect(self.store, job, deployment, control.ssh, self.work)
+                # Re-observe after file reads before authorizing a close.
+                state = await control.call('poll'); self.output(state); state['outputBase64'] = ''
+                job = self.store.get(job['id'])
+                marker = validate(self.store, job, state, self.log.read_bytes() if self.log.exists() else b'', files)
+                guard(self.store, self.job, lease)
+                if authorization: authorize(self.store, message['owner'], operation, message['peerPid'], job)
+                marker.update(requestId=message['requestId'])
+                save(self.work / 'complete-intent.json', marker)
+                self.completion = marker
+                self.store.update(job['id'], checkCompletion={'requestId': marker['requestId'], 'reason': 'criteria_complete', 'state': 'closing'}, phase='completing_checks')
+                state = await control.call('stop')
+                return state, {'pendingCompletion': True}
             if operation == 'capture':
                 result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None, control=control, consume=self.output)
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
@@ -255,13 +275,25 @@ class Execution:
                             import os, hashlib
                             with self.log.open('ab') as output_stream: output_stream.flush(); os.fsync(output_stream.fileno())
                             data = self.log.read_bytes()
+                            completed_check = None
+                            if self.completion:
+                                from completion import result as completion_result
+                                completed_check = completion_result(store, store.get(job['id']), state, data, files, self.completion, cancelled=self.stop_requested or store.get(job['id'])['state'] == 'stopping')
                             intent['state'] = 'closed'; save(self.work / 'closed.json', {**intent, 'completion': state, 'cleanupReceipt': closed,
+                                **({'checkCompletion': completed_check, 'checkCompletionIntent': self.completion} if completed_check else {}),
                                 'outputReceipt': {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}})
                             release(store.projects, vm['id'], job['id'])
                             stopped = state.get('stopReason'); terminal = 'interrupted' if stopped == 'user_stop' else ('failed' if stopped == 'timeout' else ('unknown' if state['exitCode'] is None else ('failed' if state['exitCode'] != 0 else 'completed')))
-                            return store.update(job['id'], terminal, readiness={'state': 'unknown' if terminal == 'unknown' else 'completed', 'process': process, 'checkedAt': now()}, phase='timeout' if stopped == 'timeout' else ('stopped' if stopped else 'guest_completed'),
+                            if completed_check and stopped == 'user_stop': terminal = 'interrupted' if completed_check['cancelled'] else completed_check['state']
+                            final = store.update(job['id'], terminal, readiness={'state': 'unknown' if terminal == 'unknown' else 'completed', 'process': process, 'checkedAt': now()}, phase='timeout' if stopped == 'timeout' else ('checks_completed' if completed_check and terminal == 'completed' else ('stopped' if stopped else 'guest_completed')),
+                                **({'checkCompletion': completed_check} if completed_check else {}),
                                 exitCode=state['exitCode'], guestState={k: v for k, v in state.items() if k != 'outputBase64'},
-                                error='Guest execution exceeded its time limit.' if stopped == 'timeout' else None)
+                                error='Guest execution exceeded its time limit.' if stopped == 'timeout' else ('Check completion could not confirm every criterion.' if completed_check and terminal != 'completed' else None))
+                            if completed_check:
+                                from actions import finish
+                                receipt = finish(store, self.completion['requestId'], {'jobId': job['id'], 'state': terminal, 'closed': True})
+                                if self.completion_future and not self.completion_future.done(): self.completion_future.set_result(receipt)
+                            return final
                         if state['state'] == 'unknown': raise UnconfirmedGuestEffect('The generation-owned process status became unknown.')
                         guard(store, job, lease, allow_stopping=True)
                         if (self.stop_requested or store.get(job['id'])['state'] == 'stopping') and not stop_sent:
@@ -273,7 +305,8 @@ class Execution:
                                 message, future = self.mailbox.queue.get_nowait()
                                 try:
                                     state, result = await self.action(message, state, control, lease, process)
-                                    if not future.done(): future.set_result(result)
+                                    if result.get('pendingCompletion'): self.completion_future = future
+                                    elif not future.done(): future.set_result(result)
                                 except DevelopmentFault as error:
                                     if not future.done(): future.set_exception(error)
                                     if getattr(error, 'uncertain', False): raise
@@ -291,5 +324,7 @@ class Execution:
                         raise UnconfirmedGuestEffect('Guest control ended without a confirmed cleanup receipt. Its watchdog remains responsible; no start was replayed.') from error
                     raise
                 finally:
+                    if self.completion_future and not self.completion_future.done():
+                        self.completion_future.set_exception(UnconfirmedGuestEffect('The original check completion has no confirmed cleanup receipt. Do not repeat it.'))
                     if self.mailbox: await self.mailbox.close()
                     await control.close(); self.control = None

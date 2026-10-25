@@ -11,6 +11,15 @@ const jobParams = { ...params, required: ['id', 'jobId'], properties: { ...param
 
 export function developmentRoutes(app: FastifyInstance, security: ProjectSessions) {
   const base = '/:id/development';
+  app.post<{ Params: { id: string; jobId: string }; Body: { requestId: string } }>(base + '/jobs/:jobId/complete', {
+    bodyLimit: 1024,
+    schema: { params: jobParams, body: { type: 'object', additionalProperties: false,
+      required: ['requestId'], properties: { requestId: identity } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    return developmentHost<DevelopmentJobPage>({ operation: 'complete_check', projectId: request.params.id,
+      id: request.params.jobId, input: request.body });
+  });
   app.post<{ Params: { id: string; jobId: string }; Body: { requestId: string } }>(base + '/jobs/:jobId/reconcile', {
     bodyLimit: 1024,
     preValidation: async (request) => {

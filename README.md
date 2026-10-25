@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.66 ergänzt einen ausdrücklich quittierten Prüfabschluss. Nach erfüllten Kriterien beendet Studio nur den eigenen Testprozess und bestätigt Cleanup; echte Timeouts, fehlende Exitbelege und unbekannte Wirkungen bleiben unterscheidbar. Neue Sessions verwenden das additive Toolprofil v4, bestehende Threads bleiben erhalten.
+
 Version 0.3.65 korrigiert SDK Check for Updates: veröffentlichte stabile SDK-Releases statt unveröffentlichter main-Paketversionen. Fehlende ältere Paketmetadaten werden konkret erklärt; Standards und Projektpins bleiben erhalten.
 
 ## SDK update discovery (0.3.65)

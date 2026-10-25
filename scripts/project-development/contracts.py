@@ -9,7 +9,7 @@ APP = Path(__file__).resolve().parents[2]
 CONTRACT = json.loads((APP / 'shared/development-host.json').read_text())
 LIMITS = CONTRACT['limits']
 TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
-         'stop_development_job', 'capture_vm', 'send_vm_input', 'start_project_vm')
+         'stop_development_job', 'complete_development_job', 'capture_vm', 'send_vm_input', 'start_project_vm')
 ACTIVE = ('queued', 'starting', 'running', 'stopping')
 TERMINAL = ('completed', 'failed', 'interrupted', 'unknown')
 

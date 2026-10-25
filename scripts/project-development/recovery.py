@@ -101,8 +101,17 @@ def local(store, job):
         stopped = state.get('stopReason'); code = state.get('exitCode')
         outcome = 'interrupted' if stopped == 'user_stop' else ('failed' if stopped == 'timeout' or code is not None and code != 0 else ('completed' if code == 0 else 'unknown'))
     files, visual = complete_files(store, job)
+    completion_fields = {}
+    if value.get('checkCompletionIntent'):
+        from completion import result as completion_result
+        marker = read(work / 'complete-intent.json')
+        if marker != value['checkCompletionIntent'] or not all(value.get('cleanupReceipt', {}).get(k) is True for k in ('closed', 'serviceRemoved', 'watchdogRemoved')):
+            raise DevelopmentFault('The original check completion cleanup receipt is incomplete.')
+        completion = completion_result(store, job, state, data, files, marker, cancelled=bool(value.get('checkCompletion', {}).get('cancelled')))
+        completion_fields['checkCompletion'] = completion
+        if state.get('stopReason') == 'user_stop': outcome = 'interrupted' if completion['cancelled'] else completion['state']
     result = store.recovered(job['id'], outcome, receipt('private-guest-close-receipt', guestEndConfirmed=True), process=process,
-        guestState=state, exitCode=state.get('exitCode'), check=evaluate(job['settings'], state, data, files, visual), error=None)
+        guestState=state, exitCode=state.get('exitCode'), check=evaluate(job['settings'], state, data, files, visual), error=None, **completion_fields)
     resolve(store.projects, value['target']['vmId'], job['id'], 'private-guest-close-receipt')
     return result
 
