@@ -45,9 +45,9 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
     {options && !options.execute.available && <p className="project-message">{options.execute.reason}</p>}
     {!draft && !error && <p role="status">Loading settings…</p>}
     {draft && <fieldset className="project-fields" disabled={busy}>
-      <ProjectField id="run-arguments" label="Arguments (UTF-8: 127 bytes, services 95)"><input id="run-arguments" maxLength={project?.template === 'service' ? 95 : 1024} value={draft.arguments} onChange={(e) => patch({ arguments: e.target.value })} /></ProjectField>
+      <ProjectField id="run-arguments" label={project?.template === 'desktop' ? 'Arguments (Desktop launch: 127 UTF-8 bytes total)' : 'Arguments (UTF-8: 127 bytes, services 95)'}><input id="run-arguments" maxLength={project?.template === 'service' ? 95 : 1024} value={draft.arguments} onChange={(e) => patch({ arguments: e.target.value })} /></ProjectField>
       <div className="project-form-row">
-        <ProjectField id="run-cwd" label="Working directory"><input id="run-cwd" value="Deployment directory" readOnly /></ProjectField>
+        <ProjectField id="run-cwd" label="Working directory"><input id="run-cwd" value={project?.template === 'desktop' ? 'Native Desktop directory' : 'Deployment directory'} readOnly /></ProjectField>
         <ProjectField id="run-timeout" label="Time limit (seconds)"><input id="run-timeout" type="number" min={1} max={300} required value={draft.timeoutSeconds} onChange={(e) => patch({ timeoutSeconds: Number(e.target.value) })} /></ProjectField>
       </div>
       <h3>Checks</h3>
@@ -55,7 +55,7 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
       <ProjectField id="run-output" label="Expected console output"><textarea id="run-output" rows={3} value={draft.outputContains.join('\n')} onChange={(e) => patch({ outputContains: e.target.value.split('\n').filter(Boolean) })} /></ProjectField>
       {project?.template === 'service' && <ProjectField id="run-service" label="Expected self-test response"><input id="run-service" maxLength={256} value={draft.serviceResponseContains ?? ''} onChange={(e) => patch({ serviceResponseContains: e.target.value || null })} /></ProjectField>}
       {project?.template === 'desktop' && <ProjectField id="run-visual" label="Visual criteria"><textarea id="run-visual" rows={3} maxLength={1024} value={draft.visualCriteria} onChange={(e) => patch({ visualCriteria: e.target.value })} /></ProjectField>}
-      <div className="development-file-heading"><h3>Output files</h3><button type="button" disabled={files.length >= 8} onClick={() => patch({ outputFiles: [...files, { name: '', contains: null, sha256: null }] })}>Add file</button></div>
+      <div className="development-file-heading"><h3>Output files (deployment directory)</h3><button type="button" disabled={files.length >= 8} onClick={() => patch({ outputFiles: [...files, { name: '', contains: null, sha256: null }] })}>Add file</button></div>
       {files.map((file, index) => <fieldset className="development-file" key={index}><legend>File {index + 1}</legend>
         <ProjectField id={`run-file-${index}`} label="Name"><input id={`run-file-${index}`} required pattern="[A-Z0-9_]{1,8}\.[A-Z0-9_]{1,3}" maxLength={12} placeholder="RESULT.TXT" value={file.name} onChange={(e) => filePatch(index, { name: e.target.value.toUpperCase() })} /></ProjectField>
         <ProjectField id={`run-file-text-${index}`} label="Expected text"><input id={`run-file-text-${index}`} maxLength={1024} value={file.contains ?? ''} onChange={(e) => filePatch(index, { contains: e.target.value || null })} /></ProjectField>

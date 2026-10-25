@@ -52,7 +52,7 @@ class Execution:
         job = self.store.get(self.job['id'])
         try:
             if operation == 'capture':
-                result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None)
+                result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None, control=control, consume=self.output)
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']
@@ -108,10 +108,9 @@ class Execution:
         deployment = store.deployment(job['deploymentId']); vm = job['binding']
         if deployment.get('format') != 'exchange-build-v1':
             raise DevelopmentFault('This historical C: deployment remains readable. Deploy the artifact to Exchange Build before running.')
-        if deployment['role'] == 'desktop':
-            store.update(job['id'], readiness={'state': 'unsupported', 'reasonCode': 'native_desktop_launch_contract_missing',
-                'reason': 'A public headless Desktop launch and initialization contract is required.', 'checkedAt': now()})
-            raise DevelopmentFault('Desktop start requires a public headless launch and window-initialization contract. No application was started.')
+        desktop = deployment['role'] == 'desktop'
+        if desktop and deployment.get('helperCapabilities', {}).get('desktopAdoptionVersion') != 1:
+            raise DevelopmentFault('Deploy again with the current Desktop process controller before running.')
         if deployment.get('helperCapabilities', {}).get('exchangeRunVersion') != 1:
             raise DevelopmentFault('Deploy again with an Exchange-run-capable controller before running.')
         if deployment.get('helperCapabilities', {}).get('controlVersion') != 2 or deployment.get('helperCapabilities', {}).get('watchdogVersion') != 1:
@@ -169,6 +168,16 @@ class Execution:
                     if path.stat().st_size != item['bytes'] or digest(path) != item['sha256']:
                         raise DevelopmentFault('The guest deployment changed. No project process was started.')
                     path.unlink()
+                if desktop:
+                    from deskrun import capability, command
+                    command(deployment, job['settings']['arguments'], min(10000, job['settings']['timeoutSeconds'] * 1000))
+                    guard(store, job, lease)
+                    try: native_capability = await capability(ssh)
+                    except DevelopmentFault as error:
+                        store.update(job['id'], readiness={'state': 'unsupported', 'reasonCode': error.reason_code or 'deskrun_unavailable',
+                            'reason': str(error), 'checkedAt': now()})
+                        raise
+                    save(self.work / 'desktop-capability.json', native_capability)
                 if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                     return store.update(job['id'], 'interrupted', phase='stopped', error='Stopped before guest launch.')
                 execution_id = str(uuid.uuid4()); control = GuestControl(ssh, deployment, execution_id); self.control = control
@@ -180,6 +189,8 @@ class Execution:
                 start_sent = False; hello_ready = False
                 try:
                     hello = await control.open(); hello_ready = True; save(self.work / 'controller.json', hello)
+                    if desktop and hello['result'].get('desktopAdoptionVersion') != 1:
+                        raise DevelopmentFault('The guest controller does not support exact Desktop process adoption.')
                     guard(store, job, lease, allow_stopping=True)
                     if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                         closed = await control.call('finish')
@@ -191,8 +202,17 @@ class Execution:
                     guard(store, job, lease)
                     # The start is sent once. Missing acknowledgements become unknown.
                     start_sent = True
-                    state = await control.call('start', role=deployment['role'], arguments=job['settings']['arguments'],
-                        timeoutSeconds=job['settings']['timeoutSeconds'], serviceName=('S' + execution_id.replace('-', '')[:24]) if deployment['role'] == 'service' else '')
+                    launcher = None
+                    if desktop:
+                        from deskrun import DesktopLaunch
+                        launcher = DesktopLaunch(self, ssh, deployment, lease)
+                        try: state = await launcher.start()
+                        except DevelopmentFault as error:
+                            if getattr(error, 'launch_not_submitted', False): start_sent = False
+                            raise
+                    else:
+                        state = await control.call('start', role=deployment['role'], arguments=job['settings']['arguments'],
+                            timeoutSeconds=job['settings']['timeoutSeconds'], serviceName=('S' + execution_id.replace('-', '')[:24]) if deployment['role'] == 'service' else '')
                     process = {'instanceId': state['instanceId'], 'generation': state['generation'], 'windowId': state['windowId'], 'serviceName': state.get('serviceName')}
                     if not process['instanceId'] or not process['generation'].isdigit() or int(process['generation']) < 1:
                         raise UnconfirmedGuestEffect('The guest start did not confirm a generation-owned process.')
@@ -205,11 +225,18 @@ class Execution:
                     self.mailbox = Mailbox(job['id']); await self.mailbox.open()
                     stop_sent = False; service_checked = False
                     while True:
+                        if launcher and state['state'] == 'running':
+                            await launcher.refresh()
                         self.output(state); state['outputBase64'] = ''; self.last = state
                         save(self.work / 'observation.json', state)
                         process['windowId'] = state['windowId']
-                        readiness = {'state': 'ready' if state.get('serviceEndpointReady') else 'started', 'process': process, 'checkedAt': now()}
-                        store.update(job['id'], process=process, readiness=readiness, phase=('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running')), guestState={k: v for k, v in state.items() if k != 'outputBase64'})
+                        from deskrun import frame_ready
+                        native_ready = bool(launcher and frame_ready(store.get(job['id']), state))
+                        readiness = {'state': 'ready' if state.get('serviceEndpointReady') or native_ready else 'started', 'process': process, 'checkedAt': now()}
+                        if launcher and not native_ready and launcher.settled() and state['state'] == 'running':
+                            readiness.update(state='unknown', reasonCode='desktop_content_unconfirmed',
+                                reason='The process is confirmed; Desktop content remains unconfirmed. Inspect this original job without repeating the launch.')
+                        store.update(job['id'], process=process, readiness=readiness, phase=('desktop_content' if native_ready else ('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running'))), guestState={k: v for k, v in state.items() if k != 'outputBase64'})
                         if job['settings'].get('serviceResponseContains') and state.get('serviceEndpointReady') and not service_checked and not self.stop_requested and store.get(job['id'])['state'] == 'running':
                             service_checked = True
                             state = await control.call('service_check')
@@ -255,10 +282,12 @@ class Execution:
                         try:
                             closed = await control.call('finish')
                             if closed.get('closed') and closed.get('watchdogRemoved'):
-                                save(self.work / 'closed.json', {**intent, 'state': 'closed', 'applicationStarted': False, 'cleanupReceipt': closed})
+                                save(self.work / 'closed.json', {**intent, 'state': 'closed', 'applicationStarted': False,
+                                    'launchRejected': bool(getattr(error, 'launch_not_submitted', False)), 'error': str(error), 'cleanupReceipt': closed})
                                 release(store.projects, vm['id'], job['id'])
                         except Exception: pass
                     if start_sent and not (self.work / 'closed.json').exists():
+                        if isinstance(error, UnconfirmedGuestEffect): raise
                         raise UnconfirmedGuestEffect('Guest control ended without a confirmed cleanup receipt. Its watchdog remains responsible; no start was replayed.') from error
                     raise
                 finally:

@@ -1,5 +1,73 @@
 # R4OS Studio · App
 
+Version 0.3.64 bindet den nativen DESKRUN-0.1.1-Desktopstart über SSH an. Originalkennung und u64-Quittungen bleiben exakt erhalten; Timeout führt nur zu STATUS, niemals zu einem zweiten Start.
+
+## Native desktop launch through SSH (0.3.64)
+
+Studio integrates the public DESKRUN 0.1.1 JSON contract, announced with R4OS
+0.87.13. At a user-requested desktop run, a fixed read-only STATUS query discovers
+this guest capability. There is no image/revision allowlist or automatic image
+change. A new deployment supplies the updated private process controller; old
+helper packages remain readable and must be deployed again for desktop runs.
+
+The host sends exactly one `DESKRUN /JSON /WAIT:10000 /WAITFRAME` launch for the
+verified absolute Exchange Build `APP.R4X`. `/JSON` is first, including for syntax
+errors. Short `before_submit` diagnostics are distinct from full request
+receipts. The opaque original request, raw bounded SSH output, native phases,
+error/errorlevel and process/window/content identity are durable. The native
+u64 `process_generation` and `content` are decoded without precision loss and
+exported as decimal strings, never JavaScript numbers. Phase snapshots are not
+assumed to contain every transition.
+
+Timeout does not terminate or negate a start. After timeout or ambiguous SSH,
+only `/STATUS:<original-request>` is used, bounded by the original run deadline
+and up to 45 seconds of receipt reconciliation. Neither `terminal:true`, status
+code 0 in accepted/starting, nor error 13/14 proves application completion or a
+failed launch. Late content after a timeout can confirm readiness. Missing
+request identity yields **Launch outcome unknown**, with VM quarantine and no
+replay. Status query errors never become pre-submission launch rejections.
+
+Desktop retains process/reap ownership and performs native window association
+and initial client resize. Studio's independent watchdog borrows only the exact
+receipt process generation for output/completion/stop and runtime limits. Its
+window observations also bind the original WINSVC broker generation. No app
+source changes, SDK changes, assigned window IDs, synthetic resize or GUI wrapper
+are used. DESKRUN status is not ongoing process monitoring. Before process
+adoption, an unknown start cannot be cleaned up by the watchdog; its quarantine
+requires explicit reconciliation and confirmed guest end. Existing VM images,
+project pins, original tool declarations and frozen permissions remain intact.
+
+The pending agent call returns when native content plus a current visible
+process/window are confirmed. Unconfirmed content returns a separate readiness
+result while the original bounded execution remains supervised. Captures require
+that content receipt and check the process/window/revision around one QMP PNG
+capture. They retain the request and u64 content receipt alongside the image.
+This is a VM screen image with software Desktop-content evidence, not a physical
+scanout assertion; visual criteria still require actual image assessment.
+Desktop-consumed exit evidence remains unknown rather than becoming exit code 0.
+
+The complete DESKRUN argument tail (options, quoted package path and app
+arguments) is limited to 127 UTF-8 bytes. Studio rejects overflow and shell
+control characters before launch. DESKRUN has no CWD argument; desktop apps use
+the native Desktop directory and must resolve assets/output against their
+module directory or explicit paths. Registered output collection always targets
+the deployment directory; terminal/service CWD behavior is unchanged.
+
+Primary sources: [DESKRUN](https://github.com/R4OSDev/r4os-app-desktoprun/tree/8ebe85aa7fb2032b12301cc6530fd2d79e185b83),
+[Desktop consumer](https://github.com/R4OSDev/r4os-app-desktop/blob/7ba6305d4af4539677e95f8c99a5b14ac2400a02/src/rust/runtime/desktop_launch.rs),
+[WINSVC wire contract](https://github.com/R4OSDev/r4os-service-windowservice/blob/0edb320c5b9dbc048b7470a9cfe4df0262476ddb/Contract/desktop_launch_v1.zig).
+Validation: syntax, Zig AST checks, Studio build/TypeScript and lint passed.
+A user-authorized smoke run on an isolated Full 0.87.14 VM built/deployed the
+unmodified Zig SDK desktop starter and private helpers, confirmed native content
+while the app remained running despite terminal:true, captured the correlated
+1280 × 720 screen and confirmed generation-specific stop with quarantine release.
+The image release manifest pins the exact DESKRUN/Desktop/WINSVC sources above.
+Temporary project/VM data were removed afterward; the imported image is retained
+without changing defaults. No automated test suites, agent inference, browser
+functional tests or injected timeout/transport faults. Runtime receipts and
+screenshot: Research/R4OS/Roadmap-Implementation/0.3.64/ in the workspace.
+
+
 Version 0.3.63 zeigt den SSH-Ablauf in vorhandenen Session-Jobkarten mit Build-Zielpfad, Paket-/Startbereitschaft, Ausgaben und Belegen. Historische Daten bleiben unverändert lesbar. Die drei Desktop-Gastaufgaben in0.3.61 bleiben offen.
 
 Version 0.3.62 wartet bei Deploy und Run intern im Agent-Harness auf Paketquittung, Terminalabschluss oder Servicebereitschaft. Bestehende Toolnamen, Argumente und eingefrorene Berechtigungen bleiben erhalten; kein Modell-Polling oder impliziter VM-Start.

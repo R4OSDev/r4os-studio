@@ -85,6 +85,29 @@ export interface GuestProcessIdentity {
   windowId?: number;
   serviceName?: string;
 }
+export interface DesktopLaunchReceipt {
+  adapter: 'DESKRUN';
+  contract: '0.1.1';
+  /** Original opaque Broker-ID:generation:Helper-ID:generation query key. */
+  request: string;
+  phase: 'request' | 'accepted' | 'starting' | 'process' | 'window' | 'content';
+  error: string;
+  errorlevel: number;
+  process_id: number;
+  /** Decimal strings preserve native unsigned 64-bit counters exactly. */
+  process_generation: string;
+  content: string;
+  /** Native Desktop slot plus one; zero means no window receipt. */
+  window: number;
+  raw: number;
+  /** Launch/wait completion, never application termination. */
+  terminal: boolean;
+  checkedAt: string;
+  sshExitCode?: number;
+  transportUncertain?: boolean;
+  statusError?: string;
+  statusErrorlevel?: number;
+}
 export interface DevelopmentEvidence {
   id: string;
   kind: 'console' | 'diagnostic' | 'screenshot' | 'file';
@@ -94,6 +117,9 @@ export interface DevelopmentEvidence {
   createdAt: string;
   bootId?: string;
   process?: GuestProcessIdentity;
+  desktopRequest?: string;
+  desktopContent?: string;
+  desktopWindow?: number;
   width?: number;
   height?: number;
 }
@@ -106,6 +132,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  desktopLaunch?: DesktopLaunchReceipt;
   package?: { format: 'exchange-build-v1' | 'legacy-c'; relativeDirectory: string; guestDirectory: string };
 
   vmStart?: {
@@ -147,6 +174,8 @@ export interface DevelopmentJobPage {
 export interface DevelopmentSettings {
   revision: number;
   arguments: string;
+  /** '.' selects the role's native default: package for terminal/service,
+   * Desktop-owned CWD for DESKRUN. Output files always refer to the package. */
   workingDirectory: string;
   timeoutSeconds: number;
   expectedExitCode: number | null;

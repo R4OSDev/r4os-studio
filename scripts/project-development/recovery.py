@@ -87,8 +87,9 @@ def local(store, job):
     from checks import evaluate
     output = store.evidence(job['id']) / 'output.log'; data = output.read_bytes() if output.exists() else b''
     if value.get('applicationStarted') is False:
-        state = {'state': 'completed', 'exitCode': None, 'closeConfirmed': True, 'outputIncomplete': True, 'stopReason': 'user_stop'}
-        outcome, process = 'interrupted', None
+        rejected = value.get('launchRejected') is True
+        state = {'state': 'completed', 'exitCode': None, 'closeConfirmed': True, 'outputIncomplete': True, 'stopReason': None if rejected else 'user_stop'}
+        outcome, process = ('failed' if rejected else 'interrupted'), None
     else:
         started = read(work / 'started.json'); process = started['process']; generation(process['generation'])
         state = value.get('completion') or {}

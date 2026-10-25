@@ -145,7 +145,8 @@ class DevelopmentTools:
                 if error.code != 503 or getattr(error, 'uncertain', False): raise
                 # Reconnect to the same read-only job wait only. Never resubmit.
                 await asyncio.sleep(1); continue
-            if name == 'run_project' and job['state'] == 'running' and (job.get('readiness') or {}).get('state') == 'ready' and (job.get('guestState') or {}).get('serviceEndpointReady'):
+            if name == 'run_project' and job['state'] == 'running' and ((job.get('readiness') or {}).get('state') == 'ready'
+                or (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed'):
                 break
         return self.result(job, page)
 
@@ -154,6 +155,9 @@ class DevelopmentTools:
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
         uncertain = job['state'] == 'unknown'
         failure = job['state'] in ('failed', 'interrupted', 'unknown')
+        if job['state'] == 'running' and (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed':
+            return {'success': False, 'error': 'readiness_unknown', 'output': encode(page or {'job': job}),
+                    'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
         return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
 
     async def stop_owned(self):

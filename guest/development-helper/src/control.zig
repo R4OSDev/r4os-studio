@@ -12,6 +12,9 @@ pub const Request = struct {
     timeoutSeconds: u32 = 60,
     input: []const u8 = "",
     generation: []const u8 = "",
+    instanceId: u32 = 0,
+    brokerInstanceId: u32 = 0,
+    brokerGeneration: []const u8 = "",
     serviceName: []const u8 = "",
     inputKind: []const u8 = "text",
     key: u32 = 0,
@@ -63,6 +66,7 @@ const Controller = struct {
     path: [256:0]u8 = .{0} ** 256,
     service: [32:0]u8 = .{0} ** 32,
     process: ?r4os.app_resources.ProcessHandle = null,
+    desktop_broker: ?r4os.app_resources.ProcessHandle = null,
     started: bool = false,
     service_owned: bool = false,
     console_role: bool = false,
@@ -141,6 +145,30 @@ const Controller = struct {
         self.state.instanceId = self.process.?.raw;
         self.state.generation = std.fmt.bufPrint(&self.generation_buf, "{d}", .{self.process.?.generation}) catch return false;
         self.state.state = "running";
+        return true;
+    }
+    fn adoptDesktop(self: *Controller, req: Request) bool {
+        if (self.started or req.instanceId == 0 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300) return false;
+        const generation = std.fmt.parseInt(u64, req.generation, 10) catch return false;
+        if (generation == 0) return false;
+        const process = r4os.app_resources.ProcessHandle{ .sys = self.sys, .raw = req.instanceId, .generation = generation };
+        const broker_generation = std.fmt.parseInt(u64, req.brokerGeneration, 10) catch return false;
+        // Only the exact DESKRUN receipt may supply this identity. Desktop owns
+        // and reaps its child; a borrowed handle permits bounded close/kill and
+        // completion reads without stealing native lifecycle ownership.
+        if (req.brokerInstanceId == 0 or broker_generation == 0) return false;
+        self.process = process;
+        // A lost broker must not prevent cleanup of an already started child.
+        // Its original receipt identity gates subsequent window observations.
+        self.desktop_broker = .{ .sys = self.sys, .raw = req.brokerInstanceId, .generation = broker_generation };
+        self.started = true;
+        self.started_ns = self.clock();
+        self.deadline_ns = self.started_ns + @as(u64, req.timeoutSeconds) * 1_000_000_000;
+        self.state.instanceId = process.raw;
+        self.state.generation = std.fmt.bufPrint(&self.generation_buf, "{d}", .{generation}) catch return false;
+        self.state.state = "running";
+        // Desktop owns window association and initial client resize. Studio
+        // changes neither the application's entry point nor its paint calls.
         return true;
     }
     fn input(self: *Controller, req: Request) bool {
@@ -233,6 +261,10 @@ const Controller = struct {
         const services = r4os.Services{ .sys = self.sys };
         var connection = switch (services.open("WINSVC")) { .connection => |c| c, else => return };
         defer { _ = connection.close(); }
+        if (self.desktop_broker) |broker| {
+            if (connection.info.instance_id != broker.raw) return;
+            switch (broker.status()) { .value => {}, else => return }
+        }
         var snapshot: abi.WindowServiceSnapshot = .{};
         switch (connection.call(abi.window_service_op_snapshot, "", std.mem.asBytes(&snapshot),
             r4os.time_contract.timeoutFinite(.{ .nanoseconds = 200_000_000 }))) {
@@ -241,6 +273,7 @@ const Controller = struct {
         }
         if (snapshot.magic != abi.window_service_snapshot_magic or snapshot.version != abi.window_service_snapshot_version) return;
         switch (self.process.?.status()) { .value => {}, else => return }
+        if (self.desktop_broker) |broker| { switch (broker.status()) { .value => {}, else => return } }
         for (snapshot.records) |record| {
             if (record.instance_id != self.process.?.raw or record.window_id != self.state.windowId) continue;
             self.state.windowVisible = (record.flags & abi.window_service_flag_visible) != 0 and
@@ -410,6 +443,8 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         sequence = req.sequence; heartbeat = current;
         if (std.mem.eql(u8, req.operation, "start")) {
             if (!controller.start(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The owned role could not be started." }); return 77; }
+        } else if (std.mem.eql(u8, req.operation, "adopt_desktop")) {
+            if (!controller.adoptDesktop(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The exact Desktop process generation could not be adopted." }); return 77; }
         } else if (std.mem.eql(u8, req.operation, "service_check")) {
             controller.serviceCheck();
         } else if (std.mem.eql(u8, req.operation, "input")) {

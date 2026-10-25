@@ -260,9 +260,11 @@ class Host:
                 deadline = asyncio.get_running_loop().time() + 12
                 while job['state'] in ACTIVE and asyncio.get_running_loop().time() < deadline:
                     authorize(store, owner, op, peer_pid, job)
-                    # Only service endpoint readiness can release a running job.
-                    # Terminal jobs return their actual final exit/output receipt.
-                    if expected == 'execution' and job['state'] == 'running' and (job.get('readiness') or {}).get('state') == 'ready' and (job.get('guestState') or {}).get('serviceEndpointReady'):
+                    # GUI content readiness and service readiness release the
+                    # pending native call. Lifecycle monitoring stays in the
+                    # worker; DESKRUN terminal is never the application's exit.
+                    if expected == 'execution' and job['state'] == 'running' and ((job.get('readiness') or {}).get('state') == 'ready'
+                        or (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed'):
                         break
                     await asyncio.sleep(.25); job = store.get(job['id'])
                 authorize(store, owner, op, peer_pid, job)
