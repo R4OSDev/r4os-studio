@@ -14,6 +14,7 @@ import { settingsRoutes } from './modules/settings/routes.js';
 import { dirname, join } from 'node:path';
 import { githubRoutes } from './modules/github-connections/routes.js';
 import type { GitHubTestResult } from '../../shared/github-connections.js';
+import { skillRoutes } from './modules/skills/routes.js';
 
 export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory(), githubTester }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
@@ -43,6 +44,8 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(settingsRoutes, { prefix: '/api/settings', directory: projectDirectory });
   app.register(githubRoutes, { prefix: '/api/github', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
     ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub'), tester: githubTester });
+  app.register(skillRoutes, { prefix: '/api/skills', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
+    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'Skills') });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

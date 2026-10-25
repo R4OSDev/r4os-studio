@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ProjectError } from './store.js';
 
 export class ProjectSessions {
-  constructor(private scope: 'projects' | 'settings' | 'github' = 'projects') {}
+  constructor(private scope: 'projects' | 'settings' | 'github' | 'skills' = 'projects') {}
   private sessions = new Map<string, { token: string; expires: number }>();
   private hosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]', hostname(),
     ...Object.values(networkInterfaces()).flatMap((items) => (items ?? []).map((item) => item.address)),
