@@ -1,5 +1,17 @@
 # R4OS Studio · App
 
+## GitHub connections (0.4.1)
+
+System → Settings → GitHub manages named personal-access-token connections. Views starts with **+ Connection**, followed by connection names. Add, rename, explicitly replace a masked token, cancel changes and confirm removal in the browser. Unsaved edits are guarded during navigation/reload. Connection tests follow in 0.4.2; this release performs no GitHub requests or repository actions.
+
+The backend stores a private atomic catalog under `Data/GitHub/connections.json`, next to the configured provider directory (`STUDIO_DATA_DIR` identifies the provider directory itself). Directory/file modes are 0700/0600. Only explicitly projected metadata, revision and token-present status reach the browser. Tokens are never returned or copied into project workspaces, agent runs, VM data, logs or public source. All of Data remains ignored by Git. Classic and fine-grained tokens can be stored; storage does not prove validity or repository permissions. Master refers to the installation's existing trusted administrator; no new user-role system is introduced.
+
+The API `/api/github` uses separate HttpOnly/SameSite browser ownership and CSRF tokens through the shared Settings security model, plus allowed Host/Origin checks. UUIDs distinguish duplicate names/accounts; writes check revisions against fresh disk data. Exclusive create locks protect simultaneous processes, atomic rename/fsync publishes one private snapshot, and create/update/delete retries preserve their intended result. A persistent `.write.lock` after an interrupted writer fails closed: stop Studio and verify no writer is active before host maintenance removes that lock. Corrupt storage is preserved and reported, never reinitialized. No public token-read endpoint exists.
+
+For this managed host, run the explicit installer `python3 App/scripts/install-github-support.py` from the workspace root. It prepares only Data/GitHub and a service ReadWritePaths drop-in, retaining the update bootstrap, provider credentials, projects, VMs and pins. The next regular Studio release installation applies it; downloaded updates never execute root installers. No new application dependency is required.
+
+Validated: focused API/storage tests covering secret redaction, CSRF/Host/Origin, invalid input, duplicate names, revision conflicts, retries, token replacement/removal, permissions, restart/corruption and independent server instances; existing system-prompt regression; build/TypeScript and lint. Isolated browser checks at 1440/320 px cover create/replace/cancel, dirty navigation, reload, conflict preservation/reconciliation and confirmed removal with no external network calls or production credentials.
+
 Version 0.3.70 zeigt referenzierte Screenshots direkt in Agentenantworten. Authentifizierte Projekt-/Session-Belege, Vergrößerung mit Fit/Actual size und Original-PNG-Download verwenden dieselben Bilddaten. Reload und paginierte Historie bleiben erhalten; vorhandene Tools und Aufnahmeberechtigungen unverändert.
 
 Version 0.3.69 wartet bei Builds im Harness und reduziert unveränderte Gast-/Zustandsdaten. Adaptive Beobachtung wird bei Stop oder Aktionen geweckt; kritische Quittungen, Watchdogfristen und frische Screenshot-/Eingabeprüfungen bleiben erhalten.

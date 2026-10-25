@@ -1,0 +1,13 @@
+.github-panel { width: calc(100% - 72px); max-width: 760px; min-width: 0; margin: 26px 36px; padding: 26px; border: 1px solid #392b49; border-radius: 10px; background: #1b1524; }
+.github-panel p { color: var(--muted); line-height: 1.6; font-size: 13px; overflow-wrap: anywhere; }
+.github-panel fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.github-panel label { display: block; margin: 18px 0 9px; font-size: 13px; }
+.github-panel input:not([type=checkbox]) { width: 100%; padding: 12px; min-width: 0; border: 1px solid #4b3b5d; border-radius: 7px; color: #f0e7fa; background: #17111f; font: inherit; }
+.github-panel .github-check { display: flex; gap: 10px; align-items: center; }
+.github-panel button { border: 1px solid #4b3b5d; border-radius: 7px; background: #2a2037; color: #f0e7fa; padding: 10px 15px; font: inherit; font-size: 13px; cursor: pointer; }
+.github-panel button:disabled { opacity: .45; cursor: default; }
+.github-panel :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.github-panel .github-error { color: #ffa7b7; }
+.github-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.github-panel .github-primary { background: #bd94ed; color: #21142f; font-weight: 650; }
+@media (max-width: 600px) { .github-panel { width: calc(100% - 28px); margin: 22px 14px; padding: 16px; } .github-actions { flex-direction: column; } }

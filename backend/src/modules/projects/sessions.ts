@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ProjectError } from './store.js';
 
 export class ProjectSessions {
-  constructor(private scope: 'projects' | 'settings' = 'projects') {}
+  constructor(private scope: 'projects' | 'settings' | 'github' = 'projects') {}
   private sessions = new Map<string, { token: string; expires: number }>();
   private hosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]', hostname(),
     ...Object.values(networkInterfaces()).flatMap((items) => (items ?? []).map((item) => item.address)),
@@ -21,7 +21,7 @@ export class ProjectSessions {
     }
   }
   session(request: FastifyRequest, reply: FastifyReply, create = false) {
-    const cookie = this.scope === 'projects' ? 'studio_project_session=' : 'studio_settings_session=';
+    const cookie = `studio_${this.scope === 'projects' ? 'project' : this.scope}_session=`;
     const id = request.headers.cookie?.split(';').map((s) => s.trim()).find((s) => s.startsWith(cookie))?.slice(cookie.length);
     const existing = id && this.sessions.get(id);
     if (existing && existing.expires > Date.now()) return existing;

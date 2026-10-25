@@ -11,6 +11,8 @@ import { projectRoutes } from './modules/projects/routes.js';
 import { projectsDirectory } from './modules/projects/store.js';
 import { cancelProviderRuns } from './modules/agent-sessions/host.js';
 import { settingsRoutes } from './modules/settings/routes.js';
+import { dirname, join } from 'node:path';
+import { githubRoutes } from './modules/github-connections/routes.js';
 
 export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory() }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
@@ -37,6 +39,8 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(updateRoutes, { prefix: '/api/updates' });
   app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory });
   app.register(settingsRoutes, { prefix: '/api/settings', directory: projectDirectory });
+  app.register(githubRoutes, { prefix: '/api/github', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
+    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub') });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

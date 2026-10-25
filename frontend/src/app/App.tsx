@@ -16,6 +16,8 @@ import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
 import type { ProjectNavigation } from '../features/projects/ProjectsWorkspace';
 import { SystemPromptPanel } from '../features/settings/SystemPromptPanel';
 import { editorRegistry } from '../features/project-editor/registry';
+import { useConnections } from '../features/github-connections/useConnections';
+import { ConnectionPanel } from '../features/github-connections/ConnectionPanel';
 
 const tabs: Tab[] = ['System', 'Projects'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
@@ -44,6 +46,7 @@ export function App() {
     return () => window.removeEventListener('hashchange', restore);
   }, [navigateProject]);
   const [providerView, setProviderView] = useState<string | null>(null);
+  const [connectionView, setConnectionView] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>({
     group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : 0, view: 0,
   });
@@ -59,10 +62,13 @@ export function App() {
   const item = componentItems[selectedComponent];
   const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
   const systemPromptPage = tab === 'System' && group.name === 'Settings' && item === 'System Prompt';
+  const githubPage = tab === 'System' && group.name === 'Settings' && item === 'GitHub';
+  const github = useConnections(githubPage);
+  const activeConnection = github.connections.find((connection) => connection.id === connectionView);
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex'] : []) : [];
-  const selectedView = providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : updatePage && item === 'Components' ? 0 : selected.view;
+  const availableViews = githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex'] : []) : [];
+  const selectedView = githubPage ? (activeConnection ? github.connections.indexOf(activeConnection) + 1 : 0) : providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : updatePage && item === 'Components' ? 0 : selected.view;
   const view = availableViews[selectedView];
   const componentKind: ComponentKind | 'c' | undefined = updatePage && item !== 'R4OS Studio'
     ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', C: 'c', Rust: 'rust', QEMU: 'qemu', Codex: 'codex', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind | 'c'>)[view ?? item] : undefined;
@@ -150,9 +156,9 @@ export function App() {
               {availableViews.map((name, index) => {
                 const provider = providerPage && index > 0 ? providers.providers[index - 1] : undefined;
                 const remaining = provider ? providers.remainingByProvider[provider.id] : null;
-                return <button type="button" key={providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
+                return <button type="button" key={githubPage ? (github.connections[index - 1]?.id ?? 'new-connection') : providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
                   aria-current={selectedView === index ? 'page' : undefined}
-                  onClick={() => providerPage ? setProviderView(provider?.id ?? null) : select({ view: index })}>
+                  onClick={() => { if (!settingsLeaveGuard.current()) return; if (githubPage) setConnectionView(github.connections[index - 1]?.id ?? null); else if (providerPage) setProviderView(provider?.id ?? null); else select({ view: index }); }}>
                   {providerPage ? <>
                     {index === 0 && <span className="view-number" aria-hidden="true">+</span>}
                     <span className="provider-view-name">{name}</span>
@@ -161,7 +167,7 @@ export function App() {
                         ? 'Remaining usage is not available.' : 'Lowest reported remaining usage across quota windows.'}>
                         {remaining == null ? '—' : percent(remaining)}
                       </span>}
-                  </> : vmPage || updatePage ? <span>{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
+                  </> : githubPage || vmPage || updatePage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
                 </button>;
               })}
             </div>
@@ -170,7 +176,7 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {systemPromptPage ? <SystemPromptPanel setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
+          {githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage ? <SystemPromptPanel setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
         </main>
         </>}
       </div>
