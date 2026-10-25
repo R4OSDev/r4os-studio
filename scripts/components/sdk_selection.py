@@ -56,6 +56,9 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
             selected = previous.get('selected')
         if not selected or selected.get('id') != identity:
             raise ValueError('Check the official SDK version list before selecting this version.')
+        releases = manager.catalogs.get('sdk', {}).get('sdkReleases')
+        if releases is not None:
+            selected = {**selected, 'sdkRelease': releases.get(identity, {'published': False})}
         receipt = previous or {'schema': 1, 'requestId': request_id, 'request': request, 'selected': selected, 'createdAt': now()}
         receipt.update(phase='working', error=None)
         atomic(path, receipt)

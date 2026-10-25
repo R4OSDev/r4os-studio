@@ -1,5 +1,31 @@
 # R4OS Studio · App
 
+Version 0.3.65 korrigiert SDK Check for Updates: veröffentlichte stabile SDK-Releases statt unveröffentlichter main-Paketversionen. Fehlende ältere Paketmetadaten werden konkret erklärt; Standards und Projektpins bleiben erhalten.
+
+## SDK update discovery (0.3.65)
+
+SDK Check for Updates lists official stable GitHub releases and resolves their
+exact tags, including annotated tags. SDK source package versions from main are
+not release identities: they can exist without SDK-Release.json or downloadable
+package sets. The SDK catalog does not fetch main; missing source objects are
+fetched only from the selected release tags. Latest/older pagination stays
+bounded, and a package version must match its release tag.
+
+The release's manifest asset is checked before fetching it. Local SDK revisions
+without a published release and older releases without SDK-Release.json keep
+clear status reasons while their installations and project pins are preserved.
+Older manifests without Libraries cannot activate a combined component set.
+Cached valid manifests remain usable; unexpected manifest 404 responses get a
+specific metadata message. Transport failures and invalid metadata remain
+visible. SDK/Contract/Libraries identities, archive hashes, contents and atomic
+selection rules are unchanged. No fallback dependencies or automatic default
+changes are introduced; this is release discovery, not a Studio revision list.
+
+Syntax, Studio build/TypeScript and lint are the static verification scope.
+No test suites, VM/app runs or component downloads/default changes are required.
+The installed SDK update check is verified through its normal endpoint.
+
+
 Version 0.3.64 bindet den nativen DESKRUN-0.1.1-Desktopstart über SSH an. Originalkennung und u64-Quittungen bleiben exakt erhalten; Timeout führt nur zu STATUS, niemals zu einem zweiten Start.
 
 ## Native desktop launch through SSH (0.3.64)

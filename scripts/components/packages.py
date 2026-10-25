@@ -18,7 +18,7 @@ def git(repository, *arguments, timeout=180):
                 *arguments], timeout=timeout, env=environment)
 
 
-def source_repository(manager, kind):
+def source_repository(manager, kind, fetch_main=True):
     directory = manager.root / 'Profiles/Sources' / (kind + '.git')
     url = f'https://github.com/R4OSDev/r4os-{kind}.git'
     if directory.is_symlink():
@@ -30,8 +30,9 @@ def source_repository(manager, kind):
         git(directory, 'remote', 'add', 'origin', url)
     if git(directory, 'remote', 'get-url', 'origin') != url:
         raise ValueError('The cached source repository has an unexpected origin.')
-    manager.progress(f'Reading official {kind} version history…')
-    git(directory, 'fetch', '--filter=blob:none', 'origin', '+refs/heads/main:refs/remotes/origin/main')
+    if fetch_main:
+        manager.progress(f'Reading official {kind} version history…')
+        git(directory, 'fetch', '--filter=blob:none', 'origin', '+refs/heads/main:refs/remotes/origin/main')
     return directory
 
 

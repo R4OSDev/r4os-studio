@@ -3,8 +3,10 @@ from packages import ADAPTER as PACKAGES
 from tooling import Codex, Qemu, Zig
 from images import Releases
 from rust import Rust
+from sdk_releases import SdkReleases
 
 ADAPTERS = {kind: PACKAGES for kind in ('sdk', 'contract', 'libraries')}
 ADAPTERS.update(zig=Zig(), qemu=Qemu(), codex=Codex())
 ADAPTERS['r4os'] = Releases()
 ADAPTERS['rust'] = Rust()
+ADAPTERS['sdk'] = SdkReleases()

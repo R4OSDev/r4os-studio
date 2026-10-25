@@ -231,6 +231,8 @@ class Manager:
                     selections = {value['id']: value for value in self.installed('sdk')}
                     selections.update({value['id']: value for value in catalog.get('versions', [])})
                     for selected in selections.values():
+                        if 'sdkReleases' in catalog:
+                            selected = {**selected, 'sdkRelease': catalog['sdkReleases'].get(selected['id'], {'published': False})}
                         self.progress(f'Reading SDK {selected["version"]} release dependencies…')
                         try:
                             value = resolve(self, selected)

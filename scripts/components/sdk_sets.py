@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import stat
+from urllib.error import HTTPError
 
 from common import read_url
 from service import atomic
@@ -65,6 +66,10 @@ def parse_manifest(selected, raw):
     result = {'state': 'ready', 'manifestUrl': manifest_url(selected),
               'manifestSha256': hashlib.sha256(raw).hexdigest(), 'components': {}}
     release_prefix = result['manifestUrl'].removesuffix('SDK-Release.json')
+    # Legacy releases may contain SDK/Contract metadata without a Libraries
+    # package. They cannot form a combined set; existing pins remain usable.
+    if not isinstance(document.get('libraries'), dict):
+        raise ValueError('This SDK release does not declare a Libraries package for combined selection. Existing project pins are retained.')
     for kind in PARTS:
         part = document.get(kind)
         if not isinstance(part, dict):
@@ -106,7 +111,17 @@ def resolve(manager, selected, fetch=True):
         if hashlib.sha256(raw).hexdigest() != saved.get('sha256'):
             raise ValueError('The cached SDK release checksum is invalid.')
     elif fetch:
-        raw = read_url(url, MAX_MANIFEST)
+        release = selected.get('sdkRelease')
+        if release is not None and not release.get('published'):
+            raise ValueError('No published SDK package set was found for this local source revision. Existing project pins are retained.')
+        if release is not None and not release.get('manifestPublished'):
+            raise ValueError('This SDK release does not publish SDK-Release.json. Existing project pins are retained.')
+        try:
+            raw = read_url(url, MAX_MANIFEST)
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+            raise ValueError('SDK-Release.json is not available for this version. Check published SDK releases again; existing installations and project pins are retained.') from None
         result = parse_manifest(selected, raw)
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic(path, {'schema': 1, 'sdkId': selected['id'], 'url': url,
