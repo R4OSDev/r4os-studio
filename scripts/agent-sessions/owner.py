@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import ProjectFault
 from profile import directory
 

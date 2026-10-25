@@ -14,7 +14,7 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, SKILL_PROFILE, TOOLS, tools_for
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, TOOLS, tools_for
 from owner import owner_type, binding, skill_workspace
 
 TOOL_IDS = tuple('studio.' + name for name in TOOLS)
@@ -112,7 +112,7 @@ class SessionStore:
     def __init__(self, projects, r4os, project_id, kind='project'):
         from project_use import acquire
         self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
-        self.selected_profile = SKILL_PROFILE if kind == 'skill' else PROFILE
+        self.selected_profile = AUTHOR_PROFILE if kind == 'skill' else PROFILE
         self.project_use = acquire(projects, project_id) if kind == 'project' else None
         try: self.open(projects, r4os, project_id)
         except BaseException:
@@ -184,7 +184,7 @@ PRAGMA user_version=1;
         settings.setdefault('fastMode', False)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
-        if self.owner_type == 'skill' and engine.get('profile') != SKILL_PROFILE:
+        if self.owner_type == 'skill' and engine.get('profile') not in SKILL_PROFILES:
             raise ProjectFault('This skill session has an incompatible tool profile. Its history was preserved.', 409)
         return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 ('skillId' if self.owner_type == 'skill' else 'projectId'): row['project_id'], 'name': row['name'], **settings,

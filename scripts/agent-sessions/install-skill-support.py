@@ -27,13 +27,13 @@ def checked(path, source, expected, label):
     return original, replacement
 
 
-def replace(path, data, original):
+def replace(path, data, original, stamp='skill-sessions'):
     if data == original: return
-    backup = path.with_name(path.name + '.pre-skill-sessions')
+    backup = path.with_name(path.name + '.pre-' + stamp)
     if not backup.exists():
         with backup.open('xb') as stream:
             os.fchmod(stream.fileno(), 0o700); stream.write(original); stream.flush(); os.fsync(stream.fileno())
-    temporary = path.with_name(path.name + '.skill-sessions.tmp')
+    temporary = path.with_name(path.name + '.' + stamp + '.tmp')
     with temporary.open('xb') as stream:
         os.fchmod(stream.fileno(), 0o755); stream.write(data); stream.flush(); os.fsync(stream.fileno())
     temporary.replace(path)

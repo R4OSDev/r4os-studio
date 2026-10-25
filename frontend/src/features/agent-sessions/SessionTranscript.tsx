@@ -3,6 +3,7 @@ import type { SessionItem } from '../../../../shared/agent-sessions';
 import { toolLabels } from './api';
 import { DevelopmentCard, DevelopmentImage, developmentRef } from './DevelopmentCard';
 import { CodeBlock, MessageText } from './Transcript';
+import { SkillCard } from './SkillCard';
 
 type ToolEntry = { item: SessionItem; jobId?: string };
 type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolEntry[] }
@@ -36,6 +37,7 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
         <summary><span title={i.type === 'terminal' ? 'Terminal' : toolLabels[i.tool ?? ''] ?? 'Tool call'}>{i.type === 'terminal' ? 'Terminal' : toolLabels[i.tool ?? ''] ?? 'Tool call'}</span><span className="agent-tool-status">{i.status}</span></summary>
         <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
+        {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {typeof i.nextLine === 'number' && <p>More lines available from line {i.nextLine}.</p>}
         {typeof i.lineTruncated === 'number' && <p>Line {i.lineTruncated} exceeds the output limit.</p>}
         {typeof i.nextOffset === 'number' && <p>More entries available from offset {i.nextOffset}.</p>}

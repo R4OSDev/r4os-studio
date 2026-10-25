@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import uuid
 
 from host import Host
-from profile import SKILL_PROFILE, CODEX_VERSION, CODEX_SHA256, LEGACY_TOOLS
+from profile import SKILL_PROFILE, AUTHOR_PROFILE, CODEX_VERSION, CODEX_SHA256, LEGACY_TOOLS, AUTHOR_TOOLS
 from run_store import admit, get_run, transition
 from session_store import SessionStore, encode
 from store import ProjectFault
@@ -33,7 +33,7 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         (self.providers / self.provider).mkdir(parents=True)
         (self.providers / 'providers.json').write_text(encode([{'id': self.provider, 'name': 'Fixture', 'type': 'openai', 'connected': True}]))
         (self.providers / self.provider / 'models_cache.json').write_text(encode({'models': [{'slug': 'fixture', 'visibility': 'list', 'supported_reasoning_levels': [{'effort': 'low'}]}]}))
-        self.engine = {'profile': SKILL_PROFILE, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': True}
+        self.engine = {'profile': AUTHOR_PROFILE, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': True}
         with self.open() as store, patch('session_store.engine', return_value=self.engine):
             self.session = store.create(self.settings(), self.providers)
         self.config = {'projects': str(self.projects), 'providers': str(self.providers), 'r4os': str(self.r4os), 'uid': os.getuid(), 'maxActiveRuns': 2}
@@ -50,7 +50,7 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.session['owner'], {'type': 'skill', 'id': self.ids[0]})
         self.assertNotIn('projectId', self.session)
         self.assertFalse(self.projects.exists())
-        self.assertEqual(set(self.session['permissions']), {'studio.' + name for name in LEGACY_TOOLS})
+        self.assertEqual(set(self.session['permissions']), {'studio.' + name for name in LEGACY_TOOLS + AUTHOR_TOOLS})
         self.assertEqual(len(specifications(SKILL_PROFILE)), 9)
         with self.assertRaises(ValueError): validate_arguments('read_file', {'path': '.', 'root': 'sdk'}, SKILL_PROFILE)
         with self.open(self.ids[1]) as store:

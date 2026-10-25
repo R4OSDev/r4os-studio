@@ -1,5 +1,18 @@
 # R4OS Studio · App
 
+## Bound skill author tools (0.4.7)
+
+New Skill Manager sessions use `studio-skill-tools-v2`: the nine general workspace tools plus **Validate skill** and **Save skill**. Permissions default to enabled, remain editable only while idle, freeze per run and are checked before every call. Existing skill v1 and project v1–v4 sessions keep their original profiles and native threads. The special prompt describes draft-only requests, requested global Save, validation/resource fixes, honest confirmed results and no automatic script execution.
+
+`studio_validate_skill` checks the complete current selected draft and returns its catalog revision, full draftHash, relative files and bounded diagnostics. An optional expectedDraftHash rejects a changed draft. `studio_save_skill` requires that exact revision/hash and uses the existing complete immutable snapshot/atomic active-pointer publication. Only the selected skill can be saved. Durable request IDs derive from run/call identity; confirmed calls replay their original receipt, changed arguments conflict, unknown effects never repeat. Invalid drafts preserve the current active revision. Tool cards retain relative files, validation issues and confirmed active revision/SHA-256; full chat navigation follows in0.4.8.
+
+A fixed author broker runs outside the model/tool namespace. It receives only the selected owner/session/run, operation, bounded arguments and the worker's already-held workspace lease FD. It checks the lock inode, run state/owner/revision/permission and parent worker PID/birth before validation/publication, and again before publication effects. The FD never enters Codex, terminal tools or the Node YAML validator. The broker grants no arbitrary path, credential, VM, network or script execution capability. Author calls serialize with file/terminal admission and wait for existing terminal processes to finish; manual editing stays blocked for the active run. Loss of the publication response yields unknown while preserving snapshots/receipts and stopping follow-up effects.
+
+Explicit local host qualification: `python3 App/scripts/agent-sessions/install-author-support.py` before tagged installation, then `--adopt` with an idle coordinator after installation. Only the known updater compatibility is extended; current services/configuration/write paths and running old workers/VMs are preserved. Older compatible rollback targets remain accepted. Custom Skill Manager prompts are retained; shipped defaults describe the current available calls conditionally.
+
+Validated with real fixed broker execution as an unprivileged user, owner/lease/permission/Stop bounds, invalid and stale drafts, publication/receipt replay, unknown response recovery, original thread/profile retention, project/skill API regressions, update compatibility, build/TypeScript/lint. Installed native author publication and cleanup evidence are recorded outside the public repository in `Research/R4OS/Roadmap-Implementation/0.4.7/`. No new application dependency or bootstrap/data migration is introduced.
+
+
 ## Skill Manager Prompt (0.4.6)
 
 System → Settings → **Skill Manager Prompt** edits the separate author instructions through the existing prompt editor, with Save changes, Cancel, Reset to default, dirty-navigation protection and conflict-preserving reload. The scope text identifies Skill Manager sessions. The existing System Prompt applies to project sessions, and its text/reset remain independent.

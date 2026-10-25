@@ -23,7 +23,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     socket.on('end', () => {
       const request = JSON.parse(raw) as Record<string, unknown>; messages.push(request);
       const run = { id: randomUUID(), sessionId: request.sessionId, owner: { type: 'skill', id }, state: 'queued', error: null, createdAt: 'now', completedAt: null };
-      const result = request.operation === 'capabilities' ? { enabled: true, protocol: 1, skillSessions: 1 }
+      const result = request.operation === 'capabilities' ? { enabled: true, protocol: 1, skillSessions: 1, skillAuthorTools: 1 }
         : request.operation === 'events' ? { events: [{ seq: 7, runId: run.id, kind: 'run', payload: run }], session: {} }
           : { ...run, ...(request.operation === 'stop_run' ? { state: 'interrupted', id: request.runId } : {}) };
       socket.end(JSON.stringify(request.operation === 'events' && events++ > 0 ? { error: 'Fixture stream ended.', code: 503 } : { result }) + '\n');
@@ -41,8 +41,8 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     const base = `/api/skills/${id}/sessions`;
     assert.equal((await app.inject(base)).statusCode, 403);
     const opts = await app.inject({ url: base + '/options', headers });
-    assert.equal(opts.statusCode, 200, opts.body); assert.equal(opts.json().tools.length, 9);
-    assert.equal(opts.json().engine.profile, 'studio-skill-tools-v1'); assert.equal(opts.json().engine.available, true);
+    assert.equal(opts.statusCode, 200, opts.body); assert.equal(opts.json().tools.length, 11);
+    assert.equal(opts.json().engine.profile, 'studio-skill-tools-v2'); assert.equal(opts.json().engine.available, true);
     assert.equal(opts.json().development, undefined);
     const payload = { name: 'Author', providerId: provider, model: 'fixture', effort: 'low', requestId: randomUUID() };
     assert.equal((await app.inject({ method: 'POST', url: base, headers: { cookie: headers.cookie }, payload })).statusCode, 403);
@@ -50,7 +50,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     assert.equal(created.statusCode, 201, created.body);
     const session = created.json().session;
     assert.deepEqual(session.owner, { type: 'skill', id }); assert.equal(session.projectId, undefined);
-    assert.equal(Object.keys(session.permissions).length, 9);
+    assert.equal(Object.keys(session.permissions).length, 11);
     assert.equal((await app.inject({ method: 'POST', url: base, headers, payload })).json().session.id, session.id);
     assert.equal((await app.inject({ url: `/api/skills/${other}/sessions/${session.id}`, headers })).statusCode, 404);
     assert.equal((await app.inject({ url: base, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);

@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import prepare, write_json, TOOLS, PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS
+from profile import prepare, write_json, TOOLS, PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -58,6 +58,8 @@ class Worker:
         self.build_snapshots = AgentSnapshots(self)
         from development_tools import DevelopmentTools
         self.development = DevelopmentTools(self)
+        from skill_tools import SkillTools
+        self.skills = SkillTools(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
@@ -118,6 +120,7 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in AUTHOR_TOOLS and self.store.owner_type == 'skill': return await self.skills.call(name, arguments, call_id)
         if name in DEVELOPMENT_TOOLS and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
@@ -174,7 +177,7 @@ class Worker:
             try: result = await self.execute(name[7:], arguments, call_id)
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
-                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job')
+                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'save_skill')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -188,7 +191,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('development', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files'):
+        for key in ('development', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill'):
             if key in result: value[key] = result[key]
         value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
         base_size = len(encode({**value, 'output': ''}).encode())

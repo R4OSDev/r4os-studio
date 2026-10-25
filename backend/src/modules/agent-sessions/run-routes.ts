@@ -25,8 +25,8 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
         revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, text: { type: 'string', minLength: 1, maxLength: 65536 } } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ projectInstructions?: number; vmStartTools?: number; skillSessions?: number }>({ operation: 'capabilities' });
-    if (ownerType === 'skill' ? support.skillSessions !== 1 : (support.projectInstructions !== 1 || support.vmStartTools !== 1)) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
+    const support = await agentHost<{ projectInstructions?: number; vmStartTools?: number; skillSessions?: number; skillAuthorTools?: number }>({ operation: 'capabilities' });
+    if (ownerType === 'skill' ? (support.skillSessions !== 1 || support.skillAuthorTools !== 1) : (support.projectInstructions !== 1 || support.vmStartTools !== 1)) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
     const run = await agentHost<AgentRun>({ operation: 'start_run', ...owner(request.params.id), sessionId: request.params.sessionId,
       input: { ...request.body, ...(ownerType === 'project' ? { projectInstructions: 1 } : {}) } });
     return reply.code(202).send({ run });

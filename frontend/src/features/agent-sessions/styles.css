@@ -126,3 +126,6 @@
 
 .development-package code { display: block; overflow-wrap: anywhere; }
 .development-package small { display: block; margin-top: .25rem; color: var(--text-muted, #999); }
+
+.agent-skill-result { font-size: 13px; overflow-wrap: anywhere; }
+.agent-skill-result ul { padding-left: 20px; }

@@ -1,5 +1,5 @@
 """Stable Studio dynamic tool declarations; authorization is checked for every call."""
-from profile import TOOLS, PROFILE, SKILL_PROFILE, tools_for
+from profile import TOOLS, PROFILE, SKILL_PROFILES, tools_for
 from copy import deepcopy
 
 
@@ -40,6 +40,8 @@ CRITERIA = obj({'expectedExitCode': {'type': ['integer', 'null'], 'minimum': -21
     'serviceResponseContains': {'type': ['string', 'null'], 'maxLength': 256},
     'visualCriteria': {'type': 'string', 'maxLength': 1024}})
 DEFS.update({
+ 'validate_skill': ('Validate the complete current selected skill draft without running scripts. Returns concrete catalog revision, draftHash, relative files and diagnostics. An optional expectedDraftHash detects a changed draft. Wait for all run terminals to finish before validation.', obj({'expectedDraftHash': {'type': 'string', 'maxLength': 64}})),
+ 'save_skill': ('Publish the same validated complete selected skill draft as a global immutable revision. Use revision and draftHash from validate_skill, preserve drafts if invalid, and report only the confirmed returned activeRevision/activeHash. No scripts run. Only publish when requested; draft-only requests stay drafts. Never repeat an unknown save.', obj({'revision': {'type': 'integer', 'minimum': 1, 'maximum': 9007199254740991}, 'draftHash': {'type': 'string', 'maxLength': 64}}, ['revision', 'draftHash'])),
  'start_project_vm': ('Start only this project\'s assigned VM if stopped, or use its current boot if already running. This single tool call waits in the Studio harness until the fixed R4OS default account authenticates over SSH and R4OS answers VER, then resumes this agent turn with a durable readiness receipt. Studio supplies the login automatically; never ask the user to enter credentials. Do not poll, sleep, or repeatedly call start while it waits. SSH readiness does not prove GUI or app readiness. Requires Network and enabled development access; never changes VM settings or deploys files.', obj({})),
  'build_project': ('Build an immutable snapshot of this project with its pinned offline SDK/compiler. Finish all live terminal commands first. This call waits in the harness until the original build completes and returns its artifactId or terminal error. The durable job link and progress appear immediately. Do not poll, sleep or resubmit while it waits. No VM action.', obj({})),
  'deploy_project': ('Transfer this session\'s verified artifact to its already running, SSH-ready assigned VM and verify every byte. First use the separately permitted start_project_vm tool when available and wait for its readiness receipt. Never starts the VM or app and never changes Network/image/settings. This call waits in the harness for the original verified deployment or terminal error; use its deploymentId without polling or resubmitting.', obj({'artifactId': ID}, ['artifactId'])),
@@ -66,7 +68,7 @@ def specifications(profile=PROFILE):
     result = []
     for name in tools_for(profile):
         description, schema = DEFS[name][0], deepcopy(DEFS[name][1])
-        if profile == SKILL_PROFILE:
+        if profile in SKILL_PROFILES:
             description = description.replace('project', 'selected skill')
             if 'root' in schema['properties']:
                 schema['properties']['root'] = {'type': 'string', 'enum': ['workspace'], 'description': 'Only the selected skill draft is available.'}

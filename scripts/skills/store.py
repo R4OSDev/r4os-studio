@@ -121,7 +121,7 @@ def validate(files, contents, tree_hash, node):
                                env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
     result = json.loads(completed.stdout)
     if completed.returncode or not isinstance(result, dict): raise SkillFault('Skill validation is unavailable.', 503)
-    errors = result['errors']
+    errors = ['SKILL.md: ' + message for message in result['errors']]
     # Local Markdown resource links must stay in this complete package. URLs are informational only.
     try: text = contents['SKILL.md'].decode('utf-8', errors='strict')
     except UnicodeError: text = ''; errors.append('SKILL.md must be valid UTF-8 text.')
@@ -130,14 +130,14 @@ def validate(files, contents, tree_hash, node):
         if not target or target.startswith(('https://', 'http://', 'mailto:')): continue
         try:
             relative(target)
-            if target not in contents: errors.append('A linked local resource is missing from the package.')
-        except SkillFault: errors.append('A linked local resource is outside the allowed package paths.')
+            if target not in contents: errors.append('SKILL.md: linked resource ' + target + ' is missing from the package.')
+        except SkillFault: errors.append('SKILL.md: a linked local resource is outside the allowed package paths.')
     for f in files:
         if not f['path'].startswith('assets/'):
             try:
                 value = contents[f['path']].decode('utf-8')
                 if '\x00' in value: raise UnicodeError()
-            except UnicodeError: errors.append('Instructions, scripts and references must be UTF-8 text without NUL characters.')
+            except UnicodeError: errors.append(f['path'] + ': use UTF-8 text without NUL characters.')
     return {**result, 'valid': not errors, 'errors': errors[:20], 'draftHash': tree_hash}
 
 
@@ -174,8 +174,12 @@ def summary(row):
 
 
 @contextmanager
-def locked(root, ident):
+def locked(root, ident, author=None):
     identity(ident)
+    if author is not None:
+        author.verify(root, ident)
+        yield
+        return
     locks = folder(root / '.locks', True)
     fd = os.open(locks / ident, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, 'a+b') as stream:
@@ -289,11 +293,11 @@ def change_file(db, root, data, rename=False):
         return detail(db, root, ident)
 
 
-def publish(db, root, data, node):
+def publish(db, root, data, node, author=None):
     if set(data) != {'id', 'revision', 'draftHash', 'requestId'} or type(data['revision']) is not int or data['revision'] < 1 or not isinstance(data['draftHash'], str) or not re.fullmatch('[a-f0-9]{64}', data['draftHash']):
         raise SkillFault('Invalid skill save request.', 400)
     ident = identity(data['id']); identity(data['requestId']); request_hash = digest(encode(data).encode())
-    with locked(root, ident):
+    with locked(root, ident, author):
         previous = db.execute('SELECT * FROM saves WHERE request_id=?', (data['requestId'],)).fetchone()
         if previous:
             if previous['request_hash'] != request_hash: raise SkillFault('This save ID has already been used.', 409)
@@ -312,12 +316,15 @@ def publish(db, root, data, node):
                     path = workspace / f['path']; folder(path.parent, True); atomic(path, contents[f['path']], f['executable'])
                 atomic(stage / 'revision.json', (encode({'files': files, 'hash': tree_hash, 'metadata': validation['metadata']}) + '\n').encode())
                 for directory, _, _ in os.walk(workspace, topdown=False): sync(directory)
-                sync(stage); os.rename(stage, destination); sync(revisions)
+                sync(stage)
+                if author is not None: author.verify(root, ident)
+                os.rename(stage, destination); sync(revisions)
             finally:
                 if stage.exists(): shutil.rmtree(stage)
         actual, _, actual_hash = inventory(folder(destination) / 'Workspace')
         if actual != files or actual_hash != tree_hash: raise SkillFault('The immutable skill snapshot changed. Data was preserved.', 503)
         if inventory(root / ident / 'Workspace')[2] != tree_hash: raise SkillFault('The skill changed during validation. Retry with the current draft.', 409)
+        if author is not None: author.verify(root, ident)
         db.execute('BEGIN IMMEDIATE')
         active = current['skill']['activeRevision']
         if current['skill']['activeHash'] != tree_hash:
