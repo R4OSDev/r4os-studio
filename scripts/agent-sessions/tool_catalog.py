@@ -21,7 +21,7 @@ DEFS = {
    obj({'path': PATH, 'root': ROOT, 'offset': {'type': 'integer', 'minimum': 0}}, ['path'])),
  'read_file': ('Read UTF-8 source text with line numbers and its SHA-256 for conflict-protected writes. This is Studio broker access, independent of Codex native filesystem tools.',
    obj({'path': PATH, 'root': ROOT, 'startLine': {'type': 'integer', 'minimum': 1}, 'maxLines': {'type': 'integer', 'minimum': 1, 'maximum': 500}}, ['path'])),
- 'search': ('Search filenames or literal text within the selected root. Results are bounded; no shell expansion.',
+ 'search': ('Search filenames or literal UTF-8 text in a regular file or directory within the selected root. Directories are traversed within fixed file/byte/result/time limits; no links or special files. Skipped files and incomplete results are reported. No shell expansion.',
    obj({'path': PATH, 'root': ROOT, 'query': {'type': 'string', 'maxLength': 200}, 'filenames': {'type': 'boolean'}}, ['query'])),
  'write_file': ('Create or replace a UTF-8 project file through Studio. Supply expectedSha256 for an existing file, or null for a new file. Writes are allowed only in workspace.',
    obj({'path': PATH, 'content': {'type': 'string', 'maxLength': 65536}, 'expectedSha256': {'type': ['string', 'null']}}, ['path', 'content', 'expectedSha256'])),

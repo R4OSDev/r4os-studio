@@ -180,7 +180,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('development', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'partialChangesPossible', 'files'):
+        for key in ('development', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files'):
             if key in result: value[key] = result[key]
         value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
         base_size = len(encode({**value, 'output': ''}).encode())

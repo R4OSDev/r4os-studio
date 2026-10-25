@@ -7,6 +7,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 import uuid
 
 
@@ -112,6 +113,110 @@ def patch(root, args):
             'files': changed, **({'error': 'patchFailed', 'partialChangesPossible': True} if result.returncode else {})}
 
 
+class SearchFault(Fault):
+    def __init__(self, message, reason):
+        super().__init__(message); self.reason = reason
+
+
+def search(root, args):
+    base = args.get('path', '.'); names = parts(base)
+    try:
+        if not names: selected = os.dup(root)
+        else:
+            par, name = parent(root, base)
+            try:
+                before = os.stat(name, dir_fd=par, follow_symlinks=False)
+                if not (stat.S_ISREG(before.st_mode) or stat.S_ISDIR(before.st_mode)):
+                    raise SearchFault('Search requires a regular file or directory; links and special files are unavailable.', 'unsupportedSearchType')
+                selected = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=par)
+                actual = os.fstat(selected)
+                if (before.st_dev, before.st_ino) != (actual.st_dev, actual.st_ino):
+                    os.close(selected); raise SearchFault('The search path changed. Read its current state before searching again.', 'searchPathChanged')
+            finally: os.close(par)
+        try: initial = os.fstat(selected)
+        finally: os.close(selected)
+    except FileNotFoundError:
+        raise SearchFault('The search file or directory does not exist.', 'searchPathMissing') from None
+    except NotADirectoryError:
+        raise SearchFault('A search parent is not a directory.', 'invalidSearchParent') from None
+    is_file = stat.S_ISREG(initial.st_mode)
+    if not is_file and not stat.S_ISDIR(initial.st_mode):
+        raise SearchFault('Search requires a regular file or directory.', 'unsupportedSearchType')
+    query = args['query']; results = []; scanned = 0; used = 0; rendered = 0; skipped = 0
+    visited = 0; entries = 0; truncated = False; limited = False
+    deadline = time.monotonic() + 10
+
+    def append(value):
+        nonlocal rendered, limited
+        size = len(json.dumps(value, ensure_ascii=False).encode()) + 2
+        if len(results) >= 100 or rendered + size > 60000:
+            limited = True; return False
+        results.append(value); rendered += size
+        return True
+
+    def scan(path, info):
+        nonlocal scanned, used, skipped, truncated, limited
+        scanned += 1
+        if len(path.encode()) > 1024:
+            skipped += 1; return
+        if args.get('filenames'):
+            if query in path.rsplit('/', 1)[-1]: append({'path': path})
+            return
+        if info.st_size > min(262144, 8*1024*1024 - used):
+            skipped += 1; return
+        try:
+            content, opened = read(root, path, min(262144, 8*1024*1024 - used)); used += len(content)
+            if b'\x00' in content:
+                skipped += 1; return
+            par, name = parent(root, path)
+            try: after = os.stat(name, dir_fd=par, follow_symlinks=False)
+            finally: os.close(par)
+            fingerprint = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+            if fingerprint(info) != fingerprint(opened) or fingerprint(opened) != fingerprint(after):
+                skipped += 1; return
+            text = content.decode('utf8')
+        except (UnicodeError, OSError, Fault):
+            skipped += 1; return
+        for index, line in enumerate(text.splitlines(), 1):
+            if time.monotonic() >= deadline:
+                limited = True; return
+            if query in line and not append({'path': path, 'line': index, 'text': line[:500]}): return
+
+    if is_file: scan(base, initial)
+    else:
+        stack = [base]
+        while stack and not limited:
+            if scanned >= 2000 or used >= 8*1024*1024 or visited >= 2000 or entries >= 20000 or time.monotonic() >= deadline:
+                truncated = True; break
+            relative = stack.pop()
+            try: fd = directory(root, relative)
+            except (OSError, Fault):
+                skipped += 1; continue
+            visited += 1
+            try:
+                values = os.listdir(fd)
+                if len(values) > 10000:
+                    truncated = True; continue
+                for name in sorted(values):
+                    entries += 1
+                    if entries > 20000 or scanned >= 2000 or used >= 8*1024*1024 or limited or time.monotonic() >= deadline:
+                        truncated = True; limited = True; break
+                    path = relative.rstrip('/') + '/' + name
+                    try: info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                    except OSError:
+                        skipped += 1; continue
+                    if stat.S_ISDIR(info.st_mode):
+                        if name not in ('.git', '.studio-cache', '.zig-cache', 'target', 'node_modules'):
+                            if len(stack) < 2000 and len(path.encode()) <= 1024: stack.append(path)
+                            else: truncated = True
+                    elif stat.S_ISREG(info.st_mode): scan(path, info)
+                    else: skipped += 1
+            finally: os.close(fd)
+        truncated = truncated or bool(stack)
+    return {'success': True, 'output': json.dumps(results, ensure_ascii=False),
+            'truncated': truncated or limited or bool(skipped), 'skippedFiles': skipped}
+
+
 def execute(tool, args):
     root_name = args.get('root', 'workspace'); root = root_fd(root_name)
     try:
@@ -145,36 +250,7 @@ def execute(tool, args):
                     values.append({'name': name, 'type': 'directory' if stat.S_ISDIR(info.st_mode) else ('file' if stat.S_ISREG(info.st_mode) else 'linkOrSpecial'), 'bytes': info.st_size})
                 return {'success': True, 'output': json.dumps(values, ensure_ascii=False), 'nextOffset': offset+100 if offset+100 < len(names) else None}
             finally: os.close(fd)
-        if tool == 'search':
-            query = args['query']; results = []; scanned = 0; used = 0; truncated = False; skipped = 0
-            base = args.get('path', '.'); fd = directory(root, base); os.close(fd)
-            stack = [base]
-            while stack and len(results) < 100 and scanned < 2000 and used < 8*1024*1024:
-                relative = stack.pop(); fd = directory(root, relative)
-                try:
-                    names = sorted(os.listdir(fd))
-                    if len(names) > 10000: truncated = True; continue
-                    for name in names:
-                        path = relative.rstrip('/') + '/' + name; info = os.stat(name, dir_fd=fd, follow_symlinks=False)
-                        if stat.S_ISDIR(info.st_mode):
-                            if name not in ('.git', '.studio-cache', '.zig-cache', 'target', 'node_modules'):
-                                if len(stack) < 2000: stack.append(path)
-                                else: truncated = True
-                        elif stat.S_ISREG(info.st_mode):
-                            scanned += 1
-                            if args.get('filenames'):
-                                if query in name: results.append({'path': path})
-                            elif info.st_size <= 262144:
-                                try:
-                                    content, _ = read(root, path, 262144); used += len(content)
-                                    for index, line in enumerate(content.decode('utf8').splitlines(), 1):
-                                        if query in line: results.append({'path': path, 'line': index, 'text': line[:500]})
-                                        if len(results) >= 100: break
-                                except (UnicodeError, OSError, Fault): skipped += 1
-                            else: skipped += 1
-                        if len(results) >= 100 or scanned >= 2000 or used >= 8*1024*1024: truncated = True; break
-                finally: os.close(fd)
-            return {'success': True, 'output': json.dumps(results, ensure_ascii=False), 'truncated': truncated or bool(stack) or bool(skipped), 'skippedFiles': skipped}
+        if tool == 'search': return search(root, args)
         if root_name != 'workspace': raise Fault('This component root is read-only.')
         if tool == 'write_file':
             content = args['content'].encode()
@@ -210,7 +286,8 @@ def execute(tool, args):
 def failure(tool, error):
     uncertain = tool in ('write_file', 'apply_patch', 'create_directory') and isinstance(error, (OSError, subprocess.SubprocessError))
     return {'success': False, 'error': 'unknown' if uncertain else 'fileError', 'output': str(error)[:1000],
-            **({'partialChangesPossible': True} if uncertain else {})}
+            **({'partialChangesPossible': True} if uncertain else {}),
+            **({'reasonCode': error.reason} if isinstance(error, SearchFault) else {})}
 
 
 if __name__ == '__main__':

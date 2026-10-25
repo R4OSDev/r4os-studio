@@ -1,5 +1,7 @@
 # R4OS Studio · App
 
+Version 0.3.68 erweitert die Agent-Suche auf reguläre Einzeldateien und Verzeichnisse. Keine Linkverfolgung; begrenzte UTF-8-/Dateinamen-Suche mit präzisen Fehlern, stabilen relativen Treffern und sichtbaren Auslassungen.
+
 Version 0.3.67 korrigiert den VM-/Deployvertrag: VM-Start wartet separat bis SSH/VER, Deploy startet weder VM noch App. Früher Preflight verhindert Helperarbeit bei fehlender VM-/Workerbereitschaft; aktualisierte Laufhinweise erreichen auch bestehende Threads.
 
 Version 0.3.66 ergänzt einen ausdrücklich quittierten Prüfabschluss. Nach erfüllten Kriterien beendet Studio nur den eigenen Testprozess und bestätigt Cleanup; echte Timeouts, fehlende Exitbelege und unbekannte Wirkungen bleiben unterscheidbar. Neue Sessions verwenden das additive Toolprofil v4, bestehende Threads bleiben erhalten.
