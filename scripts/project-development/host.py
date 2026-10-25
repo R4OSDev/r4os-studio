@@ -208,13 +208,13 @@ class Host:
                     'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        if op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
-        if op == 'read_job': allowed.add('offset')
+        if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
         if op in ('build', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.add('evidenceId')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -225,7 +225,7 @@ class Host:
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'wait_vm_start', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                elif op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
                 if op in ('deploy', 'execution'):
                     artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
@@ -252,9 +252,9 @@ class Host:
                     await asyncio.sleep(.5); job = store.get(job['id'])
                 authorize(store, owner, op, peer_pid, job)
                 return job
-            if op in ('wait_deploy', 'wait_execution'):
+            if op in ('wait_build', 'wait_deploy', 'wait_execution'):
                 from authorization import authorize
-                job = store.get(request['id']); expected = 'deploy' if op == 'wait_deploy' else 'execution'
+                job = store.get(request['id']); expected = {'wait_build': 'build', 'wait_deploy': 'deploy', 'wait_execution': 'execution'}[op]
                 if owner is None or job['kind'] != expected or job.get('agentRunId') != owner['agentRunId']:
                     raise DevelopmentFault('Wait only for this active run\'s original development job.', 403)
                 deadline = asyncio.get_running_loop().time() + 12
@@ -268,7 +268,7 @@ class Host:
                         break
                     await asyncio.sleep(.25); job = store.get(job['id'])
                 authorize(store, owner, op, peer_pid, job)
-                return store.page(job['id'])
+                return {'job': job} if job['state'] in ACTIVE and expected != 'execution' else store.page(job['id'])
             if op == 'reconcile':
                 from actions import admit, finish
                 from recovery import reconcile
@@ -294,7 +294,7 @@ class Host:
                 from settings import update
                 return update(store, request['input'])
             if op == 'jobs': return store.list()
-            if op == 'read_job': return store.page(request['id'], request.get('offset', 0))
+            if op == 'read_job': return store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False))
             if op == 'artifact': return store.artifact(request['id'])
             if op == 'deployment': return store.deployment(request['id'])
             if op == 'assess':

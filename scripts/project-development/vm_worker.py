@@ -193,7 +193,8 @@ async def main():
     def stop():
         nonlocal interrupted
         interrupted = True; store.update(job['id'], 'stopping', phase='stopping')
-        if execution is not None: execution.stop_requested = True
+        if execution is not None:
+            execution.stop_requested = True; execution.wake.set()
         else: task.cancel()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, stop)

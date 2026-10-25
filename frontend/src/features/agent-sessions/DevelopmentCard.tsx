@@ -27,7 +27,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     const controller = new AbortController(); let timer: number | undefined;
     const refresh = async () => {
       try {
-        const page = await projectRequest<DevelopmentJobPage>(path + '?offset=0', '', 'GET', undefined, controller.signal);
+        const page = await projectRequest<DevelopmentJobPage>(path + '?metadataOnly=true', '', 'GET', undefined, controller.signal);
         if (controller.signal.aborted) return; setJob(page.job); setEvidence(page.evidence); setError('');
         if (busyRun(page.job.state)) timer = window.setTimeout(() => void refresh(), 2000);
       } catch (e) { if (!controller.signal.aborted) { setError((e as Error).message); timer = window.setTimeout(() => void refresh(), 4000); } }

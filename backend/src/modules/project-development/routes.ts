@@ -123,13 +123,21 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     security.session(request, reply);
     return { deployment: await developmentHost({ operation: 'deployment', projectId: request.params.id, id: request.params.deploymentId }) };
   });
-  app.get<{ Params: { id: string; jobId: string }; Querystring: { offset?: number } }>(base + '/jobs/:jobId', {
+  app.get<{ Params: { id: string; jobId: string }; Querystring: { offset?: number; metadataOnly?: boolean } }>(base + '/jobs/:jobId', {
     schema: { params: jobParams, querystring: { type: 'object', additionalProperties: false,
-      properties: { offset: { type: 'integer', minimum: 0, maximum: 2097152 } } } },
+      properties: { offset: { type: 'integer', minimum: 0, maximum: 2097152 }, metadataOnly: { type: 'boolean' } } } },
   }, async (request, reply) => {
     security.session(request, reply);
-    return developmentHost<DevelopmentJobPage>({ operation: 'read_job', projectId: request.params.id,
-      id: request.params.jobId, offset: request.query.offset ?? 0 });
+    const read = { operation: 'read_job', projectId: request.params.id, id: request.params.jobId, offset: request.query.offset ?? 0 };
+    if (!request.query.metadataOnly) return developmentHost<DevelopmentJobPage>(read);
+    try { return await developmentHost<DevelopmentJobPage>({ ...read, metadataOnly: true }); }
+    catch (error) {
+      // A coordinator with old live workers cannot adopt this release yet.
+      // Only repeat the identical read using its older metadata contract.
+      if (!(error instanceof ProjectError) || error.statusCode !== 400 || error.message !== 'Unsupported development coordinator operation.') throw error;
+      const page = await developmentHost<DevelopmentJobPage>(read);
+      return { ...page, output: '', nextOffset: read.offset };
+    }
   });
   app.post<{ Params: { id: string; jobId: string } }>(base + '/jobs/:jobId/stop', {
     schema: { params: jobParams },

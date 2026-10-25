@@ -132,6 +132,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  outputBytes?: number;
   reasonCode?: string | null;
   nextStep?: string | null;
   checkCompletion?: { requestId: string; reason: 'criteria_complete'; state: 'closing' | 'completed' | 'failed'; closed?: boolean; completedAt?: string };

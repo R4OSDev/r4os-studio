@@ -38,6 +38,19 @@ class Mailbox:
         if path.exists(): path.unlink()
         self.server = await asyncio.start_unix_server(self.connection, str(path), limit=16385); path.chmod(0o600)
 
+    async def next(self, timeout, wake):
+        """Wake promptly for actions/Stop, retaining a raced queue delivery."""
+        queued = asyncio.create_task(self.queue.get())
+        signaled = asyncio.create_task(wake.wait())
+        try:
+            await asyncio.wait((queued, signaled), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in (queued, signaled):
+                if not task.done(): task.cancel()
+            await asyncio.gather(queued, signaled, return_exceptions=True)
+        if wake.is_set(): wake.clear()
+        return queued.result() if not queued.cancelled() and queued.exception() is None else None
+
     async def connection(self, reader, writer):
         self.peers.add(writer)
         try:

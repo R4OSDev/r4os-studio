@@ -19,14 +19,25 @@ class Execution:
         self.mailbox = None
         self.stop_requested = False; self.control = None; self.last = None
         self.completion = None; self.completion_future = None
+        self.wake = asyncio.Event(); self.saved_observation = None
+        self.output_data = b''
+        if self.log.exists():
+            with self.log.open('rb') as stream: self.output_data = stream.read(LIMITS['outputBytes'] + 1)
+            if len(self.output_data) > LIMITS['outputBytes']: raise DevelopmentFault('Existing execution output exceeds its limit.')
+        self.output_limited = False
 
     def output(self, state):
         try: data = base64.b64decode(state.get('outputBase64', ''), validate=True)
         except ValueError: raise UnconfirmedGuestEffect('The guest returned an invalid output frame.') from None
         if len(data) > 24577: raise UnconfirmedGuestEffect('The guest output frame exceeds the limit.')
-        size = self.log.stat().st_size if self.log.exists() else 0
-        if size + len(data) > LIMITS['outputBytes']: state['outputIncomplete'] = True
-        with self.log.open('ab') as stream: stream.write(data[:max(0, LIMITS['outputBytes'] - size)])
+        size = len(self.output_data)
+        if size + len(data) > LIMITS['outputBytes']: self.output_limited = True
+        if self.output_limited: state['outputIncomplete'] = True
+        fresh = data[:max(0, LIMITS['outputBytes'] - size)]
+        if fresh:
+            with self.log.open('ab') as stream: stream.write(fresh)
+            self.output_data += fresh
+        return bool(fresh)
 
     async def action(self, message, state, control, lease, process):
         from actions import admit, finish
@@ -243,12 +254,16 @@ class Execution:
                     from checks import evaluate
                     from output_files import collect
                     self.mailbox = Mailbox(job['id']); await self.mailbox.open()
-                    stop_sent = False; service_checked = False
+                    stop_sent = False; service_checked = False; poll_delay = .2; last_poll = None
                     while True:
                         if launcher and state['state'] == 'running':
                             await launcher.refresh()
-                        self.output(state); state['outputBase64'] = ''; self.last = state
-                        save(self.work / 'observation.json', state)
+                        fresh_output = self.output(state); state['outputBase64'] = ''; self.last = state
+                        changed = last_poll != state or fresh_output
+                        poll_delay = .2 if changed else min(2, poll_delay * 1.6)
+                        last_poll = dict(state)
+                        if self.saved_observation != state:
+                            save(self.work / 'observation.json', state); self.saved_observation = dict(state)
                         process['windowId'] = state['windowId']
                         from deskrun import frame_ready
                         native_ready = bool(launcher and frame_ready(store.get(job['id']), state))
@@ -256,15 +271,17 @@ class Execution:
                         if launcher and not native_ready and launcher.settled() and state['state'] == 'running':
                             readiness.update(state='unknown', reasonCode='desktop_content_unconfirmed',
                                 reason='The process is confirmed; Desktop content remains unconfirmed. Inspect this original job without repeating the launch.')
-                        store.update(job['id'], process=process, readiness=readiness, phase=('desktop_content' if native_ready else ('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running'))), guestState={k: v for k, v in state.items() if k != 'outputBase64'})
+                        current = store.get(job['id'])
+                        observed = {'process': process, 'readiness': readiness, 'outputBytes': len(self.output_data),
+                            'phase': 'completing_checks' if self.completion else ('desktop_content' if native_ready else ('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running'))),
+                            'guestState': {k: v for k, v in state.items() if k != 'outputBase64'}}
+                        if state['state'] != 'completed':
+                            observed['check'] = evaluate(job['settings'], state, self.output_data, visual=current.get('visualAssessment'))
+                        store.observe(job['id'], **observed)
                         if job['settings'].get('serviceResponseContains') and state.get('serviceEndpointReady') and not service_checked and not self.stop_requested and store.get(job['id'])['state'] == 'running':
                             service_checked = True
                             state = await control.call('service_check')
                             continue
-                        current = store.get(job['id'])
-                        output = self.log.read_bytes() if self.log.exists() else b''
-                        if state['state'] != 'completed':
-                            store.update(job['id'], check=evaluate(job['settings'], state, output, visual=current.get('visualAssessment')))
                         if state['state'] == 'completed':
                             if not state['closeConfirmed']: raise UnconfirmedGuestEffect('The process completion was not fully reaped.')
                             files = await collect(store, store.get(job['id']), deployment, ssh, self.work)
@@ -299,10 +316,13 @@ class Execution:
                         if (self.stop_requested or store.get(job['id'])['state'] == 'stopping') and not stop_sent:
                             stop_sent = True; state = await control.call('stop')
                         else:
-                            if self.mailbox.queue.empty():
-                                await asyncio.sleep(.2); state = await control.call('poll')
+                            pending = await self.mailbox.next(poll_delay, self.wake)
+                            if pending is None:
+                                if self.stop_requested and not stop_sent:
+                                    stop_sent = True; state = await control.call('stop')
+                                else: state = await control.call('poll')
                             else:
-                                message, future = self.mailbox.queue.get_nowait()
+                                message, future = pending; poll_delay = .2
                                 try:
                                     state, result = await self.action(message, state, control, lease, process)
                                     if result.get('pendingCompletion'): self.completion_future = future

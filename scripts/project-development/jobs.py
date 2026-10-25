@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+import time
 import sys
 import uuid
 
@@ -35,6 +36,7 @@ class Jobs:
 
     def open(self, projects, r4os, project_id):
         self.projects, self.r4os, self.id = Path(projects), Path(r4os), identity(project_id)
+        self.observed_at = {}
         db = connect(self.projects)
         try:
             self.project = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (self.id,)).fetchone())
@@ -153,12 +155,27 @@ class Jobs:
             state = state or job['state']
             if state not in (*ACTIVE, *TERMINAL): raise ValueError('Invalid job state.')
             if job['state'] == 'stopping' and state in ('queued', 'starting', 'running'): state = 'stopping'
+            if state == job['state'] and all(k in job and job[k] == v for k, v in fields.items()):
+                self.db.commit(); return job
             job.update(fields); job['state'] = state; job['revision'] += 1
             if state in TERMINAL: job['completedAt'] = now()
             self.db.execute('UPDATE jobs SET state=?,busy=?,revision=?,payload=? WHERE id=?',
                 (state, int(state in ACTIVE), job['revision'], encode(job), job_id))
             self.db.commit(); return job
         except BaseException: self.db.rollback(); raise
+
+    def observe(self, job_id, **fields):
+        # Only replaceable observations use this path. Effect intents/receipts
+        # always use update/save and remain synchronous and immediate.
+        def semantic(value):
+            if isinstance(value, dict): return {k: semantic(v) for k, v in value.items() if k != 'checkedAt'}
+            if isinstance(value, list): return [semantic(v) for v in value]
+            return value
+        current = self.get(job_id); stamp = time.monotonic()
+        same = all(semantic(current.get(k)) == semantic(v) for k, v in fields.items())
+        if same and stamp - self.observed_at.get(job_id, 0) < 5: return current
+        result = self.update(job_id, **fields); self.observed_at[job_id] = stamp
+        return result
 
     def annotate(self, job_id, **fields):
         if set(fields) - {'check', 'visualAssessment'}: raise ValueError('Invalid job annotation.')
@@ -169,7 +186,7 @@ class Jobs:
             self.db.commit(); return job
         except BaseException: self.db.rollback(); raise
 
-    def page(self, job_id, offset=0):
+    def page(self, job_id, offset=0, metadata_only=False):
         job = self.get(job_id)
         # Presentation-only projection for historical records; never migrate a saved deployment.
         if not job.get('package') and job.get('deploymentId'):
@@ -183,9 +200,11 @@ class Jobs:
         if type(offset) != int or offset < 0 or offset > LIMITS['outputBytes']:
             raise DevelopmentFault('Invalid development output offset.', 400)
         path = self.root / 'Evidence' / job_id / 'output.log'
+        if type(metadata_only) is not bool: raise DevelopmentFault('Invalid metadata page mode.', 400)
         data = b''
-        if path.exists():
+        if path.exists() or path.is_symlink():
             if path.is_symlink() or path.resolve() != path: raise DevelopmentFault('Invalid development evidence.', 503)
+        if path.exists() and not metadata_only:
             with path.open('rb') as stream: stream.seek(offset); data = stream.read(LIMITS['pageBytes'])
             if len(data) == LIMITS['pageBytes']:
                 try: data.decode('utf-8')

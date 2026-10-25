@@ -5,7 +5,7 @@ import sqlite3
 from contracts import DevelopmentFault, identity, hash_value
 
 PERMISSIONS = {'build': 'build_project', 'deploy': 'deploy_project', 'execution': 'run_project',
-    'wait_deploy': 'deploy_project', 'wait_execution': 'run_project',
+    'wait_build': 'build_project', 'wait_deploy': 'deploy_project', 'wait_execution': 'run_project',
     'vm_start': 'start_project_vm', 'wait_vm_start': 'start_project_vm',
     'read_job': 'read_development_job', 'artifact': 'read_development_job', 'deployment': 'read_development_job',
     'evidence': 'capture_vm', 'evidence_history': 'capture_vm', 'capture': 'capture_vm', 'assess': 'capture_vm',

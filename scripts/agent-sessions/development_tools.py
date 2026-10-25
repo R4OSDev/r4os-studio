@@ -69,7 +69,7 @@ class DevelopmentTools:
                     if overrides: body['overrides'] = overrides
                 job = await self.request(operation, input=body)
                 if name == 'start_project_vm': return await self.wait_for_vm(job, call_id, value)
-                if name in ('deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
+                if name in ('build_project', 'deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
@@ -128,14 +128,14 @@ class DevelopmentTools:
         return result
 
     async def wait_for_job(self, name, job, call_id, arguments):
-        from contracts import ACTIVE, DevelopmentFault, UnconfirmedGuestEffect
+        from contracts import ACTIVE, DevelopmentFault, UnconfirmedGuestEffect, LIMITS
         from run_store import item
-        worker = self.worker; operation = 'wait_deploy' if name == 'deploy_project' else 'wait_execution'
+        worker = self.worker; operation = {'build_project': 'wait_build', 'deploy_project': 'wait_deploy', 'run_project': 'wait_execution'}[name]
         value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.' + name,
                  'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id']}}
         worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
-        timeout = 660 if name == 'deploy_project' else job['settings']['timeoutSeconds'] + 300
-        deadline = asyncio.get_running_loop().time() + timeout; page = None
+        timeout = LIMITS['buildTimeoutSeconds'] + 300 if name == 'build_project' else (660 if name == 'deploy_project' else job['settings']['timeoutSeconds'] + 300)
+        deadline = asyncio.get_running_loop().time() + timeout; page = None; legacy_build_wait = False
         while job['state'] in ACTIVE:
             if worker.stopping:
                 return {'success': False, 'error': 'interrupted', 'output': 'Development wait stopped. Inspect the saved job for process cleanup.',
@@ -143,8 +143,13 @@ class DevelopmentTools:
             if asyncio.get_running_loop().time() >= deadline:
                 raise UnconfirmedGuestEffect('The original development job did not return a receipt before the harness deadline. Nothing was submitted again.')
             try:
-                page = await self.request(operation, id=job['id']); job = page['job']
+                if legacy_build_wait:
+                    await asyncio.sleep(.5); page = {'job': self.original_build(job['id'])}
+                else: page = await self.request(operation, id=job['id'])
+                job = page['job']
             except DevelopmentFault as error:
+                if name == 'build_project' and error.code == 400 and str(error) == 'Unsupported development coordinator operation.':
+                    legacy_build_wait = True; continue
                 if error.code != 503 or getattr(error, 'uncertain', False): raise
                 # Reconnect to the same read-only job wait only. Never resubmit.
                 await asyncio.sleep(1); continue
@@ -152,6 +157,27 @@ class DevelopmentTools:
                 or (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed'):
                 break
         return self.result(job, page)
+
+    def original_build(self, job_id):
+        """Read only this admitted build while an older host retains workers."""
+        import sqlite3
+        from contracts import DevelopmentFault
+        from run_store import get_run
+        worker = self.worker; run = get_run(worker.store, worker.run_id)
+        if not run['busy'] or run['state'] != 'running' or not worker.config['permissions'].get('studio.build_project'):
+            raise DevelopmentFault('The original build wait is no longer authorized.', 403)
+        path = worker.store.workspace.parent / 'Development/Development.sqlite'
+        if path.resolve(strict=True) != path or not path.is_file():
+            raise DevelopmentFault('The original build storage is unavailable.', 503)
+        db = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
+        try: row = db.execute('SELECT substr(payload,1,2097153) FROM jobs WHERE id=?', (job_id,)).fetchone()
+        finally: db.close()
+        if not row or len(row[0].encode()) > 2097152: raise DevelopmentFault('The original build receipt is unavailable.', 503)
+        value = json.loads(row[0])
+        if (value.get('id') != job_id or value.get('kind') != 'build' or value.get('projectId') != worker.manifest['projectId']
+            or value.get('sessionId') != worker.session_id or value.get('agentRunId') != worker.run_id):
+            raise DevelopmentFault('The build wait does not match its original owner.', 403)
+        return value
 
     def result(self, job, page=None):
         from session_store import encode
