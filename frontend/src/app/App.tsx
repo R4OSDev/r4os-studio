@@ -55,7 +55,7 @@ export function App() {
   const [providerView, setProviderView] = useState<string | null>(null);
   const [connectionView, setConnectionView] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>({
-    group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : 0, view: 0,
+    group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: 0,
   });
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const groups = navigation;
@@ -69,6 +69,7 @@ export function App() {
   const item = componentItems[selectedComponent];
   const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
   const systemPromptPage = tab === 'System' && group.name === 'Settings' && item === 'System Prompt';
+  const skillPromptPage = tab === 'System' && group.name === 'Settings' && item === 'Skill Manager Prompt';
   const githubPage = tab === 'System' && group.name === 'Settings' && item === 'GitHub';
   const github = useConnections(githubPage);
   const activeConnection = github.connections.find((connection) => connection.id === connectionView);
@@ -84,7 +85,8 @@ export function App() {
     if (!settingsLeaveGuard.current()) return;
     const next = { ...selected, ...patch };
     if (next.group === 0 && next.item === 1) window.history.replaceState(null, '', '#system-prompt');
-    else if (window.location.hash === '#system-prompt') window.history.replaceState(null, '', window.location.pathname);
+    else if (next.group === 0 && next.item === 3) window.history.replaceState(null, '', '#skill-manager-prompt');
+    else if (['#system-prompt', '#skill-manager-prompt'].includes(window.location.hash)) window.history.replaceState(null, '', window.location.pathname);
     setSelected((previous) => ({ ...previous, ...patch }));
   }
 
@@ -184,7 +186,7 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage ? <SystemPromptPanel setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
+          {githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
         </main>
         </>}
       </div>

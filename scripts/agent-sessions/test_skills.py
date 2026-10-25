@@ -94,6 +94,9 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         with self.open() as store: self.assertEqual(get_run(store, queued['id'])['state'], 'unknown')
 
     async def test_native_thread_is_resumed_and_failed_resume_is_preserved(self):
+        from system_prompt import update as update_prompt, read as read_prompt
+        update_prompt(self.projects, {'revision': 0, 'text': 'Skill author prompt A'}, kind='skill')
+        project_prompt = read_prompt(self.projects)
         seen = []; fail_resume = False
         class Native:
             def __init__(self, args, notify, tool): self.notify = notify
@@ -107,14 +110,20 @@ class Skills(unittest.IsolatedAsyncioTestCase):
                     await self.notify('turn/completed', {'threadId': 'same-native-author-thread', 'turn': {'id': 'turn', 'status': 'completed'}})
                     return {'turn': {'id': 'turn'}}
                 return {}
-        for _ in range(2):
-            run = self.admit(); worker = Worker(self.manifest(run))
+        for index in range(2):
+            run = self.admit()
+            if index == 0: update_prompt(self.projects, {'revision': 1, 'text': 'Skill author prompt B'}, kind='skill')
+            worker = Worker(self.manifest(run))
             with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
             with self.open() as store: self.assertEqual(get_run(store, run['id'])['state'], 'completed')
         self.assertEqual(sum(method == 'thread/start' for method, _ in seen), 1)
         self.assertEqual(sum(method == 'thread/resume' for method, _ in seen), 1)
         self.assertEqual([p['threadId'] for method, p in seen if method == 'thread/resume'], ['same-native-author-thread'])
         self.assertTrue(all('Skill Manager instructions' in p['baseInstructions'] for method, p in seen if method.startswith('thread/')))
+        instructions = [p['baseInstructions'] for method, p in seen if method.startswith('thread/')]
+        self.assertTrue(instructions[0].endswith('Skill author prompt A'))
+        self.assertTrue(instructions[1].endswith('Skill author prompt B'))
+        self.assertEqual(read_prompt(self.projects), project_prompt)
         fail_resume = True; run = self.admit(); worker = Worker(self.manifest(run))
         with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
         with self.open() as store:

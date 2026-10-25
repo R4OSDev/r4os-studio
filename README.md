@@ -1,5 +1,16 @@
 # R4OS Studio · App
 
+## Skill Manager Prompt (0.4.6)
+
+System → Settings → **Skill Manager Prompt** edits the separate author instructions through the existing prompt editor, with Save changes, Cancel, Reset to default, dirty-navigation protection and conflict-preserving reload. The scope text identifies Skill Manager sessions. The existing System Prompt applies to project sessions, and its text/reset remain independent.
+
+A separate private `Projects/.studio/SkillManagerSettings.sqlite` setting (schema1,0600) stores the optional override and revision. The existing `Settings.sqlite` project prompt is preserved without migration. Both fixed prompt endpoints expose text/default/revision/isDefault/SHA-256, use existing Settings session/CSRF/host/origin checks, enforce nonempty UTF-8 up to32KiB without control characters, and retain identical-retry/conflict semantics. Corrupt storage fails while preserving its bytes and does not affect the other prompt. Custom text survives updates; an unset override follows the versioned shipped default. No additional dependency or host permission is required.
+
+Skill run admission freezes the effective author text, revision and SHA-256. The worker verifies the checksum and applies that snapshot through qualified native `baseInstructions` on thread/start and thread/resume. Accepted/running runs keep their original prompt; later runs use the current saved text in the same native thread, without rewriting history or starting inference on open. The existing project instruction flow is retained. The default describes trigger clarification, concise SKILL.md, optional resources/scripts, validation/publication boundaries and honest results; bound author tools follow in0.4.7.
+
+Validation: four targeted backend cases for both prompt settings and skill sessions, nine agent tests (one root-only namespace skip), frozen-prompt/current-thread RPC assertions, build/TypeScript/lint and isolated browser1440/320 for persistence, save/cancel/reset, leave guard, concurrent conflicts/reload and separate project prompt. Own browser data is removed afterwards; production prompts/accounts/projects/VMs/pins remain unchanged. Evidence outside the public repository: `Research/R4OS/Roadmap-Implementation/0.4.6/`.
+
+
 ## 0.4.5: Independent Skill Manager sessions
 
 Skill sessions use a typed `owner` (`project` or `skill`) and a separate Sessions.sqlite/native Codex history under the selected skill UUID. No placeholder project, app manifest, SDK, compiler profile or VM assignment is needed. The legacy private SQLite column name remains compatible; public skill DTOs contain `skillId` and no `projectId`. Existing project UUIDs, tool profiles v1–v4, native thread IDs and histories remain valid without migration.

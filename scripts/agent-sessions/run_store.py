@@ -59,7 +59,7 @@ def admit(store, session_id, data, provider_dir):
         if store.owner_type == 'skill':
             if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
             from skill_prompt import snapshot as skill_prompt_snapshot
-            snapshot['skillManagerPrompt'] = skill_prompt_snapshot()
+            snapshot['skillManagerPrompt'] = skill_prompt_snapshot(store.projects)
         else:
             snapshot['projectPins'] = store.project['pins']
             snapshot['systemPrompt'] = prompt_snapshot(store.projects)
