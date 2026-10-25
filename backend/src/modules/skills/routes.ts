@@ -3,12 +3,15 @@ import type { Skill, SkillDetail, SkillFileContent, SkillValidation } from '../.
 import { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { skillStore } from './store.js';
+import { agentSessionRoutes } from '../agent-sessions/routes.js';
+import { runRoutes } from '../agent-sessions/run-routes.js';
+import { dirname, join } from 'node:path';
 
 function body(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProjectError('Invalid skill request.', 400);
   return value as Record<string, unknown>;
 }
-export async function skillRoutes(app: FastifyInstance, { directory }: { directory: string }) {
+export async function skillRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions('skills');
   app.setErrorHandler((cause, _request, reply) => {
     const error = cause instanceof ProjectError ? cause : new ProjectError('The skill request could not be completed.', 400);
@@ -18,6 +21,8 @@ export async function skillRoutes(app: FastifyInstance, { directory }: { directo
     sessions.validate(request, reply);
     if (request.method !== 'GET') sessions.mutation(request, reply);
   });
+  agentSessionRoutes(app, join(dirname(directory), 'Projects'), sessions, providerDirectory, 'skill');
+  runRoutes(app, sessions, 'skill');
   app.get('/', async (request, reply) => {
     const session = sessions.session(request, reply, true);
     return { skills: await skillStore<Skill[]>(directory, { operation: 'list' }), csrfToken: session.token };

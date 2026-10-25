@@ -1,5 +1,18 @@
 # R4OS Studio · App
 
+## 0.4.5: Independent Skill Manager sessions
+
+Skill sessions use a typed `owner` (`project` or `skill`) and a separate Sessions.sqlite/native Codex history under the selected skill UUID. No placeholder project, app manifest, SDK, compiler profile or VM assignment is needed. The legacy private SQLite column name remains compatible; public skill DTOs contain `skillId` and no `projectId`. Existing project UUIDs, tool profiles v1–v4, native thread IDs and histories remain valid without migration.
+
+`/api/skills/:id/sessions` provides options, creation, list/detail, revision-protected settings, cursor history/SSE, explicit run submission and Stop, using the private Skills browser session/CSRF/host/origin checks. The original provider Codex home and cached model catalog are reused without credential copies. `studio-skill-tools-v1` exposes only the nine general file/terminal calls, with the selected workspace as its sole file root. Its separate frozen Skill Manager instructions do not inherit project/global app instructions. Prompt editing follows in 0.4.6; author validation/publication tools and the full session UI follow in 0.4.7–8.
+
+The shared coordinator admits at most one run per owner workspace and two agent runs in total across Projects and Tools. Worker manifests pin both the owner and immutable release. Skill authors hold the same OS workspace lock as manual editors; queued/busy runs also prevent manual writes/publication. Durable tool receipts, user Stop, unknown outcomes without replay, native thread resume and non-inference recovery are shared with projects. The author tool namespace mounts only the selected draft and private run caches; SDKs, other owners, session storage, credentials, VMs and network are unavailable. Native authentication remains in the original separate credential namespace.
+
+Explicit host maintenance is `python3 App/scripts/agent-sessions/install-skill-support.py` before publishing/installing the release, then the same command with `--adopt` after installation while agent runs are idle. It qualifies the additive update contract and dispatcher, adds Skills write paths only to the existing coordinator/worker units, and preserves bootstrap/configuration, running old workers and all VMs. Known prior host file hashes are required; downloaded privileged installers are never run. Existing rollback releases remain accepted and preserve skill data; older releases cannot start skill sessions.
+
+Validation: targeted backend API/ownership/security/history/SSE tests; shared admission, stop, recovery and native continuity tests; actual unprivileged author file/terminal namespace checks without SDK; project regression tests and update compatibility checks; build/TypeScript/lint. Stale preexisting project fixtures (tool count and current instruction/profile contract) were first reproduced on unchanged HEAD and then aligned. Release evidence, installed runtime verification and cleanup are recorded under `Research/R4OS/Roadmap-Implementation/0.4.5/` outside the public repository.
+
+
 ## Tools and manual skill editing (0.4.4)
 
 The header order is **System, Projects, Tools**. Tools has three equal navigation columns: TOOLS → Skill Manager; SKILLS → + New Skill and saved skills; selected-skill Views → fixed + Session and View Skill. + Session is disabled until the planned session UI is connected in0.4.8. Existing System → Updates → Tools remains a separate navigation item. Skill selection survives reload through #tools/skills/<uuid>.

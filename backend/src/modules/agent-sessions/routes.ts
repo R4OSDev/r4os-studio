@@ -16,9 +16,10 @@ const params = { type: 'object', additionalProperties: false, required: ['id', '
 const projectParams = { type: 'object', required: ['id'], properties: { id: identity } };
 type SessionParams = { id: string; sessionId: string };
 
-export function agentSessionRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, providers?: string) {
+export function agentSessionRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, providers?: string, ownerType: 'project' | 'skill' = 'project') {
   const route = '/:id/sessions';
-  app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {
+  const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
+  if (ownerType === 'project') app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {
     schema: { params: { ...params, required: ['id', 'sessionId', 'jobId', 'evidenceId'],
       properties: { ...params.properties, jobId: identity, evidenceId: identity } } },
   }, async (request, reply) => {
@@ -45,24 +46,24 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   });
   app.get<{ Params: { id: string } }>(route + '/options', { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);
-    const result = await sessionStore<SessionOptions>(directory, { operation: 'options', projectId: request.params.id }, providers);
-    result.development = await developmentHost<NonNullable<SessionOptions['development']>>({ operation: 'options', projectId: request.params.id }).catch(() => undefined);
+    const result = await sessionStore<SessionOptions>(directory, { operation: 'options', ...owner(request.params.id) }, providers);
+    if (ownerType === 'project') result.development = await developmentHost<NonNullable<SessionOptions['development']>>({ operation: 'options', ...owner(request.params.id) }).catch(() => undefined);
     return result;
   });
   app.get<{ Params: { id: string } }>(route, { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);
-    return { sessions: await sessionStore<AgentSession[]>(directory, { operation: 'list', projectId: request.params.id }, providers) };
+    return { sessions: await sessionStore<AgentSession[]>(directory, { operation: 'list', ...owner(request.params.id) }, providers) };
   });
   app.post<{ Params: { id: string }; Body: SessionCreate }>(route, { bodyLimit: 16 * 1024,
     schema: { params: projectParams, body: { type: 'object', additionalProperties: false, required: ['name', 'providerId', 'model', 'effort', 'requestId'], properties: { ...fields, requestId: identity } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const session = await sessionStore<AgentSession>(directory, { operation: 'create', projectId: request.params.id, input: request.body }, providers);
+    const session = await sessionStore<AgentSession>(directory, { operation: 'create', ...owner(request.params.id), input: request.body }, providers);
     return reply.code(201).send({ session });
   });
   app.get<{ Params: SessionParams }>(route + '/:sessionId', { schema: { params } }, async (request, reply) => {
     security.session(request, reply);
-    return { session: await sessionStore<AgentSession>(directory, { operation: 'get', projectId: request.params.id, sessionId: request.params.sessionId }, providers) };
+    return { session: await sessionStore<AgentSession>(directory, { operation: 'get', ...owner(request.params.id), sessionId: request.params.sessionId }, providers) };
   });
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
@@ -71,7 +72,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    return { session: await sessionStore<AgentSession>(directory, { operation: 'update', projectId: request.params.id, sessionId: request.params.sessionId, input: request.body }, providers) };
+    return { session: await sessionStore<AgentSession>(directory, { operation: 'update', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body }, providers) };
   });
   app.get<{ Params: SessionParams; Querystring: { before?: number; limit?: number } }>(route + '/:sessionId/history', {
     schema: { params, querystring: { type: 'object', additionalProperties: false, properties: {
@@ -79,6 +80,6 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     } } },
   }, async (request, reply) => {
     security.session(request, reply);
-    return sessionStore<SessionHistory>(directory, { operation: 'history', projectId: request.params.id, sessionId: request.params.sessionId, ...request.query }, providers);
+    return sessionStore<SessionHistory>(directory, { operation: 'history', ...owner(request.params.id), sessionId: request.params.sessionId, ...request.query }, providers);
   });
 }

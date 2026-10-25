@@ -182,6 +182,13 @@ def locked(root, ident):
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode): raise SkillFault('Invalid skill lock.', 503)
         try: fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: raise SkillFault('This skill is being edited. Retry after the active operation.', 409) from None
+        sessions = root / ident / 'Sessions/Sessions.sqlite'
+        if sessions.exists() or sessions.is_symlink():
+            if sessions.resolve(strict=True) != sessions or not stat.S_ISREG(sessions.stat().st_mode):
+                raise SkillFault('Skill session storage is unavailable. Existing data was preserved.', 503)
+            with closing(sqlite3.connect(sessions.as_uri() + '?mode=ro', uri=True)) as db:
+                if db.execute('SELECT 1 FROM runs WHERE busy=1 LIMIT 1').fetchone():
+                    raise SkillFault('Stop or finish the active Skill Manager run before editing this draft.', 409)
         yield
 
 

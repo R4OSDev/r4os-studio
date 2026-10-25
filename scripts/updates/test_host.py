@@ -17,6 +17,8 @@ class HostTests(unittest.TestCase):
         self.assertFalse(host.compatible({**legacy, **host.AGENT_COMPATIBILITY, 'agentDataSchema': 2}))
         self.assertFalse(host.compatible({**legacy, 'unknownProtocol': 1}))
         self.assertTrue(host.compatible(host.DEVELOPMENT_COMPATIBILITY))
+        self.assertTrue(host.compatible(host.SKILL_COMPATIBILITY))
+        self.assertFalse(host.compatible({**host.SKILL_COMPATIBILITY, 'agentDataSchema': 2}))
         self.assertFalse(host.compatible({**host.DEVELOPMENT_COMPATIBILITY, 'developmentDataSchema': 2}))
         self.assertFalse(host.compatible({**host.DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['unqualified']}))
 

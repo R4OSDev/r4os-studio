@@ -14,7 +14,8 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, TOOLS, tools_for
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, SKILL_PROFILE, TOOLS, tools_for
+from owner import owner_type, binding, skill_workspace
 
 TOOL_IDS = tuple('studio.' + name for name in TOOLS)
 TERMINAL_STATES = ('completed', 'failed', 'interrupted')
@@ -70,17 +71,17 @@ def provider_models(directory, provider_id):
     return result
 
 
-def options(provider_dir, r4os):
+def options(provider_dir, r4os, selected_profile=PROFILE):
     values = []
     for v in providers(provider_dir):
         values.append({'id': v['id'], 'name': v['name'], 'models': provider_models(provider_dir, v['id'])})
-    return {'providers': values, 'tools': [{'id': v, 'defaultEnabled': True} for v in TOOL_IDS],
-            'engine': engine(r4os)}
+    return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': True} for v in tools_for(selected_profile)],
+            'engine': engine(r4os, selected_profile)}
 
 
-def engine(r4os):
+def engine(r4os, selected_profile=PROFILE):
     from profile import regular, digest
-    value = {'profile': PROFILE, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': False}
+    value = {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': False}
     try:
         selected = json.loads((Path(r4os) / 'Profiles/versions.json').read_text())['defaults']['codex']
         binary = Path(r4os) / 'Toolchains/Codex' / CODEX_VERSION / 'codex'
@@ -108,18 +109,25 @@ def validate_settings(data, provider_dir):
 
 
 class SessionStore:
-    def __init__(self, projects, r4os, project_id):
+    def __init__(self, projects, r4os, project_id, kind='project'):
         from project_use import acquire
-        self.project_use = acquire(projects, project_id)
+        self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
+        self.selected_profile = SKILL_PROFILE if kind == 'skill' else PROFILE
+        self.project_use = acquire(projects, project_id) if kind == 'project' else None
         try: self.open(projects, r4os, project_id)
         except BaseException:
-            self.project_use.close(); raise
+            if self.project_use: self.project_use.close()
+            raise
 
     def open(self, projects, r4os, project_id):
         self.projects, self.r4os, self.project_id = Path(projects), Path(r4os), identity(project_id)
-        with closing(project_connect(self.projects)) as db:
-            self.project = project_operation(db, {'operation': 'get', 'id': project_id}, self.r4os)
-        self.workspace = workspace(self.projects, project_id, require_current=True)
+        if self.owner_type == 'project':
+            with closing(project_connect(self.projects)) as db:
+                self.project = project_operation(db, {'operation': 'get', 'id': project_id}, self.r4os)
+            self.workspace = workspace(self.projects, project_id, require_current=True)
+        else:
+            self.project = None
+            self.workspace = skill_workspace(self.projects, project_id)
         self.directory = self.workspace.parent / 'Sessions'
         self.directory.mkdir(mode=0o700, exist_ok=True); folder(self.directory)
         path = self.directory / 'Sessions.sqlite'
@@ -162,7 +170,8 @@ PRAGMA user_version=1;
         self.db.commit()
 
     def close(self):
-        self.db.close(); self.project_use.close()
+        self.db.close()
+        if self.project_use: self.project_use.close()
 
     def row(self, session_id):
         row = self.db.execute('SELECT * FROM sessions WHERE id=? AND project_id=?',
@@ -174,13 +183,17 @@ PRAGMA user_version=1;
         settings = json.loads(row['settings'])
         settings.setdefault('fastMode', False)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
-        return {'id': row['id'], 'projectId': row['project_id'], 'name': row['name'], **settings,
-                'engine': json.loads(row['engine']), 'revision': row['revision'],
+        engine = json.loads(row['engine'])
+        if self.owner_type == 'skill' and engine.get('profile') != SKILL_PROFILE:
+            raise ProjectFault('This skill session has an incompatible tool profile. Its history was preserved.', 409)
+        return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},
+                ('skillId' if self.owner_type == 'skill' else 'projectId'): row['project_id'], 'name': row['name'], **settings,
+                'engine': engine, 'revision': row['revision'],
                 'createdAt': row['created_at'], 'updatedAt': row['updated_at'],
                 'latestRun': self.run_present(latest) if latest else None}
 
     def list(self):
-        return [self.present(r) for r in self.db.execute('SELECT * FROM sessions ORDER BY updated_at DESC,id')]
+        return [self.present(r) for r in self.db.execute('SELECT * FROM sessions WHERE project_id=? ORDER BY updated_at DESC,id', (self.owner_id,))]
 
     def get(self, session_id): return self.present(self.row(session_id))
 
@@ -196,13 +209,13 @@ PRAGMA user_version=1;
                     raise ProjectFault('This request ID belongs to another session submission.')
                 return self.get(old['session_id'])
             if self.db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0] >= 200:
-                raise ProjectFault('The project session limit has been reached.')
+                raise ProjectFault('The session limit for this workspace has been reached.')
             settings = {k: data[k] for k in ('providerId', 'model', 'effort')}
             settings['fastMode'] = data.get('fastMode', False)
-            settings['permissions'] = {v: True for v in TOOL_IDS}
-            validate_settings({**settings, 'name': data['name']}, provider_dir)
+            settings['permissions'] = {'studio.' + v: True for v in tools_for(self.selected_profile)}
+            validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
-            selected_engine = engine(self.r4os)
+            selected_engine = engine(self.r4os, self.selected_profile)
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))
@@ -254,19 +267,20 @@ PRAGMA user_version=1;
         self.db.commit()
         return {'items': [json.loads(r['payload']) for r in reversed(rows)], 'before': cursor, 'cursor': event_cursor}
 
-    @staticmethod
-    def run_present(r):
+    def run_present(self, r):
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
+                'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}
 
 
 def operation(projects, r4os, provider_dir, request):
+    kind, ident = binding(request)
     if request.get('operation') == 'options':
         # Validate project identity/layout, even for a read-only options request.
-        store = SessionStore(projects, r4os, request['projectId'])
-        try: return options(provider_dir, r4os)
+        store = SessionStore(projects, r4os, ident, kind)
+        try: return options(provider_dir, r4os, store.selected_profile)
         finally: store.close()
-    store = SessionStore(projects, r4os, request['projectId'])
+    store = SessionStore(projects, r4os, ident, kind)
     try:
         op = request['operation']
         if op == 'list': return store.list()

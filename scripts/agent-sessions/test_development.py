@@ -7,7 +7,7 @@ from development_tools import DevelopmentTools
 
 class ProfileTest(unittest.TestCase):
     def test_native_profiles_remain_distinct_and_strict(self):
-        self.assertEqual(len(specifications(LEGACY_PROFILE)),9);self.assertEqual(len(specifications(PROFILE)),16)
+        self.assertEqual(len(specifications(LEGACY_PROFILE)),9);self.assertEqual(len(specifications(PROFILE)),18)
         self.assertEqual(specifications(PROFILE)[:9],specifications(LEGACY_PROFILE))
         with self.assertRaises(ValueError):tools_for('unknown')
         validate_arguments('run_project',{'deploymentId':str(uuid.uuid4()),'criteria':{'outputFiles':[{'name':'RESULT.TXT','contains':'OK','sha256':None}]}})

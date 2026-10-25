@@ -6,6 +6,13 @@ from project_agents import NAME, validate
 
 
 def compose(config):
+    if config.get('owner', {}).get('type') == 'skill':
+        source = config.get('skillManagerPrompt', {})
+        text = validate_text(source.get('text'))
+        if hashlib.sha256(text.encode()).hexdigest() != source.get('sha256'):
+            raise ProjectFault('The saved Skill Manager prompt checksum changed.', 409)
+        return ('These are the current R4OS Studio Skill Manager instructions. They replace earlier '
+                'Studio author instructions in this conversation.\n\n' + text)
     global_text = validate_text(config['systemPrompt']['text'])
     project = config.get('projectInstructions')
     if 'projectInstructions' not in config:

@@ -11,6 +11,7 @@ LEGACY_PROFILE = 'studio-tools-v1'
 DEVELOPMENT_PROFILE = 'studio-tools-v2'
 VM_PROFILE = 'studio-tools-v3'
 PROFILE = 'studio-tools-v4'
+SKILL_PROFILE = 'studio-skill-tools-v1'
 SANDBOX_MODE = 'workspace-write'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
          'search', 'write_file', 'apply_patch', 'create_directory')
@@ -21,6 +22,7 @@ DEVELOPMENT_TOOLS = VM_TOOLS + ('complete_development_job',)
 TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS
 
 def tools_for(profile):
+    if profile == SKILL_PROFILE: return LEGACY_TOOLS
     if profile == LEGACY_PROFILE: return LEGACY_TOOLS
     if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS

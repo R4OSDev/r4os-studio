@@ -19,17 +19,25 @@ from tool_catalog import specifications, validate_arguments
 from sandbox import Sandbox
 from terminal import Terminals, bounded_text
 from system_prompt import snapshot as prompt_snapshot
+from owner import binding, open_lock
 
 
 class Worker:
     def __init__(self, manifest):
         self.manifest = manifest
-        self.store = SessionStore(manifest['projects'], manifest['r4os'], manifest['projectId'])
+        kind, ident = binding(manifest)
+        self.store = SessionStore(manifest['projects'], manifest['r4os'], ident, kind)
         self.run_id = manifest['runId']; self.row = get_run(self.store, self.run_id)
         self.session_id = self.row['session_id']; self.config = json.loads(self.row['config'])
+        self.store.row(self.session_id)
+        if manifest.get('sessionId', self.session_id) != self.session_id:
+            raise ValueError('This run belongs to another session.')
+        expected_owner = {'type': kind, 'id': ident}
+        if ('owner' in self.config and self.config['owner'] != expected_owner) or (kind == 'skill' and self.config.get('owner') != expected_owner):
+            raise ValueError('The run owner binding changed.')
         # A previous coordinator may admit a new-release worker while older
         # workers finish. Freeze its prompt once, before starting any inference.
-        if self.row['busy'] and 'systemPrompt' not in self.config:
+        if kind == 'project' and self.row['busy'] and 'systemPrompt' not in self.config:
             self.config['systemPrompt'] = prompt_snapshot(self.store.projects)
             with self.store.db:
                 self.store.db.execute('UPDATE runs SET config=? WHERE id=?', (encode(self.config), self.run_id))
@@ -110,7 +118,7 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
-        if name in DEVELOPMENT_TOOLS: return await self.development.call(name, arguments, call_id)
+        if name in DEVELOPMENT_TOOLS and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
@@ -134,7 +142,7 @@ class Worker:
         call_id = params['callId']; arguments = params['arguments']
         if not isinstance(arguments, dict) or len(encode(arguments).encode()) > 131072:
             return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
-        try: validate_arguments(name[7:], arguments)
+        try: validate_arguments(name[7:], arguments, self.config['engine'].get('profile', PROFILE))
         except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
@@ -167,7 +175,7 @@ class Worker:
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
                 uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job')
-                result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The project tool could not confirm its result.',
+                result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
         # Replayed results have only the image reference and revalidate its file.
@@ -210,9 +218,9 @@ class Worker:
         for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
         try:
             if self.row['state'] == 'stopping': self.outcome = 'interrupted'; return
-            self.lease = (self.store.projects / '.studio' / ('workspace-' + self.manifest['projectId'] + '.lock')).open('a')
+            self.lease = open_lock(self.store.projects, self.store.owner_type, self.store.owner_id)
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            await self.build_snapshots.start()
+            if self.store.owner_type == 'project': await self.build_snapshots.start()
             transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())})
             state = self.store.directory / self.session_id / 'Codex'
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
@@ -296,9 +304,12 @@ def reconcile_items(store, run_id, outcome='unknown'):
 
 
 def finalize(manifest):
-    store = SessionStore(manifest['projects'], manifest['r4os'], manifest['projectId'])
+    kind, ident = binding(manifest)
+    store = SessionStore(manifest['projects'], manifest['r4os'], ident, kind)
     try:
         row = get_run(store, manifest['runId'])
+        store.row(row['session_id'])
+        if manifest.get('sessionId', row['session_id']) != row['session_id']: raise ValueError('Run session changed.')
         if row['busy']:
             stopped = row['state'] == 'stopping'
             state = 'interrupted' if stopped else ('failed' if row['state'] == 'queued' else 'unknown')

@@ -9,8 +9,9 @@ const params = { type: 'object', additionalProperties: false, required: ['id', '
 type Params = { id: string; sessionId: string };
 type EventResponse = { events: AgentEvent[]; session: AgentSession };
 
-export function runRoutes(app: FastifyInstance, security: ProjectSessions) {
+export function runRoutes(app: FastifyInstance, security: ProjectSessions, ownerType: 'project' | 'skill' = 'project') {
   const base = '/:id/sessions/:sessionId';
+  const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
   const streams = new Set<() => void>();
   app.addHook('preClose', async () => { for (const close of streams) close(); });
   app.get('/agent-capabilities', async (request, reply) => {
@@ -24,17 +25,17 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions) {
         revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, text: { type: 'string', minLength: 1, maxLength: 65536 } } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ projectInstructions?: number; vmStartTools?: number }>({ operation: 'capabilities' });
-    if (support.projectInstructions !== 1 || support.vmStartTools !== 1) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
-    const run = await agentHost<AgentRun>({ operation: 'start_run', projectId: request.params.id, sessionId: request.params.sessionId,
-      input: { ...request.body, projectInstructions: 1 } });
+    const support = await agentHost<{ projectInstructions?: number; vmStartTools?: number; skillSessions?: number }>({ operation: 'capabilities' });
+    if (ownerType === 'skill' ? support.skillSessions !== 1 : (support.projectInstructions !== 1 || support.vmStartTools !== 1)) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
+    const run = await agentHost<AgentRun>({ operation: 'start_run', ...owner(request.params.id), sessionId: request.params.sessionId,
+      input: { ...request.body, ...(ownerType === 'project' ? { projectInstructions: 1 } : {}) } });
     return reply.code(202).send({ run });
   });
   app.post<{ Params: Params & { runId: string } }>(base + '/runs/:runId/stop', {
     schema: { params: { ...params, required: ['id', 'sessionId', 'runId'], properties: { ...params.properties, runId: identity } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    return { run: await agentHost<AgentRun>({ operation: 'stop_run', projectId: request.params.id, sessionId: request.params.sessionId, runId: request.params.runId }) };
+    return { run: await agentHost<AgentRun>({ operation: 'stop_run', ...owner(request.params.id), sessionId: request.params.sessionId, runId: request.params.runId }) };
   });
   app.get<{ Params: Params; Querystring: { after?: number } }>(base + '/events', {
     schema: { params, querystring: { type: 'object', additionalProperties: false, properties: { after: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER } } } },
@@ -44,7 +45,7 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions) {
     let after = request.query.after ?? 0;
     const last = request.headers['last-event-id'];
     if (typeof last === 'string' && /^\d{1,16}$/.test(last) && Number.isSafeInteger(Number(last))) after = Math.max(after, Number(last));
-    const payload = { operation: 'events', projectId: request.params.id, sessionId: request.params.sessionId };
+    const payload = { operation: 'events', ...owner(request.params.id), sessionId: request.params.sessionId };
     // Validate session/project ownership before committing an HTTP stream.
     const initial = await agentHost<EventResponse>({ ...payload, after });
     reply.hijack();

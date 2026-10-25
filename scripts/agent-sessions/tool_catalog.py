@@ -1,5 +1,6 @@
 """Stable Studio dynamic tool declarations; authorization is checked for every call."""
-from profile import TOOLS, PROFILE, tools_for
+from profile import TOOLS, PROFILE, SKILL_PROFILE, tools_for
+from copy import deepcopy
 
 
 def obj(properties, required=()):
@@ -62,10 +63,18 @@ def specifications(profile=PROFILE):
     # The protocol persists dynamic declarations on first thread creation. Keep
     # the known set stable on resume; disabled/unavailable calls fail in the host
     # dispatcher BEFORE execution, even if the model retains their declarations.
-    return [{'name': 'studio_' + name, 'description': DEFS[name][0], 'inputSchema': DEFS[name][1]} for name in tools_for(profile)]
+    result = []
+    for name in tools_for(profile):
+        description, schema = DEFS[name][0], deepcopy(DEFS[name][1])
+        if profile == SKILL_PROFILE:
+            description = description.replace('project', 'selected skill')
+            if 'root' in schema['properties']:
+                schema['properties']['root'] = {'type': 'string', 'enum': ['workspace'], 'description': 'Only the selected skill draft is available.'}
+        result.append({'name': 'studio_' + name, 'description': description, 'inputSchema': schema})
+    return result
 
 
-def validate_arguments(name, value):
+def validate_arguments(name, value, profile=PROFILE):
     def validate(rule, v):
         types = rule['type'] if isinstance(rule['type'], list) else [rule['type']]
         actual = 'null' if v is None else ('boolean' if type(v) is bool else ('integer' if type(v) is int else ('string' if isinstance(v, str) else ('object' if isinstance(v, dict) else ('array' if isinstance(v, list) else 'invalid')))))
@@ -83,4 +92,6 @@ def validate_arguments(name, value):
                 spec = rule.get('properties', {}).get(key, rule.get('additionalProperties', False))
                 if not isinstance(spec, dict): raise ValueError('Unknown tool argument.')
                 validate(spec, entry)
-    validate(DEFS[name][1], value)
+    definition = next((v for v in specifications(profile) if v['name'] == 'studio_' + name), None)
+    if definition is None: raise ValueError('Unknown tool for this session profile.')
+    validate(definition['inputSchema'], value)

@@ -45,7 +45,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(githubRoutes, { prefix: '/api/github', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
     ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub'), tester: githubTester });
   app.register(skillRoutes, { prefix: '/api/skills', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
-    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'Skills') });
+    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'Skills'), providerDirectory: providers.directory });
 
   if (serveFrontend) {
     app.register(fastifyStatic, {

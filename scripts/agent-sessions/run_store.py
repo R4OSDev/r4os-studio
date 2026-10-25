@@ -52,12 +52,18 @@ def admit(store, session_id, data, provider_dir):
         session = store.get(session_id)
         if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.')
         if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone():
-            raise ProjectFault('Another run is using this project workspace.')
+            raise ProjectFault('Another run is using this workspace.')
         validate_settings(session, provider_dir)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
-        snapshot['projectPins'] = store.project['pins']
-        snapshot['systemPrompt'] = prompt_snapshot(store.projects)
-        snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+        snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
+        if store.owner_type == 'skill':
+            if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
+            from skill_prompt import snapshot as skill_prompt_snapshot
+            snapshot['skillManagerPrompt'] = skill_prompt_snapshot()
+        else:
+            snapshot['projectPins'] = store.project['pins']
+            snapshot['systemPrompt'] = prompt_snapshot(store.projects)
+            snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
         ident = str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))

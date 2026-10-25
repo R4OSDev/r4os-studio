@@ -15,9 +15,12 @@ class Sandbox:
     async def prepare(self):
         async with self.initializing:
             if self.context is not None: return
-            from sdk import profile
-            context = await asyncio.to_thread(profile, Path(self.worker.manifest['r4os']),
-                              self.worker.store.projects, self.worker.config['projectPins'])
+            if self.worker.store.owner_type == 'skill':
+                context = {'paths': {}}
+            else:
+                from sdk import profile
+                context = await asyncio.to_thread(profile, Path(self.worker.manifest['r4os']),
+                                  self.worker.store.projects, self.worker.config['projectPins'])
             binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / self.worker.config['engine']['version'] / 'codex'
             if digest(regular(binary)) != CODEX_SHA256: raise ValueError('Unqualified patch engine.')
             self.binary = binary
@@ -25,9 +28,10 @@ class Sandbox:
             # never exposes the session DB or the credential-bearing namespace.
             self.cache = directory(self.worker.store.directory / self.worker.session_id / 'Tools' / self.worker.run_id)
             for name in ('home', 'zig', 'cargo'): directory(self.cache / name)
-            package_link = self.cache / 'zig/p'
-            if not package_link.exists() and not package_link.is_symlink(): package_link.symlink_to('/packages')
-            if os.readlink(package_link) != '/packages': raise ValueError('Invalid tool package cache.')
+            if self.worker.store.owner_type == 'project':
+                package_link = self.cache / 'zig/p'
+                if not package_link.exists() and not package_link.is_symlink(): package_link.symlink_to('/packages')
+                if os.readlink(package_link) != '/packages': raise ValueError('Invalid tool package cache.')
             exports = context.get('sdkTools') or context.get('rust')
             if exports:
                 # Official build scripts chmod their catalog; shared tools stay
@@ -43,7 +47,9 @@ class Sandbox:
         args += ['--symlink', '/usr/bin', '/bin', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
                  '--dir', '/home', '--dir', '/home/studio', '--dir', '/etc',
                  '--bind', str(self.worker.store.workspace), '/workspace',
-                 '--bind', str(self.cache), '/cache', '--ro-bind', str(self.context['cache'] / 'global/p'), '/packages']
+                 '--bind', str(self.cache), '/cache']
+        if self.worker.store.owner_type == 'project':
+            args += ['--ro-bind', str(self.context['cache'] / 'global/p'), '/packages']
         # PowerShell/.NET resolve the current Unix identity during startup.
         # These public OS records are read-only; shadow, auth and host homes
         # remain absent from the namespace.
@@ -72,6 +78,8 @@ class Sandbox:
 
     async def file(self, name, arguments):
         import json
+        if self.worker.store.owner_type == 'skill' and arguments.get('root', 'workspace') != 'workspace':
+            return {'success': False, 'error': 'unavailable', 'output': 'Only the selected skill workspace is available.'}
         await self.prepare()
         # All calls share this lock, including reads, so a read/hash pair observes
         # the preceding Studio write. External administrator edits remain external.

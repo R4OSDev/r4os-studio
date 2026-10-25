@@ -4,10 +4,11 @@ export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio
   | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
   | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
 export type ToolPermissions = Record<AgentToolId, boolean>;
+export type SessionOwner = { type: 'project'; id: string } | { type: 'skill'; id: string };
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
-export interface AgentRun { id: string; sessionId: string; state: RunState; error: string | null; createdAt: string; completedAt: string | null }
+export interface AgentRun { id: string; sessionId: string; owner?: SessionOwner; state: RunState; error: string | null; createdAt: string; completedAt: string | null }
 export interface AgentSession {
-  id: string; projectId: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
+  id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
 }

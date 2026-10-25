@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import uuid
 import test_runs
 from host import Host, UNIT
-from profile import write_json
+from profile import write_json, PROFILE
 from run_store import admit, get_run, transition, item
 from session_store import encode
 from store import ProjectFault
@@ -74,7 +74,7 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         for mode in ('completed-without-started', 'started-then-completed', 'unconfirmed'):
             rid = self.admit(); calls = []
             worker = Worker({**self.config, 'projectId': f.pid, 'runId': rid, 'release': 'fixture', 'version': '0.3.17'})
-            worker.config['engine'] = {'version': '0.163.0'}
+            worker.config['engine'] = {'version': '0.163.0', 'profile': PROFILE}
             class Native:
                 def __init__(self, args, notify, tool): self.notify = notify
                 async def start(self): pass
@@ -133,10 +133,10 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
                 return {}
         async def run(ident):
             worker = Worker({**self.config, 'projectId': f.pid, 'runId': ident, 'release': 'fixture', 'version': '0.3.26'})
-            worker.config['engine'] = {'version': '0.163.0'}
+            worker.config['engine'] = {'version': '0.163.0', 'profile': PROFILE}
             with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
         await run(rid)
-        self.assertTrue(seen[0][1]['baseInstructions'].endswith('Global prompt A'))
+        self.assertTrue(seen[0][1]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\nGlobal prompt A\n') >= 0)
         self.assertEqual(seen[0][0], 'thread/start')
         self.assertEqual(seen[0][1]['sandbox'], 'workspace-write')
         self.assertEqual(seen[0][1]['approvalPolicy'], 'never')
@@ -150,10 +150,10 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resumes[0]['threadId'], 'same-native-thread')
         self.assertEqual(resumes[0]['sandbox'], 'workspace-write')
         self.assertEqual(resumes[0]['approvalPolicy'], 'never')
-        self.assertTrue(resumes[0]['baseInstructions'].endswith('Global prompt B'))
+        self.assertTrue(resumes[0]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\nGlobal prompt B\n') >= 0)
         update(f.projects, {'revision': 2}, reset=True)
         await run(self.admit())
-        self.assertTrue([p for m, p in seen if m == 'thread/resume'][-1]['baseInstructions'].endswith(default_text()))
+        self.assertTrue([p for m, p in seen if m == 'thread/resume'][-1]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\n' + default_text() + '\n') >= 0)
         with f.open() as store:
             self.assertEqual(store.row(f.sid)['thread_id'], 'same-native-thread')
             self.assertEqual(len([i for i in store.history(f.sid)['items'] if i['type'] == 'user']), 3)

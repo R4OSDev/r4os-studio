@@ -15,6 +15,7 @@ from session_store import SessionStore, identity, encode
 from run_store import admit, get_run, transition, events
 from protocol import release_protocol, supported_profiles, validate_release
 from store import ProjectFault
+from owner import binding, owners, skills_root
 
 UNIT = 'r4os-studio-agent@{}.service'
 
@@ -33,7 +34,7 @@ class Host:
         self.root = directory(Path(config['projects']) / '.studio/agents')
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set()
 
-    def store(self, project_id): return SessionStore(self.config['projects'], self.config['r4os'], project_id)
+    def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
     async def active_unit(self, run_id):
         state = await systemctl('show', UNIT.format(identity(run_id)), '--property=ActiveState', '--value')
@@ -42,7 +43,8 @@ class Host:
     def metadata(self, path):
         if path.resolve(strict=True) != path.absolute(): raise ValueError('Invalid worker record.')
         value = json.loads(path.read_text())
-        for key in ('runId', 'projectId', 'sessionId', 'providerId'): identity(value[key])
+        binding(value)
+        for key in ('runId', 'sessionId', 'providerId'): identity(value[key])
         if path.parent.name != value['runId'] or value['schema'] != 1: raise ValueError('Invalid worker record.')
         for key in ('projects', 'r4os', 'providers'):
             if value[key] != self.config[key]: raise ValueError('Invalid worker storage binding.')
@@ -60,16 +62,18 @@ class Host:
         from contextlib import closing
         with closing(connect(Path(self.config['projects']))) as db:
             projects = [r['id'] for r in db.execute("SELECT id FROM projects WHERE state='ready'")]
-        for project_id in projects:
+        registered = [('project', ident) for ident in projects] + owners(self.config['projects'])
+        for kind, project_id in registered:
             # Inspect registered session databases only; no discovery/creation in
             # foreign project folders or pre-session legacy workspaces.
-            if not (Path(self.config['projects']) / project_id / 'Sessions/Sessions.sqlite').is_file(): continue
-            try: store = self.store(project_id)
+            root = skills_root(self.config['projects']) if kind == 'skill' else Path(self.config['projects'])
+            if not (root / project_id / 'Sessions/Sessions.sqlite').is_file(): continue
+            try: store = self.store(project_id, kind)
             except Exception: continue
             try:
                 for row in store.db.execute('SELECT * FROM runs WHERE busy=1').fetchall():
                     value = manifests.get(row['id'])
-                    if value and value['projectId'] == project_id and value['sessionId'] == row['session_id'] and await self.active_unit(row['id']):
+                    if value and binding(value) == (kind, project_id) and value['sessionId'] == row['session_id'] and await self.active_unit(row['id']):
                         self.active[row['id']] = value
                     else:
                         transition(store, row['id'], 'unknown', 'The run ended without a confirmed result; tool effects were not repeated.')
@@ -97,7 +101,8 @@ class Host:
     async def refresh(self):
         for run_id, meta in list(self.active.items()):
             if await self.active_unit(run_id): continue
-            try: store = self.store(meta['projectId'])
+            kind, ident = binding(meta)
+            try: store = self.store(ident, kind)
             except ProjectFault as error:
                 if error.code != 404: raise
                 self.active.pop(run_id, None); continue
@@ -113,7 +118,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -121,21 +126,22 @@ class Host:
                 if self.unbound: raise ProjectFault('Reconcile unbound agent workers before disconnecting a provider.', 503)
                 for run_id, meta in list(self.active.items()):
                     if meta['providerId'] == provider_id:
-                        await self.stop(meta['projectId'], meta['sessionId'], run_id)
+                        kind, ident = binding(meta)
+                        await self.stop(ident, meta['sessionId'], run_id, kind)
             return {'stopped': True}
-        project_id = identity(request['projectId'])
+        kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
         if op == 'events':
-            store = self.store(project_id)
+            store = self.store(project_id, kind)
             try: return events(store, session_id, request.get('after', 0))
             finally: store.close()
         if op == 'stop_run':
-            async with self.lock: return await self.stop(project_id, session_id, identity(request['runId']))
+            async with self.lock: return await self.stop(project_id, session_id, identity(request['runId']), kind)
         if op == 'start_run':
             async with self.lock:
                 await self.refresh()
                 if self.unbound: raise ProjectFault('An agent worker has no confirmed binding. Restore host support before starting another run.', 503)
-                store = self.store(project_id)
+                store = self.store(project_id, kind)
                 try:
                     # Duplicate requests are admitted idempotently even at capacity.
                     previous = store.db.execute('SELECT id FROM runs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
@@ -151,10 +157,11 @@ class Host:
                             raise ProjectFault('This worker release cannot apply project instructions.', 503)
                         if store.get(session_id)['engine']['profile'] not in supported_profiles(release): raise ProjectFault('This conversation needs a newer Studio release; its native thread was preserved.', 409)
                         info = json.loads((release / 'release.json').read_text())
-                        meta = {'schema': 1, 'runId': run['id'], 'projectId': project_id, 'sessionId': session_id,
+                        meta = {'schema': 1, 'runId': run['id'], 'ownerType': kind, 'ownerId': project_id, 'sessionId': session_id,
                                 'providerId': store.get(session_id)['providerId'], 'projects': self.config['projects'],
                                 'r4os': self.config['r4os'], 'providers': self.config['providers'],
                                 'releaseRoot': str(release), 'release': info['id'], 'version': info['version']}
+                        if kind == 'project': meta['projectId'] = project_id
                         parent = directory(self.root / run['id']); write_json(parent / 'worker.json', meta)
                         self.active[run['id']] = meta
                         await systemctl('start', '--no-block', UNIT.format(run['id']))
@@ -171,9 +178,10 @@ class Host:
                 finally: store.close()
         raise ProjectFault('Unsupported agent coordinator operation.', 400)
 
-    async def stop(self, project_id, session_id, run_id):
-        store = self.store(project_id)
+    async def stop(self, project_id, session_id, run_id, kind='project'):
+        store = self.store(project_id, kind)
         try:
+            store.row(session_id)
             row = get_run(store, run_id)
             if row['session_id'] != session_id: raise ProjectFault('Run not found.', 404)
             if row['busy'] or await self.active_unit(run_id):

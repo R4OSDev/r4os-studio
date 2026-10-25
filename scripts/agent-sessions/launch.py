@@ -18,6 +18,12 @@ else:
     meta = json.loads(file.read_text())
     if meta['runId'] != ident or meta['schema'] != 1 or meta['projects'] != cfg['projects'] or meta['providers'] != cfg['providers'] or meta['r4os'] != cfg['r4os']:
         raise SystemExit('Invalid worker binding.')
+    kind = meta.get('ownerType', 'project')
+    owner = meta.get('ownerId') if 'ownerType' in meta else meta.get('projectId')
+    if (kind not in ('project', 'skill') or not isinstance(owner, str)
+            or not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', owner)
+            or (kind == 'skill' and 'projectId' in meta) or (kind == 'project' and meta.get('projectId', owner) != owner)):
+        raise SystemExit('Invalid worker owner binding.')
     release = Path(meta['releaseRoot']).resolve(strict=True)
     name = 'worker.py'; extra = [str(file)]
     if len(sys.argv) > 2:
