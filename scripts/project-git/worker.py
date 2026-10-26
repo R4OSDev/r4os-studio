@@ -31,7 +31,7 @@ def main():
             from common import acquire
             with acquire(config['projects'], job['projectId'], exclusive=True): result = prepare(config, job)
         else:
-            with locks(config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
+            with locks(config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check', 'diff')):
                 result = Operations(config, job).execute()
         job.update(state='completed', phase='complete', result=result, updatedAt=now())
     except ProjectFault as error:

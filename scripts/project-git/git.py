@@ -8,13 +8,16 @@ import struct
 import subprocess
 import threading
 import time
+import tempfile
 from common import ProjectFault, folder
 
 
 @contextmanager
 def credentials(base, token):
-    path = base / 'credential.sock'
-    if path.exists(): path.unlink()
+    # Unix socket names are limited to108 bytes. Project UUID/staging paths can
+    # be longer; a private short-lived directory also works in service PrivateTmp.
+    temporary = tempfile.TemporaryDirectory(prefix='studio-git-auth-', dir='/tmp')
+    path = Path(temporary.name) / 'credential.sock'
     server = socket.socket(socket.AF_UNIX); server.bind(str(path)); os.chmod(path, 0o600); server.listen(2); server.settimeout(.2)
     stopped = threading.Event()
     def serve():
@@ -33,7 +36,7 @@ def credentials(base, token):
     thread = threading.Thread(target=serve, daemon=True); thread.start()
     try: yield path
     finally:
-        stopped.set(); server.close(); thread.join(2); path.unlink(missing_ok=True)
+        stopped.set(); server.close(); thread.join(2); path.unlink(missing_ok=True); temporary.cleanup()
 
 
 class Git:

@@ -22,6 +22,7 @@ class GitTests(unittest.TestCase):
         with connect(self.projects) as db:
             db.execute('INSERT INTO projects VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                        (self.identity, 'Own Git QA', '', 'Zig', 'terminal', 'qa', None, '{}', 'now', 'now', 1, 'ready'))
+        db.close()
         self.config = {'schema': 1, 'uid': os.getuid(), 'projects': str(self.projects), 'github': str(self.root / 'GitHub')}
         self.cfg = self.root / 'config.json'; save(self.cfg, self.config)
         self.jobs = self.projects / '.studio/github/Jobs'; self.jobs.mkdir(parents=True)
@@ -41,6 +42,19 @@ class GitTests(unittest.TestCase):
         self.assertEqual(result['changes'][0]['path'], 'module.R4MF')
         self.assertFalse((self.source / '.git').exists())
         self.assertTrue(reconcile(self.config, self.job())['initialized'])
+        # Credentials work for a source/private path longer than sockaddr_un.
+        deep = self.root / ('long-' + 'a' * 120); deep.mkdir()
+        from git import credentials
+        with credentials(deep, 'dummy-never-sent') as socket_path:
+            self.assertLess(len(str(socket_path).encode()), 108); self.assertTrue(socket_path.exists())
+
+    def test_bounded_diff_uses_saved_snapshot_and_preserves_drafts(self):
+        action = Operations(self.config, self.job()); action.initialize()
+        state = action.status()
+        value = action.diff({'path': 'module.R4MF', 'snapshot': state['snapshot']})['diff']
+        self.assertIn('test manifest', value['text']); self.assertFalse(value['binary'])
+        (self.source / 'module.R4MF').write_text('changed after preview\n')
+        with self.assertRaises(ProjectFault): action.diff({'path': 'module.R4MF', 'snapshot': state['snapshot']})
 
     def test_source_paths_links_and_cross_process_mutation_lock(self):
         for value in ('-a', 'a..b', 'a.lock', 'a/../b', 'a@{b', 'a b'):

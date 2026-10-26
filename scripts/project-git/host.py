@@ -16,7 +16,8 @@ import time
 import fcntl
 from common import ProjectFault, document, folder, now, project_id, save, digest, locks
 
-KINDS = ('initialize', 'bind', 'status', 'check', 'create_repository', 'import', 'push', 'pull')
+KINDS = ('initialize', 'bind', 'status', 'check', 'diff', 'create_repository', 'import', 'push', 'pull')
+READS = ('status', 'check', 'diff')
 
 
 def birth(pid): return (Path('/proc') / str(pid) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
@@ -66,6 +67,9 @@ class Coordinator:
                 project = project_id(data.get('projectId'))
                 matches = [document(path / 'job.json') for path in self.base.iterdir()]
                 matches = [v for v in matches if v['projectId'] == project]
+                actions = [v for v in matches if v['kind'] not in READS]
+                unresolved = [v for v in actions if v['state'] == 'unknown']
+                matches = unresolved or actions or matches
                 return self.public(max(matches, key=lambda v: v['createdAt'])) if matches else None
             if operation in ('job', 'cancel', 'reconcile'):
                 identity = project_id(data.get('requestId')); project_id(data.get('projectId'))
@@ -83,7 +87,7 @@ class Coordinator:
                             with acquire(self.config['projects'], job['projectId'], exclusive=True): result = reconcile(self.config, job)
                         else:
                             from operations import reconcile
-                            with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
+                            with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in READS):
                                 result = reconcile(self.config, job)
                         if result is not None:
                             job.update(state='completed', phase='reconciled', result=result, error=None, updatedAt=now()); save(path, job)
@@ -107,7 +111,7 @@ class Coordinator:
                 if document(self.base / process_id / 'job.json')['projectId'] == project: raise ProjectFault('This project already has an active Git job.', 409)
             for previous in self.base.iterdir():
                 old = document(previous / 'job.json')
-                if data['kind'] not in ('status', 'check') and old['projectId'] == project and old['state'] == 'unknown' and old['kind'] not in ('status', 'check'):
+                if data['kind'] not in READS and old['projectId'] == project and old['state'] == 'unknown' and old['kind'] not in READS:
                     raise ProjectFault('Resolve the original uncertain Git job before another operation.', 409)
             release = self.release()
             if data['kind'] not in document(Path(release) / 'shared/project-git.json')['actions']:

@@ -20,7 +20,7 @@ export interface GitHubBranchPage { account: GitHubAccount; repository: GitHubRe
 export interface GitHubProjectStatus {
   binding: GitHubProjectBinding | null; head: string | null; remoteHead: string | null;
   ahead: number; behind: number; state: string; snapshot: string;
-  changes: { path: string; status: string }[]; checkedAt: string | null;
+  changes: { path: string; status: string }[]; checkedAt: string | null; fresh?: boolean;
 }
 export interface GitHubImportPreview {
   projectId: string; commit: string; snapshot: string; files: number; binding: GitHubProjectBinding;
@@ -29,5 +29,6 @@ export interface GitHubImportPreview {
 export interface GitHubJob {
   id: string; projectId: string; kind: string; state: 'queued' | 'running' | 'completed' | 'failed' | 'unknown';
   phase: string; createdAt: string; updatedAt: string; error?: string; code?: number;
-  result?: { binding?: GitHubProjectBinding; initialized?: boolean; import?: GitHubImportPreview } | GitHubProjectStatus;
+  result?: { binding?: GitHubProjectBinding; initialized?: boolean; import?: GitHubImportPreview; diff?: GitHubDiff } | GitHubProjectStatus;
 }
+export interface GitHubDiff { path: string; text: string; truncated: boolean; binary: boolean }

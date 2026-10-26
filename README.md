@@ -1,5 +1,27 @@
 # R4OS Studio · App
 
+## Project GitHub status and connection menu (0.5.5)
+
+Projects → GitHub shows named connection/account, repository and branch,
+local/remote commits, ahead/behind state, explicitly cached last check, saved
+file changes and a128-KiB text diff preview. Refresh performs an authenticated
+remote check; failures never claim a fresh remote state. File previews bind to
+the inspected source snapshot. Unsaved editor drafts remain separate.
+Existing projects can explicitly create a private user/organization repository
+or bind a compatible existing history. Commit author accepts verified GitHub
+noreply defaults or an explicit name/email. Form navigation and active jobs are
+guarded. Original request IDs survive browser reload; uncertain mutations are
+reconciled without generating another commit or repository. Read-only status
+jobs do not hide an unresolved transfer from the last-operation view.
+
+The live organization QA found that long production UUID/staging paths exceed
+the Unix credential socket limit in0.5.4. The credential broker now uses a short
+private temporary directory (including the service's private /tmp) and removes
+it on completion. The socket remains ephemeral and token bytes stay private.
+This also repairs authenticated import on long production paths; the immutable
+0.5.4 tag retains the original implementation. Eight focused Git checks,
+HTTP gates, TypeScript/build/lint and targeted browser validation apply.
+
 ## Import a GitHub app project (0.5.4)
 
 New Project offers Create new and Import from GitHub. Import selects a verified

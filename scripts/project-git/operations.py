@@ -1,6 +1,6 @@
 """Release-bound Git actions. Credentials and object-store paths stay private."""
 from pathlib import Path
-from common import ProjectFault, storage, binding, branch, inventory, digest, save, now, project_id, name, document
+from common import ProjectFault, storage, binding, branch, inventory, digest, save, now, project_id, name, document, source_path
 from git import Git
 from github import GitHub
 
@@ -107,7 +107,7 @@ class Operations:
             self.git.run('fetch', '--no-tags', '--no-recurse-submodules', 'https://github.com/' + repo['fullName'] + '.git', 'refs/heads/' + target_branch)
             remote_head = self.git.text('rev-parse', '--verify', 'FETCH_HEAD')
             # Adoption of an existing nonempty remote requires common, proven history.
-            if current_head is None or self.git.run('merge-base', '--is-ancestor', current_head, remote_head, allow=(0, 1))[1] != 0:
+            if current_head is None or (self.git.run('merge-base', '--is-ancestor', current_head, remote_head, allow=(0, 1))[1] != 0 and self.git.run('merge-base', '--is-ancestor', remote_head, current_head, allow=(0, 1))[1] != 0):
                 raise ProjectFault('The target repository is not empty and has no suitable local history. Import it instead.', 409)
         if self.bound and self.bound['branch'] != target_branch:
             raise ProjectFault('Changing the tracked branch requires an explicit new import.', 409)
@@ -135,13 +135,14 @@ class Operations:
     def status(self, refresh=False):
         self.git.init(self.bound['branch'] if self.bound else 'main')
         remote_head = self.fetch() if refresh and self.bound else None
-        if refresh and self.bound: save(self.base / 'remote.json', {'head': remote_head, 'checkedAt': now(), 'bindingRevision': self.bound['revision']})
+        checked_at = now() if refresh and self.bound else None
+        if refresh and self.bound: save(self.base / 'remote.json', {'head': remote_head, 'checkedAt': checked_at, 'bindingRevision': self.bound['revision']})
         elif (self.base / 'remote.json').exists():
             from common import document
             cached = document(self.base / 'remote.json')
-            if self.bound and cached.get('bindingRevision') == self.bound['revision']: remote_head = cached.get('head')
+            if self.bound and cached.get('bindingRevision') == self.bound['revision']: remote_head, checked_at = cached.get('head'), cached.get('checkedAt')
         head = self.git.head(); ahead, behind, state = 0, 0, 'not_connected' if not self.bound else 'unknown'
-        if self.bound and refresh:
+        if self.bound and checked_at:
             if not head: state = 'not_pushed' if not remote_head else 'remote_only'
             elif not remote_head: state = 'branch_missing'
             else:
@@ -165,15 +166,36 @@ class Operations:
             if path in source or 'D' in status: changes.append({'path': path, 'status': status.strip()})
             if len(changes) > 10000: raise ProjectFault('Git status exceeds its file limit.', 409)
         result = {'binding': self.bound, 'head': head, 'remoteHead': remote_head, 'ahead': ahead, 'behind': behind,
-                  'state': state, 'changes': changes, 'snapshot': digest(source), 'checkedAt': now() if refresh else None}
+                  'state': state, 'changes': changes, 'snapshot': digest(source), 'checkedAt': checked_at, 'fresh': bool(refresh and self.bound)}
         save(self.base / 'status.json', result)
         return result
+
+    def diff(self, data):
+        if set(data) != {'path', 'snapshot'}: raise ProjectFault('Invalid diff preview request.', 400)
+        path = source_path(data['path']); state = self.status()
+        if state['snapshot'] != data['snapshot']: raise ProjectFault('Saved sources changed. Refresh before previewing.', 409)
+        change = next((v for v in state['changes'] if v['path'] == path), None)
+        if change is None: raise ProjectFault('This file has no saved source changes.', 409)
+        limit = 128 * 1024; binary = False
+        if 'D' in change['status'] and not (self.workspace / path).exists() and not self.git.head():
+            raw, text = b'', 'Deleted file: ' + path
+        elif change['status'] == '??' or not self.git.head():
+            with (self.workspace / path).open('rb') as stream: raw = stream.read(limit + 1)
+            try: text = raw.decode('utf8'); binary = '\x00' in text
+            except UnicodeDecodeError: text, binary = '', True
+            text = 'New file: ' + path + '\n\n' + text if not binary else 'Binary file added.'
+        else:
+            raw = self.git.run('diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color', 'HEAD', '--', path)[0] if self.git.head() else b''
+            text = raw[:limit].decode('utf8', errors='replace')
+        if self.status()['snapshot'] != state['snapshot']: raise ProjectFault('Saved sources changed during the preview. Refresh and retry.', 409)
+        return {'diff': {'path': path, 'text': text[:limit], 'truncated': len(raw) > limit, 'binary': binary}}
 
     def execute(self):
         kind, data = self.job['kind'], self.job['input']
         if kind == 'initialize': return self.initialize()
         if kind == 'bind': return self.bind(data)
         if kind == 'create_repository': return self.create_repository(data)
+        if kind == 'diff': return self.diff(data)
         if kind in ('status', 'check'): return self.status(kind == 'check')
         raise ProjectFault('This Git action is not available in this release.', 409)
 
