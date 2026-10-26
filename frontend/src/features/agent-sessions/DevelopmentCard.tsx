@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DevelopmentEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
 import { busyRun, projectRequest, projectRequestId } from './api';
 import { CodeBlock } from './Transcript';
+import { UpdateRecord } from '../projects/UpdateRecord';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 export function developmentRef(value: unknown): { jobId: string } | null {
   if (!value || typeof value !== 'object') return null;
@@ -65,6 +66,12 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     {job && <><p className="development-phase">{({ authenticating: 'Authenticating SSH', resolving_exchange: 'Locating Exchange', checking_exchange_capacity: 'Checking Exchange capacity', transferring: 'Uploading and verifying', verifying_deployment: 'Verifying package', starting_guest: 'Starting application', service_ready: 'Service ready', guest_running: 'Application running', guest_completed: 'Application ended', checking_helper: 'Checking controller', publishing: 'Confirming package', desktop_request: 'Confirming launch request', desktop_accepted: 'Desktop request accepted', desktop_starting: 'Desktop starting application', desktop_process: 'Process confirmed', desktop_window: 'Window attached', desktop_content: 'Desktop content confirmed', window_visible: 'Window visible' } as Record<string, string>)[job.phase] ?? job.phase.replaceAll('_', ' ')}</p>{job.check && <p>Checks: {job.check.state}{job.check.assessment ? ` · ${job.check.assessment}` : ''}</p>}
       {job.check?.findings.map((text, i) => <p key={i}>{text}</p>)}{job.error && <p className="agent-error">{job.error}</p>}</>}
     {job?.nextStep && <p>{job.nextStep}</p>}
+    {job?.updatePlan && <p>Package {job.updatePlan.metadata.packageId} {job.updatePlan.metadata.packageVersion} · Target release {job.updatePlan.metadata.targetRelease} · {job.updatePlan.activation}</p>}
+    {job?.updatePackage && <p>R4U2 · {job.updatePackage.bytes.toLocaleString()} bytes · SHA-256 <code>{job.updatePackage.sha256}</code></p>}
+    {job?.updateProbe && <p>Native preflight: {job.updateProbe.state} · Installed release {job.updateProbe.installedRelease ?? 'unconfirmed'} · Kernel {job.updateProbe.activeKernel ?? 'unconfirmed'}</p>}
+    {job?.updateTransfer && <p>{job.updateTransfer.published ? 'Inbox publication confirmed · full byte readback verified' : 'Transport unconfirmed'} · <code>{job.updateTransfer.guestPath ?? job.updateTransfer.final ?? 'No published path'}</code></p>}
+    {job?.updateInstallation && <UpdateRecord projectId={projectId} updateId={job.updateInstallation.id} token={token} />}
+    {open && job && (job.kind === 'package' || job.kind.startsWith('update_')) && <details><summary>Original package / native receipts</summary><CodeBlock text={JSON.stringify({ plan: job.updatePlan, package: job.updatePackage, preflight: job.updateProbe, transfer: job.updateTransfer, update: job.updateInstallation }, null, 2)} label="Copy original update receipts" language="json" /></details>}
     {job?.checkCompletion && <p>{job.checkCompletion.state === 'completed' ? 'Checks completed · Application closed' : job.checkCompletion.state === 'closing' ? 'Completing checks · Closing application' : 'Check completion failed'}</p>}
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
     {job?.readiness && <p>{({ transferred: 'Package verified', ready: 'Application ready', started: 'Process started', completed: 'Application ended', unsupported: 'Start unavailable', unknown: 'Outcome unconfirmed', failed: 'Start failed', interrupted: 'Interrupted' } as Record<string, string>)[job.readiness.state] ?? job.readiness.state}</p>}

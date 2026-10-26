@@ -4,6 +4,7 @@ import type { Project } from '../../../../shared/projects';
 import type { DevelopmentOptions, DevelopmentSettings } from '../../../../shared/project-development';
 import { projectRequest, ProjectRequestError } from './api';
 import { ProjectField } from './ProjectField';
+import { UpdatePackages } from './UpdatePackages';
 
 export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
   id: string; token: string; dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
@@ -11,13 +12,14 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
   const [draft, setDraft] = useState<DevelopmentSettings | null>(null), [saved, setSaved] = useState<DevelopmentSettings | null>(null);
   const [project, setProject] = useState<Project | null>(null), [options, setOptions] = useState<DevelopmentOptions | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [conflict, setConflict] = useState(false), [epoch, setEpoch] = useState(0);
+  const [updateDirty, setUpdateDirty] = useState(false), [updateBusy, setUpdateBusy] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved), base = `/${id}/development`;
-  useEffect(() => { dirtyChanged(dirty); return () => dirtyChanged(false); }, [dirty, dirtyChanged]);
-  useEffect(() => { busyChanged(busy); return () => busyChanged(false); }, [busy, busyChanged]);
+  useEffect(() => { dirtyChanged(dirty || updateDirty); return () => dirtyChanged(false); }, [dirty, updateDirty, dirtyChanged]);
+  useEffect(() => { busyChanged(busy || updateBusy); return () => busyChanged(false); }, [busy, updateBusy, busyChanged]);
   useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
+    const warn = (event: BeforeUnloadEvent) => { if (dirty || updateDirty) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  }, [dirty, updateDirty]);
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
@@ -39,7 +41,7 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
   }
   const files = draft?.outputFiles ?? [];
   const filePatch = (index: number, value: Partial<DevelopmentSettings['outputFiles'][number]>) => patch({ outputFiles: files.map((f, i) => i === index ? { ...f, ...value } : f) });
-  return <form className="project-settings run-test-settings" aria-label="Run and test settings" onSubmit={(e) => void submit(e)}>
+  return <><form className="project-settings run-test-settings" aria-label="Run and test settings" onSubmit={(e) => void submit(e)}>
     <h2>Run &amp; Test</h2>
     {options && project && <dl className="development-target"><div><dt>Entry</dt><dd>Project module · {project.template}</dd></div><div><dt>Build</dt><dd>{project.language} · SDK {project.pins.sdk.version} · Zig {project.pins.zig.version}</dd></div><div><dt>Target</dt><dd>{options.assignedVm ? `${options.assignedVm.name} · R4OS ${options.assignedVm.imageId.replace('-full', '')}` : 'No VM assigned'}</dd></div></dl>}
     {options && !options.execute.available && <p className="project-message">{options.execute.reason}</p>}
@@ -66,5 +68,5 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
     {error && <p className="project-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {error && <button type="button" disabled={busy} onClick={() => { if (!dirty || window.confirm('Reload saved settings and discard these changes?')) setEpoch((v) => v + 1); }}>Reload settings</button>}
     <div className="project-actions"><button type="button" disabled={busy || !dirty} onClick={() => { setDraft(saved); setError(''); setNotice(''); setConflict(false); }}>Cancel</button><button type="submit" className="project-primary" disabled={busy || !dirty || !draft || conflict}>{busy ? 'Saving…' : 'Save changes'}</button></div>
-  </form>;
+  </form><UpdatePackages id={id} token={token} dirtyChanged={setUpdateDirty} busyChanged={setUpdateBusy} /></>;
 }

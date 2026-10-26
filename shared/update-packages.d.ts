@@ -39,6 +39,7 @@ export interface UpdatePlanInput {
   metadata: UpdatePackageMetadata; artifactIds: string[]; requirements: UpdateRequirement[];
 }
 export interface UpdatePackageOptions {
+  packer?: { available: boolean; reason?: string; pin?: UpdatePackerPin };
   projectRevision: number;
   settings: { revision: number; metadata: UpdatePackageMetadata | null; requirements: UpdateRequirement[] };
   limits: { payloads: number; requirements: number; manifestBytes: number; packageBytes: number;

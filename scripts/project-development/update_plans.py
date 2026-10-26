@@ -103,7 +103,11 @@ def read(store, ident):
 
 
 def options(store):
-    return {'settings': settings(store), 'projectRevision': store.project['revision'], 'limits': {
+    try:
+        qualified=selected_packer(store)
+        packer={'available':True,'pin':{key:qualified[key] for key in ('id','version','revision','sdkRevision','host','sha256','profileSha256')}}
+    except (DevelopmentFault,OSError,ValueError,KeyError) as error:packer={'available':False,'reason':str(error)}
+    return {'packer':packer,'settings': settings(store), 'projectRevision': store.project['revision'], 'limits': {
         'payloads': MAX_PAYLOADS, 'requirements': MAX_REQUIREMENTS, 'manifestBytes': MAX_MANIFEST,
         'packageBytes': MAX_PACKAGE, 'nativeContainerBytes': 4294967295, 'batchPackages': 16, 'batchComponents': 32, 'batchRequirements': 32},
         'artifacts': [artifact_option(store, row['id']) for row in store.db.execute('SELECT id FROM artifacts ORDER BY rowid DESC LIMIT 20')],

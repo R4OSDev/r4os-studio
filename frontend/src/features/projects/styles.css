@@ -71,3 +71,21 @@
   font: .875rem/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
   tab-size: 2;
 }
+
+.update-packages { max-width: 900px; }
+.update-packages .project-fields { gap: 16px; }
+.update-fields { display: grid; min-width: 0; gap: 14px; padding: 14px; border: 1px solid #493957; border-radius: 6px; }
+.update-fields > button, .update-packages button, .update-record > button { padding: 9px 12px; border: 1px solid #67507c; border-radius: 5px; background: #30213e; color: inherit; font-size: 12px; overflow-wrap: anywhere; }
+.update-choices { min-width: 0; padding: 12px; border: 1px solid #493957; border-radius: 6px; }
+.update-choices label { display: flex; align-items: flex-start; gap: 9px; margin: 10px 0; overflow-wrap: anywhere; }
+.update-choices input { flex: 0 0 auto; margin-top: 3px; }
+.update-choices span { min-width: 0; }
+.update-choices small { display: block; margin-top: 4px; color: #b8a7ca; overflow-wrap: anywhere; }
+.update-record { min-width: 0; padding: 14px; border: 1px solid #493957; border-radius: 6px; overflow-wrap: anywhere; }
+.update-record h3 { margin-top: 0; }
+.update-record details { margin: 15px 0; min-width: 0; }
+.update-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.update-actions button { white-space: normal; }
+.update-packages p, .update-packages li { overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.update-packages code, .development-card code { overflow-wrap: anywhere; word-break: break-word; }
+.update-packages button:disabled, .update-record button:disabled { opacity: .45; }

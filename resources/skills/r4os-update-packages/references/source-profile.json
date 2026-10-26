@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "guideSha256": "784c5becf752e9926f0bda985fe15222426aa3ab06e7cec3bebb35a13ac9e7ad",
+  "guideSha256": "681480a1aaeeb4de6d1ebe9ecda79ca5f6caf852916d8fec9af1d9e8d84ba39b",
   "sysupdAdapter": {
     "schema": 1,
     "interface": "r4os-studio-sysupd-text",
