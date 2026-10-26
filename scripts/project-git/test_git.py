@@ -176,5 +176,34 @@ class GitTests(unittest.TestCase):
         self.assertEqual(value['commit'], commit); self.assertEqual(value['metadata']['pins'], portable['pins'])
         self.assertFalse((self.projects / new_id).exists()); self.assertEqual(readback(self.config, job), result)
 
+    def test_commit_push_noop_and_lost_reply_reconcile_without_duplicate_commit(self):
+        from pushing import push, reconcile as readback
+        action = Operations(self.config, self.job('push')); action.initialize()
+        repo = {'id': 11, 'owner': 'octocat', 'name': 'own-qa', 'fullName': 'octocat/own-qa', 'archived': False}
+        action.bound = {'schema': 1, 'revision': 1, 'connectionId': str(uuid.uuid4()), 'userId': 7, 'repository': repo, 'branch': 'main', 'author': {'name': 'Own QA', 'email': 'qa@example.invalid'}}
+        save(action.base / 'binding.json', action.bound)
+        class Api:
+            def assert_current(self): pass
+        remote = {'head': None, 'lost': False, 'pushes': 0}
+        def fetch(): action.remote = repo; action.api = Api(); return remote['head']
+        original = action.git.run
+        def run(*args, **kwargs):
+            if args[0] == 'push':
+                remote['head'] = args[-1].split(':')[0]; remote['pushes'] += 1
+                if remote['lost']: raise ProjectFault('lost response', 503)
+                return b'', 0
+            return original(*args, **kwargs)
+        with patch.object(action, 'fetch', side_effect=fetch), patch.object(action.git, 'run', side_effect=run):
+            before = action.status()['snapshot']
+            with self.assertRaises(ProjectFault): push(action, {'bindingRevision': 1, 'snapshot': before, 'commitMessage': ''})
+            first = push(action, {'bindingRevision': 1, 'snapshot': before, 'commitMessage': 'Own first commit'})
+            self.assertTrue(first['pushed']); self.assertEqual(action.git.text('rev-list', '--count', 'HEAD'), '1')
+            action.job = self.job('push')
+            second = push(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'commitMessage': 'No changes'})
+            self.assertTrue(second['nothingToPush']); self.assertEqual(remote['pushes'], 1)
+            action.job = self.job('push'); (self.source / 'module.R4MF').write_text('second saved source\n'); remote['lost'] = True
+            with self.assertRaises(ProjectFault): push(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'commitMessage': 'Own second commit'})
+            self.assertTrue(readback(action)['pushed']); self.assertEqual(action.git.text('rev-list', '--count', 'HEAD'), '2'); self.assertEqual(remote['pushes'], 2)
+
 
 if __name__ == '__main__': unittest.main()

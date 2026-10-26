@@ -14,8 +14,9 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
   const [binding, setBinding] = useState<GitHubProjectBinding | null>(null), [job, setJob] = useState<GitHubJob | null>(null), [status, setStatus] = useState<GitHubProjectStatus>();
   const [connections, setConnections] = useState<GitHubConnection[]>([]), [kinds, setKinds] = useState<string[]>([]);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [editing, setEditing] = useState(false), [diff, setDiff] = useState<GitHubDiff>();
+  const [commitMessage, setCommitMessage] = useState(''), [allFiles, setAllFiles] = useState(true), [files, setFiles] = useState<string[]>([]);
   useEffect(() => { busyChanged?.(busy); return () => busyChanged?.(false); }, [busy, busyChanged]);
-  useEffect(() => { dirtyChanged?.(editing); return () => dirtyChanged?.(false); }, [editing, dirtyChanged]);
+  useEffect(() => { dirtyChanged?.(editing || !!commitMessage.trim()); return () => dirtyChanged?.(false); }, [editing, commitMessage, dirtyChanged]);
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
@@ -41,6 +42,7 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
       if (!['status', 'check', 'diff'].includes(kind)) {
         const read = await runGitJob(id, token, 'status', {}); if (read.result && 'snapshot' in read.result) { setStatus(read.result); setBinding(read.result.binding); }
         setEditing(false);
+        if (kind === 'push') { setCommitMessage(''); setFiles([]); setAllFiles(true); }
       }
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
@@ -71,11 +73,17 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
     {!editing && <button type="button" disabled={busy || loading || unresolved} onClick={() => setEditing(true)}>{binding ? 'Edit connection or author' : 'Connect repository'}</button>}
     {editing && <BindingForm key={binding?.revision ?? 0} binding={binding} busy={busy} cancel={() => setEditing(false)} submit={(kind, input) => void update(kind, input)} />}
     {status && <section aria-label="Saved source changes"><h3>Saved source changes ({status.changes.length})</h3><p className="github-hint">Unsaved editor drafts are excluded.</p>
-      {status.changes.length ? <ul className="github-files">{status.changes.map((file) => <li key={file.path}><span>{file.status}</span><button type="button" disabled={busy} onClick={() => void update('diff', { path: file.path, snapshot: status.snapshot })}>{file.path}</button></li>)}</ul> : <p>No saved source changes.</p>}
+      {kinds.includes('push') && <label><input type="checkbox" checked={allFiles} disabled={busy} onChange={(e) => { setAllFiles(e.target.checked); setFiles([]); }} /> All saved changes</label>}
+      {status.changes.length ? <ul className="github-files">{status.changes.map((file) => <li key={file.path}>{kinds.includes('push') && !allFiles && <input type="checkbox" aria-label={'Include ' + file.path} disabled={busy} checked={files.includes(file.path)} onChange={(e) => setFiles((old) => e.target.checked ? [...old, file.path] : old.filter((v) => v !== file.path))} />}<span>{file.status}</span><button type="button" disabled={busy} onClick={() => void update('diff', { path: file.path, snapshot: status.snapshot })}>{file.path}</button></li>)}</ul> : <p>No saved source changes.</p>}
       {diff && <div className="github-diff"><h4>{diff.path}</h4><pre>{diff.text || 'No text diff available.'}</pre>{diff.truncated && <p>Preview limited to128 KiB.</p>}</div>}
     </section>}
+    {binding && status && kinds.includes('push') && <form className="github-binding" onSubmit={(e) => { e.preventDefault(); if (commitMessage.trim()) void update('push', { bindingRevision: binding.revision, snapshot: status.snapshot, commitMessage, ...(!allFiles ? { files: files.filter((path) => status.changes.some((v) => v.path === path)) } : {}) }); }}>
+      <div className="project-field"><label htmlFor="github-commit-message">Commit description</label><textarea id="github-commit-message" required maxLength={4000} rows={3} disabled={busy} value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)} /></div>
+      <p className="github-hint">Commit selected saved changes, then push pending local commits. No force push. Editor drafts are kept.</p><button type="submit" disabled={busy || loading || unresolved || !commitMessage.trim() || binding.repository.archived}>Commit &amp; Push</button>
+    </form>}
     {job && <section className="github-job" aria-label="Last GitHub operation"><h3>Last operation</h3><p role="status">{job.kind} · {job.state} · {job.phase}</p><p>Request: {job.id}</p>{job.error && <p role="alert">{job.error}</p>}
       {job.state === 'unknown' && <button type="button" disabled={busy} onClick={() => void reconcile()}>Reconcile original operation</button>}
+      {job.result && 'pushed' in job.result && <p>{job.result.pushed ? 'Push confirmed' : job.result.nothingToPush ? 'Nothing to push' : 'Local commit retained. Review the current state, then push explicitly.'}{job.result.commit ? ' · ' + job.result.commit.slice(0, 12) : ''}</p>}
     </section>}
     {retained && job?.state !== 'unknown' && <button type="button" disabled={busy} onClick={() => void update(retained.kind, retained.input, true)}>Retry original operation</button>}
     {!kinds.length && !loading && <p role="status">Git host support is unavailable.</p>}

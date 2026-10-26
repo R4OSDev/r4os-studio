@@ -1,5 +1,29 @@
 # R4OS Studio · App
 
+## Manual commit and push (0.5.6)
+
+Projects → GitHub requires a commit description and shows the saved file selection
+before Commit & Push. The worker binds to repository revision and inspected
+source hash, preserves editor drafts, uses the project's explicit author and
+rejects diverged/behind history. Only the selected relative source paths enter
+the private index, with literal Git path handling. Tokens remain brokered.
+
+A local commit is recorded before updating HEAD; a separate single-ref push
+never forces, follows tags or rewrites remote history. Confirmed remote ancestry
+and durable original receipts distinguish success, Nothing to push and retained
+local commits. Failed transfers keep local history. Reconciliation reads back
+the original commit rather than creating another; an unobserved push leaves an
+explicit pending commit for a later user action. Browser retries reuse the same
+saved request, and worker death cannot silently repeat remote effects.
+
+Live service validation also identified an unnecessary /proc mount in the SDK
+import checker: systemd's protected mount namespace denies it. The checker now
+uses an empty /proc directory while retaining its isolated read-only source and
+catalogue, no network and all SDK manifest/plan checks. All four actual SDK
+checks pass within the existing protected service namespace; no host permission
+or service hardening is relaxed. Authenticated import is qualified again on this
+release. Earlier published tags remain immutable.
+
 ## Project GitHub status and connection menu (0.5.5)
 
 Projects → GitHub shows named connection/account, repository and branch,

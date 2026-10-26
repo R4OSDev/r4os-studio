@@ -62,7 +62,7 @@ class Git:
 
     def _run(self, args, auth, data, allow, timeout):
         env = {'PATH': '/usr/bin:/bin', 'HOME': '/home', 'LANG': 'C.UTF-8', 'GIT_CONFIG_NOSYSTEM': '1',
-               'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TEMPLATE_DIR': '/empty', 'GIT_TERMINAL_PROMPT': '0',
+               'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TEMPLATE_DIR': '/empty', 'GIT_TERMINAL_PROMPT': '0', 'GIT_LITERAL_PATHSPECS': '1',
                'GIT_ALLOW_PROTOCOL': 'https', 'GIT_PROTOCOL_FROM_USER': '0', 'GIT_ASKPASS': '/askpass.py'}
         out, err = self.temporary / 'stdout', self.temporary / 'stderr'
         with out.open('wb') as stdout, err.open('wb') as stderr:

@@ -64,7 +64,7 @@ def checked_profile(root, projects, metadata, fallback):
 def manifest(context, source, language, template, expected_name):
     tool = context['rust']['catalog'] if language == 'Rust' else context['tool']
     command = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-all',
-               '--ro-bind', '/usr', '/usr', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
+               '--ro-bind', '/usr', '/usr', '--dev', '/dev', '--dir', '/proc', '--tmpfs', '/tmp',
                '--ro-bind', str(source), '/workspace', '--ro-bind', str(tool), '/catalog']
     for path in ('/lib', '/lib64'):
         if Path(path).exists(): command += ['--ro-bind', path, path]
