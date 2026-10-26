@@ -3,6 +3,24 @@
 
 
 
+
+## Native SYSUPD preflight and text adapter (0.4.14)
+
+POST /api/projects/<uuid>/update-packages/probes accepts requestId, projectRevision and packageArtifactId. The durable VM job uses the explicitly assigned, already running VM, existing private loopback forwarding, pinned SSH/SFTP clients, fixed login policy and VM-bound host-key trust. It reserves the shared VM lease and binds VM UUID/configuration, system generation, base-image hash, QEMU invocation and guest boot before fixed VER, SYSUPD STATUS, TYPE VERSION.R4S and TYPE MODULES.JSON calls. It cannot start a VM, upload, install, commit or reboot.
+
+SYSUPD STATUS can materialize UPDATE/INBOX/STAGED. The adapter requires confirmed success and dirs=ok, captures both journal and batch state, then closes the observation interval with another matching status. Idle and terminal journal cleanup/rolled_back or batch installed/rolled-back preserve history and permit a future fresh upload check. Foreign, failed or recoverable active states block new work; owned active states require recovery. No journal is adopted/deleted, and source=- alone proves no ownership. The lease coordinates Studio actors; STATUS is a snapshot and supplies no native writer lock or expected-batch compare-and-execute guarantee.
+
+The central parser handles native STATUS plus VERIFY/APPLY/STAGE/COMMIT/RESUME/RESUME-BATCH/ABORT-BATCH/ROLLBACK-LAST result lines. Known field boundaries preserve spaces in Pending restart and other display states; lowercase status phases remain distinct. IDs/counters stay unsigned 64-bit decimal strings. STAGE can return an effective APPLY; terminal RESUME-BATCH can omit batch identity. Native failures, incompatibility, interruption, contradictory exit/result pairs, unknown formats and incomplete channels do not authorize subsequent mutation. Successful command execution and reported rolled-back/installed states do not themselves confirm package installation; later inventory/byte evidence remains required. SYSUPD has no JSON or VERIFY-BATCH command.
+
+SSH exec has an opt-in complete receipt retaining bounded stdout, stderr, byte counts, real exit status, timeout/truncation and transport uncertainty. Its existing default output/exception contract for app runs is unchanged. Channel quota 128 KiB, combined observation 256 KiB, probe deadline 180 seconds. Original captures and source-bound adapter hash remain in the job/private evidence.
+
+Actual Full 0.87.14 revealed a guest SSHD console-hook limit: TYPE MODULES.JSON lost 366 bytes and exited 3, despite the client receiving its stream completely. The full inventory is therefore also read twice through the existing SFTP client using only the fixed readonly metadata path. Matching complete sizes/SHA-256 and parsed entries are required; TYPE's original failure remains recorded. Only the source-confirmed exit 3 console-loss diagnostic allows that fallback; other command failures or mismatched reads block the workflow. The generic deployment-path policy is unchanged; no arbitrary read path, new guest script or general shell endpoint is exposed.
+
+The observed installed release from VERSION.R4S, active kernel from VER and immutable base-image identity remain separate. New status data never changes images, project pins, defaults, host-key trust or old deployment receipts. Sources/hashes and quotas are in shared/r4os/sysupd-adapter.json; current source review corresponds to the tested engine, without an image/SDK revision allowlist.
+
+Validated with actual private SSH/native STATUS, release 0.87.14, kernel 0.1.384 and 110 stable SFTP inventory entries in a clearly named own VM from the already imported Full image. Thirty-six development Python cases including twelve parser/transport/preflight cases, unprivileged checks, backend session/CSRF/fixed-input tests, build/TypeScript/lint and installed VM-job evidence are under Research/R4OS/Roadmap-Implementation/0.4.14/. Productive VMs/defaults remain unchanged. The own project/package/VM are retained temporarily for the subsequent transfer/installation integration.
+
+
 ## Immutable native package jobs (0.4.13)
 
 POST /api/projects/<uuid>/update-packages/builds accepts only requestId, projectRevision, planId and planSha256. It starts one durable package job through the existing private development coordinator and bounded non-VM worker. GET /development/jobs/<job-id> reports its original state/output; GET /update-packages/artifacts/<package-id> verifies and returns the resulting immutable package receipt. Repeating the same accepted request returns its original job, including after a lost response or a later default change. An unconfirmed result remains unknown and is never rebuilt automatically.

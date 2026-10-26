@@ -53,6 +53,14 @@ await test('update plans require session and CSRF, bind artifact IDs and reject 
     const packageId = randomUUID();
     assert.equal((await app.inject({ method: 'GET', url: '/api/projects/' + project + '/update-packages/artifacts/' + packageId, headers })).statusCode, 200);
     assert.deepEqual(received.at(-1), { operation: 'package_artifact', projectId: project, id: packageId });
+    const probeUrl = '/api/projects/' + project + '/update-packages/probes';
+    const probe = { requestId: randomUUID(), projectRevision: 2, packageArtifactId: packageId };
+    assert.equal((await app.inject({ method: 'POST', url: probeUrl, payload: probe })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: probeUrl, headers, payload: { ...probe, command: 'SYSUPD COMMIT' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: probeUrl, headers, payload: { ...probe, vmId: randomUUID() } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: probeUrl, headers, payload: probe })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'update_probe', projectId: project, input: probe });
+
 
   } finally {
     await app.close(); await new Promise<void>(resolve => server.close(() => resolve()));

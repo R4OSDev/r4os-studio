@@ -19,6 +19,21 @@ const requirement = { type: 'object', additionalProperties: false,
     minVersion: { type: 'string', minLength: 1, maxLength: 24 }, state: { type: 'string', enum: ['installed', 'active'] } } };
 export function updatePackageRoutes(app: FastifyInstance, security: ProjectSessions) {
   const base = '/:id/update-packages';
+  app.post<{ Params: { id: string }; Body: { requestId: string; projectRevision: number; packageArtifactId: string } }>(base + '/probes', {
+    bodyLimit: 4096,
+    preValidation: async request => {
+      if (!request.body || typeof request.body !== 'object' || Object.keys(request.body).some(key =>
+        !['requestId', 'projectRevision', 'packageArtifactId'].includes(key))) {
+        throw new ProjectError('Unexpected update preflight fields.', 400);
+      }
+    },
+    schema: { params, body: { type: 'object', additionalProperties: false,
+      required: ['requestId', 'projectRevision', 'packageArtifactId'],
+      properties: { requestId: identity, projectRevision: revision, packageArtifactId: identity } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    return reply.code(202).send({ job: await developmentHost({ operation: 'update_probe', projectId: request.params.id, input: request.body }) });
+  });
   app.post<{ Params: { id: string }; Body: UpdatePackageBuildInput }>(base + '/builds', {
     bodyLimit: 4096,
     preValidation: async request => {

@@ -218,27 +218,47 @@ class SshTransport:
             'SSH_ASKPASS': str(APP / 'scripts/project-development/askpass.py'), 'SSH_ASKPASS_REQUIRE': 'force',
             'DISPLAY': ':0', 'STUDIO_ACCESS_REQUEST': self.lease.id}
 
-    async def exec(self, command, timeout=10):
+    async def exec(self, command, timeout=10, *, complete=False, limit=65536):
+        if type(limit) is not int or not 1 <= limit <= 131072:
+            raise DevelopmentFault('Invalid guest response quota.', 400)
+        buffers = {'stdout': bytearray(), 'stderr': bytearray()}
+        truncated = False
+        def captured(code, **flags):
+            return {'exitCode': code, 'output': buffers['stdout'].decode('utf-8', errors='replace'),
+                'stdout': buffers['stdout'].decode('utf-8', errors='replace'),
+                'stderr': buffers['stderr'].decode('utf-8', errors='replace'),
+                'stdoutBytes': len(buffers['stdout']), 'stderrBytes': len(buffers['stderr']),
+                'truncated': truncated, 'timedOut': False, **flags}
         process = await asyncio.create_subprocess_exec(*self.argv(), self.record['username'] + '@127.0.0.1', command,
             stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             env=self.environment(), start_new_session=True)
         self.processes.add(process)
-        async def read(stream, limit):
-            result = bytearray()
+        async def read(stream, channel):
+            nonlocal truncated
+            result = buffers[channel]
             while data := await stream.read(8192):
-                if len(result) + len(data) > limit: raise DevelopmentFault('Guest access output exceeds the limit.')
+                if len(result) + len(data) > limit:
+                    result.extend(data[:max(0,limit-len(result))]); truncated = True
+                    raise DevelopmentFault('Guest access output exceeds the limit.')
                 result.extend(data)
             return bytes(result)
         try:
-            out, error = await asyncio.wait_for(asyncio.gather(read(process.stdout, 65536), read(process.stderr, 65536)), timeout)
+            out, error = await asyncio.wait_for(asyncio.gather(read(process.stdout, 'stdout'), read(process.stderr, 'stderr')), timeout)
             code = await asyncio.wait_for(process.wait(), 2)
+            if code == 255 and complete:
+                return captured(code, transportUncertain=True)
             if code == 255:
                 if b'HOST IDENTIFICATION HAS CHANGED' in error or b'Host key verification failed' in error:
                     raise DevelopmentFault('The guest host key does not match the saved VM identity.')
                 if b'Permission denied' in error: raise DevelopmentFault('The guest rejected the R4OS default login.')
                 raise SshNotReady('The guest SSH service is not ready or the connection was lost.')
-            return {'exitCode': code, 'output': out.decode('utf-8', errors='replace')}
-        except asyncio.TimeoutError: raise SshNotReady('The authenticated guest did not respond in time.') from None
+            return captured(code) if complete else {'exitCode': code, 'output': out.decode('utf-8', errors='replace')}
+        except asyncio.TimeoutError:
+            if complete: return captured(None, timedOut=True, transportUncertain=True)
+            raise SshNotReady('The authenticated guest did not respond in time.') from None
+        except DevelopmentFault:
+            if complete and truncated: return captured(None, transportUncertain=True)
+            raise
         finally:
             if process.returncode is None: process.kill(); await process.wait()
             self.processes.discard(process)

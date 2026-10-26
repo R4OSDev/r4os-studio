@@ -30,6 +30,7 @@
     "leaseQueue": 1,
     "vmStart": 1,
     "jobWait": 1,
-    "packageJobs": 1
+    "packageJobs": 1,
+    "updatePreflight": 1
   }
 }

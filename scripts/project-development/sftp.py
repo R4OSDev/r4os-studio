@@ -96,3 +96,14 @@ async def publish_file(ssh, source, guest, expected_sha256):
             raise DevelopmentFault('Guest bytes do not match the deployment package. No start was authorized.')
     finally: verify.unlink(missing_ok=True)
     return {'path': guest, 'sha256': expected_sha256, 'bytes': source.stat().st_size, 'fullReadbackVerified': True}
+
+
+async def download_update_metadata(ssh, name, local):
+    """Only fixed read-only system metadata; no generic remote-path expansion."""
+    paths = {'inventory': '/C/R4OS/CONFIG/MODULES.JSON', 'version': '/C/R4OS/CONFIG/VERSION.R4S'}
+    if not isinstance(name, str) or name not in paths: raise DevelopmentFault('Unsupported update metadata file.', 400)
+    local = Path(local)
+    if local.exists() or local.is_symlink(): raise DevelopmentFault('The metadata verification destination already exists.')
+    await batch(ssh, ['get ' + quote(paths[name]) + ' ' + quote(local)], maximum=131072)
+    validate_download(local, 131072)
+    return {'bytes': local.stat().st_size, 'sha256': digest(local), 'fullReadVerified': True}

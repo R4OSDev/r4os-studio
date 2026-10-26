@@ -54,3 +54,31 @@ export interface UpdatePackageArtifact {
 export interface UpdatePackageBuildInput {
   requestId: string; projectRevision: number; planId: string; planSha256: string;
 }
+
+
+export interface UpdateCommandCapture {
+  exitCode: number | null; stdout: string; stderr: string; stdoutBytes: number; stderrBytes: number;
+  truncated: boolean; timedOut: boolean; transportUncertain?: boolean;
+}
+export interface SysupdReply {
+  schema: 1; operation: string; effectiveOperation: string; kind: 'status' | 'result';
+  confirmed: boolean; success: boolean; sshExitCode: number | null; rawLine: string;
+  reportedOutcome?: 'rolled-back' | 'pending-restart' | 'installed' | 'staged' | 'applied' | 'unknown'; installationConfirmed?: false;
+  result?: 'OK' | 'FAILED' | 'INCOMPATIBLE' | 'INTERRUPTED'; fields?: Record<string, string>;
+  status?: { mode: 'idle' | 'journal' | 'batch'; fields: Record<string, string>;
+    transactionId: string | null; batchId: string | null; journalPhase?: string; batchPhase?: string;
+    directoriesReady: boolean; activeOrRecoverable: boolean; historicalRollback: boolean };
+}
+export interface UpdateProbe {
+  schema: 1; adapterSha256: string; state: 'capturing' | 'ready' | 'blocked'; mayUpload: boolean; statusCreatesDirectories: true;
+  captures: Record<string, UpdateCommandCapture>; status?: SysupdReply;
+  installedRelease?: string; activeKernel?: string; baseImageId?: string; baseImageSha256?: string;
+  requestedTargetRelease?: string; checkedAt?: string; hostKeyFingerprint?: string;
+  target?: { vmId: string; vmRevision: string; imageId: string; imageSha256: string; bootId: string;
+    systemGeneration: string | null; vmInvocationId: string };
+  inventory?: { schema: number; profile: string; count: number; entries: Record<string, unknown>[] };
+  inventoryRead?: { method: string; consoleIncomplete: boolean; reads: { bytes: number; sha256: string; fullReadVerified: true }[] };
+  ownership?: { matchesOwnRecord: boolean; activeOrRecoverable: boolean; mayUpload: boolean;
+    reason: string | null; terminalHistoryRetained: boolean; externalWriterLock: false };
+  nativeVerificationRequired?: true;
+}

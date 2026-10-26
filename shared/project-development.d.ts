@@ -1,7 +1,7 @@
 import type { ProjectPins, ProjectTemplate } from './projects.js';
 
 /** Studio contracts; these are not R4OS ABI or SDK interfaces. */
-export type DevelopmentJobKind = 'build' | 'package' | 'deploy' | 'execution' | 'vm_start';
+export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'deploy' | 'execution' | 'vm_start';
 export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
   | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
@@ -135,6 +135,8 @@ export interface DevelopmentCheck {
 export interface DevelopmentJob {
   updatePlan?: import('./update-packages.js').UpdatePackagePlan;
   packageArtifactId?: string | null;
+  updateProbe?: import('./update-packages.js').UpdateProbe;
+  updatePackage?: import('./update-packages.js').UpdatePackageArtifact;
   outputBytes?: number;
   reasonCode?: string | null;
   nextStep?: string | null;
