@@ -36,13 +36,14 @@ def get_run(store, run_id):
 
 
 def admit(store, session_id, data, provider_dir):
-    if (set(data) - {'projectInstructions', 'skillSelection'} != {'requestId', 'revision', 'text'}
-        or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in ('projectInstructions', 'skillSelection'))):
+    if (set(data) - {'projectInstructions', 'skillSelection', 'skillScripts'} != {'requestId', 'revision', 'text'}
+        or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in ('projectInstructions', 'skillSelection', 'skillScripts'))
+        or ('skillScripts' in data and data.get('skillSelection') != 1)):
         raise ProjectFault('Unexpected run fields.', 400)
     if not isinstance(data['text'], str) or not data['text'].strip() or len(data['text'].encode()) > 65536 or '\x00' in data['text']:
         raise ProjectFault('Enter a message of at most 64 KiB.', 400)
     key = identity(data['requestId']); request_hash = hashlib.sha256(encode({'sessionId': session_id,
-        **{k: v for k, v in data.items() if k not in ('projectInstructions', 'skillSelection')}}).encode()).hexdigest()
+        **{k: v for k, v in data.items() if k not in ('projectInstructions', 'skillSelection', 'skillScripts')}}).encode()).hexdigest()
     store.db.execute('BEGIN IMMEDIATE')
     try:
         previous = store.db.execute('SELECT * FROM runs WHERE request_id=?', (key,)).fetchone()
@@ -58,7 +59,7 @@ def admit(store, session_id, data, provider_dir):
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
         if data.get('skillSelection') == 1:
             from skill_application import freeze
-            snapshot['skillAccess'] = freeze(store, session['skillOverrides'])
+            snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1)
         if store.owner_type == 'skill':
             if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
             from skill_prompt import snapshot as skill_prompt_snapshot

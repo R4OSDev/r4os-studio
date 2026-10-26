@@ -8,8 +8,9 @@ import pty
 import signal
 import uuid
 from file_worker import parts
-from run_store import event, item
+from run_store import event, item, get_run
 from session_store import encode
+from store import ProjectFault
 
 
 def bounded_text(value, budget, tail=False):
@@ -146,7 +147,9 @@ class Terminals:
 
     async def call(self, name, args):
         if name == 'exec_command':
-            await self.worker.sandbox.prepare()
+            try: await self.worker.sandbox.prepare()
+            except (OSError, ValueError, ProjectFault) as error:
+                return {'success': False, 'error': 'preparationFailed', 'output': str(error) if isinstance(error, ProjectFault) else 'The workspace environment is unavailable. No command started.'}
             async with self.lock:
                 if sum(not p.finished.is_set() for p in self.processes.values()) >= 4 or len(self.processes) >= 32:
                     return {'success': False, 'error': 'processLimit', 'output': 'This run reached its process limit.'}
@@ -155,6 +158,9 @@ class Terminals:
                 # supplied by a command. Bubblewrap resolves it in its own root.
                 checked = await self.worker.sandbox.file('list_directory', {'path': relative or '.'})
                 if not checked['success']: return checked
+                admitted = get_run(self.worker.store, self.worker.run_id)
+                if getattr(self.worker, 'stopping', False) or not admitted['busy'] or admitted['state'] == 'stopping':
+                    return {'success': False, 'error': 'interrupted', 'output': 'The run stopped before the command started.'}
                 inner = ['/usr/bin/bash', '--noprofile', '--norc', '-c', args['cmd']]
                 if args.get('tty'): inner = ['/usr/bin/setsid', '--ctty', '--wait', *inner]
                 command = self.worker.sandbox.command(inner, '/workspace' + ('/' + relative if relative else ''))

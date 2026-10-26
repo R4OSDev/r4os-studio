@@ -1,5 +1,16 @@
 # R4OS Studio · App
 
+## Isolated skill scripts (0.4.10)
+
+Selection-aware script-capable runs expose each frozen enabled package read-only at `/skills/<uuid>` inside the existing file/terminal namespace. The catalogue supplies that terminalPath alongside the unchanged virtual file-broker path. Relative scripts/references/assets resolve within the same frozen revision; requested outputs stay in the selected Workspace/private run cache. No skill sources are copied into projects, no workspace markers are created, and old accepted configs without script scope do not gain mounts.
+
+Execution uses only the existing `exec_command`, `write_stdin` and `terminate_process` calls and their frozen permissions. The web service gains no shell or permission. Available host interpreters and existing pinned project components are reused; missing interpreters/dependencies return actual failures, without installation or network/credential/VM/GitHub grants. Opening, importing, validating and saving never execute a script. Existing handles/time/output/resource bounds, terminal exit/signal/reason data and owned-process cleanup remain in force. An accepted Stop during preparation closes process admission before launch.
+
+New API runs require coordinator script capability and explicitly request the script scope; the selected immutable worker release must support it. Existing native profiles/tool names/root enums and update contracts are unchanged. Accepted old workers continue with their release/snapshot/scope across Studio updates; compatible coordinator adoption occurs when idle. The script namespace mounts only frozen active revisions and the already authorized selected workspace/cache/components; global catalog/settings, other drafts/projects, provider secrets and VM state remain absent.
+
+Validated with actual unprivileged script namespaces: Python/reference/binary-asset use and selected outputs, readonly write rejection, live old-revision binding while a global Save creates a new revision, next-run revision change, actual exit7/import failure/missing interpreter/timeout statuses, process cleanup, disabled exec, removed skill mounts and retained legacy scope. Project/skill API regressions, build/TypeScript/lint and existing agent/runtime checks passed. Tagged-update evidence with an old0.4.9 worker and installed native script workflow in both contexts is recorded under `Research/R4OS/Roadmap-Implementation/0.4.10/` outside the public repository. No additional dependency, host support installer or data migration is required.
+
+
 ## Global skills per session (0.4.9)
 
 Session settings → **Skills** is available in project and Skill Manager sessions. Missing choices mean enabled, including newly published skills in existing sessions. Name, availability and an on/off switch are shown for every Studio skill; drafts can be excluded before publication. Save/Cancel, conflicts, idle restrictions and the session revision apply to these choices. A settings reload also refreshes the surrounding session so subsequent actions use the current revision.

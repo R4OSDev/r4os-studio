@@ -10,6 +10,7 @@ from profile import regular, digest, directory, CODEX_SHA256
 class Sandbox:
     def __init__(self, worker):
         self.worker = worker; self.context = None
+        self.script_roots = []
         self.lock = asyncio.Lock(); self.initializing = asyncio.Lock()
 
     async def prepare(self):
@@ -24,6 +25,8 @@ class Sandbox:
             binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / self.worker.config['engine']['version'] / 'codex'
             if digest(regular(binary)) != CODEX_SHA256: raise ValueError('Unqualified patch engine.')
             self.binary = binary
+            from skill_scripts import bindings
+            self.script_roots = await asyncio.to_thread(bindings, self.worker)
             # A private run cache never follows source-controlled symlinks and
             # never exposes the session DB or the credential-bearing namespace.
             self.cache = directory(self.worker.store.directory / self.worker.session_id / 'Tools' / self.worker.run_id)
@@ -50,6 +53,9 @@ class Sandbox:
                  '--bind', str(self.cache), '/cache']
         if self.worker.store.owner_type == 'project':
             args += ['--ro-bind', str(self.context['cache'] / 'global/p'), '/packages']
+        if self.script_roots:
+            args += ['--dir', '/skills']
+            for ident, path in self.script_roots: args += ['--ro-bind', str(path), '/skills/' + ident]
         # PowerShell/.NET resolve the current Unix identity during startup.
         # These public OS records are read-only; shadow, auth and host homes
         # remain absent from the namespace.
