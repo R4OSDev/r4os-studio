@@ -25,8 +25,8 @@ class DelegationTest(unittest.IsolatedAsyncioTestCase):
         worker_db.execute('INSERT INTO runs VALUES(?,1,?)', (run_id, 'running'))
         directory = fixture.root / fixture.id / 'Sessions'; directory.mkdir()
         with closing(sqlite3.connect(directory / 'Sessions.sqlite')) as authorization, authorization:
-            authorization.execute('CREATE TABLE runs(id TEXT, session_id TEXT, state TEXT, config TEXT)')
-            authorization.execute('INSERT INTO runs VALUES(?,?,?,?)', (run_id, session_id, 'running', json.dumps({
+            authorization.execute('CREATE TABLE runs(id TEXT, session_id TEXT, state TEXT, config TEXT, busy INTEGER)')
+            authorization.execute('INSERT INTO runs VALUES(?,?,?,?,1)', (run_id, session_id, 'running', json.dumps({
                 'engine': {'profile': 'studio-tools-v2'}, 'projectPins': fixture.store.project['pins'], 'permissions': {'studio.build_project': True}})))
         job, _ = fixture.store.admit('build', fixture.input(), {'sessionId': session_id, 'agentRunId': run_id})
         fake = SimpleNamespace(manifest={'projects': str(fixture.root), 'r4os': str(fixture.root / 'R4OS'), 'projectId': fixture.id},

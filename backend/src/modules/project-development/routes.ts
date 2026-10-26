@@ -3,6 +3,7 @@ import type { DevelopmentBuildInput, DevelopmentDeployInput, DevelopmentRunInput
 import type { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { developmentHost } from './host.js';
+import { updatePackageRoutes } from './update-packages.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const revision = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
@@ -10,6 +11,7 @@ const params = { type: 'object', additionalProperties: false, required: ['id'], 
 const jobParams = { ...params, required: ['id', 'jobId'], properties: { ...params.properties, jobId: identity } };
 
 export function developmentRoutes(app: FastifyInstance, security: ProjectSessions) {
+  updatePackageRoutes(app, security);
   const base = '/:id/development';
   app.post<{ Params: { id: string; jobId: string }; Body: { requestId: string } }>(base + '/jobs/:jobId/complete', {
     bodyLimit: 1024,

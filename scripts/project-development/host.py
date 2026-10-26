@@ -203,9 +203,23 @@ class Host:
                 store.update(job['id'], target=target)
                 return {'target': target, 'vmInvocationId': info['invocationId'], 'exchangeInfo': {key: info.get(key) for key in ('exchange', 'exchangeWorker')}} if op == 'bind_execution' else target
             finally: store.close()
+        if op in ('update_options', 'update_plan', 'read_update_plan', 'update_batch_preview'):
+            fields = {'operation', 'projectId'} | ({'input'} if op in ('update_plan', 'update_batch_preview') else {'id'} if op == 'read_update_plan' else set())
+            if set(request) != fields: raise DevelopmentFault('Unexpected update package fields.', 400)
+            store = self.store(identity(request['projectId']))
+            try:
+                from update_plans import options, create, read, batch
+                async with self.lock:
+                    if op == 'update_options': return options(store)
+                    if op == 'update_plan': return {'plan': create(store, request['input'])}
+                    if op == 'read_update_plan': return {'plan': read(store, request['id'])}
+                    value = request['input']
+                    if not isinstance(value, dict) or set(value) != {'planIds'}: raise DevelopmentFault('Supply package plan identities.', 400)
+                    return batch(store, value['planIds'])
+            finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
+                    'features': {'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')

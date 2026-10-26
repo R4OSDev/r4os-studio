@@ -1,6 +1,22 @@
 # R4OS Studio · App
 
 
+
+## Artifact-bound update package plans (0.4.12)
+
+The private development coordinator exposes project-scoped package proposals at /api/projects/<uuid>/update-packages: GET options/configuration, POST plans, GET plans/<plan-id> and POST batch-preview. A proposal binds confirmed immutable build artifact IDs, captured module.R4MF SHA-256, source/build-proof/native-inspector hashes, project pins, exact selected Packer profile, package ID/version, explicit target release and bounded UTF-8 title/description. It has its own configuration revision, request identity and content hash. Repeating an accepted request returns its original plan; stale or changed requests preserve existing settings/plans.
+
+New builds can record native update identity through a small Studio adapter calling the pinned SDK's original r4u_artifact.inspect and manifest install-mode/priority functions. It runs in the existing credential-free build namespace and compares kind/name/embedded version to the SDK catalogue entry from that build. Targets come from that same catalogue/captured manifest, mapped to C: without substituting Exchange paths. This capability is optional for ordinary builds; older artifacts or SDKs without a qualified identity need a new compatible build for update packaging. Build results and old artifact formats remain readable.
+
+Current eligible inputs are actual confirmed versioned R4X/service/R4L/R4D/R4P artifacts. Other formats, Kernel, unversioned or companion payloads cannot be invented from workspace files: they require a confirmed native artifact adapter/receipt and their concrete recovery requirements. This release accepts no arbitrary source paths, output targets, activation overrides or host executables. It does not infer guest component versions from SDK/Contract pins or API import names. Requirements are explicit concrete KIND|NAME|TARGET|MIN_VERSION|STATE values with exactly five fields; active is kernel-only.
+
+Plans reject foreign drives, managed VERSION.R4S/MODULES.JSON, traversal, conflicting targets and mismatched native identities. Limits are 32 payloads/requirements, conservative 32-KiB manifest upper bound, native u32 complete-container ceiling and a separate 128-MiB Studio container ceiling; existing development quotas are unchanged. Batch preview checks 1–16 packages, aggregate 32 components/requirements, one target release and distinct targets. Native build/guest verification remains required; no JSON or VERIFY-BATCH guest API is assumed. An offline plan requires an explicit target release; a future VM preflight can offer a freshly observed release.
+
+All plan details are returned before packaging or guest mutation. This release adds the backend/contracts; project settings and job controls integrate them in 0.4.20. Package builds follow in 0.4.13. State uses additive schema-1 tables in the selected project's Development.sqlite. No global reset or data migration, host installer, source download during planning, VM effect or automatic action on update is introduced.
+
+Validation covers native SDK metadata from a real isolated C build, exact manifest-to-C: target mapping, installed HTTP plan/replay/read/batch preview, tampered input/native metadata, wrong-owner artifacts, revisions, strict requirements and quotas. Seventeen development Python cases including five plan cases, five unprivileged plan cases, backend session/CSRF/path-boundary checks, build/TypeScript and lint passed. Evidence and cleanup are under Research/R4OS/Roadmap-Implementation/0.4.12/.
+
+
 ## Qualified native R4UPack (0.4.11)
 
 System → Updates → Tools → **R4UPack** inventories the separately installed native packer, checks the fixed qualified profile, builds it on explicit request and selects it independently. Building never activates it. The displayed 0.64.18 is the Distribution source package version; the complete profile ID, Distribution/SDK source revisions, compiler and binary SHA-256 identify this tool. Native --version supplies package metadata and is never used to query the executable.

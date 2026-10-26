@@ -35,6 +35,7 @@ export interface DevelopmentSource {
   pins: ProjectPins;
 }
 export interface DevelopmentArtifact {
+  updateMetadata?: { available: boolean; reason?: string; identity?: import('./update-packages.js').NativeUpdateIdentity; payloadKind?: string; inspectorSha256?: string; adapterSha256?: string; sdkRevision?: string; manifest?: Record<string, unknown> };
   id: string;
   projectId: string;
   buildId: string;

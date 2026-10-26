@@ -61,6 +61,40 @@ class Builder:
                     self.context['paths']['sdk'] / 'Tools/R4XBuilder/src/main.zig', '-femit-bin=' + str(self.inspector)], self.context['env'])
                 save(marker, {'sha256': digest(self.inspector)})
 
+    async def update_identity(self, binary, manifest):
+        """An optional package capability; ordinary builds retain their behavior."""
+        source = Path(__file__).with_name('update_identity.zig')
+        sdk_source = self.context['paths']['sdk'] / 'r4os/r4u_artifact.zig'
+        if not sdk_source.is_file(): return {'available': False, 'reason': 'This SDK has no native update artifact inspector.'}
+        target = manifest.get('target')
+        if not isinstance(target, str): return {'available': False, 'reason': 'The SDK catalogue has no installation target.'}
+        kind = {'library': 'system-library', 'driver': 'driver', 'protocol': 'protocol', 'service': 'service'}.get(self.store.project['template'], 'software')
+        key = hash_value({'source': digest(source), 'sdk': self.job['pins']['sdk'], 'zig': self.job['pins']['zig']})
+        inspector = self.context['cache'] / ('r4u-identity-' + key)
+        marker = inspector.with_suffix('.json')
+        import fcntl
+        try:
+            with (self.context['cache'] / 'lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                if not inspector.is_file() or not marker.is_file() or digest(inspector) != json.loads(marker.read_text()).get('sha256'):
+                    await asyncio.to_thread(run, [self.context['paths']['zig'] / 'zig', 'build-exe', '-OReleaseSafe', '-fstrip',
+                        '--dep', 'r4u_artifact', '-Mroot=' + str(source), '-Mr4u_artifact=' + str(sdk_source),
+                        '-femit-bin=' + str(inspector)], self.context['env'])
+                    save(marker, {'sha256': digest(inspector), 'adapterSha256': digest(source)})
+            # Existing non-networked build namespace, separate readonly inspector bind.
+            self.update_inspector = inspector
+            value = json.loads(await self.execute(['/update-inspector', '/output/' + str(binary.relative_to(self.root / 'output')), target, kind], 'both'))
+            if (value.get('schema') != 1 or value.get('kind') != manifest.get('kind')
+                    or value.get('name', '').casefold() != manifest.get('name', '').casefold()
+                    or value.get('version') != manifest.get('module_version')):
+                raise DevelopmentFault('Native update identity differs from the SDK manifest.')
+            return {'available': True, 'identity': value, 'payloadKind': kind, 'manifest': manifest,
+                    'inspectorSha256': digest(inspector), 'adapterSha256': digest(source),
+                    'sdkRevision': self.job['pins']['sdk']['revision']}
+        except (OSError, ValueError, DevelopmentFault):
+            self.append(b'Native update identity unavailable; ordinary build result is preserved.\n')
+            return {'available': False, 'reason': 'This artifact has no qualified native update identity. Use a compatible SDK build.'}
+
     def command(self, command):
         context = self.context
         args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
@@ -77,6 +111,7 @@ class Builder:
             args += ['--bind', str(self.cache.root / name), '/cache/' + name]
         for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
             if Path(path).exists(): args += ['--ro-bind', path, path]
+        if getattr(self, 'update_inspector', None): args += ['--ro-bind', str(self.update_inspector), '/update-inspector']
         for name, path in context['paths'].items(): args += ['--ro-bind', str(path), '/' + name]
         rust_bin = '/rust/Install/Rust/1.99.0/bin'
         if context.get('rust'):
@@ -174,6 +209,7 @@ class Builder:
         expected_class = {'terminal': 'console', 'desktop': 'gui', 'service': 'service', 'subsystem': 'gui'}.get(self.store.project['template'])
         if ('kind=' + expected_kind.lower()).encode() not in result or (expected_class and ('r4x.class=' + expected_class).encode() not in result):
             raise DevelopmentFault('The produced container does not match its manifest identity.')
+        update_metadata = await self.update_identity(binary, entry)
         self.store.update(self.job['id'], phase='publishing')
         artifact_id = str(uuid.uuid4()); parent = folder(self.store.root / 'Artifacts'); stage = folder(parent / (artifact_id + '.new'))
         shutil.copyfile(binary, stage / name); (stage / name).chmod(0o400)
@@ -206,7 +242,7 @@ class Builder:
             'manifestSha256': self.store.get(self.job['id'])['source']['manifestSha256'],
             'packageSha256': hash_value(files), 'kind': expected_kind, 'role': self.store.project['template'],
             'entry': name, 'files': files, 'createdAt': now(), 'pins': self.job['pins'],
-            'plan': plan, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
+            'plan': plan, 'updateMetadata': update_metadata, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
         save(stage / 'artifact.json', record)
         with (stage / name).open('rb') as stream: os.fsync(stream.fileno())
         sync(stage); os.rename(stage, parent / artifact_id); sync(parent)
