@@ -1,5 +1,17 @@
 # R4OS Studio · App
 
+## GitHub settings HTTP fix (0.4.25)
+
+Settings → GitHub now generates connection UUIDs with `crypto.getRandomValues`,
+which is available on the Studio HTTP LAN origin. Opening the form previously
+crashed because `crypto.randomUUID` requires a secure context. UUID v4 format
+and private token storage are unchanged. This is a hotfix outside the completed
+0.4.X roadmap; 0.5.X remains available for planning.
+
+Validation: production build/TypeScript, strict lint and one focused browser
+smoke on an insecure HTTP origin, including a mocked save with a valid UUID v4.
+No automated test suite or real GitHub token changes.
+
 
 
 

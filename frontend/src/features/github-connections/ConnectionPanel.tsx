@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { GitHubConnection, GitHubTestResult, GitHubTestStatus } from '../../../../shared/github-connections';
 import type { ConnectionsApi } from './useConnections';
-import { GitHubError } from './api';
+import { connectionRequestId, GitHubError } from './api';
 import './styles.css';
 const messages: Record<GitHubTestStatus, string> = {
   success: 'Authentication succeeded', authentication_failed: 'Authentication failed. The token was not accepted.',
@@ -16,7 +16,7 @@ export function ConnectionPanel({ connection, api, select, setLeaveGuard }: {
   setLeaveGuard: (guard: () => boolean) => void;
 }) {
   const [name, setName] = useState(connection?.name ?? ''), [token, setToken] = useState('');
-  const [base, setBase] = useState(connection), [id] = useState(() => crypto.randomUUID());
+  const [base, setBase] = useState(connection), [id] = useState(connectionRequestId);
   const [replace, setReplace] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [conflict, setConflict] = useState(false);
   const [draftTest, setDraftTest] = useState<GitHubTestResult>(), [testing, setTesting] = useState(false);
