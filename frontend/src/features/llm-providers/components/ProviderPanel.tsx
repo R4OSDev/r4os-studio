@@ -9,7 +9,7 @@ export function ProviderPanel({ provider, api, select }: {
 }) {
   return <section className="provider-content" aria-label="LLM provider settings">
     {api.error && <div className="provider-alert" role="alert">{api.error}<button type="button" onClick={() => void api.reload()}>Retry</button></div>}
-    {provider ? <ProviderDetails key={provider.id} initial={provider} api={api} removed={() => select(null)} />
+    {provider ? <ProviderDetails key={`${provider.id}:${provider.status}:${provider.account?.email ?? ''}:${provider.account?.plan ?? ''}`} initial={provider} api={api} removed={() => select(null)} />
       : <NewProvider api={api} created={select} />}
   </section>;
 }

@@ -54,13 +54,12 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
     }).catch(() => {
       if (alive.current && currentGeneration === generation.current) setError('Usage could not be refreshed. Previously loaded values may be out of date.');
     }).finally(() => {
-      reading.current = false;
-      if (alive.current) setLoading(false);
+      if (currentGeneration === generation.current) { reading.current = false; if (alive.current) setLoading(false); }
     });
   }, [path, request]);
 
   useEffect(() => {
-    alive.current = true;
+    generation.current++; alive.current = true; reading.current = false;
     void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -68,7 +67,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
     }, 60_000);
     const visible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', visible);
-    return () => { alive.current = false; clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
+    return () => { alive.current = false; generation.current++; reading.current = false; clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
   }, [refresh]);
 
   function saveAttempt(next: Attempt) {
@@ -97,7 +96,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
   async function consume() {
     if (!attempt || consuming.current) return;
     consuming.current = true;
-    generation.current++;
+    generation.current++; reading.current = false;
     setResetting(true); setError(null); setMessage(null);
     try {
       // Persist before sending; retries and reloads reuse this exact logical attempt.
@@ -120,7 +119,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
   const resets = usage?.resetCredits;
   const count = resets?.availableCount;
   const canUse = (count !== undefined && count !== null && count > 0) || !!attempt?.submitted;
-  return <section className="provider-usage" aria-labelledby={`usage-title-${id}`}>
+  return <section className="provider-usage" aria-busy={loading} aria-labelledby={`usage-title-${id}`}>
     <div className="usage-heading"><div><h3 id={`usage-title-${id}`}>Usage limits</h3><p>Current Codex subscription usage</p></div><button className="button-secondary" type="button" disabled={loading || resetting} onClick={() => { setLoading(true); void refresh(true); }}>{loading ? 'Refreshing…' : 'Refresh usage'}</button></div>
     {message && <p className="provider-alert" role="status">{message}</p>}
     {error && <p className="provider-alert" role="alert">{error}</p>}

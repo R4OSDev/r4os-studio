@@ -367,3 +367,35 @@ test('unsupported spending setters have no HTTP or native mutation path', async 
   }
   assert.equal(client.usageReads, reads); assert.equal(client.redemptions, 0);
 });
+
+test('credit snapshots are not persisted across service restart and the new client reads fresh values', async (context) => {
+  const result = await setup(undefined, async () => {}); context.after(result.cleanup);
+  const b = await browser(result.app), provider = await b.create(); await b.start(provider.id);
+  const old = result.clients.get(provider.id)!; await old.complete(); await waitForConnected(result.app, provider.id, b.headers);
+  old.usage = { rateLimits: { credits: { hasCredits: true, unlimited: false, balance: '1.25' } } };
+  const url = `/api/providers/${provider.id}/usage`;
+  assert.equal((await result.app.inject({ url, headers: b.headers })).json().usage.limits[0].credits.balance, '1.25');
+  const originalAuth = await readFile(join(old.home, 'auth.json'), 'utf8'); await result.app.close();
+  const again = result.makeApp(); context.after(() => again.close()); const fresh = await browser(again);
+  await again.inject({ url: `/api/providers/${provider.id}`, headers: fresh.headers });
+  const replacement = result.clients.get(provider.id)!; assert.notEqual(replacement, old); assert.equal(old.closed, true);
+  replacement.usage = { rateLimits: { credits: { hasCredits: true, unlimited: false, balance: '9.875' } } };
+  assert.equal((await again.inject({ url, headers: fresh.headers })).json().usage.limits[0].credits.balance, '9.875');
+  assert.equal(replacement.usageReads, 1); assert.equal(replacement.redemptions, 0);
+  assert.equal(await readFile(join(replacement.home, 'auth.json'), 'utf8'), originalAuth);
+});
+
+test('retired account callbacks cannot invalidate or replace the newly connected account credits', async (context) => {
+  const result = await setup(undefined, async () => {}); context.after(result.cleanup);
+  const b = await browser(result.app), provider = await b.create(); await b.start(provider.id);
+  const old = result.clients.get(provider.id)!; await old.complete('old@example.invalid'); await waitForConnected(result.app, provider.id, b.headers);
+  await result.app.inject({ url: `/api/providers/${provider.id}/usage`, headers: b.headers });
+  assert.equal((await result.app.inject({ method: 'POST', url: `/api/providers/${provider.id}/disconnect`, headers: b.headers })).statusCode, 200);
+  await b.start(provider.id); const current = result.clients.get(provider.id)!; assert.notEqual(current, old);
+  await current.complete('new@example.invalid'); await waitForConnected(result.app, provider.id, b.headers);
+  current.usage = { rateLimits: { credits: { hasCredits: true, unlimited: false, balance: '7.00001' } } };
+  const read = () => result.app.inject({ url: `/api/providers/${provider.id}/usage`, headers: b.headers });
+  assert.equal((await read()).json().usage.limits[0].credits.balance, '7.00001');
+  old.notify('account/rateLimits/updated', { rateLimits: { credits: null } }); old.notify('account/updated', { account: null });
+  assert.equal((await read()).json().usage.limits[0].credits.balance, '7.00001'); assert.equal(current.usageReads, 1); assert.equal(current.redemptions, 0);
+});
