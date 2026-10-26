@@ -4,7 +4,7 @@ import type { ComponentKind, ComponentsStatus } from '../../../../shared/compone
 import type { UpdateSessions } from './sessions.js';
 import { UpdateError } from './client.js';
 
-const kinds: ComponentKind[] = ['sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4os'];
+const kinds: ComponentKind[] = ['sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4upack', 'r4os'];
 const identity = { type: 'string', pattern: '^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,127}$' };
 const checksum = { type: 'string', pattern: '^[a-f0-9]{64}$' };
 interface ComponentRequest {

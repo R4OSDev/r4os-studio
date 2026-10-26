@@ -29,7 +29,7 @@ await test('component downloads/defaults require session and CSRF and accept onl
     const headers = { cookie: String(result.headers['set-cookie']).split(';')[0], 'x-csrf-token': result.json().csrfToken };
     assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/download', payload: { kind: 'zig', id: '0.16.0' } })).statusCode, 403);
     const before = received.length;
-    for (const payload of [{ kind: 'shell', id: '0.16.0' }, { kind: 'zig', id: '../../outside' }, { kind: 'zig', id: '0.16.0', url: 'https://evil.test' }]) {
+    for (const payload of [{ kind: 'r4upack', id: 'fixed-profile', binary: '/bin/sh' }, { kind: 'r4upack', id: '../sh' }, { kind: 'shell', id: '0.16.0' }, { kind: 'zig', id: '../../outside' }, { kind: 'zig', id: '0.16.0', url: 'https://evil.test' }]) {
       assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/download', headers, payload })).statusCode, 400);
     }
     assert.equal(received.length, before);
@@ -38,6 +38,8 @@ await test('component downloads/defaults require session and CSRF and accept onl
     assert.deepEqual(received.at(-1), { command: 'default', kind: 'zig', id: '0.16.0' });
     assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/check', headers, payload: { kind: 'rust' } })).statusCode, 202);
     assert.deepEqual(received.at(-1), { command: 'check', kind: 'rust' });
+    assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/default', headers, payload: { kind: 'r4upack', id: 'qualified-profile' } })).statusCode, 200);
+    assert.deepEqual(received.at(-1), { command: 'default', kind: 'r4upack', id: 'qualified-profile' });
     assert.equal((await app.inject({ method: 'POST', url: '/api/updates/components/download', headers,
       payload: { kind: 'rust', id: '1.99.1', url: 'https://evil.test/rust.tar.xz' } })).statusCode, 400);
   } finally {

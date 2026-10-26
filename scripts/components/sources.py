@@ -2,6 +2,7 @@
 from packages import ADAPTER as PACKAGES
 from tooling import Codex, Qemu, Zig
 from images import Releases
+from r4upack import R4UPack
 from rust import Rust
 from sdk_releases import SdkReleases
 
@@ -10,3 +11,5 @@ ADAPTERS.update(zig=Zig(), qemu=Qemu(), codex=Codex())
 ADAPTERS['r4os'] = Releases()
 ADAPTERS['rust'] = Rust()
 ADAPTERS['sdk'] = SdkReleases()
+
+ADAPTERS['r4upack'] = R4UPack()

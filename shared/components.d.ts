@@ -1,4 +1,4 @@
-export type ComponentKind = 'sdk' | 'contract' | 'libraries' | 'zig' | 'rust' | 'qemu' | 'codex' | 'r4os';
+export type ComponentKind = 'sdk' | 'contract' | 'libraries' | 'zig' | 'rust' | 'qemu' | 'codex' | 'r4upack' | 'r4os';
 export interface SdkSetPart {
   version: string; revision: string; sourceUrl: string; url: string; sha256: string; bytes: number;
   packageHash?: string; installed: boolean; active: boolean;
@@ -15,6 +15,7 @@ export interface ComponentVersion {
   cargoVersion?: string; host?: string; targets?: string[]; manifestSha256?: string;
   toolchainProfile?: string; sdkVersion?: string;
   sdkSet?: SdkSet;
+  sdkRevision?: string; profileSha256?: string;
 }
 export interface ComponentInventory {
   installed: ComponentVersion[]; available: ComponentVersion[]; activeId: string | null;

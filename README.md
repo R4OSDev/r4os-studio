@@ -1,5 +1,19 @@
 # R4OS Studio · App
 
+
+## Qualified native R4UPack (0.4.11)
+
+System → Updates → Tools → **R4UPack** inventories the separately installed native packer, checks the fixed qualified profile, builds it on explicit request and selects it independently. Building never activates it. The displayed 0.64.18 is the Distribution source package version; the complete profile ID, Distribution/SDK source revisions, compiler and binary SHA-256 identify this tool. Native --version supplies package metadata and is never used to query the executable.
+
+The minimal recipe compiles unchanged Distribution ecbe622b5d26244fad449c72cb483936798e172e Tools/R4UPack/src/main.zig with four checked SDK 51ed03d813d9baeab630746f1d1bbc46c2d2a1e6 modules, existing Zig 0.16.0 and fixed ReleaseSafe/x86_64-linux-gnu/strip arguments. Sources and licenses, compiler archive/binary hashes, source-file hashes and expected resulting binary 536b341395421a5626c03e4c3165fd58b3b347042dd515037663554afa6de8f1 are pinned in shared/r4os/r4upack-profile.json. No complete workspace, Kernel, image sources, Libraries or PowerShell are required.
+
+Explicit local setup as data owner: runuser -u r4os-studio -- python3 App/scripts/setup-r4upack.py from the workspace root. An administrator can provide --source-dir with repository/path files for offline setup; all files must match the fixed profile. Existing Zig must already match; setup does not download/select a compiler. The existing unprivileged component service can build the same profile through its bounded interface; the web service receives no shell. HTTPS downloads are fixed to the pinned official files and checked before compilation. No packaging job downloads or activates tools.
+
+Profiles publish atomically under Data/R4OS/Toolchains/R4UPack/<profile-id>/, retaining source closure, licenses, help diagnostics and qualification metadata. Explicit selection is private Data/R4OS/Profiles/r4upack.json, separate from unchanged SDK/Contract/compiler/defaults in versions.json. The components/r4upack.pin helper resolves and verifies exact path/hash/profile at future job admission. An administrator-only external.r4upack binding in the existing components config may provide exactly {binary,directory,sha256}; the binary and full retained qualification directory must match the same checked profile. This cannot be supplied in a browser/agent request. Symlinks, hardlinks, altered binaries/sources/licenses and unsupported selections are rejected with existing files retained.
+
+Qualification: two actual unprivileged builds at different paths produced the identical expected binary; native help/argument checks prove --version is an input, and all retained files verify. Eleven component/Packer Python cases, two backend boundary checks, build/TypeScript/lint and isolated browser navigation/explicit selection/persistence at 1440/320 px passed. Installed host inventory/selection evidence is under Research/R4OS/Roadmap-Implementation/0.4.11/. Normal Studio update adoption suffices; existing bootstrap, old releases, projects, SDK defaults and VMs are preserved. Package planning/building and guest installation follow in 0.4.12–0.4.20.
+
+
 ## Isolated skill scripts (0.4.10)
 
 Selection-aware script-capable runs expose each frozen enabled package read-only at `/skills/<uuid>` inside the existing file/terminal namespace. The catalogue supplies that terminalPath alongside the unchanged virtual file-broker path. Relative scripts/references/assets resolve within the same frozen revision; requested outputs stay in the selected Workspace/private run cache. No skill sources are copied into projects, no workspace markers are created, and old accepted configs without script scope do not gain mounts.

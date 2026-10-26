@@ -3,7 +3,7 @@ import type { ComponentKind, ComponentsStatus } from '../../../../shared/compone
 import './styles.css';
 import { SdkUpdatesPanel } from './SdkUpdatesPanel';
 
-export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', rust: 'Rust', qemu: 'QEMU', codex: 'Codex', r4os: 'R4OS Releases' };
+export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', rust: 'Rust', qemu: 'QEMU', codex: 'Codex', r4upack: 'R4UPack', r4os: 'R4OS Releases' };
 
 export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
   return viewKind === 'sdk' || viewKind === 'contract' || viewKind === 'libraries' ? <SdkUpdatesPanel /> : <ToolUpdatesPanel kind={viewKind} />;
@@ -51,7 +51,8 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
   return <section className="updates-content" aria-label={`${componentNames[viewKind]} updates`}>
     <div className="updates-card">
       <div className="updates-title"><h2>{componentNames[viewKind]}</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
-      <p className="updates-help">Download versions and choose which installed version to use by default. Projects can use their own versions when project profiles are available.</p>
+      <p className="updates-help">{kind === 'r4upack' ? 'Build the qualified native packer separately, then choose its active profile. Existing project SDK and compiler pins stay in place.' : 'Download versions and choose which installed version to use by default. Projects can use their own versions when project profiles are available.'}</p>
+      {kind === 'r4upack' && <p className="updates-help">The displayed version identifies Distribution sources; profile IDs, source revisions and SHA-256 identify the tool. The packer option --version sets package metadata. Building does not select a profile or package a project.</p>}
       {viewKind === 'c' && <p className="updates-help">C uses the C compiler included with Zig. Downloads and the active default are shared with Zig.</p>}
       {kind === 'codex' && <p className="updates-help">Only the latest Codex version is available to download. Previously installed versions remain selectable.</p>}
       {kind === 'rust' && <p className="updates-help">SDK profiles include the required compiler and build tools. Choose the profile matching your SDK for Rust projects.</p>}
@@ -63,7 +64,7 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
         <span>{componentNames[status.job.kind]}: {status.job.error || status.job.message}
           {status.job.total ? ` (${Math.min(100, Math.round((status.job.received ?? 0) / status.job.total * 100))}%)` : ''}</span>
       </div>}
-      <div className="updates-actions"><button type="button" disabled={!status?.enabled || busy} onClick={() => void action('check')}>Check for updates</button></div>
+      <div className="updates-actions"><button type="button" disabled={!status?.enabled || busy} onClick={() => void action('check')}>{kind === 'r4upack' ? 'Check qualified profiles' : 'Check for updates'}</button></div>
       <div className="component-default">
         <label htmlFor={`default-${kind}`}>Active default</label>
         <select id={`default-${kind}`} value={selected} disabled={!status?.enabled || busy || !inventory?.installed.length} onChange={(event) => setSelection(event.target.value)}>
@@ -80,8 +81,10 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
             <div><strong>{value.version}</strong>{value.sdkVersion && <span className="component-label">SDK {value.sdkVersion}</span>}{value.id === inventory?.latestId && <span className="component-label">Latest</span>}{value.id === inventory?.activeId && <span className="component-label">Default</span>}
               {value.revision && <small>{value.revision}</small>}
               {kind === 'rust' && value.cargoVersion && <small>Cargo {value.cargoVersion} · {value.targets?.join(', ')}</small>}
-              {value.sha256 && <small>{value.external ? 'Binary' : kind === 'rust' ? 'Manifest' : kind === 'r4os' && installed ? 'Disk' : 'Archive'} SHA-256: {value.sha256}</small>}</div>
-            {installed ? <span className="component-label">Installed</span> : <button type="button" disabled={!downloadable || busy} onClick={() => void action('download', value.id)}>Download</button>}
+              {kind === 'r4upack' && value.sdkRevision && <small>SDK sources: {value.sdkRevision}</small>}
+              {value.profileSha256 && <small>Profile SHA-256: {value.profileSha256}</small>}
+              {value.sha256 && <small>{value.external || kind === 'r4upack' ? 'Binary' : kind === 'rust' ? 'Manifest' : kind === 'r4os' && installed ? 'Disk' : 'Archive'} SHA-256: {value.sha256}</small>}</div>
+            {installed ? <span className="component-label">Installed</span> : <button type="button" disabled={!downloadable || busy} onClick={() => void action('download', value.id)}>{kind === 'r4upack' ? 'Build profile' : 'Download'}</button>}
           </div>;
         })}
         {loaded && !versions.length && <p className="updates-help">No versions loaded. Check for updates to retrieve the official version list.</p>}

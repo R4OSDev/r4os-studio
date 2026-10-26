@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "id": "distribution-ecbe622b5d26-sdk-51ed03d813d9-zig-0.16.0",
+  "version": "0.64.18",
+  "tool": "r4upack",
+  "host": "x86_64-linux",
+  "distributionRevision": "ecbe622b5d26244fad449c72cb483936798e172e",
+  "sdkRevision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+  "compiler": {
+    "version": "0.16.0",
+    "archiveSha256": "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
+    "binarySha256": "2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c"
+  },
+  "sources": {
+    "r4os-distribution/Tools/R4UPack/src/main.zig": {
+      "repository": "https://github.com/R4OSDev/r4os-distribution",
+      "revision": "ecbe622b5d26244fad449c72cb483936798e172e",
+      "path": "Tools/R4UPack/src/main.zig",
+      "sha256": "df6634ce0d7a7059bc701f7215c73d8df47755661d236eb599fd3d88ba2bd1b3"
+    },
+    "r4os-distribution/LICENSE": {
+      "repository": "https://github.com/R4OSDev/r4os-distribution",
+      "revision": "ecbe622b5d26244fad449c72cb483936798e172e",
+      "path": "LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "r4os-distribution/NOTICE": {
+      "repository": "https://github.com/R4OSDev/r4os-distribution",
+      "revision": "ecbe622b5d26244fad449c72cb483936798e172e",
+      "path": "NOTICE",
+      "sha256": "f7891159dc5eaba8977cab0176af1a37b1b0727b156d77ebf23b46955aefa998"
+    },
+    "r4os-sdk/r4os/r4u_artifact.zig": {
+      "repository": "https://github.com/R4OSDev/r4os-sdk",
+      "revision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+      "path": "r4os/r4u_artifact.zig",
+      "sha256": "fb134fa35f0a978220665309826cb1156ca53e1da270cd9a42a4d0151405b03f"
+    },
+    "r4os-sdk/r4os/r4u_manifest.zig": {
+      "repository": "https://github.com/R4OSDev/r4os-sdk",
+      "revision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+      "path": "r4os/r4u_manifest.zig",
+      "sha256": "22527bd0227a8d80d2794aaf77fbc5922805da716adada5bd871afc2fe19a05f"
+    },
+    "r4os-sdk/r4os/system_update_paths.zig": {
+      "repository": "https://github.com/R4OSDev/r4os-sdk",
+      "revision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+      "path": "r4os/system_update_paths.zig",
+      "sha256": "bf5313919d0ea8c723d4e11e8f3ac38a8cbaef8562d515ac0f7045e5b4286e1c"
+    },
+    "r4os-sdk/r4os/system_update_recovery.zig": {
+      "repository": "https://github.com/R4OSDev/r4os-sdk",
+      "revision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+      "path": "r4os/system_update_recovery.zig",
+      "sha256": "7b3b29dad51865d8ba89702d88b1c1ced5e81dc6bd6312db43b4285969e654ea"
+    },
+    "r4os-sdk/LICENSE": {
+      "repository": "https://github.com/R4OSDev/r4os-sdk",
+      "revision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+      "path": "LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "r4os-sdk/NOTICE": {
+      "repository": "https://github.com/R4OSDev/r4os-sdk",
+      "revision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+      "path": "NOTICE",
+      "sha256": "f7891159dc5eaba8977cab0176af1a37b1b0727b156d77ebf23b46955aefa998"
+    }
+  },
+  "build": {
+    "optimization": "ReleaseSafe",
+    "target": "x86_64-linux-gnu",
+    "strip": true
+  },
+  "binarySha256": "536b341395421a5626c03e4c3165fd58b3b347042dd515037663554afa6de8f1"
+}

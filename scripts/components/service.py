@@ -18,9 +18,9 @@ import sys
 import threading
 import time
 
-KINDS = ('sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4os')
+KINDS = ('sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4upack', 'r4os')
 FOLDERS = {'sdk': 'SDK', 'contract': 'Contract', 'libraries': 'Libraries',
-           'zig': 'Toolchains/Zig', 'rust': 'Toolchains/Rust', 'qemu': 'Toolchains/QEMU', 'codex': 'Toolchains/Codex', 'r4os': 'Images'}
+           'zig': 'Toolchains/Zig', 'rust': 'Toolchains/Rust', 'qemu': 'Toolchains/QEMU', 'codex': 'Toolchains/Codex', 'r4upack': 'Toolchains/R4UPack', 'r4os': 'Images'}
 IDENTITY = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,127}$')
 
 
@@ -101,6 +101,7 @@ class Manager:
             minimal = self.root / 'Profiles/minimal.json'
             pins = json.loads(minimal.read_text()).get('components', {}) if minimal.is_file() else {}
             for kind in KINDS:
+                if kind == 'r4upack': continue
                 installed = self.installed(kind)
                 if installed:
                     pin = pins.get(kind, {})
@@ -119,6 +120,9 @@ class Manager:
                 self.sdk_sets[selected['id']] = {'state': 'unavailable', 'reason': str(error)[:500]}
 
     def installed(self, kind):
+        if kind == 'r4upack':
+            from r4upack import inventory
+            return inventory(self.root, self.external.get(kind))
         records = []
         folder = self.root / FOLDERS[kind]
         if folder.is_dir():
@@ -180,16 +184,29 @@ class Manager:
         from sdk_sets import profile_revision, summary
         with self.lock:
             components = {}
-            inventories = {kind: self.installed(kind) for kind in KINDS}
+            inventories = {}; packer_error = None
+            for kind in KINDS:
+                try: inventories[kind] = self.installed(kind)
+                except (OSError, ValueError, TypeError, KeyError) as error:
+                    if kind != 'r4upack': raise
+                    inventories[kind] = []; packer_error = str(error)[:500]
             for kind in KINDS:
                 catalog = self.catalogs.get(kind, {})
                 active = self.state['defaults'].get(kind)
+                if kind == 'r4upack':
+                    from r4upack import selected
+                    try:
+                        active = selected(self.root, inventories[kind])
+                        if active is None and (self.root / 'Profiles/r4upack.json').exists():
+                            packer_error = 'The selected R4UPack profile is missing or changed. Existing files were preserved.'
+                    except (OSError, ValueError, TypeError, KeyError) as error:
+                        active = None; packer_error = str(error)[:500]
                 installed = inventories[kind]
                 components[kind] = {'installed': [public(record) for record in installed],
                                     'available': [public(record) for record in catalog.get('versions', [])],
                                     'activeId': active['id'] if active else None,
                                     'latestId': catalog.get('latestId'), 'checkedAt': catalog.get('checkedAt'),
-                                    'error': catalog.get('error'), 'hasMore': catalog.get('hasMore', False)}
+                                    'error': packer_error if kind == 'r4upack' and packer_error else catalog.get('error'), 'hasMore': catalog.get('hasMore', False)}
             for record in components['sdk']['installed'] + components['sdk']['available']:
                 value = self.sdk_sets.get(record['id'], {'state': 'unresolved', 'reason': 'Check SDK versions to resolve the matching packages.'})
                 record['sdkSet'] = summary(value, inventories, self.state['defaults'])
@@ -265,6 +282,12 @@ class Manager:
                 self.busy = False
 
     def set_default(self, kind, identity):
+        if kind == 'r4upack':
+            from r4upack import choose
+            with self.lock:
+                if self.busy: raise ValueError('Wait for the current component operation to finish.')
+                choose(self.root, identity, self.installed(kind))
+            return self.status()
         if kind == 'sdk':
             from sdk_selection import start
             return start(self, 'default', identity)

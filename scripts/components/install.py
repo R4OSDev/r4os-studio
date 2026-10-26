@@ -19,7 +19,7 @@ def main():
     config = json.loads(config_file.read_text())
     root = Path(config['dataDirectory']) / 'R4OS'
     user = pwd.getpwnam('r4os-studio')
-    for suffix in ('Profiles', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains/Zig', 'Toolchains/Rust', 'Toolchains/QEMU', 'Toolchains/Codex'):
+    for suffix in ('Profiles', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains/Zig', 'Toolchains/Rust', 'Toolchains/QEMU', 'Toolchains/Codex', 'Toolchains/R4UPack'):
         path = root / suffix
         path.mkdir(parents=True, exist_ok=True)
         os.chown(path, user.pw_uid, user.pw_gid)
