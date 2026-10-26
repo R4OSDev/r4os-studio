@@ -22,8 +22,12 @@ export interface GitHubProjectStatus {
   ahead: number; behind: number; state: string; snapshot: string;
   changes: { path: string; status: string }[]; checkedAt: string | null;
 }
+export interface GitHubImportPreview {
+  projectId: string; commit: string; snapshot: string; files: number; binding: GitHubProjectBinding;
+  metadata: { schema: 1; language: import('./projects').ProjectLanguage; template: import('./projects').ProjectTemplate; moduleName: string; pins: import('./projects').ProjectPins } | null;
+}
 export interface GitHubJob {
   id: string; projectId: string; kind: string; state: 'queued' | 'running' | 'completed' | 'failed' | 'unknown';
   phase: string; createdAt: string; updatedAt: string; error?: string; code?: number;
-  result?: { binding?: GitHubProjectBinding; initialized?: boolean } | GitHubProjectStatus;
+  result?: { binding?: GitHubProjectBinding; initialized?: boolean; import?: GitHubImportPreview } | GitHubProjectStatus;
 }

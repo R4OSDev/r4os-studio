@@ -33,26 +33,34 @@ class Operations:
         return {'initialized': True}
 
     def create_repository(self, data):
-        if (set(data) != {'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'}
+        if (set(data) - {'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private', 'owner'}
                 or type(data.get('userId')) is not int or data['userId'] <= 0
                 or type(data.get('tokenRevision')) is not int or data['tokenRevision'] < 1 or type(data.get('private')) is not bool):
             raise ProjectFault('Invalid repository creation parameters.', 400)
         identity = project_id(data['connectionId']); repo_name = name(data['repositoryName'])
         if self.bound: raise ProjectFault('This project already has a repository. Manage its binding from GitHub.', 409)
         api = GitHub(self.config['github'], identity, data['tokenRevision'], data['userId'])
+        owner = name(data.get('owner') or api.user['login'], True); owner_id = api.user['id']
+        personal = owner.casefold() == api.user['login'].casefold()
+        if personal: owner = api.user['login']
+        else:
+            organization = api.request('/orgs/' + owner)
+            if not isinstance(organization, dict) or type(organization.get('id')) is not int or organization['id'] <= 0 or organization.get('login', '').casefold() != owner.casefold():
+                raise ProjectFault('The selected repository organization could not be verified.', 409)
+            owner, owner_id = name(organization['login'], True), organization['id']
         record = self.base / 'create-repository.json'
         if record.exists():
             previous = document(record)
             if previous.get('requestId') != self.job['id'] and previous.get('state') != 'rejected':
                 raise ProjectFault('An earlier repository creation needs reconciliation. Do not create another repository.', 409)
         self.progress('checking_repository')
-        try: api.repository(api.user['login'], repo_name)
+        try: api.repository(owner, repo_name)
         except ProjectFault as error:
             if error.code != 404: raise
         else: raise ProjectFault('That repository already exists. Choose another name or import it.', 422)
-        save(record, {'requestId': self.job['id'], 'state': 'intent', 'connectionId': identity, 'userId': data['userId'], 'name': repo_name, 'private': data['private']})
-        self.progress('creating_repository', effectPossible=True)
-        try: response = api.request('/user/repos', 'POST', {'name': repo_name, 'private': data['private'], 'auto_init': False})
+        save(record, {'requestId': self.job['id'], 'state': 'intent', 'connectionId': identity, 'userId': data['userId'], 'owner': owner, 'ownerId': owner_id, 'name': repo_name, 'private': data['private']})
+        self.progress('creating_repository', effectPossible=True, creationOwner=owner, creationOwnerId=owner_id)
+        try: response = api.request('/user/repos' if personal else '/orgs/' + owner + '/repos', 'POST', {'name': repo_name, 'private': data['private'], 'auto_init': False})
         except ProjectFault as error:
             if error.code in (400, 401, 403, 404, 422, 429):
                 save(record, {'requestId': self.job['id'], 'state': 'rejected'})
@@ -62,9 +70,11 @@ class Operations:
         if type(repository_id) is not int or repository_id <= 0:
             raise ProjectFault('Repository creation response was not qualified. Reconcile the original request.', 503)
         self.progress('repository_created', repositoryId=repository_id)
+        if response.get('owner', {}).get('id') != owner_id:
+            raise ProjectFault('Created repository owner could not be confirmed. Reconcile the original request.', 503)
         save(record, {'requestId': self.job['id'], 'state': 'created', 'repositoryId': repository_id, 'connectionId': identity,
-                      'userId': data['userId'], 'owner': api.user['login'], 'name': repo_name, 'private': data['private']})
-        repo = api.repository(api.user['login'], repo_name, repository_id)
+                      'userId': data['userId'], 'owner': owner, 'ownerId': owner_id, 'name': repo_name, 'private': data['private']})
+        repo = api.repository(owner, repo_name, repository_id)
         api.assert_current()
         target_branch = branch(repo['defaultBranch'] or 'main')
         self.git.init(target_branch)
@@ -187,7 +197,7 @@ def reconcile(config, job):
         # A confirmed repository ID can be read back, then explicitly published by the original job.
         if job.get('repositoryId'):
             api = GitHub(config['github'], job['input']['connectionId'], expected_user=job['input']['userId'])
-            repo = api.repository(api.user['login'], job['input']['repositoryName'], job['repositoryId'])
+            repo = api.repository(job.get('creationOwner') or api.user['login'], job['input']['repositoryName'], job['repositoryId'])
             if repo['private'] != job['input']['private']: return None
             action = Operations(config, job); target_branch = branch(repo['defaultBranch'] or 'main'); action.git.init(target_branch)
             if action.git.head() is not None: return None

@@ -133,7 +133,7 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
     preValidation: async (request) => {
       validateFields(request.body, [...Object.keys(fields), 'language', 'template', 'optionsRevision', 'requestId', 'guestFormats', 'github']);
       const github = (request.body as ProjectInput).github;
-      if (github && (typeof github !== 'object' || Array.isArray(github) || Object.keys(github).some((key) => !['requestId', 'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'].includes(key)))) throw new ProjectError('Unexpected repository creation fields.', 400);
+      if (github && (typeof github !== 'object' || Array.isArray(github) || Object.keys(github).some((key) => !['requestId', 'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private', 'owner'].includes(key)))) throw new ProjectError('Unexpected repository creation fields.', 400);
     },
     schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'language', 'template', 'optionsRevision', 'requestId'], properties: {
       ...fields, language: { enum: ['Rust', 'Zig', 'C'] },
@@ -142,7 +142,7 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
       guestFormats: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 63, pattern: '^[a-z](?:[a-z0-9_.-]*[a-z0-9])?$' } },
       github: { type: 'object', additionalProperties: false, required: ['requestId', 'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'], properties: {
         requestId: identity, connectionId: identity, tokenRevision: { type: 'integer', minimum: 1 }, userId: { type: 'integer', minimum: 1 },
-        repositoryName: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' }, private: { type: 'boolean' },
+        repositoryName: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' }, private: { type: 'boolean' }, owner: { type: 'string', pattern: '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$' },
       } },
     } } },
   }, async (request, reply) => {

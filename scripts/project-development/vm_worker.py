@@ -41,7 +41,7 @@ def guard(store, job, lease=None, allow_stopping=False):
         authorize_job(store, job, allow_stopping=allow_stopping)
     if store.get(job['id'])['state'] not in (('running', 'stopping') if allow_stopping else ('running',)): raise DevelopmentFault('The development job is stopping.')
     db = connect(store.projects)
-    try: current = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (store.id,)).fetchone())
+    try: current = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (store.id,)).fetchone(), db)
     finally: db.close()
     if (current['revision'] != job['projectRevision'] or current['vmId'] != job['binding']['id'] or current['pins'] != job['pins']):
         raise DevelopmentFault('Project settings or its VM assignment changed. No further guest action was authorized.')

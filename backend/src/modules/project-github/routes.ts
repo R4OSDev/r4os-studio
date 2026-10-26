@@ -11,6 +11,24 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     sessions.session(request, reply);
     return gitHost({ operation: 'capabilities' }).catch(() => ({ available: false, protocol: 1, reason: 'Git host support is unavailable.' }));
   });
+  app.post<{ Body: { requestId: string; connectionId: string; tokenRevision: number; userId: number; repository: { id: number; owner: string; name: string }; branch: string } }>('/github/imports', {
+    bodyLimit: 32768, schema: { body: { type: 'object', required: ['requestId', 'connectionId', 'tokenRevision', 'userId', 'repository', 'branch'], properties: { requestId: uuid, connectionId: uuid, tokenRevision: { type: 'integer', minimum: 1 }, userId: { type: 'integer', minimum: 1 }, repository: { type: 'object', required: ['id', 'owner', 'name'], properties: { id: { type: 'integer', minimum: 1 }, owner: { type: 'string', maxLength: 39 }, name: { type: 'string', maxLength: 100 } } }, branch: { type: 'string', maxLength: 255 } } } },
+    preValidation: async (request) => {
+      const body = request.body as Record<string, unknown> | null;
+      if (!body || Object.keys(body).some((key) => !['requestId', 'connectionId', 'tokenRevision', 'userId', 'repository', 'branch'].includes(key))) throw new ProjectError('Unexpected import fields.', 400);
+      if (body.repository && typeof body.repository === 'object' && Object.keys(body.repository).some((key) => !['id', 'owner', 'name'].includes(key))) throw new ProjectError('Unexpected repository fields.', 400);
+    },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    const { requestId, ...input } = request.body;
+    return gitHost({ operation: 'submit', projectId: requestId, requestId, kind: 'import', input });
+  });
+  app.post<{ Params: { requestId: string }; Body: Record<string, unknown> }>('/github/imports/:requestId/finish', {
+    bodyLimit: 32768, schema: { params: { type: 'object', required: ['requestId'], properties: { requestId: uuid } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return projectStore(directory, { operation: 'finish', id: request.params.requestId, input: request.body }, 'github_import');
+  });
   app.get<{ Params: { id: string } }>('/:id/github', { schema: { params } }, async (request, reply) => {
     sessions.session(request, reply);
     await projectStore(directory, { operation: 'get_settings', id: request.params.id });
@@ -27,7 +45,7 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     sessions.mutation(request, reply);
     const { kind, input } = request.body;
     const keys = kind === 'bind' ? ['expectedRevision', 'connectionId', 'tokenRevision', 'userId', 'repository', 'branch', 'author']
-      : kind === 'create_repository' ? ['connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'] : [];
+      : kind === 'create_repository' ? ['connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private', 'owner'] : [];
     if (Object.keys(input).some((key) => !keys.includes(key))) throw new ProjectError('Unexpected Git job fields.', 400);
     return gitHost({ operation: 'submit', projectId: request.params.id, ...request.body });
   });

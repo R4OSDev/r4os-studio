@@ -39,7 +39,7 @@ class Jobs:
         self.observed_at = {}
         db = connect(self.projects)
         try:
-            self.project = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (self.id,)).fetchone())
+            self.project = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (self.id,)).fetchone(), db)
         finally: db.close()
         self.workspace = workspace(self.projects, self.id, True)
         self.root = folder(self.projects / self.id / 'Development')

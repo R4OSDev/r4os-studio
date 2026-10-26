@@ -1,5 +1,37 @@
 # R4OS Studio · App
 
+## Import a GitHub app project (0.5.4)
+
+New Project offers Create new and Import from GitHub. Import selects a verified
+connection, repository and branch, fetches its full selected-branch history and
+previews source identity and portable pins before registration. A fresh Studio
+UUID and no VM/session assignment preserve the app's original technical name,
+sources and component pins. A private additive catalogue mapping allows several
+imports of the same module without renaming manifests; older releases cannot
+build these new imports and fail their identity check. Existing projects retain
+their original records. Publication uses the existing project recovery journal.
+
+One supported root module.R4MF is required. SDK manifests/source paths are
+validated by the exact locally checked SDK catalogue in a read-only namespace
+without repository scripts or network. Missing pinned components/tools block
+import; no default revision replaces portable pins. Legacy repositories require
+an explicit local profile/language/module assignment. Links, submodules, LFS,
+case-colliding names and oversized content produce preserved, bounded failures.
+An interrupted job retains its original receipt and staging for reconciliation.
+
+Repository owner in Create new additionally accepts an organization (for
+example R4OSDev), explicitly requested during qualification. The server verifies
+the organization and pins its ID before creating a private repository through
+the organization endpoint. Connection authentication remains the token's user.
+The historical 0.5.3 personal-account implementation is unchanged in its tag.
+
+Validated: seven focused Git checks including real materialization, preserved
+history/pins, rejected links and user/organization create recovery; one HTTP
+security check; two isolated registrations using the actual installed pinned SDK
+with duplicate module names/new UUIDs/idempotent completion; browser at1440/320px
+on HTTP, build/TypeScript and strict lint. No successful remote import is claimed
+by these isolated checks. Later release evidence records authorized live QA.
+
 ## Create a project with a GitHub repository (0.5.3)
 
 New Project keeps local-only creation and adds verified GitHub connection,

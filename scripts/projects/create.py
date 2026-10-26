@@ -60,7 +60,7 @@ def publish(source, target):
 
 
 def finish(db, projects, root, request, context=None):
-    project = public(db.execute('SELECT * FROM projects WHERE id=?', (request['project_id'],)).fetchone())
+    project = public(db.execute('SELECT * FROM projects WHERE id=?', (request['project_id'],)).fetchone(), db)
     if not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', project['id']):
         raise ProjectFault('Invalid project journal identity. All files were preserved.')
     if request['phase'] == 'complete':
@@ -106,7 +106,7 @@ def finish(db, projects, root, request, context=None):
     with db:
         db.execute("UPDATE projects SET state='ready' WHERE id=?", (project['id'],))
         db.execute("UPDATE requests SET phase='complete',error=NULL WHERE request_key=?", (request['request_key'],))
-    return public(db.execute('SELECT * FROM projects WHERE id=?', (project['id'],)).fetchone())
+    return public(db.execute('SELECT * FROM projects WHERE id=?', (project['id'],)).fetchone(), db)
 
 
 def create(db, projects, root, data):

@@ -24,7 +24,7 @@ def project(projects, identity):
         if row is None: raise ProjectFault('Project not found.', 404)
         if db.execute('SELECT 1 FROM project_deletions WHERE project_id=?', (identity,)).fetchone():
             raise ProjectFault('This project is being deleted.', 409)
-        return public(row)
+        return public(row, db)
 
 
 def pending_update(projects,identity):

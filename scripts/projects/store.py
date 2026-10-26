@@ -16,12 +16,16 @@ class ProjectFault(Exception):
         self.code = code
 
 
-def public(row):
+def public(row, db=None):
     if row is None:
         raise ProjectFault('Project not found.', 404)
+    module_name = row['module_name']
+    if db is not None and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_imports'").fetchone():
+        imported = db.execute('SELECT source_module_name FROM project_imports WHERE project_id=?', (row['id'],)).fetchone()
+        if imported: module_name = imported[0]
     return {'id': row['id'], 'name': row['name'], 'description': row['description'],
             'language': row['language'], 'template': row['template'], 'vmId': row['vm_id'],
-            'moduleName': row['module_name'], 'pins': json.loads(row['pins']),
+            'moduleName': module_name, 'pins': json.loads(row['pins']),
             'revision': row['revision'], 'createdAt': row['created_at'], 'updatedAt': row['updated_at']}
 
 
@@ -95,6 +99,7 @@ def connect(root):
     with db:
         db.execute('CREATE TABLE IF NOT EXISTS project_deletions(project_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS retired_project_requests(request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS project_imports(project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, source_module_name TEXT NOT NULL, request_hash TEXT NOT NULL)')
     return db
 
 
@@ -105,12 +110,12 @@ def operation(db, request, root):
     if request.get('operation') == 'vms' and len(request) == 1:
         return vm_choices(root)
     if request.get('operation') == 'get' and set(request) == {'operation', 'id'}:
-        return public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone())
+        return public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone(), db)
     if request.get('operation') == 'get_settings' and set(request) == {'operation', 'id'}:
         row = db.execute('SELECT * FROM projects WHERE id=?', (request['id'],)).fetchone()
         deleting = db.execute('SELECT 1 FROM project_deletions WHERE project_id=?', (request['id'],)).fetchone()
         if row is None or (row['state'] != 'ready' and not deleting): raise ProjectFault('Project not found.', 404)
-        return {**public(row), **({'deleting': True} if deleting else {})}
+        return {**public(row, db), **({'deleting': True} if deleting else {})}
     if request.get('operation') == 'update' and set(request) == {'operation', 'id', 'input'}:
         data = request['input']
         if not set(data).issubset({'name', 'description', 'vmId', 'revision'}) or 'revision' not in data:
@@ -120,7 +125,7 @@ def operation(db, request, root):
         if pending_update(catalog_path,request['id']):
             raise ProjectFault('Resolve this project\'s owned native update before changing its settings.')
         db.execute('BEGIN IMMEDIATE')
-        old = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone())
+        old = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone(), db)
         if old['revision'] != data['revision']:
             raise ProjectFault('Project settings changed. Reload before saving.')
         value = {**old, **data}
@@ -143,7 +148,7 @@ def operation(db, request, root):
             db.execute('UPDATE projects SET name=?,description=?,vm_id=?,updated_at=?,revision=revision+1 WHERE id=?',
                        (value['name'], value['description'], value['vmId'], now, request['id']))
         db.commit()
-        return public(db.execute('SELECT * FROM projects WHERE id=?', (request['id'],)).fetchone())
+        return public(db.execute('SELECT * FROM projects WHERE id=?', (request['id'],)).fetchone(), db)
     raise ValueError('Unsupported project operation.')
 
 

@@ -6,6 +6,7 @@ import { projectRequest, projectRequestId, ProjectRequestError } from './api';
 import type { GitHubAccount, GitHubJob } from '../../../../shared/project-github';
 import { ConnectionSelect } from '../github-connections/ConnectionSelect';
 import { waitGitJob } from '../github-connections/projectApi';
+import { hasPendingImport, ImportProjectDialog } from './ImportProjectDialog';
 
 const pendingKey = 'studio.project.pendingCreate';
 function savedRequest(): ProjectInput | null {
@@ -17,8 +18,15 @@ function savedRequest(): ProjectInput | null {
   } catch { return null; }
 }
 
-export function NewProjectDialog({ token, close, created }: {
+type DialogProps = { token: string; close: () => void; created: (project: Project) => Promise<void> };
+export function NewProjectDialog(props: DialogProps) {
+  const [mode, setMode] = useState(() => hasPendingImport() ? 'import' : 'create');
+  return mode === 'import' ? <ImportProjectDialog {...props} back={() => setMode('create')} /> : <CreateProjectDialog {...props} importProject={() => setMode('import')} />;
+}
+
+function CreateProjectDialog({ token, close, created, importProject }: {
   token: string; close: () => void; created: (project: Project) => Promise<void>;
+  importProject: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [pending, setPending] = useState(savedRequest);
@@ -37,10 +45,10 @@ export function NewProjectDialog({ token, close, created }: {
     try { const value = JSON.parse(sessionStorage.getItem(pendingKey + '.account') ?? 'null'); return value?.connectionId === pending?.github?.connectionId ? value : null; } catch { return null; }
   });
   const [repositoryName, setRepositoryName] = useState(pending?.github?.repositoryName ?? '');
+  const [repositoryOwner, setRepositoryOwner] = useState(pending?.github?.owner ?? '');
   const [visibility, setVisibility] = useState(pending?.github?.private === false ? 'public' : 'private');
   const [localProject, setLocalProject] = useState<Project>();
   const [gitJob, setGitJob] = useState<GitHubJob>();
-  const [mode, setMode] = useState<'create' | 'import'>('create');
   const [accountBusy, setAccountBusy] = useState(false);
   useEffect(() => {
     const element = dialog.current!;
@@ -75,10 +83,10 @@ export function NewProjectDialog({ token, close, created }: {
     let input: ProjectInput = pending ?? { name: name.trim(), description, language, template, vmId: vmId || null,
       guestFormats: template === 'subsystem' ? formats : [], optionsRevision: options!.revision, requestId: projectRequestId(),
       ...(account ? { github: { requestId: projectRequestId(), connectionId: account.connectionId, userId: account.userId,
-        tokenRevision: account.tokenRevision, repositoryName: repositoryName.trim(), private: visibility === 'private' } } : {}) };
+        tokenRevision: account.tokenRevision, repositoryName: repositoryName.trim(), private: visibility === 'private', ...(repositoryOwner.trim() ? { owner: repositoryOwner.trim() } : {}) } } : {}) };
     if (pending && localProject && gitJob?.state === 'failed' && account) input = { ...pending, github: {
       requestId: projectRequestId(), connectionId: account.connectionId, userId: account.userId, tokenRevision: account.tokenRevision,
-      repositoryName: repositoryName.trim(), private: visibility === 'private' } };
+      repositoryName: repositoryName.trim(), private: visibility === 'private', ...(repositoryOwner.trim() ? { owner: repositoryOwner.trim() } : {}) } };
     try { sessionStorage.setItem(pendingKey, JSON.stringify(input)); }
     catch { setError('The browser could not retain this request. Enable session storage and retry.'); return; }
     setPending(input); setBusy(true);
@@ -109,8 +117,8 @@ export function NewProjectDialog({ token, close, created }: {
       <header className="project-dialog-header"><h2 id="new-project-title">New Project</h2>
         <button type="button" className="project-close" aria-label="Close" disabled={busy} onClick={close}><span aria-hidden="true">×</span></button></header>
       <div className="project-form-row" aria-label="Project source">
-        <button type="button" aria-pressed={mode === 'create'} disabled={busy || !!pending} onClick={() => setMode('create')}>Create new</button>
-        <button type="button" aria-pressed={mode === 'import'} disabled title="Import becomes available with the next project update.">Import from GitHub</button>
+        <button type="button" aria-pressed="true" disabled={busy || !!pending}>Create new</button>
+        <button type="button" aria-pressed="false" disabled={busy || !!pending} onClick={importProject}>Import from GitHub</button>
       </div>
       <fieldset className="project-fields" disabled={busy || !!pending}>
         <ProjectField id="project-name" label="Name">
@@ -141,9 +149,10 @@ export function NewProjectDialog({ token, close, created }: {
       <fieldset className="project-fields" disabled={busy || (!!pending && (!localProject || gitJob?.state !== 'failed'))}>
         <ConnectionSelect value={account} busyChanged={setAccountBusy} changed={(value) => { setAccount(value); if (value) sessionStorage.setItem(pendingKey + '.account', JSON.stringify(value)); else sessionStorage.removeItem(pendingKey + '.account'); }} />
         {(account || pending?.github) && <>
+          <ProjectField id="github-repository-owner" label="Repository owner"><input id="github-repository-owner" maxLength={39} placeholder={account?.login ?? 'Account or organization'} value={repositoryOwner} onChange={(e) => setRepositoryOwner(e.target.value)} pattern="[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?" /></ProjectField>
           <ProjectField id="github-repository-name" label="Repository name"><input id="github-repository-name" required pattern="[A-Za-z0-9_.-]{1,100}" maxLength={100} value={repositoryName} onChange={(e) => setRepositoryName(e.target.value)} /></ProjectField>
           <ProjectField id="github-visibility" label="Visibility"><select id="github-visibility" value={visibility} onChange={(e) => setVisibility(e.target.value)}><option value="private">Private</option><option value="public">Public</option></select></ProjectField>
-          <p>Create an empty repository for {account ? '@' + account.login : 'the retained GitHub account'}. Your first upload will use Push with a commit message.</p>
+          <p>Create an empty repository under {repositoryOwner.trim() || (account ? '@' + account.login : 'the retained GitHub account')}. Enter an organization name above to use organization access. Your first upload will use Push with a commit message.</p>
         </>}
       </fieldset>
       {localProject && <p role="status">Local project created: {localProject.name}. GitHub setup keeps its original request.</p>}

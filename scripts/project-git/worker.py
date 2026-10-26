@@ -26,8 +26,13 @@ def main():
     job.update(state='running', phase='starting', updatedAt=now(), workerPid=os.getpid(), workerBirth=birth(os.getpid()))
     save(path, job)
     try:
-        with locks(config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
-            result = Operations(config, job).execute()
+        if job['kind'] == 'import':
+            from importing import prepare
+            from common import acquire
+            with acquire(config['projects'], job['projectId'], exclusive=True): result = prepare(config, job)
+        else:
+            with locks(config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
+                result = Operations(config, job).execute()
         job.update(state='completed', phase='complete', result=result, updatedAt=now())
     except ProjectFault as error:
         # Errors before publication have no source effect. Network/publication ambiguity is retained.

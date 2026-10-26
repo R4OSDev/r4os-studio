@@ -56,6 +56,7 @@ class GitHub:
             with build_opener(NoRedirect(), HTTPSHandler(context=ssl.create_default_context())).open(request, timeout=10) as response:
                 raw = response.read(2 * 1024 * 1024 + 1)
                 if len(raw) > 2 * 1024 * 1024: raise ProjectFault('GitHub response exceeded its limit.', 502)
+                if method == 'DELETE' and response.status == 204 and not raw: return None
                 return json.loads(raw)
         except HTTPError as error:
             status = error.code
@@ -71,6 +72,7 @@ class GitHub:
         name(owner, True); name(repo)
         value = self.request('/repos/' + owner + '/' + repo)
         if (not isinstance(value.get('id'), int) or value['id'] <= 0 or value.get('full_name') != value.get('owner', {}).get('login', '') + '/' + value.get('name', '')
+                or value.get('owner', {}).get('login', '').casefold() != owner.casefold() or value.get('name', '').casefold() != repo.casefold()
                 or (expected_id is not None and value['id'] != expected_id)):
             raise ProjectFault('GitHub repository identity changed. Reconnect explicitly.', 409)
         name(value['owner']['login'], True); name(value['name'])

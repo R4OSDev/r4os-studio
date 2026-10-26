@@ -77,9 +77,14 @@ class Coordinator:
                     with open(path.with_name('execution.lock'), 'a') as lease:
                         try: fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         except BlockingIOError: raise ProjectFault('The original Git worker is still active. Wait for its receipt.', 409) from None
-                        from operations import reconcile
-                        with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
-                            result = reconcile(self.config, job)
+                        if job['kind'] == 'import':
+                            from importing import reconcile
+                            from project_use import acquire
+                            with acquire(self.config['projects'], job['projectId'], exclusive=True): result = reconcile(self.config, job)
+                        else:
+                            from operations import reconcile
+                            with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
+                                result = reconcile(self.config, job)
                         if result is not None:
                             job.update(state='completed', phase='reconciled', result=result, error=None, updatedAt=now()); save(path, job)
                     return self.public(job)
@@ -105,6 +110,8 @@ class Coordinator:
                 if data['kind'] not in ('status', 'check') and old['projectId'] == project and old['state'] == 'unknown' and old['kind'] not in ('status', 'check'):
                     raise ProjectFault('Resolve the original uncertain Git job before another operation.', 409)
             release = self.release()
+            if data['kind'] not in document(Path(release) / 'shared/project-git.json')['actions']:
+                raise ProjectFault('This Git operation requires a newer installed release.', 409)
             directory.mkdir(mode=0o700)
             job = {'schema': 1, 'id': identity, 'projectId': project, 'kind': data['kind'], 'input': data['input'], 'hash': fingerprint,
                    'releaseRoot': release, 'state': 'queued', 'phase': 'accepted', 'createdAt': now(), 'updatedAt': now()}
