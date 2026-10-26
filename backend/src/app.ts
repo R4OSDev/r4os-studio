@@ -16,9 +16,10 @@ import { githubRoutes } from './modules/github-connections/routes.js';
 import type { GitHubTestResult } from '../../shared/github-connections.js';
 import { skillRoutes } from './modules/skills/routes.js';
 
-export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory(), githubTester }: {
+export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory(), githubTester, githubTransport }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
   githubTester?: (token: string) => Promise<GitHubTestResult>;
+  githubTransport?: typeof fetch;
 } = {}) {
   const app = Fastify({ logger });
   const legacyCodex = '/opt/r4os-studio/bin/codex';
@@ -43,7 +44,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory });
   app.register(settingsRoutes, { prefix: '/api/settings', directory: projectDirectory });
   app.register(githubRoutes, { prefix: '/api/github', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
-    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub'), tester: githubTester });
+    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub'), projectDirectory, tester: githubTester, transport: githubTransport });
   app.register(skillRoutes, { prefix: '/api/skills', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
     ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'Skills'), providerDirectory: providers.directory });
 

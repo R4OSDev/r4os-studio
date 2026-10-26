@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GitHubConnection, GitHubConnectionChange, GitHubConnectionInput, GitHubTestResult } from '../../../../shared/github-connections';
 import { loadConnections, request } from './api';
+import type { GitHubProjectReference } from '../../../../shared/project-github';
 
 export function useConnections(active: boolean) {
   const [connections, setConnections] = useState<GitHubConnection[]>([]);
@@ -23,8 +24,9 @@ export function useConnections(active: boolean) {
     setConnections((previous) => [...previous.filter((v) => v.id !== saved.id), saved].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
     return saved;
   };
-  const remove = async (connection: GitHubConnection) => {
-    await request('DELETE', '/' + connection.id, { revision: connection.revision }, csrf);
+  const references = (connection: GitHubConnection) => request<{ projects: GitHubProjectReference[] }>('GET', '/' + connection.id + '/projects');
+  const remove = async (connection: GitHubConnection, confirmProjects: boolean) => {
+    await request('DELETE', '/' + connection.id, { revision: connection.revision, ...(confirmProjects ? { confirmProjects: true } : {}) }, csrf);
     setConnections((previous) => previous.filter((v) => v.id !== connection.id));
   };
   const testDraft = (token: string) => request<GitHubTestResult>('POST', '/test', { token }, csrf);
@@ -33,6 +35,6 @@ export function useConnections(active: boolean) {
     setConnections((previous) => previous.map((v) => v.id === result.id && v.tokenRevision === result.tokenRevision ? result : v));
     return result;
   };
-  return { connections, error, loading: loading || (active && !csrf && !error), ready: !!csrf, refresh, save, remove, testDraft, testStored };
+  return { connections, error, loading: loading || (active && !csrf && !error), ready: !!csrf, refresh, save, remove, references, testDraft, testStored };
 }
 export type ConnectionsApi = ReturnType<typeof useConnections>;

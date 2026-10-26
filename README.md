@@ -1,5 +1,22 @@
 # R4OS Studio · App
 
+## GitHub repository accounts (0.5.1)
+
+Saved connections now support freshly verified account selection and bounded,
+paginated repository/branch discovery through protected `/api/github` endpoints.
+Only allowlisted metadata leaves the host. Authentication, repository creation,
+contents access and push rights remain separate; account verification never
+claims permission to create a repository. Token replacement/removal invalidates
+pending results; connection names are labels rather than repository owners.
+
+The project binding contract records a stable repository/user/connection identity
+and explicit branch. Private bindings live outside Workspace under
+`.studio/git/binding.json`. Removing a connection used by projects requires
+confirmation naming affected projects and preserves their sources/history.
+Repository creation/import and Git execution follow in subsequent 0.5.X releases.
+GitHub REST contract: 2026-03-10. Focused adapter/security/race checks, build,
+TypeScript and strict lint are used for validation; no real repository mutations.
+
 ## GitHub settings HTTP fix (0.4.25)
 
 Settings → GitHub now generates connection UUIDs with `crypto.getRandomValues`,

@@ -80,6 +80,17 @@ export class GitHubStore {
     catch (e) { if (e instanceof ProjectError) throw e; throw new ProjectError('GitHub storage is unavailable. Existing data was preserved.', 503); }
   }
   async list() { return this.guarded(async () => (await this.load()).connections.map(publicConnection)); }
+  /** Server-only credential snapshot. Never serialize this result to a browser or agent. */
+  async credential(id: string, tokenRevision?: number) {
+    connectionId(id);
+    return this.guarded(async () => {
+      const value = (await this.load()).connections.find((v) => v.id === id);
+      if (!value) throw new ProjectError('GitHub connection was removed. Reconnect this project.', 409);
+      if (tokenRevision !== undefined && value.tokenRevision !== tokenRevision) throw new ProjectError('GitHub token changed. Reload and recheck the account.', 409);
+      return { token: value.token, connection: publicConnection(value) };
+    });
+  }
+  async assertCredential(id: string, tokenRevision: number) { await this.credential(id, tokenRevision); }
   private async change<T>(operation: (catalog: Catalog) => T): Promise<T> {
     return this.guarded(async () => {
       const lock = await open(join(this.directory, '.write.lock'), 'wx', 0o600).catch(() => {

@@ -51,9 +51,13 @@ export function ConnectionPanel({ connection, api, select, setLeaveGuard }: {
     finally { setBusy(false); }
   }
   async function remove() {
-    if (!base || busy || !window.confirm(`Remove the saved connection “${base.name}” from Studio?`)) return;
+    if (!base || busy) return;
     setBusy(true); setError('');
-    try { await api.remove(base); setToken(''); setName(''); setReplace(false); select(null); }
+    try {
+      const { projects } = await api.references(base);
+      if (!window.confirm(`Remove the saved connection “${base.name}” from Studio?${projects.length ? '\nGitHub access will be unavailable for: ' + projects.map((v) => v.name).join(', ') + '. Their local sources and history will be preserved.' : ''}`)) return;
+      await api.remove(base, projects.length > 0); setToken(''); setName(''); setReplace(false); select(null);
+    }
     catch (cause) { setError((cause as Error).message); setConflict([403, 409].includes((cause as GitHubError).status)); }
     finally { setBusy(false); }
   }
@@ -80,6 +84,7 @@ export function ConnectionPanel({ connection, api, select, setLeaveGuard }: {
         <button type="button" disabled={conflict || ((!base || replace) && !/^[\x21-\x7e]{20,4096}$/.test(token))} onClick={() => void test()}>{testing ? 'Testing…' : 'Test connection'}</button>
         <p role="status">{lastTest ? `${messages[lastTest.status]}${lastTest.status === 'success' ? `: ${lastTest.login} (ID ${lastTest.userId})` : ''}. Last tested ${new Date(lastTest.checkedAt).toLocaleString()}.` : 'Not tested.'}</p>
         <p>A successful test confirms authentication at that time. It does not verify repository or push permissions. Testing an unsaved token does not save it.</p>
+        {lastTest?.status === 'success' && <p>Account: @{lastTest.login}. Repository creation, reading contents and pushing require separate permissions. Token or account changes are checked again before repository operations.</p>}
       </section>
       {error && <p className="github-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
