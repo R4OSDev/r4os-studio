@@ -1,5 +1,17 @@
 # R4OS Studio · App
 
+## Development authorization for v6 sessions (0.5.12)
+
+The development coordinator and its workers now accept `studio-tools-v6` wherever
+it inherits development capabilities from v5: build/deploy/run, VM start, check
+completion and update operations. Previously the profile checks rejected these
+calls before compilation despite enabled tool permissions. Existing frozen
+permissions, project pins, revisions, worker identity and session ownership still
+govern admission and worker execution. This requires no session/profile migration
+or replay of a failed run. Idle coordinators adopt the installed release through
+their existing mechanism; accepted workers retain their original release.
+Build/TypeScript and lint only; no tests or project/agent/VM runs were performed.
+
 ## Session settings permission limit fix (0.5.11)
 
 Remove the obsolete HTTP limit of 30 permission properties so sessions with the
