@@ -44,6 +44,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
   const consuming = useRef(false);
   const generation = useRef(0);
   const path = `/${id}/usage`;
+  const invalidateReads = useCallback(() => { generation.current++; reading.current = false; }, []);
 
   const refresh = useCallback((force = false) => {
     if (reading.current || consuming.current) return Promise.resolve();
@@ -59,7 +60,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
   }, [path, request]);
 
   useEffect(() => {
-    generation.current++; alive.current = true; reading.current = false;
+    invalidateReads(); alive.current = true;
     void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -67,8 +68,8 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
     }, 60_000);
     const visible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', visible);
-    return () => { alive.current = false; generation.current++; reading.current = false; clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
-  }, [refresh]);
+    return () => { alive.current = false; invalidateReads(); clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
+  }, [refresh, invalidateReads]);
 
   function saveAttempt(next: Attempt) {
     try { sessionStorage.setItem(storageKey, JSON.stringify(next)); }
@@ -96,7 +97,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
   async function consume() {
     if (!attempt || consuming.current) return;
     consuming.current = true;
-    generation.current++; reading.current = false;
+    invalidateReads();
     setResetting(true); setError(null); setMessage(null);
     try {
       // Persist before sending; retries and reloads reuse this exact logical attempt.
