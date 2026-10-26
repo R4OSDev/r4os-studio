@@ -44,3 +44,13 @@ export interface UpdatePackageOptions {
     nativeContainerBytes: number; batchPackages: number; batchComponents: number; batchRequirements: number };
   artifacts: DevelopmentArtifact[]; plans: UpdatePackagePlan[];
 }
+
+
+export interface UpdatePackageArtifact {
+  schema: 1; id: string; projectId: string; jobId: string; plan: UpdatePackagePlan;
+  bytes: number; sha256: string; format: 'R4U2'; createdAt: string; nativeExitCode: 0;
+  packer: UpdatePackerPin; diagnostics: { jobId: string; outputBytes: number; stdoutBytes: number; stderrBytes: number }; arguments: string[];
+}
+export interface UpdatePackageBuildInput {
+  requestId: string; projectRevision: number; planId: string; planSha256: string;
+}

@@ -43,6 +43,17 @@ await test('update plans require session and CSRF, bind artifact IDs and reject 
     assert.deepEqual(received.at(-1), { operation: 'update_plan', projectId: project, input: body });
     assert.equal((await app.inject({ method: 'GET', url: '/api/projects/' + project + '/update-packages', headers })).statusCode, 200);
     assert.deepEqual(received.at(-1), { operation: 'update_options', projectId: project });
+    const buildUrl = '/api/projects/' + project + '/update-packages/builds';
+    const build = { requestId: randomUUID(), projectRevision: 1, planId: randomUUID(), planSha256: 'a'.repeat(64) };
+    assert.equal((await app.inject({ method: 'POST', url: buildUrl, payload: build })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: buildUrl, headers, payload: { ...build, binary: '/bin/sh' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: buildUrl, headers, payload: { ...build, planId: '../outside' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: buildUrl, headers, payload: build })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'package', projectId: project, input: build });
+    const packageId = randomUUID();
+    assert.equal((await app.inject({ method: 'GET', url: '/api/projects/' + project + '/update-packages/artifacts/' + packageId, headers })).statusCode, 200);
+    assert.deepEqual(received.at(-1), { operation: 'package_artifact', projectId: project, id: packageId });
+
   } finally {
     await app.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     delete process.env.STUDIO_DEVELOPMENT_SOCKET; await rm(directory, { recursive: true, force: true });

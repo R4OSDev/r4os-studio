@@ -20,11 +20,15 @@ async def main():
     store = Jobs(meta['projects'], meta['r4os'], meta['projectId']); job = store.get(meta['jobId'])
     if len(sys.argv) > 2:
         if job['state'] in ACTIVE:
-            stopped = job['kind'] == 'build' and job['state'] == 'stopping'
+            stopped = job['kind'] in ('build', 'package') and job['state'] == 'stopping'
             store.update(job['id'], 'interrupted' if stopped else 'unknown', phase='stopped' if stopped else 'recovery',
-                error='Build stopped.' if stopped else 'The worker ended without a confirmed result. Effects were not replayed.')
+                error='Job stopped.' if stopped else 'The worker ended without a confirmed result. Effects were not replayed.')
         store.close(); return
-    builder = Builder(store, job); interrupted = False
+    if job['kind'] == 'package':
+        from packager import Packager
+        builder = Packager(store, job)
+    else: builder = Builder(store, job)
+    interrupted = False
     async def stop():
         nonlocal interrupted
         interrupted = True; store.update(job['id'], 'stopping', phase='stopping'); await builder.stop()
@@ -32,6 +36,10 @@ async def main():
     for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, lambda: asyncio.create_task(stop()))
     try:
         if job['state'] not in ('queued', 'starting'): return
+        if job['kind'] == 'package':
+            store.update(job['id'], 'running', phase='freezing')
+            await asyncio.wait_for(builder.build(), LIMITS['packageTimeoutSeconds'])
+            return
         if job['kind'] != 'build': raise DevelopmentFault('This worker release does not support this development job kind.')
         if job['projectRevision'] != store.project['revision']: raise DevelopmentFault('Project settings changed before build admission.')
         store.update(job['id'], 'running', phase='capturing')
@@ -48,7 +56,7 @@ async def main():
                 store.update(job['id'], source=source)
         await asyncio.wait_for(builder.build(directory), LIMITS['buildTimeoutSeconds'])
     except asyncio.TimeoutError:
-        store.update(job['id'], 'failed', phase='timeout', error='The build time limit was reached.')
+        store.update(job['id'], 'failed', phase='timeout', error='The packaging time limit was reached.' if job['kind'] == 'package' else 'The build time limit was reached.')
     except BaseException as error:
         text = str(error) if isinstance(error, DevelopmentFault) else 'The build worker could not complete. Input and diagnostics were preserved.'
         store.update(job['id'], 'interrupted' if interrupted else 'failed', phase='stopped' if interrupted else 'failed',

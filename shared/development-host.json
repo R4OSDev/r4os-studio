@@ -21,13 +21,15 @@
     "screenshotMaxWidth": 1280,
     "screenshotMaxHeight": 1024,
     "vmReadyTimeoutSeconds": 180,
-    "vmStartTimeoutSeconds": 300
+    "vmStartTimeoutSeconds": 300,
+    "packageTimeoutSeconds": 60
   },
   "features": {
     "agentTools": 2,
     "reconciliation": 1,
     "leaseQueue": 1,
     "vmStart": 1,
-    "jobWait": 1
+    "jobWait": 1,
+    "packageJobs": 1
   }
 }

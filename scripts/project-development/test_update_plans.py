@@ -26,7 +26,7 @@ class PackagePlans(unittest.TestCase):
             'buildProof':{'format':'fixture','sha256':digest(proof),'bytes':proof.stat().st_size},'updateMetadata':metadata}
         save(parent/'artifact.json',record);self.store.publish(job['id'],record);self.artifact=record;self.parent=parent
         self.packer={'id':'qualified','version':'1.0.0','revision':'c'*40,'sdkRevision':'d'*40,'host':'x86_64-linux','sha256':'e'*64,'profileSha256':'0'*64}
-        self.pinning=patch('update_plans.pin_packer',return_value=self.packer);self.pinning.start()
+        self.pinning=patch('update_plans.pin_packer',return_value=self.packer);self.pinning_mock=self.pinning.start()
 
     def tearDown(self):self.pinning.stop();self.fixture.tearDown()
     def request(self,**values):

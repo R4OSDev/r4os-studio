@@ -90,6 +90,9 @@ class Jobs:
         return values
 
     def admit(self, kind, request, owner=None, binding=None):
+        if kind == 'package':
+            from package_jobs import admit
+            return admit(self, request, owner)
         if kind not in ('build', 'deploy', 'execution', 'vm_start'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
         if kind == 'execution' and 'overrides' in request: expected.add('overrides')

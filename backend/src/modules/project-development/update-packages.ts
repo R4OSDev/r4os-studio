@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ProjectSessions } from '../projects/sessions.js';
-import type { UpdatePackageOptions, UpdatePackagePlan, UpdatePlanInput } from '../../../../shared/update-packages.js';
+import type { UpdatePackageOptions, UpdatePackagePlan, UpdatePlanInput, UpdatePackageBuildInput, UpdatePackageArtifact } from '../../../../shared/update-packages.js';
 import { ProjectError } from '../projects/store.js';
 import { developmentHost } from './host.js';
 
@@ -19,6 +19,28 @@ const requirement = { type: 'object', additionalProperties: false,
     minVersion: { type: 'string', minLength: 1, maxLength: 24 }, state: { type: 'string', enum: ['installed', 'active'] } } };
 export function updatePackageRoutes(app: FastifyInstance, security: ProjectSessions) {
   const base = '/:id/update-packages';
+  app.post<{ Params: { id: string }; Body: UpdatePackageBuildInput }>(base + '/builds', {
+    bodyLimit: 4096,
+    preValidation: async request => {
+      if (!request.body || typeof request.body !== 'object' || Object.keys(request.body).some(key =>
+        !['requestId', 'projectRevision', 'planId', 'planSha256'].includes(key))) {
+        throw new ProjectError('Unexpected package build fields.', 400);
+      }
+    },
+    schema: { params, body: { type: 'object', additionalProperties: false,
+      required: ['requestId', 'projectRevision', 'planId', 'planSha256'],
+      properties: { requestId: identity, projectRevision: revision, planId: identity,
+        planSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' } } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    return reply.code(202).send({ job: await developmentHost({ operation: 'package', projectId: request.params.id, input: request.body }) });
+  });
+  app.get<{ Params: { id: string; artifactId: string } }>(base + '/artifacts/:artifactId', {
+    schema: { params: { ...params, required: ['id', 'artifactId'], properties: { id: identity, artifactId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    return developmentHost<{ artifact: UpdatePackageArtifact }>({ operation: 'package_artifact', projectId: request.params.id, id: request.params.artifactId });
+  });
   app.get<{ Params: { id: string } }>(base, { schema: { params } }, async (request, reply) => {
     security.session(request, reply);
     return developmentHost<UpdatePackageOptions>({ operation: 'update_options', projectId: request.params.id });

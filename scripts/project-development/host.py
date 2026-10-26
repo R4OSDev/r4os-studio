@@ -20,7 +20,7 @@ UNIT = 'r4os-studio-development@{}.service'
 VM_UNIT = 'r4os-studio-development-vm@{}.service'
 
 
-def job_unit(job_id, kind='build'): return (UNIT if kind == 'build' else VM_UNIT).format(identity(job_id))
+def job_unit(job_id, kind='build'): return (UNIT if kind in ('build', 'package') else VM_UNIT).format(identity(job_id))
 
 
 async def systemctl(*args):
@@ -218,17 +218,18 @@ class Host:
                     return batch(store, value['planIds'])
             finally: store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
+            from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
+                    'features': {'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        if op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
-        if op in ('build', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
+        if op in ('build', 'package', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'deployment', 'build', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -255,6 +256,9 @@ class Host:
                         await systemctl('stop', '--no-block', job_unit(job['id'], job['kind'])); stopped.append(job['id'])
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
+            if op == 'package_artifact':
+                from package_jobs import artifact
+                return {'artifact': artifact(store, request['id'])}
             if op == 'wait_vm_start':
                 from authorization import authorize
                 job = store.get(request['id'])
@@ -379,6 +383,11 @@ class Host:
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
                 if owner is not None: authorize(store, owner, op, peer_pid)
                 if not previous:
+                    if op == 'package':
+                        from package_support import available
+                        release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
+                        if not available() or not (release / 'scripts/project-development/packager.py').is_file():
+                            raise DevelopmentFault('Package worker host maintenance or compatible worker adoption is required.', 503)
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None

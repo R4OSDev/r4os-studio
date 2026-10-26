@@ -19,7 +19,7 @@ else:
         raise SystemExit('Invalid development worker binding.')
     if not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', meta['projectId']): raise SystemExit('Invalid project ID.')
     release = Path(meta['releaseRoot']).resolve(strict=True)
-    name = 'worker.py' if meta.get('kind', 'build') == 'build' else 'vm_worker.py'
+    name = 'worker.py' if meta.get('kind', 'build') in ('build', 'package') else 'vm_worker.py'
     extra = [str(path)]
     if len(sys.argv) > 2:
         if sys.argv[2:] != ['--finalize']: raise SystemExit('Unsupported worker operation.')

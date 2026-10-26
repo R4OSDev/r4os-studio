@@ -2,6 +2,22 @@
 
 
 
+
+## Immutable native package jobs (0.4.13)
+
+POST /api/projects/<uuid>/update-packages/builds accepts only requestId, projectRevision, planId and planSha256. It starts one durable package job through the existing private development coordinator and bounded non-VM worker. GET /development/jobs/<job-id> reports its original state/output; GET /update-packages/artifacts/<package-id> verifies and returns the resulting immutable package receipt. Repeating the same accepted request returns its original job, including after a lost response or a later default change. An unconfirmed result remains unknown and is never rebuilt automatically.
+
+Admission freezes the complete plan, project/source/manifest/artifact/native-inspector/Packer hashes and a private exact executable binding. The active qualified Packer must match the plan at admission; select that profile or create a new plan if the default changed. Accepted jobs retain their bound program independently of later defaults. Packaging never downloads/activates a tool, rebuilds the app, reads workspace changes or opens VM access.
+
+The worker copies and hashes confirmed artifact bytes and the exact qualified executable into private job storage. A network-isolated namespace exposes only readonly inputs/Packer, host runtime files and its own writable output directory. The native process is invoked through structured argv: SOURCE|TARGET|KIND and the exact five-field requirements each remain a single value. Title text cannot become a shell command. Both stdout and stderr are bounded and labelled, with separate byte counts; success requires the actual exit code 0, complete R4U2 bytes and final source/program/output rechecks. Limits remain two host jobs/one per project, 60 seconds, 128 MiB package bytes and 2 MiB diagnostics; existing build limits are unchanged.
+
+Completed bytes and native provenance publish atomically under the selected project's Development/UpdatePackages/<uuid>/, outside the editable Workspace. Additive update_artifacts rows and the final job state commit together. No existing package is overwritten. Stop, malformed inputs, changed files, process errors, oversized/truncated output or lost confirmation preserve diagnostics/partial private work and never produce a confirmed package. A private publication record is retained if the final database confirmation is missing; unknown is preserved until evidence supports an explicit reconciliation. Successful disposable package work is removed after artifact verification.
+
+Explicit one-time host maintenance: python3 App/scripts/project-development/install-package-support.py as root. It changes only the known dispatcher decision so build/package use the existing non-VM unit, records its root-owned hash and leaves bootstrap, config, unit definitions, old workers and VMs in place. Unknown customized dispatchers are preserved for review. Normal web updates never execute this root installer. Fresh setup also uses the extended release-owned dispatcher. A capability gate blocks new package admission until the installed dispatcher and worker support are qualified.
+
+Validated with actual unprivileged native packaging of the prior C build, successful stderr output and immutable 9472-byte R4U2 result. Twenty-four development Python cases, seven unprivileged package cases, backend identity/session/CSRF/path checks, build/TypeScript/lint, targeted host-preservation checks and installed bounded-worker package/replay/read proof are recorded under Research/R4OS/Roadmap-Implementation/0.4.13/. No new dependency or native agent profile is introduced. Guest preflight/transfer/installation and agent tools remain subsequent 0.4.14–0.4.20 work.
+
+
 ## Artifact-bound update package plans (0.4.12)
 
 The private development coordinator exposes project-scoped package proposals at /api/projects/<uuid>/update-packages: GET options/configuration, POST plans, GET plans/<plan-id> and POST batch-preview. A proposal binds confirmed immutable build artifact IDs, captured module.R4MF SHA-256, source/build-proof/native-inspector hashes, project pins, exact selected Packer profile, package ID/version, explicit target release and bounded UTF-8 title/description. It has its own configuration revision, request identity and content hash. Repeating an accepted request returns its original plan; stale or changed requests preserve existing settings/plans.
