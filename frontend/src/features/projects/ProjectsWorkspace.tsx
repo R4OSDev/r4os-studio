@@ -13,11 +13,12 @@ import { busyRun } from '../agent-sessions/api';
 import '../agent-sessions/styles.css';
 import './styles.css';
 import { editorRegistry } from '../project-editor/registry';
+import { ProjectGithubPanel } from '../github-connections/ProjectGithubPanel';
 const EditorPanel = lazy(() => import('../project-editor/EditorPanel'));
 const EditorFiles = lazy(() => import('../project-editor/EditorFiles'));
 
 export interface ProjectNavigation {
-  section: 'Sessions' | 'Editor' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string;
+  section: 'Sessions' | 'Editor' | 'GitHub' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string;
 }
 export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
   selectedId: string | null; select: (id: string | null) => void;
@@ -60,7 +61,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav>
       {selected ? <nav className="nav-column" aria-label="Project sections">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['Sessions', 'Editor', 'Settings'] as const).map((section) =>
+        <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Settings'] as const).map((section) =>
           <button key={section} type="button" disabled={saving || selected.deleting} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
@@ -86,6 +87,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       {selected && <>
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
+        {current.section === 'GitHub' && <ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} />}
         {current.section === 'Settings' && current.settingsView === 'Run & Test' && <RunTestSettings key={selected.id + ':' + epoch} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Settings' && current.settingsView === 'Agents.md' && <ProjectAgentsSettings key={`${selected.id}:${epoch}`}
           id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}

@@ -31,7 +31,7 @@ def main():
         job.update(state='completed', phase='complete', result=result, updatedAt=now())
     except ProjectFault as error:
         # Errors before publication have no source effect. Network/publication ambiguity is retained.
-        uncertain = job['phase'] not in ('starting', 'validating') and error.code >= 500
+        uncertain = job.get('effectPossible', False) or (job['phase'] not in ('starting', 'validating') and error.code >= 500)
         job.update(state='unknown' if uncertain else 'failed', error=str(error), code=error.code, updatedAt=now())
     except BaseException:
         job.update(state='unknown', error='Git job could not confirm its result. Reconcile the original request.', code=503, updatedAt=now())

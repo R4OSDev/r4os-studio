@@ -8,6 +8,8 @@ import { developmentRoutes } from '../project-development/routes.js';
 import { editorRoutes } from '../project-editor/routes.js';
 import { maintenanceHosts } from './maintenance.js';
 import { projectGithubRoutes } from '../project-github/routes.js';
+import { gitHost } from '../project-github/client.js';
+import type { GitHubJob } from '../../../../shared/project-github.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -128,17 +130,39 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   });
   app.post<{ Body: ProjectInput }>('/', {
     bodyLimit: 32 * 1024,
-    preValidation: async (request) => validateFields(request.body, [...Object.keys(fields), 'language', 'template', 'optionsRevision', 'requestId', 'guestFormats']),
+    preValidation: async (request) => {
+      validateFields(request.body, [...Object.keys(fields), 'language', 'template', 'optionsRevision', 'requestId', 'guestFormats', 'github']);
+      const github = (request.body as ProjectInput).github;
+      if (github && (typeof github !== 'object' || Array.isArray(github) || Object.keys(github).some((key) => !['requestId', 'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'].includes(key)))) throw new ProjectError('Unexpected repository creation fields.', 400);
+    },
     schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'language', 'template', 'optionsRevision', 'requestId'], properties: {
       ...fields, language: { enum: ['Rust', 'Zig', 'C'] },
       template: { enum: ['terminal', 'desktop', 'service', 'driver', 'protocol', 'library', 'subsystem'] },
       optionsRevision: { type: 'string', pattern: '^[a-f0-9]{64}$' }, requestId: identity,
       guestFormats: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 63, pattern: '^[a-z](?:[a-z0-9_.-]*[a-z0-9])?$' } },
+      github: { type: 'object', additionalProperties: false, required: ['requestId', 'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'], properties: {
+        requestId: identity, connectionId: identity, tokenRevision: { type: 'integer', minimum: 1 }, userId: { type: 'integer', minimum: 1 },
+        repositoryName: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' }, private: { type: 'boolean' },
+      } },
     } } },
   }, async (request, reply) => {
     sessions.mutation(request, reply);
-    const input = { ...request.body, description: request.body.description ?? '', vmId: request.body.vmId ?? null, guestFormats: request.body.guestFormats ?? [] };
+    const { github, ...local } = request.body;
+    if (github) {
+      const capabilities = await gitHost<{ kinds: string[] }>({ operation: 'capabilities' });
+      if (!capabilities.kinds.includes('create_repository')) throw new ProjectError('Repository creation host support is unavailable.', 503);
+    }
+    const input = { ...local, description: local.description ?? '', vmId: local.vmId ?? null, guestFormats: local.guestFormats ?? [] };
     const project = await projectStore<Project>(directory, { operation: 'create', input }, 'create');
+    if (github) {
+      const { requestId, ...parameters } = github;
+      try {
+        const githubJob = await gitHost<GitHubJob>({ operation: 'submit', projectId: project.id, requestId, kind: 'create_repository', input: parameters });
+        return reply.code(201).send({ project, githubJob });
+      } catch (error) {
+        return reply.code(201).send({ project, githubError: (error as Error).message, githubRequestId: requestId });
+      }
+    }
     return reply.code(201).send({ project });
   });
   app.patch<{ Params: { id: string }; Body: ProjectUpdate }>('/:id', {

@@ -1,6 +1,6 @@
 """Release-bound Git actions. Credentials and object-store paths stay private."""
 from pathlib import Path
-from common import ProjectFault, storage, binding, branch, inventory, digest, save, now, project_id
+from common import ProjectFault, storage, binding, branch, inventory, digest, save, now, project_id, name, document
 from git import Git
 from github import GitHub
 
@@ -31,6 +31,49 @@ class Operations:
     def initialize(self):
         self.git.init(self.bound['branch'] if self.bound else 'main')
         return {'initialized': True}
+
+    def create_repository(self, data):
+        if (set(data) != {'connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private'}
+                or type(data.get('userId')) is not int or data['userId'] <= 0
+                or type(data.get('tokenRevision')) is not int or data['tokenRevision'] < 1 or type(data.get('private')) is not bool):
+            raise ProjectFault('Invalid repository creation parameters.', 400)
+        identity = project_id(data['connectionId']); repo_name = name(data['repositoryName'])
+        if self.bound: raise ProjectFault('This project already has a repository. Manage its binding from GitHub.', 409)
+        api = GitHub(self.config['github'], identity, data['tokenRevision'], data['userId'])
+        record = self.base / 'create-repository.json'
+        if record.exists():
+            previous = document(record)
+            if previous.get('requestId') != self.job['id'] and previous.get('state') != 'rejected':
+                raise ProjectFault('An earlier repository creation needs reconciliation. Do not create another repository.', 409)
+        self.progress('checking_repository')
+        try: api.repository(api.user['login'], repo_name)
+        except ProjectFault as error:
+            if error.code != 404: raise
+        else: raise ProjectFault('That repository already exists. Choose another name or import it.', 422)
+        save(record, {'requestId': self.job['id'], 'state': 'intent', 'connectionId': identity, 'userId': data['userId'], 'name': repo_name, 'private': data['private']})
+        self.progress('creating_repository', effectPossible=True)
+        try: response = api.request('/user/repos', 'POST', {'name': repo_name, 'private': data['private'], 'auto_init': False})
+        except ProjectFault as error:
+            if error.code in (400, 401, 403, 404, 422, 429):
+                save(record, {'requestId': self.job['id'], 'state': 'rejected'})
+                self.progress('creation_rejected', effectPossible=False)
+            raise
+        repository_id = response.get('id') if isinstance(response, dict) else None
+        if type(repository_id) is not int or repository_id <= 0:
+            raise ProjectFault('Repository creation response was not qualified. Reconcile the original request.', 503)
+        self.progress('repository_created', repositoryId=repository_id)
+        save(record, {'requestId': self.job['id'], 'state': 'created', 'repositoryId': repository_id, 'connectionId': identity,
+                      'userId': data['userId'], 'owner': api.user['login'], 'name': repo_name, 'private': data['private']})
+        repo = api.repository(api.user['login'], repo_name, repository_id)
+        api.assert_current()
+        target_branch = branch(repo['defaultBranch'] or 'main')
+        self.git.init(target_branch)
+        if self.git.head() is None: self.git.run('symbolic-ref', 'HEAD', 'refs/heads/' + target_branch)
+        self.bound = {'schema': 1, 'revision': 1, 'connectionId': identity, 'userId': api.user['id'], 'repository': repo,
+                      'branch': target_branch, 'author': {'name': api.user['login'], 'email': str(api.user['id']) + '+' + api.user['login'] + '@users.noreply.github.com'}}
+        self.progress('publishing_binding')
+        save(self.base / 'binding.json', self.bound)
+        return {'binding': self.bound, 'notPushed': True}
 
     def bind(self, data):
         if (set(data) - {'expectedRevision', 'connectionId', 'tokenRevision', 'userId', 'repository', 'branch', 'author'}
@@ -120,6 +163,7 @@ class Operations:
         kind, data = self.job['kind'], self.job['input']
         if kind == 'initialize': return self.initialize()
         if kind == 'bind': return self.bind(data)
+        if kind == 'create_repository': return self.create_repository(data)
         if kind in ('status', 'check'): return self.status(kind == 'check')
         raise ProjectFault('This Git action is not available in this release.', 409)
 
@@ -134,5 +178,23 @@ def reconcile(config, job):
                 and bound['connectionId'] == data.get('connectionId') and bound['userId'] == data.get('userId')
                 and bound['repository']['id'] == data.get('repository', {}).get('id') and bound['branch'] == data.get('branch')):
             return {'binding': bound}
+    if job['kind'] == 'create_repository':
+        bound = binding(config['projects'], job['projectId'])
+        if (bound and bound['connectionId'] == job['input']['connectionId'] and bound['userId'] == job['input']['userId']
+                and bound['repository']['id'] == job.get('repositoryId')):
+            return {'binding': bound, 'notPushed': True}
+        # A name match alone cannot establish ownership after a lost create response.
+        # A confirmed repository ID can be read back, then explicitly published by the original job.
+        if job.get('repositoryId'):
+            api = GitHub(config['github'], job['input']['connectionId'], expected_user=job['input']['userId'])
+            repo = api.repository(api.user['login'], job['input']['repositoryName'], job['repositoryId'])
+            if repo['private'] != job['input']['private']: return None
+            action = Operations(config, job); target_branch = branch(repo['defaultBranch'] or 'main'); action.git.init(target_branch)
+            if action.git.head() is not None: return None
+            action.git.run('symbolic-ref', 'HEAD', 'refs/heads/' + target_branch)
+            bound = {'schema': 1, 'revision': 1, 'connectionId': job['input']['connectionId'], 'userId': api.user['id'], 'repository': repo,
+                     'branch': target_branch, 'author': {'name': api.user['login'], 'email': str(api.user['id']) + '+' + api.user['login'] + '@users.noreply.github.com'}}
+            api.assert_current(); save(base / 'binding.json', bound)
+            return {'binding': bound, 'notPushed': True}
     if job['kind'] in ('status', 'check'): return Operations(config, job).status(False)
     return None

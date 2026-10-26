@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import fcntl
-from common import ProjectFault, document, folder, now, project_id, save, digest
+from common import ProjectFault, document, folder, now, project_id, save, digest, locks
 
 KINDS = ('initialize', 'bind', 'status', 'check', 'create_repository', 'import', 'push', 'pull')
 
@@ -62,6 +62,11 @@ class Coordinator:
                 if manifest.get('protocol') != 1 or any(v not in KINDS for v in manifest.get('actions', [])):
                     raise ProjectFault('Git release capabilities are incompatible.', 503)
                 return {'available': True, 'protocol': 1, 'maxJobs': 2, 'kinds': manifest['actions'], 'limits': manifest['limits']}
+            if operation == 'last_job':
+                project = project_id(data.get('projectId'))
+                matches = [document(path / 'job.json') for path in self.base.iterdir()]
+                matches = [v for v in matches if v['projectId'] == project]
+                return self.public(max(matches, key=lambda v: v['createdAt'])) if matches else None
             if operation in ('job', 'cancel', 'reconcile'):
                 identity = project_id(data.get('requestId')); project_id(data.get('projectId'))
                 path = self.base / identity / 'job.json'
@@ -73,7 +78,8 @@ class Coordinator:
                         try: fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         except BlockingIOError: raise ProjectFault('The original Git worker is still active. Wait for its receipt.', 409) from None
                         from operations import reconcile
-                        result = reconcile(self.config, job)
+                        with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check')):
+                            result = reconcile(self.config, job)
                         if result is not None:
                             job.update(state='completed', phase='reconciled', result=result, error=None, updatedAt=now()); save(path, job)
                     return self.public(job)

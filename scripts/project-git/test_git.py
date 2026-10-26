@@ -69,5 +69,40 @@ class GitTests(unittest.TestCase):
         self.assertEqual(restored.request({'operation': 'job', 'projectId': self.identity, 'requestId': data['requestId']})['state'], 'unknown')
         with self.assertRaises(ProjectFault): restored.request({**data, 'requestId': str(uuid.uuid4())})
 
+    def test_portable_metadata_retains_pins_without_local_identity_or_private_state(self):
+        from git_metadata import create
+        original = {'id': self.identity, 'name': 'Own QA', 'language': 'Rust', 'template': 'terminal', 'moduleName': 'QA',
+                    'pins': {'sdk': {'revision': 'a' * 40, 'sha256': 'b' * 64}}, 'vmId': str(uuid.uuid4())}
+        create(self.source, original)
+        value = json.loads((self.source / '.r4os-studio/project.json').read_text())
+        self.assertEqual(value['pins'], original['pins']); self.assertNotIn('id', value); self.assertNotIn('vmId', value)
+        self.assertNotIn('Cargo.lock', (self.source / '.gitignore').read_text())
+
+    def test_create_repository_retains_original_remote_identity_and_does_not_repeat_uncertain_create(self):
+        data = {'connectionId': str(uuid.uuid4()), 'tokenRevision': 1, 'userId': 7, 'repositoryName': 'own-qa', 'private': True}
+        class Api:
+            created = False; calls = 0
+            def __init__(self, *args, **kwargs): self.user = {'login': 'octocat', 'id': 7}; self.token = 'dummy'
+            def assert_current(self): pass
+            def repository(self, *args):
+                if not self.created: raise ProjectFault('not found', 404)
+                return {'id': 11, 'owner': 'octocat', 'name': 'own-qa', 'fullName': 'octocat/own-qa', 'url': 'https://github.com/octocat/own-qa', 'private': True, 'defaultBranch': 'main', 'archived': False, 'read': True, 'push': True}
+            def request(self, *args): Api.created = True; Api.calls += 1; return {'id': 11}
+        job = self.job('create_repository', data)
+        with patch('operations.GitHub', Api):
+            result = Operations(self.config, job).execute(); self.assertEqual(result['binding']['repository']['id'], 11)
+            self.assertEqual(reconcile(self.config, job)['binding']['repository']['id'], 11); self.assertEqual(Api.calls, 1)
+        # A different project with a lost create response must retain its original intent.
+        from common import storage
+        base = storage(self.projects, self.identity); (base / 'binding.json').unlink(); (base / 'create-repository.json').unlink()
+        class Lost(Api):
+            created = False
+            def request(self, *args): raise ProjectFault('lost response', 503)
+        uncertain = self.job('create_repository', data)
+        with patch('operations.GitHub', Lost):
+            with self.assertRaises(ProjectFault): Operations(self.config, uncertain).execute()
+            self.assertTrue(uncertain['effectPossible']); self.assertIsNone(reconcile(self.config, uncertain))
+            with self.assertRaises(ProjectFault): Operations(self.config, self.job('create_repository', data)).execute()
+
 
 if __name__ == '__main__': unittest.main()

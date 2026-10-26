@@ -1,5 +1,29 @@
 # R4OS Studio · App
 
+## Create a project with a GitHub repository (0.5.3)
+
+New Project keeps local-only creation and adds verified GitHub connection,
+separate repository name and Private/Public selection (Private by default).
+Create project & repository creates an empty repository for the authenticated
+user; the first upload is a separate Push with a commit message. Organization
+repository creation is not part of this initial personal-account workflow.
+The GitHub section in the second project column shows the binding and original
+setup job; subsequent releases expand its synchronization controls.
+
+Every newly generated project's source tree includes portable
+`.r4os-studio/project.json` with language/module and checked component pins,
+without local UUID, VM, credentials or host paths. Language-specific cache
+ignores preserve Cargo.lock and other legitimate sources. Existing projects,
+manifests, SDKs, compiler selections and native sessions are not rewritten.
+
+Local creation and GitHub creation have separate durable request IDs. If GitHub
+fails, retain/open the local project or correct a definitely failed remote setup
+without making another local project. An uncertain create request is never
+replayed: reconcile its original returned repository ID; a name match alone
+cannot prove ownership after a lost reply. Reconciliation never deletes a repo.
+Only supported host capabilities are offered. Focused isolated create/lost-reply
+and portable-pin checks plus HTTP/browser/build/lint validation apply.
+
 ## Isolated project Git host (0.5.2)
 
 The unprivileged Git coordinator accepts fixed project-bound jobs over a private

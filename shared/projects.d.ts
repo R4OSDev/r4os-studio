@@ -37,6 +37,7 @@ export interface ProjectOptions {
 export interface ProjectInput {
   name: string; description: string; language: ProjectLanguage; template: ProjectTemplate;
   vmId: string | null; optionsRevision: string; requestId: string; guestFormats: string[];
+  github?: { requestId: string; connectionId: string; tokenRevision: number; userId: number; repositoryName: string; private: boolean };
 }
 export interface Project extends ProjectSummary {
   description: string; language: ProjectLanguage; template: ProjectTemplate; moduleName: string;

@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-REVISION = 'templates-v6'
+REVISION = 'templates-v7-github-pins'
 
 
 def revision(pins, variant=REVISION):

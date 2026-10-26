@@ -85,6 +85,8 @@ def finish(db, projects, root, request, context=None):
         stage.mkdir(mode=0o700, parents=True)
         source = stage / 'Workspace' if document.get('layout', 1) == 2 else stage
         render(context, source, {**document['input'], 'id': project['id'], 'moduleName': project['moduleName']})
+        from git_metadata import create as create_git_metadata
+        create_git_metadata(source, project)
         sync_tree(stage)
         document['files'] = hashes(stage)
         with db:
