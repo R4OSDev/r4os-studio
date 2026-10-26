@@ -1,5 +1,16 @@
 # R4OS Studio · App
 
+## Skill session navigation and chat (0.4.8)
+
+Tools → Skill Manager → selected skill has a fixed upper block **+ Session**, **View Skill**, then a separately scrollable list of that skill's saved sessions. Session creation accepts a user name and existing provider/model/reasoning/Fast Mode without an inference request for naming. Selection and `#tools/skills/<uuid>/sessions/<uuid>` links survive reload and browser Back/Forward. Dirty/busy guards cover editor changes, session settings, dialogs and navigation; an active run continues across tabs and remains stoppable when returning.
+
+The existing chat/composer/history/SSE/Stop/reconnect components now use a typed project/skill HTTP context. Skill requests and event streams use only `/api/skills`, its own browser/CSRF scope and owner IDs; project behavior keeps its existing default context. Native VM/development image endpoints are unavailable in the skill transcript. Browser pending creation/run/draft keys are separate for the skill scope. Run and confirmed Save events refresh the skill catalog, while an editor's local text remains untouched and stale writes retain their text on conflict. Existing actual native resume/author publication proofs from0.4.5/7 remain applicable; this release adds the browser interface to those unchanged APIs.
+
+Session settings expose name, provider, model, reasoning, Fast Mode and the current author's actual tool permissions, with one revision-protected idle Save. Skill sessions have Files/Terminal/Skills groups; project-only Build/VM groups are absent. Composer model controls remain available. Global skill selection follows in0.4.9. New-session controls reuse the existing model catalog and default-enabled author permissions. Skill creation and Save now use the established getRandomValues-based UUID helper so HTTP LAN origins work without crypto.randomUUID.
+
+Validated: build/TypeScript/lint and two targeted project/skill backend regressions. Isolated browser1440/320 exercises session creation/settings, scoped API/SSE, forced reconnect without new inference, a confirmed revision card, disabled rights, active-run tab return/Stop, ownership, safe Markdown, deep links/reload/Back/Forward and a second editor's retained local draft/conflict. Browser run/SSE results are explicitly simulated in a private fixture; real native runtime/publication were independently verified in0.4.5/7. The test disables secure-context randomUUID and retains only the app's existing provider-list bootstrap. No new application dependency or host permission is needed. Evidence and cleanup: `Research/R4OS/Roadmap-Implementation/0.4.8/` outside the public repository.
+
+
 ## Bound skill author tools (0.4.7)
 
 New Skill Manager sessions use `studio-skill-tools-v2`: the nine general workspace tools plus **Validate skill** and **Save skill**. Permissions default to enabled, remain editable only while idle, freeze per run and are checked before every call. Existing skill v1 and project v1–v4 sessions keep their original profiles and native threads. The special prompt describes draft-only requests, requested global Save, validation/resource fixes, honest confirmed results and no automatic script execution.

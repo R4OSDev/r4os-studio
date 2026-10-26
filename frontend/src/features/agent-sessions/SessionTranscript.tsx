@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { SessionItem } from '../../../../shared/agent-sessions';
-import { toolLabels } from './api';
+import { toolLabels, useSessionApi } from './api';
 import { DevelopmentCard, DevelopmentImage, developmentRef } from './DevelopmentCard';
 import { CodeBlock, MessageText } from './Transcript';
 import { SkillCard } from './SkillCard';
@@ -11,6 +11,7 @@ type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolE
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
 
 function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projectId: string; token: string }) {
+  const { scope } = useSessionApi();
   const [expanded, setExpanded] = useState(false);
   const listId = useId(), list = useRef<HTMLDivElement>(null), follow = useRef(true);
   useLayoutEffect(() => {
@@ -45,14 +46,15 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
         {i.partialChangesPossible === true && <p>Partial changes may remain.</p>}
         {i.files != null && typeof i.files === 'object' && <CodeBlock text={JSON.stringify(i.files, null, 2)} label="Copy changed files" language="Files" />}
         {i.exitCode != null && <p>Exit code {i.exitCode}</p>}{i.error && <p>{i.error}</p>}
-        <DevelopmentImage projectId={projectId} value={i.image} />
-        {jobId && <DevelopmentCard projectId={projectId} token={token} jobId={jobId} />}
+        {scope === 'project' && <DevelopmentImage projectId={projectId} value={i.image} />}
+        {scope === 'project' && jobId && <DevelopmentCard projectId={projectId} token={token} jobId={jobId} />}
       </details>)}
     </div>
   </section>;
 }
 
 export function SessionTranscript({ items, projectId, sessionId, token }: { items: SessionItem[]; projectId: string; sessionId: string; token: string }) {
+  const { scope } = useSessionApi();
   const entries: TranscriptEntry[] = [], jobs = new Set<string>();
   for (const item of items) {
     const key = itemKey(item);
@@ -69,6 +71,6 @@ export function SessionTranscript({ items, projectId, sessionId, token }: { item
     ? <ToolCallBlock key={entry.key} tools={entry.tools} projectId={projectId} token={token} />
     : <article key={entry.key} className={`agent-message ${entry.item.type}`}>
       {entry.item.type !== 'notice' && <div className="agent-message-role">{entry.item.type === 'user' ? 'You' : 'Agent'}</div>}
-      <MessageText text={entry.item.text ?? ''} markdown={entry.item.type === 'assistant'} projectId={projectId} sessionId={sessionId} />
+      <MessageText text={entry.item.text ?? ''} markdown={entry.item.type === 'assistant'} projectId={scope === 'project' ? projectId : undefined} sessionId={sessionId} />
     </article>);
 }

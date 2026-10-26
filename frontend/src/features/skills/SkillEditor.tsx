@@ -1,3 +1,4 @@
+import { projectRequestId } from '../projects/api';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Skill, SkillDetail, SkillFileContent, SkillValidation } from '../../../../shared/skills';
 import { EditorCore } from '../project-editor/EditorCore';
@@ -78,7 +79,7 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
       }
       if (name !== next.skill.name) next = await request<SkillDetail>('PATCH', '/' + id, { revision: next.skill.revision, name }, token);
       setDetail(next); remembered(next.skill); setExecutable({});
-      if (!saveId.current || saveId.current.hash !== next.draftHash || saveId.current.revision !== next.skill.revision) saveId.current = { hash: next.draftHash, revision: next.skill.revision, id: crypto.randomUUID() };
+      if (!saveId.current || saveId.current.hash !== next.draftHash || saveId.current.revision !== next.skill.revision) saveId.current = { hash: next.draftHash, revision: next.skill.revision, id: projectRequestId() };
       const result = await request<SkillDetail & { saved: boolean; validation: SkillValidation }>('POST', '/' + id + '/save',
         { revision: next.skill.revision, draftHash: next.draftHash, requestId: saveId.current.id }, token);
       setDetail(result); remembered(result.skill); setValidation(result.validation);

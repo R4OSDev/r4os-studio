@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
-import { projectRequest, ProjectRequestError, sessionPath } from './api';
+import { useSessionApi, ProjectRequestError, sessionPath } from './api';
 
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
 
@@ -8,6 +8,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
   session: AgentSession; projectId: string; token: string; disabled: boolean;
   saved: (session: AgentSession) => void; busyChanged: (value: boolean) => void; refreshAuth: () => Promise<void>;
 }) {
+  const { request: projectRequest } = useSessionApi();
   const [options, setOptions] = useState<SessionOptions | null>(null), [error, setError] = useState('');
   const [pending, setPending] = useState<Choice | null>(null), inflight = useRef(false);
   useEffect(() => {
@@ -16,7 +17,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
       .then((value) => { if (!controller.signal.aborted) setOptions(value); })
       .catch((failure: Error) => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
-  }, [projectId]);
+  }, [projectId, projectRequest]);
   useEffect(() => () => busyChanged(false), [busyChanged]);
 
   const choice = pending ?? session;
@@ -55,7 +56,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
             effort: nextModel?.efforts.includes(choice.effort) ? choice.effort : nextModel?.defaultEffort ?? '',
             fastMode: choice.fastMode && !!nextModel?.fastModeAvailable });
         }}>
-          {!account && <option value={choice.providerId}>Unavailable account</option>}
+          {!account && <option value={choice.providerId}>{options ? 'Unavailable account' : 'Loading accounts…'}</option>}
           {options?.providers.map((value) => <option key={value.id} value={value.id} disabled={!value.models.length}>{value.name}</option>)}
         </select>
       </label>

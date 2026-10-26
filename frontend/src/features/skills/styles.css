@@ -26,3 +26,6 @@
   .skill-toolbar { gap: 6px; }
   .skill-heading input { max-width: 100%; }
 }
+
+.skill-fixed-views { flex: 0 0 auto; padding-bottom: 8px; }
+.skill-session-list { min-height: 0; flex: 1; overflow-y: auto; }

@@ -22,7 +22,7 @@ import { ConnectionPanel } from '../features/github-connections/ConnectionPanel'
 const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
-const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})$/.exec(window.location.hash);
+const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
 export function App() {
@@ -30,8 +30,12 @@ export function App() {
     const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const [tab, setTab] = useState<Tab>(sessionRoute ? 'Projects' : skillRoute ? 'Tools' : 'System');
+  const [tab, setTab] = useState<Tab>(sessionRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
   const [skillId, setSkillId] = useState<string | null>(skillRoute?.[1] ?? null);
+  const [skillSessions, setSkillSessions] = useState<Record<string, string | undefined>>(skillRoute ? { [skillRoute[1]]: skillRoute[2] } : {});
+  const navigateSkill = useCallback((id: string, session?: string) => setSkillSessions((previous) => ({ ...previous, [id]: session })), []);
+  const acceptedHash = useRef(window.location.hash);
+  useEffect(() => { acceptedHash.current = window.location.hash; });
   const toolsLeaveGuard = useRef<() => boolean>(() => true);
   const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
@@ -42,21 +46,30 @@ export function App() {
   const setSettingsLeaveGuard = useCallback((guard: () => boolean) => { settingsLeaveGuard.current = guard; }, []);
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => setProjectNavigation((previous) => ({ ...previous, [id]: value })), []);
-  useEffect(() => {
-    const restore = () => {
-      const route = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
-      if (route && settingsLeaveGuard.current() && projectLeaveGuard.current() && toolsLeaveGuard.current()) { setProjectId(route[1]); navigateProject(route[1], { section: 'Sessions', settingsView: 'General', sessionId: route[2] }); setTab('Projects'); }
-      const skill = /^#tools\/skills\/([a-f0-9-]{36})$/.exec(window.location.hash);
-      if (skill && settingsLeaveGuard.current() && projectLeaveGuard.current() && toolsLeaveGuard.current()) { setSkillId(skill[1]); setTab('Tools'); }
-    };
-    window.addEventListener('hashchange', restore);
-    return () => window.removeEventListener('hashchange', restore);
-  }, [navigateProject]);
-  const [providerView, setProviderView] = useState<string | null>(null);
-  const [connectionView, setConnectionView] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>({
     group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: 0,
   });
+  useEffect(() => {
+    const restore = () => {
+      const hash = window.location.hash;
+      const project = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(hash);
+      const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
+      if (!project && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
+      if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
+        window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
+      }
+      acceptedHash.current = hash;
+      if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
+      else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
+      else if (hash === '#tools') { setSkillId(null); setTab('Tools'); }
+      else if (hash === '#projects') setTab('Projects');
+      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 2, item: 0, view: 0 }); }
+    };
+    window.addEventListener('hashchange', restore);
+    return () => window.removeEventListener('hashchange', restore);
+  }, [navigateProject, navigateSkill]);
+  const [providerView, setProviderView] = useState<string | null>(null);
+  const [connectionView, setConnectionView] = useState<string | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const groups = navigation;
   const group = groups[selected.group];
@@ -107,8 +120,9 @@ export function App() {
     if (tab === 'System' && value !== tab && !settingsLeaveGuard.current()) return false;
     if (tab === 'Projects' && value !== tab && !projectLeaveGuard.current()) return false;
     if (tab === 'Tools' && value !== tab && !toolsLeaveGuard.current()) return false;
+    if (value === tab) return true;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
-    window.history.replaceState(null, '', value === 'Projects' && session ? `#projects/${projectId}/sessions/${session}` : value === 'Tools' && skillId ? `#tools/skills/${skillId}` : window.location.pathname);
+    window.history.pushState(null, '', value === 'Projects' ? (session ? `#projects/${projectId}/sessions/${session}` : '#projects') : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 
@@ -133,7 +147,7 @@ export function App() {
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        {tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId}
+        {tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <aside className="navigation" aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">

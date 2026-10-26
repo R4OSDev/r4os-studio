@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
-import { projectRequest, projectRequestId, ProjectRequestError, sessionPath, busyRun } from './api';
+import { useSessionApi, projectRequestId, ProjectRequestError, sessionPath, busyRun } from './api';
 import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
@@ -20,7 +20,9 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   projectId: string; sessionId: string; token: string; changed: () => void; refreshAuth: () => Promise<void>;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
 }) {
-  const base = sessionPath(projectId, sessionId), pendingKey = 'studio.session.run.' + sessionId, draftKey = 'studio.session.draft.' + sessionId;
+  const { request: projectRequest, scope, base: apiBase } = useSessionApi();
+  const storageScope = scope === 'skill' ? 'studio.skill.session.' : 'studio.session.';
+  const base = sessionPath(projectId, sessionId), pendingKey = storageScope + 'run.' + sessionId, draftKey = storageScope + 'draft.' + sessionId;
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
   const [connection, setConnection] = useState('Connecting'), [sending, setSending] = useState(false), [stopping, setStopping] = useState(false);
@@ -31,20 +33,20 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [settings, setSettings] = useState(false);
   const [choiceSaving, setChoiceSaving] = useState(false);
   useEffect(() => {
-    if (choiceSaving) { busyChanged(true); return () => busyChanged(false); }
-  }, [choiceSaving, busyChanged]);
+    busyChanged(choiceSaving || sending || stopping); return () => busyChanged(false);
+  }, [choiceSaving, sending, stopping, busyChanged]);
   const load = useCallback(async (signal: AbortSignal) => {
     const h = await projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal);
     const r = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal);
     if (signal.aborted) return;
     last.current = h.cursor; setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
-  }, [base]);
+  }, [base, projectRequest]);
   useEffect(() => {
     const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false;
     const receive = (event: AgentEvent) => {
       if (event.seq <= last.current) return;
       last.current = event.seq;
-      if (event.kind === 'item') setItems((old) => merge(old, event.payload as SessionItem));
+      if (event.kind === 'item') { const item = event.payload as SessionItem; setItems((old) => merge(old, item)); if (item.tool === 'studio.save_skill' && item.status === 'completed') changed(); }
       if (event.kind === 'itemStatus') {
         const p = event.payload as { itemId: string; status: string; error: string };
         setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, status: p.status, error: p.error } : i));
@@ -62,7 +64,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     const connect = () => {
       if (controller.signal.aborted) return;
-      source = new EventSource(`/api/projects${base}/events?after=${last.current}`);
+      source = new EventSource(`${apiBase}${base}/events?after=${last.current}`);
       source.onopen = () => { if (!controller.signal.aborted) { setConnection('Connected'); attempt = 0; } };
       source.onmessage = (e) => { try { receive(JSON.parse(e.data)); } catch { source?.close(); retry(); } };
       source.onerror = () => { source?.close(); retry(); };
@@ -74,7 +76,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: Error) => { if (!controller.signal.aborted) { setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth]);
+  }, [base, load, changed, refreshAuth, apiBase]);
   useEffect(() => {
     if (follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items]);

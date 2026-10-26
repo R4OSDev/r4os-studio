@@ -1,3 +1,5 @@
+import { createContext, useContext, useMemo } from 'react';
+import { studioRequest } from '../projects/api';
 export function sessionPath(projectId: string, sessionId?: string) {
   return `/${encodeURIComponent(projectId)}/sessions${sessionId ? '/' + encodeURIComponent(sessionId) : ''}`;
 }
@@ -14,3 +16,12 @@ export const toolLabels: Record<string, string> = {
   'studio.start_project_vm': 'Start project VM',
   'studio.validate_skill': 'Validate skill', 'studio.save_skill': 'Save skill',
 };
+
+export const SessionScope = createContext<'project' | 'skill'>('project');
+export function useSessionApi() {
+  const scope = useContext(SessionScope);
+  return useMemo(() => {
+    const base = scope === 'skill' ? '/api/skills' : '/api/projects';
+    return { scope, base, request: <T>(path: string, token = '', method = 'GET', body?: unknown, signal?: AbortSignal) => studioRequest<T>(base, path, token, method, body, signal) };
+  }, [scope]);
+}
