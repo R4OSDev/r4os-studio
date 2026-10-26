@@ -28,7 +28,16 @@ export interface UsageWindow {
   resetsAt: string | null;
 }
 
+/** Native Codex credit units, independent of earned resets and API billing. */
+export interface CreditBalance {
+  hasCredits: boolean | null;
+  unlimited: boolean | null;
+  /** Validated bounded numeric text; never coerced to a JavaScript number. */
+  balance: string | null;
+}
+
 export interface UsageLimit {
+  credits?: CreditBalance | null;
   id: string;
   name: string;
   primary: UsageWindow | null;

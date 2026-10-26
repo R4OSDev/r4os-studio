@@ -1,4 +1,4 @@
-import type { ProviderUsage, ResetCredit, ResetOutcome, ResetRequest, UsageLimit, UsageWindow } from '../../../../../shared/llm-providers.js';
+import type { CreditBalance, ProviderUsage, ResetCredit, ResetOutcome, ResetRequest, UsageLimit, UsageWindow } from '../../../../../shared/llm-providers.js';
 import type { AuthClient } from './codex-client.js';
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -35,6 +35,15 @@ function credit(value: unknown): ResetCredit | null {
     title: text(raw.title), description: text(raw.description, 2048), grantedAt: timestamp(raw.grantedAt), expiresAt: timestamp(raw.expiresAt) };
 }
 
+function creditBalance(value: unknown): CreditBalance | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const balance = typeof raw.balance === 'string' ? raw.balance.trim() : null;
+  return { hasCredits: typeof raw.hasCredits === 'boolean' ? raw.hasCredits : null,
+    unlimited: typeof raw.unlimited === 'boolean' ? raw.unlimited : null,
+    balance: balance && balance.length <= 256 && /^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.test(balance) ? balance : null };
+}
+
 /** Explicit public DTO: never forward account IDs, auth fields or arbitrary backend banners. */
 export function normalizeUsage(value: unknown): ProviderUsage {
   const raw = object(value);
@@ -45,7 +54,7 @@ export function normalizeUsage(value: unknown): ProviderUsage {
   const limits: UsageLimit[] = buckets.slice(0, 100).map(([key, value]) => {
     const bucket = object(value)!;
     const id = text(bucket.limitId) ?? key.slice(0, 512);
-    return { id, name: text(bucket.limitName) ?? (id === 'codex' ? 'Codex' : id),
+    return { id, credits: creditBalance(bucket.credits), name: text(bucket.limitName) ?? (id === 'codex' ? 'Codex' : id),
       primary: window(bucket.primary), secondary: window(bucket.secondary), limitReached: !!text(bucket.rateLimitReachedType) };
   });
   const resets = object(raw.rateLimitResetCredits);

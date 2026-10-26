@@ -331,3 +331,26 @@ test('provider disconnect closes admission before stopping workers and preserves
   assert.equal((await disconnect()).statusCode, 200); assert.equal(client.closed, true);
   await assert.rejects(readFile(file, 'utf8')); assert.equal(observed, 2);
 });
+
+test('sparse account notifications invalidate in-flight credit reads and never cache an older response', async (context) => {
+  const result = await setup(); context.after(result.cleanup);
+  const b = await browser(result.app), provider = await b.create(); await b.start(provider.id);
+  const client = result.clients.get(provider.id)!; await client.complete(); await waitForConnected(result.app, provider.id, b.headers);
+  client.usage = { rateLimits: { credits: { hasCredits: true, unlimited: false, balance: '1.000000000000000001' } } };
+  const original = client.request.bind(client);
+  let entered!: () => void, release!: () => void, first = true;
+  const admitted = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  client.request = async <T,>(method: string, params?: unknown): Promise<T> => {
+    const response = await original<T>(method, params);
+    if (method === 'account/rateLimits/read' && first) { first = false; entered(); await gate; }
+    return response;
+  };
+  const pending = Promise.resolve(result.app.inject({ url: `/api/providers/${provider.id}/usage`, headers: b.headers }));
+  await admitted; client.notify('account/rateLimits/updated', { rateLimits: { credits: null } });
+  client.usage = { rateLimits: { credits: { hasCredits: true, unlimited: false, balance: '2.000000000000000002' } } }; release();
+  const response = await pending; assert.equal(response.statusCode, 200);
+  assert.equal(response.json().usage.limits[0].credits.balance, '2.000000000000000002'); assert.equal(client.usageReads, 2);
+  const cached = await result.app.inject({ url: `/api/providers/${provider.id}/usage`, headers: b.headers });
+  assert.equal(cached.json().usage.limits[0].credits.balance, '2.000000000000000002'); assert.equal(client.usageReads, 2); assert.equal(client.redemptions, 0);
+});

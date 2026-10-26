@@ -75,3 +75,13 @@ button:disabled { cursor: default; opacity: .55; }
 .reset-confirmation { margin-top: 18px; padding: 18px; border: 1px solid #8460a7; border-radius: 7px; background: #2b1d3a; }
 @media (max-width: 1050px) { .provider-content { padding: 24px; } .provider-card { padding: 20px; } .provider-status { margin-left: 56px; } }
 @media (max-width: 440px) { .provider-content { padding: 20px 16px; } .provider-card { padding: 18px; } .provider-properties > div { grid-template-columns: 100px minmax(0, 1fr); gap: 10px; } .device-login { padding: 16px; } }
+
+.usage-credits { border-top: 1px solid #483456; margin-top: 20px; padding-top: 18px; min-width: 0; }
+.usage-credits h3 { margin: 0 0 9px; font-size: 14px; }
+.credit-balance { margin: 12px 0; padding: 14px; border: 1px solid #483456; border-radius: 6px; min-width: 0; }
+.credit-balance h4 { margin: 0 0 12px; font-size: 12px; overflow-wrap: anywhere; }
+.credit-balance dl { display: grid; gap: 10px; margin: 0; font-size: 12px; }
+.credit-balance dl > div { display: grid; grid-template-columns: minmax(75px, 1fr) minmax(0, 3fr); gap: 10px; }
+.credit-balance dt { color: #b5a2c6; }
+.credit-balance dd { margin: 0; overflow-wrap: anywhere; }
+.credit-amount { font-variant-numeric: tabular-nums; }

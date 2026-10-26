@@ -10,7 +10,7 @@ import { ProviderError } from './errors.js';
 import { readUsage, redeemReset } from './openai/usage.js';
 
 type Login = ProviderLogin & { owner: string; id?: string; timer?: NodeJS.Timeout };
-type Runtime = { client: AuthClient; login?: Login; unavailable: boolean; retired?: boolean };
+type Runtime = { client: AuthClient; login?: Login; unavailable: boolean; usageEpoch: number; retired?: boolean };
 type AccountResult = { account: { type: string; email?: string | null; planType?: string | null } | null };
 
 export interface ProviderOptions {
@@ -74,11 +74,11 @@ export class ProviderManager {
     const binary = this.options.clientFactory ? this.options.binary : await this.options.binaryResolver?.() ?? this.options.binary;
     const factory: AuthClientFactory = this.options.clientFactory ?? ((home, notify, exited) => new CodexClient(binary, home, notify, exited));
     const runtime = {} as Runtime;
-    runtime.unavailable = false;
+    runtime.unavailable = false; runtime.usageEpoch = 0;
     runtime.client = factory(home, (method, params) => {
-      if (this.closing) return;
+      if (this.closing || this.runtimes.get(id) !== runtime || runtime.retired) return;
       if (method === 'account/rateLimits/updated' || method === 'account/updated') {
-        this.usages.delete(id);
+        runtime.usageEpoch++; this.usages.delete(id);
         return;
       }
       if (method !== 'account/login/completed') return;
@@ -99,7 +99,8 @@ export class ProviderManager {
         }
       }).catch(() => {});
     }, () => {
-      this.usages.delete(id);
+      if (this.runtimes.get(id) !== runtime || runtime.retired) return;
+      runtime.usageEpoch++; this.usages.delete(id);
       runtime.unavailable = true;
       if (runtime.login?.status === 'pending') this.finish(runtime.login, 'failed', 'The sign-in service stopped. Please try again.');
     });
@@ -117,7 +118,7 @@ export class ProviderManager {
 
   private async retire(id: string, runtime: Runtime) {
     this.usages.delete(id);
-    runtime.retired = true;
+    runtime.usageEpoch++; runtime.retired = true;
     await runtime.client.close();
     await rm(await this.store.home(id), { recursive: true, force: true });
   }
@@ -128,6 +129,8 @@ export class ProviderManager {
     await this.store.change((records) => {
       const record = records.find((item) => item.id === id);
       if (!record) return;
+      const publicAccount = account ? { email: typeof account.email === 'string' ? account.email : null, plan: typeof account.planType === 'string' ? account.planType : null } : null;
+      if (record.connected !== (account !== null) || JSON.stringify(record.account) !== JSON.stringify(publicAccount)) { runtime.usageEpoch++; this.usages.delete(id); }
       record.connected = account !== null;
       record.account = account ? { email: typeof account.email === 'string' ? account.email : null,
         plan: typeof account.planType === 'string' ? account.planType : null } : null;
@@ -171,9 +174,15 @@ export class ProviderManager {
   }
 
   private async readUsageLocked(id: string, runtime: Runtime): Promise<ProviderUsage> {
-    const usage = await readUsage(runtime.client);
-    this.usages.set(id, usage);
-    return usage;
+    // Sparse notifications invalidate the full snapshot, including an in-flight read.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const epoch = runtime.usageEpoch;
+      const usage = await readUsage(runtime.client);
+      if (this.runtimes.get(id) !== runtime || runtime.retired || runtime.unavailable) throw new Error('Account runtime changed.');
+      if (epoch !== runtime.usageEpoch) continue;
+      this.usages.set(id, usage); return usage;
+    }
+    throw new Error('Account usage changed while reading. Refresh a full snapshot.');
   }
 
   async usage(id: string, refresh = false): Promise<ProviderUsage> {
