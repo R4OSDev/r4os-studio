@@ -29,6 +29,6 @@ export interface GitHubImportPreview {
 export interface GitHubJob {
   id: string; projectId: string; kind: string; state: 'queued' | 'running' | 'completed' | 'failed' | 'unknown';
   phase: string; createdAt: string; updatedAt: string; error?: string; code?: number;
-  result?: { binding?: GitHubProjectBinding; initialized?: boolean; import?: GitHubImportPreview; diff?: GitHubDiff; pushed?: boolean; nothingToPush?: boolean; commit?: string | null; remoteHead?: string | null; localCommitOnly?: boolean; preparationId?: string; pulled?: boolean; nothingToPull?: boolean; nothingApplied?: boolean } | GitHubProjectStatus;
+  result?: { binding?: GitHubProjectBinding; initialized?: boolean; import?: GitHubImportPreview; diff?: GitHubDiff; pushed?: boolean; nothingToPush?: boolean; commit?: string | null; remoteHead?: string | null; localCommitOnly?: boolean; notPublished?: boolean; preparationId?: string; pulled?: boolean; nothingToPull?: boolean; nothingApplied?: boolean } | GitHubProjectStatus;
 }
 export interface GitHubDiff { path: string; text: string; truncated: boolean; binary: boolean }

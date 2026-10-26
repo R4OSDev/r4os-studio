@@ -26,21 +26,21 @@ export async function pullProject(id: string, token: string, status: GitHubProje
   try {
     if (!request.apply) {
       const prepared = await runGitJob(id, token, 'prepare_pull', request.prepare.input, progress, request.prepare);
-      if (prepared.result && 'nothingToPull' in prepared.result && prepared.result.nothingToPull) { clearPull(id); return prepared; }
+      if (prepared.result && 'nothingToPull' in prepared.result && prepared.result.nothingToPull) { clearPull(id); if (prepared.result.commit !== status.head) editorRegistry.workspaceChanged(id); return prepared; }
       await projectRequest(`/${id}/github/pulls/${request.prepare.requestId}/validate`, token, 'POST', {});
       if (editorRegistry.hasUnsavedFor(id)) throw new Error('Editor drafts appeared during validation. Save or close them before applying.');
       request.apply = { requestId: projectRequestId(), kind: 'pull', input: { preparationId: request.prepare.requestId, bindingRevision: request.prepare.input.bindingRevision, snapshot: request.prepare.input.snapshot } };
       sessionStorage.setItem(pullKey(id), JSON.stringify(request));
     }
     const result = await runGitJob(id, token, 'pull', request.apply.input, progress, request.apply);
-    clearPull(id); editorRegistry.workspaceChanged(id); return result;
+    clearPull(id); if (result.result && 'pulled' in result.result && result.result.pulled) editorRegistry.workspaceChanged(id); return result;
   } catch (e) {
     const final = last as GitHubJob | undefined;
     if (final?.state === 'failed') clearPull(id);
     if (final?.state === 'unknown') {
       const reconciled = await projectRequest<GitHubJob>(`/${id}/github/jobs/${final.id}/reconcile`, token, 'POST', {}).catch(() => null);
       if (reconciled) changed?.(reconciled);
-      if (reconciled?.state === 'completed' && reconciled.result && (('pulled' in reconciled.result && reconciled.result.pulled) || ('nothingApplied' in reconciled.result && reconciled.result.nothingApplied))) { clearGit(id); clearPull(id); editorRegistry.workspaceChanged(id); return reconciled; }
+      if (reconciled?.state === 'completed' && reconciled.result && (('pulled' in reconciled.result && reconciled.result.pulled) || ('nothingApplied' in reconciled.result && reconciled.result.nothingApplied))) { clearGit(id); clearPull(id); if ('pulled' in reconciled.result && reconciled.result.pulled) editorRegistry.workspaceChanged(id); return reconciled; }
     }
     throw e;
   }

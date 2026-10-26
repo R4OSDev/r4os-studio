@@ -1,5 +1,51 @@
 # R4OS Studio · App
 
+## GitHub project workflow and recovery (0.5.10)
+
+New Project offers Create new and Import from GitHub. Select a named connection,
+then a repository name/visibility and optional organization owner, or an existing
+repository/branch to import. Private is the creation default. An organization
+token can create under that organization when its policy permits; authentication
+as a user does not imply permission to create repositories for that user's own
+account. The connection name labels credentials; Repository owner selects the
+actual GitHub namespace. The authorized R4OSDev flow was verified with one private
+QA repository, two isolated Studio projects and actual upstream transfers.
+
+Projects → GitHub in the second column groups status, saved-file diff, commit
+author, Commit & Push and Pull. Commit descriptions are required; existing pending
+commits retain theirs. Empty author fields independently use the authenticated
+login and GitHub noreply address. After a failed transfer the original commit
+remains available for an explicit push; reconciliation distinguishes a retained
+commit from an intent that never published a ref. No automatic second commit,
+force push, merge, rebase or stash is performed. Pull and opening Update use the
+same SDK-validated fast-forward operation; Ignore preserves this opening's local
+sources. Unsaved editor drafts are retained and block Pull. No-op recovery does
+not mark editor content as updated. Case collisions in directory prefixes are
+rejected during import as well as collisions in complete filenames.
+
+Portable `.r4os-studio/project.json` carries checked app/component pins, never
+host paths, UUIDs, credentials or sessions. Legacy imports require an explicit
+matching local profile. Missing pinned tools must be installed separately;
+repository setup scripts are never run as part of import. Session settings →
+Tools → GitHub enables the separate default-Off push tool in new v6 sessions;
+old conversations retain their native histories and require a new session for
+the additive declaration. A commitMessage is mandatory for every agent push.
+
+The local daily backup's existing Projects source includes private `.studio/git`
+objects, bindings, pull journals and receipts plus global `.studio/github` jobs.
+Data/GitHub, including the named token catalogue, is outside its explicitly
+selected sources. Restore with matching published host support and separately
+re-establish the named connection/binding; inspect original uncertain jobs before
+any remote action. Per-file/SQLite backup checks are not a global Git/catalogue/
+GitHub transaction. Existing backup selection and VM scope are unchanged.
+
+Final validation covers focused Git/recovery and permission failures, real
+active-run FD handoff without inference, HTTP browser flows at1440/320px,
+TypeScript/build and strict lint. Read-only/branch-protection/rate/network failures
+are isolated fixtures, not policy changes to a live account. The exact QA repo
+was deleted after ID/owner/name verification, followed by both own local projects;
+the production repository and existing user project were checked separately.
+
 ## Agent GitHub push permission (0.5.9)
 
 New project sessions use additive studio-tools-v6. Session settings → Tools →

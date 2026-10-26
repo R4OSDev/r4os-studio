@@ -3,6 +3,7 @@ from common import ProjectFault, document, binding, source_path, save, now
 
 
 def receipt(action, result):
+    if not action.bound: return result
     parent = action.base / 'Receipts'; parent.mkdir(mode=0o700, exist_ok=True)
     save(parent / (action.job['id'] + '.json'), {'schema': 1, 'requestId': action.job['id'], 'repositoryId': action.bound['repository']['id'],
          'branch': action.bound['branch'], 'bindingRevision': action.bound['revision'], 'result': result, 'confirmedAt': now()})
@@ -72,9 +73,12 @@ def reconcile(action):
         return None
     expected = action.job.get('preparedCommit') or action.job.get('pushCommit')
     if not expected:
-        if action.git.head() == action.job.get('previousHead'): return {'pushed': False, 'committed': False, 'localCommitOnly': True, 'commit': action.git.head()}
+        if action.git.head() == action.job.get('previousHead'): return receipt(action, {'pushed': False, 'committed': False, 'notPublished': True, 'commit': action.git.head()})
         return None
-    if action.git.head() != expected: return None
+    if action.git.head() != expected:
+        if not action.job.get('pushCommit') and action.git.head() == action.job.get('previousHead'):
+            return receipt(action, {'pushed': False, 'committed': False, 'notPublished': True, 'commit': action.git.head()})
+        return None
     if not action.job.get('pushCommit'): return receipt(action, {'pushed': False, 'committed': True, 'localCommitOnly': True, 'commit': expected})
     remote = action.fetch()
     if remote == expected or (remote and action.git.run('merge-base', '--is-ancestor', expected, remote, allow=(0, 1))[1] == 0):

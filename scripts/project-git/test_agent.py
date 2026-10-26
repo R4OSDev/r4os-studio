@@ -90,6 +90,9 @@ with patch.object(Operations,'fetch',fetch),patch.object(Git,'run',run):worker.m
                 config['permissions']['studio.push_project'] = False
                 with closing(sqlite3.connect(db_path)) as db: db.execute('UPDATE runs SET config=?', (json.dumps(config),)); db.commit()
                 with self.assertRaises(ProjectFault): host.request({**request, 'requestId': str(uuid.uuid4())}, helper.pid, received)
+                config['permissions']['studio.push_project'] = True
+                with closing(sqlite3.connect(db_path)) as db: db.execute("UPDATE runs SET config=?,state='stopping'", (json.dumps(config),)); db.commit()
+                with self.assertRaises(ProjectFault): host.request({**request, 'requestId': str(uuid.uuid4())}, helper.pid, received)
                 self.assertEqual(len(calls), 1)
             self.assertEqual(action.git.text('rev-list', '--count', 'HEAD'), '1')
         finally:

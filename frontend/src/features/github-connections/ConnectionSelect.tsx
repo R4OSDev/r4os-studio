@@ -29,6 +29,6 @@ export function ConnectionSelect({ value, changed, disabled = false, busyChanged
     <select id="github-connection" value={value?.connectionId ?? ''} disabled={disabled || busy || !csrf} onChange={(e) => void choose(e.target.value)}>
       <option value="">None / Local only</option>{connections.map((v) => <option key={v.id} value={v.id}>{v.name}{v.lastTest?.status === 'success' ? ' · @' + v.lastTest.login : ' · Account not verified'}</option>)}
     </select>{busy && <p role="status">Verifying account…</p>}{error && <p role="alert">{error}</p>}
-    {value && <p role="status">{value.connectionName} · @{value.login}. Repository creation permission will be checked when creating the repository.</p>}
+    {value && <p role="status">{value.connectionName} · @{value.login}. Repository access and write permissions are checked for each operation.</p>}
   </div>;
 }

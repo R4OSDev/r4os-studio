@@ -34,7 +34,7 @@ class GitHubTools:
                     job = response['result']; result = job.get('result') or {}
                     github.update(state=job['state'], phase=job.get('phase'), commit=result.get('commit'), remoteHead=result.get('remoteHead'), pushed=result.get('pushed', False))
                     success = job['state'] == 'completed' and (result.get('pushed') is True or result.get('nothingToPush') is True)
-                    output = 'Push confirmed.' if result.get('pushed') else 'Nothing to push.' if result.get('nothingToPush') else job.get('error') or 'Local commit retained. Review the GitHub operation before another push.'
+                    output = 'Push confirmed.' if result.get('pushed') else 'Nothing to push.' if result.get('nothingToPush') else 'No commit or push was published. Review the original Git job.' if result.get('notPublished') else job.get('error') or 'Local commit retained. Review the GitHub operation before another push.'
                     return {'success': success, 'output': output + '\n' + encode(github), 'github': github,
                         **({} if success else {'error': 'unknown' if job['state'] == 'unknown' else 'notPushed'}), **({'partialChangesPossible': True} if job['state'] == 'unknown' else {})}
                 finally:

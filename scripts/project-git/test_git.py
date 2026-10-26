@@ -189,7 +189,9 @@ class GitTests(unittest.TestCase):
         original = action.git.run
         def run(*args, **kwargs):
             if args[0] == 'push':
-                remote['head'] = args[-1].split(':')[0]; remote['pushes'] += 1
+                self.assertNotIn('--force', args); self.assertFalse(args[-1].startswith('+')); remote['pushes'] += 1
+                if remote['lost'] == 'blocked': raise ProjectFault('Write access or branch protection rejected this push.', 409)
+                remote['head'] = args[-1].split(':')[0]
                 if remote['lost']: raise ProjectFault('lost response', 503)
                 return b'', 0
             return original(*args, **kwargs)
@@ -204,6 +206,12 @@ class GitTests(unittest.TestCase):
             action.job = self.job('push'); (self.source / 'module.R4MF').write_text('second saved source\n'); remote['lost'] = True
             with self.assertRaises(ProjectFault): push(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'commitMessage': 'Own second commit'})
             self.assertTrue(readback(action)['pushed']); self.assertEqual(action.git.text('rev-list', '--count', 'HEAD'), '2'); self.assertEqual(remote['pushes'], 2)
+            action.job = self.job('push'); (self.source / 'module.R4MF').write_text('third saved source\n'); remote['lost'] = 'blocked'
+            with self.assertRaises(ProjectFault): push(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'commitMessage': 'Own rejected push'})
+            retained = readback(action); self.assertTrue(retained['localCommitOnly']); self.assertFalse(retained['pushed'])
+            action.job = self.job('push'); remote['lost'] = False
+            retried = push(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'commitMessage': 'Retry retained commit'})
+            self.assertTrue(retried['pushed']); self.assertFalse(retried['committed']); self.assertEqual(action.git.text('rev-list', '--count', 'HEAD'), '3')
 
     def test_fast_forward_preserves_ignored_files_and_recovers_after_source_exchange(self):
         from pulling import prepare, apply, reconcile as recover

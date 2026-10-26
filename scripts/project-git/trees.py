@@ -8,7 +8,7 @@ from common import ProjectFault, source_path, folder, MAX_FILES, MAX_FILE, MAX_B
 def entries(git, commit):
     if not re.fullmatch('[a-f0-9]{40,64}', commit or ''): raise ProjectFault('Invalid source commit.', 400)
     raw = git.run('ls-tree', '-r', '-z', '--full-tree', commit)[0]
-    result, folded = [], set()
+    result, folded, prefixes = [], set(), {}
     for entry in raw.split(b'\0'):
         if not entry: continue
         header, path = entry.split(b'\t', 1); mode, kind, oid = header.decode('ascii').split(' ')
@@ -16,6 +16,11 @@ def entries(git, commit):
         if mode not in ('100644', '100755') or kind != 'blob' or path == '.gitmodules':
             raise ProjectFault('Import supports regular files only; submodules and links need a separate adapter.', 409)
         if path.casefold() in folded: raise ProjectFault('Repository has conflicting filename case variants.', 409)
+        parts = path.split('/')
+        for depth in range(1, len(parts) + 1):
+            prefix = '/'.join(parts[:depth]); key = prefix.casefold()
+            if key in prefixes and prefixes[key] != prefix: raise ProjectFault('Repository has conflicting directory or filename case variants.', 409)
+            prefixes[key] = prefix
         folded.add(path.casefold()); result.append((path, mode, oid))
         if len(result) > MAX_FILES: raise ProjectFault('Repository exceeds the 10,000-file import limit.', 409)
     return result
