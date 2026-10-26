@@ -53,7 +53,7 @@ class Coordinator:
             del self.processes[identity]
             self.started.pop(identity, None)
 
-    def request(self, data):
+    def request(self, data, peer_pid=None, lease_fd=None):
         if not isinstance(data, dict): raise ProjectFault('Invalid Git request.', 400)
         operation = data.get('operation')
         with self.lock:
@@ -96,9 +96,15 @@ class Coordinator:
                     os.killpg(self.processes[identity].pid, signal.SIGTERM)
                     job.update(state='unknown', error='Git operation stopped. Reconcile any pending effect.', updatedAt=now()); save(path, job)
                 return self.public(job)
-            if operation != 'submit' or set(data) != {'operation', 'projectId', 'requestId', 'kind', 'input'}:
+            agent = operation == 'agent_submit'
+            if operation not in ('submit', 'agent_submit') or set(data) != ({'operation', 'projectId', 'requestId', 'kind', 'input'} | ({'agent'} if agent else set())):
                 raise ProjectFault('Unsupported Git request.', 400)
             identity, project = project_id(data['requestId']), project_id(data['projectId'])
+            if agent:
+                from agent import AgentLease
+                if data['kind'] != 'push' or not isinstance(data.get('input'), dict) or set(data['input']) - {'commitMessage', 'files'}: raise ProjectFault('The agent Git broker supports project push only.', 400)
+                AgentLease(self.config, project, data['agent'], lease_fd, peer_pid).verify()
+            elif lease_fd is not None: raise ProjectFault('Unexpected inherited Git lease.', 400)
             if data['kind'] not in KINDS or not isinstance(data['input'], dict): raise ProjectFault('Invalid Git job kind.', 400)
             fingerprint = digest(data)
             directory = self.base / identity; path = directory / 'job.json'
@@ -119,11 +125,12 @@ class Coordinator:
             directory.mkdir(mode=0o700)
             job = {'schema': 1, 'id': identity, 'projectId': project, 'kind': data['kind'], 'input': data['input'], 'hash': fingerprint,
                    'releaseRoot': release, 'state': 'queued', 'phase': 'accepted', 'createdAt': now(), 'updatedAt': now()}
+            if agent: job['agent'] = data['agent']
             save(path, job)
             try:
-                process = subprocess.Popen(['/usr/bin/python3', '-B', release + '/scripts/project-git/worker.py', str(self.config_path), identity],
+                process = subprocess.Popen(['/usr/bin/python3', '-B', release + '/scripts/project-git/worker.py', str(self.config_path), identity] + ([str(lease_fd)] if agent else []),
                                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                           env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, start_new_session=True)
+                                           env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, start_new_session=True, pass_fds=(lease_fd,) if agent else ())
                 self.processes[identity] = process
                 self.started[identity] = time.monotonic()
             except OSError:
@@ -140,18 +147,27 @@ def main():
     config_path = Path('/etc/r4os-studio-git/config.json'); config = document(config_path)
     if os.getuid() != config['uid']: raise SystemExit('Git coordinator requires its fixed unprivileged account.')
     coordinator = Coordinator(config, config_path)
-    class Handler(socketserver.StreamRequestHandler):
+    class Handler(socketserver.BaseRequestHandler):
         def handle(self):
-            self.connection.settimeout(5)
+            self.request.settimeout(5); descriptors = []
             try:
-                _, uid, _ = struct.unpack('3i', self.connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                peer_pid, uid, _ = struct.unpack('3i', self.request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                 if uid != config['uid']: raise ProjectFault('Git coordinator peer is not allowed.', 403)
-                raw = self.rfile.readline(262145)
-                if len(raw) > 262144: raise ProjectFault('Git request exceeds its limit.', 400)
-                response = {'result': coordinator.request(json.loads(raw))}
+                raw = b''
+                while b'\n' not in raw:
+                    part, ancillary, flags, _ = self.request.recvmsg(65536, socket.CMSG_SPACE(16))
+                    for level, kind, value in ancillary:
+                        if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS: descriptors.extend(struct.unpack(str(len(value) // 4) + 'i', value))
+                    if flags & socket.MSG_CTRUNC or len(descriptors) > 1: raise ProjectFault('Invalid Git lease transfer.', 400)
+                    if not part: raise ProjectFault('Incomplete Git request.', 400)
+                    raw += part
+                    if len(raw) > 262144: raise ProjectFault('Git request exceeds its limit.', 400)
+                response = {'result': coordinator.request(json.loads(raw), peer_pid, descriptors[0] if descriptors else None)}
             except ProjectFault as error: response = {'error': str(error), 'code': error.code}
             except Exception: response = {'error': 'Git service could not confirm this request.', 'code': 503}
-            self.wfile.write((json.dumps(response, ensure_ascii=False) + '\n').encode())
+            finally:
+                for descriptor in descriptors: os.close(descriptor)
+            self.request.sendall((json.dumps(response, ensure_ascii=False) + '\n').encode())
     class Server(socketserver.ThreadingUnixStreamServer):
         daemon_threads = True; request_queue_size = 8
     path = Path('/run/r4os-studio-git/control.sock'); path.unlink(missing_ok=True)

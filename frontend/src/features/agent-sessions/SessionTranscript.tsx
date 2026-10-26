@@ -10,6 +10,14 @@ type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolE
   | { kind: 'message'; key: string; item: SessionItem };
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
 
+function GitHubReceipt({ value }: { value: unknown }) {
+  const ref = value as { id?: string; state?: string; commit?: string; pushed?: boolean } | null;
+  if (!ref || typeof ref.id !== 'string' || !/^[a-f0-9-]{36}$/.test(ref.id)) return null;
+  return <dl className="development-target" aria-label="GitHub push receipt"><div><dt>GitHub job</dt><dd>{ref.id}</dd></div>
+    <div><dt>Status</dt><dd>{typeof ref.state === 'string' ? ref.state.slice(0, 40) : 'Unknown'}{ref.pushed ? ' · Push confirmed' : ''}</dd></div>
+    {typeof ref.commit === 'string' && /^[a-f0-9]{40,64}$/.test(ref.commit) && <div><dt>Commit</dt><dd>{ref.commit.slice(0, 12)}</dd></div>}</dl>;
+}
+
 function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projectId: string; token: string }) {
   const { scope } = useSessionApi();
   const [expanded, setExpanded] = useState(false);
@@ -39,6 +47,7 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
         <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
+        {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}
         {typeof i.nextLine === 'number' && <p>More lines available from line {i.nextLine}.</p>}
         {typeof i.lineTruncated === 'number' && <p>Line {i.lineTruncated} exceeds the output limit.</p>}
         {typeof i.nextOffset === 'number' && <p>More entries available from offset {i.nextOffset}.</p>}

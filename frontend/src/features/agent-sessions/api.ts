@@ -14,6 +14,7 @@ export const toolLabels: Record<string, string> = {
   'studio.read_development_job': 'Read development job', 'studio.stop_development_job': 'Stop development job',
   'studio.capture_vm': 'Capture VM', 'studio.send_vm_input': 'Send VM input',
   'studio.start_project_vm': 'Start project VM',
+  'studio.push_project': 'Push project to GitHub',
   'studio.read_update_package': 'Read update packages', 'studio.plan_update_package': 'Plan update package',
   'studio.build_update_package': 'Build update package', 'studio.check_update_vm': 'Check update VM',
   'studio.upload_update_package': 'Upload update package', 'studio.install_update_package': 'Install or stage update',

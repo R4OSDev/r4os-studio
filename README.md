@@ -1,5 +1,42 @@
 # R4OS Studio · App
 
+## Agent GitHub push permission (0.5.9)
+
+New project sessions use additive studio-tools-v6. Session settings → Tools →
+GitHub offers Push project to GitHub, default Off. studio.push_project requires
+commitMessage and optionally a bounded relative saved-file list. Enabled rights
+are frozen for the accepted run. Existing v1–v5 and skill declarations/histories
+are unchanged; older conversations show New session required for this tool.
+
+The trusted sidecar runs outside the model/terminal namespace and passes the
+active worker's inherited exclusive workspace descriptor to the private Git
+coordinator via SCM_RIGHTS. Project/session/run, worker PID/birth, revision,
+frozen profile/permission/pins and the real lock inode are checked at admission
+and effect phases. Git shares the run's lifetime lease and existing workspace
+lock; it neither fails on its own run nor opens an unprotected second writer.
+Live terminals and development work must finish first. There is no agent Pull,
+free remote selection, token access or general host Git/network capability.
+
+The same checked manual push implementation binds the current saved snapshot,
+creates at most the original commit and confirms its remote ancestry. The harness
+waits on a stable run/call-derived job ID; result cards show its request and commit.
+Unknown effects stop the run without automatic resubmission. Stop cancels only
+the owned Git job and retains uncertain receipts/local commits for reconciliation.
+
+Explicit local host compatibility setup:
+`python3 App/scripts/agent-sessions/install-github-tool-support.py`, then install
+the immutable release normally, then the same command with `--adopt` while idle.
+The installer checks the exact previous updater source hash and adds only v6
+compatibility; bootstrap/configuration, running workers, histories and VMs remain.
+No downloaded privileged installer is executed and no service rights are widened.
+
+Validation uses real SCM_RIGHTS descriptors, active-run/disabled/foreign-FD gates,
+a real sandboxed local commit and simulated remote receipt without inference;
+the shared upstream transfer path was separately verified against the authorized
+own R4OSDev QA repository. The v5 declaration hash is frozen against0.5.8 and
+unchanged. Required-description/argument/default-Off and updater rollback checks
+plus browser enable/disable and legacy presentation cover the additive contract.
+
 ## Project opening: Update or Ignore (0.5.8)
 
 Selecting a connected project or following/reloading its project/session link

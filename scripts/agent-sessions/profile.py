@@ -11,7 +11,8 @@ LEGACY_PROFILE = 'studio-tools-v1'
 DEVELOPMENT_PROFILE = 'studio-tools-v2'
 VM_PROFILE = 'studio-tools-v3'
 COMPLETION_PROFILE = 'studio-tools-v4'
-PROFILE = 'studio-tools-v5'
+UPDATE_PROFILE = 'studio-tools-v5'
+PROFILE = 'studio-tools-v6'
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE)
@@ -27,8 +28,9 @@ UPDATE_TOOLS = ('read_update_package', 'plan_update_package', 'build_update_pack
     'upload_update_package', 'install_update_package', 'commit_update', 'verify_update', 'resume_update',
     'abort_update', 'rollback_update', 'cleanup_update_transport')
 DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS
-def default_enabled(tool): return tool not in ('commit_update','rollback_update')
-TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS
+GIT_TOOLS = ('push_project',)
+def default_enabled(tool): return tool not in ('commit_update','rollback_update','push_project')
+TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS + GIT_TOOLS
 
 def tools_for(profile):
     if profile == SKILL_PROFILE: return LEGACY_TOOLS
@@ -37,6 +39,7 @@ def tools_for(profile):
     if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
     if profile == COMPLETION_PROFILE: return LEGACY_TOOLS + COMPLETION_TOOLS
+    if profile == UPDATE_PROFILE: return LEGACY_TOOLS + DEVELOPMENT_TOOLS
     if profile == PROFILE: return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 

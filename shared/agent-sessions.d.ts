@@ -2,6 +2,7 @@ export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio
   | 'studio.list_directory' | 'studio.read_file' | 'studio.search' | 'studio.write_file'
   | 'studio.apply_patch' | 'studio.create_directory'
   | 'studio.validate_skill' | 'studio.save_skill'
+  | 'studio.push_project'
   | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
   | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm'
   | 'studio.read_update_package' | 'studio.plan_update_package' | 'studio.build_update_package' | 'studio.check_update_vm'

@@ -122,6 +122,9 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name == 'push_project' and self.store.owner_type == 'project':
+            from github_tools import GitHubTools
+            return await GitHubTools(self).call(arguments, call_id)
         if name in AUTHOR_TOOLS and self.store.owner_type == 'skill': return await self.skills.call(name, arguments, call_id)
         if name in DEVELOPMENT_TOOLS and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
@@ -185,7 +188,7 @@ class Worker:
             try: result = await self.execute(name[7:], arguments, call_id)
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
-                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'save_skill', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
+                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -199,7 +202,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('development', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill'):
+        for key in ('development', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill'):
             if key in result: value[key] = result[key]
         value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
         base_size = len(encode({**value, 'output': ''}).encode())

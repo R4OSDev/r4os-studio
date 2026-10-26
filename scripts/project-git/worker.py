@@ -6,6 +6,7 @@ from pathlib import Path
 import resource
 import fcntl
 import sys
+import signal
 from common import ProjectFault, document, folder, locks, now, save
 from operations import Operations
 
@@ -22,6 +23,7 @@ def main():
     if job['id'] != identity or job['state'] != 'queued' or job['releaseRoot'] != str(Path(__file__).resolve().parents[2]):
         raise ProjectFault('Git job binding changed. Original data was preserved.', 409)
     resource.setrlimit(resource.RLIMIT_FSIZE, (268435456, 268435456))
+    signal.alarm(300)
     from host import birth
     job.update(state='running', phase='starting', updatedAt=now(), workerPid=os.getpid(), workerBirth=birth(os.getpid()))
     save(path, job)
@@ -31,8 +33,19 @@ def main():
             from common import acquire
             with acquire(config['projects'], job['projectId'], exclusive=True): result = prepare(config, job)
         else:
-            with locks(config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check', 'diff')):
-                result = Operations(config, job).execute()
+            agent = None
+            if job.get('agent'):
+                from agent import AgentLease
+                agent = AgentLease(config, job['projectId'], job['agent'], int(sys.argv[3]))
+            with locks(config['projects'], job['projectId'], mutate=job['kind'] not in ('status', 'check', 'diff'), agent=agent):
+                action = Operations(config, job); action.agent = agent
+                if agent:
+                    if job['kind'] != 'push': raise ProjectFault('Agent Git actions are limited to push.', 403)
+                    from pushing import push
+                    state = action.status()
+                    action.progress('agent_snapshot', agentSnapshot=state['snapshot'], bindingRevision=action.bound['revision'] if action.bound else None)
+                    result = push(action, {**job['input'], 'bindingRevision': action.bound['revision'] if action.bound else None, 'snapshot': state['snapshot']})
+                else: result = action.execute()
         job.update(state='completed', phase='complete', result=result, updatedAt=now())
     except ProjectFault as error:
         # Errors before publication have no source effect. Network/publication ambiguity is retained.

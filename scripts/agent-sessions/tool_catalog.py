@@ -11,6 +11,7 @@ STR = {'type': 'string'}
 PATH = {'type': 'string', 'maxLength': 1024, 'description': 'Relative path within the chosen root; use . for its directory.'}
 ROOT = {'type': 'string', 'enum': ['workspace', 'sdk', 'contract', 'zig', 'rust'], 'description': 'workspace is writable; pinned component roots are read-only.'}
 DEFS = {
+ 'push_project': ('Commit saved changes in this project and push its bound GitHub branch without force. A nonempty commitMessage is required. Optional files selects relative saved source paths; omitted means all saved changes. Finish live terminal/development work first. This call waits in the harness for the original Git job and verified remote receipt. Tokens and general Git/network access are never exposed. Do not repeat an unconfirmed effect.', obj({'commitMessage': {'type': 'string', 'minLength': 1, 'maxLength': 4000}, 'files': {'type': 'array', 'maxItems': 128, 'items': PATH}}, ['commitMessage'])),
  'exec_command': ('Run a command in the separate Studio project sandbox. cwd defaults to /workspace. Network is unavailable. Native Codex shell tools are unavailable. Return output and a process handle if still running.',
    obj({'cmd': {'type': 'string', 'maxLength': 16384}, 'workdir': PATH, 'tty': {'type': 'boolean'},
         'yield_time_ms': {'type': 'integer', 'minimum': 100, 'maximum': 10000}, 'timeout_ms': {'type': 'integer', 'minimum': 100, 'maximum': 600000}}, ['cmd'])),
@@ -85,7 +86,7 @@ def validate_arguments(name, value, profile=PROFILE):
         actual = 'null' if v is None else ('boolean' if type(v) is bool else ('integer' if type(v) is int else ('string' if isinstance(v, str) else ('object' if isinstance(v, dict) else ('array' if isinstance(v, list) else 'invalid')))))
         if actual not in types: raise ValueError('Invalid tool argument type.')
         if actual == 'string':
-            if '\x00' in v or len(v.encode()) > rule.get('maxLength', 8192): raise ValueError('Tool argument exceeds its limit.')
+            if '\x00' in v or not rule.get('minLength', 0) <= len(v.encode()) <= rule.get('maxLength', 8192): raise ValueError('Tool argument exceeds its limit.')
             if 'enum' in rule and v not in rule['enum']: raise ValueError('Unknown tool argument.')
         if actual == 'integer' and not rule.get('minimum', 0) <= v <= rule.get('maximum', 1000000): raise ValueError('Tool argument exceeds its range.')
         if actual == 'array':

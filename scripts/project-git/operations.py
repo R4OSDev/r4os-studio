@@ -15,8 +15,10 @@ class Operations:
         self.workspace = self.projects / self.id / 'Workspace'
         self.git = Git(self.repo, self.workspace, self.temporary)
         self.bound = binding(self.projects, self.id)
+        self.agent = None
 
     def progress(self, phase, **extra):
+        if self.agent is not None: self.agent.verify(self.projects, self.id)
         self.job.update(phase=phase, updatedAt=now(), **extra)
         save(Path(self.config['projects']) / '.studio/github/Jobs' / self.job['id'] / 'job.json', self.job)
 
