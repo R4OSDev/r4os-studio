@@ -30,6 +30,8 @@ def admit(store, request, owner=None):
         if previous['request_hash'] != fingerprint: raise DevelopmentFault('This request ID belongs to different package input.')
         return store.get(previous['id']), False
     if request['projectRevision'] != store.project['revision']: raise DevelopmentFault('Project settings changed. Reload before packaging.')
+    from update_authorization import parent
+    parent(store,'plan',request['planId'],owner)
     plan = plan_read(store, request['planId'])
     if plan['sha256'] != request['planSha256'] or plan['pins'] != store.project['pins']:
         raise DevelopmentFault('The selected plan hash or project pins changed.')

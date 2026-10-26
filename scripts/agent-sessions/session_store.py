@@ -14,7 +14,7 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, TOOLS, tools_for
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, TOOLS, tools_for, default_enabled
 from owner import owner_type, binding, skill_workspace
 import skill_preferences
 
@@ -76,7 +76,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
     values = []
     for v in providers(provider_dir):
         values.append({'id': v['id'], 'name': v['name'], 'models': provider_models(provider_dir, v['id'])})
-    return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': True} for v in tools_for(selected_profile)],
+    return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in tools_for(selected_profile)],
             'engine': engine(r4os, selected_profile)}
 
 
@@ -214,7 +214,7 @@ PRAGMA user_version=1;
                 raise ProjectFault('The session limit for this workspace has been reached.')
             settings = {k: data[k] for k in ('providerId', 'model', 'effort')}
             settings['fastMode'] = data.get('fastMode', False)
-            settings['permissions'] = {'studio.' + v: True for v in tools_for(self.selected_profile)}
+            settings['permissions'] = {'studio.' + v: default_enabled(v) for v in tools_for(self.selected_profile)}
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)

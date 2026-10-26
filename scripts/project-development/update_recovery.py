@@ -132,14 +132,16 @@ class Recovery(Installation):
 async def reconcile(store,job,host):
     """Original unknown jobs get receipts; native writes are never replayed here."""
     from recovery import receipt
-    value=state.read(store,job['updateId'],current=True)
+    value=state.read(store,job['updateId'])
     if value['phase']!='cleanup_unconfirmed':
         confirmed=((value['phase'] in ('installed','live_installed') and value.get('installationConfirmed') and value.get('proof'))
             or (value['phase']=='rolled_back' and value.get('rollbackConfirmed')) or (value['phase']=='aborted' and value.get('abortConfirmed')))
-        outcome='completed' if value.get('installationConfirmed') else 'interrupted'
+        requested=(job.get('recoveryAction')=='rollback-last' and value.get('rollbackConfirmed')) or (job.get('recoveryAction')=='abort-batch' and value.get('abortConfirmed'))
+        outcome='completed' if value.get('installationConfirmed') or requested else 'interrupted'
         return store.recovered(job['id'],outcome if confirmed else 'unknown',
             receipt('owned-native-update-history',historical=True,nativeWritesReplayed=False,terminalConfirmed=bool(confirmed)),
             updateInstallation=value,error=None if confirmed else 'Current native proof is required. Use a new read-only verification or explicitly authorized recovery action for this same update ID.')
+    value=state.read(store,job['updateId'],current=True)
     if value.get('cleanupJobId')!=job['id']:raise DevelopmentFault('The original cleanup effect belongs to another job.')
     from access import Access,SshTransport,vm_config
     from lease import VmLease,inspect

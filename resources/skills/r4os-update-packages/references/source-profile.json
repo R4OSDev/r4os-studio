@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "guideSha256": "784c5becf752e9926f0bda985fe15222426aa3ab06e7cec3bebb35a13ac9e7ad",
+  "sysupdAdapter": {
+    "schema": 1,
+    "interface": "r4os-studio-sysupd-text",
+    "sourceRevision": "51ed03d813d9baeab630746f1d1bbc46c2d2a1e6",
+    "sourceRepository": "https://github.com/R4OSDev/r4os-sdk",
+    "reviewedFullImage": "0.87.14-full",
+    "sourceFiles": {
+      "system_update_engine.zig": "86a5a21e3e6bb41ce8f8ba9fa65f04970b300a62f9c1b47443cd156e1a23e92e",
+      "system_update_recovery.zig": "7b3b29dad51865d8ba89702d88b1c1ced5e81dc6bd6312db43b4285969e654ea",
+      "system_update_batch.zig": "1564310f0d7237053557579461b0688028abcccdce130bd5f66fcf82f2ad0154",
+      "system_update_inventory.zig": "a65c2d285f145e06ac75631340c5a3fbe74129bf6c65dadba1dc6030f1349506",
+      "r4u_manifest.zig": "22527bd0227a8d80d2794aaf77fbc5922805da716adada5bd871afc2fe19a05f"
+    },
+    "commands": [
+      "STATUS",
+      "VERIFY",
+      "APPLY",
+      "STAGE",
+      "COMMIT",
+      "RESUME",
+      "RESUME-BATCH",
+      "ABORT-BATCH",
+      "ROLLBACK-LAST"
+    ],
+    "nativeJson": false,
+    "verifyBatch": false,
+    "nativeStatusIsWriterLock": false,
+    "limits": {
+      "channelBytes": 131072,
+      "observationBytes": 262144,
+      "inventoryBytes": 131072,
+      "probeSeconds": 180
+    },
+    "consoleLoss": {
+      "sshSourceRevision": "dba200989d635f0ba0c7657ad80c369a6fc87d32",
+      "exitCode": 3,
+      "fallback": "two matching fixed read-only SFTP metadata reads; retain failed TYPE receipt"
+    }
+  },
+  "sysupdAdapterSha256": "c1af93936fb55245a3ad94b92435b5f4cf9fcd839c52473b722cd1ed9113fa8d",
+  "packerProfileSha256": "ad6ed4b6405bbca23ec732590cc3b6576971f3b6c2dcf94c7beb6de72678c056",
+  "toolContract": "studio-tools-v5",
+  "hostProtocol": 1,
+  "workerProtocol": 1,
+  "dataSchema": 1,
+  "nativeGlobalExpectedBatchArgument": false,
+  "nativePrivateJournalEditing": false
+}

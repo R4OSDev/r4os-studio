@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch, AsyncMock
 import uuid
 
-from access import Access, SshTransport
+from access import Access, SshTransport, DEFAULT_USERNAME, DEFAULT_PASSWORD, CREDENTIAL_POLICY
 from boot import BootWatch
 from contracts import DevelopmentFault, encode
 from lease import VmLease, inspect
@@ -48,24 +48,24 @@ class LeaseAndAccessTests(unittest.TestCase):
             path = r4os / 'Instances' / vm_id / 'vm.json'; path.parent.mkdir(parents=True)
             vm = {'id': vm_id, 'revision': str(uuid.uuid4()), 'imageId': 'test-full', 'imageSha256': 'a' * 64, 'networkEnabled': False}
             path.write_text(encode(vm)); access = Access(projects, r4os, SimpleNamespace(values={}))
-            request = {'revision': 0, 'vmRevision': vm['revision'], 'enabled': True, 'username': 'guest', 'password': 'private-fixture'}
+            request = {'revision': 0, 'vmRevision': vm['revision'], 'enabled': True}
             with patch('access.transport_profile', return_value={}):
                 with self.assertRaises(DevelopmentFault): access.configure(vm_id, request)
                 self.assertFalse(json.loads(path.read_text())['networkEnabled'])
                 vm['networkEnabled'] = True; path.write_text(encode(vm))
                 value = access.configure(vm_id, request)
-                self.assertTrue(value['credentialsStored']); self.assertNotIn('password', value)
+                self.assertEqual(value['credentialPolicy'],CREDENTIAL_POLICY); self.assertEqual(value['username'],DEFAULT_USERNAME); self.assertNotIn('password', value)
                 self.assertNotIn('private-fixture', encode(value)); self.assertFalse(value['ready'])
                 self.assertEqual((access.directory(vm_id) / 'access.json').stat().st_mode & 0o777, 0o600)
                 with self.assertRaises(DevelopmentFault): access.configure(vm_id, request)
                 vm['imageSha256'] = 'b' * 64; path.write_text(encode(vm))
-                value = access.public(vm_id); self.assertTrue(value['available']); self.assertTrue(value['credentialsStored'])
+                value = access.public(vm_id); self.assertTrue(value['available']); self.assertEqual(value['credentialPolicy'],CREDENTIAL_POLICY)
                 self.assertFalse(value['ready']); self.assertIsNone(value['hostKeyFingerprint'])
-                # Saving other settings with a blank password also retains the VM login.
-                access.configure(vm_id, {**request, 'revision':1, 'password':''})
-                self.assertEqual(access.record(vm_id)['password'], 'private-fixture')
+                # The fixed login policy remains after saving other settings.
+                access.configure(vm_id, {**request, 'revision':1})
+                self.assertEqual(access.record(vm_id)['password'], DEFAULT_PASSWORD)
                 self.assertEqual(access.record(vm_id)['vmId'], vm_id)
-                other = str(uuid.uuid4()); self.assertFalse(access.record(other)['password'])
+                other = str(uuid.uuid4()); self.assertEqual(access.record(other)['password'],DEFAULT_PASSWORD)
                 save(access.directory(other) / 'access.json', access.record(vm_id))
                 with self.assertRaises(DevelopmentFault): access.record(other)
 
@@ -101,12 +101,12 @@ class BootTests(unittest.IsolatedAsyncioTestCase):
                 transport = SshTransport(access,vm,lease)
                 async with transport:
                     self.assertIn('StrictHostKeyChecking=accept-new',transport.argv())
-                    self.assertEqual((transport.runtime/'password').read_text(),'private-fixture')
+                    self.assertEqual((transport.runtime/'password').read_text(),DEFAULT_PASSWORD)
                     self.assertFalse((transport.runtime/'known_hosts').exists())
                     (transport.runtime/'known_hosts').write_text('new-host ssh-ed25519 '+base64.b64encode(b'new-key').decode()+'\n')
                     transport.publish_host_key()
                 saved = access.record(vm_id)
-                self.assertEqual(saved['password'],old['password']); self.assertEqual(saved['username'],old['username'])
+                self.assertEqual(saved['password'],DEFAULT_PASSWORD); self.assertEqual(saved['username'],DEFAULT_USERNAME)
                 self.assertEqual(saved['vmId'],vm_id); self.assertEqual(saved['imageId'],vm['imageId'])
                 self.assertNotIn('readiness',saved)
                 pinned = saved['hostKeyFingerprint']

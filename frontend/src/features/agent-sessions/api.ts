@@ -14,6 +14,12 @@ export const toolLabels: Record<string, string> = {
   'studio.read_development_job': 'Read development job', 'studio.stop_development_job': 'Stop development job',
   'studio.capture_vm': 'Capture VM', 'studio.send_vm_input': 'Send VM input',
   'studio.start_project_vm': 'Start project VM',
+  'studio.read_update_package': 'Read update packages', 'studio.plan_update_package': 'Plan update package',
+  'studio.build_update_package': 'Build update package', 'studio.check_update_vm': 'Check update VM',
+  'studio.upload_update_package': 'Upload update package', 'studio.install_update_package': 'Install or stage update',
+  'studio.commit_update': 'Commit update and reboot', 'studio.verify_update': 'Verify installed update',
+  'studio.resume_update': 'Resume own update', 'studio.abort_update': 'Abort prepared update',
+  'studio.rollback_update': 'Roll back last update', 'studio.cleanup_update_transport': 'Clean own update transport',
   'studio.validate_skill': 'Validate skill', 'studio.save_skill': 'Save skill',
 };
 
@@ -25,3 +31,7 @@ export function useSessionApi() {
     return { scope, base, request: <T>(path: string, token = '', method = 'GET', body?: unknown, signal?: AbortSignal) => studioRequest<T>(base, path, token, method, body, signal) };
   }, [scope]);
 }
+
+export const updateToolIds = ['studio.read_update_package', 'studio.plan_update_package', 'studio.build_update_package',
+  'studio.check_update_vm', 'studio.upload_update_package', 'studio.install_update_package', 'studio.commit_update',
+  'studio.verify_update', 'studio.resume_update', 'studio.abort_update', 'studio.rollback_update', 'studio.cleanup_update_transport'];

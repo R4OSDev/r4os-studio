@@ -21,7 +21,7 @@ await test('VM guest access requires VM session/CSRF and keeps stored credential
       data += part;
       if (!data.includes('\n')) return;
       calls.push(JSON.parse(data));
-      client.end(JSON.stringify({ result: { revision: 1, vmRevision: revision, enabled: true, username: 'guest', credentialsStored: true, ready: false } }) + '\n');
+      client.end(JSON.stringify({ result: { revision: 1, vmRevision: revision, enabled: true, username: 'r4os', credentialPolicy: 'r4os-default-v1', ready: false } }) + '\n');
     });
   });
   await new Promise<void>((resolve) => server.listen(socket, resolve));
@@ -38,10 +38,10 @@ await test('VM guest access requires VM session/CSRF and keeps stored credential
     assert.equal(calls.length, 0);
     const saved = await app.inject({ method: 'PATCH', url, payload, headers });
     assert.equal(saved.statusCode, 200); assert(!Object.hasOwn(saved.json(), 'password')); assert(!saved.body.includes('fixture-private'));
-    assert.deepEqual(calls.at(-1), { operation: 'access_save', vmId: id, input: payload });
+    assert.deepEqual(calls.at(-1), { operation: 'access_save', vmId: id, input: { revision: payload.revision, vmRevision: payload.vmRevision, enabled: payload.enabled } });
     const withoutPassword = { revision: 1, vmRevision: revision, enabled: true, username: 'guest' };
     assert.equal((await app.inject({ method: 'PATCH', url, payload: withoutPassword, headers })).statusCode, 200);
-    assert.deepEqual(calls.at(-1), { operation: 'access_save', vmId: id, input: withoutPassword });
+    assert.deepEqual(calls.at(-1), { operation: 'access_save', vmId: id, input: { revision: withoutPassword.revision, vmRevision: withoutPassword.vmRevision, enabled: withoutPassword.enabled } });
     assert.equal((await app.inject({ method: 'POST', url: url + '/check', headers })).statusCode, 200);
     assert.deepEqual(calls.at(-1), { operation: 'access_check', vmId: id });
   } finally {

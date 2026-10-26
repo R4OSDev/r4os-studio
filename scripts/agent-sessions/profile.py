@@ -10,7 +10,8 @@ CODEX_SHA256 = '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215
 LEGACY_PROFILE = 'studio-tools-v1'
 DEVELOPMENT_PROFILE = 'studio-tools-v2'
 VM_PROFILE = 'studio-tools-v3'
-PROFILE = 'studio-tools-v4'
+COMPLETION_PROFILE = 'studio-tools-v4'
+PROFILE = 'studio-tools-v5'
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE)
@@ -21,7 +22,12 @@ LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_direct
 PREVIOUS_DEVELOPMENT_TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
     'stop_development_job', 'capture_vm', 'send_vm_input')
 VM_TOOLS = PREVIOUS_DEVELOPMENT_TOOLS + ('start_project_vm',)
-DEVELOPMENT_TOOLS = VM_TOOLS + ('complete_development_job',)
+COMPLETION_TOOLS = VM_TOOLS + ('complete_development_job',)
+UPDATE_TOOLS = ('read_update_package', 'plan_update_package', 'build_update_package', 'check_update_vm',
+    'upload_update_package', 'install_update_package', 'commit_update', 'verify_update', 'resume_update',
+    'abort_update', 'rollback_update', 'cleanup_update_transport')
+DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS
+def default_enabled(tool): return tool not in ('commit_update','rollback_update')
 TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS
 
 def tools_for(profile):
@@ -30,6 +36,7 @@ def tools_for(profile):
     if profile == LEGACY_PROFILE: return LEGACY_TOOLS
     if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
+    if profile == COMPLETION_PROFILE: return LEGACY_TOOLS + COMPLETION_TOOLS
     if profile == PROFILE: return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 

@@ -94,7 +94,7 @@ class Installation:
         if any(item['transfer'].get('hostKeyFingerprint')!=observation['hostKeyFingerprint'] for item in items):
             raise DevelopmentFault('The original Inbox SSH host-key binding changed. Verify identity and create a new explicit transfer.')
         packages=[item['package'] for item in items]
-        self.value={'schema':1,'id':self.job['updateId'],'projectId':self.store.id,'jobId':self.job['id'],'revision':0,
+        self.value={'schema':1,'id':self.job['updateId'],'projectId':self.store.id,'jobId':self.job['id'],'sessionId':self.job.get('sessionId'),'agentRunId':self.job.get('agentRunId'),'revision':0,
             **{key:target[key] for key in ('vmId','vmRevision','imageId','imageSha256','systemGeneration')},
             'sourceBootId':target['bootId'],'targetRelease':packages[0]['plan']['metadata']['targetRelease'],
             'packageArtifactIds':[item['id'] for item in packages],'transferJobIds':[item['jobId'] for item in items],

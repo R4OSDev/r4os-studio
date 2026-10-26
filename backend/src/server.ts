@@ -1,4 +1,7 @@
 import { createApp } from './app.js';
+import { skillStore } from './modules/skills/store.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const serveFrontend = process.argv.includes('--serve-frontend');
 const app = createApp({ serveFrontend, logger: true });
@@ -19,6 +22,11 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 try {
+  const providers = process.env.STUDIO_DATA_DIR ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url));
+  try {
+  const builtin = await skillStore<{ installed: boolean; reason?: string }>(join(dirname(providers), 'Skills'), { operation: 'ensure_builtin' });
+  if (!builtin.installed) app.log.warn({ reason: builtin.reason }, 'Shipped update skill initialization deferred; user data preserved.');
+  } catch (error) { app.log.warn({ error: error instanceof Error ? error.message : 'Unavailable' }, 'Shipped update skill deferred; existing data preserved.'); }
   await app.listen({ host, port });
 } catch (error) {
   app.log.error(error);

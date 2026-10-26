@@ -25,6 +25,7 @@ export interface UpdatePackerPin {
   host: string; sha256: string; profileSha256: string;
 }
 export interface UpdatePackagePlan {
+  owner?: { sessionId: string; agentRunId: string };
   schema: 1; id: string; sha256: string; projectId: string; projectRevision: number;
   configurationRevision: number; createdAt: string; metadata: UpdatePackageMetadata;
   payloads: UpdatePayload[]; requirements: UpdateRequirement[]; pins: ProjectPins; packer: UpdatePackerPin;
@@ -98,6 +99,7 @@ export interface UpdateTransfer {
 export interface UpdateFileRead { bytes: number; sha256: string; fullReadVerified: true }
 
 export interface UpdateInstallation {
+  sessionId?: string | null; agentRunId?: string | null;
   schema: 1; id: string; projectId: string; jobId: string; revision: number; phase: string;
   vmId: string; vmRevision: string; imageId: string; imageSha256: string; systemGeneration: string | null;
   sourceBootId: string; targetRelease: string; packageArtifactIds: string[]; transferJobIds: string[];

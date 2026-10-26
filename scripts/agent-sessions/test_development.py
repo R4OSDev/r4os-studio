@@ -1,13 +1,14 @@
 import unittest,uuid
 from unittest.mock import AsyncMock,patch
 from types import SimpleNamespace
-from profile import PROFILE,LEGACY_PROFILE,tools_for
+from profile import PROFILE,COMPLETION_PROFILE,LEGACY_PROFILE,tools_for
 from tool_catalog import specifications,validate_arguments
 from development_tools import DevelopmentTools
 
 class ProfileTest(unittest.TestCase):
     def test_native_profiles_remain_distinct_and_strict(self):
-        self.assertEqual(len(specifications(LEGACY_PROFILE)),9);self.assertEqual(len(specifications(PROFILE)),18)
+        self.assertEqual(len(specifications(LEGACY_PROFILE)),9);self.assertEqual(len(specifications(PROFILE)),30)
+        self.assertEqual(len(specifications(COMPLETION_PROFILE)),18)
         self.assertEqual(specifications(PROFILE)[:9],specifications(LEGACY_PROFILE))
         with self.assertRaises(ValueError):tools_for('unknown')
         validate_arguments('run_project',{'deploymentId':str(uuid.uuid4()),'criteria':{'outputFiles':[{'name':'RESULT.TXT','contains':'OK','sha256':None}]}})

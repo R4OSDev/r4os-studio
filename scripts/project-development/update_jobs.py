@@ -44,10 +44,14 @@ def admit(store,kind,request,owner,binding):
         raise DevelopmentFault('Project or assigned VM changed. Review the update action again.')
     extra={}
     if kind=='update_install':
+        from update_authorization import parent
+        for transfer_id in request['transferJobIds']:parent(store,'transfer',transfer_id,owner)
         state.idle(store.projects,binding['id']);items=transfers(store,request['transferJobIds'],binding)
         extra={'updateTransfers':items,'updatePackage':items[0]['package'],'updateId':str(uuid.uuid4())}
     elif kind=='update_recovery':
         from update_recovery import ACTIONS
+        from update_authorization import parent
+        parent(store,'update',request['updateId'],owner)
         value=state.read(store,identity(request['updateId']),current=True)
         if (value['revision']!=request['updateRevision'] or value['vmId']!=binding['id'] or value['vmRevision']!=request['vmRevision']
             or binding['revision']!=request['vmRevision'] or value['imageSha256']!=binding['imageSha256']
@@ -59,6 +63,8 @@ def admit(store,kind,request,owner,binding):
         extra={'updateId':value['id'],'updateRevision':value['revision'],'recoveryAction':request['action'],
             'confirmReboot':request['confirmReboot'],'updatePackage':artifact(store,value['packageArtifactIds'][0])}
     elif kind=='update_verify':
+        from update_authorization import parent
+        parent(store,'update',request['updateId'],owner)
         value=state.read(store,identity(request['updateId']),current=True)
         if (value['revision']!=request['updateRevision'] or value['vmId']!=binding['id'] or value['vmRevision']!=binding['revision']
             or value['imageSha256']!=binding['imageSha256'] or value.get('systemGeneration')!=binding.get('systemGeneration')):
@@ -70,6 +76,8 @@ def admit(store,kind,request,owner,binding):
         extra={'updateId':value['id'],'updateRevision':value['revision'],'verification':{'seconds':request['deadlineSeconds'],'hashes':request['fullArtifactHashes']},
             'updatePackage':artifact(store,value['packageArtifactIds'][0])}
     else:
+        from update_authorization import parent
+        parent(store,'update',request['updateId'],owner)
         value=state.read(store,identity(request['updateId']),current=True)
         if (value['phase']!='awaiting_commit' or value['revision']!=request['updateRevision'] or value.get('batchId')!=request['batchId']
                 or value['targetRelease']!=request['targetRelease'] or value['vmRevision']!=request['vmRevision']

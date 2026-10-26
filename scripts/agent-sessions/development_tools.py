@@ -16,7 +16,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'assess', 'stop_job', 'complete_check', 'cancel_owned'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -43,6 +43,10 @@ class DevelopmentTools:
         return {'success': result['success'], 'contentItems': content}
 
     async def call(self, name, value, call_id):
+        from profile import UPDATE_TOOLS
+        if name in UPDATE_TOOLS:
+            from update_tools import UpdateTools
+            return await UpdateTools(self).call(name,value,call_id)
         from contracts import DevelopmentFault
         from session_store import encode
         request_id = str(uuid.uuid5(uuid.UUID(self.worker.run_id), 'development:' + call_id))

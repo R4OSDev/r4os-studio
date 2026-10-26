@@ -29,6 +29,8 @@ def admit(store, request, owner, binding, kind="update_probe"):
         raise DevelopmentFault('Project settings changed. Reload before checking the VM.')
     if not binding or binding['id'] != store.project['vmId']:
         raise DevelopmentFault('Assign a VM explicitly before checking update support.')
+    from update_authorization import parent
+    parent(store,'package',request['packageArtifactId'],owner)
     package = artifact(store, request['packageArtifactId'])
     if package['projectId'] != store.id or package['plan']['pins'] != store.project['pins']: raise DevelopmentFault('The package belongs to different project pins.')
     store.db.execute('BEGIN IMMEDIATE')

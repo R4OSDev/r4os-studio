@@ -19,6 +19,8 @@ class HostTests(unittest.TestCase):
         self.assertTrue(host.compatible(host.DEVELOPMENT_COMPATIBILITY))
         self.assertTrue(host.compatible(host.SKILL_COMPATIBILITY))
         self.assertTrue(host.compatible(host.AUTHOR_COMPATIBILITY))
+        self.assertTrue(host.compatible(host.UPDATE_COMPATIBILITY))
+        self.assertEqual(json.loads((Path(__file__).resolve().parents[2]/'shared/update-host.json').read_text()),host.UPDATE_COMPATIBILITY)
         self.assertFalse(host.compatible({**host.SKILL_COMPATIBILITY, 'agentDataSchema': 2}))
         self.assertFalse(host.compatible({**host.DEVELOPMENT_COMPATIBILITY, 'developmentDataSchema': 2}))
         self.assertFalse(host.compatible({**host.DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['unqualified']}))

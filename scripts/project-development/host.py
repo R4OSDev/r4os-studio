@@ -231,41 +231,52 @@ class Host:
                     'bootId': boot['bootId'], 'systemGeneration': vm.get('systemGeneration'), 'vmInvocationId': info['invocationId']}
                 store.update(job['id'], target=target); return target
             finally: store.close()
-        if op in ('update_list', 'read_update'):
-            if set(request) != {'operation', 'projectId'} | ({'id'} if op == 'read_update' else set()):
-                raise DevelopmentFault('Unexpected update record fields.', 400)
-            store = self.store(identity(request['projectId']))
+        if op in ('update_list', 'update_job_list', 'read_update', 'update_options', 'update_plan', 'read_update_plan', 'update_batch_preview'):
+            fields={'operation','projectId'} | ({'input'} if op in ('update_plan','update_batch_preview') else {'id'} if op in ('read_update','read_update_plan') else set())
+            if set(request)-{'owner'}!=fields:raise DevelopmentFault('Unexpected update metadata fields.',400)
+            store=self.store(identity(request['projectId']));owner=request.get('owner')
             try:
-                from update_state import read, listing
-                return {'update': read(store, identity(request['id']))} if op == 'read_update' else {'updates': listing(store)}
-            finally: store.close()
-        if op in ('update_options', 'update_plan', 'read_update_plan', 'update_batch_preview'):
-            fields = {'operation', 'projectId'} | ({'input'} if op in ('update_plan', 'update_batch_preview') else {'id'} if op == 'read_update_plan' else set())
-            if set(request) != fields: raise DevelopmentFault('Unexpected update package fields.', 400)
-            store = self.store(identity(request['projectId']))
-            try:
-                from update_plans import options, create, read, batch
+                if owner is not None:
+                    from authorization import authorize
+                    authorize(store,owner,op,peer_pid)
+                from update_authorization import parent,filtered_options
+                from update_state import read as read_state,listing
+                from update_plans import options,create,read,batch
                 async with self.lock:
-                    if op == 'update_options': return options(store)
-                    if op == 'update_plan': return {'plan': create(store, request['input'])}
-                    if op == 'read_update_plan': return {'plan': read(store, request['id'])}
-                    value = request['input']
-                    if not isinstance(value, dict) or set(value) != {'planIds'}: raise DevelopmentFault('Supply package plan identities.', 400)
-                    return batch(store, value['planIds'])
-            finally: store.close()
+                    if op=='update_options':return filtered_options(store,options(store),owner)
+                    if op=='update_plan':return {'plan':create(store,request['input'],owner)}
+                    if op=='read_update_plan':
+                        parent(store,'plan',request['id'],owner)
+                        return {'plan':read(store,identity(request['id']))}
+                    if op=='read_update':
+                        parent(store,'update',request['id'],owner)
+                        return {'update':read_state(store,identity(request['id']))}
+                    if op=='update_job_list':
+                        rows=store.db.execute("SELECT payload FROM jobs WHERE kind IN ('package','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery') ORDER BY rowid DESC LIMIT 100").fetchall()
+                        values=[json.loads(row[0]) for row in rows]
+                        fields=('id','requestId','agentRunId','kind','state','phase','createdAt','completedAt','updateId','packageArtifactId','error')
+                        return {'jobs':[{key:value[key] for key in fields if key in value} for value in values if owner is None or value.get('sessionId')==owner['sessionId']]}
+                    if op=='update_list':
+                        values=listing(store)
+                        return {'updates':[value for value in values if owner is None or value.get('sessionId')==owner['sessionId']]}
+                    value=request['input']
+                    if not isinstance(value,dict) or set(value)!={'planIds'}:raise DevelopmentFault('Supply package plan identities.',400)
+                    for ident in value['planIds']:parent(store,'plan',ident,owner)
+                    return batch(store,value['planIds'])
+            finally:store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
+                    'features': {'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
-        if op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
         if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -276,8 +287,8 @@ class Host:
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
-                authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned')
+                elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
                 if op in ('deploy', 'execution'):
                     artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
                     parent = store.get(artifact['buildId'] if op == 'deploy' else artifact['jobId'])
@@ -293,8 +304,22 @@ class Host:
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
             if op == 'package_artifact':
+                from update_authorization import parent
+                parent(store,'package',request['id'],owner)
                 from package_jobs import artifact
                 return {'artifact': artifact(store, request['id'])}
+            if op=='wait_update':
+                from authorization import authorize
+                from update_authorization import PERMISSIONS
+                job=store.get(request['id'])
+                if owner is None or job['kind'] not in PERMISSIONS or job.get('agentRunId')!=owner['agentRunId']:
+                    raise DevelopmentFault('Wait only for the original update job in this active run.',403)
+                deadline=asyncio.get_running_loop().time()+12
+                while job['state'] in ACTIVE and asyncio.get_running_loop().time()<deadline:
+                    authorize(store,owner,op,peer_pid,job)
+                    await asyncio.sleep(.5);job=store.get(job['id'])
+                authorize(store,owner,op,peer_pid,job)
+                return store.page(job['id'])
             if op == 'wait_vm_start':
                 from authorization import authorize
                 job = store.get(request['id'])
@@ -417,7 +442,7 @@ class Host:
                         store.update(job_id, 'interrupted', phase='stopped', error='Job stopped.')
                     self.active.pop(job_id, None); return store.get(job_id)
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
-                if owner is not None: authorize(store, owner, op, peer_pid)
+                if owner is not None: authorize(store, owner, op, peer_pid, recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
                 if not previous:
                     if op in ('update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery'):
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
@@ -453,7 +478,7 @@ class Host:
                         try: peer_job=peer.get(active_id)
                         finally: peer.close()
                         same=(peer_job.get('binding') or {}).get('id')==binding['id']
-                        if same and (op in ('update_install','update_commit','update_recovery') or meta['kind'] in ('update_install','update_commit','update_recovery')):
+                        if same and peer_job['state'] in ACTIVE and (op in ('update_install','update_commit','update_recovery') or meta['kind'] in ('update_install','update_commit','update_recovery')):
                             raise DevelopmentFault('Wait for the existing VM job to finish before another update/VM mutation.')
                     status = self.access.public(binding['id'])
                     if not status['available']: raise DevelopmentFault(status['reason'])

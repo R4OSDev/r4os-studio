@@ -52,7 +52,7 @@ class Observation:
         try:return await asyncio.wait_for(self.observe(lease),self.seconds)
         except BaseException as error:
             self.value.update(phase='recovery_required',installationConfirmed=False,error='The bounded native update observation ended without a correlated terminal proof. No command was replayed. '+str(error)[:1000])
-            self.persist();raise UnconfirmedGuestEffect(self.value['error']) from error
+            self.persist();raise UnconfirmedGuestEffect(self.value['error'],reason_code=getattr(error,'reason_code',None)) from error
     async def observe(self,lease):
         from access import Access,SshTransport,guest_version
         from vm_worker import guard,broker_call
@@ -81,6 +81,11 @@ class Observation:
                         raise DevelopmentFault('The guest rejected the original SSH identity; automatic trust is forbidden.',403)
                     status=parse('STATUS',captured)
                     entry['status']=status
+                    native=status['status']
+                    if (native.get('journalPhase')=='rolled_back' and native.get('batchPhase')=='rolling-back'
+                        and native.get('batchId')==self.value.get('batchId') and self.value.get('rollbackTransactionId')==native.get('transactionId')):
+                        self.value['lastObservedStatus']=status;self.persist()
+                        raise DevelopmentFault('Native files are rolled back; finalize this exact own batch with an explicitly authorized resume_update in batch mode. No native command was repeated.',reason_code='native_batch_finalize_required')
                     rollback=correlated(status,self.value,'rolled-back')
                     if not correlated(status,self.value) and not rollback:
                         own=status['status']
@@ -124,14 +129,14 @@ class Observation:
                             from update_epoch import invalidate
                             self.value['updateEpoch']=invalidate(self.store,self.value,'confirmed-installed-update')
                         self.value.update(phase='rolled_back' if rollback else 'installed' if self.value.get('batchId') else 'live_installed',installationConfirmed=not rollback,rollbackConfirmed=rollback,
-                            lastStatus=final,proof={'confirmedAt':now(),'target':target,'components':components,'inventoryReads':reads,
+                            lastStatus=final,error=None,proof={'confirmedAt':now(),'target':target,'components':components,'inventoryReads':reads,
                             'outcome':'rolled-back' if rollback else 'installed','fullArtifactHashesRequested':self.hashes,'fullArtifactHashesComplete':self.hashes and hashes_available,'previousArtifactBaselineAvailable':hashes_available,'files':files,'installedRelease':visible_release,'activeKernel':version['kernel'],
                             'readOnly':True,'nativeServiceMayHaveFinalized':True,'commitNotRepeated':True,'resumeNotIssued':True})
                         self.persist()
                         record=access.record(vm['id']);record.pop('lastError',None);record['readiness']={'checkedAt':now(),'vmRevision':vm['revision'],'bootId':target['bootId'],**version};access.save_record(vm['id'],record)
                         return self.store.update(self.job['id'],'completed',phase=self.value['phase'],exitCode=0)
             except (DevelopmentFault,OSError) as error:
-                if getattr(error,'code',None)==403:
+                if getattr(error,'code',None)==403 or getattr(error,'reason_code',None)=='native_batch_finalize_required':
                     self.value.update(phase='recovery_required',error=str(error),installationConfirmed=False);self.persist();raise
                 entry['error']=str(error)[:1000]
             self.value['observationAttempts']=(self.value.get('observationAttempts',[])+[entry])[-16:]

@@ -171,10 +171,10 @@ def selected_packer(store):
     try: return pin_packer(store.r4os, external)
     except (OSError, ValueError, KeyError, TypeError) as error: raise DevelopmentFault(str(error), 409) from None
 
-def create(store, request):
+def create(store, request, owner=None):
     expected = {'requestId', 'projectRevision', 'configurationRevision', 'metadata', 'artifactIds', 'requirements'}
     if not isinstance(request, dict) or set(request) != expected: raise DevelopmentFault('Unexpected update plan fields.', 400)
-    key = identity(request['requestId']); fingerprint = hash_value(request)
+    key = identity(request['requestId']); fingerprint = hash_value({'request':request,'owner':owner}) if owner else hash_value(request)
     tables(store)
     previous = store.db.execute('SELECT id,request_hash FROM update_plans WHERE request_id=?', (key,)).fetchone()
     if previous:
@@ -208,6 +208,9 @@ def create(store, request):
     if manifest_bound > MAX_MANIFEST or total > MAX_PACKAGE or total > 4294967295:
         raise DevelopmentFault('The proposed package exceeds the manifest/container or128-MiB Studio quota.', 400)
     packer = selected_packer(store)
+    if owner:
+        from update_authorization import parent
+        for artifact_id in request['artifactIds']:parent(store,'artifact',artifact_id,owner)
     plan = {'schema': 1, 'id': str(uuid.uuid4()), 'projectId': store.id, 'projectRevision': store.project['revision'],
         'configurationRevision': current['revision'] + 1, 'createdAt': now(), 'metadata': metadata,
         'payloads': payloads, 'requirements': needs, 'pins': store.project['pins'],
@@ -217,6 +220,7 @@ def create(store, request):
         'manifestByteUpperBound': manifest_bound, 'containerByteUpperBound': total,
         'batch': {'packages': 1, 'components': len(payloads), 'requirements': len(needs)},
         'nativeValidation': 'required-at-build', 'targetReleaseSource': 'explicit-offline-selection'}
+    if owner:plan['owner']=owner
     plan['sha256'] = hash_value(plan)
     store.db.execute('BEGIN IMMEDIATE')
     try:

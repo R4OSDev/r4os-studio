@@ -61,6 +61,9 @@ DEFS.update({
 })
 
 
+from update_catalog import DEFS as UPDATE_DEFS
+DEFS.update(UPDATE_DEFS)
+
 def specifications(profile=PROFILE):
     # The protocol persists dynamic declarations on first thread creation. Keep
     # the known set stable on resume; disabled/unavailable calls fail in the host

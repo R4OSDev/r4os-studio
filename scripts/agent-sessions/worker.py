@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import prepare, write_json, TOOLS, PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
+from profile import prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -185,7 +185,7 @@ class Worker:
             try: result = await self.execute(name[7:], arguments, call_id)
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
-                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'save_skill')
+                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'save_skill', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -210,7 +210,7 @@ class Worker:
 
     async def stop(self):
         self.stopping = True
-        if self.config['engine'].get('profile') in (PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE): await self.development.stop_owned()
+        if self.config['engine'].get('profile') in (PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE): await self.development.stop_owned()
         if self.client and self.turn_id:
             try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
             except Exception: pass
@@ -248,6 +248,8 @@ class Worker:
                 instructions += '\n\nCURRENT STUDIO DEPLOYMENT CONTRACT: These runtime constraints supersede older tool descriptions saved in this conversation. Deployment never starts a VM or application. For requested deployment, build, obtain the assigned VM SSH/VER readiness with the separately permitted studio_start_project_vm when available, then deploy and run. A session without VM-start capability must use an already running VM or ask for manual VM start. Build, deploy and run wait internally for their original receipt/readiness; do not poll, sleep or resubmit while those calls are pending. SSH readiness is not Desktop or application readiness.'
             if 'complete_development_job' in tools_for(self.config['engine']['profile']):
                 instructions += '\n\nSTUDIO CHECK LIFECYCLE: Image assessment alone leaves the bounded process running. After all configured test criteria pass, explicitly call studio_complete_development_job and wait for its cleanup receipt before reporting the full test complete. Never complete a plain interactive launch unless the user requested the test to finish. Unknown closure must not be repeated.'
+            if 'commit_update' in tools_for(self.config['engine']['profile']):
+                instructions += '\\n\\nSTUDIO UPDATE CONTRACT: Use the active R4OS Update Packages skill when available. Build artifact → immutable plan/package → assigned VM readiness → Inbox full readback → native VERIFY/STAGE → actual live proof or own awaiting-commit batch → separately authorized COMMIT/reboot → correlated status/inventory/full hashes. STAGE can install live. Never invent JSON or VERIFY-BATCH. RESUME-BATCH is a mutation and can COMMIT/reboot. Act on reboot/rollback only for a concrete user task and the separate frozen rights; a skill never grants rights. All update tools wait in the harness for their original jobs; do not poll/resubmit native writes. Native rolled_back journal with rolling-back batch needs explicit authorized batch resume to finalize. Unknown is not failure or permission to retry.'
             self.client = CodexRPC(args, self.notify, self.tool)
             self.client.version = self.manifest['version']
             await self.client.start()

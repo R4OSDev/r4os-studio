@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import hashlib
 import json
 from pathlib import Path
@@ -18,7 +19,7 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         from vm_worker import Deployment
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); project_id, vm_id, job_id = [str(uuid.uuid4()) for _ in range(3)]
-            vm = {'id':vm_id,'name':'New image','revision':str(uuid.uuid4()),'imageId':'99.99.99-full','imageSha256':'f'*64}
+            vm = {'id':vm_id,'name':'New image','revision':str(uuid.uuid4()),'imageId':'99.99.99-full','imageSha256':'f'*64,'networkEnabled':True}
             path = root / 'R4OS/Instances' / vm_id / 'vm.json'; path.parent.mkdir(parents=True); path.write_text(json.dumps(vm))
             store = SimpleNamespace(id=project_id, r4os=root/'R4OS', projects=root,
                 project={'id':project_id,'language':'Rust','template':'desktop','pins':{'sdk':{'revision':'e'*40}},'vmId':vm_id,'revision':1},
@@ -30,9 +31,11 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(host.options(store)['deploy']['available'])
             result = await host.handle({'operation':'deploy','projectId':project_id,'input':{'requestId':str(uuid.uuid4())}})
             self.assertEqual(result['id'], job_id); store.admit.assert_called_once()
-            job = {'id':job_id,'binding':vm,'artifactId':str(uuid.uuid4()),'pins':store.project['pins']}
+            job = {'id':job_id,'binding':vm,'artifactId':str(uuid.uuid4()),'pins':store.project['pins'],'projectRevision':1,'kind':'deploy'}
             class HelperReached(Exception): pass
-            with patch('vm_worker.prepare_helper', new=AsyncMock(side_effect=HelperReached)) as helper:
+            @asynccontextmanager
+            async def reserved(*args,**kwargs):yield SimpleNamespace(id=str(uuid.uuid4()),token='fixture')
+            with patch('queue_lease.reserve',reserved), patch('vm_worker.guard'), patch('vm_worker.vm_call',new=AsyncMock(return_value={'vm':{'state':'running'}})), patch('exchange.require_tree'), patch('vm_worker.prepare_helper', new=AsyncMock(side_effect=HelperReached)) as helper:
                 with self.assertRaises(HelperReached): await Deployment(store,job).run()
                 helper.assert_awaited_once()
 
@@ -40,9 +43,11 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root); source = root / 'APP.R4X'; source.write_bytes(b'expected-module')
             ssh = SimpleNamespace(runtime=root)
-            async def corrupt_readback(transport, guest, local, **kwargs):
-                Path(local).write_bytes(b'corrupt-module'); return True
-            with patch('sftp.batch', new=AsyncMock(return_value=True)), patch('sftp.download', side_effect=corrupt_readback):
+            async def corrupt_readback(transport, lines, **kwargs):
+                import shlex
+                destination=shlex.split(lines[1])[-1]
+                Path(destination).write_bytes(b'corrupt-module'); return True
+            with patch('sftp.batch', side_effect=corrupt_readback):
                 with self.assertRaisesRegex(DevelopmentFault, 'Guest bytes do not match'):
                     await publish_file(ssh, source, '/C/P1234567/D1234567/APP.R4X', digest(source))
             self.assertFalse(list(root.glob('verify-*')))

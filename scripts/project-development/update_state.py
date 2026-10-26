@@ -48,7 +48,7 @@ def listing(store):
     entries=sorted(root.iterdir())
     if len(entries)>4096:raise DevelopmentFault('Too many update records; archive them through explicit maintenance.')
     values=[read(store,item.name) for item in entries]
-    fields=('schema','id','projectId','jobId','revision','phase','vmId','vmRevision','targetRelease','createdAt','updatedAt','batchId','transactions','packageArtifactIds','transferJobIds','installationConfirmed','rollbackConfirmed','abortConfirmed','cleanupConfirmed')
+    fields=('schema','id','projectId','jobId','sessionId','agentRunId','revision','phase','vmId','vmRevision','targetRelease','createdAt','updatedAt','batchId','transactions','packageArtifactIds','transferJobIds','installationConfirmed','rollbackConfirmed','abortConfirmed','cleanupConfirmed')
     return [{key:value[key] for key in fields if key in value} for value in sorted(values,key=lambda value:value['createdAt'],reverse=True)[:100]]
 
 def matches(status,record):

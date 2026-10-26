@@ -1,0 +1,540 @@
+R4OS UPDATE PACKAGES: LOCAL PACKAGING AND INSTALLATION IN A STUDIO VM
+
+Reviewed: 2026-10-25
+Studio integration status: native packer setup and profile management implemented in 0.4.11.
+Artifact-bound plans 0.4.12 and native package jobs 0.4.13 are implemented.
+Native SYSUPD preflight/text capture 0.4.14 is implemented.
+Transfer/installation and UI/agent integration 0.4.15–0.4.20 remain planned.
+
+Implementation note, 2026-10-26:
+The separate minimal R4UPack recipe is now built and qualified twice with identical
+binary SHA-256 536b341395421a5626c03e4c3165fd58b3b347042dd515037663554afa6de8f1.
+Run as data owner: python3 App/scripts/setup-r4upack.py. Existing Zig 0.16.0 is
+checked; Distribution ecbe622b5d26244fad449c72cb483936798e172e and the four-module
+SDK 51ed03d813d9baeab630746f1d1bbc46c2d2a1e6 closure are hash-pinned. No full
+workspace or PowerShell is needed. System → Updates → Tools → R4UPack offers
+explicit build/selection; building does not select. Profiles retain source/licenses
+under Data/R4OS/Toolchains/R4UPack, with separate Profiles/r4upack.json selection.
+The original source-review sections below describe the planning baseline;
+references to missing/not-yet-built R4UPack are historical. The actual recipe,
+administrative external binding, supported platform and checks are in App/README.md.
+
+Package planning implementation,0.4.12:
+Confirmed project build artifacts now carry optional native SDK update metadata.
+The coordinator can return an immutable complete plan before any packer or guest
+effect, using the captured SDK-catalogue TARGET, exact artifact/manifest hashes,
+native embedded identity, explicit release/requirements and qualified Packer pins.
+Project-scoped /update-packages endpoints preserve stale/conflicting requests.
+The planning target follows the manifest exactly, e.g. /SOFTWARE/... becomes
+C:\SOFTWARE\...; the earlier /R4OS/SOFTWARE example is not a forced prefix.
+Existing artifacts without native metadata need a new compatible build for
+packaging. Ordinary builds remain available without that optional capability.
+Current confirmed versioned outputs are supported. Other/companion/Kernel inputs
+require an actual confirmed adapter and native recovery conditions, never free
+host files. Conservative manifest/container/batch quotas apply. Native package
+build and guest actions remain in subsequent subversions; browser controls0.4.20.
+
+Native packaging implementation, 0.4.13:
+The bounded private development worker now packages an accepted immutable plan
+with the qualified native Packer. No shell interprets payload/requirement bars.
+Both streams and the real exit status are retained. Readonly copied inputs/program,
+final SHA-256 checks, 60-second/128-MiB/2-MiB limits and atomic project-owned artifacts
+preserve old packages on errors. Repeated requests read the original durable job;
+unconfirmed work is not replayed. No guest action or compiler build occurs here.
+A targeted administrator installer qualifies only package dispatch to the existing
+non-VM worker; it preserves config, unit definitions, old workers and VMs.
+The first native QA package is 9472 bytes; actual receipt/provenance and installed
+worker evidence are in Research/R4OS/Roadmap-Implementation/0.4.13/.
+
+Native preflight implementation, 0.4.14:
+The isolated job binds the selected already-running VM/system/boot/key and uses
+fixed native commands under the existing VM lease; it cannot start or install.
+Status must confirm dirs=ok and a matching final snapshot. Native journal/batch
+history remains intact. Failed, foreign or recoverable active state blocks a new
+upload. The text parser preserves u64 strings, display-state spaces, real exit
+status and bounded stdout/stderr; unknown/incomplete replies block later effects.
+
+Observed SSHD limit in the actual Full 0.87.14 guest: TYPE MODULES.JSON exited 3
+with an explicit console output lost 366 bytes diagnostic. Client-side buffering
+cannot recover bytes already lost in the guest console hook. The adapter now
+also reads that one fixed readonly file twice via the existing SFTP client,
+requires identical complete size/SHA-256 and parses all 110 entries. It retains
+the original TYPE receipt and permits this fallback only for the known exit 3
+console-loss diagnostic. Other failures/mismatched reads stop preflight.
+No additional guest script/client dependency is required. The existing SSH
+default used for app runs is unchanged; update jobs opt into complete captures.
+Observed installed release 0.87.14 and active kernel 0.1.384 remain distinct from
+the immutable VM base image. Native VERIFY/installation evidence still follows.
+
+This is the English operational guide supplied for the R4OS Studio planning,
+with source-checked clarifications and Studio-specific integration notes.
+The review inspected sources and release metadata; it did not build R4UPack,
+execute a guest command, install an update, reboot a VM or run an agent.
+
+This workflow installs R4U packages inside a selected R4OS VM. The separate
+Studio web application updater is documented in Docs/Updates.md.
+
+1. RESPONSIBILITIES AND REQUIRED INPUTS
+
+R4OS owns the package format, compatibility decisions, installation, journals,
+backups and recovery. Studio assembles inputs, invokes the native tools,
+transports immutable package bytes and records their actual results.
+
+Required inputs:
+
+- A configured, qualified local r4upack binary, or r4upack.exe on Windows.
+- Confirmed build artifacts, installation targets and payload kinds.
+- Package ID, package version, target release, title and description.
+- Concrete external component requirements where needed.
+- An authenticated SSH/SFTP connection to the selected R4OS test VM.
+
+The original standalone QEMU example uses host 127.0.0.1, port 10022 and user
+r4os. These are example connection values, not a universal endpoint. A generic
+client must make its connection profile configurable. Studio should reuse the
+selected VM's existing access policy, private dynamic loopback forwarding and
+VM-bound host-key trust instead of introducing a fixed port or changing the
+current login defaults. Never publish guest SSH services on untrusted networks.
+The audited guest SSH transport supports chacha20-poly1305@openssh.com.
+
+Derive local source paths from the selected project and confirmed build receipt.
+Read installation targets from the same build's module.R4MF, using the SDK's
+manifest/catalog interpretation. For an ordinary system payload:
+
+    Manifest TARGET: /R4OS/SOFTWARE/DEMO/DEMO.R4X
+    Package target:  C:\R4OS\SOFTWARE\DEMO\DEMO.R4X
+
+Do not substitute the temporary Exchange/Build deployment path. The existing
+Exchange-based application run workflow and persistent SYSUPD installation are
+separate capabilities. Preserve project SDK/Contract/compiler pins.
+
+2. OBTAIN R4UPACK
+
+R4UPack belongs to r4os-distribution, not to the SDK's installed host binaries.
+The upstream workspace build commands are:
+
+    Linux:   ./Repositories/Distribution/Build.sh tools
+    Windows: Repositories\Distribution\Build.bat tools
+
+Their normal output is:
+
+    Artifacts/Distribution/HostTools/bin/r4upack
+    Artifacts\Distribution\HostTools\bin\r4upack.exe
+
+Keep the configured packer path separate from project source paths. Qualify
+its origin, source revision, compiler checksum, SDK module hashes and final
+binary SHA-256. In Studio, select an installed qualified profile or a path
+explicitly approved by host configuration; do not turn a browser/model-supplied
+path into arbitrary host program execution.
+
+The full upstream Build.sh invokes PowerShell and resolves workspace, DevKit,
+SDK, Contract and Libraries settings. It builds more tools than the packer.
+That complete workspace must not become a prerequisite for normal Studio builds.
+
+Source inspection shows a smaller packer build is feasible: the original
+Tools/R4UPack/src/main.zig imports SDK r4u_artifact.zig and its local manifest,
+path and recovery modules, which use Zig's standard library. A Studio setup
+recipe should compile just that checked import closure with a pinned compatible
+Zig compiler. This minimal recipe still needs implementation and an actual build
+check; the review does not claim it has already been built.
+
+No standalone r4upack release asset was found in the checked latest SDK and
+Distribution release listings. No r4upack is installed in the checked Studio
+toolchain inventory or PATH. A prebuilt binary supplied separately would also
+need provenance and checksum qualification.
+
+The CLI option --version sets the PACKAGE version. It is not a query for the
+version of the packer executable.
+
+3. BUILD AN IMMUTABLE R4U PACKAGE
+
+Example argument vector for an application package:
+
+    r4upack
+    --output "/absolute/package/path/DEMO-0.1.1-<target-release>.R4U"
+    --package DEMO
+    --version 0.1.1
+    --release "<target-release>"
+    --title "Demo test update"
+    --description-file "/absolute/path/description.txt"
+    --payload "/absolute/artifact/path/DEMO.R4X|C:\R4OS\SOFTWARE\DEMO\DEMO.R4X|software"
+
+Pass each option and value as a separate process argument, without a shell.
+The entire SOURCE|TARGET|KIND value is ONE argument. Its vertical bars must
+never become shell pipelines. Each additional file uses another --payload.
+The description file contains bounded plain UTF-8 text.
+
+Example external requirement:
+
+    --require "R4L|LIBNAME|/R4OS/LIBS/LIBNAME.R4L|1.2.3|installed"
+
+Use the dependency's actual kind, component name, canonical target and minimum
+version. The syntax has exactly five fields:
+
+    KIND|NAME|TARGET|MIN_VERSION|STATE
+
+The final field is either installed or active. Active is allowed only for a
+kernel requirement; other component requirements use installed. Do not add a
+sixth field to express the alternative.
+
+Package version, target system release and embedded component versions are
+different values. R4UPack obtains component identity/version from the artifact
+and derives activation and priority from its contents. Do not fabricate an
+embedded version or force a contradictory activation class.
+
+Versioned payload kinds include software, service, system-library, driver,
+protocol and boot-kernel. The checked packer also recognizes constrained font,
+config, sdk and companion payloads such as license/source/preload; these have
+additional concrete requirement and recovery rules. Use the native validation.
+The data kind and foreign-drive targets are not supported. Updater-managed
+VERSION.R4S and MODULES.JSON are forbidden as ordinary payloads.
+
+Native limits in the reviewed implementation:
+
+- Filename extension .R4U; container magic/version R4U2.
+- At most 32 payloads and 32 requirements per package.
+- At most 32 KiB of manifest data.
+- At most 4,294,967,295 bytes for the COMPLETE container, including its envelope.
+- A restart batch has at most 16 packages and aggregate component/requirement
+  capacity limits; per-package validity alone does not prove batch capacity.
+
+These are native ceilings, not Studio quota defaults. Studio currently limits
+its existing development packages to 128 MiB. A new update adapter needs its
+own explicit disk/time/transfer limits; do not silently lift every existing limit.
+
+Capture stdout AND stderr. Normal R4UPack output may be on stderr. Determine
+process success from the exit code, then calculate package size and SHA-256.
+Publish the completed file atomically and use those same unchanged bytes for
+upload, verification and installation. Retain artifact hashes, manifest snapshot,
+packer profile, package metadata and all diagnostics with the package receipt.
+
+4. PREFLIGHT THE SELECTED VM
+
+Execute individual authenticated SSH commands:
+
+    SYSUPD STATUS
+    TYPE C:\R4OS\CONFIG\VERSION.R4S
+    TYPE C:\R4OS\CONFIG\MODULES.JSON
+
+STATUS may create the update directories; it is not a completely side-effect-free
+inspection. Require exit success and dirs=ok before upload. Inspect both the
+transaction and batch state. An active or recoverable foreign transaction/batch
+blocks a new deployment. Completed journal history is normal and must not be
+deleted just to make the status look idle. In the checked implementation,
+journal cleanup/rolled_back and batch installed/rolled-back are terminal states;
+rolled back is terminal but is not successful installation of the new package.
+
+For a development-module update, default the target release to the currently
+observed guest release. Selecting a different system release must be deliberate.
+One updated development module is not evidence of a complete new OS release.
+
+Bind the workflow to the selected VM UUID, system/boot identity, SSH host key,
+project and package IDs. Take a Studio VM update lease and recheck ownership
+before each mutation. Do not adopt a foreign prepared batch or mix unrelated
+jobs merely because their target release strings happen to match.
+
+Detect the actual SYSUPD/SSHD capabilities of the chosen guest. A running QEMU
+process or an image version label alone does not establish this capability.
+Keep existing images, project pins and component defaults unchanged.
+
+5. UPLOAD, READ BACK AND PUBLISH IN THE INBOX
+
+The allowed destination is:
+
+    R4OS shell: C:\R4OS\UPDATE\INBOX\
+    SFTP:       /C/R4OS/UPDATE/INBOX/
+
+Generate a short unique transport pair for every upload attempt, for example:
+
+    U12AB34C.TMP
+    U12AB34C.R4U
+
+The local descriptive package name may be longer. Persist the mapping from
+package ID/local filename to transport name, size and SHA-256 before transfer.
+
+Sequence:
+
+1. Upload to the new .TMP path using sequential create/truncate writes.
+2. Close the file and wait for confirmed successful SFTP completion.
+3. Read the complete remote file back through SFTP, checking size and SHA-256
+   against the immutable local package.
+4. Only after the readback succeeds, rename it to the new .R4U path.
+
+Neither upload nor rename may overwrite an existing file. The guest expects
+WRITE | CREAT | TRUNC, optionally EXCL. It does not support append, read/write
+or arbitrary upload-resume modes. After an interrupted upload, use a fresh
+transport name; never continue an unverified prefix or expose it as .R4U.
+If publication acknowledgement is lost, reconcile the recorded paths and bytes
+before any further write instead of blindly uploading or renaming again.
+
+SFTP only transports packages into the inbox. SYSUPD replaces installed system
+files. Never copy payloads directly onto system files with SFTP.
+
+6. VERIFY, STAGE AND COMMIT
+
+First execute:
+
+    SYSUPD VERIFY C:\R4OS\UPDATE\INBOX\U12AB34C.R4U
+
+Require a successful exit AND the matching successful VERIFY result before
+starting the next mutation. Then execute:
+
+    SYSUPD STAGE C:\R4OS\UPDATE\INBOX\U12AB34C.R4U
+
+STAGE may already INSTALL the package. An eligible, nonrunning application can
+be applied live, producing a successful APPLY result although Studio invoked
+STAGE. A running application or a restart-required component can be added to
+a restart batch instead. Evaluate the actual native result, not the extension
+or an assumed one-command/one-result-name relationship.
+
+For a prepared restart batch, record its native batch identity and target release,
+then inspect it again:
+
+    SYSUPD STATUS
+
+When the requested operation includes this specific batch and its reboot effect:
+
+    SYSUPD COMMIT
+
+COMMIT installs the prepared batch and requests the reboot itself. Expose it as
+a separate reboot-capable action. Do not replace it with an unrelated QMP reset.
+An agent needs the corresponding bounded host-tool permission and task scope;
+the browser action must clearly identify the selected VM/batch and reboot effect.
+
+Several owned restart packages of the same target release can be staged before
+one COMMIT, subject to batch limits and dependency checks. The public terminal
+has NO VERIFY-BATCH command. Ordinary VERIFY checks current installed/active
+requirements, while an installed requirement can also be satisfied by a matching
+component contained in that same package. It cannot generally validate a newer
+dependency supplied only by another not-yet-installed package. Do not ignore an
+INCOMPATIBLE result; use a valid self-contained package where native rules allow
+it, install prerequisites in supported phases, or report the unsupported plan.
+The SDK's internal verifyForBatch method is not a public terminal command.
+
+7. PARSE RESULTS AND RECONCILE A REBOOT
+
+SYSUPD currently has no JSON output. Examples include:
+
+    SYSUPD VERIFY result: OK ...
+    SYSUPD APPLY result: OK ...
+    SYSUPD STAGE result: OK state=Staged ...
+    SYSUPD COMMIT result: OK state=Pending restart ...
+    SYSUPD RESUME-BATCH result: OK state=Installed ...
+    SYSUPD ... result: FAILED reason=...
+    SYSUPD ... result: INCOMPATIBLE reason=...
+
+Also parse the separate SYSUPD STATUS: form and interrupted/recovery results.
+Keep the original output and channel/exit information. State values such as
+Pending restart contain spaces, while STATUS can report lower-case hyphenated
+batch phases such as pending-restart. Parse recognized key boundaries rather
+than treating every whitespace token as an independent field. Preserve native
+generation/transaction/batch numbers losslessly, including values beyond the
+browser's exact integer range. Unknown or contradictory output is not success.
+
+For ordinary commands, require both the SSH exit result and the expected domain
+result. COMMIT can reboot before SSH delivers an exit status. A disconnect alone
+therefore proves neither success nor failure. Record the attempted operation,
+switch to reconnecting/reconciling and reconnect within a configured deadline,
+for example 120 seconds with bounded short backoff. Never blindly repeat COMMIT.
+
+The original recovery sequence is:
+
+    SYSUPD STATUS
+    SYSUPD RESUME-BATCH
+    SYSUPD STATUS
+
+IMPORTANT CLARIFICATION: RESUME-BATCH IS A MUTATING RECOVERY COMMAND.
+For a staged/preparing batch it can enter COMMIT and reboot. Do not invoke it as
+an unconditional readiness probe. First match the fresh STATUS to the recorded
+owned batch, target release and authorized commit/recovery intent. If ownership
+or outcome cannot be established, preserve the evidence and report unknown.
+
+The guest UpdateService can finalize pending post-boot work itself. A terminal
+RESUME-BATCH response can contain only state=Installed, without a batch ID.
+That line alone is insufficient to attribute the result to this deployment.
+Combine fresh STATUS, the recorded batch/transaction receipts, package membership,
+target release and terminal state. Check affected component identities, targets
+and versions in MODULES.JSON. For full installed-byte verification, read each
+installed artifact back and compare its SHA-256 with its packaged source.
+
+VERSION.R4S and MODULES.JSON belong to the native update system. Studio must not
+write them directly. A successful live application update need not change the
+visible system release. Likewise, an updated guest release does not change the
+immutable imported base image ID/hash recorded by Studio's VM manager.
+
+After reboot or relevant system updates, invalidate stale boot/readiness/process
+evidence and obtain fresh guest evidence. Keep strict SSH host-key checks; a
+changed key is not automatically trusted because an update was attempted.
+
+8. FAILURE, CANCEL, RECOVERY AND CLEANUP
+
+Show at least these phases: packaging, connecting, upload, transport verification,
+VERIFY, staging/installing, awaiting commit, reboot/reconnect and final checks.
+
+A packaging, transport or compatibility failure stops the automatic sequence
+before the next mutating operation. Preserve package bytes, hashes, native
+diagnostics and receipts. Once installation may have started, inspect the native
+state before deciding what can happen next. Cancel/agent Stop does not imply that
+a native durable installation has been undone; keep unresolved VM ownership and
+quarantine until the original outcome has been reconciled.
+
+Native recovery/management commands include:
+
+    SYSUPD RESUME
+    SYSUPD RESUME-BATCH
+    SYSUPD ABORT-BATCH
+    SYSUPD ROLLBACK-LAST
+
+Use RESUME for a matching recoverable transaction and RESUME-BATCH only with the
+ownership/reboot rules above. ABORT-BATCH is suitable only for a still-preparing
+batch without a begun durable transaction. Rollback is its own explicit action
+and may reboot. ROLLBACK-LAST acts on native last-update state; if that state no
+longer matches Studio's recorded operation, refuse instead of rolling back
+someone else's work. Do not replace these operations by deleting native stages,
+journals, lock files or backups.
+
+Delete only this deployment's transport files, and only after a confirmed terminal
+outcome and evidence that they are no longer needed for recovery. A historical
+source=- field alone does not establish that a package is still needed or that
+an unknown update is safe to clean up. Preserve failure evidence and never clean
+unrelated inbox files or an entire update directory.
+
+9. CURRENT INTERFACE LIMITATION: CONCURRENT FOREIGN UPDATE ACTORS
+
+Studio can serialize its own operations using a VM-wide update lease and compare
+fresh native states before each mutation. The current global terminal COMMIT,
+RESUME, ABORT and ROLLBACK commands do not accept an expected batch/transaction ID
+for atomic compare-and-execute. STATUS itself does not hold the native writer
+lock. A separate guest user or external update client can therefore race between
+inspection and command execution. Do not claim Studio's lease protects actors
+outside Studio. Refuse detected ambiguity and require one update owner at a time.
+A stronger cross-client atomic ownership guarantee would need a native guest API
+extension; no such API is invented or assumed by this plan.
+
+10. WHAT STUDIO NEEDS IN ADDITION TO THE SDK
+
+New host component:
+    A separately installed, pinned r4upack executable and a reproducible minimal
+    setup/build recipe, or an equivalently qualified supplied host binary.
+
+New Studio modules/scripts:
+    Package-input validation and immutable packaging jobs; inbox-specific SFTP
+    orchestration; a central SYSUPD text parser/state machine; durable package,
+    VM, batch and recovery ownership; bounded reconnect and post-install checks;
+    distinct agent tools/permissions and browser job/status presentation.
+
+Reuse:
+    Existing pinned OpenSSH ssh/sftp clients, private loopback forwarding,
+    VM-bound access/host-key checks, build receipts, unprivileged workers,
+    durable jobs, leases and session tool authorization.
+
+Guest requirements:
+    Compatible SYSUPD and SSHD. The audited Full 0.87.14 source inventory includes
+    the corresponding update engine and UpdateService post-boot finalization.
+    No additional Studio guest helper script is required by this source-reviewed
+    protocol. Actual compatibility must still be checked on the selected VM;
+    older images are not silently upgraded or assumed compatible.
+
+Agent knowledge:
+    Ship this reviewed guide as a versioned resource inside the App release and
+    expose a Studio-managed R4OS update-package skill through the planned global
+    Skill Manager. The workspace Docs directory is outside the App Git repository
+    and is not automatically available in installed agent sandboxes. Knowledge
+    does not grant SSH credentials, shell/network access or installation rights.
+    New dynamic host tools require a compatible native session profile; preserve
+    existing thread history and clearly report missing capabilities.
+
+11. TARGETED IMPLEMENTATION CHECKS
+
+Use an isolated disposable test VM and owned artifacts when implementation is
+authorized. Cover at least:
+
+- Nonrunning application: successful live install, including APPLY from STAGE.
+- Restart-required package: STAGE, COMMIT, reconnect and attributable terminal
+  completion, inventory and installed-byte checks.
+- Tampered package or incorrect readback hash: no installation.
+- Interrupted upload: no installable partial .R4U.
+- COMMIT disconnect: reconcile the original batch without blind retransmission.
+- Existing foreign batch: no automatic adoption, commit, abort or deletion.
+- RESUME-BATCH's possible commit/reboot effect and its separate authorization.
+- Per-VM concurrency, source/revision changes, quota limits, cancellation,
+  recovery/rollback ownership and unchanged unrelated VM/project data.
+
+This review has not performed those live checks. Apply the repository's normal
+build/type/lint and focused test requirements during implementation, and publish
+each completed Studio subversion separately.
+
+12. REVIEWED SOURCES AND EXACT REVISIONS
+
+The local paths mentioned by the supplied guide under /root/Projekte/R4OS were
+not present on this Studio host. Their public repository equivalents were read,
+and relevant files were retained with hashes and original licenses/notices under:
+
+    Research/R4OS/Update-Packages/Planning/
+
+Local Full 0.87.14 release inventory:
+    App/Data/R4OS/Images/0.87.14-full/release/R4OS-SOURCES-0.87.14.json
+
+R4UPack, Distribution source revision shipped by that release:
+    397eaeb7db7d20dd9d358bda43ebbe2fb53b348d
+    https://github.com/R4OSDev/r4os-distribution/blob/397eaeb7db7d20dd9d358bda43ebbe2fb53b348d/Tools/R4UPack/src/main.zig
+    Its packer file is byte-identical to the audited current Distribution
+    revision ecbe622b5d26244fad449c72cb483936798e172e.
+
+SYSUPD engine, Full 0.87.14 SDK source revision:
+    f74fc26b156071d22f734ca8e845492a3dda3114
+    https://github.com/R4OSDev/r4os-sdk/blob/f74fc26b156071d22f734ca8e845492a3dda3114/r4os/system_update_engine.zig
+    Engine SHA-256: 86a5a21e3e6bb41ce8f8ba9fa65f04970b300a62f9c1b47443cd156e1a23e92e
+    The same engine bytes are present in locally installed SDK 0.64.92 at
+    51ed03d813d9baeab630746f1d1bbc46c2d2a1e6 and audited SDK main at
+    f4df6a0780247597606a7e94198b4195582600fd.
+
+SFTP policy and SSHD transport:
+    dba200989d635f0ba0c7657ad80c369a6fc87d32
+    https://github.com/R4OSDev/r4os-service-sshservice/blob/dba200989d635f0ba0c7657ad80c369a6fc87d32/src/sftp_write_policy.zig
+    https://github.com/R4OSDev/r4os-service-sshservice/blob/dba200989d635f0ba0c7657ad80c369a6fc87d32/src/main.zig
+
+UpdateService post-boot finalization:
+    b8febaebcef2ccc1e04c46ee55ef9b10c681aa03
+    https://github.com/R4OSDev/r4os-service-updateservice/blob/b8febaebcef2ccc1e04c46ee55ef9b10c681aa03/src/main.zig
+
+Manifest and artifact interpretation:
+    https://github.com/R4OSDev/r4os-sdk/blob/51ed03d813d9baeab630746f1d1bbc46c2d2a1e6/r4os/module_manifest.zig
+    https://github.com/R4OSDev/r4os-sdk/blob/51ed03d813d9baeab630746f1d1bbc46c2d2a1e6/r4os/r4u_artifact.zig
+    https://github.com/R4OSDev/r4os-sdk/blob/51ed03d813d9baeab630746f1d1bbc46c2d2a1e6/r4os/r4u_manifest.zig
+
+These source identities support the analysis. They do not replace the selected
+project's pins or establish a blanket release allowlist for VM compatibility.
+
+
+0.4.15 — Implemented Inbox transport
+A package transfer freezes the original package receipt and bytes, repeats full native preflight, reserves an unused short Inbox TMP/R4U pair, requires confirmed native SFTP CLOSE, hashes a complete readback and publishes with create-only RENAME. Final full readback and TMP absence are recorded. Binary SFTP v3 uses the existing pinned SSH client, 16 KiB chunks and a fixed Inbox-only path policy; no additional SDK, guest script or transport dependency. Native SSHD privately stages uploads until CLOSE, so an interrupted unclosed upload need not leave a visible TMP. Existing paths and failed transport evidence are preserved. Unknown write/close/rename effects are never replayed. Read-only reconciliation examines only the original recorded paths; a recorded rename intent plus exact final size/hash and absent TMP can establish publication. This does not install or verify the native package. External native writers are not locked by the Studio VM reservation. Production projects, pins and VMs remain untouched.
+
+
+0.4.16 — Native VERIFY/STAGE and explicit COMMIT implemented
+Confirmed transfer jobs, one target release, unique package IDs/targets and native aggregate limits define the explicit installation group. Every package passes public VERIFY against the actual current inventory before the first STAGE; each is checked again immediately before its STAGE. Actual APPLY replies are proved by matching terminal transaction plus installed components. Actual STAGE retains the exact owned batch and awaiting-commit state. COMMIT is a separate revision-checked, concrete VM/batch/release action with explicit reboot confirmation and one durable send intent. A COMMIT acknowledgement alone is unconfirmed until the following post-boot proof step. Native global commands have no atomic expected-batch argument; Studio leases do not lock out other native clients. Unknown effects preserve all original evidence and block new Studio development mutations. Browser flow and new agent permissions follow in their dedicated subversions.
+
+Observed native target limitation (Full0.87.14): the selected SDK default /SOFTWARE/... is rejected by the guest as payload-bad-target; Studio preserves the exact SDK catalogue target and refuses the update. The native updater also requires a long target filename to exist already (target-lfn-missing); it cannot create that new LFN atomically. Choose an explicit guest-supported target in the actual source manifest and rebuild. For QA only, an existing own0.1.0 application under /R4OS/SOFTWARE was independently seeded by ordinary guest COPY after a verified private scratch transfer; a real0.1.1 package then passed native live APPLY, terminal transaction and exact inventory proof. This fixture bootstrap is not a Studio updater fallback or direct SFTP system installation. No production VM was modified.
+
+
+0.4.17 — Correlated installation proof and bounded reconnect
+After one durable native COMMIT intent, Studio only reconnects and reads under the original VM/system/key binding; it never repeats COMMIT or invokes RESUME-BATCH automatically. The separate verification action offers a 30–300 second total deadline and optional full artifact hashing. Native own terminal batch/transaction correlation plus exact installed component identity/version/target is mandatory. Two complete inventory reads must match. Full byte proof uses a dedicated read-only native SFTP adapter restricted to the original manifest targets and compares sizes/SHA-256 against original package inputs. Final STATUS must remain stable. A live update may leave VERSION.R4S unchanged; base image ID/hash and project pins are never rewritten. Native UpdateService may have finalized the batch before the first read. Unknown/foreign/rollback/key-change/missing or wrong-byte outcomes are not success. Mutation intent invalidates readiness and deployment epochs; current proof refreshes readiness. Explicit native recovery actions remain the next separate step.
+
+
+0.4.18 — Explicit owned recovery, rollback and terminal cleanup
+Fixed revision-checked actions map to native RESUME, RESUME-BATCH, ABORT-BATCH and ROLLBACK-LAST. Resume-batch on a prepared batch can execute COMMIT and reboot; actual COMMIT replies are recognized. Rollback-last needs the exact latest own native terminal update and explicit reboot confirmation. Native rollback is proved separately from installation by its own terminal IDs and original pre-install inventory; new updates also retain bounded full old-file hashes. Older records explicitly lack that previous-byte baseline. Pending owners survive Stop, crash, web/host update and VM stop; they prevent discarding package/recovery data through project settings/deletion and block competing Studio mutations. No private native journal, stage, lock or backup is changed by Studio. Source=- and bare batch IDs never establish ownership. Global native commands have no expected-batch parameter; external native writers cannot be atomically excluded without a native API extension.
+
+Cleanup examines only the original own Inbox pair after correlated terminal proof or confirmed prepared-batch abort. Only full exact package size/hash matches are removed; other/partial bytes remain. Each REMOVE has an original durable intent. Lost acknowledgement is unknown and read-only known-path reconciliation never repeats a write. An explicitly new cleanup action can reauthorize remaining own exact bytes. All original package/native/transport diagnostics remain; listing is bounded and full receipts are capped at2 MiB. Browser flow and frozen dedicated agent tools follow in their planned subversions.
+
+
+Native rollback observation (actual Full0.87.14 qualification):
+ROLLBACK-LAST rebooted and restored the files/journal to rolled_back, while the batch stayed rolling-back. The read-only observer correctly kept this unconfirmed through its deadline. A new explicitly authorized RESUME-BATCH for the same recorded batch finalized it to rolled-back. That native path returned exit0 without a result line; Studio retained the ambiguous acknowledgement and proved completion from the owned terminal native status plus prior inventory and, for the newly captured baseline, every original file size/SHA-256. No rollback write was replayed. A prepared RESUME-BATCH really entered COMMIT and rebooted; this was separately qualified. Native transport cleanup removed only its exact original package pairs, preserving the unrelated inert test Inbox packages.
+
+
+0.4.19 — Session-bound native agent workflow and shipped skill
+New project sessions use studio-tools-v5. The fixed tools are read_update_package, plan_update_package, build_update_package, check_update_vm, upload_update_package, install_update_package, commit_update, verify_update, resume_update, abort_update, rollback_update and cleanup_update_transport. There is no caller-selected VM, shell command or transport path. Original builds/plans/packages/transfers/update records must belong to this project session; browser-operator records remain separate. Read jobs/updates to continue the original conversation, including after an uncertain admission. Harness waiting observes the original durable job; it never resends an admission or a native mutation.
+
+Commit and rollback permissions default off. A prepared batch resume can execute COMMIT and needs both resume and commit permission plus its concrete reboot confirmation. An active skill grants no rights. Skill Manager sessions retain their author-only tools. Existing project profiles retain their original declarations and history; create a new session to gain v5 tools.
+
+A complete English R4OS Update Packages skill is bundled with the immutable App release and published idempotently in the global Skill Manager. Its references carry exact reviewed source/adapter/packer identities. It defaults active through the normal per-session skill choices. Untouched owned bundles can be updated; user-edited drafts, published versions and session exceptions are preserved.
+
+When native STATUS shows the own rolled_back journal but rolling-back batch, read-only verification now promptly reports native_batch_finalize_required. Only a separately authorized own resume can finalize the batch. Historical original jobs can reconcile from their already saved terminal proof even after a newer terminal update supersedes the VM owner; that reconciliation neither writes native state nor claims the current native system.

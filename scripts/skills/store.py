@@ -345,7 +345,10 @@ def main():
     if not isinstance(request, dict): raise SkillFault('Invalid skill request.', 400)
     operation = request.get('operation')
     with closing(connect(root)) as db:
-        if operation == 'list' and set(request) == {'operation'}:
+        if operation == 'ensure_builtin' and set(request) == {'operation'}:
+            from builtin import ensure
+            result=ensure(db,root,node,sys.modules[__name__])
+        elif operation == 'list' and set(request) == {'operation'}:
             result = [summary(row) for row in db.execute("SELECT * FROM skills WHERE state='ready' ORDER BY created_at,id")]
         elif operation == 'create' and set(request) == {'operation', 'input'}: result = create(db, root, request['input'])
         elif operation in ('get', 'validate') and set(request) == {'operation', 'id'}:

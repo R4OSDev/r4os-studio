@@ -3,7 +3,10 @@ export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio
   | 'studio.apply_patch' | 'studio.create_directory'
   | 'studio.validate_skill' | 'studio.save_skill'
   | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
-  | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
+  | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm'
+  | 'studio.read_update_package' | 'studio.plan_update_package' | 'studio.build_update_package' | 'studio.check_update_vm'
+  | 'studio.upload_update_package' | 'studio.install_update_package' | 'studio.commit_update' | 'studio.verify_update'
+  | 'studio.resume_update' | 'studio.abort_update' | 'studio.rollback_update' | 'studio.cleanup_update_transport';
 export type ToolPermissions = Record<AgentToolId, boolean>;
 export type SessionOwner = { type: 'project'; id: string } | { type: 'skill'; id: string };
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
