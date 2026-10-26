@@ -7,6 +7,7 @@ import { runRoutes } from '../agent-sessions/run-routes.js';
 import { developmentRoutes } from '../project-development/routes.js';
 import { editorRoutes } from '../project-editor/routes.js';
 import { maintenanceHosts } from './maintenance.js';
+import { projectGithubRoutes } from '../project-github/routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -42,6 +43,7 @@ function validateFields(value: unknown, allowed: string[]) {
 
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
+  await projectGithubRoutes(app, directory, sessions);
   editorRoutes(app, directory, sessions);
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);

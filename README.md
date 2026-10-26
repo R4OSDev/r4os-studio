@@ -1,5 +1,30 @@
 # R4OS Studio · App
 
+## Isolated project Git host (0.5.2)
+
+The unprivileged Git coordinator accepts fixed project-bound jobs over a private
+Unix socket. Explicit host setup: `python3 App/scripts/project-git/install.py`.
+The installer adds only its own configuration, dispatcher and service; existing
+bootstrap, VM/agent/development workers and stored connections are preserved.
+Start the new service after installing this release. It adopts later immutable
+host code at idle; accepted jobs keep their original release.
+
+Jobs and object stores live outside Workspace under Projects/.studio/github and
+each project's .studio/git. Git processes run in a separate namespace with only
+their own source/object trees, fixed HTTPS, isolated configuration, disabled
+hooks/filters/helpers and an ephemeral credential broker. Tokens stay in the
+existing private catalogue and never enter URLs, logs or model/build namespaces.
+Source inspection is limited to 10,000 files / 256 MiB / 32 MiB per file;
+object storage to 512 MiB, two jobs total, one per project, 300 seconds per job.
+
+Initialize, status, remote check and identity-bound connection jobs are available
+through session/CSRF-protected Projects routes. Mutations share existing project
+lifetime/workspace and busy guards. Original request hashes, progress, receipts,
+Stop and readback reconciliation preserve uncertain effects without replay.
+Create/import/commit/push/pull are subsequent release capabilities, not enabled
+by this foundation. Validation includes actual unprivileged sandboxed Git,
+project locks, request recovery and HTTP authorization; no real GitHub writes.
+
 ## GitHub repository accounts (0.5.1)
 
 Saved connections now support freshly verified account selection and bounded,

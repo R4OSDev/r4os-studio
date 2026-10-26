@@ -17,3 +17,13 @@ export interface GitHubProjectBinding {
 export interface GitHubProjectReference { id: string; name: string }
 export interface GitHubRepositoryPage { account: GitHubAccount; repositories: GitHubRepository[]; page: number; hasMore: boolean }
 export interface GitHubBranchPage { account: GitHubAccount; repository: GitHubRepository; branches: GitHubBranch[]; page: number; hasMore: boolean }
+export interface GitHubProjectStatus {
+  binding: GitHubProjectBinding | null; head: string | null; remoteHead: string | null;
+  ahead: number; behind: number; state: string; snapshot: string;
+  changes: { path: string; status: string }[]; checkedAt: string | null;
+}
+export interface GitHubJob {
+  id: string; projectId: string; kind: string; state: 'queued' | 'running' | 'completed' | 'failed' | 'unknown';
+  phase: string; createdAt: string; updatedAt: string; error?: string; code?: number;
+  result?: { binding?: GitHubProjectBinding; initialized?: boolean } | GitHubProjectStatus;
+}
