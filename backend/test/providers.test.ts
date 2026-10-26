@@ -354,3 +354,16 @@ test('sparse account notifications invalidate in-flight credit reads and never c
   const cached = await result.app.inject({ url: `/api/providers/${provider.id}/usage`, headers: b.headers });
   assert.equal(cached.json().usage.limits[0].credits.balance, '2.000000000000000002'); assert.equal(client.usageReads, 2); assert.equal(client.redemptions, 0);
 });
+
+test('unsupported spending setters have no HTTP or native mutation path', async (context) => {
+  const result = await setup(); context.after(result.cleanup);
+  const b = await browser(result.app), provider = await b.create(); await b.start(provider.id);
+  const client = result.clients.get(provider.id)!; await client.complete(); await waitForConnected(result.app, provider.id, b.headers);
+  const usage = await result.app.inject({ url: `/api/providers/${provider.id}/usage`, headers: b.headers });
+  assert.equal(usage.json().usage.creditUsageControl.supported, false); assert.equal(usage.json().usage.creditUsageControl.enabled, null);
+  const reads = client.usageReads;
+  for (const suffix of ['/usage/credits', '/credits', '/usage/credit-spending']) for (const method of ['POST', 'PATCH'] as const) {
+    assert.equal((await result.app.inject({ method, url: `/api/providers/${provider.id}${suffix}`, headers: b.headers, payload: { enabled: false } })).statusCode, 404);
+  }
+  assert.equal(client.usageReads, reads); assert.equal(client.redemptions, 0);
+});

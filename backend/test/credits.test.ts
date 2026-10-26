@@ -34,3 +34,12 @@ test('credit refresh uses only the existing read RPC without a spend, reset or i
   assert.equal((await readUsage(client)).limits[0].credits?.balance, '10.5');
   assert.deepEqual(calls, [['account/rateLimits/read', undefined]]);
 });
+
+test('unsupported spending control is typed as unknown state and cannot be spoofed by a native balance payload', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const profile = JSON.parse(await readFile(new URL('../../shared/openai-credit-capabilities.json', import.meta.url), 'utf8'));
+  const usage = normalizeUsage({ rateLimits: { credits: { hasCredits: true, unlimited: false, balance: '10' } }, creditUsageControl: { supported: true, enabled: false } });
+  assert.deepEqual(usage.creditUsageControl, { supported: false, enabled: null, reason: 'not-exposed-by-supported-native-interface' });
+  assert.equal(profile.adapterMode, 'read-only'); assert.equal(profile.creditSpendingSetter, null); assert.equal(profile.enabledStateReported, false);
+  assert.equal(profile.nativeReadMethod, 'account/rateLimits/read'); assert.equal(profile.qualifiedRuntime.version, '0.163.0');
+});

@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "adapterMode": "read-only",
+  "nativeReadMethod": "account/rateLimits/read",
+  "creditSpendingSetter": null,
+  "enabledStateReported": false,
+  "unknownIsNotDisabled": true,
+  "sourceRevision": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "sourceScope": "Public Codex CLI/SDK/App Server, not complete desktop UI",
+  "qualifiedRuntime": {
+    "version": "0.163.0",
+    "binarySha256": "399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215",
+    "experimentalClientRequestSchemaSha256": "92d920b10b9ce7871e21f49573275bb931a58ad7fd367ab71b3716edbb6a0352"
+  },
+  "sourceFiles": [
+    {
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/account.rs",
+      "sha256": "f52c03c9f98f8fd496824616ec1669954f35470cbd2ff15101ce4b7e6a57b2ad",
+      "url": "https://github.com/openai/codex/blob/8c076942cb70fba8e5c4732c23f1faabc4aed484/codex-rs/app-server-protocol/src/protocol/v2/account.rs"
+    },
+    {
+      "path": "codex-rs/app-server-protocol/src/protocol/mod.rs",
+      "sha256": "9d17fd0bb47c20d5e99b003546f42808e20e4b8386ff34667dd5efcc097a662d",
+      "url": "https://github.com/openai/codex/blob/8c076942cb70fba8e5c4732c23f1faabc4aed484/codex-rs/app-server-protocol/src/protocol/mod.rs"
+    }
+  ]
+}

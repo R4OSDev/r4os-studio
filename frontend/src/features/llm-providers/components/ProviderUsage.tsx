@@ -135,7 +135,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
         </div>
         {!limit.primary && !limit.secondary && <p className="field-help">OpenAI did not report a quota window for this limit.</p>}
       </article>)}</div>
-      <ProviderCredits limits={usage.limits} stale={!!error} />
+      <ProviderCredits limits={usage.limits} stale={!!error} control={usage.creditUsageControl} />
       <p className="usage-updated">Last checked: <time dateTime={usage.fetchedAt}>{dateTime(usage.fetchedAt)}</time>. Updates every minute while this page is visible.</p>
     </>}
     {(usage || attempt?.submitted) && <div className="usage-resets">

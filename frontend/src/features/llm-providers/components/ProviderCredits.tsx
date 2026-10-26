@@ -1,4 +1,4 @@
-import type { CreditBalance, UsageLimit } from '../../../../../shared/llm-providers';
+import type { CreditBalance, CreditUsageControl, UsageLimit } from '../../../../../shared/llm-providers';
 
 /** Equal reported snapshots share a display; balances are never added. */
 export function creditGroups(limits: UsageLimit[]): { names: string[]; credits: CreditBalance }[] {
@@ -15,7 +15,7 @@ export function creditGroups(limits: UsageLimit[]): { names: string[]; credits: 
 export function creditAvailability(value: CreditBalance): string {
   return value.unlimited === true ? 'Unlimited' : value.hasCredits === true ? 'Available' : value.hasCredits === false ? 'Unavailable' : 'Not reported';
 }
-export function ProviderCredits({ limits, stale }: { limits: UsageLimit[]; stale: boolean }) {
+export function ProviderCredits({ limits, stale, control }: { limits: UsageLimit[]; stale: boolean; control?: CreditUsageControl }) {
   const groups = creditGroups(limits);
   return <section className="usage-credits" aria-label="Credits"><h3>Credits</h3>
     <p className="field-help">Codex credit balances, separate from earned resets. Identical reported balances are shown once.</p>
@@ -23,6 +23,6 @@ export function ProviderCredits({ limits, stale }: { limits: UsageLimit[]; stale
     {groups.length ? groups.map(({ names, credits }, index) => <article className="credit-balance" key={index}>
       <h4>{names.join(', ')}</h4><dl><div><dt>Balance</dt><dd className="credit-amount">{credits.balance ?? 'Not reported'}</dd></div><div><dt>Availability</dt><dd>{creditAvailability(credits)}</dd></div></dl>
     </article>) : <p className="field-help">OpenAI did not report credits for this account.</p>}
-    <p className="field-help">Read-only. A reported balance does not indicate whether credit spending is enabled.</p>
+    <p className="field-help">Read-only. {control?.supported === false ? 'Spending controls are not available through this connection. Viewing credits does not change spending settings.' : 'A reported balance does not indicate whether credit spending is enabled.'}</p>
   </section>;
 }

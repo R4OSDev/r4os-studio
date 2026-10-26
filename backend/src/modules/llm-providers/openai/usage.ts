@@ -1,5 +1,9 @@
-import type { CreditBalance, ProviderUsage, ResetCredit, ResetOutcome, ResetRequest, UsageLimit, UsageWindow } from '../../../../../shared/llm-providers.js';
+import type { CreditBalance, CreditUsageControl, ProviderUsage, ResetCredit, ResetOutcome, ResetRequest, UsageLimit, UsageWindow } from '../../../../../shared/llm-providers.js';
 import type { AuthClient } from './codex-client.js';
+
+export const creditUsageControl: Readonly<CreditUsageControl> = Object.freeze({
+  supported: false, enabled: null, reason: 'not-exposed-by-supported-native-interface',
+});
 
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -59,7 +63,7 @@ export function normalizeUsage(value: unknown): ProviderUsage {
   });
   const resets = object(raw.rateLimitResetCredits);
   const count = nonnegative(resets?.availableCount);
-  return { fetchedAt: new Date().toISOString(),
+  return { fetchedAt: new Date().toISOString(), creditUsageControl,
     ordinaryUsageAllowed: typeof raw.ordinaryUsageAllowed === 'boolean' ? raw.ordinaryUsageAllowed : null,
     limits, resetCredits: resets ? { availableCount: count !== null && Number.isSafeInteger(count) ? count : null,
       credits: Array.isArray(resets.credits) ? resets.credits.slice(0, 100).map(credit).filter((item): item is ResetCredit => item !== null) : null } : null };

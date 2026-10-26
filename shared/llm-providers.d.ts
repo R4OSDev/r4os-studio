@@ -55,7 +55,15 @@ export interface ResetCredit {
   expiresAt: string | null;
 }
 
+/** Studio adapter capability; null is unknown spending state, never disabled. */
+export interface CreditUsageControl {
+  supported: false;
+  enabled: null;
+  reason: 'not-exposed-by-supported-native-interface';
+}
+
 export interface ProviderUsage {
+  creditUsageControl?: CreditUsageControl;
   fetchedAt: string;
   ordinaryUsageAllowed: boolean | null;
   limits: UsageLimit[];
