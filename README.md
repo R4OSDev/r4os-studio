@@ -1,5 +1,13 @@
 # R4OS Studio · App
 
+## Session settings permission limit fix (0.5.11)
+
+Remove the obsolete HTTP limit of 30 permission properties so sessions with the
+31-tool v6 profile can save their settings. The existing store validates the exact
+permission names and boolean values against each session's frozen profile.
+The request body limit, revision checks and active-run guard remain in effect.
+Build/TypeScript and lint only; no tests were run, as requested.
+
 ## GitHub project workflow and recovery (0.5.10)
 
 New Project offers Create new and Import from GitHub. Select a named connection,
