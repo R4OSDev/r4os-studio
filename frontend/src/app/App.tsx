@@ -22,6 +22,7 @@ import { ConnectionPanel } from '../features/github-connections/ConnectionPanel'
 const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
+const projectRoute = /^#projects\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
@@ -30,7 +31,7 @@ export function App() {
     const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const [tab, setTab] = useState<Tab>(sessionRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
+  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
   const [skillId, setSkillId] = useState<string | null>(skillRoute?.[1] ?? null);
   const [skillSessions, setSkillSessions] = useState<Record<string, string | undefined>>(skillRoute ? { [skillRoute[1]]: skillRoute[2] } : {});
   const navigateSkill = useCallback((id: string, session?: string) => setSkillSessions((previous) => ({ ...previous, [id]: session })), []);
@@ -39,7 +40,8 @@ export function App() {
   const toolsLeaveGuard = useRef<() => boolean>(() => true);
   const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? null);
+  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? null);
+  const selectProject = useCallback((id: string | null) => { setProjectId(id); window.history.replaceState(null, '', id ? '#projects/' + id : '#projects'); }, []);
   const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const settingsLeaveGuard = useRef<() => boolean>(() => true);
@@ -53,13 +55,15 @@ export function App() {
     const restore = () => {
       const hash = window.location.hash;
       const project = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(hash);
+      const projectEntry = /^#projects\/([a-f0-9-]{36})$/.exec(hash);
       const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
-      if (!project && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
+      if (!project && !projectEntry && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
       if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
         window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
       }
       acceptedHash.current = hash;
       if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
+      else if (projectEntry) { setProjectId(projectEntry[1]); setTab('Projects'); }
       else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
       else if (hash === '#tools') { setSkillId(null); setTab('Tools'); }
       else if (hash === '#projects') setTab('Projects');
@@ -122,7 +126,7 @@ export function App() {
     if (tab === 'Tools' && value !== tab && !toolsLeaveGuard.current()) return false;
     if (value === tab) return true;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
-    window.history.pushState(null, '', value === 'Projects' ? (session ? `#projects/${projectId}/sessions/${session}` : '#projects') : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
+    window.history.pushState(null, '', value === 'Projects' ? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects') : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 
@@ -147,7 +151,7 @@ export function App() {
       </header>
 
       <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        {tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={setProjectId}
+        {tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <aside className="navigation" aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">

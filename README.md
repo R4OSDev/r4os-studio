@@ -1,5 +1,19 @@
 # R4OS Studio · App
 
+## Project opening: Update or Ignore (0.5.8)
+
+Selecting a connected project or following/reloading its project/session link
+checks the bound branch before mounting editable project content. Commit ancestry,
+not timestamps, determines missing remote commits. Update and Ignore are the
+explicit modal choices; Escape/backdrop cannot dismiss the decision. Ignore
+keeps sources for this opening only. Internal view changes do not repeat checks;
+reopening does. Fast-forward Update uses the same protected prepare/SDK/apply
+pipeline as manual Pull. Divergence, dirty sources and editor drafts explain why
+Update is unavailable. Failed checks show unknown status and allow local work.
+Generation-bound requests and aborted stale reads prevent another project's
+response from opening the wrong overlay. Generic project links now retain their
+UUID through reload; existing native session links remain supported.
+
 ## Protected fast-forward pull (0.5.7)
 
 Pull requires a clean saved index/workspace and no editor drafts. The same

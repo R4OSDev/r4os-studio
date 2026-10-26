@@ -14,6 +14,8 @@ import '../agent-sessions/styles.css';
 import './styles.css';
 import { editorRegistry } from '../project-editor/registry';
 import { ProjectGithubPanel } from '../github-connections/ProjectGithubPanel';
+import { useProjectOpening } from '../github-connections/useProjectOpening';
+import { UpdateProjectDialog } from '../github-connections/UpdateProjectDialog';
 const EditorPanel = lazy(() => import('../project-editor/EditorPanel'));
 const EditorFiles = lazy(() => import('../project-editor/EditorFiles'));
 
@@ -27,17 +29,18 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
 }) {
   const api = useProjects();
   const selected = api.projects.find((project) => project.id === selectedId);
+  const opening = useProjectOpening(selected && !selected.deleting ? selected.id : null, api.token);
   const current: ProjectNavigation = selected?.deleting ? { section: 'Settings', settingsView: 'General' } : navigation[selectedId ?? ''] ?? { section: 'Sessions', settingsView: 'General' };
   const [newProject, setNewProject] = useState(false);
   const [newSession, setNewSession] = useState(false);
   const sessions = useSessions(selected?.id ?? null);
   const chooseSession = (id: string) => {
-    if (!selected || !leave()) return;
+    if (!selected || !opening.ready || !leave()) return;
     navigate(selected.id, { ...current, section: 'Sessions', sessionId: id });
     window.history.replaceState(null, '', `#projects/${selected.id}/sessions/${id}`);
   };
   const [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [epoch, setEpoch] = useState(0);
-  const leave = useCallback(() => !saving && (!dirty || window.confirm('Discard unsaved changes?')), [dirty, saving]);
+  const leave = useCallback(() => !saving && !opening.deciding && (!dirty || window.confirm('Discard unsaved changes?')), [dirty, saving, opening.deciding]);
   useEffect(() => { setLeaveGuard(leave); return () => setLeaveGuard(() => true); }, [leave, setLeaveGuard]);
 
   return <>
@@ -62,7 +65,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       {selected ? <nav className="nav-column" aria-label="Project sections">
         <div className="column-heading" aria-hidden="true" />
         <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Settings'] as const).map((section) =>
-          <button key={section} type="button" disabled={saving || selected.deleting} className={`nav-item ${current.section === section ? 'selected' : ''}`}
+          <button key={section} type="button" disabled={saving || selected.deleting || !opening.ready} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
             }}><Icon name={section === 'Sessions' ? 'terminal' : section === 'Editor' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
@@ -75,7 +78,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav> : selected && current.section === 'Sessions' ? <nav className="nav-column" aria-label="Project sessions">
         <div className="column-heading" aria-hidden="true" />
         <div className="nav-items">
-          <button type="button" className="nav-item project-new" disabled={!api.token || saving} onClick={() => { if (leave()) setNewSession(true); }}><span className="project-plus" aria-hidden="true">+</span><span>New Session</span></button>
+          <button type="button" className="nav-item project-new" disabled={!api.token || saving || !opening.ready} onClick={() => { if (leave()) setNewSession(true); }}><span className="project-plus" aria-hidden="true">+</span><span>New Session</span></button>
           {sessions.error ? <><p className="project-nav-message" role="alert">{sessions.error}</p><button className="nav-item" onClick={sessions.reload}>Retry</button></>
             : sessions.loading ? <p className="project-nav-message" role="status">Loading sessions…</p>
               : sessions.sessions.map((s) => <button key={s.id} type="button" className={`nav-item ${current.sessionId === s.id ? 'selected' : ''}`} aria-current={current.sessionId === s.id ? 'page' : undefined} onClick={() => chooseSession(s.id)}>
@@ -84,7 +87,9 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav> : <div className="nav-column" aria-hidden="true" />}
     </aside>
     <main className={`main-area ${current.section === 'Editor' ? 'editor-main' : ''}`} aria-label="Project content">
-      {selected && <>
+      {selected && !opening.ready && !selected.deleting && <p className="session-empty" role="status">Checking project GitHub status…</p>}
+      {opening.notice && <p className="project-message" role="status">{opening.notice}</p>}
+      {selected && (opening.ready || selected.deleting) && <>
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
         {current.section === 'GitHub' && <ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
@@ -107,6 +112,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} dirtyChanged={setDirty} busyChanged={setSaving} /> : <p className="session-empty">Select a session or create one.</p>)}
       </>}
     </main>
+    {selected && opening.deciding && opening.status && <UpdateProjectDialog key={selected.id} id={selected.id} name={selected.name} status={opening.status} busy={opening.updating} error={opening.error} update={() => void opening.update()} ignore={opening.ignore} />}
     {newProject && <NewProjectDialog token={api.token} close={() => setNewProject(false)} created={async (project) => {
       api.remember(project); await api.reload(); select(project.id);
       navigate(project.id, { section: 'Sessions', settingsView: 'General' }); setNewProject(false);
