@@ -29,7 +29,8 @@ def transfers(store,ids,binding):
     return result
 
 def admit(store,kind,request,owner,binding):
-    fields=({'requestId','projectRevision','transferJobIds'} if kind=='update_install' else
+    recovery_fields={'requestId','projectRevision','updateId','updateRevision','action','vmRevision','targetRelease','confirmReboot'}
+    fields=recovery_fields if kind=='update_recovery' else ({'requestId','projectRevision','transferJobIds'} if kind=='update_install' else
         {'requestId','projectRevision','updateId','updateRevision','deadlineSeconds','fullArtifactHashes'} if kind=='update_verify' else
         {'requestId','projectRevision','updateId','updateRevision','batchId','targetRelease','vmRevision','confirmReboot'})
     if not isinstance(request,dict) or set(request)!=fields:raise DevelopmentFault('Unexpected update action fields.',400)
@@ -45,6 +46,18 @@ def admit(store,kind,request,owner,binding):
     if kind=='update_install':
         state.idle(store.projects,binding['id']);items=transfers(store,request['transferJobIds'],binding)
         extra={'updateTransfers':items,'updatePackage':items[0]['package'],'updateId':str(uuid.uuid4())}
+    elif kind=='update_recovery':
+        from update_recovery import ACTIONS
+        value=state.read(store,identity(request['updateId']),current=True)
+        if (value['revision']!=request['updateRevision'] or value['vmId']!=binding['id'] or value['vmRevision']!=request['vmRevision']
+            or binding['revision']!=request['vmRevision'] or value['imageSha256']!=binding['imageSha256']
+            or value.get('systemGeneration')!=binding.get('systemGeneration') or value['targetRelease']!=request['targetRelease']
+            or request['action'] not in ACTIONS or type(request['confirmReboot']) is not bool):
+            raise DevelopmentFault('Review the exact current own update, VM, release and recovery effect.')
+        if request['action'] in ('resume-batch','rollback-last') and not request['confirmReboot']:
+            raise DevelopmentFault('Explicitly confirm that this native recovery action may reboot.',400)
+        extra={'updateId':value['id'],'updateRevision':value['revision'],'recoveryAction':request['action'],
+            'confirmReboot':request['confirmReboot'],'updatePackage':artifact(store,value['packageArtifactIds'][0])}
     elif kind=='update_verify':
         value=state.read(store,identity(request['updateId']),current=True)
         if (value['revision']!=request['updateRevision'] or value['vmId']!=binding['id'] or value['vmRevision']!=binding['revision']
@@ -52,7 +65,7 @@ def admit(store,kind,request,owner,binding):
             raise DevelopmentFault('The original update/VM/system binding changed.')
         if type(request['deadlineSeconds']) is not int or not 30<=request['deadlineSeconds']<=300 or type(request['fullArtifactHashes']) is not bool:
             raise DevelopmentFault('Use a 30–300 second observation deadline and an explicit hash choice.',400)
-        if not value.get('transactions') and not any(call['operation']=='COMMIT' and call['sent'] for call in value['commands']):
+        if not value.get('transactions') and not any(call['operation'] in ('COMMIT','RESUME-BATCH') and call['sent'] for call in value['commands']):
             raise DevelopmentFault('This update has no correlated live transaction or original COMMIT intent to verify.')
         extra={'updateId':value['id'],'updateRevision':value['revision'],'verification':{'seconds':request['deadlineSeconds'],'hashes':request['fullArtifactHashes']},
             'updatePackage':artifact(store,value['packageArtifactIds'][0])}

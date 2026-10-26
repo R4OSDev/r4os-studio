@@ -37,7 +37,7 @@ def rows(path, table, columns='*'):
 
 def worker_check(runs, jobs, action='deleting'):
     units = ['r4os-studio-agent@' + value + '.service' for value in runs]
-    units += [('r4os-studio-development@' if kind == 'build' else 'r4os-studio-development-vm@') + value + '.service' for value, kind in jobs.items()]
+    units += [('r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + value + '.service' for value, kind in jobs.items()]
     for start in range(0, len(units), 128):
         result = subprocess.run(['/usr/bin/systemctl', 'show', *units[start:start+128], '--property=ActiveState', '--value'],
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=False)
@@ -51,6 +51,9 @@ def worker_check(runs, jobs, action='deleting'):
 def collect(projects, ident, hosts):
     if hosts.get('unsafe'):
         raise ProjectFault('Wait for the updated project hosts to become ready before deleting. Existing data was preserved.', 503)
+    from project_maintenance import pending_update
+    if pending_update(projects,ident):
+        raise ProjectFault('Resolve this project\'s owned native update before deleting its package/recovery evidence.',409)
     project = projects / ident
     if project.exists() or project.is_symlink(): folder(project)
     sessions = rows(project / 'Sessions/Sessions.sqlite', 'sessions', 'id')

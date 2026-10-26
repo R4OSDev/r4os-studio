@@ -79,7 +79,7 @@ export async function vmRoutes(app: FastifyInstance) {
     schema: { body: { type: 'object', additionalProperties: false, required: ['action'], properties: {
       action: { type: 'string', enum: ['start', 'shutdown', 'force-stop', 'restart', 'sync-exchange'] },
     } } },
-  }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await withVmLease(request.params.id, () => manager.action(request.params.id, request.body.action)) }; });
+  }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await withVmLease(request.params.id, () => manager.action(request.params.id, request.body.action), request.body.action === 'start' ? 'start' : ['shutdown', 'force-stop'].includes(request.body.action) ? 'stop' : undefined) }; });
   app.get<{ Params: { id: string } }>('/:id/files', async (request, reply) => {
     sessions.get(request, reply); return { files: await manager.files(request.params.id) };
   });

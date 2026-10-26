@@ -1,7 +1,7 @@
 """Durable project update records and the latest owner of a native VM update."""
 import json
 from pathlib import Path
-from contracts import DevelopmentFault, identity
+from contracts import DevelopmentFault, identity, encode
 from jobs import folder, now
 from layout import save
 
@@ -37,6 +37,7 @@ def read(store,ident,current=False):
 
 def write(store,value):
     value={**value,'revision':value.get('revision',0)+1,'updatedAt':now()}
+    if len(encode(value).encode())>2097152:raise DevelopmentFault('The original update history reached its bounded receipt quota. Preserve it for explicit maintenance.')
     save(folder(store.root/'Updates'/value['id'])/'update.json',value)
     save(owner_path(store.projects,value['vmId']),value)
     return value
@@ -47,7 +48,8 @@ def listing(store):
     entries=sorted(root.iterdir())
     if len(entries)>4096:raise DevelopmentFault('Too many update records; archive them through explicit maintenance.')
     values=[read(store,item.name) for item in entries]
-    return sorted(values,key=lambda value:value['createdAt'],reverse=True)[:100]
+    fields=('schema','id','projectId','jobId','revision','phase','vmId','vmRevision','targetRelease','createdAt','updatedAt','batchId','transactions','packageArtifactIds','transferJobIds','installationConfirmed','rollbackConfirmed','abortConfirmed','cleanupConfirmed')
+    return [{key:value[key] for key in fields if key in value} for value in sorted(values,key=lambda value:value['createdAt'],reverse=True)[:100]]
 
 def matches(status,record):
     value=status['status']

@@ -44,8 +44,13 @@ class Transfer:
         self.freeze()
         try:
             return await Probe(self.store,self.job).run(after_ready=self.publish)
-        except (asyncio.CancelledError, TimeoutError) as error:
-            if self.value.get('reservationObservedEmpty'):
+        except BaseException as error:
+            client=getattr(self,'client',None)
+            if client is not None:
+                self.value.update(events=client.events,requestCounts=client.counts,sshExitCode=client.exit_code,
+                    stderr=client.stderr.decode('utf8',errors='replace'),error=str(error)[:1000])
+                self.persist()
+            if isinstance(error,(asyncio.CancelledError,TimeoutError)) and self.value.get('reservationObservedEmpty'):
                 raise UnconfirmedGuestEffect('The transfer stopped after a durable Inbox write intent. Inspect its original paths without repeating writes.') from error
             raise
 
@@ -60,6 +65,7 @@ class Transfer:
             if not may_upload(fresh) or fresh['status']!=observation['status']['status']:
                 raise DevelopmentFault('Native update state changed before Inbox transfer.')
             async with InboxSftp(ssh,check) as client:
+                self.client=client
                 for attempt in range(8):
                     base='U'+uuid.uuid4().hex[:7].upper()
                     self.value.update(tmp=PREFIX+base+'.TMP',final=PREFIX+base+'.R4U',phase='reserving')

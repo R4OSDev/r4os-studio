@@ -48,10 +48,14 @@ def owned_record(store, vm, package):
     path = store.projects / '.studio/development/UpdateOwners' / (vm['id'] + '.json')
     if not path.exists() and not path.is_symlink(): return None
     info = path.lstat()
-    if path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 65536:
+    if path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 2097152:
         raise DevelopmentFault('The durable VM update ownership record is unavailable. Existing data was preserved.')
     value = json.loads(path.read_text())
-    if (value.get('schema') != 1 or value.get('vmId') != vm['id'] or value.get('systemGeneration') != vm.get('systemGeneration')):
+    if value.get('schema') != 1 or value.get('vmId') != vm['id']:
+        raise DevelopmentFault('The durable VM update record has a different identity.')
+    if value.get('systemGeneration') != vm.get('systemGeneration') or value.get('imageSha256') != vm.get('imageSha256'):
+        from update_state import TERMINAL
+        if value.get('phase') in TERMINAL:return None
         raise DevelopmentFault('The durable VM update record belongs to a different system generation.')
     if value.get('projectId') != store.id or package['id'] not in value.get('packageArtifactIds', []): return None
     return value

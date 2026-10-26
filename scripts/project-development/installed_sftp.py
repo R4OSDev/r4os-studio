@@ -42,6 +42,7 @@ class InstalledRead(InboxSftp):
         return value
     async def write(self,*args,**kwargs):raise DevelopmentFault('Installed artifact verification is read-only.',403)
     async def put(self,*args,**kwargs):raise DevelopmentFault('Installed artifact verification is read-only.',403)
+    async def remove(self,*args,**kwargs):raise DevelopmentFault('Installed artifact verification is read-only.',403)
     async def rename(self,*args,**kwargs):raise DevelopmentFault('Installed artifact verification is read-only.',403)
     async def close(self,handle,write=False):
         if write:raise DevelopmentFault('Installed artifact verification is read-only.',403)

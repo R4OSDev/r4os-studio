@@ -100,7 +100,7 @@ def parse(operation, capture):
             match = re.fullmatch(r'SYSUPD ([A-Z-]+) result: (.*)', line)
             if match:
                 actual = match[1]
-                if actual != operation and not (operation=='STAGE' and actual=='APPLY'): raise fault()
+                if actual != operation and not ((operation=='STAGE' and actual=='APPLY') or (operation=='RESUME-BATCH' and actual=='COMMIT')): raise fault()
                 candidates.append(('result', actual, match[2], line))
             elif line.startswith('SYSUPD') and not line.startswith('SYSUPD I/O:'):
                 raise fault('The guest SYSUPD command does not expose the supported text interface.')

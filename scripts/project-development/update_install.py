@@ -37,6 +37,19 @@ async def full_inventory(ssh,work,prefix):
     if reads[0]['sha256']!=reads[1]['sha256'] or reads[0]['bytes']!=reads[1]['bytes']:raise DevelopmentFault('Installed inventory changed during complete reads.')
     return inventory((work/(prefix+'-first.json')).read_text()),reads
 
+async def capture_previous(ssh,packages,guard):
+    from installed_sftp import InstalledRead
+    payloads=[payload for package in packages for payload in package['plan']['payloads']]
+    result=[];remaining=134217728
+    async with InstalledRead(ssh,payloads,guard) as reader:
+        for payload in payloads:
+            received=await reader.get_hash('/C'+payload['canonicalTarget'],remaining)
+            if received:remaining-=received['bytes']
+            result.append({'target':payload['canonicalTarget'],'file':received})
+    if reader.exit_code!=0:raise DevelopmentFault('The pre-install artifact snapshot did not close cleanly.')
+    return result
+
+
 class Installation:
     def __init__(self,store,job):
         self.store,self.job=store,job;self.work=folder(store.root/'UpdateWork'/job['id']);self.value=None
@@ -47,7 +60,7 @@ class Installation:
         guard(self.store,self.job,self.lease)
         command='SYSUPD '+operation+(' '+path if path else '')
         key=str(len(self.value['commands']))
-        call={'id':key,'operation':operation,'command':command,'intentAt':now(),'mutating':mutating,'sent':False}
+        call={'id':key,'jobId':self.job['id'],'operation':operation,'command':command,'intentAt':now(),'mutating':mutating,'sent':False}
         self.value['commands'].append(call);self.persist()
         call=self.value['commands'][-1];call['sent']=True;self.persist()
         if mutating:
@@ -99,6 +112,9 @@ class Installation:
                     if client.exit_code!=0 or not received or any(received[k]!=item['package'][k] for k in ('bytes','sha256')):
                         raise DevelopmentFault('The complete published Inbox package differs. No native STAGE was issued.')
                     check_reply(await self.command(ssh,'VERIFY',item['transfer']['guestPath']),item['package'],'VERIFY')
+                from vm_worker import guard
+                self.value['previousFiles']=await capture_previous(ssh,packages,lambda:guard(self.store,self.job,lease))
+                self.persist()
                 for index,item in enumerate(items):
                     status=parse('STATUS',await ssh.exec('SYSUPD STATUS',complete=True,limit=131072))
                     if not state.matches(status,self.value):raise DevelopmentFault('Native update ownership/state changed before STAGE.')

@@ -101,8 +101,11 @@ def main():
         if not installed:
             print(encode({'locked': True, 'developmentHost': False}), flush=True); sys.stdin.buffer.read(1); return
         purpose = sys.argv[4] if len(sys.argv) > 4 else None
-        if purpose not in (None, 'reset'): raise DevelopmentFault('Invalid manual VM purpose.', 400)
+        if purpose not in (None, 'reset', 'start', 'stop'): raise DevelopmentFault('Invalid manual VM purpose.', 400)
         with VmLease(projects, sys.argv[3], {'kind': 'manual', **({'purpose': purpose} if purpose else {})}):
+            if purpose not in ('start','stop'):
+                from update_state import idle
+                idle(projects,sys.argv[3])
             print(encode({'locked': True, 'developmentHost': True}), flush=True); sys.stdin.buffer.read(1)
     elif op == 'inspect':
         request = json.loads(sys.stdin.buffer.read(8193)); value = inspect(projects, request['leaseId'], request['token'], request.get('checkBoot', True))

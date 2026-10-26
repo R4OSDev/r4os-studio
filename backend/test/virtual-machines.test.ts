@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 
-const directory = await mkdtemp(join(tmpdir(), 'studio-vm-test-'));
+const testRoot = await mkdtemp(join(tmpdir(), 'studio-vm-test-'));
+const directory = join(testRoot, 'R4OS'); await mkdir(directory);
 process.env.STUDIO_R4OS_DIR = directory;
 process.env.STUDIO_VM_NETWORK_CAPABILITY = join(directory, 'network-capability.json');
 const { vmRoutes } = await import('../src/modules/virtual-machines/routes.js');
@@ -30,12 +31,12 @@ await test('VM administration requires same-origin session/CSRF, preserves VM pi
     const input = { name: 'A', cpus: 2, memoryMiB: 2048 };
     assert.equal((await app.inject({ method: 'POST', url: '/api/vms', payload: input })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/vms', headers: { ...headers, origin: 'https://foreign.example' }, payload: input })).statusCode, 403);
-    const created = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: input });
+    const created = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: { ...input, networkEnabled: false } });
     assert.equal(created.statusCode, 201); const vm = created.json().vm;
     assert.equal(vm.imageId, '0.10.0-full'); assert.equal(vm.state, 'stopped');
     assert.equal(vm.networkEnabled, false);
     assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: true } })).statusCode, 409);
-    await writeFile(process.env.STUDIO_VM_NETWORK_CAPABILITY!, JSON.stringify({ schema: 1, mode: 'user', device: 'e1000' }));
+    await writeFile(process.env.STUDIO_VM_NETWORK_CAPABILITY!, JSON.stringify({ schema: 1, mode: 'user', device: 'rtl8139' }));
     assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: 'false' } })).statusCode, 400);
     const network = await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: true } });
     assert.equal(network.statusCode, 200); assert.equal(network.json().vm.networkEnabled, true);
@@ -47,7 +48,7 @@ await test('VM administration requires same-origin session/CSRF, preserves VM pi
     await writeFile(join(directory, 'Profiles/versions.json'), JSON.stringify({ schema: 1, defaults: { r4os: { id: '0.9.9-full', sha256: createHash('sha256').update(base).digest('hex') } } }));
     assert.equal((await app.inject('/api/vms')).json().defaultImageId, '0.9.9-full');
     const second = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: { ...input, name: 'Uses selected default' } });
-    assert.equal(second.statusCode, 201); const secondVm = second.json().vm;
+    assert.equal(second.statusCode, 201); const secondVm = second.json().vm; assert.equal(secondVm.networkEnabled, true);
     assert.equal(secondVm.imageId, '0.9.9-full');
     assert.equal((await app.inject('/api/vms')).json().vms.find((item: { id: string }) => item.id === vm.id).imageId, '0.10.0-full');
     assert.equal((await app.inject({ method: 'DELETE', url: `/api/vms/${secondVm.id}`, headers, payload: { confirm: true } })).statusCode, 204);
@@ -70,7 +71,7 @@ await test('VM administration requires same-origin session/CSRF, preserves VM pi
 await test('persistent FAT32 exchange exports guest edits, survives starts, detects conflicts and rejects unsafe entries', async (t) => {
   try { await exec('/usr/sbin/mkfs.fat', ['--help']); await exec('/usr/bin/mtype', ['-V']); }
   catch { t.skip('Host FAT tools are not installed.'); return; }
-  const path = join(directory, 'share-test'); await mkdir(join(path, 'Exchange/Share'), { recursive: true });
+  const path = join(directory, randomUUID()); await mkdir(join(path, 'Exchange/Share'), { recursive: true });
   await writeFile(join(path, 'Exchange/Share/TEST.TXT'), 'VM private artifact');
   await prepareShare(path);
   const disk = await readFile(join(path, 'Disks/exchange.img'));
@@ -107,10 +108,10 @@ await test('persistent FAT32 exchange exports guest edits, survives starts, dete
   await finishShare(path); await prepareShare(path); await finishShare(path);
   assert.equal(await readFile(join(path, 'Exchange/Share/GUEST.TXT'), 'utf8'), 'new guest version');
   await symlink('/etc/passwd', join(path, 'Exchange/Share/LINK.TXT'));
-  await assert.rejects(prepareShare(path), /plain files/);
+  await assert.rejects(prepareShare(path), /links and special files are rejected/);
 });
 await test('empty exchange can start and stop; interrupted export is recovered before import', async () => {
-  const path = join(directory, 'empty-share'); await mkdir(join(path, 'Exchange/Share'), { recursive: true });
+  const path = join(directory, randomUUID()); await mkdir(join(path, 'Exchange/Share'), { recursive: true });
   await prepareShare(path); await finishShare(path);
   await prepareShare(path);
   const content = join(path, 'RECOVER.TXT'); await writeFile(content, 'recover before next boot');
@@ -119,7 +120,7 @@ await test('empty exchange can start and stop; interrupted export is recovered b
   await prepareShare(path);
   assert.equal(await readFile(join(path, 'Exchange/Share/RECOVER.TXT'), 'utf8'), 'recover before next boot');
   await finishShare(path);
-  const legacy = join(directory, 'legacy'); await mkdir(join(legacy, 'Exchange/Share'), { recursive: true });
+  const legacy = join(directory, randomUUID()); await mkdir(join(legacy, 'Exchange/Share'), { recursive: true });
   await writeFile(join(legacy, 'Exchange/Share/OLD.TXT'), 'old snapshot'); await createShareImage(legacy);
   await writeFile(join(legacy, 'Exchange/Share/OLD.TXT'), 'edited while stopped');
   await prepareShare(legacy); await finishShare(legacy);
@@ -128,9 +129,9 @@ await test('empty exchange can start and stop; interrupted export is recovered b
   await prepareShare(legacy);
   const legacyImage = join(legacy, 'Disks/exchange.img');
   await exec('/usr/bin/mmd', ['-i', legacyImage + '@@1048576', '::/SUBDIR']);
-  await assert.rejects(finishShare(legacy), /unsupported names or folders/);
-  await assert.rejects(prepareShare(legacy), /unsupported names or folders/);
+  await assert.rejects(finishShare(legacy), /Unsupported guest Exchange path/);
+  await assert.rejects(prepareShare(legacy), /Unsupported guest Exchange path/);
   assert.equal(await readFile(join(legacy, 'Exchange/Share/OLD.TXT'), 'utf8'), 'edited while stopped');
   assert.equal((await shareState(legacy))?.pending, true);
 });
-await rm(directory, { recursive: true, force: true });
+await rm(testRoot, { recursive: true, force: true });

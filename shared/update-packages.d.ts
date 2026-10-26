@@ -103,8 +103,9 @@ export interface UpdateInstallation {
   sourceBootId: string; targetRelease: string; packageArtifactIds: string[]; transferJobIds: string[];
   createdAt: string; updatedAt: string; lastStatus: SysupdReply; batchId?: string; transactions: string[];
   stagedPackageIds?: string[]; installationConfirmed?: boolean; error?: string; externalWriterLock: false;
+  rollbackConfirmed?: boolean; abortConfirmed?: boolean; cleanupConfirmed?: boolean;
   updateEpoch?: string; proof?: { confirmedAt: string; target: UpdateProbe['target']; components: Record<string, unknown>[];
-    fullArtifactHashesRequested: boolean; files: (UpdateFileRead & { target: string })[]; installedRelease: string; activeKernel: string;
+    fullArtifactHashesRequested: boolean; fullArtifactHashesComplete?: boolean; previousArtifactBaselineAvailable?: boolean; outcome?: 'installed' | 'rolled-back'; files: (UpdateFileRead & { target: string })[]; installedRelease: string; activeKernel: string;
     readOnly: true; commitNotRepeated: true; resumeNotIssued: true };
   rebootAuthorized?: boolean; commitJobId?: string; commitBootId?: string; commitReply?: SysupdReply;
   commands: { id: string; operation: string; command: string; intentAt: string; mutating: boolean; sent: boolean;

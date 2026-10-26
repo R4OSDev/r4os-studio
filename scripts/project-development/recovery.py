@@ -117,6 +117,10 @@ def local(store, job):
 
 
 async def reconcile(store, job, host=None):
+    if job['kind'] in ('update_install','update_commit','update_verify','update_recovery'):
+        if host is None:raise DevelopmentFault('Current update observation support is required.')
+        from update_recovery import reconcile as update_reconcile
+        return await update_reconcile(store,job,host)
     if job['kind'] == 'update_transfer':
         if host is None: raise DevelopmentFault('The current VM observer is required for Inbox reconciliation.')
         from update_transfer import reconcile as inbox_reconcile

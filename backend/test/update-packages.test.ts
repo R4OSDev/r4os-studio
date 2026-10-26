@@ -89,6 +89,15 @@ await test('update plans require session and CSRF, bind artifact IDs and reject 
     assert.equal((await app.inject({ method: 'POST', url: verifyUrl, headers, payload: { ...verify, command: 'SYSUPD RESUME-BATCH' } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: verifyUrl, headers, payload: verify })).statusCode, 202);
     assert.deepEqual(received.at(-1), { operation: 'update_verify', projectId: project, input: verify });
+
+    const recoveryUrl = '/api/projects/' + project + '/update-packages/recovery';
+    const recovery = { requestId: randomUUID(), projectRevision: 2, updateId: commit.updateId, updateRevision: 3,
+      vmRevision: commit.vmRevision, targetRelease: '0.87.14', action: 'rollback-last', confirmReboot: true };
+    assert.equal((await app.inject({ method: 'POST', url: recoveryUrl, payload: recovery })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: recoveryUrl, headers, payload: { ...recovery, command: 'DELETE JOURNAL' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: recoveryUrl, headers, payload: { ...recovery, action: 'delete-journal' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: recoveryUrl, headers, payload: recovery })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'update_recovery', projectId: project, input: recovery });
   } finally {
     await app.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     delete process.env.STUDIO_DEVELOPMENT_SOCKET; await rm(directory, { recursive: true, force: true });

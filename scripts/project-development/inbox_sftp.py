@@ -179,6 +179,11 @@ class InboxSftp:
         kind,reader=await self.request(18,string(source)+string(destination),mutating=True)
         if kind!=101:raise UnconfirmedGuestEffect('The Inbox RENAME acknowledgement is malformed.')
 
+    async def remove(self,path):
+        inbox_path(path)
+        kind,reader=await self.request(13,string(path),mutating=True)
+        if kind!=101:raise UnconfirmedGuestEffect('The own transport REMOVE acknowledgement is malformed.')
+
     async def put(self,path,local,expected,progress=lambda value:None,before_close=lambda:None):
         inbox_path(path,'TMP')
         if local.resolve(strict=True)!=local or not local.is_file():raise DevelopmentFault('The frozen package path changed.')

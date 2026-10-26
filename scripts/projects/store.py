@@ -115,6 +115,10 @@ def operation(db, request, root):
         data = request['input']
         if not set(data).issubset({'name', 'description', 'vmId', 'revision'}) or 'revision' not in data:
             raise ProjectFault('Unexpected project fields.', 400)
+        from project_maintenance import pending_update
+        catalog_path = Path(db.execute('PRAGMA database_list').fetchone()[2]).parent
+        if pending_update(catalog_path,request['id']):
+            raise ProjectFault('Resolve this project\'s owned native update before changing its settings.')
         db.execute('BEGIN IMMEDIATE')
         old = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone())
         if old['revision'] != data['revision']:
@@ -130,7 +134,7 @@ def operation(db, request, root):
                 from urllib.parse import quote
                 jobs = sqlite3.connect('file:' + quote(str(development)) + '?mode=ro', uri=True, timeout=5)
                 try:
-                    if jobs.execute("SELECT id FROM jobs WHERE busy=1 AND kind IN ('deploy','execution') LIMIT 1").fetchone():
+                    if jobs.execute("SELECT id FROM jobs WHERE busy=1 AND kind IN ('deploy','execution','vm_start','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery') LIMIT 1").fetchone():
                         raise ProjectFault('Stop this project\'s VM development job before changing its assigned VM.')
                 finally: jobs.close()
             check_vm(root, value['vmId'])

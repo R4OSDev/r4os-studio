@@ -17,7 +17,7 @@ class ReadPolicy(unittest.IsolatedAsyncioTestCase):
     async def test_manifest_targets_are_read_only_without_any_generic_path(self):
         path='/R4OS/SOFTWARE/DEMO/DEMO.R4X';payload={'canonicalTarget':path,'component':{'target':path},'file':{'bytes':100}}
         reader=InstalledRead(None,[payload]);reader.request=AsyncMock()
-        for operation,args in [('stat',('/C/R4OS/CONFIG/MODULES.JSON',)),('open',('/C'+path,True)),('close',(b'h',True)),('write',(b'h',0,b'data')),('rename',('anything','anything')),('put',('anything',None,{}))]:
+        for operation,args in [('stat',('/C/R4OS/CONFIG/MODULES.JSON',)),('open',('/C'+path,True)),('close',(b'h',True)),('write',(b'h',0,b'data')),('remove',('/C'+path,)),('rename',('anything','anything')),('put',('anything',None,{}))]:
             with self.assertRaises(DevelopmentFault):await getattr(reader,operation)(*args)
         reader.request.assert_not_awaited()
     async def test_managed_metadata_is_never_a_package_read_target(self):
@@ -32,6 +32,9 @@ class Proof(unittest.IsolatedAsyncioTestCase):
         f=self.fixture;f.package['plan']['payloads'][0].update(canonicalTarget=f.component['target'],file={'bytes':100,'sha256':'b'*64})
         _,error,staging=await f.run_stage('stage');self.assertIsNone(error)
         record=staging.value;record['phase']='commit_unconfirmed';record['commands'].append({'operation':'COMMIT','mutating':True,'sent':True})
+        if mode=='rollback':
+            record.pop('previousFiles',None)
+            f.store.get=lambda ident:{'updateProbe':{'inventory':{'entries':[]},'installedRelease':'0.87.14'}}
         record=state.write(f.store,record)
         lease=SimpleNamespace(root=f.root,id=fixtures.ident(),value={},scope={'bootId':'old'},token='token')
         (f.root/'leases').mkdir(exist_ok=True);lease.value['scope']=lease.scope
@@ -51,7 +54,7 @@ class Proof(unittest.IsolatedAsyncioTestCase):
                     attempts+=1
                     if mode=='lost-first' and attempts==1:return capture('',255)
                     if mode=='pending':return capture(BATCH.replace('batch-state=installed','batch-state=pending-restart').replace('state=cleanup','state=post_boot'))
-                    return capture(BATCH.replace('batch=7','batch=8') if mode=='foreign' else BATCH)
+                    return capture(BATCH.replace('batch-state=installed','batch-state=rolled-back').replace('state=cleanup','state=rolled_back') if mode=='rollback' else BATCH.replace('batch=7','batch=8') if mode=='foreign' else BATCH)
                 if command=='VER':return {'exitCode':0,'output':'R4OS Release 0.87.14\nKernel active 0.1.384'}
                 if command.startswith('TYPE '):return capture('RELEASE_VERSION=0.87.14\n')
                 raise AssertionError('No native mutation is permitted in observation')
@@ -60,7 +63,7 @@ class Proof(unittest.IsolatedAsyncioTestCase):
             exit_code=0
             async def get_hash(self,path,maximum):return {'bytes':100,'sha256':'0'*64 if mode=='hash' else 'b'*64,'fullReadVerified':True}
         observation=Observation(f.store,f.job,record,seconds=.04 if mode in ('pending','hash') else 3,hashes=True)
-        with patch('access.Access',Access),patch('access.SshTransport',SSH),patch('vm_worker.guard'),patch('vm_worker.broker_call',new_callable=AsyncMock,return_value=f.target),patch('package_jobs.artifact',return_value=f.package),patch('update_verify.full_inventory',new_callable=AsyncMock,return_value=({'entries':[f.component]},[{'sha256':'proof'}])),patch('update_verify.InstalledRead',Files):
+        with patch('access.Access',Access),patch('access.SshTransport',SSH),patch('vm_worker.guard'),patch('vm_worker.broker_call',new_callable=AsyncMock,return_value=f.target),patch('package_jobs.artifact',return_value=f.package),patch('update_verify.full_inventory',new_callable=AsyncMock,return_value=({'entries':[] if mode=='rollback' else [f.component]},[{'sha256':'proof'}])),patch('update_verify.InstalledRead',Files):
             result=None;caught=None
             try:result=await observation.in_lease(lease)
             except DevelopmentFault as error:caught=error
@@ -72,6 +75,12 @@ class Proof(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(proof['nativeServiceMayHaveFinalized']);self.assertEqual(records[-1]['readiness']['kernel'],'0.1.384')
         self.assertTrue(all(c in ['SYSUPD STATUS','VER',r'TYPE C:\R4OS\CONFIG\VERSION.R4S'] for c in commands))
         self.assertTrue(proof['commitNotRepeated']);self.assertTrue(proof['resumeNotIssued'])
+    async def test_owned_terminal_rollback_has_prior_inventory_proof_and_no_install_success(self):
+        result,error,obs,commands,_=await self.scenario('rollback')
+        self.assertIsNone(error);self.assertEqual(result['phase'],'rolled_back')
+        self.assertFalse(obs.value['installationConfirmed']);self.assertTrue(obs.value['rollbackConfirmed'])
+        self.assertFalse(obs.value['proof']['previousArtifactBaselineAvailable'])
+        self.assertFalse(obs.value['proof']['fullArtifactHashesComplete'])
     async def test_connection_loss_retries_reads_without_commit_or_resume(self):
         result,error,obs,commands,_=await self.scenario('lost-first')
         self.assertIsNone(error);self.assertTrue(obs.value['proof']['readOnly']);self.assertGreaterEqual(commands.count('SYSUPD STATUS'),3)

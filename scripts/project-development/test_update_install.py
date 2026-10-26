@@ -62,7 +62,7 @@ class NativeInstallation(unittest.IsolatedAsyncioTestCase):
             async def get_hash(this,*args):return {'bytes':100,'sha256':'0'*64 if mode=='corrupt' else 'b'*64}
         if count==2:items[1]['transfer']['guestPath']=r'C:\R4OS\UPDATE\INBOX\SECOND.R4U'
         runner=Installation(self.store,self.job);observation={'hostKeyFingerprint':'key','status':parse('STATUS',capture(IDLE))}
-        with patch('access.Access'),patch('access.SshTransport',SSH),patch('update_install.InboxSftp',Wire),patch('update_jobs.transfers',return_value=items),patch('vm_worker.guard'),patch('update_install.full_inventory',new_callable=AsyncMock,return_value=({'entries':[self.component]},[{'sha256':'x'}])),patch('update_verify.Observation.in_lease',new_callable=AsyncMock,return_value={'state':'completed','phase':'live_installed'}):
+        with patch('access.Access'),patch('update_install.capture_previous',new_callable=AsyncMock,return_value=[]),patch('access.SshTransport',SSH),patch('update_install.InboxSftp',Wire),patch('update_jobs.transfers',return_value=items),patch('vm_worker.guard'),patch('update_install.full_inventory',new_callable=AsyncMock,return_value=({'entries':[self.component]},[{'sha256':'x'}])),patch('update_verify.Observation.in_lease',new_callable=AsyncMock,return_value={'state':'completed','phase':'live_installed'}):
             error=None
             try:result=await runner.stage(None,self.target,observation)
             except DevelopmentFault as caught:error=caught;result=None
