@@ -90,9 +90,9 @@ class Jobs:
         return values
 
     def admit(self, kind, request, owner=None, binding=None):
-        if kind == 'update_probe':
+        if kind in ('update_probe', 'update_transfer'):
             from update_probe import admit
-            return admit(self, request, owner, binding)
+            return admit(self, request, owner, binding, kind)
         if kind == 'package':
             from package_jobs import admit
             return admit(self, request, owner)

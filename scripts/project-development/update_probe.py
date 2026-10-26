@@ -14,12 +14,13 @@ COMMANDS = [('ver', 'VER'), ('status', 'SYSUPD STATUS'),
     ('version', r'TYPE C:\R4OS\CONFIG\VERSION.R4S'), ('inventory', r'TYPE C:\R4OS\CONFIG\MODULES.JSON')]
 
 
-def admit(store, request, owner, binding):
+def admit(store, request, owner, binding, kind="update_probe"):
+    if kind not in ("update_probe", "update_transfer"): raise DevelopmentFault("Unsupported update job.", 400)
     if not isinstance(request, dict) or set(request) != {'requestId', 'projectRevision', 'packageArtifactId'}:
         raise DevelopmentFault('Unexpected update preflight fields.', 400)
     key = identity(request['requestId']); identity(request['packageArtifactId'])
     owner = owner or {'sessionId': None, 'agentRunId': None}
-    fingerprint = hash_value({'kind': 'update_probe', 'request': request, 'owner': owner})
+    fingerprint = hash_value({'kind': kind, 'request': request, 'owner': owner})
     previous = store.db.execute('SELECT id,request_hash FROM jobs WHERE request_id=?', (key,)).fetchone()
     if previous:
         if previous['request_hash'] != fingerprint: raise DevelopmentFault('This request ID belongs to another update preflight.')
@@ -33,12 +34,12 @@ def admit(store, request, owner, binding):
     store.db.execute('BEGIN IMMEDIATE')
     try:
         if store.db.execute('SELECT id FROM jobs WHERE busy=1').fetchone(): raise DevelopmentFault('This project already has an active development job.')
-        job = {'id': str(uuid.uuid4()), 'projectId': store.id, 'kind': 'update_probe', 'state': 'queued', 'revision': 1,
+        job = {'id': str(uuid.uuid4()), 'projectId': store.id, 'kind': kind, 'state': 'queued', 'revision': 1,
             **owner, 'artifactId': None, 'deploymentId': None, 'packageArtifactId': package['id'], 'updatePackage': package,
             'target': None, 'process': None, 'exitCode': None, 'error': None, 'phase': 'queued', 'check': None,
             'createdAt': now(), 'completedAt': None, 'source': None, 'projectRevision': store.project['revision'],
             'settingsRevision': store.settings()['revision'], 'pins': store.project['pins'], 'settings': store.settings(), 'binding': binding}
-        store.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)', (job['id'], key, fingerprint, 'update_probe', 'queued', encode(job)))
+        store.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)', (job['id'], key, fingerprint, kind, 'queued', encode(job)))
         store.db.commit(); return job, True
     except BaseException: store.db.rollback(); raise
 
@@ -67,7 +68,7 @@ class Probe:
         save(self.work / 'observation.json', self.value)
         self.store.update(self.job['id'], updateProbe=self.value)
 
-    async def run(self):
+    async def run(self, after_ready=None):
         from access import Access, SshTransport, transport_profile, guest_version
         from vm_worker import guard, broker_call
         from vm_client import vm_call
@@ -151,4 +152,8 @@ class Probe:
                 stream.write(('SYSUPD preflight: ' + self.value['state'] + '\n' + self.value['status']['rawLine'] +
                     '\nInventory: ' + str(self.value['inventory']['count']) + ' components; full SFTP SHA-256 ' + reads[0]['sha256'] +
                     ('\nTYPE console was incomplete; complete fixed-path SFTP evidence retained.' if loss else '') + '\n').encode())
+            if after_ready is not None:
+                if not self.value['mayUpload']:
+                    raise DevelopmentFault('Active or recoverable native update state blocks a new Inbox transfer.')
+                return await after_ready(lease, target, self.value)
             return store.update(job['id'], 'completed', phase='sysupd_ready' if self.value['mayUpload'] else 'sysupd_blocked', exitCode=0)

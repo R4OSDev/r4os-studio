@@ -82,3 +82,17 @@ export interface UpdateProbe {
     reason: string | null; terminalHistoryRetained: boolean; externalWriterLock: false };
   nativeVerificationRequired?: true;
 }
+
+export interface UpdateTransfer {
+  schema: 1; jobId: string; projectId: string; packageArtifactId: string;
+  sha256: string; bytes: number; phase: string; published: boolean; createdAt: string;
+  tmp?: string; final?: string; guestPath?: string; completedAt?: string;
+  target?: UpdateProbe['target']; hostKeyFingerprint?: string;
+  renameIntent?: boolean; renameAcknowledged?: boolean; acknowledgedBytes?: number;
+  upload?: { bytes: number; sha256: string; closeAcknowledged: true };
+  readback?: UpdateFileRead | null; finalRead?: UpdateFileRead;
+  collisions: { tmp: string; final: string; tmpExisted: boolean; finalExisted: boolean }[];
+  sshExitCode?: number; stderr?: string; requestCounts?: Record<string, number>;
+  reconciliation?: { tmp: UpdateFileRead | null; final: UpdateFileRead | null; readOnly: true; observedAt: string };
+}
+export interface UpdateFileRead { bytes: number; sha256: string; fullReadVerified: true }

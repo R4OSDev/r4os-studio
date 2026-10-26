@@ -116,7 +116,11 @@ def local(store, job):
     return result
 
 
-async def reconcile(store, job):
+async def reconcile(store, job, host=None):
+    if job['kind'] == 'update_transfer':
+        if host is None: raise DevelopmentFault('The current VM observer is required for Inbox reconciliation.')
+        from update_transfer import reconcile as inbox_reconcile
+        return await inbox_reconcile(store, job, host)
     try:
         result = local(store, job)
         if result: return result

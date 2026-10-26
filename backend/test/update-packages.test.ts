@@ -60,8 +60,13 @@ await test('update plans require session and CSRF, bind artifact IDs and reject 
     assert.equal((await app.inject({ method: 'POST', url: probeUrl, headers, payload: { ...probe, vmId: randomUUID() } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: probeUrl, headers, payload: probe })).statusCode, 202);
     assert.deepEqual(received.at(-1), { operation: 'update_probe', projectId: project, input: probe });
-
-
+    const transferUrl = '/api/projects/' + project + '/update-packages/transfers';
+    assert.equal((await app.inject({ method: 'POST', url: transferUrl, payload: probe })).statusCode, 403);
+    for (const extra of [{ path: 'C:\\R4OS' }, { command: 'SYSUPD APPLY' }, { vmId: randomUUID() }]) {
+      assert.equal((await app.inject({ method: 'POST', url: transferUrl, headers, payload: { ...probe, ...extra } })).statusCode, 400);
+    }
+    assert.equal((await app.inject({ method: 'POST', url: transferUrl, headers, payload: probe })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'update_transfer', projectId: project, input: probe });
   } finally {
     await app.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     delete process.env.STUDIO_DEVELOPMENT_SOCKET; await rm(directory, { recursive: true, force: true });

@@ -19,7 +19,8 @@ const requirement = { type: 'object', additionalProperties: false,
     minVersion: { type: 'string', minLength: 1, maxLength: 24 }, state: { type: 'string', enum: ['installed', 'active'] } } };
 export function updatePackageRoutes(app: FastifyInstance, security: ProjectSessions) {
   const base = '/:id/update-packages';
-  app.post<{ Params: { id: string }; Body: { requestId: string; projectRevision: number; packageArtifactId: string } }>(base + '/probes', {
+  for (const [route, operation] of [['probes', 'update_probe'], ['transfers', 'update_transfer']] as const) {
+  app.post<{ Params: { id: string }; Body: { requestId: string; projectRevision: number; packageArtifactId: string } }>(base + '/' + route, {
     bodyLimit: 4096,
     preValidation: async request => {
       if (!request.body || typeof request.body !== 'object' || Object.keys(request.body).some(key =>
@@ -32,8 +33,9 @@ export function updatePackageRoutes(app: FastifyInstance, security: ProjectSessi
       properties: { requestId: identity, projectRevision: revision, packageArtifactId: identity } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    return reply.code(202).send({ job: await developmentHost({ operation: 'update_probe', projectId: request.params.id, input: request.body }) });
+    return reply.code(202).send({ job: await developmentHost({ operation, projectId: request.params.id, input: request.body }) });
   });
+  }
   app.post<{ Params: { id: string }; Body: UpdatePackageBuildInput }>(base + '/builds', {
     bodyLimit: 4096,
     preValidation: async request => {
