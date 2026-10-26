@@ -12,12 +12,15 @@ export interface AgentSession {
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
+  skillOverrides: Record<string, boolean>;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
+  skillOverrides?: Record<string, boolean>;
 }
 export interface SessionOptions {
+  skills?: { id: string; name: string; description: string; available: boolean; reason?: string }[];
   development?: import('./project-development.js').DevelopmentOptions;
   providers: { id: string; name: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean }[];

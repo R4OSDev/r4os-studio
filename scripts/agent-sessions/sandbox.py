@@ -78,6 +78,16 @@ class Sandbox:
 
     async def file(self, name, arguments):
         import json
+        from file_worker import Fault
+        try:
+            if name == 'apply_patch' and self.worker.skill_resources.patch_target(arguments.get('patch', '')):
+                return {'success': False, 'error': 'readOnly', 'output': 'Published skill resources are read-only. No patch changes were applied.'}
+            if arguments.get('root', 'workspace') == 'workspace':
+                relative = self.worker.skill_resources.target(arguments.get('path', '.'))
+                if relative is not None:
+                    async with self.lock: return await self.worker.skill_resources.read(name, arguments, relative)
+        except Fault:
+            return {'success': False, 'error': 'fileError', 'output': 'Use a relative path within the selected file root.'}
         if self.worker.store.owner_type == 'skill' and arguments.get('root', 'workspace') != 'workspace':
             return {'success': False, 'error': 'unavailable', 'output': 'Only the selected skill workspace is available.'}
         await self.prepare()

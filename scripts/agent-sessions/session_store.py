@@ -16,6 +16,7 @@ from store import connect as project_connect, operation as project_operation, Pr
 from layout import workspace, folder
 from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, TOOLS, tools_for
 from owner import owner_type, binding, skill_workspace
+import skill_preferences
 
 TOOL_IDS = tuple('studio.' + name for name in TOOLS)
 TERMINAL_STATES = ('completed', 'failed', 'interrupted')
@@ -189,6 +190,7 @@ PRAGMA user_version=1;
         return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 ('skillId' if self.owner_type == 'skill' else 'projectId'): row['project_id'], 'name': row['name'], **settings,
                 'engine': engine, 'revision': row['revision'],
+                'skillOverrides': skill_preferences.read(self.projects, self.owner_type, self.owner_id, row['id']),
                 'createdAt': row['created_at'], 'updatedAt': row['updated_at'],
                 'latestRun': self.run_present(latest) if latest else None}
 
@@ -227,7 +229,7 @@ PRAGMA user_version=1;
             if self.db.in_transaction: self.db.rollback()
 
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
         if 'fastMode' in data and type(data['fastMode']) is not bool:
             raise ProjectFault('Invalid Fast Mode setting.', 400)
@@ -239,11 +241,14 @@ PRAGMA user_version=1;
                 raise ProjectFault('Stop or resolve the current run before changing session settings.')
             value = {**previous, **data}
             settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions')}
+            choices = skill_preferences.normalize(value['skillOverrides'])
+            skill_change = choices != previous['skillOverrides']
             value['name'] = text(value['name'], 120)
-            changed = value['name'] != previous['name'] or any(value[k] != previous[k] for k in settings)
+            changed = value['name'] != previous['name'] or any(value[k] != previous[k] for k in settings) or skill_change
             if changed:
                 # Name-only edits stay possible when a formerly connected provider disappears.
                 if any(value[k] != previous[k] for k in settings): validate_settings(value, provider_dir)
+                if skill_change: skill_preferences.write(self, session_id, choices)
                 self.db.execute('UPDATE sessions SET name=?,settings=?,revision=revision+1,updated_at=? WHERE id=?',
                                 (text(value['name'], 120), encode(settings), now(), session_id))
             self.db.commit(); return self.get(session_id)
@@ -278,7 +283,11 @@ def operation(projects, r4os, provider_dir, request):
     if request.get('operation') == 'options':
         # Validate project identity/layout, even for a read-only options request.
         store = SessionStore(projects, r4os, ident, kind)
-        try: return options(provider_dir, r4os, store.selected_profile)
+        try:
+            result = options(provider_dir, r4os, store.selected_profile)
+            from skill_application import options as skill_options
+            result['skills'] = skill_options(projects)
+            return result
         finally: store.close()
     store = SessionStore(projects, r4os, ident, kind)
     try:

@@ -136,6 +136,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
           <button className="agent-send" disabled={sending || choiceSaving || settings || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
       </div>
     </form>
-    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
+    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;
 }

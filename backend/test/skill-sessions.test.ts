@@ -23,7 +23,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     socket.on('end', () => {
       const request = JSON.parse(raw) as Record<string, unknown>; messages.push(request);
       const run = { id: randomUUID(), sessionId: request.sessionId, owner: { type: 'skill', id }, state: 'queued', error: null, createdAt: 'now', completedAt: null };
-      const result = request.operation === 'capabilities' ? { enabled: true, protocol: 1, skillSessions: 1, skillAuthorTools: 1 }
+      const result = request.operation === 'capabilities' ? { enabled: true, protocol: 1, skillSessions: 1, skillAuthorTools: 1, globalSkills: 1 }
         : request.operation === 'events' ? { events: [{ seq: 7, runId: run.id, kind: 'run', payload: run }], session: {} }
           : { ...run, ...(request.operation === 'stop_run' ? { state: 'interrupted', id: request.runId } : {}) };
       socket.end(JSON.stringify(request.operation === 'events' && events++ > 0 ? { error: 'Fixture stream ended.', code: 503 } : { result }) + '\n');
@@ -43,6 +43,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     const opts = await app.inject({ url: base + '/options', headers });
     assert.equal(opts.statusCode, 200, opts.body); assert.equal(opts.json().tools.length, 11);
     assert.equal(opts.json().engine.profile, 'studio-skill-tools-v2'); assert.equal(opts.json().engine.available, true);
+    assert.equal(opts.json().skills.length, 2); assert(opts.json().skills.every((skill: { available: boolean }) => !skill.available));
     assert.equal(opts.json().development, undefined);
     const payload = { name: 'Author', providerId: provider, model: 'fixture', effort: 'low', requestId: randomUUID() };
     assert.equal((await app.inject({ method: 'POST', url: base, headers: { cookie: headers.cookie }, payload })).statusCode, 403);
@@ -50,19 +51,24 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     assert.equal(created.statusCode, 201, created.body);
     const session = created.json().session;
     assert.deepEqual(session.owner, { type: 'skill', id }); assert.equal(session.projectId, undefined);
+    assert.deepEqual(session.skillOverrides, {});
     assert.equal(Object.keys(session.permissions).length, 11);
     assert.equal((await app.inject({ method: 'POST', url: base, headers, payload })).json().session.id, session.id);
     assert.equal((await app.inject({ url: `/api/skills/${other}/sessions/${session.id}`, headers })).statusCode, 404);
     assert.equal((await app.inject({ url: base, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);
     const url = base + '/' + session.id;
     assert.deepEqual((await app.inject({ url: url + '/history', headers })).json(), { items: [], before: null, cursor: 0 });
-    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, name: 'Saved name' } })).statusCode, 200);
+    const changed = await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, name: 'Saved name', skillOverrides: { [other]: false } } });
+    assert.equal(changed.statusCode, 200, changed.body); assert.deepEqual(changed.json().session.skillOverrides, { [other]: false });
+    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 2, skillOverrides: { invalid: false } } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 2, skillOverrides: { [randomUUID()]: false } } })).statusCode, 409);
     assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, name: 'Stale' } })).statusCode, 409);
     const start = await app.inject({ method: 'POST', url: url + '/runs', headers, payload: { requestId: randomUUID(), revision: 2, text: 'Draft a skill' } });
     assert.equal(start.statusCode, 202, start.body);
     const sent = messages.find((v) => v.operation === 'start_run')!;
     assert.equal(sent.ownerType, 'skill'); assert.equal(sent.ownerId, id); assert.equal(sent.projectId, undefined);
     assert.equal((sent.input as Record<string, unknown>).projectInstructions, undefined);
+    assert.equal((sent.input as Record<string, unknown>).skillSelection, 1);
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs/' + start.json().run.id + '/stop', headers })).statusCode, 200);
     const stream = await app.inject({ url: url + '/events', headers });
     assert.equal(stream.statusCode, 200); assert.match(stream.body, /id: 7\ndata:/);

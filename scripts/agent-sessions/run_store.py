@@ -36,13 +36,13 @@ def get_run(store, run_id):
 
 
 def admit(store, session_id, data, provider_dir):
-    if (set(data) not in ({'requestId', 'revision', 'text'}, {'requestId', 'revision', 'text', 'projectInstructions'})
-        or type(data['revision']) is not int or ('projectInstructions' in data and (type(data['projectInstructions']) is not int or data['projectInstructions'] != 1))):
+    if (set(data) - {'projectInstructions', 'skillSelection'} != {'requestId', 'revision', 'text'}
+        or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in ('projectInstructions', 'skillSelection'))):
         raise ProjectFault('Unexpected run fields.', 400)
     if not isinstance(data['text'], str) or not data['text'].strip() or len(data['text'].encode()) > 65536 or '\x00' in data['text']:
         raise ProjectFault('Enter a message of at most 64 KiB.', 400)
     key = identity(data['requestId']); request_hash = hashlib.sha256(encode({'sessionId': session_id,
-        **{k: v for k, v in data.items() if k != 'projectInstructions'}}).encode()).hexdigest()
+        **{k: v for k, v in data.items() if k not in ('projectInstructions', 'skillSelection')}}).encode()).hexdigest()
     store.db.execute('BEGIN IMMEDIATE')
     try:
         previous = store.db.execute('SELECT * FROM runs WHERE request_id=?', (key,)).fetchone()
@@ -56,6 +56,9 @@ def admit(store, session_id, data, provider_dir):
         validate_settings(session, provider_dir)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
+        if data.get('skillSelection') == 1:
+            from skill_application import freeze
+            snapshot['skillAccess'] = freeze(store, session['skillOverrides'])
         if store.owner_type == 'skill':
             if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
             from skill_prompt import snapshot as skill_prompt_snapshot
@@ -68,6 +71,10 @@ def admit(store, session_id, data, provider_dir):
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
         item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed'}, False)
+        unavailable = snapshot.get('skillAccess', {}).get('unavailable', [])
+        if unavailable:
+            item(store, session_id, ident, {'id': 'skill-notice-' + ident, 'runId': ident, 'type': 'notice', 'status': 'completed',
+                'text': 'Enabled skills without a published revision were unavailable for this run: ' + ', '.join(v['name'] for v in unavailable)}, False)
         event(store, session_id, ident, 'run', store.run_present(get_run(store, ident)), False)
         store.db.execute('UPDATE sessions SET updated_at=? WHERE id=?', (stamp, session_id))
         store.db.commit()

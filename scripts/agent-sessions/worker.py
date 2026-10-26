@@ -53,6 +53,8 @@ class Worker:
         self.uncertain_effect = False
         self.items = {}; self.lease = None
         self.sandbox = Sandbox(self)
+        from skill_resources import SkillResources
+        self.skill_resources = SkillResources(self)
         self.terminals = Terminals(self)
         from agent_snapshot import AgentSnapshots
         self.build_snapshots = AgentSnapshots(self)
@@ -155,7 +157,13 @@ class Worker:
                 return await output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
             if previous['result']:
                 result = json.loads(previous['result'])
-                if result.get('error') != 'unknown': return await output(result)
+                if result.get('error') != 'unknown':
+                    if result.get('skillResources'):
+                        current = {(entry['id'], entry['activeHash']) for entry in self.config.get('skillAccess', {}).get('entries', [])}
+                        if (not self.config['permissions'].get(name.replace('studio_', 'studio.', 1), False)
+                                or any((reference['id'], reference['hash']) not in current for reference in result['skillResources'])):
+                            return await output({'success': False, 'error': 'unavailable', 'output': 'This historical skill resource receipt is outside the current run selection. Its stored history was preserved.'})
+                    return await output(result)
             result = {'success': False, 'error': 'unknown', 'output': 'The previous tool outcome is unconfirmed; it was not repeated.', 'partialChangesPossible': True}
             self.unconfirmed()
             value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': name.replace('studio_', 'studio.', 1),
@@ -214,6 +222,7 @@ class Worker:
         await self.build_snapshots.close()
         if self.client: await self.client.close()
         await self.terminals.close()
+        await self.skill_resources.close()
 
     async def run(self):
         if not self.row['busy']: return

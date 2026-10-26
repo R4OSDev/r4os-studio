@@ -129,3 +129,8 @@
 
 .agent-skill-result { font-size: 13px; overflow-wrap: anywhere; }
 .agent-skill-result ul { padding-left: 20px; }
+
+.agent-skill-choices { font-size: 13px; line-height: 1.5; }
+.agent-skill-choices > p { color: var(--muted); }
+.agent-skill-choices .agent-permission { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.agent-skill-choices small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; overflow-wrap: anywhere; }
