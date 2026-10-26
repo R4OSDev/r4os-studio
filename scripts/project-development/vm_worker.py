@@ -205,6 +205,10 @@ async def main():
             from vm_start import VmStart
             try: await asyncio.wait_for(VmStart(store, job).run(), LIMITS['vmStartTimeoutSeconds'])
             except asyncio.TimeoutError: raise DevelopmentFault('VM start and SSH readiness exceeded the host deadline. Inspect the saved job before retrying.') from None
+        elif job['kind'] in ('update_install', 'update_commit'):
+            from update_install import Installation, Commit
+            runner = Commit if job['kind'] == 'update_commit' else Installation
+            await asyncio.wait_for(runner(store, job).run(), 540)
         elif job['kind'] == 'update_transfer':
             from update_transfer import Transfer
             await asyncio.wait_for(Transfer(store, job).run(), 420)

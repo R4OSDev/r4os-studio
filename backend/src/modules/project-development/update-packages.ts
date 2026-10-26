@@ -19,6 +19,34 @@ const requirement = { type: 'object', additionalProperties: false,
     minVersion: { type: 'string', minLength: 1, maxLength: 24 }, state: { type: 'string', enum: ['installed', 'active'] } } };
 export function updatePackageRoutes(app: FastifyInstance, security: ProjectSessions) {
   const base = '/:id/update-packages';
+
+  app.get<{ Params: { id: string } }>(base + '/installations', { schema: { params } }, async (request, reply) => {
+    security.session(request, reply); return developmentHost({ operation: 'update_list', projectId: request.params.id });
+  });
+  app.get<{ Params: { id: string; updateId: string } }>(base + '/installations/:updateId', {
+    schema: { params: { ...params, required: ['id', 'updateId'], properties: { id: identity, updateId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply); return developmentHost({ operation: 'read_update', projectId: request.params.id, id: request.params.updateId });
+  });
+  for (const [route, operation, properties] of [
+    ['installs', 'update_install', { transferJobIds: { type: 'array', minItems: 1, maxItems: 16, uniqueItems: true, items: identity } }],
+    ['commits', 'update_commit', { updateId: identity, updateRevision: revision, batchId: { type: 'string', pattern: '^[0-9]{1,20}$' },
+      targetRelease: { type: 'string', maxLength: 24 }, vmRevision: { type: 'string', minLength: 1, maxLength: 100 }, confirmReboot: { type: 'boolean', const: true } }],
+  ] as const) {
+    const fields = { requestId: identity, projectRevision: revision, ...properties };
+    app.post<{ Params: { id: string }; Body: Record<string, unknown> }>(base + '/' + route, {
+      bodyLimit: 8192,
+      preValidation: async request => {
+        if (!request.body || typeof request.body !== 'object' || Object.keys(request.body).some(key => !Object.hasOwn(fields, key))) {
+          throw new ProjectError('Unexpected native update action fields.', 400);
+        }
+      },
+      schema: { params, body: { type: 'object', additionalProperties: false, required: Object.keys(fields), properties: fields } },
+    }, async (request, reply) => {
+      security.mutation(request, reply);
+      return reply.code(202).send({ job: await developmentHost({ operation, projectId: request.params.id, input: request.body }) });
+    });
+  }
   for (const [route, operation] of [['probes', 'update_probe'], ['transfers', 'update_transfer']] as const) {
   app.post<{ Params: { id: string }; Body: { requestId: string; projectRevision: number; packageArtifactId: string } }>(base + '/' + route, {
     bodyLimit: 4096,

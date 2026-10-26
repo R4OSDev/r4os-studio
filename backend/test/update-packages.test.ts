@@ -67,6 +67,19 @@ await test('update plans require session and CSRF, bind artifact IDs and reject 
     }
     assert.equal((await app.inject({ method: 'POST', url: transferUrl, headers, payload: probe })).statusCode, 202);
     assert.deepEqual(received.at(-1), { operation: 'update_transfer', projectId: project, input: probe });
+
+    const install = { requestId: randomUUID(), projectRevision: 2, transferJobIds: [randomUUID()] };
+    const installUrl = '/api/projects/' + project + '/update-packages/installs';
+    assert.equal((await app.inject({ method: 'POST', url: installUrl, payload: install })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: installUrl, headers, payload: { ...install, command: 'SYSUPD APPLY' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: installUrl, headers, payload: install })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'update_install', projectId: project, input: install });
+    const commit = { requestId: randomUUID(), projectRevision: 2, updateId: randomUUID(), updateRevision: 1,
+      batchId: '9007199254740993', targetRelease: '0.87.14', vmRevision: randomUUID(), confirmReboot: true };
+    const commitUrl = '/api/projects/' + project + '/update-packages/commits';
+    assert.equal((await app.inject({ method: 'POST', url: commitUrl, headers, payload: { ...commit, confirmReboot: false } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: commitUrl, headers, payload: commit })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'update_commit', projectId: project, input: commit });
   } finally {
     await app.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     delete process.env.STUDIO_DEVELOPMENT_SOCKET; await rm(directory, { recursive: true, force: true });

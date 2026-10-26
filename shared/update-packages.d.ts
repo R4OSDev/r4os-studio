@@ -96,3 +96,14 @@ export interface UpdateTransfer {
   reconciliation?: { tmp: UpdateFileRead | null; final: UpdateFileRead | null; readOnly: true; observedAt: string };
 }
 export interface UpdateFileRead { bytes: number; sha256: string; fullReadVerified: true }
+
+export interface UpdateInstallation {
+  schema: 1; id: string; projectId: string; jobId: string; revision: number; phase: string;
+  vmId: string; vmRevision: string; imageId: string; imageSha256: string; systemGeneration: string | null;
+  sourceBootId: string; targetRelease: string; packageArtifactIds: string[]; transferJobIds: string[];
+  createdAt: string; updatedAt: string; lastStatus: SysupdReply; batchId?: string; transactions: string[];
+  stagedPackageIds?: string[]; installationConfirmed?: boolean; error?: string; externalWriterLock: false;
+  rebootAuthorized?: boolean; commitJobId?: string; commitBootId?: string; commitReply?: SysupdReply;
+  commands: { id: string; operation: string; command: string; intentAt: string; mutating: boolean; sent: boolean;
+    capture?: UpdateCommandCapture; reply?: SysupdReply }[];
+}

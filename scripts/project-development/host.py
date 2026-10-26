@@ -216,7 +216,7 @@ class Host:
             store = self.store(request['projectId'])
             try:
                 job = store.get(request['jobId']); vm = vm_config(self.config['r4os'], lease['vmId'])
-                if job['kind'] not in ('update_probe', 'update_transfer') or job['state'] != 'running' or job['binding']['id'] != vm['id']:
+                if job['kind'] not in ('update_probe', 'update_transfer', 'update_install', 'update_commit') or job['state'] != 'running' or job['binding']['id'] != vm['id']:
                     raise DevelopmentFault('This job has no active update target admission.')
                 info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
                 if info['vm']['state'] != 'running': raise DevelopmentFault('Start the assigned VM explicitly before checking updates.')
@@ -224,6 +224,14 @@ class Host:
                 target = {'vmId': vm['id'], 'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'],
                     'bootId': boot['bootId'], 'systemGeneration': vm.get('systemGeneration'), 'vmInvocationId': info['invocationId']}
                 store.update(job['id'], target=target); return target
+            finally: store.close()
+        if op in ('update_list', 'read_update'):
+            if set(request) != {'operation', 'projectId'} | ({'id'} if op == 'read_update' else set()):
+                raise DevelopmentFault('Unexpected update record fields.', 400)
+            store = self.store(identity(request['projectId']))
+            try:
+                from update_state import read, listing
+                return {'update': read(store, identity(request['id']))} if op == 'read_update' else {'updates': listing(store)}
             finally: store.close()
         if op in ('update_options', 'update_plan', 'read_update_plan', 'update_batch_preview'):
             fields = {'operation', 'projectId'} | ({'input'} if op in ('update_plan', 'update_batch_preview') else {'id'} if op == 'read_update_plan' else set())
@@ -242,16 +250,16 @@ class Host:
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
+                    'features': {'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op in ('read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
-        if op in ('build', 'package', 'update_probe', 'update_transfer', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
+        if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -405,9 +413,9 @@ class Host:
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
                 if owner is not None: authorize(store, owner, op, peer_pid)
                 if not previous:
-                    if op in ('update_probe', 'update_transfer'):
+                    if op in ('update_probe', 'update_transfer', 'update_install', 'update_commit'):
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
-                        if not all((target / ('scripts/project-development/' + name + '.py')).is_file() for name in (('update_probe', 'update_transfer', 'inbox_sftp') if op == 'update_transfer' else ('update_probe',))):
+                        if not all((target / ('scripts/project-development/' + name + '.py')).is_file() for name in (('update_probe', 'update_transfer', 'inbox_sftp', 'update_install', 'update_state', 'update_jobs') if op != 'update_probe' else ('update_probe',))):
                             raise DevelopmentFault('A compatible update preflight worker must be adopted first.', 503)
                     if op == 'package':
                         from package_support import available
@@ -417,7 +425,7 @@ class Host:
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None
-                if op in ('deploy', 'execution', 'vm_start', 'update_probe', 'update_transfer') and not previous:
+                if op in ('deploy', 'execution', 'vm_start', 'update_probe', 'update_transfer', 'update_install', 'update_commit') and not previous:
                     from access import vm_config
                     if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings first.')
                     from lease import maintenance_active
@@ -430,6 +438,9 @@ class Host:
                         deployed = store.deployment_metadata(request['input'].get('deploymentId'))
                         if deployed.get('helperCapabilities', {}).get('controlVersion') != 2 or deployed.get('helperCapabilities', {}).get('watchdogVersion') != 1:
                             raise DevelopmentFault('This deployment has an older guest helper. Deploy the artifact again before running.')
+                    if op in ('deploy', 'execution', 'vm_start', 'update_transfer', 'update_install'):
+                        from update_state import idle
+                        idle(store.projects, binding['id'])
                     status = self.access.public(binding['id'])
                     if not status['available']: raise DevelopmentFault(status['reason'])
                 job, fresh = store.admit(op, request['input'], owner, binding)

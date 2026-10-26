@@ -19,6 +19,9 @@ async def reserve(store, job, scope, timeout=180):
                 lease = None
                 if asyncio.get_running_loop().time() >= deadline: raise DevelopmentFault('The assigned VM remained busy. No guest action was started.')
                 store.update(job['id'], phase='waiting_for_vm'); await asyncio.sleep(.25)
+        if job['kind'] in ('deploy', 'execution', 'vm_start', 'update_transfer', 'update_install'):
+            from update_state import idle
+            idle(store.projects, job['binding']['id'])
         yield lease
     finally:
         if lease: lease.__exit__(None, None, None)
