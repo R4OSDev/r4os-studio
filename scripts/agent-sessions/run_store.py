@@ -54,6 +54,9 @@ def admit(store, session_id, data, provider_dir):
         if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.')
         if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone():
             raise ProjectFault('Another run is using this workspace.')
+        if store.owner_type == 'project':
+            from project_maintenance import pending_git
+            if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
         validate_settings(session, provider_dir)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}

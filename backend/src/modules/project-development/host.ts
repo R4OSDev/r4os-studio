@@ -12,7 +12,7 @@ export function developmentHost<T>(request: Record<string, unknown>): Promise<T>
       settled = true; clearTimeout(timer); socket.destroy();
       if (error) reject(error); else resolve(result!);
     };
-    const timer = setTimeout(() => finish(new ProjectError('The development coordinator did not respond.', 503)), 25_000);
+    const timer = setTimeout(() => finish(new ProjectError('The development coordinator did not respond.', 503)), ['github_import_finish', 'github_pull_validate'].includes(String(request.operation)) ? 190_000 : 25_000);
     socket.on('error', () => finish(new ProjectError('Development host support is unavailable.', 503)));
     socket.on('connect', () => socket.end(JSON.stringify(request) + '\n'));
     socket.on('data', (part) => {

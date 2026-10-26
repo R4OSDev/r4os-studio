@@ -205,5 +205,43 @@ class GitTests(unittest.TestCase):
             with self.assertRaises(ProjectFault): push(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'commitMessage': 'Own second commit'})
             self.assertTrue(readback(action)['pushed']); self.assertEqual(action.git.text('rev-list', '--count', 'HEAD'), '2'); self.assertEqual(remote['pushes'], 2)
 
+    def test_fast_forward_preserves_ignored_files_and_recovers_after_source_exchange(self):
+        from pulling import prepare, apply, reconcile as recover
+        from common import digest, document
+        from project_maintenance import pending_git
+        action = Operations(self.config, self.job()); action.initialize()
+        (self.source / '.gitignore').write_text('ignored-local.txt\n')
+        action.git.run('add', '--all'); action.git.run('-c', 'user.name=Own QA', '-c', 'user.email=qa@example.invalid', 'commit', '--no-gpg-sign', '-m', 'Old source')
+        old = action.git.head(); (self.source / 'module.R4MF').write_text('new remote source\n')
+        action.git.run('add', '--all'); action.git.run('-c', 'user.name=Own QA', '-c', 'user.email=qa@example.invalid', 'commit', '--no-gpg-sign', '-m', 'Incoming source')
+        incoming = action.git.head(); action.git.run('update-ref', 'HEAD', old, incoming); action.git.run('read-tree', old)
+        (self.source / 'module.R4MF').write_text('test manifest\n'); (self.source / 'ignored-local.txt').write_text('keep local ignored bytes\n')
+        repo = {'id': 11, 'owner': 'octocat', 'name': 'own-qa', 'fullName': 'octocat/own-qa', 'archived': False}
+        action.bound = {'schema': 1, 'revision': 1, 'connectionId': str(uuid.uuid4()), 'userId': 7, 'repository': repo, 'branch': 'main', 'author': {'name': 'Own QA', 'email': 'qa@example.invalid'}}
+        save(action.base / 'binding.json', action.bound)
+        def fetch(): action.remote = repo; return incoming
+        with patch.object(action, 'fetch', side_effect=fetch):
+            state = action.status(True); self.assertEqual(state['state'], 'behind'); self.assertFalse(state['changes'])
+            action.job = self.job('prepare_pull'); ready = prepare(action, {'bindingRevision': 1, 'snapshot': state['snapshot'], 'remoteHead': incoming})
+            stage = action.base / 'Pulls' / ready['preparationId']; proposal = document(stage / 'prepare.json')
+            approved = {'approved': True, 'requestId': ready['preparationId'], 'projectId': self.identity, 'newHead': incoming, 'newSnapshot': proposal['newSnapshot'], 'projectRevision': 1, 'pinsHash': digest({})}
+            save(stage / 'approval.json', {**approved, 'pinsHash': 'invalid'})
+            action.job = self.job('pull'); data = {'preparationId': ready['preparationId'], 'bindingRevision': 1, 'snapshot': state['snapshot']}
+            with self.assertRaises(ProjectFault): apply(action, data)
+            self.assertEqual(action.git.head(), old)
+            save(stage / 'approval.json', approved)
+            with patch('pulling.complete', side_effect=ProjectFault('Injected metadata interruption', 503)):
+                with self.assertRaises(ProjectFault): apply(action, data)
+            self.assertEqual((self.source / 'module.R4MF').read_text(), 'new remote source\n'); self.assertEqual(action.git.head(), old)
+            self.assertTrue(pending_git(self.projects, self.identity))
+            with self.assertRaises(ProjectFault):
+                with locks(self.projects, self.identity): pass
+            with locks(self.projects, self.identity, recovery=True): self.assertTrue(recover(action)['pulled'])
+            self.assertFalse(pending_git(self.projects, self.identity)); self.assertEqual(action.git.head(), incoming)
+            self.assertEqual((self.source / 'ignored-local.txt').read_text(), 'keep local ignored bytes\n')
+            self.assertEqual((stage / 'New/module.R4MF').read_text(), 'test manifest\n')
+            (self.source / 'module.R4MF').write_text('own dirty source\n'); action.job = self.job('prepare_pull')
+            with self.assertRaises(ProjectFault): prepare(action, {'bindingRevision': 1, 'snapshot': action.status()['snapshot'], 'remoteHead': incoming})
+
 
 if __name__ == '__main__': unittest.main()

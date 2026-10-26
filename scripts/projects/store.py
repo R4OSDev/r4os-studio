@@ -120,10 +120,11 @@ def operation(db, request, root):
         data = request['input']
         if not set(data).issubset({'name', 'description', 'vmId', 'revision'}) or 'revision' not in data:
             raise ProjectFault('Unexpected project fields.', 400)
-        from project_maintenance import pending_update
+        from project_maintenance import pending_update, pending_git
         catalog_path = Path(db.execute('PRAGMA database_list').fetchone()[2]).parent
         if pending_update(catalog_path,request['id']):
             raise ProjectFault('Resolve this project\'s owned native update before changing its settings.')
+        if pending_git(catalog_path, request['id']): raise ProjectFault('Reconcile the original Git pull before changing project settings.', 409)
         db.execute('BEGIN IMMEDIATE')
         old = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (request['id'],)).fetchone(), db)
         if old['revision'] != data['revision']:

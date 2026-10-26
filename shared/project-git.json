@@ -1,5 +1,5 @@
 {
   "protocol": 1,
-  "actions": ["initialize", "bind", "status", "check", "diff", "create_repository", "import", "push"],
+  "actions": ["initialize", "bind", "status", "check", "diff", "create_repository", "import", "push", "prepare_pull", "pull"],
   "limits": { "jobs": 2, "seconds": 300, "sourceFiles": 10000, "sourceBytes": 268435456, "fileBytes": 33554432, "objectBytes": 536870912 }
 }

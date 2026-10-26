@@ -51,7 +51,8 @@ def worker_check(runs, jobs, action='deleting'):
 def collect(projects, ident, hosts):
     if hosts.get('unsafe'):
         raise ProjectFault('Wait for the updated project hosts to become ready before deleting. Existing data was preserved.', 503)
-    from project_maintenance import pending_update
+    from project_maintenance import pending_update, pending_git
+    if pending_git(projects, ident): raise ProjectFault('Reconcile the original Git pull before deleting its recovery data.', 409)
     if pending_update(projects,ident):
         raise ProjectFault('Resolve this project\'s owned native update before deleting its package/recovery evidence.',409)
     project = projects / ident

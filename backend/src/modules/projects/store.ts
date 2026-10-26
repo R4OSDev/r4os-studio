@@ -15,7 +15,7 @@ export class ProjectError extends Error {
   constructor(message: string, public statusCode = 503) { super(message); }
 }
 
-export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' | 'create' | 'system_prompt' | 'skill_prompt' | 'delete' | 'project_agents' | 'clear_cache' | 'editor' | 'github_import' = 'store'): Promise<T> {
+export function projectStore<T>(directory: string, request: Record<string, unknown>, helper: 'store' | 'sdk' | 'create' | 'system_prompt' | 'skill_prompt' | 'delete' | 'project_agents' | 'clear_cache' | 'editor' = 'store'): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL(`../../../../scripts/projects/${helper}.py`, import.meta.url)), directory, componentRoot()],
       { detached: true, stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });

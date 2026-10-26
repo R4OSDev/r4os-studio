@@ -90,6 +90,8 @@ class Jobs:
         return values
 
     def admit(self, kind, request, owner=None, binding=None):
+        from project_maintenance import pending_git
+        if pending_git(self.projects, self.id): raise DevelopmentFault('Reconcile the original Git pull before another development job.', 409)
         if kind in ('update_install', 'update_commit', 'update_verify', 'update_recovery'):
             from update_jobs import admit
             return admit(self, kind, request, owner, binding)

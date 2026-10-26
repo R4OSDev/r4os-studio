@@ -16,7 +16,7 @@ import time
 import fcntl
 from common import ProjectFault, document, folder, now, project_id, save, digest, locks
 
-KINDS = ('initialize', 'bind', 'status', 'check', 'diff', 'create_repository', 'import', 'push', 'pull')
+KINDS = ('initialize', 'bind', 'status', 'check', 'diff', 'create_repository', 'import', 'push', 'prepare_pull', 'pull')
 READS = ('status', 'check', 'diff')
 
 
@@ -87,7 +87,7 @@ class Coordinator:
                             with acquire(self.config['projects'], job['projectId'], exclusive=True): result = reconcile(self.config, job)
                         else:
                             from operations import reconcile
-                            with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in READS):
+                            with locks(self.config['projects'], job['projectId'], mutate=job['kind'] not in READS, recovery=job['kind'] == 'pull'):
                                 result = reconcile(self.config, job)
                         if result is not None:
                             job.update(state='completed', phase='reconciled', result=result, error=None, updatedAt=now()); save(path, job)

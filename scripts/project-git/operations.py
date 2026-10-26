@@ -199,6 +199,9 @@ class Operations:
         if kind == 'push':
             from pushing import push
             return push(self, data)
+        if kind in ('prepare_pull', 'pull'):
+            from pulling import prepare, apply
+            return prepare(self, data) if kind == 'prepare_pull' else apply(self, data)
         if kind in ('status', 'check'): return self.status(kind == 'check')
         raise ProjectFault('This Git action is not available in this release.', 409)
 
@@ -206,6 +209,9 @@ class Operations:
 def reconcile(config, job):
     """Readback only. More effect-specific readbacks are added with their owning actions."""
     base = storage(config['projects'], job['projectId'])
+    if job['kind'] in ('prepare_pull', 'pull'):
+        from pulling import reconcile as reconcile_pull
+        return reconcile_pull(Operations(config, job))
     if job['kind'] == 'push':
         from pushing import reconcile as reconcile_push
         return reconcile_push(Operations(config, job))

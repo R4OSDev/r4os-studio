@@ -34,6 +34,7 @@ async def systemctl(*args):
 class Host:
     def __init__(self, config):
         self.config = config; self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set()
+        self.git_validation = asyncio.Semaphore(1); self.git_validating = 0
         self.root = folder(Path(config['projects']) / '.studio/development')
         from boot import BootWatch
         from access import Access
@@ -131,6 +132,27 @@ class Host:
 
     async def handle(self, request, peer_pid=None):
         op = request.get('operation')
+        if op in ('github_import_finish', 'github_pull_validate'):
+            if set(request) != {'operation', 'projectId', 'input'} or not isinstance(request.get('input'), dict): raise DevelopmentFault('Invalid GitHub SDK validation request.', 400)
+            project_id = identity(request['projectId'])
+            helper = 'github_import' if op == 'github_import_finish' else 'github_pull'
+            payload = {'operation': 'finish', 'id': project_id, 'input': request['input']} if helper == 'github_import' else {'operation': 'validate', 'id': project_id, 'requestId': identity(request['input'].get('requestId'))}
+            if helper == 'github_pull' and set(request['input']) != {'requestId'}: raise DevelopmentFault('Unexpected pull validation fields.', 400)
+            async with self.git_validation:
+                self.git_validating += 1
+                try:
+                    process = await asyncio.create_subprocess_exec('/usr/bin/python3', '-B', str(APP / 'scripts/projects' / (helper + '.py')), self.config['projects'], self.config['r4os'],
+                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, start_new_session=True)
+                    try: output, _ = await asyncio.wait_for(process.communicate(encode(payload).encode()), 180)
+                    except BaseException:
+                        try: os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError: pass
+                        await process.wait(); raise
+                    if len(output) > 2 * 1024**2: raise DevelopmentFault('GitHub SDK response exceeded its limit.', 503)
+                    value = json.loads(output)
+                    if 'error' in value: raise DevelopmentFault(value['error'], value.get('code', 503))
+                    return value['result']
+                finally: self.git_validating -= 1
         if op in ('reset_admission', 'reset_completed'):
             if set(request) != ({'operation', 'vmId'} | ({'revision'} if op == 'reset_completed' else set())):
                 raise DevelopmentFault('Invalid VM reset admission.', 400)
@@ -541,7 +563,7 @@ async def main():
             try:
                 async with host.lock:
                     await host.refresh(); release = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and release != APP:
+                    if not host.active and not host.unbound and not host.git_validating and release != APP:
                         protocol(release); script = release / 'scripts/project-development/host.py'
                         if not release.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022: raise ValueError()
                         replacement = script; stopped.set()

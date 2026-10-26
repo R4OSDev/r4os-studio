@@ -5,7 +5,7 @@ import { projectRequest } from '../projects/api';
 import { ConnectionSelect } from './ConnectionSelect';
 import { RepositorySelect } from './RepositorySelect';
 import type { RepositoryChoice } from './RepositorySelect';
-import { clearGit, pendingGit, runGitJob, waitGitJob } from './projectApi';
+import { clearGit, clearPull, pendingGit, pendingPull, pullProject, runGitJob, waitGitJob } from './projectApi';
 import { loadConnections } from './api';
 import './project.css';
 
@@ -56,10 +56,21 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
+  async function pull() {
+    if (!status || busy) return;
+    setBusy(true); setError('');
+    try {
+      await pullProject(id, token, status, setJob);
+      const read = await runGitJob(id, token, 'status', {}); if (read.result && 'snapshot' in read.result) setStatus(read.result);
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   const connection = connections.find((v) => v.id === binding?.connectionId);
-  const retained = pendingGit(id), unresolved = job?.state === 'unknown' || !!retained;
+  const retained = pendingGit(id), pullRequest = pendingPull(id), unresolved = job?.state === 'unknown' || !!retained || !!pullRequest;
   return <section className="project-github" aria-label="Project GitHub">
-    <header><h2>GitHub</h2><div className="github-actions"><button type="button" disabled={busy || loading} onClick={() => { setDiff(undefined); void update('check'); }}>Refresh</button></div></header>
+    <header><h2>GitHub</h2><div className="github-actions"><button type="button" disabled={busy || loading} onClick={() => { setDiff(undefined); void update('check'); }}>Refresh</button>
+      {kinds.includes('pull') && binding && <button type="button" disabled={busy || loading || !status || editing || !!commitMessage.trim() || (!pullRequest && (unresolved || !!status.changes.length || !['behind', 'up_to_date'].includes(status.state)))} onClick={() => void pull()}>{pullRequest ? 'Resume original pull' : 'Pull'}</button>}
+    </div></header>
     {loading && <p role="status">Loading GitHub status…</p>}
     {binding ? <dl className="github-summary">
       <div><dt>Repository</dt><dd><a href={binding.repository.url} target="_blank" rel="noreferrer">{binding.repository.fullName}</a></dd></div>
@@ -84,8 +95,10 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
     {job && <section className="github-job" aria-label="Last GitHub operation"><h3>Last operation</h3><p role="status">{job.kind} · {job.state} · {job.phase}</p><p>Request: {job.id}</p>{job.error && <p role="alert">{job.error}</p>}
       {job.state === 'unknown' && <button type="button" disabled={busy} onClick={() => void reconcile()}>Reconcile original operation</button>}
       {job.result && 'pushed' in job.result && <p>{job.result.pushed ? 'Push confirmed' : job.result.nothingToPush ? 'Nothing to push' : 'Local commit retained. Review the current state, then push explicitly.'}{job.result.commit ? ' · ' + job.result.commit.slice(0, 12) : ''}</p>}
+      {job.result && 'pulled' in job.result && job.kind === 'pull' && <p>{job.result.pulled ? 'Pull confirmed' : 'No source update applied.'}</p>}
     </section>}
     {retained && job?.state !== 'unknown' && <button type="button" disabled={busy} onClick={() => void update(retained.kind, retained.input, true)}>Retry original operation</button>}
+    {pullRequest && !pullRequest.apply && !retained && <button type="button" disabled={busy} onClick={() => { clearPull(id); setError('Prepared pull cancelled. Current sources were preserved.'); }}>Cancel prepared pull</button>}
     {!kinds.length && !loading && <p role="status">Git host support is unavailable.</p>}
     {busy && <p role="status">Git operation in progress…</p>}{error && <p role="alert">{error}</p>}
   </section>;

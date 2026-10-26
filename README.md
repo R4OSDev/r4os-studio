@@ -1,5 +1,31 @@
 # R4OS Studio · App
 
+## Protected fast-forward pull (0.5.7)
+
+Pull requires a clean saved index/workspace and no editor drafts. The same
+repository identity and confirmed branch must be strictly behind its remote;
+divergence, a missing branch, changed snapshots and active work block updates.
+Preparation retains local ignored files, rejects incoming collisions and stages
+the target Git blobs. The exact installed SDK checks the root app manifest,
+language, technical name, application role and unchanged portable pins before
+publication. No default selection or repository script replaces the project pins.
+
+The existing unprivileged development coordinator now performs only the two fixed
+import-finish/pull-validation adapters; it pins their release, serializes checks
+and retains its existing permissions. This fixes authenticated import completion
+without relaxing the web service's RestrictSUIDSGID/openat2 policy or exposing
+GitHub credentials to SDK namespaces. Git and SDK validation stay separate.
+
+Apply rechecks all files (including ignored files), project revision/pins,
+repository revision and the exact approved remote commit under the project and
+workspace leases. Atomic directory exchange retains the previous sources;
+CAS-updated refs/index and a durable journal allow recovery after interruption.
+New edits, runs, development work and deletion wait for unresolved source/ref
+recovery. Open editor buffers are marked externally changed, never discarded.
+Browser continuation retains original preparation/apply IDs across lost replies.
+Ten focused Git cases include an interruption immediately after source exchange,
+ignored-file retention, invalid approval rejection and dirty-source blocking.
+
 ## Manual commit and push (0.5.6)
 
 Projects → GitHub requires a commit description and shows the saved file selection

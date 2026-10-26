@@ -42,7 +42,17 @@ def pending_update(projects,identity):
     return False
 
 
-def busy(projects, identity):
+def pending_git(projects, identity):
+    path = Path(projects) / identity / '.studio/git/pull-journal.json'
+    if not path.exists() and not path.is_symlink(): return False
+    if path.resolve(strict=True) != path or not stat.S_ISREG(path.lstat().st_mode) or path.stat().st_size > 65536: raise ProjectFault('Git recovery metadata needs review.', 503)
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict) or value.get('schema') != 1: raise ProjectFault('Git recovery metadata needs review.', 503)
+    return value.get('phase') in ('prepared', 'exchanged', 'ref_updated')
+
+
+def busy(projects, identity, ignore_git=False):
+    if not ignore_git and pending_git(projects, identity): return True
     if pending_update(projects,identity):return True
     directory = project_directory(projects, project_id(identity))
     for relative, table in (('Sessions/Sessions.sqlite', 'runs'), ('Development/Development.sqlite', 'jobs')):
@@ -53,6 +63,6 @@ def busy(projects, identity):
     return False
 
 
-def require_idle(projects, identity):
-    if busy(projects, identity):
+def require_idle(projects, identity, ignore_git=False):
+    if busy(projects, identity, ignore_git):
         raise ProjectFault('Wait for active agent runs and development jobs to finish.', 409)

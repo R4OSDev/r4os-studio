@@ -134,7 +134,7 @@ def digest(value): return hashlib.sha256(json.dumps(value, sort_keys=True, separ
 
 
 @contextmanager
-def locks(projects, identity, mutate=True, agent=None):
+def locks(projects, identity, mutate=True, agent=None, recovery=False):
     # Lifetime and workspace lock order matches existing project maintenance.
     lifetime = acquire(projects, identity, exclusive=mutate and agent is None)
     workspace_lock = None
@@ -143,7 +143,7 @@ def locks(projects, identity, mutate=True, agent=None):
         if mutate:
             if agent is not None: agent.verify(projects, identity)
             else:
-                require_idle(projects, identity)
+                require_idle(projects, identity, ignore_git=recovery)
                 path = folder(Path(projects) / '.studio') / ('workspace-' + identity + '.lock')
                 fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600); workspace_lock = os.fdopen(fd, 'a')
                 try: fcntl.flock(workspace_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
