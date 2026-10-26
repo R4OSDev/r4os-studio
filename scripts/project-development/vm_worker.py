@@ -205,6 +205,12 @@ async def main():
             from vm_start import VmStart
             try: await asyncio.wait_for(VmStart(store, job).run(), LIMITS['vmStartTimeoutSeconds'])
             except asyncio.TimeoutError: raise DevelopmentFault('VM start and SSH readiness exceeded the host deadline. Inspect the saved job before retrying.') from None
+        elif job['kind'] == 'update_verify':
+            from update_verify import Observation
+            from update_state import read
+            value=read(store,job['updateId'],current=True)
+            if value['revision']!=job['updateRevision']:raise DevelopmentFault('The update changed before verification.')
+            await asyncio.wait_for(Observation(store,job,value,**job['verification']).run(), 510)
         elif job['kind'] in ('update_install', 'update_commit'):
             from update_install import Installation, Commit
             runner = Commit if job['kind'] == 'update_commit' else Installation

@@ -50,6 +50,9 @@ class Installation:
         call={'id':key,'operation':operation,'command':command,'intentAt':now(),'mutating':mutating,'sent':False}
         self.value['commands'].append(call);self.persist()
         call=self.value['commands'][-1];call['sent']=True;self.persist()
+        if mutating:
+            from update_epoch import invalidate
+            self.value['updateEpoch']=invalidate(self.store,self.value,operation);self.persist()
         try:
             captured=await ssh.exec(command,timeout=90 if operation=='STAGE' else 30,complete=True,limit=131072)
             save(self.work/('command-'+key+'.json'),captured)
@@ -75,6 +78,8 @@ class Installation:
         from vm_worker import guard
         self.lease=lease;state.idle(self.store.projects,target['vmId'])
         items=transfers(self.store,[item['jobId'] for item in self.job['updateTransfers']],self.job['binding'])
+        if any(item['transfer'].get('hostKeyFingerprint')!=observation['hostKeyFingerprint'] for item in items):
+            raise DevelopmentFault('The original Inbox SSH host-key binding changed. Verify identity and create a new explicit transfer.')
         packages=[item['package'] for item in items]
         self.value={'schema':1,'id':self.job['updateId'],'projectId':self.store.id,'jobId':self.job['id'],'revision':0,
             **{key:target[key] for key in ('vmId','vmRevision','imageId','imageSha256','systemGeneration')},
@@ -114,7 +119,7 @@ class Installation:
                     else:
                         batch=reply['fields'].get('batch')
                         if (not batch or native.get('batchId')!=batch or native.get('batchPhase')!='staged'
-                                or self.value.get('batchId',batch)!=batch or native['fields']['release']!=self.value['targetRelease']):
+                                or self.value.get('batchId',batch)!=batch or (native['mode']=='batch' and native['fields']['release']!=self.value['targetRelease'])):
                             raise UnconfirmedGuestEffect('STAGE has no matching owned staged batch.')
                         count=len(self.value.get('stagedPackageIds',[]))+1
                         if reply['fields'].get('packages')!=str(count):raise UnconfirmedGuestEffect('Native batch package count differs from the explicit owned plan.')
@@ -122,8 +127,13 @@ class Installation:
                     self.value['lastStatus']=status;self.persist()
                 self.value['phase']='awaiting_commit' if self.value.get('batchId') else 'live_installed'
                 self.value['installationConfirmed']=not bool(self.value.get('batchId'));self.persist()
+            if self.value['phase']=='live_installed':
+                from update_verify import Observation
+                return await Observation(self.store,self.job,self.value).in_lease(lease)
             return self.store.update(self.job['id'],'completed',phase=self.value['phase'],exitCode=0)
         except BaseException as error:
+            # A nested observation can have newer attempts/proof; preserve its current record.
+            self.value=state.read(self.store,self.value['id'],current=True)
             if any(call['mutating'] and call['sent'] for call in self.value['commands']):
                 self.value['phase']='recovery_required';self.value['error']=str(error);self.persist()
                 raise UnconfirmedGuestEffect('This native installation has an original STAGE intent. Preserve its state and use explicit recovery; no native write was retried.') from error
@@ -145,12 +155,20 @@ class Commit(Installation):
             scope['bootId']=target['bootId'];save(lease.root/'leases'/(lease.id+'.json'),lease.value)
             self.value=state.read(self.store,self.job['updateId'],current=True)
             if self.value['revision']!=self.job['updateRevision']:raise DevelopmentFault('The owned update changed while waiting for its VM.')
-            async with SshTransport(Access(self.store.projects,self.store.r4os,None),vm,lease) as ssh:
+            access=Access(self.store.projects,self.store.r4os,None)
+            if access.record(vm['id']).get('hostKeyFingerprint')!=self.value.get('hostKeyFingerprint'):
+                raise DevelopmentFault('The original SSH host-key binding changed. No COMMIT was sent.')
+            async with SshTransport(access,vm,lease) as ssh:
                 status=parse('STATUS',await ssh.exec('SYSUPD STATUS',complete=True,limit=131072))
                 if not state.matches(status,self.value) or status['status'].get('batchPhase')!='staged':raise DevelopmentFault('The fresh native batch differs from the confirmed commit action.')
                 self.value.update(phase='commit_intent',commitJobId=self.job['id'],commitBootId=target['bootId'],rebootAuthorized=True);self.persist()
-                reply=await self.command(ssh,'COMMIT',mutating=True)
-                if not reply['success'] or reply['fields'].get('batch')!=self.value['batchId'] or reply['fields'].get('release')!=self.value['targetRelease']:
-                    raise UnconfirmedGuestEffect('The original COMMIT has no exact positive batch acknowledgement.')
-                self.value['phase']='commit_unconfirmed';self.value['commitReply']=reply;self.persist()
-                raise UnconfirmedGuestEffect('COMMIT was sent once and can reboot the guest. Native post-boot status/inventory reconciliation is required; the command must not be repeated.')
+                try:
+                    reply=await self.command(ssh,'COMMIT',mutating=True)
+                    if not reply['success'] or reply['fields'].get('batch')!=self.value['batchId'] or reply['fields'].get('release')!=self.value['targetRelease']:
+                        raise UnconfirmedGuestEffect('The original COMMIT has no exact positive batch acknowledgement.')
+                    self.value['commitReply']=reply
+                except UnconfirmedGuestEffect as error:
+                    self.value['commitTransportError']=str(error)
+                self.value['phase']='reconnecting';self.persist()
+            from update_verify import Observation
+            return await Observation(self.store,self.job,self.value).in_lease(lease)

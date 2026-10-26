@@ -80,6 +80,15 @@ await test('update plans require session and CSRF, bind artifact IDs and reject 
     assert.equal((await app.inject({ method: 'POST', url: commitUrl, headers, payload: { ...commit, confirmReboot: false } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: commitUrl, headers, payload: commit })).statusCode, 202);
     assert.deepEqual(received.at(-1), { operation: 'update_commit', projectId: project, input: commit });
+
+    const verifyUrl = '/api/projects/' + project + '/update-packages/verifications';
+    const verify = { requestId: randomUUID(), projectRevision: 2, updateId: commit.updateId, updateRevision: 2,
+      deadlineSeconds: 120, fullArtifactHashes: true };
+    assert.equal((await app.inject({ method: 'POST', url: verifyUrl, payload: verify })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: verifyUrl, headers, payload: { ...verify, deadlineSeconds: 10000 } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: verifyUrl, headers, payload: { ...verify, command: 'SYSUPD RESUME-BATCH' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: verifyUrl, headers, payload: verify })).statusCode, 202);
+    assert.deepEqual(received.at(-1), { operation: 'update_verify', projectId: project, input: verify });
   } finally {
     await app.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     delete process.env.STUDIO_DEVELOPMENT_SOCKET; await rm(directory, { recursive: true, force: true });

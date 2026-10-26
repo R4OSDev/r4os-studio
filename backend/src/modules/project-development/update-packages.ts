@@ -30,6 +30,8 @@ export function updatePackageRoutes(app: FastifyInstance, security: ProjectSessi
   });
   for (const [route, operation, properties] of [
     ['installs', 'update_install', { transferJobIds: { type: 'array', minItems: 1, maxItems: 16, uniqueItems: true, items: identity } }],
+    ['verifications', 'update_verify', { updateId: identity, updateRevision: revision,
+      deadlineSeconds: { type: 'integer', minimum: 30, maximum: 300 }, fullArtifactHashes: { type: 'boolean' } }],
     ['commits', 'update_commit', { updateId: identity, updateRevision: revision, batchId: { type: 'string', pattern: '^[0-9]{1,20}$' },
       targetRelease: { type: 'string', maxLength: 24 }, vmRevision: { type: 'string', minLength: 1, maxLength: 100 }, confirmReboot: { type: 'boolean', const: true } }],
   ] as const) {

@@ -25,7 +25,7 @@ class NativeInstallation(unittest.IsolatedAsyncioTestCase):
         self.target={'vmId':self.vm,'vmRevision':'rev','imageId':'image','imageSha256':'a'*64,'systemGeneration':None,'bootId':'boot'}
         self.component={'kind':'R4X','name':'DEMO','version':'1.0.0','target':'/SOFTWARE/DEMO/DEMO.R4X'}
         self.package={'id':ident(),'bytes':100,'sha256':'b'*64,'plan':{'metadata':{'packageId':'PKG','packageVersion':'2.0.0','targetRelease':'0.87.14'},'payloads':[{'component':self.component}],'requirements':[]}}
-        self.item={'jobId':ident(),'package':self.package,'transfer':{'final':'/C/R4OS/UPDATE/INBOX/U123ABCD.R4U','guestPath':r'C:\R4OS\UPDATE\INBOX\U123ABCD.R4U'}}
+        self.item={'jobId':ident(),'package':self.package,'transfer':{'hostKeyFingerprint':'key','final':'/C/R4OS/UPDATE/INBOX/U123ABCD.R4U','guestPath':r'C:\R4OS\UPDATE\INBOX\U123ABCD.R4U'}}
         self.job['updateTransfers']=[self.item];self.current=IDLE;self.commands=[]
     def tearDown(self):self.temp.cleanup()
     async def run_stage(self,mode='live',count=1):
@@ -62,7 +62,7 @@ class NativeInstallation(unittest.IsolatedAsyncioTestCase):
             async def get_hash(this,*args):return {'bytes':100,'sha256':'0'*64 if mode=='corrupt' else 'b'*64}
         if count==2:items[1]['transfer']['guestPath']=r'C:\R4OS\UPDATE\INBOX\SECOND.R4U'
         runner=Installation(self.store,self.job);observation={'hostKeyFingerprint':'key','status':parse('STATUS',capture(IDLE))}
-        with patch('access.Access'),patch('access.SshTransport',SSH),patch('update_install.InboxSftp',Wire),patch('update_jobs.transfers',return_value=items),patch('vm_worker.guard'),patch('update_install.full_inventory',new_callable=AsyncMock,return_value=({'entries':[self.component]},[{'sha256':'x'}])):
+        with patch('access.Access'),patch('access.SshTransport',SSH),patch('update_install.InboxSftp',Wire),patch('update_jobs.transfers',return_value=items),patch('vm_worker.guard'),patch('update_install.full_inventory',new_callable=AsyncMock,return_value=({'entries':[self.component]},[{'sha256':'x'}])),patch('update_verify.Observation.in_lease',new_callable=AsyncMock,return_value={'state':'completed','phase':'live_installed'}):
             error=None
             try:result=await runner.stage(None,self.target,observation)
             except DevelopmentFault as caught:error=caught;result=None
@@ -111,12 +111,12 @@ class NativeInstallation(unittest.IsolatedAsyncioTestCase):
                 test.commands.append(command)
                 if command=='SYSUPD STATUS':return capture(test.current)
                 return capture('SYSUPD COMMIT result: OK state=Pending restart batch=7 packages=1 release=0.87.14')
-        with patch('queue_lease.reserve',reserve),patch('vm_worker.broker_call',new_callable=AsyncMock,return_value=self.target),patch('vm_worker.guard'),patch('access.Access'),patch('access.SshTransport',SSH):
+        with patch('queue_lease.reserve',reserve),patch('vm_worker.broker_call',new_callable=AsyncMock,return_value=self.target),patch('vm_worker.guard'),patch('access.Access',return_value=SimpleNamespace(record=lambda vm:{'hostKeyFingerprint':'key'},save_record=lambda *args:None)),patch('access.SshTransport',SSH),patch('update_verify.Observation.in_lease',new_callable=AsyncMock,side_effect=UnconfirmedGuestEffect('post-boot proof pending')):
             with self.assertRaises(UnconfirmedGuestEffect):await Commit(self.store,job).run()
             with self.assertRaises(DevelopmentFault):await Commit(self.store,job).run()
         self.assertEqual(self.commands.count('SYSUPD COMMIT'),1)
         latest=state.read(self.store,job['updateId'],current=True);self.assertTrue(latest['rebootAuthorized'])
-        self.assertEqual(latest['phase'],'commit_unconfirmed')
+        self.assertEqual(latest['phase'],'reconnecting')
     def test_inventory_proof_never_accepts_wrong_version_or_target(self):
         for change in [{'version':'0.0.1'},{'target':'/SOFTWARE/OTHER.R4X'}]:
             with self.assertRaises(DevelopmentFault):component_proof({'entries':[{**self.component,**change}]},[self.package])
