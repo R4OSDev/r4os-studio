@@ -39,7 +39,8 @@ with sqlite3.connect(sys.argv[1]) as db:
     const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
     const opts = await app.inject({ url: base + '/options', headers });
     assert.equal(opts.statusCode, 200, opts.body);
-    assert.equal(opts.json().tools.length, 31);
+    const optionTools = opts.json().tools.map((tool: { id: string }) => tool.id);
+    for (const id of ['studio.get_remote_host', 'studio.run_remote_command', 'studio.remote_files', 'studio.read_remote_job', 'studio.stop_remote_job']) assert(optionTools.includes(id));
     assert.equal(opts.json().providers[0].models[0].id, 'fixture-model');
     assert.equal(opts.json().engine.available, true);
     const payload = { name: 'First session', providerId: provider, model: 'fixture-model', effort: 'low', requestId: randomUUID() };
@@ -48,7 +49,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     for (const reply of replies) assert.equal(reply.statusCode, 201, reply.body);
     const session = replies[0].json().session;
     assert.equal(replies[1].json().session.id, session.id);
-    assert.equal(Object.keys(session.permissions).length, 31);
+    assert.deepEqual(Object.keys(session.permissions).sort(), optionTools.sort());
     assert.equal(session.permissions['studio.commit_update'], false);
     assert.equal(session.permissions['studio.rollback_update'], false);
     assert(Object.entries(session.permissions).filter(([key]) => !['studio.commit_update', 'studio.rollback_update', 'studio.push_project'].includes(key)).every(([, value]) => value === true));

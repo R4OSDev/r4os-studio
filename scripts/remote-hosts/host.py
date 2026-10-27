@@ -110,6 +110,7 @@ class Host:
         if request['operation'] == 'observe':
             if request['tool'] not in ('run_remote_command', 'remote_files'): raise CatalogFault('This tool has no original remote receipt.', 400)
             return self.commands.observe(actor, request['callId'], request['arguments'], request['tool'])
+        if request['tool'] == 'get_remote_host': return self.commands.metadata(actor, request['callId'], request['arguments'])
         if request['tool'] == 'read_remote_job': return self.commands.read(actor, request['callId'], request['arguments'])
         if request['tool'] == 'stop_remote_job': return self.commands.stop(actor, request['callId'], request['arguments'])
         if request['tool'] not in ('run_remote_command', 'remote_files'): raise CatalogFault('This remote adapter is not available.', 400)

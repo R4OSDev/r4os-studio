@@ -36,6 +36,23 @@ class Commands:
         self.directory = Path(directory); self.projects = self.directory.parent / 'Projects'; self.runtime = Path(runtime)
         self.transport = transport; self.active = {}
 
+    def metadata(self, actor, call_id, arguments):
+        config = actor.verify('get_remote_host', call_id, arguments); fields(arguments)
+        frozen = config.get('remoteHostBinding')
+        if not frozen:
+            return {'available': False, 'reason': config.get('remoteHostAccess', {}).get('reason', 'No Remote Host is assigned to this run.'), 'defaultTarget': 'virtual_machine'}
+        with closing(connect(self.projects)) as project_db:
+            assigned = assigned_host(project_db, actor.project_id)
+        if assigned != frozen.get('id'): raise CatalogFault('The project Remote Host binding changed. Start a new run.', 409)
+        with hosts(self.directory) as db:
+            current = host_public(db, db.execute('SELECT * FROM hosts WHERE id=?', (frozen['id'],)).fetchone())
+        if target_binding(current) != target_binding(frozen): raise CatalogFault('The frozen host endpoint, login or trust changed. Start a new run.', 409)
+        check = current.get('lastTest'); ready = (current['hostKey']['state'] == 'trusted' and check and check['status'] == 'success'
+                    and all(check.get(k) == current[k] for k in ('endpointRevision', 'credentialRevision', 'trustRevision')))
+        return {'available': True, 'host': current, 'hostId': current['id'], 'hostName': current['name'], 'defaultTarget': 'virtual_machine',
+                'capabilities': {'commands': bool(ready), 'files': bool(ready)},
+                'reason': 'Use only for explicit remote work; Check connection is historical evidence, not current reachability.' if ready else 'Use Check connection in System → Remote Hosts before commands or files.'}
+
     def admit(self, actor, call_id, raw, tool='run_remote_command'):
         import files
         operation = 'command' if tool == 'run_remote_command' else 'files'

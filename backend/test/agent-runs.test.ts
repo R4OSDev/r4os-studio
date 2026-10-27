@@ -20,7 +20,7 @@ await test('run API protects mutations and resumes durable events', async () => 
       input += part;
       if (!input.includes('\n')) return;
       const call = JSON.parse(input); calls.push(call);
-      client.end(JSON.stringify({ result: call.operation === 'capabilities' ? { globalSkills: 1, skillScripts: 1, projectInstructions: 1, vmStartTools: 1 } : call.operation === 'events' ? {
+      client.end(JSON.stringify({ result: call.operation === 'capabilities' ? { globalSkills: 1, skillScripts: 1, projectInstructions: 1, vmStartTools: 1, nativeWebSearch: 1, roadmapTools: 1, roadmapSettings: 1, remoteHostTools: 1 } : call.operation === 'events' ? {
         events: [{ seq: 7, runId, kind: 'notice', payload: { text: 'Grüße 🦀' } }], session: {},
       } : { id: runId, sessionId, state: 'queued' } }) + '\n');
     });
@@ -35,7 +35,7 @@ await test('run API protects mutations and resumes durable events', async () => 
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload })).statusCode, 403);
     const accepted = await app.inject({ method: 'POST', url: url + '/runs', payload, headers });
     assert.equal(accepted.statusCode, 202); assert.equal(accepted.json().run.id, runId);
-    assert.deepEqual(calls.find((call) => call.operation === 'start_run'), { operation: 'start_run', projectId: id, sessionId, input: { ...payload, projectInstructions: 1, skillSelection: 1, skillScripts: 1 } });
+    assert.deepEqual(calls.find((call) => call.operation === 'start_run'), { operation: 'start_run', projectId: id, sessionId, input: { ...payload, projectInstructions: 1, skillSelection: 1, skillScripts: 1, nativeWebSearch: 1, roadmapSettings: 1, remoteHostTools: 1 } });
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload: { ...payload, cwd: '/tmp' }, headers })).statusCode, 202);
     assert(!Object.hasOwn(calls.at(-1)!.input as object, 'cwd'));
     assert.equal((await app.inject({ method: 'POST', url: url + `/runs/${runId}/stop`, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);

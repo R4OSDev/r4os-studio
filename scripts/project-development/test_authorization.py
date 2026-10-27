@@ -25,10 +25,11 @@ class AuthorizationTest(unittest.TestCase):
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM jobs').fetchone()[0],1)
     def test_pid_birth_revision_profile_and_stopping_gate(self):
         authorize(self.store,self.owner,'build',os.getpid(),self.job)
-        self.config['engine']['profile']='studio-tools-v8';self.save()
-        authorize(self.store,self.owner,'build',os.getpid(),self.job)
-        authorize(self.store,self.owner,'vm_start',os.getpid(),self.job)
-        authorize_job(self.store,self.job)
+        for profile in ('studio-tools-v8', 'studio-tools-v9'):
+            self.config['engine']['profile']=profile;self.save()
+            authorize(self.store,self.owner,'build',os.getpid(),self.job)
+            authorize(self.store,self.owner,'vm_start',os.getpid(),self.job)
+            authorize_job(self.store,self.job)
         self.db.execute('UPDATE runs SET worker=?',(json.dumps({'pid':os.getpid(),'birth':'wrong'}),));self.db.commit()
         with self.assertRaises(DevelopmentFault):authorize(self.store,self.owner,'build',os.getpid(),self.job)
         self.db.execute('UPDATE runs SET worker=?,state=?',(json.dumps({'pid':os.getpid(),'birth':birth(os.getpid())}),'stopping'));self.db.commit()

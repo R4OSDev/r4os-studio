@@ -1,5 +1,5 @@
 """Stable Studio dynamic tool declarations; authorization is checked for every call."""
-from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, SKILL_PROFILES, tools_for
+from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILE, SKILL_PROFILES, tools_for
 from copy import deepcopy
 
 
@@ -66,6 +66,8 @@ from update_catalog import DEFS as UPDATE_DEFS
 DEFS.update(UPDATE_DEFS)
 from roadmap_catalog import DEFS as ROADMAP_DEFS
 DEFS.update(ROADMAP_DEFS)
+from remote_catalog import DEFS as REMOTE_DEFS
+DEFS.update(REMOTE_DEFS)
 
 def specifications(profile=PROFILE):
     # The protocol persists dynamic declarations on first thread creation. Keep
@@ -74,7 +76,7 @@ def specifications(profile=PROFILE):
     result = []
     for name in tools_for(profile):
         description, schema = DEFS[name][0], deepcopy(DEFS[name][1])
-        if profile in (GUI_PROFILE, ROADMAP_PROFILE) and name == 'send_vm_input':
+        if profile in (GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILE) and name == 'send_vm_input':
             description = ('Queue bounded events only for this session\'s owned process. kind=text is console input; '
                 'kind=guiText sends up to 64 Unicode characters/256 UTF-8 bytes to the focused GUI window. '
                 'GUI text, key and click require its image frameId from the last 30 seconds. '
@@ -96,6 +98,13 @@ def specifications(profile=PROFILE):
 
 def validate_arguments(name, value, profile=PROFILE):
     def validate(rule, v):
+        if 'oneOf' in rule:
+            matched = 0
+            for candidate in rule['oneOf']:
+                try: validate(candidate, v); matched += 1
+                except ValueError: pass
+            if matched != 1: raise ValueError('Use exactly one supported remote operation and its required fields.')
+            return
         types = rule['type'] if isinstance(rule['type'], list) else [rule['type']]
         actual = 'null' if v is None else ('boolean' if type(v) is bool else ('integer' if type(v) is int else ('string' if isinstance(v, str) else ('object' if isinstance(v, dict) else ('array' if isinstance(v, list) else 'invalid')))))
         if actual not in types: raise ValueError('Invalid tool argument type.')

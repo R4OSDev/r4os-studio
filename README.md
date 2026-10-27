@@ -1,3 +1,36 @@
+## Remote Host tools and project sessions (0.6.19)
+
+New project sessions use additive studio-tools-v9, with get_remote_host,
+run_remote_command, remote_files, read_remote_job and stop_remote_job. Their
+typed schemas accept saved targets and original request IDs. Session settings →
+Tools → Remote Hosts exposes the five rights, on by default for compatible new
+sessions. File transfers also require the matching Workspace file permission.
+Each run freezes the assigned public host metadata and endpoint/login/trust
+revisions; assignment itself connects nowhere and leaves VM tools independent.
+
+The trusted harness sends the actual inherited worker lease to the private
+broker, admits once, observes the original job and streams safe host/job progress
+into tool cards. Saved OFF, wrong owners/targets/revisions and missing assignment
+prevent effects. User Stop cancels only this run's local remote clients even
+when model Stop permission is off; unconfirmed remote endings remain explicit.
+Coordinator metadata uses read-only catalog access, including in a real readonly
+mount namespace. Credentials remain outside prompts, native model namespaces,
+local terminals, snapshots and tool receipts.
+
+All ten previous profile declarations remain byte-identical, including v8
+Roadmap and v7 GUI schemas. Existing threads and exact permission maps are kept;
+Remote tools require a new session. Skill Manager profiles have no Remote tools.
+Git/development/Roadmap authorization accepts v9 with its existing meanings.
+Explicit local install-remote-tool-support.py prepares the additive updater
+ceiling; adopt the compatible installed idle agent and Remote Host coordinators.
+Existing worker and VM units are preserved. Runtime instructions follow in0.6.20.
+
+Validation covers native-call dispatch, real frozen runs/leases and SFTP packets
+with controlled SSH boundaries, compatibility hashes, HTTP,1440/320 browser
+settings/cards and user Stop. Build/TypeScript and strict lint pass. Browser
+cards use isolated saved fixtures; no paid inference, real remote connection,
+user-project compiler execution or VM run is claimed by this qualification.
+
 ## Bound SFTP file jobs (0.6.18)
 
 The private Remote Host broker supports list/read/upload/download through a

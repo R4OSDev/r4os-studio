@@ -36,10 +36,15 @@ def main():
             except (OSError, ValueError): pass
         job = response.get('result', {})
         deadline = datetime.fromisoformat(job['deadlineAt']).timestamp() if job.get('deadlineAt') else 0
+        previous = None
         while job.get('state') in ('queued', 'starting', 'running', 'stopping') and datetime.now(timezone.utc).timestamp() < deadline:
+            if '--stream' in sys.argv[3:] and job != previous:
+                print(json.dumps({'progress': job}, ensure_ascii=True), flush=True); previous = job
             time.sleep(.25)
-            response = rpc(observer, descriptor); job = response.get('result', {})
-            if 'error' in response: break
+            observed = rpc(observer, descriptor)
+            if 'error' in observed:
+                response = {'result': job, 'observationUnconfirmed': True}; break
+            response = observed; job = response.get('result', {})
     print(json.dumps(response, ensure_ascii=True))
 
 

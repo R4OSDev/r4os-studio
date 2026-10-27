@@ -3,6 +3,7 @@ export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio
   | 'studio.apply_patch' | 'studio.create_directory'
   | 'studio.validate_skill' | 'studio.save_skill'
   | 'studio.push_project'
+  | 'studio.get_remote_host' | 'studio.run_remote_command' | 'studio.remote_files' | 'studio.read_remote_job' | 'studio.stop_remote_job'
   | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
   | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm'
   | 'studio.read_update_package' | 'studio.plan_update_package' | 'studio.build_update_package' | 'studio.check_update_vm'
@@ -18,6 +19,7 @@ export interface AgentSession {
   webSearchEnabled?: boolean;
   roadmapEnabled?: boolean;
   roadmapAccess?: { available: boolean; reason?: string };
+  remoteHostAccess?: { available: boolean; assignedId?: string | null; hostName?: string; reason?: string };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
   skillOverrides: Record<string, boolean>;
 }
@@ -41,7 +43,14 @@ export interface SessionItem {
   arguments?: unknown; output?: string; error?: string; exitCode?: number; [key: string]: unknown;
   developmentStop?: import('./project-development.js').DevelopmentStopReceipt;
   roadmap?: { operation: string; code?: number; workflowId?: string; phase?: string; revision?: number; currentVersionId?: string; requestId?: string; versionId?: string; sha256?: string };
+  remote?: RemoteReceiptSummary;
   webSearch?: { action: 'search' | 'openPage' | 'findInPage' | 'other'; queries?: string[]; url?: string; pattern?: string; sources?: { title: string; url: string }[]; truncated?: boolean };
 }
 export interface SessionHistory { items: SessionItem[]; before: number | null; cursor: number }
 export interface AgentEvent { seq: number; kind: string; runId: string | null; payload: unknown }
+export interface RemoteReceiptSummary {
+  id?: string; requestId?: string; hostId?: string; hostName?: string; operation?: string;
+  state?: string; phase?: string; deadlineAt?: string; code?: number; stopRequested?: boolean;
+  binding?: { id: string; endpointRevision: number; credentialRevision: number; trustRevision: number };
+  localClientEndConfirmed?: boolean; remoteProcessEndConfirmed?: boolean; commandReturnConfirmed?: boolean; commandExitCode?: number | null;
+}

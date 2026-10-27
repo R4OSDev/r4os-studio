@@ -155,7 +155,7 @@ class RemoteCommandTests(unittest.IsolatedAsyncioTestCase):
         self.finish(worker)
         other_id = str(uuid.uuid4()); row = worker.store.row(worker.session_id)
         with worker.store.db:
-            worker.store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (other_id, self.pid, 'Other own fixture', row['settings'], encode({'profile': 'studio-tools-v8'})))
+            worker.store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (other_id, self.pid, 'Other own fixture', row['settings'], encode({'profile': 'studio-tools-v9'})))
         other = self.start(other_id); self.reserve(other)
         for tool in ('read_remote_job', 'stop_remote_job'):
             denied = await self.call(other, tool, {'jobId': result['id']}); self.assertEqual(denied['code'], 403)

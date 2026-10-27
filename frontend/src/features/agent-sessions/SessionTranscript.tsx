@@ -6,6 +6,7 @@ import { CodeBlock, MessageText } from './Transcript';
 import { SkillCard } from './SkillCard';
 import { WebSearchCard } from './WebSearchCard';
 import { roadmapLabels, RoadmapReceipt } from './RoadmapReceipt';
+import { RemoteReceipt } from './RemoteReceipt';
 
 type ToolEntry = { item: SessionItem; jobId?: string };
 type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolEntry[] }
@@ -52,6 +53,7 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}
         {scope === 'project' && roadmapLabels[i.tool ?? ''] && <RoadmapReceipt value={i.roadmap} />}
+        {scope === 'project' && i.remote && <RemoteReceipt value={i.remote} />}
         {i.tool === 'studio.stop_development_job' && i.developmentStop?.version === 1 && <p>
           {i.developmentStop.confirmed ? (i.developmentStop.outcome === 'already-ended' ? 'Already ended. ' : i.developmentStop.outcome === 'not-started' ? 'Application was not started. ' : 'Stop confirmed. ') : 'Stop unconfirmed. '}
           {i.developmentStop.scope === 'worker' ? 'Host worker only. ' : 'Owned application process. '}

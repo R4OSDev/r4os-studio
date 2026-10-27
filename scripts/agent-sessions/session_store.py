@@ -198,6 +198,8 @@ PRAGMA user_version=1;
         if self.owner_type == 'project':
             from roadmap_access import availability
             settings['roadmapAccess'] = availability(engine.get('profile'))
+            from remote_context import availability as remote_availability
+            settings['remoteHostAccess'] = remote_availability(self, engine.get('profile'))
         if self.owner_type == 'skill' and engine.get('profile') not in SKILL_PROFILES:
             raise ProjectFault('This skill session has an incompatible tool profile. Its history was preserved.', 409)
         return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},

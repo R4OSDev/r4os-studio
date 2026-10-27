@@ -23,7 +23,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     socket.on('end', () => {
       const request = JSON.parse(raw) as Record<string, unknown>; messages.push(request);
       const run = { id: randomUUID(), sessionId: request.sessionId, owner: { type: 'skill', id }, state: 'queued', error: null, createdAt: 'now', completedAt: null };
-      const result = request.operation === 'capabilities' ? { enabled: true, protocol: 1, skillSessions: 1, skillAuthorTools: 1, globalSkills: 1, skillScripts: 1 }
+      const result = request.operation === 'capabilities' ? { enabled: true, protocol: 1, skillSessions: 1, skillAuthorTools: 1, globalSkills: 1, skillScripts: 1, nativeWebSearch: 1 }
         : request.operation === 'events' ? { events: [{ seq: 7, runId: run.id, kind: 'run', payload: run }], session: {} }
           : { ...run, ...(request.operation === 'stop_run' ? { state: 'interrupted', id: request.runId } : {}) };
       socket.end(JSON.stringify(request.operation === 'events' && events++ > 0 ? { error: 'Fixture stream ended.', code: 503 } : { result }) + '\n');

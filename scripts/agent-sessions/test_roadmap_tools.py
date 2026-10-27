@@ -13,7 +13,7 @@ import uuid
 
 import test_runs as fixtures
 from owner import open_lock
-from profile import PROFILE, ROADMAP_TOOLS, permission_tools, default_enabled
+from profile import PROFILE, ROADMAP_PROFILE, ROADMAP_TOOLS, permission_tools, default_enabled
 from run_store import admit, get_run, transition
 from session_store import encode
 from tool_catalog import specifications, validate_arguments
@@ -21,6 +21,7 @@ from worker import Worker
 
 
 BASELINES = {
+    'studio-tools-v8': '8bb29a9065f7aa52be8e8e62710d0e5d19c72c586f1624ec7e66eb6ef8a47b7b',
     'studio-tools-v1': '2a8e8c5e80658419cf678bb368f04553e6c5ff06ac93c9a483cc54a3c6f5e44e',
     'studio-tools-v2': '0e85e82c2d125a15785608cd281ba39dd828f867ada68fc09de880823f0e3057',
     'studio-tools-v3': '4d392a7c5672c005ea051ba5672a1629ad881933776e248dd626f063385641c8',
@@ -212,8 +213,8 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(v['title'] == 'Exactly one version' for v in versions['items']), 1)
 
     def test_original_profiles_stay_byte_identical_and_new_tools_have_no_individual_permissions(self):
-        self.assertEqual(PROFILE, 'studio-tools-v8')
-        self.assertEqual(len(specifications(PROFILE)), 34)
+        self.assertEqual(ROADMAP_PROFILE, 'studio-tools-v8')
+        self.assertEqual(len(specifications(ROADMAP_PROFILE)), 34)
         self.assertFalse(set(ROADMAP_TOOLS) & set(permission_tools(PROFILE)))
         for profile, expected in BASELINES.items():
             actual = hashlib.sha256(json.dumps(specifications(profile), sort_keys=True, separators=(',', ':')).encode()).hexdigest()

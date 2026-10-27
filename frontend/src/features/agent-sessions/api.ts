@@ -15,6 +15,8 @@ export const toolLabels: Record<string, string> = {
   'studio.capture_vm': 'Capture VM', 'studio.send_vm_input': 'Send VM input',
   'studio.start_project_vm': 'Start project VM',
   'studio.push_project': 'Push project to GitHub',
+  'studio.get_remote_host': 'Remote Host information', 'studio.run_remote_command': 'Run remote command',
+  'studio.remote_files': 'Remote files', 'studio.read_remote_job': 'Read remote job', 'studio.stop_remote_job': 'Stop remote job',
   'studio.read_update_package': 'Read update packages', 'studio.plan_update_package': 'Plan update package',
   'studio.build_update_package': 'Build update package', 'studio.check_update_vm': 'Check update VM',
   'studio.upload_update_package': 'Upload update package', 'studio.install_update_package': 'Install or stage update',
@@ -36,3 +38,4 @@ export function useSessionApi() {
 export const updateToolIds = ['studio.read_update_package', 'studio.plan_update_package', 'studio.build_update_package',
   'studio.check_update_vm', 'studio.upload_update_package', 'studio.install_update_package', 'studio.commit_update',
   'studio.verify_update', 'studio.resume_update', 'studio.abort_update', 'studio.rollback_update', 'studio.cleanup_update_transport'];
+export const remoteToolIds = ['studio.get_remote_host', 'studio.run_remote_command', 'studio.remote_files', 'studio.read_remote_job', 'studio.stop_remote_job'];
