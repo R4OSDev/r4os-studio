@@ -44,7 +44,6 @@ class Execution:
         from evidence import read
         from observation import capture
         from vm_worker import guard
-        import datetime
         authorization = None
         if message.get('owner') is not None:
             from authorization import authorize
@@ -105,12 +104,16 @@ class Execution:
                 request['input'] = text
             else:
                 frame = read(self.store, job['id'], value['frameId'])['metadata']
-                elapsed = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(frame['createdAt'])
-                if (frame['kind'] != 'screenshot' or frame['bootId'] != job['target']['bootId']
-                    or (frame.get('process') or {}).get('generation') != process['generation'] or elapsed.total_seconds() > 30
-                    or frame.get('guestRevision') != state.get('guiRevision') or not state.get('windowFocused')):
-                    raise DevelopmentFault('The image or GUI focus changed. Capture the owned window again before input.')
-                request['expectedRevision'] = state['guiRevision']
+                from frame_binding import current
+                if not current(frame, job, state, focused=True):
+                    raise DevelopmentFault('The image is older than 30 seconds or its process, window geometry or focus changed. Capture the owned window again before input.')
+                if deployment.get('helperCapabilities', {}).get('guiFrameBindingVersion') == 1 and frame.get('captureObservation', {}).get('version') == 1:
+                    request.update(frameBindingVersion=1, expectedWindowId=state['windowId'],
+                        expectedWindowWidth=state['windowWidth'], expectedWindowHeight=state['windowHeight'])
+                else:
+                    if frame.get('guestRevision') != state.get('guiRevision'):
+                        raise DevelopmentFault('This older guest helper requires unchanged content for input. Deploy again with the current helper to control animations.')
+                    request['expectedRevision'] = state['guiRevision']
                 if kind == 'key':
                     keys = {'Enter': 13, 'Tab': 9, 'Escape': 27, 'Space': 32}
                     if value['key'] not in keys: raise DevelopmentFault('Unsupported GUI key.', 400)
@@ -222,6 +225,8 @@ class Execution:
                     hello = await control.open(); hello_ready = True; save(self.work / 'controller.json', hello)
                     if desktop and hello['result'].get('desktopAdoptionVersion') != 1:
                         raise DevelopmentFault('The guest controller does not support exact Desktop process adoption.')
+                    if deployment.get('helperCapabilities', {}).get('guiFrameBindingVersion') == 1 and hello['result'].get('guiFrameBindingVersion') != 1:
+                        raise DevelopmentFault('The guest controller does not confirm its declared window binding capability.')
                     guard(store, job, lease, allow_stopping=True)
                     if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                         closed = await control.call('finish')

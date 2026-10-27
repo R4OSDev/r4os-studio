@@ -124,6 +124,18 @@ export interface DevelopmentEvidence {
   desktopWindow?: number;
   width?: number;
   height?: number;
+  guestRevision?: number;
+  windowVisible?: boolean;
+  windowFocused?: boolean;
+  windowObservation?: {
+    instanceId: number; generation: string; windowId: number;
+    windowWidth: number; windowHeight: number; windowVisible: boolean; windowFocused: boolean;
+  };
+  /** The screen was captured between two observations; no atomic guest-frame claim. */
+  captureObservation?: {
+    version: 1; mode: 'observed-interval'; startedAt: string; completedAt: string;
+    elapsedMilliseconds: number; revisionBefore: number; revisionAfter: number; contentChanged: boolean;
+  };
 }
 export interface DevelopmentCheck {
   state: DevelopmentCheckState;

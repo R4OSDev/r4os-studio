@@ -34,6 +34,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .processHandles = resources.available(),
             .consoleInput = true,
             .guiInput = true,
+            .guiFrameBindingVersion = @as(u32, 1),
             .nativeDesktopLaunch = false,
             .desktopAdoptionVersion = @as(u32, 1),
             .exchangeRunVersion = @as(u32, 1),

@@ -21,6 +21,10 @@ pub const Request = struct {
     x: i32 = 0,
     y: i32 = 0,
     expectedRevision: u32 = 0,
+    frameBindingVersion: u32 = 0,
+    expectedWindowId: i32 = -1,
+    expectedWindowWidth: i32 = 0,
+    expectedWindowHeight: i32 = 0,
 };
 
 pub fn emit(sys: r4os.r4sys.Context, instance: []const u8, sequence: u32, success: bool, result: anytype) void {
@@ -189,7 +193,11 @@ const Controller = struct {
         }
         if (self.service_owned) return false;
         self.windowState();
-        if (!self.state.windowVisible or !self.state.windowFocused or req.expectedRevision != self.state.guiRevision) return false;
+        if (!self.state.windowVisible or !self.state.windowFocused) return false;
+        if (req.frameBindingVersion == 1) {
+            if (req.expectedWindowId != self.state.windowId or req.expectedWindowWidth <= 0 or req.expectedWindowHeight <= 0 or
+                req.expectedWindowWidth != self.state.windowWidth or req.expectedWindowHeight != self.state.windowHeight) return false;
+        } else if (req.frameBindingVersion != 0 or req.expectedRevision != self.state.guiRevision) return false;
         var event = abi.GuiEvent{ .window_id = self.state.windowId, .tick = self.sys.ticks() };
         if (std.mem.eql(u8, req.inputKind, "key")) {
             if (req.key != 9 and req.key != 13 and req.key != 27 and req.key != 32) return false;

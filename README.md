@@ -1,5 +1,27 @@
 # R4OS Studio · App
 
+## Animated Desktop screenshots (0.5.14)
+
+Capture distinguishes changing content from process/window identity. It checks
+the same live process generation, native window, geometry, visibility and focus
+before and after the bounded QMP capture; ordinary `guiRevision` changes are
+recorded rather than rejected. Immutable evidence includes `windowObservation`
+and `captureObservation` with timestamps and both content revisions. This is an
+observed interval, not an atomic guest-frame guarantee. Real identity/geometry/
+focus changes still reject the capture. No global VM pause is used.
+
+Input accepts a matching window image for 30 seconds; visual check completion
+uses 120 seconds. Later animation frames do not invalidate the observation.
+Historical evidence retains its original content-equality rule. New helpers
+advertise `guiFrameBindingVersion:1` and verify the expected window/geometry
+again in the guest before input; old helpers retain their content-revision guard
+and require a new deployment for animation input. Guest helper pins remain
+independent of project pins. Existing deployments and native histories are not
+rewritten. Input acceptance never proves application consumption.
+
+Build/TypeScript, strict lint and static Python/Zig syntax/source review only;
+no test suites, agent/project/VM runs or actual animated guest capture were run.
+
 ## Native Web search session tool (0.5.13)
 
 Session settings → Tools → Web → Web search is ON by default in project and skill

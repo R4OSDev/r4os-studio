@@ -3,6 +3,7 @@ from contracts import DevelopmentFault, hash_value
 from checks import evaluate
 from evidence import read
 from jobs import now
+from frame_binding import current
 
 
 def snapshot(job):
@@ -25,10 +26,8 @@ def validate(store, job, state, output, files):
         if not visual: raise DevelopmentFault('Inspect and assess a current screenshot before completing these checks.')
         image = read(store, job['id'], visual['evidenceId'])['metadata']
         if (image['kind'] != 'screenshot' or image['sha256'] != visual.get('imageSha256')
-            or image.get('bootId') != (job.get('target') or {}).get('bootId')
-            or any((image.get('process') or {}).get(k) != process.get(k) for k in ('instanceId', 'generation'))
-            or image.get('guestRevision') != state.get('guiRevision') or not state.get('windowVisible')):
-            raise DevelopmentFault('The assessed image no longer matches this process and frame. Capture and assess it again.')
+            or not current(image, job, state, maximum_age=120)):
+            raise DevelopmentFault('The assessed image is older than 120 seconds or its process, window geometry or focus changed. Capture and assess it again.')
     check = evaluate(job['settings'], state, output, files, visual)
     if check['state'] != 'passed':
         raise DevelopmentFault('All configured checks must be confirmed before completion. Exit criteria require the actual application exit.')
