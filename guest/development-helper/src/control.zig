@@ -18,6 +18,7 @@ pub const Request = struct {
     serviceName: []const u8 = "",
     inputKind: []const u8 = "text",
     key: u32 = 0,
+    keyRepeat: u32 = 1,
     x: i32 = 0,
     y: i32 = 0,
     expectedRevision: u32 = 0,
@@ -175,6 +176,55 @@ const Controller = struct {
         // changes neither the application's entry point nor its paint calls.
         return true;
     }
+    fn boundWindow(self: *Controller, req: Request) bool {
+        self.windowState();
+        if (!self.state.windowVisible or !self.state.windowFocused) return false;
+        if (req.frameBindingVersion == 1) {
+            return req.expectedWindowId == self.state.windowId and req.expectedWindowWidth > 0 and req.expectedWindowHeight > 0 and
+                req.expectedWindowWidth == self.state.windowWidth and req.expectedWindowHeight == self.state.windowHeight;
+        }
+        return req.frameBindingVersion == 0 and req.expectedRevision == self.state.guiRevision;
+    }
+    fn guiEvents(self: *Controller, req: Request) bool {
+        var points: [64]u32 = undefined;
+        var count: usize = 0;
+        if (std.mem.eql(u8, req.inputKind, "guiText")) {
+            if (req.input.len == 0 or req.input.len > 256) return false;
+            const view = std.unicode.Utf8View.init(req.input) catch return false;
+            var iterator = view.iterator();
+            while (iterator.nextCodepoint()) |point| {
+                if (count == points.len or point < 32 or (point >= 127 and point < 160)) return false;
+                points[count] = point; count += 1;
+            }
+        } else {
+            if (req.keyRepeat < 1 or req.keyRepeat > 16) return false;
+            const supported = switch (req.key) {
+                ' '...'~', r4os.gui.Key.backspace, r4os.gui.Key.tab, r4os.gui.Key.enter, r4os.gui.Key.escape,
+                r4os.gui.Key.delete, r4os.gui.Key.up, r4os.gui.Key.down, r4os.gui.Key.shift_tab,
+                r4os.gui.Key.left, r4os.gui.Key.right, r4os.gui.Key.home, r4os.gui.Key.end,
+                r4os.gui.Key.page_up, r4os.gui.Key.page_down => true,
+                else => false,
+            };
+            if (!supported) return false;
+            count = @intCast(req.keyRepeat);
+            @memset(points[0..count], req.key);
+        }
+        self.state.inputAccepted = 0;
+        const born = self.clock();
+        if (born == 0) return false;
+        for (points[0..count], 0..) |point, index| {
+            const current = self.clock();
+            if (current < born or current - born > 2_000_000_000) break;
+            if (index > 0 and index % 8 == 0 and !self.boundWindow(req)) break;
+            switch (self.process.?.status()) { .value => {}, else => break }
+            var event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.key_down),
+                .window_id = self.state.windowId, .key = point, .tick = self.sys.ticks() };
+            if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) break;
+            self.state.inputAccepted = (self.state.inputAccepted orelse 0) + 1;
+        }
+        // A partial enqueue is an explicit receipt, never permission to replay.
+        return true;
+    }
     fn input(self: *Controller, req: Request) bool {
         if (self.process == null or self.completed != null or self.state.closeConfirmed or self.stopped != null or
             !std.mem.eql(u8, req.generation, self.state.generation) or req.input.len > 1024) return false;
@@ -192,19 +242,9 @@ const Controller = struct {
             self.state.inputAccepted = @intCast(accepted); return true;
         }
         if (self.service_owned) return false;
-        self.windowState();
-        if (!self.state.windowVisible or !self.state.windowFocused) return false;
-        if (req.frameBindingVersion == 1) {
-            if (req.expectedWindowId != self.state.windowId or req.expectedWindowWidth <= 0 or req.expectedWindowHeight <= 0 or
-                req.expectedWindowWidth != self.state.windowWidth or req.expectedWindowHeight != self.state.windowHeight) return false;
-        } else if (req.frameBindingVersion != 0 or req.expectedRevision != self.state.guiRevision) return false;
+        if (!self.boundWindow(req)) return false;
+        if (std.mem.eql(u8, req.inputKind, "key") or std.mem.eql(u8, req.inputKind, "guiText")) return self.guiEvents(req);
         var event = abi.GuiEvent{ .window_id = self.state.windowId, .tick = self.sys.ticks() };
-        if (std.mem.eql(u8, req.inputKind, "key")) {
-            if (req.key != 9 and req.key != 13 and req.key != 27 and req.key != 32) return false;
-            event.kind = @intFromEnum(abi.GuiEventKind.key_down); event.key = req.key;
-            if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) return false;
-            self.state.inputAccepted = 1; return true;
-        }
         if (!std.mem.eql(u8, req.inputKind, "click") or req.x < 0 or req.y < 0 or
             req.x >= self.state.windowWidth or req.y >= self.state.windowHeight) return false;
         event.kind = @intFromEnum(abi.GuiEventKind.mouse_down); event.x = req.x; event.y = req.y; event.buttons = 1;

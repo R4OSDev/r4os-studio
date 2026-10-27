@@ -1,5 +1,36 @@
 # R4OS Studio · App
 
+## Extended owned-window input (0.5.16)
+
+New project sessions use additive `studio-tools-v7` with the same 31 permission
+names and defaults. `studio.send_vm_input` accepts `guiText`, printable ASCII
+keys, arrows, Backspace/Delete, Home/End, PageUp/PageDown and Shift+Tab. Key-only
+`repeat` is bounded to 1–16 queued codepoint events, not a physical held key.
+GUI text is bounded to 64 Unicode characters/256 UTF-8 bytes without C0/C1
+controls; send Enter separately. App event consumption must still be observed.
+
+All GUI input uses a recent image, the owned process generation and the focused
+window's observed geometry. New deployments advertise/confirm `guiInputVersion:2`
+and `guiFrameBindingVersion:1`; older helpers reject extended input before any
+effect and require deploying the existing artifact again. The helper bounds
+enqueue time, rechecks the window during batches and reports partial acceptance.
+No global QMP, physical key hold, clipboard paste or additional permission is
+introduced. Console `text` stays separate. Existing profiles can send GUI text
+using their already-declared `kind:text` plus `frameId`; their original key enum
+is retained and full navigation requires a new session. Histories are not reset.
+
+The installed Codex 0.163.0 experimental schema declares dynamic tools only on
+thread/start, not thread/resume; v1–v6 declarations remain unchanged. Development,
+update, GitHub and frontend profile gates all include v7. Explicit local
+`python3 App/scripts/agent-sessions/install-gui-input-support.py` qualifies the
+existing root updater hash and adds v7 without removing old rollback contracts.
+After regular installation, `--adopt` adopts the agent coordinator only if all
+workers and admitted runs are idle. Never download/run a privileged installer.
+
+Build/TypeScript, strict lint, Python/Zig AST and static original SDK/native-schema
+review only; no tests, helper/app builds or agent/project/VM input runs performed.
+Actual guest input validation remains unperformed under the requested scope.
+
 ## Confirmed Stop command receipts (0.5.15)
 
 Stop command success is separate from the development job's outcome. The

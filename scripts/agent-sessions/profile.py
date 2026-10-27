@@ -12,7 +12,8 @@ DEVELOPMENT_PROFILE = 'studio-tools-v2'
 VM_PROFILE = 'studio-tools-v3'
 COMPLETION_PROFILE = 'studio-tools-v4'
 UPDATE_PROFILE = 'studio-tools-v5'
-PROFILE = 'studio-tools-v6'
+GIT_PROFILE = 'studio-tools-v6'
+PROFILE = 'studio-tools-v7'
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE)
@@ -40,7 +41,7 @@ def tools_for(profile):
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
     if profile == COMPLETION_PROFILE: return LEGACY_TOOLS + COMPLETION_TOOLS
     if profile == UPDATE_PROFILE: return LEGACY_TOOLS + DEVELOPMENT_TOOLS
-    if profile == PROFILE: return TOOLS
+    if profile in (GIT_PROFILE, PROFILE): return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 
 

@@ -86,22 +86,31 @@ class Execution:
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']
-            if not isinstance(value, dict) or value.get('kind') not in ('text', 'key', 'click'):
+            if not isinstance(value, dict) or value.get('kind') not in ('text', 'guiText', 'key', 'click'):
                 raise DevelopmentFault('Choose a bounded console or GUI input.', 400)
-            kind = value['kind']; allowed = {'kind', 'text'} if kind == 'text' else ({'kind', 'key', 'frameId'} if kind == 'key' else {'kind', 'x', 'y', 'frameId'})
+            kind = value['kind']; gui_text = kind == 'guiText' or kind == 'text' and 'frameId' in value
+            console_text = kind == 'text' and not gui_text
+            allowed = {'kind', 'text'} if console_text else ({'kind', 'text', 'frameId'} if gui_text else ({'kind', 'key', 'frameId'} if kind == 'key' else {'kind', 'x', 'y', 'frameId'}))
+            if kind == 'key' and 'repeat' in value: allowed.add('repeat')
             if set(value) != allowed: raise DevelopmentFault('Unexpected VM input fields.', 400)
             if state['state'] != 'running': raise DevelopmentFault('The owned guest process has ended.')
             deployment = self.store.deployment(job['deploymentId'])
-            if kind != 'text' and not deployment.get('helperCapabilities', {}).get('guiInput'):
+            if not console_text and not deployment.get('helperCapabilities', {}).get('guiInput'):
                 raise DevelopmentFault('Deploy again with a GUI-input-capable helper before sending this input.')
+            if not console_text and deployment['role'] != 'desktop':
+                raise DevelopmentFault('GUI input requires a Desktop application. Use console text for a terminal app.', 400)
             request = {'generation': process['generation']}
-            if kind != 'text': request['inputKind'] = kind
-            if kind == 'text':
+            expected = 1
+            if not console_text: request['inputKind'] = 'guiText' if gui_text else kind
+            if console_text:
                 text = value['text']
                 if not isinstance(text, str) or len(text) > 64 or len(text.encode()) > 1024 or '\x00' in text:
                     raise DevelopmentFault('Console input is limited to 64 Unicode characters.', 400)
                 if job['binding'] is None: raise DevelopmentFault('The execution has no target.')
+                if deployment['role'] != 'terminal':
+                    raise DevelopmentFault('Console text requires a terminal app. GUI text needs the current window frameId.', 400)
                 request['input'] = text
+                expected = len(text)
             else:
                 frame = read(self.store, job['id'], value['frameId'])['metadata']
                 from frame_binding import current
@@ -114,20 +123,29 @@ class Execution:
                     if frame.get('guestRevision') != state.get('guiRevision'):
                         raise DevelopmentFault('This older guest helper requires unchanged content for input. Deploy again with the current helper to control animations.')
                     request['expectedRevision'] = state['guiRevision']
-                if kind == 'key':
-                    keys = {'Enter': 13, 'Tab': 9, 'Escape': 27, 'Space': 32}
-                    if value['key'] not in keys: raise DevelopmentFault('Unsupported GUI key.', 400)
-                    request['key'] = keys[value['key']]
+                from gui_input import key as gui_key, text as gui_string, LEGACY_KEYS
+                repeat = value.get('repeat', 1)
+                if type(repeat) is not int or not 1 <= repeat <= 16:
+                    raise DevelopmentFault('Repeat a key between 1 and 16 times.', 400)
+                extended = gui_text or kind == 'key' and (value['key'] not in LEGACY_KEYS or repeat != 1)
+                if extended and deployment.get('helperCapabilities', {}).get('guiInputVersion') != 2:
+                    raise DevelopmentFault('Deploy the artifact again with a GUI-input-v2 helper before sending text or extended keys.')
+                if gui_text:
+                    request['input'] = gui_string(value['text']); expected = len(request['input'])
+                elif kind == 'key':
+                    request['key'] = gui_key(value['key']); expected = repeat
+                    if deployment.get('helperCapabilities', {}).get('guiInputVersion') == 2: request['keyRepeat'] = repeat
                 else:
                     if any(type(value[k]) is not int or not 0 <= value[k] <= 1279 for k in ('x', 'y')):
                         raise DevelopmentFault('Invalid client coordinates.', 400)
                     request.update(x=value['x'], y=value['y'])
+                    expected = 2
             guard(self.store, self.job, lease)
             if authorization: authorize(self.store, message['owner'], 'input', message['peerPid'], job)
             state = await control.call('input', **request)
             result = {'accepted': state.get('inputAccepted', 0), 'kind': kind, 'process': process,
                 'delivery': 'owned-event-queue', 'consumptionConfirmed': False,
-                'complete': state.get('inputAccepted', 0) == (len(value['text']) if kind == 'text' else (2 if kind == 'click' else 1))}
+                'expected': expected, 'complete': state.get('inputAccepted', 0) == expected}
             finish(self.store, message['requestId'], result)
             return state, result
         except DevelopmentFault as error:
@@ -227,6 +245,8 @@ class Execution:
                         raise DevelopmentFault('The guest controller does not support exact Desktop process adoption.')
                     if deployment.get('helperCapabilities', {}).get('guiFrameBindingVersion') == 1 and hello['result'].get('guiFrameBindingVersion') != 1:
                         raise DevelopmentFault('The guest controller does not confirm its declared window binding capability.')
+                    if deployment.get('helperCapabilities', {}).get('guiInputVersion') == 2 and hello['result'].get('guiInputVersion') != 2:
+                        raise DevelopmentFault('The guest controller does not confirm its declared extended input capability.')
                     guard(store, job, lease, allow_stopping=True)
                     if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                         closed = await control.call('finish')

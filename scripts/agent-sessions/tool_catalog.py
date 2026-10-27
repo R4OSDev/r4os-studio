@@ -72,6 +72,18 @@ def specifications(profile=PROFILE):
     result = []
     for name in tools_for(profile):
         description, schema = DEFS[name][0], deepcopy(DEFS[name][1])
+        if profile == PROFILE and name == 'send_vm_input':
+            description = ('Queue bounded events only for this session\'s owned process. kind=text is console input; '
+                'kind=guiText sends up to 64 Unicode characters/256 UTF-8 bytes to the focused GUI window. '
+                'GUI text, key and click require its image frameId from the last 30 seconds. '
+                'key accepts a printable ASCII character or Enter, Tab, Shift+Tab, Escape, Space, Backspace, Delete, '
+                'ArrowUp/Down/Left/Right, Home, End, PageUp/Down. Optional repeat=1..16 is key-only, not a held key. '
+                'Extended input requires a newly deployed GUI-input-v2 helper. Coordinates are client-relative. '
+                'Inspect accepted/expected/complete; partial acceptance must not be blindly repeated. '
+                'Acceptance does not prove application consumption; verify a new image/output. No global input or clipboard paste.')
+            schema['properties']['kind']['enum'] = ['text', 'guiText', 'key', 'click']
+            schema['properties']['key'] = {'type': 'string', 'minLength': 1, 'maxLength': 32}
+            schema['properties']['repeat'] = {'type': 'integer', 'minimum': 1, 'maximum': 16}
         if profile in SKILL_PROFILES:
             description = description.replace('project', 'selected skill')
             if 'root' in schema['properties']:
