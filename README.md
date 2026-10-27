@@ -1,5 +1,28 @@
 # R4OS Studio · App
 
+## Shared project roadmap storage (0.6.1)
+
+Project roadmaps now have a typed hierarchy and a private, project-scoped
+SQLite store at `Projects/<project-uuid>/Roadmap/Roadmap.sqlite`, outside
+Workspace and Sessions. The fixed unprivileged `scripts/project-roadmaps/cli.py`
+adapter supports read and explicit initialize. Merely starting or updating
+Studio does not initialize existing projects. First explicit initialization
+atomically creates one roadmap with an empty `0.1.X` / New / Open version;
+subsequent calls and separate processes use the same IDs and content.
+
+Versions, subversions, tasks and separate acceptance items retain their own
+notes, status, ordering, revisions and timestamps. Parent constraints and
+different version/item status models are enforced in SQLite. Existing corrupt,
+unknown or foreign-project databases are preserved and fail visibly; they are
+never treated as missing storage. Project lifetime locks coordinate deletion
+without taking the workspace lock or blocking ordinary agent work.
+
+This release provides the storage and backend adapter foundation. Browser
+routes/editing and agent tools follow in subsequent roadmap versions. No
+project database is mounted into agent, terminal or build namespaces. Existing
+Projects write paths already cover the new storage; no host installer or
+automatic migration is required.
+
 ## Compiler timing guidance (0.5.17)
 
 The shipped English System Prompt recommends `timeout_ms=120000` for ordinary
