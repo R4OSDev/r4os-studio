@@ -36,10 +36,12 @@ class Commands:
         self.directory = Path(directory); self.projects = self.directory.parent / 'Projects'; self.runtime = Path(runtime)
         self.transport = transport; self.active = {}
 
-    def admit(self, actor, call_id, raw):
-        config = actor.verify('run_remote_command', call_id, raw); content = arguments(raw)
+    def admit(self, actor, call_id, raw, tool='run_remote_command'):
+        import files
+        operation = 'command' if tool == 'run_remote_command' else 'files'
+        config = actor.verify(tool, call_id, raw); content = arguments(raw) if operation == 'command' else files.arguments(raw)
         loop = asyncio.get_running_loop(); held = os.dup(actor.fd)
-        fingerprint = hashlib.sha256(encode({'sessionId': actor.context['sessionId'], 'operation': 'command', 'arguments': raw}).encode()).hexdigest()
+        fingerprint = hashlib.sha256(encode({'sessionId': actor.context['sessionId'], 'operation': operation, 'arguments': raw}).encode()).hexdigest()
         life = None
         try:
             life = acquire(self.projects, actor.project_id)
@@ -68,14 +70,16 @@ class Commands:
                         checked = host.get('lastTest')
                         if not checked or checked.get('status') != 'success' or any(checked.get(k) != host[k] for k in ('endpointRevision', 'credentialRevision', 'trustRevision')):
                             raise CatalogFault('Confirm R4OS access with Check connection before executing commands on this binding.', 409)
-                        if content['command'].strip().upper() != 'VER' and self.unknown_at_endpoint(host):
+                        mutating = content['command'].strip().upper() != 'VER' if operation == 'command' else content['action'] == 'upload'
+                        if mutating and self.unknown_at_endpoint(host):
                             raise CatalogFault('Review the original uncertain remote effect before more commands. An explicit VER diagnostic or permitted file read remains possible.', 409)
-                        actor.verify('run_remote_command', call_id, raw)
+                        actor.verify(tool, call_id, raw)
                         job_id = str(uuid.uuid4()); stamp = now()
-                        payload = {'schema': 1, 'operation': 'command', 'actor': actor.snapshot('run_remote_command', call_id),
-                                   'host': host, 'command': content['command'], 'timeoutSeconds': content['timeoutSeconds'],
-                                   'deadlineAt': (datetime.now(timezone.utc) + timedelta(seconds=content['timeoutSeconds'] + 15)).isoformat(),
+                        payload = {'schema': 1, 'operation': operation, 'actor': actor.snapshot(tool, call_id), 'host': host,
+                                   'deadlineAt': (datetime.now(timezone.utc) + timedelta(seconds=content.get('timeoutSeconds', 120) + 15)).isoformat(),
                                    'adapterRelease': str(Path(__file__).resolve().parents[2])}
+                        if operation == 'command': payload.update(command=content['command'], timeoutSeconds=content['timeoutSeconds'])
+                        else: payload.update(files=content, **files.prepare(actor, job_id, content))
                         db.execute('BEGIN IMMEDIATE')
                         db.execute("INSERT INTO jobs VALUES (?,?,?,?,?,?,'queued','accepted',?,NULL,?,?)", (job_id, content['requestId'], fingerprint,
                                    actor.context['sessionId'], actor.context['runId'], host['id'], json.dumps(payload), stamp, stamp))
@@ -123,23 +127,37 @@ class Commands:
             if not still_running(self.projects, payload['actor']): raise CatalogFault('The original run ended before dispatch.', 409)
             jobs.update(self.projects, pid, job_id, 'starting', 'client_preparation')
             async with self.transport(private, self.runtime, job_id) as client:
-                # This durable boundary precedes any possible command send.
-                jobs.update(self.projects, pid, job_id, 'running', 'dispatch_possible')
-                result = await client.execute_complete(payload['command'], payload['timeoutSeconds'], entry['abort'])
-            state = 'unknown' if result['transportUncertain'] else 'completed' if result['commandExitCode'] == 0 else 'failed'
+                if payload['operation'] == 'files':
+                    import files
+                    jobs.update(self.projects, pid, job_id, 'running', 'remote_read')
+                    result = await files.perform(client, self.projects, pid, job_id, payload, entry['abort'])
+                else:
+                    # This durable boundary precedes any possible command send.
+                    jobs.update(self.projects, pid, job_id, 'running', 'dispatch_possible')
+                    result = await client.execute_complete(payload['command'], payload['timeoutSeconds'], entry['abort'])
+            state = ('completed' if payload['operation'] == 'files' else
+                     'unknown' if result['transportUncertain'] else 'completed' if result['commandExitCode'] == 0 else 'failed')
             jobs.update(self.projects, pid, job_id, state, 'local_client_ended', result)
-        except BaseException:
+        except BaseException as error:
             try:
                 original = jobs.read(self.projects, pid, job_id)
-                possible = original['phase'] == 'dispatch_possible'
+                possible = original['phase'] in ('dispatch_possible', 'local_publish_possible')
                 jobs.update(self.projects, pid, job_id, 'unknown' if possible else 'failed', 'result_unconfirmed' if possible else 'not_dispatched',
                             {'effectConfirmed': False, 'localClientEndConfirmed': False, 'remoteProcessEndConfirmed': False,
-                             'message': 'The original command result could not be confirmed. It was not repeated.' if possible else 'The command was not dispatched. Its original request was preserved.'})
+                             **({'transferProgress': original['result']['transferProgress']} if (original.get('result') or {}).get('transferProgress') else {}),
+                             'nativeStatus': getattr(error, 'native_code', None),
+                             'message': ('The original effect could not be confirmed. It was not repeated.' if possible else
+                                         str(error) if payload['operation'] == 'files' and isinstance(error, CatalogFault) else
+                                         'The operation was not dispatched. Its original request was preserved.')})
             except Exception: pass
         finally:
             monitor.cancel(); await asyncio.gather(monitor, return_exceptions=True)
             if endpoint is not None: os.close(endpoint)
             os.close(entry['fd']); entry['life'].close(); self.active.pop(job_id, None)
+            if payload.get('snapshot'):
+                # The receipt retains its hash and original target; terminal
+                # reconciliation cannot resend it. No retained secret/source copy.
+                (self.projects / pid / 'RemoteHosts/Snapshots' / job_id).unlink(missing_ok=True)
 
     def read(self, actor, call_id, arguments):
         actor.verify('read_remote_job', call_id, arguments); fields(arguments, optional=['jobId', 'requestId'])
@@ -151,9 +169,14 @@ class Commands:
             if row is not None and row['session_id'] != actor.context['sessionId']: raise CatalogFault('This request belongs to another session.', 403)
             return jobs.public(row)
 
-    def observe(self, actor, call_id, raw):
-        actor.verify('run_remote_command', call_id, raw); arguments(raw)
-        fingerprint = hashlib.sha256(encode({'sessionId': actor.context['sessionId'], 'operation': 'command', 'arguments': raw}).encode()).hexdigest()
+    def observe(self, actor, call_id, raw, tool='run_remote_command'):
+        actor.verify(tool, call_id, raw)
+        if tool == 'remote_files':
+            from files import arguments as file_arguments
+            file_arguments(raw)
+        else: arguments(raw)
+        operation = 'files' if tool == 'remote_files' else 'command'
+        fingerprint = hashlib.sha256(encode({'sessionId': actor.context['sessionId'], 'operation': operation, 'arguments': raw}).encode()).hexdigest()
         with jobs.connection(self.projects, actor.project_id) as db:
             row = db.execute('SELECT * FROM jobs WHERE request_id=?', (raw['requestId'],)).fetchone() if db else None
             if row is not None and row['session_id'] != actor.context['sessionId']: raise CatalogFault('This request belongs to another session.', 403)

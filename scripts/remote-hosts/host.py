@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unprivileged peer-checked Unix broker. Only a saved-target VER check for now."""
+"""Unprivileged saved-target checks and active-run command/file jobs."""
 import asyncio
 from contextlib import contextmanager
 import fcntl
@@ -30,7 +30,7 @@ class Host:
     def capabilities(self):
         transport_profile()
         version = json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']
-        return {'protocol': 1, 'test': True, 'commands': self.allow_agent_profile, 'files': False, 'version': version,
+        return {'protocol': 1, 'test': True, 'commands': self.allow_agent_profile, 'files': self.allow_agent_profile, 'version': version,
                 'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
 
     async def request(self, request):
@@ -108,13 +108,13 @@ class Host:
         if request['operation'] not in ('tool', 'observe'): raise CatalogFault('Invalid remote agent operation.', 400)
         fields(request, ['protocol', 'operation', 'projectId', 'actor', 'tool', 'callId', 'arguments'])
         if request['operation'] == 'observe':
-            if request['tool'] != 'run_remote_command': raise CatalogFault('This tool has no original command receipt.', 400)
-            return self.commands.observe(actor, request['callId'], request['arguments'])
+            if request['tool'] not in ('run_remote_command', 'remote_files'): raise CatalogFault('This tool has no original remote receipt.', 400)
+            return self.commands.observe(actor, request['callId'], request['arguments'], request['tool'])
         if request['tool'] == 'read_remote_job': return self.commands.read(actor, request['callId'], request['arguments'])
         if request['tool'] == 'stop_remote_job': return self.commands.stop(actor, request['callId'], request['arguments'])
-        if request['tool'] != 'run_remote_command': raise CatalogFault('This remote adapter is not available.', 400)
+        if request['tool'] not in ('run_remote_command', 'remote_files'): raise CatalogFault('This remote adapter is not available.', 400)
         if not self.accepting: raise CatalogFault('The remote broker is adopting an update. Preserve the original request.', 503)
-        return self.commands.admit(actor, request['callId'], request['arguments'])
+        return self.commands.admit(actor, request['callId'], request['arguments'], request['tool'])
 
 
 @contextmanager

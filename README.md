@@ -1,3 +1,32 @@
+## Bound SFTP file jobs (0.6.18)
+
+The private Remote Host broker supports list/read/upload/download through a
+bounded SFTP-v3 client on the existing pinned SSH transport. Canonical /C/,
+/D/ and other real drive paths preserve UTF-8 names and spaces. Limits are
+1023 UTF-8 path bytes,255 UTF-16 units per component,128 returned directory
+entries,16 KiB tool reads,8 MiB transfers and120 seconds. No VM exchange drive,
+guest helper, FTP, overwrite, rename or delete fallback is assumed.
+
+Uploads snapshot a hash-bound readable Workspace file or an explicitly selected
+verified current-project artifact from the current session or a user build.
+The native server must accept create-only OPEN and CLOSE publication; every
+byte is then read back and hashed. Original receipts retain acknowledged staged
+bytes and CLOSE separately from complete readback. Losing a write/CLOSE reply
+preserves unknown state and never sends the upload again.
+
+Downloads require the run's Workspace write permission and a selected remote
+SHA-256. They create new files with descriptor-relative, no-follow, create-only
+atomic publication. Existing files and editor drafts are kept; replacement is
+explicitly unavailable and requires choosing another local path. Case clashes,
+links, private paths, changed source hashes and appeared destinations are refused.
+Snapshots stay private and are removed at terminal handling; their original
+hash and target remain in the job receipt. Native declarations follow in0.6.19.
+
+Validation: six worker/SFTP-packet tests with an actual local protocol fixture,
+six command/lease regressions, three HTTP checks, build/TypeScript and strict
+lint. Controlled artifact metadata tests do not claim an app build. No real
+SSH/R4OS host connection, VM run or paid inference was performed.
+
 ## Durable Remote Host command foundation (0.6.17)
 
 The unprivileged broker now records project/session/run, the frozen host and

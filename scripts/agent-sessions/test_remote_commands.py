@@ -86,8 +86,11 @@ class RemoteCommandTests(unittest.IsolatedAsyncioTestCase):
         descriptor = worker.lease.fileno() if descriptor is None else descriptor
         proc = await asyncio.create_subprocess_exec('/usr/bin/python3', '-B', str(REMOTE / 'agent_call.py'), str(self.runtime / 'agent.sock'), str(descriptor), *(['--wait'] if wait else []), pass_fds=(descriptor,),
                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        raw, error = await asyncio.wait_for(proc.communicate(encode(frame).encode()), 15)
-        self.assertFalse(error, error.decode()); return json.loads(raw)
+        try:
+            raw, error = await asyncio.wait_for(proc.communicate(encode(frame).encode()), 15)
+            self.assertFalse(error, error.decode()); return json.loads(raw)
+        finally:
+            if proc.returncode is None: proc.kill(); await proc.wait()
 
     async def good(self, *args, **kwargs):
         value = await self.call(*args, **kwargs); self.assertIn('result', value, value); return value['result']

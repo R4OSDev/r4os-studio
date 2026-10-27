@@ -54,6 +54,7 @@ def public(row):
             'sessionId': row['session_id'], 'runId': row['run_id'], 'hostId': row['host_id'],
             'hostName': value['host']['name'], 'operation': value['operation'], 'state': row['state'], 'phase': row['phase'],
             'deadlineAt': value.get('deadlineAt'),
+            **({'transfer': value['files']} if value.get('files') else {'command': value.get('command')}),
             'binding': {k: value['host'][k] for k in ('id', 'endpointRevision', 'credentialRevision', 'trustRevision')},
             'createdAt': row['created_at'], 'updatedAt': row['updated_at'], 'result': json.loads(row['result']) if row['result'] else None}
 
@@ -80,8 +81,11 @@ def recover(projects):
         with connection(projects, project_id) as db:
             if db is None: continue
             with db:
-                db.execute("UPDATE jobs SET state='unknown',phase='worker_interrupted',result=?,updated_at=? WHERE state IN ('queued','starting','running','stopping')",
-                           (json.dumps({'localClientEndConfirmed': False, 'remoteProcessEndConfirmed': False, 'effectConfirmed': False, 'message': 'The original worker was interrupted. No command was replayed.'}), now()))
+                for row in db.execute("SELECT id,result FROM jobs WHERE state IN ('queued','starting','running','stopping')").fetchall():
+                    previous = json.loads(row['result']) if row['result'] else {}
+                    value = {**previous, 'localClientEndConfirmed': False, 'remoteProcessEndConfirmed': False, 'effectConfirmed': False,
+                             'message': 'The original worker was interrupted. No remote operation was replayed.'}
+                    db.execute("UPDATE jobs SET state='unknown',phase='worker_interrupted',result=?,updated_at=? WHERE id=?", (json.dumps(value), now(), row['id']))
 
 
 def host_busy(projects, host_id):

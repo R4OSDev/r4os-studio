@@ -29,7 +29,7 @@ def main():
     value = json.loads(raw); descriptor = int(sys.argv[2]); os.fstat(descriptor)
     try: response = rpc(value, descriptor)
     except (OSError, ValueError): response = {'error': 'The admission reply was lost. Inspect the original request.', 'code': 503}
-    if '--wait' in sys.argv[3:] and value.get('operation') == 'tool' and value.get('tool') == 'run_remote_command':
+    if '--wait' in sys.argv[3:] and value.get('operation') == 'tool' and value.get('tool') in ('run_remote_command', 'remote_files'):
         observer = {**value, 'operation': 'observe'}
         if response.get('code', 0) >= 500:
             try: response = rpc(observer, descriptor)
