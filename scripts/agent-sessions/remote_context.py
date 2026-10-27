@@ -42,3 +42,10 @@ def availability(store, profile):
 def freeze(store, profile, enabled):
     if profile != REMOTE_PROFILE or not enabled: return None, {'available': False, 'reason': 'This run has no compatible Remote Host tool binding.'}
     return context(store, fresh=True)
+
+
+def snapshot(store, profile, enabled):
+    host, access = context(store, fresh=True)
+    compatible = profile == REMOTE_PROFILE and enabled
+    return {'remoteHostContext': host, 'remoteHostBinding': host if compatible else None,
+            'remoteHostAccess': access if compatible else {**access, 'available': False, 'reason': 'New session or compatible coordinator required for Remote Host tools; this run keeps its original profile.'}}

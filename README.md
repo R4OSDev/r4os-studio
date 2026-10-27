@@ -1,3 +1,25 @@
+## Explicit Remote Host task guidance (0.6.20)
+
+Bound English instructions now accompany frozen public host metadata. They
+preserve normal VM build/deploy/run/test behavior, explain explicit work on the
+assigned NAME, continuing that same remote task, and returning to a VM task.
+Wrong/ambiguous targets, absent assignment, OFF and unavailable transport are
+explained without choosing another host or blocking unrelated VM work. Passwords
+stay in host settings; native R4OS commands and create-only SFTP use the bound
+tools. VM tools are never redirected to a remote machine.
+
+The prompt adds allowlisted name/description/address/port/user and historical
+check data as quoted data, followed by an explicit instruction boundary. It
+does not rewrite saved global prompts, Workspace/Agents.md or earlier run
+snapshots. Older native profiles can see assigned public metadata but receive
+no Remote binding/rights and keep New session required. Skill scope has no
+project Remote instructions. No catalog process is started without assignment.
+
+Fifteen targeted frozen-source, metadata privacy, native-call and Roadmap checks,
+build/TypeScript and strict lint pass. Dialog cases qualify the written contract
+and exposed capabilities; they do not claim paid-model target-routing behavior.
+No real Remote Host connection or inference was performed by this qualification.
+
 ## Remote Host tools and project sessions (0.6.19)
 
 New project sessions use additive studio-tools-v9, with get_remote_host,

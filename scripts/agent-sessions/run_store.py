@@ -72,8 +72,8 @@ def admit(store, session_id, data, provider_dir):
             snapshot['skillManagerPrompt'] = skill_prompt_snapshot(store.projects)
         else:
             snapshot['projectPins'] = store.project['pins']
-            from remote_context import freeze
-            snapshot['remoteHostBinding'], snapshot['remoteHostAccess'] = freeze(store, session['engine']['profile'], data.get('remoteHostTools') == 1)
+            from remote_context import snapshot as remote_snapshot
+            snapshot.update(remote_snapshot(store, session['engine']['profile'], data.get('remoteHostTools') == 1))
             snapshot['systemPrompt'] = prompt_snapshot(store.projects)
             snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
         ident = str(uuid.uuid4()); stamp = now()

@@ -51,6 +51,8 @@ def compose(config):
         text += '\n\n' + TERMINAL_TIMING
     from roadmap_instructions import compose as roadmap_instructions
     text += roadmap_instructions(config)
+    from remote_instructions import compose as remote_instructions
+    text += remote_instructions(config)
     if 'skillAccess' not in config: return text
     from skill_application import catalog_text
     return text + catalog_text(config['skillAccess'])
