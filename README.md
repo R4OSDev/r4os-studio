@@ -1,5 +1,22 @@
 # R4OS Studio · App
 
+## Compiler timing guidance (0.5.17)
+
+The shipped English System Prompt recommends `timeout_ms=120000` for ordinary
+compiler work and up to `600000` for cold caches/larger SDK compilation.
+`yield_time_ms=1000` only returns output early; it does not shorten the process
+lifetime. Continue with the same process handle, or use the separately permitted
+project build tool's internal job wait. One-second compiler budgets are avoided.
+These are instructions within the unchanged terminal limits, not longer host
+deadlines or permission to run unrequested builds/tests.
+
+The same additive timing guidance is composed for terminal-enabled project and
+skill runs using saved custom prompts. Matching default text is not duplicated.
+Saved prompt text, revision and checksum are retained; existing/admitted workers
+keep their release and frozen sources. No prompt reset, session migration or
+native thread replacement is needed. Build/TypeScript, strict lint and static
+Python/prompt-contract review only; no tests or compiler/agent/project/VM probes.
+
 ## Extended owned-window input (0.5.16)
 
 New project sessions use additive `studio-tools-v7` with the same 31 permission
