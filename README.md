@@ -1,3 +1,39 @@
+## Independent project Remote Host assignment (0.6.16)
+
+New Project and GitHub import completion offer Remote host / None alongside an
+independent Virtual machine choice. Projects → Settings → Remote host provides
+Save/Cancel, dirty guards and revision conflicts with retained drafts. Safe current
+names/endpoints and missing-catalog states are shown; a host may be assigned even
+without a successful prior check. Assignment never connects, installs/deploys,
+changes the normal VM target, edits sources or replaces SDK/compiler pins.
+
+An optional project_remote_hosts table in the existing Projects.sqlite stores
+UUID references with ON DELETE CASCADE. It is created only on an explicit non-null
+assignment; legacy reads return remoteHostId:null without changing database bytes
+or creating rows/schema. Assignment and project revision commit atomically. A
+shared read-only descriptor on the global catalog lock prevents racing central
+deletion without granting the development host extra write rights. Names remain
+central metadata; renaming keeps UUID references. Global removal is blocked while
+any ready/pending project refers to the host. Multiple projects may share it.
+
+Creation/import validate the same local UUID and keep their original request and
+source/pin journals. Imports take VM/Remote choices explicitly from the local
+completion, never repository metadata; portable project.json omits both local
+UUIDs and all credentials. Missing legacy request fields keep their original
+fingerprints. Session removal has no global host ownership; confirmed project
+deletion cascades only its local reference. It never connects to or removes remote
+files/hosts. Active or unknown private remote jobs block reassignment and deletion.
+The fixed store CLI now shares its typed ProjectFault with imported helpers so
+these conflicts retain their correct HTTP status.
+
+Seven project/publication/delete tests (including an actual read-only bwrap mount),
+a real Git import/publication test with controlled SDK validation, two HTTP tests,
+browser1440/320, build/TypeScript and strict lint qualify this scope. Actual browser
+settings use the real API; New Project options and its captured POST are controlled
+UI contract fixtures. Core creation publishes real files using a controlled trusted
+template/SDK fixture. No real compiler, VM, repository/account or remote connection
+is used, and own temporary test data is removed. Existing data/pins/VM PIDs remain.
+
 ## Remote SSH target and explicit checks (0.6.15)
 
 The private unprivileged broker uses the existing pinned SSH/SFTP binary hashes

@@ -36,15 +36,15 @@ export interface ProjectOptions {
 
 export interface ProjectInput {
   name: string; description: string; language: ProjectLanguage; template: ProjectTemplate;
-  vmId: string | null; optionsRevision: string; requestId: string; guestFormats: string[];
+  vmId: string | null; remoteHostId?: string | null; optionsRevision: string; requestId: string; guestFormats: string[];
   github?: { requestId: string; connectionId: string; tokenRevision: number; userId: number; repositoryName: string; private: boolean; owner?: string };
 }
 export interface Project extends ProjectSummary {
   description: string; language: ProjectLanguage; template: ProjectTemplate; moduleName: string;
-  vmId: string | null; pins: ProjectPins; revision: number; createdAt: string; updatedAt: string;
+  vmId: string | null; remoteHostId?: string | null; pins: ProjectPins; revision: number; createdAt: string; updatedAt: string;
 }
 export interface ProjectUpdate {
-  revision: number; name?: string; description?: string; vmId?: string | null;
+  revision: number; name?: string; description?: string; vmId?: string | null; remoteHostId?: string | null;
 }
 
 export interface ProjectAgents {

@@ -49,6 +49,8 @@ def worker_check(runs, jobs, action='deleting'):
 
 
 def collect(projects, ident, hosts):
+    from remote_binding import assert_change_safe
+    assert_change_safe(projects, ident)
     if hosts.get('unsafe'):
         raise ProjectFault('Wait for the updated project hosts to become ready before deleting. Existing data was preserved.', 503)
     from project_maintenance import pending_update, pending_git

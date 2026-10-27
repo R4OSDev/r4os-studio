@@ -28,7 +28,8 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     bodyLimit: 32768, schema: { params: { type: 'object', required: ['requestId'], properties: { requestId: uuid } } },
     preValidation: async (request) => {
       const body = request.body as Record<string, unknown> | null;
-      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['name', 'description', 'snapshot', 'fallback'].includes(key))) throw new ProjectError('Unexpected import completion fields.', 400);
+      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['name', 'description', 'snapshot', 'fallback', 'remoteHostId', 'vmId'].includes(key))) throw new ProjectError('Unexpected import completion fields.', 400);
+      for (const key of ['vmId', 'remoteHostId']) if (body[key] !== undefined && body[key] !== null && (typeof body[key] !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(body[key] as string))) throw new ProjectError('Choose an existing local target.', 400);
     },
   }, async (request, reply) => {
     sessions.mutation(request, reply);

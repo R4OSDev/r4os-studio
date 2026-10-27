@@ -7,6 +7,7 @@ import type { GitHubAccount, GitHubJob } from '../../../../shared/project-github
 import { ConnectionSelect } from '../github-connections/ConnectionSelect';
 import { waitGitJob } from '../github-connections/projectApi';
 import { hasPendingImport, ImportProjectDialog } from './ImportProjectDialog';
+import { HostSelect } from '../remote-hosts/HostSelect';
 
 const pendingKey = 'studio.project.pendingCreate';
 function savedRequest(): ProjectInput | null {
@@ -35,6 +36,7 @@ function CreateProjectDialog({ token, close, created, importProject }: {
   const [language, setLanguage] = useState<ProjectLanguage>(pending?.language ?? 'Zig');
   const [template, setTemplate] = useState<ProjectTemplate>(pending?.template ?? 'terminal');
   const [vmId, setVmId] = useState(pending?.vmId ?? '');
+  const [remoteHostId, setRemoteHostId] = useState(pending?.remoteHostId ?? '');
   const [guestFormats, setGuestFormats] = useState(pending?.guestFormats.join(', ') ?? '');
   const [options, setOptions] = useState<ProjectOptions | null>(null);
   const [error, setError] = useState('');
@@ -80,7 +82,7 @@ function CreateProjectDialog({ token, close, created, importProject }: {
     if (!pending && template === 'subsystem' && (!formats.length || formats.some((value) => !/^[a-z](?:[a-z0-9_.-]*[a-z0-9])?$/.test(value) || value.length > 63))) {
       setError('Enter valid comma-separated guest format IDs.'); return;
     }
-    let input: ProjectInput = pending ?? { name: name.trim(), description, language, template, vmId: vmId || null,
+    let input: ProjectInput = pending ?? { name: name.trim(), description, language, template, vmId: vmId || null, remoteHostId: remoteHostId || null,
       guestFormats: template === 'subsystem' ? formats : [], optionsRevision: options!.revision, requestId: projectRequestId(),
       ...(account ? { github: { requestId: projectRequestId(), connectionId: account.connectionId, userId: account.userId,
         tokenRevision: account.tokenRevision, repositoryName: repositoryName.trim(), private: visibility === 'private', ...(repositoryOwner.trim() ? { owner: repositoryOwner.trim() } : {}) } } : {}) };
@@ -145,6 +147,7 @@ function CreateProjectDialog({ token, close, created, importProject }: {
             {options?.vms.map((vm) => <option key={vm.id} value={vm.id}>{vm.name}</option>)}
           </select></ProjectField>
         {options && !options.vmsAvailable && <p className="project-message" role="status">Virtual machines could not be loaded.</p>}
+        <HostSelect value={remoteHostId} changed={setRemoteHostId} disabled={busy || !!pending} />
       </fieldset>
       <fieldset className="project-fields" disabled={busy || (!!pending && (!localProject || gitJob?.state !== 'failed'))}>
         <ConnectionSelect value={account} busyChanged={setAccountBusy} changed={(value) => { setAccount(value); if (value) sessionStorage.setItem(pendingKey + '.account', JSON.stringify(value)); else sessionStorage.removeItem(pendingKey + '.account'); }} />

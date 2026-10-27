@@ -7,6 +7,7 @@ import type { RepositoryChoice } from '../github-connections/RepositorySelect';
 import { waitGitJob } from '../github-connections/projectApi';
 import { projectRequest, projectRequestId } from './api';
 import { ProjectField } from './ProjectField';
+import { HostSelect } from '../remote-hosts/HostSelect';
 
 const key = 'studio.project.pendingImport';
 interface ImportInput { requestId: string; connectionId: string; tokenRevision: number; userId: number; repository: { id: number; owner: string; name: string }; branch: string }
@@ -21,8 +22,12 @@ export function ImportProjectDialog({ token, close, created, back }: { token: st
   const [pending, setPending] = useState(retained), [preview, setPreview] = useState<GitHubImportPreview | null>(null);
   const [job, setJob] = useState<GitHubJob>(), [busy, setBusy] = useState(false), [accountBusy, setAccountBusy] = useState(false), [error, setError] = useState('');
   const [name, setName] = useState(String(pending?.finish?.name ?? '')), [description, setDescription] = useState(String(pending?.finish?.description ?? ''));
+  const [vmId, setVmId] = useState(String(pending?.finish?.vmId ?? '')), [remoteHostId, setRemoteHostId] = useState(String(pending?.finish?.remoteHostId ?? ''));
+  const [vms, setVms] = useState<Pick<ProjectOptions, 'vms' | 'vmsAvailable'>>({ vms: [], vmsAvailable: true });
   const [options, setOptions] = useState<ProjectOptions>(), [language, setLanguage] = useState<ProjectLanguage>('Zig'), [template, setTemplate] = useState<ProjectTemplate>('terminal'), [acceptProfile, setAcceptProfile] = useState(false);
   useEffect(() => { const element = dialog.current!, opener = document.activeElement; element.showModal(); return () => { element.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); }; }, []);
+  useEffect(() => { const controller = new AbortController(); void projectRequest<Pick<ProjectOptions, 'vms' | 'vmsAvailable'>>('/vms', '', 'GET', undefined, controller.signal)
+    .then((value) => { if (!controller.signal.aborted) setVms(value); }).catch(() => { if (!controller.signal.aborted) setVms({ vms: [], vmsAvailable: false }); }); return () => controller.abort(); }, []);
   async function fetchImport() {
     if (busy || (!pending && (!account || !choice))) return;
     const input = pending?.input ?? { requestId: projectRequestId(), connectionId: account!.connectionId, tokenRevision: account!.tokenRevision, userId: account!.userId, repository: { id: choice!.repository.id, owner: choice!.repository.owner, name: choice!.repository.name }, branch: choice!.branch };
@@ -40,7 +45,7 @@ export function ImportProjectDialog({ token, close, created, back }: { token: st
   }
   async function finishImport() {
     if (!preview || !pending || busy) return;
-    const completion = pending.finish ?? { name: name.trim(), description, snapshot: preview.snapshot,
+    const completion = pending.finish ?? { name: name.trim(), description, snapshot: preview.snapshot, vmId: vmId || null, remoteHostId: remoteHostId || null,
       ...(!preview.metadata && options ? { fallback: { optionsRevision: options.revision, language, template } } : {}) };
     const saved = { ...pending, finish: completion };
     try { sessionStorage.setItem(key, JSON.stringify(saved)); } catch { setError('The browser could not retain this completion.'); return; }
@@ -55,7 +60,7 @@ export function ImportProjectDialog({ token, close, created, back }: { token: st
     <form onSubmit={(e) => { e.preventDefault(); void (preview ? finishImport() : fetchImport()); }}>
       <header className="project-dialog-header"><h2 id="import-project-title">New Project</h2><button type="button" className="project-close" aria-label="Close" disabled={busy} onClick={close}>×</button></header>
       <div className="project-form-row" aria-label="Project source"><button type="button" aria-pressed="false" disabled={busy || !!pending} onClick={back}>Create new</button><button type="button" aria-pressed="true">Import from GitHub</button></div>
-      <p>Import one R4OS app from a repository root, including its branch history. Studio creates a new local project. Assign a virtual machine later in Settings.</p>
+      <p>Import one R4OS app from a repository root, including its branch history. Studio creates a new local project with your chosen local targets.</p>
       {!pending && <fieldset className="project-fields" disabled={busy}><ConnectionSelect value={account} busyChanged={setAccountBusy} changed={(value) => { setAccount(value); setChoice(null); }} />
         {account && <RepositorySelect key={account.connectionId + ':' + account.tokenRevision} account={account} changed={setChoice} disabled={busy} />}</fieldset>}
       {pending && <p>Repository: {pending.input.repository.owner}/{pending.input.repository.name} · {pending.input.branch}</p>}
@@ -65,6 +70,10 @@ export function ImportProjectDialog({ token, close, created, back }: { token: st
         <fieldset className="project-fields" disabled={busy || !!pending?.finish}>
           <ProjectField id="import-name" label="Project name"><input id="import-name" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} /></ProjectField>
           <ProjectField id="import-description" label="Description"><textarea id="import-description" maxLength={4000} value={description} onChange={(e) => setDescription(e.target.value)} /></ProjectField>
+          <ProjectField id="import-vm" label="Virtual machine"><select id="import-vm" value={vmId} onChange={(event) => setVmId(event.target.value)}>
+            <option value="">None</option>{vmId && !vms.vms.some((vm) => vm.id === vmId) && <option value={vmId}>Unavailable virtual machine</option>}{vms.vms.map((vm) => <option key={vm.id} value={vm.id}>{vm.name}</option>)}
+          </select></ProjectField>{!vms.vmsAvailable && <p className="project-message">Virtual machines could not be loaded.</p>}
+          <HostSelect value={remoteHostId} changed={setRemoteHostId} disabled={busy || !!pending?.finish} />
           {preview.metadata ? <p>Keep original pins: {preview.metadata.language} · {preview.metadata.template} · SDK {preview.metadata.pins.sdk.version} · Contract {preview.metadata.pins.contract.version} · Zig {preview.metadata.pins.zig.version}</p> : <>
             <p>This repository has no portable Studio pins. Explicitly assign the installed profile below; repository files will be preserved.</p>
             <ProjectField id="import-language" label="Language"><select id="import-language" value={language} onChange={(e) => setLanguage(e.target.value as ProjectLanguage)}>{options?.languages.map((v) => <option key={v.id} value={v.id} disabled={!v.available}>{v.id}</option>)}</select></ProjectField>

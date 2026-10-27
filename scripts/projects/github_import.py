@@ -8,11 +8,12 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from store import connect, public, ProjectFault
+from store import connect, public, ProjectFault, check_vm
 from project_use import acquire, project_id
 from create import publish, finish, sync_tree
 from templates import hashes
 from sdk import profile, TYPES
+from remote_binding import hold, set_binding
 
 # Load source inspection by an explicit private module name: the SDK has its
 # own unrelated components/common.py, which must keep its normal import name.
@@ -91,7 +92,7 @@ def manifest(context, source, language, template, expected_name):
 
 
 def register(db, projects, root, identity, data):
-    if set(data) - {'name', 'description', 'snapshot', 'fallback'} or not all(isinstance(data.get(k), str) for k in ('name', 'description', 'snapshot')):
+    if set(data) - {'name', 'description', 'snapshot', 'fallback', 'remoteHostId', 'vmId'} or not all(isinstance(data.get(k), str) for k in ('name', 'description', 'snapshot')):
         raise ProjectFault('Invalid import completion.', 400)
     name = data['name'].strip()
     if not name or len(name) > 120 or len(data['description']) > 4000: raise ProjectFault('Enter a project name and a bounded description.', 400)
@@ -102,6 +103,7 @@ def register(db, projects, root, identity, data):
     if previous:
         if previous['request_hash'] != fingerprint: raise ProjectFault('This import ID belongs to a different completion.', 409)
         return finish(db, projects, root, previous)
+    check_vm(root, data.get('vmId'))
     job = files.document(projects / '.studio/github/Jobs' / identity / 'job.json')
     if job['kind'] != 'import' or job['projectId'] != identity or job['state'] != 'completed': raise ProjectFault('Wait for the original import to finish.', 409)
     original = projects / '.studio/github/Imports' / identity
@@ -119,8 +121,9 @@ def register(db, projects, root, identity, data):
     sync_tree(source_stage)
     if source_stage != stage: publish(source_stage, stage)
     now = files.now()
-    with db:
-        db.execute("INSERT INTO projects VALUES (?,?,?,?,?,?,?,?,?,?,1,'pending')", (identity, name, data['description'], language, template, 'IMPORT_' + identity.replace('-', ''), None, json.dumps(context['pins']), now, now))
+    with hold(projects, data.get('remoteHostId')), db:
+        db.execute("INSERT INTO projects VALUES (?,?,?,?,?,?,?,?,?,?,1,'pending')", (identity, name, data['description'], language, template, 'IMPORT_' + identity.replace('-', ''), data.get('vmId'), json.dumps(context['pins']), now, now))
+        set_binding(db, identity, data.get('remoteHostId'))
         db.execute('INSERT INTO project_imports VALUES (?,?,?)', (identity, module, fingerprint))
         db.execute("INSERT INTO requests VALUES (?,?,?,'prepared',?,NULL)", (identity, fingerprint, identity, json.dumps({'layout': 2, 'input': data, 'files': hashes(stage)})))
     return finish(db, projects, root, db.execute('SELECT * FROM requests WHERE request_key=?', (identity,)).fetchone())

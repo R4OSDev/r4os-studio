@@ -12,6 +12,7 @@ import uuid
 from store import connect, public, check_vm, ProjectFault
 from sdk import profile, TYPES
 from templates import render, hashes, revision as template_revision
+from remote_binding import hold, set_binding
 
 
 def validate_input(data):
@@ -144,10 +145,11 @@ def create(db, projects, root, data):
         prefix = 'P' + prefix[:15]
     module_name = prefix + '_' + identity.replace('-', '')[:8].upper()
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    with db:
+    with hold(projects, data.get('remoteHostId')), db:
         db.execute("INSERT INTO projects VALUES (?,?,?,?,?,?,?,?,?,?,1,'pending')",
                    (identity, data['name'], data['description'], data['language'], data['template'], module_name,
                     data['vmId'], json.dumps(context['pins']), now, now))
+        set_binding(db, identity, data.get('remoteHostId'))
         db.execute("INSERT INTO requests VALUES (?,?,?,'reserved',?,NULL)",
                    (request_key, request_hash, identity, json.dumps({'input': data, 'templateRevision': context['templateRevision'], 'layout': 2})))
     request = db.execute('SELECT * FROM requests WHERE request_key=?', (request_key,)).fetchone()

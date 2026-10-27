@@ -186,15 +186,21 @@ class GitTests(unittest.TestCase):
         from github_import import register
         job['state'] = 'completed'; save(self.jobs / new_id / 'job.json', job)
         (self.projects / '.studio/staging').mkdir(parents=True)
+        import subprocess, sys
+        remote_cli = Path(__file__).resolve().parents[1] / 'remote-hosts/cli.py'
+        answer = subprocess.run([sys.executable, '-B', str(remote_cli), str(self.root / 'RemoteHosts')], input=json.dumps({'operation': 'create', 'input': {'requestId': str(uuid.uuid4()), 'name': 'Own import target', 'address': '127.0.0.1'}}), capture_output=True, text=True, check=True)
+        remote = json.loads(answer.stdout)['result']; vm_id = str(uuid.uuid4())
+        vm_path = self.root / 'R4OS/Instances' / vm_id / 'vm.json'; vm_path.parent.mkdir(parents=True); vm_path.write_text(json.dumps({'id': vm_id}))
         # SDK validation already has its own pinned qualification. Here its
         # fixture isolates real registration/publication and source boundaries.
         with connect(self.projects) as db, patch('github_import.checked_profile', return_value=({'pins': portable['pins']}, 'Zig', 'terminal')), patch('github_import.manifest', return_value='QA'):
-            registered = register(db, self.projects, self.root / 'R4OS', new_id, {'name': 'Own imported roadmap QA', 'description': '', 'snapshot': value['snapshot']})
+            registered = register(db, self.projects, self.root / 'R4OS', new_id, {'name': 'Own imported roadmap QA', 'description': '', 'snapshot': value['snapshot'], 'remoteHostId': remote['id'], 'vmId': vm_id})
         db.close(); self.assertEqual(registered['id'], new_id)
+        self.assertEqual(registered['remoteHostId'], remote['id']); self.assertEqual(registered['vmId'], vm_id)
+        self.assertNotIn(remote['id'], (self.projects / new_id / 'Workspace/.r4os-studio/project.json').read_text())
         target = self.projects / new_id
         self.assertEqual((target / 'Workspace/Docs/Decision.md').read_bytes(), (self.source / 'Docs/Decision.md').read_bytes())
         self.assertFalse((target / 'Roadmap').exists()); self.assertFalse((target / 'Sessions').exists())
-        import subprocess, sys
         cli = Path(__file__).resolve().parents[1] / 'project-roadmaps/cli.py'
         answer = subprocess.run([sys.executable, '-B', str(cli), str(self.projects)], input=json.dumps({'operation': 'initialize', 'projectId': new_id, 'requestId': str(uuid.uuid4())}), capture_output=True, text=True, check=True)
         fresh = json.loads(answer.stdout)['result']

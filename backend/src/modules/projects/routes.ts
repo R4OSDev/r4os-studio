@@ -17,6 +17,7 @@ const fields = {
   name: { type: 'string', minLength: 1, maxLength: 120 },
   description: { type: 'string', maxLength: 4000 },
   vmId: { anyOf: [identity, { type: 'null' }] },
+  remoteHostId: { anyOf: [identity, { type: 'null' }] },
 };
 function controlCharacters(value: string, allowed: number[] = []) {
   return Array.from(value).some((character) => {

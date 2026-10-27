@@ -84,7 +84,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         create={() => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewRoadmapVersion(true); } }} />
         : selected && current.section === 'Editor' ? <Suspense fallback={<div className="nav-column" />}><EditorFiles key={selected.id} id={selected.id} token={api.token} /></Suspense> : selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['General', 'Virtual machine', 'Run & Test', 'Agents.md'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
+        <div className="nav-items">{(['General', 'Virtual machine', 'Remote host', 'Run & Test', 'Agents.md'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
           className={`nav-item ${current.settingsView === view ? 'selected' : ''}`} aria-current={current.settingsView === view ? 'page' : undefined}
           onClick={() => { if (view !== current.settingsView && leave()) navigate(selected.id, { ...current, settingsView: view }); }}><span>{view}</span></button>)}</div>
       </nav> : selected && current.section === 'Sessions' ? <nav className="nav-column" aria-label="Project sessions">

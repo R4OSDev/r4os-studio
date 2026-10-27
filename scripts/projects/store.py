@@ -9,6 +9,9 @@ import sys
 import datetime
 import re
 
+# The fixed CLI and imported helpers must share the same typed fault class.
+if __name__ == '__main__': sys.modules['store'] = sys.modules[__name__]
+
 
 class ProjectFault(Exception):
     def __init__(self, message, code=409):
@@ -23,7 +26,8 @@ def public(row, db=None):
     if db is not None and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_imports'").fetchone():
         imported = db.execute('SELECT source_module_name FROM project_imports WHERE project_id=?', (row['id'],)).fetchone()
         if imported: module_name = imported[0]
-    return {'id': row['id'], 'name': row['name'], 'description': row['description'],
+    from remote_binding import get as remote_host
+    return {'id': row['id'], 'name': row['name'], 'description': row['description'], 'remoteHostId': remote_host(db, row['id']),
             'language': row['language'], 'template': row['template'], 'vmId': row['vm_id'],
             'moduleName': module_name, 'pins': json.loads(row['pins']),
             'revision': row['revision'], 'createdAt': row['created_at'], 'updatedAt': row['updated_at']}
@@ -118,7 +122,7 @@ def operation(db, request, root):
         return {**public(row, db), **({'deleting': True} if deleting else {})}
     if request.get('operation') == 'update' and set(request) == {'operation', 'id', 'input'}:
         data = request['input']
-        if not set(data).issubset({'name', 'description', 'vmId', 'revision'}) or 'revision' not in data:
+        if not set(data).issubset({'name', 'description', 'vmId', 'remoteHostId', 'revision'}) or 'revision' not in data:
             raise ProjectFault('Unexpected project fields.', 400)
         from project_maintenance import pending_update, pending_git
         catalog_path = Path(db.execute('PRAGMA database_list').fetchone()[2]).parent
@@ -144,10 +148,16 @@ def operation(db, request, root):
                         raise ProjectFault('Stop this project\'s VM development job before changing its assigned VM.')
                 finally: jobs.close()
             check_vm(root, value['vmId'])
-        if (value['name'], value['description'], value['vmId']) != (old['name'], old['description'], old['vmId']):
+        from remote_binding import hold, set_binding, assert_change_safe
+        remote_changed = value['remoteHostId'] != old['remoteHostId']
+        if remote_changed: assert_change_safe(catalog_path, request['id'])
+        if (value['name'], value['description'], value['vmId'], value['remoteHostId']) != (old['name'], old['description'], old['vmId'], old['remoteHostId']):
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            db.execute('UPDATE projects SET name=?,description=?,vm_id=?,updated_at=?,revision=revision+1 WHERE id=?',
-                       (value['name'], value['description'], value['vmId'], now, request['id']))
+            with hold(catalog_path, value['remoteHostId'] if remote_changed else None):
+                if remote_changed: set_binding(db, request['id'], value['remoteHostId'])
+                db.execute('UPDATE projects SET name=?,description=?,vm_id=?,updated_at=?,revision=revision+1 WHERE id=?',
+                           (value['name'], value['description'], value['vmId'], now, request['id']))
+                db.commit()
         db.commit()
         return public(db.execute('SELECT * FROM projects WHERE id=?', (request['id'],)).fetchone(), db)
     raise ValueError('Unsupported project operation.')

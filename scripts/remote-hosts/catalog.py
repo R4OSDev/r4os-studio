@@ -223,6 +223,8 @@ def operation(directory, request):
             target_change = op in ('remove', 'reset_trust') or (op == 'update' and ('password' in content or any(content.get(k, row[k]) != row[k] for k in ('address', 'port', 'user'))))
             if target_change and active(directory, ident): raise CatalogFault('Wait for the original connection check before changing its target, login or trust.')
             if op == 'remove':
+                from references import projects as references
+                if references(directory, ident): raise CatalogFault('This host is assigned to projects. Remove those project bindings before removing its local entry.')
                 db.execute('INSERT INTO retired VALUES (?,?)', (ident, stamp)); db.execute('DELETE FROM hosts WHERE id=?', (ident,))
             elif op == 'reset_trust':
                 db.execute("UPDATE host_keys SET state='unbound',key_type=NULL,key_data=NULL,fingerprint=NULL,trusted_at=NULL WHERE host_id=?", (ident,))
