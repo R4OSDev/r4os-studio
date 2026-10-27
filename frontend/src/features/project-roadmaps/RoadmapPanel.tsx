@@ -8,6 +8,7 @@ import { versionStatusLabels } from './model';
 import { Subversions } from './Subversions';
 import type { EntryEditor } from './Subversions';
 import { ExportVersion } from './ExportVersion';
+import { CleanupWorkflows } from './CleanupWorkflows';
 import './styles.css';
 
 export function Progress({ progress }: { progress: RoadmapProgress }) {
@@ -119,6 +120,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
             saved={() => { setEditor(null); dirtyChanged(false); model.reload(); }} cancel={() => setEditor(null)} dirtyChanged={dirtyChanged} busyChanged={setFormBusy} />
         </VersionDialog>}
       </div>}
+      {!creating && <CleanupWorkflows key={id + ':' + (selectedVersionId ?? '')} id={id} versionId={selectedVersionId} />}
     </>}
   </section>;
 }

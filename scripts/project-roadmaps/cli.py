@@ -16,9 +16,9 @@ from exports import chunk, open_archive, prepare
 
 
 def operation(projects, request):
-    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset'])
+    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset', 'workflowId'])
     name = request['operation']
-    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'export', 'export_info', 'export_chunk'):
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'export', 'export_info', 'export_chunk', 'workflows', 'workflow'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
     if name in ('read', 'initialize'):
         fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])
@@ -26,11 +26,18 @@ def operation(projects, request):
         fields(request, ['operation', 'projectId', 'input'])
     with connection(projects, request['projectId'], initialize=name == 'initialize') as db:
         if db is None:
+            if name == 'workflows':
+                fields(request, ['operation', 'projectId'], ['versionId', 'limit', 'cursor'])
+                if 'cursor' in request: raise ProjectFault('No workflow page exists in this project.', 404)
+                return {'items': [], 'nextCursor': None}
             if name not in ('read', 'overview'):
                 raise ProjectFault('Initialize this project roadmap before continuing.', 404)
             return {'exists': False, 'projectId': request['projectId']}
         if name == 'mutate':
             return mutate(db, request['projectId'], request['input'])
+        if name in ('workflows', 'workflow'):
+            from workflow_reads import read as read_workflows
+            return read_workflows(db, request['projectId'], request)
         if name == 'export':
             return prepare(db, projects, request['projectId'], request['input'])
         if name == 'export_info':

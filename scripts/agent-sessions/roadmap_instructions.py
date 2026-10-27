@@ -19,7 +19,7 @@ def compose(config):
             'earlier roadmap instructions. It changes no saved prompt source or tool permission.\n\n'
             + source.read_text(encoding='utf-8') +
             '\n\nCURRENT CLEANUP CAPABILITY: prepare, status and cancel are available in this release; '
-            'finalize is not yet available. This overrides the earlier saved tool-description availability note. '
+            'finalize is available after the verified document checkpoint. This overrides the earlier saved tool-description availability note. '
             'First prepare with a stable requestId, current version/revision and cleanupRequested=true; '
             'workflowId equals that original requestId. After the verified archive, read and update suitable '
             'Docs files with permitted file tools. Confirm their actual final bytes using prepare again with '
@@ -30,5 +30,9 @@ def compose(config):
             'Do not repeat document writes when reconciling. Query status(workflowId) and original request receipts. '
             'To recover original document hashes, status can also take up to eight documents receipt objects '
             'with known current sha256 and expectedSha256=null; it returns the selected baseline and recorded hashes without writing files. '
+            'Finalize with requestId, workflowId, cleanupRequested=true and the exact verified documents and documentationSummary. '
+            'Use only path/expectedSha256/sha256 from each receipt, without its extra byteLength field. '
+            'The host rechecks the original user context, current snapshot, full archive and final document hashes, then commits Complete, one empty next version and its current binding together. '
+            'On an uncertain finalization, inspect status and the original request receipt before any further mutation. '
             'Cancel releases the workflow without undoing or deleting archive, staging or documentation files. '
             'A normal implementation request is never an explicit cleanup request, and no extra blanket approval is required.')

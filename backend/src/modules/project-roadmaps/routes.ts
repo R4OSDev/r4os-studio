@@ -72,6 +72,18 @@ export function roadmapRoutes(app: FastifyInstance, directory: string, sessions:
     sessions.session(request, reply);
     return roadmapStore(directory, { operation: 'revision', projectId: request.params.id });
   });
+  app.get<{ Params: Params; Querystring: Query & { versionId?: string } }>(base + '/workflows', {
+    schema: { params: parameterSchema(base), querystring: { ...pageQuery, properties: { ...pageQuery.properties, versionId: uuid } } },
+  }, async (request, reply) => {
+    sessions.session(request, reply);
+    return roadmapStore(directory, { operation: 'workflows', projectId: request.params.id, ...request.query });
+  });
+  app.get<{ Params: { id: string; workflowId: string } }>(base + '/workflows/:workflowId', {
+    schema: { params: parameterSchema(base + '/workflows/:workflowId') },
+  }, async (request, reply) => {
+    sessions.session(request, reply);
+    return roadmapStore(directory, { operation: 'workflow', projectId: request.params.id, workflowId: request.params.workflowId });
+  });
   const targets: { path: string; reference: (params: Params) => RoadmapTarget }[] = [
     { path: '', reference: () => ({ kind: 'roadmap' }) },
     { path: '/versions/:versionId', reference: (p) => ({ kind: 'version', id: p.versionId }) },

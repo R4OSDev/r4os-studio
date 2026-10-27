@@ -30,6 +30,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     const missing = await app.inject({ url, headers });
     assert.equal(missing.statusCode, 200, missing.body);
     assert.equal(missing.json().exists, false);
+    assert.deepEqual((await app.inject({ url: url + '/workflows', headers })).json(), { items: [], nextCursor: null });
     const input = { requestId: randomUUID() };
     for (const invalidHeaders of [{}, { cookie: headers.cookie }, { ...headers, origin: 'http://foreign.test' },
       { ...headers, host: 'foreign.test' }, { ...headers, 'sec-fetch-site': 'cross-site' }]) {
@@ -89,6 +90,38 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal(Buffer.byteLength(downloaded.body), exported.json().byteLength);
     assert.equal(createHash('sha256').update(downloaded.rawPayload).digest('hex'), exported.json().sha256);
     assert(downloaded.body.includes(unicode));
+    assert.deepEqual((await app.inject({ url: url + '/revision', headers })).json(), binding);
+    const workflowIds = Array.from({ length: 12 }, () => randomUUID());
+    await promisify(execFile)('/usr/bin/python3', ['-B', '-c', `
+import sqlite3,json,sys
+with sqlite3.connect(sys.argv[1]) as db:
+ for index,identity in enumerate(json.loads(sys.argv[4])):
+  payload={'schema':1,'projectId':sys.argv[2],'versionId':sys.argv[3],'currentVersionId':sys.argv[3],
+   'revision':int(sys.argv[5]),'number':'0.1.X','baseline':{},'attempts':[],
+   'documentationSummary':'Known historical summary '*40,'privateCanary':'/unpublished/private/path'}
+  db.execute('INSERT INTO workflows VALUES(?,?,?,?,?,?,?)',(identity,'cleanup',sys.argv[3],'preparing' if index==0 else 'cancelled',json.dumps(payload),'now','now'))
+`, join(directory, id, 'Roadmap/Roadmap.sqlite'), id, root.currentVersionId, JSON.stringify(workflowIds), String(binding.revision)]);
+    const historyUrl = url + '/workflows';
+    assert.equal((await app.inject(historyUrl)).statusCode, 403);
+    assert.equal((await app.inject({ url: historyUrl, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);
+    const history = await app.inject({ url: historyUrl + '?limit=5', headers });
+    assert.equal(history.statusCode, 200, history.body);
+    assert.equal(history.json().items.length, 5); assert(history.json().nextCursor);
+    assert.equal(history.json().items[0].summaryTruncated, true);
+    assert(!history.body.includes('privateCanary')); assert(!history.body.includes('/unpublished/private/path'));
+    assert(!Object.hasOwn(history.json().items[0], 'documents'));
+    const nextHistory = await app.inject({ url: historyUrl + '?limit=5&cursor=' + encodeURIComponent(history.json().nextCursor), headers });
+    assert.equal(nextHistory.statusCode, 200, nextHistory.body);
+    assert.equal(new Set([...history.json().items, ...nextHistory.json().items].map((entry: { workflowId: string }) => entry.workflowId)).size, 10);
+    assert.equal((await app.inject({ url: `/api/projects/${other}/roadmap/workflows?cursor=${encodeURIComponent(history.json().nextCursor)}`, headers })).statusCode, 409);
+    const detail = await app.inject({ url: historyUrl + '/' + workflowIds[0], headers });
+    assert.equal(detail.statusCode, 200, detail.body); assert.equal(detail.json().phase, 'preparing');
+    assert.deepEqual(detail.json().sourceBinding, binding); assert.deepEqual(detail.json().documents, []);
+    assert(!detail.body.includes('privateCanary'));
+    assert.equal((await app.inject(historyUrl + '/' + workflowIds[0])).statusCode, 403);
+    assert.equal((await app.inject({ url: `/api/projects/${other}/roadmap/workflows/${workflowIds[0]}`, headers })).statusCode, 404);
+    assert.equal((await app.inject({ url: historyUrl + '?versionId=' + randomUUID(), headers })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/mutations', headers, payload: { ...body, requestId: randomUUID(), expectedRevision: binding.revision } })).statusCode, 409);
     assert.deepEqual((await app.inject({ url: url + '/revision', headers })).json(), binding);
   } finally {
     await app.close();

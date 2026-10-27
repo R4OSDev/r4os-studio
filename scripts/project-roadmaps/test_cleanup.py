@@ -79,8 +79,8 @@ class CleanupTests(unittest.TestCase):
         self.assertTrue(status['documentStatus'][0]['reportedHashMatchesReceipt'])
         self.assertEqual(self.request('read'), before)
         with self.assertRaises(RoadmapFault): self.change('update', {'kind': 'version', 'id': args['versionId']}, {'title': 'Blocked during cleanup'})
-        unavailable = self.call({'action': 'finalize'})
-        self.assertFalse(unavailable['available']); self.assertEqual(self.request('read'), before)
+        with self.assertRaises(RoadmapFault): self.call({'action': 'finalize'})
+        self.assertEqual(self.request('read'), before)
 
     def test_crash_after_archive_publication_resumes_original_workflow_without_rewrite(self):
         args = self.arguments()

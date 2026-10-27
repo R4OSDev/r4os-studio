@@ -88,3 +88,17 @@ export interface RoadmapExportInput {
   expectedRevision: number;
   currentVersionId: string;
 }
+
+export type RoadmapWorkflowPhase = 'preparing' | 'archiving' | 'archive_ready' | 'documents_verified' | 'complete' | 'cancelled' | 'aborted';
+export interface RoadmapDocumentReceipt { path: string; expectedSha256: string | null; sha256: string; byteLength: number }
+export interface RoadmapWorkflow extends RoadmapBinding {
+  workflowId: string; phase: RoadmapWorkflowPhase; versionId: string; number: string;
+  sourceBinding: RoadmapBinding;
+  archive: { path: string; sha256: string; byteLength: number; exportId: string; encoding: 'utf-8' } | null;
+  documents: RoadmapDocumentReceipt[]; documentCount: number; documentationSummary: string | null;
+  baselineFileCount: number; attemptCount: number; createdAt: string; updatedAt: string;
+  capabilities: { prepare: boolean; status: boolean; cancel: boolean; finalize: boolean };
+  nextVersionId?: string; nextNumber?: string; completedAt?: string;
+}
+export type RoadmapWorkflowSummary = Omit<RoadmapWorkflow, 'documents'> & { summaryTruncated: boolean };
+export interface RoadmapWorkflowPage { items: RoadmapWorkflowSummary[]; nextCursor: string | null }

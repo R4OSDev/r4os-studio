@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+import sqlite3
 import uuid
 
 from cleanup_files import archive, baseline, document, document_parts, root as workspace_root, temporary_name
@@ -26,7 +27,8 @@ def get(db, project_id, workflow_id):
     row = db.execute("SELECT * FROM workflows WHERE id=? AND kind='cleanup'", (workflow_id,)).fetchone()
     if row is None: raise RoadmapFault('Cleanup workflow not found in this project.', 404)
     payload = json.loads(row['payload'])
-    if payload.get('schema') != 1 or payload.get('projectId') != project_id:
+    if (payload.get('schema') != 1 or payload.get('projectId') != project_id
+            or payload.get('versionId') != row['version_id'] or payload.get('currentVersionId') != row['version_id']):
         raise RoadmapFault('Cleanup workflow needs maintenance. All files and history were preserved.', 503)
     return row, payload
 
@@ -42,8 +44,9 @@ def public(db, project_id, workflow_id):
             'documentationSummary': payload.get('documentationSummary'),
             'baselineFileCount': len(payload['baseline']),
             'attemptCount': len(payload.get('attempts', [])),
-            'capabilities': {'prepare': True, 'status': True, 'cancel': True, 'finalize': False},
-            'createdAt': row['created_at'], 'updatedAt': row['updated_at']}
+            'sourceBinding': {'revision': payload['revision'], 'currentVersionId': payload['currentVersionId']},
+            'capabilities': {'prepare': True, 'status': True, 'cancel': True, 'finalize': True},
+            'createdAt': row['created_at'], 'updatedAt': row['updated_at'], **payload.get('finalResult', {})}
 
 
 def current(db, payload):
@@ -77,6 +80,17 @@ def file_rights(actor):
         raise RoadmapFault('Cleanup preparation needs this run’s Read file, Write file and Create directory permissions.', 403)
 
 
+def verify_archive(db, projects, project_id, payload, root_fd, check):
+    saved = payload['archive']
+    with open_archive(projects, project_id, saved['exportId']) as (info, stream):
+        if (info['versionId'] != payload['versionId'] or info['revision'] != payload['revision']
+                or info['currentVersionId'] != payload['currentVersionId'] or info['number'] != payload['number']
+                or info['sha256'] != saved['sha256'] or info['byteLength'] != saved['byteLength']
+                or saved['path'] != 'Docs/Changelogs/' + info['filename']):
+            raise RoadmapFault('The original cleanup snapshot identity changed. All files were preserved.', 409)
+        archive(root_fd, stream, info, temporary_name(payload['versionId']), check, create=False)
+
+
 def ready_work(db, version_id):
     if db.execute("SELECT 1 FROM subversions WHERE version_id=? AND status='open' LIMIT 1", (version_id,)).fetchone():
         raise RoadmapFault('Resolve open subversions before preparing cleanup; no status was changed.', 409)
@@ -95,10 +109,14 @@ def authorize_context(db, actor, version_id):
     consumed = {json.loads(row['payload']).get('origin', {}).get('runId')
                 for row in db.execute("SELECT version_id,phase,payload FROM workflows WHERE kind='cleanup'")
                 if row['phase'] != 'cancelled' or row['version_id'] != version_id}
-    for candidate in actor['contexts']:
-        if candidate['runId'] not in consumed and TRIGGER.search(candidate['text']):
-            return {'runId': candidate['runId'], 'sessionId': actor['sessionId'],
-                    'sha256': hashlib.sha256(candidate['text'].encode()).hexdigest()}
+    candidates = actor['contexts']() if callable(actor['contexts']) else iter(actor['contexts'])
+    try:
+        for candidate in candidates:
+            if candidate['runId'] not in consumed and TRIGGER.search(candidate['text']):
+                return {'runId': candidate['runId'], 'sessionId': actor['sessionId'],
+                        'sha256': hashlib.sha256(candidate['text'].encode()).hexdigest()}
+    finally:
+        if hasattr(candidates, 'close'): candidates.close()
     raise RoadmapFault('Cleanup needs an explicit user cleanup request in this session. Ordinary roadmap implementation is not cleanup.', 403)
 
 
@@ -185,9 +203,7 @@ def confirm_documents(db, projects, project_id, args, actor, request_hash):
     actor['check']()
     with workspace_root(projects, project_id, payload['workspace']) as (root_fd, _):
         # Confirm the complete original archive again, without rewriting it.
-        exported = payload['archive']
-        with open_archive(projects, project_id, exported['exportId']) as (info, stream):
-            archive(root_fd, stream, info, temporary_name(workflow_id), actor['check'], create=False)
+        verify_archive(db, projects, project_id, payload, root_fd, actor['check'])
         for entry in documents:
             actor['check']()
             fields(entry, ['path', 'sha256', 'expectedSha256'])
@@ -209,6 +225,71 @@ def confirm_documents(db, projects, project_id, args, actor, request_hash):
         db.execute('BEGIN IMMEDIATE'); current(db, payload); update(db, workflow_id, payload, 'documents_verified')
         result = public(db, project_id, workflow_id); receipt(db, args['requestId'], request_hash, result)
     return result
+
+
+def finalize(db, projects, project_id, args, actor):
+    fields(args, ['action', 'requestId', 'workflowId', 'cleanupRequested', 'documents', 'documentationSummary'])
+    request_id = identity(args['requestId']); workflow_id = identity(args['workflowId'])
+    if args['cleanupRequested'] is not True: raise RoadmapFault('Finalization needs the original explicit cleanup intent.', 403)
+    request_hash = fingerprint(project_id, args)
+    old = original(db, request_id, request_hash)
+    if old is not None: return old
+    row, payload = get(db, project_id, workflow_id)
+    if row['phase'] not in ('documents_verified', 'complete'):
+        raise RoadmapFault('Confirm the complete archive and knowledge-document checkpoint before finalization.', 409)
+    selected = [{k: d[k] for k in ('path', 'expectedSha256', 'sha256')} for d in payload['documents']]
+    if args['documents'] != selected or args['documentationSummary'] != payload['documentationSummary']:
+        raise RoadmapFault('Finalize only the exact verified document selection and summary. Inspect the original workflow.', 409)
+    if row['phase'] == 'complete':
+        with db:
+            db.execute('BEGIN IMMEDIATE'); result = public(db, project_id, workflow_id)
+            receipt(db, request_id, request_hash, result)
+        return result
+    if actor['config'].get('permissions', {}).get('studio.read_file') is not True:
+        raise RoadmapFault('Finalization needs Read file permission to verify the existing archive and documentation.', 403)
+    origin = payload['origin']; original_text = actor['verify_origin'](origin)
+    if (not isinstance(original_text, str) or not TRIGGER.search(original_text)
+            or hashlib.sha256(original_text.encode()).hexdigest() != origin['sha256']):
+        raise RoadmapFault('The original explicit user cleanup context could not be verified. Preserve the workflow.', 409)
+    current(db, payload); ready_work(db, payload['versionId']); actor['check']()
+    with workspace_root(projects, project_id, payload['workspace']) as (root_fd, _):
+        verify_archive(db, projects, project_id, payload, root_fd, actor['check'])
+        for entry in payload['documents']:
+            actor['check'](); value = document(root_fd, entry['path'])
+            if value['sha256'] != entry['sha256'] or value['byteLength'] != entry['byteLength']:
+                raise RoadmapFault('A knowledge document changed after its checkpoint. Reconcile before finalizing.', 409)
+    actor['check']()
+    db.execute('BEGIN IMMEDIATE')
+    try:
+        old = original(db, request_id, request_hash)
+        if old is not None: return old
+        row, payload = get(db, project_id, workflow_id)
+        if row['phase'] != 'documents_verified': raise RoadmapFault('The cleanup workflow changed. Inspect its original status.', 409)
+        current(db, payload); ready_work(db, payload['versionId'])
+        version = db.execute('SELECT * FROM versions WHERE id=?', (payload['versionId'],)).fetchone()
+        if version is None or f'{version["major"]}.{version["minor"]}.X' != payload['number'] or version['status'] == 'discarded':
+            raise RoadmapFault('The original cleanup main version changed.', 409)
+        next_minor = integer(version['minor'] + 1)
+        root = root_row(db)
+        if db.execute('SELECT 1 FROM versions WHERE roadmap_id=? AND major=? AND minor=?', (root['id'], version['major'], next_minor)).fetchone():
+            raise RoadmapFault('The next main version already exists. Preserve it and reconcile instead of overwriting or skipping it.', 409)
+        if db.execute('SELECT count(*) FROM versions').fetchone()[0] >= 1000: raise RoadmapFault('The main-version collection reached its limit.', 413)
+        next_id, stamp = str(uuid.uuid5(uuid.UUID(workflow_id), 'next-version')), timestamp()
+        position = db.execute('SELECT coalesce(max(position),-1)+1 FROM versions').fetchone()[0]
+        db.execute("INSERT INTO versions(id,roadmap_id,major,minor,title,vision,notes,status,position,created_at,updated_at) VALUES(?,?,?,?,'New','','','open',?,?,?)",
+                   (next_id, root['id'], version['major'], next_minor, position, stamp, stamp))
+        db.execute("UPDATE versions SET status='complete',revision=revision+1,updated_at=? WHERE id=?", (stamp, version['id']))
+        db.execute('UPDATE roadmap SET current_version_id=?,revision=revision+1,updated_at=?', (next_id, stamp))
+        payload['finalResult'] = {'phase': 'complete', 'nextVersionId': next_id,
+                                  'nextNumber': f'{version["major"]}.{next_minor}.X',
+                                  'revision': root['revision'] + 1, 'currentVersionId': next_id, 'completedAt': stamp}
+        update(db, workflow_id, payload, 'complete')
+        result = public(db, project_id, workflow_id); receipt(db, request_id, request_hash, result)
+        db.commit()
+        return result
+    except sqlite3.IntegrityError:
+        raise RoadmapFault('The next version conflicts with existing roadmap data. All original entries were preserved.', 409) from None
+    finally: db.rollback()
 
 
 def call(db, projects, project_id, args, actor):
@@ -243,6 +324,5 @@ def call(db, projects, project_id, args, actor):
             result = public(db, project_id, row['id']); receipt(db, args['requestId'], request_hash, result)
         return result
     if action == 'finalize':
-        return {'available': False, 'capability': 'cleanup_finalize',
-                'message': 'Finalization is not enabled in this release. The main version and next version were not changed.'}
+        return finalize(db, projects, project_id, args, actor)
     raise RoadmapFault('Unsupported cleanup phase.', 400)

@@ -61,3 +61,16 @@
   .project-dialog .roadmap-form .project-fields { padding: 20px; }
   .project-dialog .roadmap-form .project-actions { padding: 16px 20px; }
 }
+.roadmap-cleanup { margin-top: 1rem; }
+.roadmap-cleanup-entry { margin-top: .6rem; }
+.roadmap-cleanup-entry > summary { display: flex; flex-wrap: wrap; gap: .4rem 1rem; cursor: pointer; padding: .6rem 0; }
+.roadmap-cleanup-entry > summary small { margin-left: auto; }
+.roadmap-cleanup-entry > summary::before { content: '›'; transition: transform .15s; }
+.roadmap-cleanup-entry[open] > summary::before { transform: rotate(90deg); }
+.roadmap-cleanup-body { padding: .4rem 0 .8rem; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.roadmap-cleanup-body dl { display: grid; gap: .5rem; }
+.roadmap-cleanup-body dl > div { display: flex; flex-wrap: wrap; gap: .3rem 1rem; }
+.roadmap-cleanup-body dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+.roadmap-cleanup-body dt { font-weight: 600; }
+.roadmap-cleanup-body code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.roadmap-cleanup-summary { white-space: pre-wrap; }

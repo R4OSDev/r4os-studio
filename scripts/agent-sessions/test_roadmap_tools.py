@@ -150,7 +150,7 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
         transition(worker.store, worker.run_id, 'stopping')
         result = await self.call(worker, 'update_roadmap', args); self.assertEqual(result['error'], 'interrupted')
 
-    async def test_text_and_full_export_are_byte_paged_and_cleanup_remains_unavailable(self):
+    async def test_text_and_full_export_are_byte_paged_and_cleanup_requires_original_workflow(self):
         worker = self.start()
         initialized = await self.good(worker, 'update_roadmap', {'operation': 'initialize', 'requestId': str(uuid.uuid4())})
         reference = {'kind': 'roadmap', 'id': initialized['entity']['id']}
@@ -173,7 +173,7 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(hashlib.sha256(raw).hexdigest(), exported['sha256']); self.assertEqual(len(raw), exported['byteLength'])
         self.assertIn(text, raw.decode())
         unavailable = await self.call(worker, 'cleanup_roadmap', {'action': 'finalize'})
-        self.assertEqual(unavailable['error'], 'unavailable')
+        self.assertEqual(unavailable['error'], 'failed')
         self.assertFalse((worker.store.workspace / 'Docs').exists())
 
     async def test_lost_sidecar_response_is_reconciled_after_restart_without_repeating_effect(self):

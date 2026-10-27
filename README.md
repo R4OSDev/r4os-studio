@@ -1,3 +1,41 @@
+## Roadmap cleanup finalization and history (0.6.10)
+
+`cleanup finalize` now rechecks the actual original user-message hash/context,
+active frozen Roadmap permission, Read file permission, exact workflow/version/
+revision, complete original archive and the verified document selection, summary
+and final byte hashes. It reads the existing files without creating directories
+or rewriting archive/docs. Its one SQLite transaction marks the old main version
+Complete, inserts exactly one next empty version, switches current, and stores
+workflow and request receipts. For example 0.9.X becomes 0.10.X; the new version
+is New/Open with empty vision, notes and subversions. Project notes, other
+versions, historical entries and all child statuses/notes remain intact.
+
+An existing next number, unresolved work, changed files, changed original user
+context, missing checkpoint or stale binding is a conflict. Numeric overflow
+also preserves the original state. A pre-commit failure rolls all three database
+changes back; a lost post-commit response is reconciled through the original
+workflow/request. Repeating even a new finalization request for the same completed
+workflow returns its recorded next version rather than creating another one.
+An old consumed cleanup request cannot roll over the new empty version again.
+The archive remains the immutable snapshot of the prepared state; the completion
+receipt records the subsequent atomic database transition.
+
+Pending user intent is read from actual stored session messages without an
+arbitrary twenty-message cutoff. Its cursor is closed before long archive work,
+and finalization can recheck an original request from another session of the
+same project. Native profile declarations, threads, histories, custom prompts
+and project pins remain unchanged. The bound English capability guidance reports
+that finalization is now available; no second blanket approval is introduced.
+
+The roadmap overview and version views display Cleanup history with original
+workflow ID, snapshot revision, phase, archive path/hash/download, verified
+knowledge receipts and next version. Protected read-only workflow routes use
+project/version-bound keyset pagination and omit private journal internals.
+Recent entries update periodically; loading older history leaves it stable until
+Refresh. Workflow updates retain form drafts and focus. Tool cards also show
+workflow ID and cleanup phase. All file mutations still use the bound agent
+workflow; browser history reads cannot finalize or cancel a workflow.
+
 ## Roadmap cleanup preparation (0.6.9)
 
 The bound v8 cleanup tool now enables `prepare`, read-only `status`, and `cancel`.
