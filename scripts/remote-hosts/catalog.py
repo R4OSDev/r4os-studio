@@ -222,6 +222,9 @@ def operation(directory, request):
             from checks import active
             target_change = op in ('remove', 'reset_trust') or (op == 'update' and ('password' in content or any(content.get(k, row[k]) != row[k] for k in ('address', 'port', 'user'))))
             if target_change and active(directory, ident): raise CatalogFault('Wait for the original connection check before changing its target, login or trust.')
+            if target_change:
+                from job_store import host_busy
+                if host_busy(Path(directory).parent / 'Projects', ident): raise CatalogFault('Finish or review this host’s active or uncertain remote jobs before changing its endpoint, login or trust.')
             if op == 'remove':
                 from references import projects as references
                 if references(directory, ident): raise CatalogFault('This host is assigned to projects. Remove those project bindings before removing its local entry.')

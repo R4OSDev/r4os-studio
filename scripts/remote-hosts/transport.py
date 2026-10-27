@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
 import stat
 import sys
@@ -129,3 +130,47 @@ class RemoteTransport:
             if key is None: return {'status': 'transport_error', 'key': None}
             return {'status': 'success', 'key': key, 'version': version['release'], 'kernel': version['kernel']}
         except asyncio.TimeoutError: return {'status': 'timeout', 'key': key_receipt(self.runtime / 'known_hosts', self.alias, self.target['port'])}
+
+    async def execute_complete(self, command, timeout, abort, limit=16384):
+        """No retry: a local client end cannot attest every remote process end."""
+        buffers = {'stdout': bytearray(), 'stderr': bytearray()}; code = None
+        flags = {'timedOut': False, 'stoppedLocally': False, 'outputTruncated': False, 'dispatched': False}
+        process = None; capture_task = stop_task = None
+        async def capture(stream, channel):
+            while data := await stream.read(8192):
+                remaining = limit - len(buffers[channel]); buffers[channel].extend(data[:max(0, remaining)])
+                if len(data) > remaining: flags['outputTruncated'] = True; raise CatalogFault('The remote output limit was reached.', 503)
+        try:
+            if abort.is_set(): flags['stoppedLocally'] = True
+            else:
+                process = await asyncio.create_subprocess_exec(*self.argv(), self.destination(), command,
+                    stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    env=self.environment(), start_new_session=True)
+                self.processes.add(process); flags['dispatched'] = True
+                async def collect():
+                    await asyncio.gather(capture(process.stdout, 'stdout'), capture(process.stderr, 'stderr'))
+                    return await process.wait()
+                capture_task = asyncio.create_task(collect()); stop_task = asyncio.create_task(abort.wait())
+                done, _ = await asyncio.wait((capture_task, stop_task), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+                if capture_task in done:
+                    try: code = capture_task.result()
+                    except Exception: pass
+                elif stop_task in done: flags['stoppedLocally'] = True
+                else: flags['timedOut'] = True
+        except asyncio.CancelledError: flags['stoppedLocally'] = True
+        except OSError: pass  # A failed local spawn is not a remote command exit.
+        finally:
+            if process and process.returncode is None:
+                try: os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError: pass
+                await process.wait()
+            for task in (capture_task, stop_task):
+                if task and not task.done(): task.cancel()
+            await asyncio.gather(*(task for task in (capture_task, stop_task) if task), return_exceptions=True)
+            if process: self.processes.discard(process)
+        confirmed = bool(flags['dispatched'] and code is not None and 0 <= code < 255 and not any(flags[k] for k in ('timedOut', 'stoppedLocally', 'outputTruncated')))
+        def safe(raw): return bytes(raw).decode('utf8', errors='replace').replace(self.target['password'], '[redacted password]')
+        return {**{k: safe(v) for k, v in buffers.items()}, **flags, 'sshExitCode': process.returncode if process else None,
+                'commandExitCode': code if confirmed else None, 'commandReturnConfirmed': confirmed,
+                'localClientEndConfirmed': True, 'remoteProcessEndConfirmed': False,
+                'transportUncertain': bool(flags['dispatched'] and not confirmed)}

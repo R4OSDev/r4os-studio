@@ -1,3 +1,33 @@
+## Durable Remote Host command foundation (0.6.17)
+
+The unprivileged broker now records project/session/run, the frozen host and
+endpoint/login/trust revisions, exact request arguments and deadline before a
+possible SSH command. Its separate private agent socket requires the actual
+worker parent and inherited workspace lease. Repeating an original request
+reads its receipt; another session cannot read or stop it. The bounded harness
+waits on that original job and never retries command dispatch after a lost reply.
+
+Commands use native R4OS SSH Exec, with one command and no assumed POSIX shell,
+persistent working directory or remote compiler. Confirmed command exit status,
+SSH transport uncertainty and local client termination are separate fields.
+Timeout, output overflow, Stop and broker interruption preserve an unknown
+remote effect rather than inventing a command exit or confirmed remote end.
+Unknown effects block later mutations at the same configured endpoint; explicit
+VER diagnosis remains available. DNS alias qualification follows in0.6.21.
+
+The reserved studio-tools-v9 broker contract is exercised by controlled worker
+fixtures. Native declarations, session rights and live agent admission follow
+in0.6.19; installed commands remain unavailable until that compatible profile
+is enabled. The explicit local install-job-support.py only adds the existing
+Projects directory to this private broker's writable namespace. It grants no
+web terminal, general shell or VM administration rights.
+
+Validation: six real worker/SCM_RIGHTS/receipt tests, fourteen transport/catalog
+tests (including actual local subprocess output, timeout and cancellation),
+three HTTP tests, build/TypeScript and strict lint. SSH response fixtures do
+not qualify a real R4OS handshake; no remote host, user project, VM or paid
+inference was used. Detailed receipts remain in the local Research directory.
+
 ## Independent project Remote Host assignment (0.6.16)
 
 New Project and GitHub import completion offer Remote host / None alongside an

@@ -18,15 +18,20 @@ from transport import RemoteTransport, private_directory, transport_profile
 
 
 class Host:
-    def __init__(self, config, transport=RemoteTransport):
+    def __init__(self, config, transport=RemoteTransport, allow_agent_profile=None):
         self.config = config; self.directory = Path(config['directory']); self.runtime = Path(config['runtime'])
         self.transport = transport; self.active = {}; self.connections = set()
         self.accepting = True
+        from commands import Commands
+        self.commands = Commands(self.directory, self.runtime, transport)
+        supported = json.loads((Path(__file__).resolve().parents[2] / 'shared/update-host.json').read_text()).get('agentToolProfiles', [])
+        self.allow_agent_profile = 'studio-tools-v9' in supported if allow_agent_profile is None else allow_agent_profile
 
     def capabilities(self):
         transport_profile()
         version = json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']
-        return {'protocol': 1, 'test': True, 'commands': False, 'files': False, 'version': version, 'activeChecks': len(self.active)}
+        return {'protocol': 1, 'test': True, 'commands': self.allow_agent_profile, 'files': False, 'version': version,
+                'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
 
     async def request(self, request):
         fields(request, ['protocol', 'operation'], ['hostId', 'input', 'requestId'])
@@ -35,7 +40,7 @@ class Host:
         if op == 'capabilities': fields(request, ['protocol', 'operation']); return self.capabilities()
         if op == 'prepare_adoption':
             fields(request, ['protocol', 'operation'])
-            if self.active: return {'ready': False, 'activeChecks': len(self.active)}
+            if self.active or self.commands.active: return {'ready': False, 'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
             self.accepting = False; return {'ready': True, 'activeChecks': 0}
         if op == 'read':
             fields(request, ['protocol', 'operation', 'hostId', 'requestId'])
@@ -82,9 +87,34 @@ class Host:
         finally: self.connections.discard(writer); writer.close(); await writer.wait_closed()
 
     async def stop(self):
+        await self.commands.stop_all()
         tasks = tuple(self.active.values())
         for task in tasks: task.cancel()
         if tasks: await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def agent_request(self, request, descriptor, peer_pid):
+        held = os.dup(descriptor)
+        try: return self.agent_dispatch(request, held, peer_pid)
+        finally: os.close(held)
+
+    def agent_dispatch(self, request, descriptor, peer_pid):
+        from actor import Actor
+        fields(request, ['protocol', 'operation', 'projectId', 'actor'], ['tool', 'callId', 'arguments'])
+        if type(request['protocol']) is not int or request['protocol'] != 1 or not self.allow_agent_profile:
+            raise CatalogFault('Remote agent work requires the compatible project tool profile.', 403)
+        actor = Actor(self.commands.projects, request['projectId'], request['actor'], descriptor, peer_pid)
+        if request['operation'] == 'stop_owned':
+            fields(request, ['protocol', 'operation', 'projectId', 'actor']); return self.commands.stop_owned(actor)
+        if request['operation'] not in ('tool', 'observe'): raise CatalogFault('Invalid remote agent operation.', 400)
+        fields(request, ['protocol', 'operation', 'projectId', 'actor', 'tool', 'callId', 'arguments'])
+        if request['operation'] == 'observe':
+            if request['tool'] != 'run_remote_command': raise CatalogFault('This tool has no original command receipt.', 400)
+            return self.commands.observe(actor, request['callId'], request['arguments'])
+        if request['tool'] == 'read_remote_job': return self.commands.read(actor, request['callId'], request['arguments'])
+        if request['tool'] == 'stop_remote_job': return self.commands.stop(actor, request['callId'], request['arguments'])
+        if request['tool'] != 'run_remote_command': raise CatalogFault('This remote adapter is not available.', 400)
+        if not self.accepting: raise CatalogFault('The remote broker is adopting an update. Preserve the original request.', 503)
+        return self.commands.admit(actor, request['callId'], request['arguments'])
 
 
 @contextmanager
@@ -111,6 +141,8 @@ async def main():
 async def serve(config):
     runtime = private_directory(config['runtime']); private_directory(runtime / 'auth')
     checks.recover(config['directory'])
+    import job_store
+    job_store.recover(Path(config['directory']).parent / 'Projects')
     # Only original UUID auth directories from the previous stopped broker.
     for entry in (runtime / 'auth').iterdir(): identity(entry.name); private_directory(entry); shutil.rmtree(entry)
     socket_path = runtime / 'host.sock'
@@ -118,10 +150,13 @@ async def serve(config):
         if not socket_path.is_socket() or socket_path.is_symlink(): raise SystemExit('Unexpected remote runtime socket; preserve it for maintenance.')
         socket_path.unlink()
     host = Host(config); server = await asyncio.start_unix_server(host.client, path=socket_path, limit=16385); socket_path.chmod(0o600)
+    import agent_channel
+    agent_server = agent_channel.start(host, runtime / 'agent.sock', asyncio.get_running_loop())
     stopping = asyncio.Event(); loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, stopping.set)
     async with server: await stopping.wait()
     server.close(); await server.wait_closed(); await host.stop()
+    await asyncio.to_thread(agent_server.shutdown); agent_server.server_close()
 
 
 if __name__ == '__main__': asyncio.run(main())
