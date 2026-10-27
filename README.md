@@ -1,3 +1,37 @@
+## Private Remote Host catalog (0.6.13)
+
+`/api/remote-hosts` provides local create/list/read/revisioned edit/confirmed remove
+under an independent HttpOnly browser session, host/origin validation and CSRF.
+A saved UUID has an NFC/case-insensitively unique name, optional description,
+validated DNS/IPv4/IPv6 endpoint and SSH port (22 by default). New entries use
+user r4os/password rosebud; explicit own values are preserved. Public projections
+contain passwordConfigured, never a stored password. Editing without password
+preserves it; endpoint/credential changes increment their separate revisions,
+invalidate previous readiness and clear trust only for a changed endpoint.
+
+The private SQLite catalog is `Data/RemoteHosts/RemoteHosts.sqlite` beside the
+existing provider store, with schema/application binding, separate secret/key
+rows, stable UUIDs, monotonic revisions and original request fingerprints/public
+receipts in the same transaction. Exact retries return the original result;
+changed request reuse, stale revisions and duplicate names conflict. File modes
+are 0700/0600, links/foreign owners/hardlinks and invalid schemas are refused,
+and corrupt bytes are preserved. Bounded local flock and SQLite transactions
+serialize metadata changes. No catalog operation contacts or changes a host.
+
+The fixed broker protocol and typed frontend API are prepared; browser management,
+SSH testing, project assignment and agent execution arrive in later subversions.
+No SSH or arbitrary local command route is available here. Run the explicit local
+`scripts/install-remote-host-support.py` once for the existing deployment: it
+prepares only the private owned folder and one service ReadWritePaths drop-in;
+the next normal Studio update adopts it. Bootstrap/updater hashes and VM services
+are preserved. RemoteHosts is outside the unchanged seven backup sources.
+
+A real isolated HTTP/SQLite test covers default/own credentials, password-preserving
+edits, public secrecy, exact replay, conflict, DNS/IP/port validation, independent
+session guards, restart, confirmed local deletion and corrupt-catalog retention.
+A filesystem test verifies linked ancestors/directories/databases and hardlinks
+cannot modify foreign files. No actual login or network connection was used.
+
 ## Integrated project-roadmap acceptance (0.6.12)
 
 The internal project-roadmap scope (0.6.1–0.6.12) is implemented. Isolated

@@ -4,8 +4,9 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ProjectError } from './store.js';
 
 export class ProjectSessions {
-  constructor(private scope: 'projects' | 'settings' | 'github' | 'skills' = 'projects') {}
+  constructor(private scope: 'projects' | 'settings' | 'github' | 'skills' | 'remote-hosts' = 'projects') {}
   private sessions = new Map<string, { token: string; expires: number }>();
+  private displayName() { return this.scope === 'remote-hosts' ? 'Remote Hosts' : this.scope === 'projects' ? 'Projects' : 'Settings'; }
   private hosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]', hostname(),
     ...Object.values(networkInterfaces()).flatMap((items) => (items ?? []).map((item) => item.address)),
     ...(process.env.STUDIO_ALLOWED_HOSTS ?? '').split(',').map((host) => host.trim()).filter(Boolean)]);
@@ -25,7 +26,7 @@ export class ProjectSessions {
     const id = request.headers.cookie?.split(';').map((s) => s.trim()).find((s) => s.startsWith(cookie))?.slice(cookie.length);
     const existing = id && this.sessions.get(id);
     if (existing && existing.expires > Date.now()) return existing;
-    if (!create) throw new ProjectError('Reload ' + (this.scope === 'projects' ? 'Projects' : 'Settings') + ' before continuing.', 403);
+    if (!create) throw new ProjectError('Reload ' + this.displayName() + ' before continuing.', 403);
     for (const [key, value] of this.sessions) if (value.expires < Date.now()) this.sessions.delete(key);
     if (this.sessions.size >= 256) this.sessions.delete(this.sessions.keys().next().value!);
     const nextId = randomBytes(32).toString('hex');
@@ -37,7 +38,7 @@ export class ProjectSessions {
   mutation(request: FastifyRequest, reply: FastifyReply) {
     const session = this.session(request, reply), token = request.headers['x-csrf-token'];
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token) || !timingSafeEqual(Buffer.from(token), Buffer.from(session.token))) {
-      throw new ProjectError('Reload ' + (this.scope === 'projects' ? 'Projects' : 'Settings') + ' before continuing.', 403);
+      throw new ProjectError('Reload ' + this.displayName() + ' before continuing.', 403);
     }
   }
 }
