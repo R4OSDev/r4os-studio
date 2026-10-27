@@ -18,11 +18,13 @@ import { SystemPromptPanel } from '../features/settings/SystemPromptPanel';
 import { editorRegistry } from '../features/project-editor/registry';
 import { useConnections } from '../features/github-connections/useConnections';
 import { ConnectionPanel } from '../features/github-connections/ConnectionPanel';
+import { parseRoadmapRoute, roadmapHash } from '../features/project-roadmaps/location';
 
 const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const projectRoute = /^#projects\/([a-f0-9-]{36})$/.exec(window.location.hash);
+const roadmapRoute = parseRoadmapRoute(window.location.hash);
 const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
@@ -31,7 +33,7 @@ export function App() {
     const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
+  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || roadmapRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
   const [skillId, setSkillId] = useState<string | null>(skillRoute?.[1] ?? null);
   const [skillSessions, setSkillSessions] = useState<Record<string, string | undefined>>(skillRoute ? { [skillRoute[1]]: skillRoute[2] } : {});
   const navigateSkill = useCallback((id: string, session?: string) => setSkillSessions((previous) => ({ ...previous, [id]: session })), []);
@@ -40,37 +42,55 @@ export function App() {
   const toolsLeaveGuard = useRef<() => boolean>(() => true);
   const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? null);
-  const selectProject = useCallback((id: string | null) => { setProjectId(id); window.history.replaceState(null, '', id ? '#projects/' + id : '#projects'); }, []);
-  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
+  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? roadmapRoute?.projectId ?? null);
+  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(roadmapRoute
+    ? { [roadmapRoute.projectId]: { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmapRoute.versionId } }
+    : sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
+  const selectProject = useCallback((id: string | null) => {
+    setProjectId(id);
+    const selected = id ? projectNavigation[id] : undefined;
+    window.history.replaceState(null, '', id ? selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId) : '#projects/' + id : '#projects');
+  }, [projectNavigation]);
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const settingsLeaveGuard = useRef<() => boolean>(() => true);
   const setSettingsLeaveGuard = useCallback((guard: () => boolean) => { settingsLeaveGuard.current = guard; }, []);
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
-  const navigateProject = useCallback((id: string, value: ProjectNavigation) => setProjectNavigation((previous) => ({ ...previous, [id]: value })), []);
+  const navigateProject = useCallback((id: string, value: ProjectNavigation) => {
+    setProjectNavigation((previous) => ({ ...previous, [id]: value }));
+    const hash = value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
+    if ((value.section === 'Roadmap' || parseRoadmapRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
+  }, []);
   const [selected, setSelected] = useState<Selection>({
     group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: 0,
   });
   useEffect(() => {
     const restore = () => {
       const hash = window.location.hash;
+      if (hash === acceptedHash.current) return;
       const project = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(hash);
       const projectEntry = /^#projects\/([a-f0-9-]{36})$/.exec(hash);
+      const roadmap = parseRoadmapRoute(hash);
       const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
-      if (!project && !projectEntry && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
+      if (!project && !projectEntry && !roadmap && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
       if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
         window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
       }
       acceptedHash.current = hash;
-      if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
-      else if (projectEntry) { setProjectId(projectEntry[1]); setTab('Projects'); }
+      if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId }); setTab('Projects'); }
+      else if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
+      else if (projectEntry) {
+        setProjectId(projectEntry[1]); setTab('Projects');
+        setProjectNavigation((previous) => previous[projectEntry[1]]?.section === 'Roadmap'
+          ? { ...previous, [projectEntry[1]]: { section: 'Sessions', settingsView: 'General' } } : previous);
+      }
       else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
       else if (hash === '#tools') { setSkillId(null); setTab('Tools'); }
       else if (hash === '#projects') setTab('Projects');
       else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 2, item: 0, view: 0 }); }
     };
     window.addEventListener('hashchange', restore);
-    return () => window.removeEventListener('hashchange', restore);
+    window.addEventListener('popstate', restore);
+    return () => { window.removeEventListener('hashchange', restore); window.removeEventListener('popstate', restore); };
   }, [navigateProject, navigateSkill]);
   const [providerView, setProviderView] = useState<string | null>(null);
   const [connectionView, setConnectionView] = useState<string | null>(null);
@@ -126,7 +146,8 @@ export function App() {
     if (tab === 'Tools' && value !== tab && !toolsLeaveGuard.current()) return false;
     if (value === tab) return true;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
-    window.history.pushState(null, '', value === 'Projects' ? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects') : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
+    const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId) : null;
+    window.history.pushState(null, '', value === 'Projects' ? (roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 

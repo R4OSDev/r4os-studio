@@ -1,5 +1,23 @@
 # R4OS Studio · App
 
+## Project roadmap navigation and main versions (0.6.3)
+
+Projects now includes Roadmap between GitHub and Settings. Its third column
+shows Overview, + New Version and the project's versions with status and a
+Current marker. Initializing a missing roadmap is an explicit button action;
+opening a view does not create data. Overview edits project roadmap description
+and notes. A selected main version shows number, title, status, vision, notes
+and separate task/acceptance progress. New versions start without inherited
+notes, vision or children. Make current version is a separate explicit action.
+
+Project/version hash links, reload and browser history preserve the selected
+view without changing the shared current version. Save/Cancel and navigation
+guards retain draft input on conflicts. Unconfirmed saves retain their original
+request in session storage and offer Retry original request; retries do not
+create a second version. Responses are aborted or ignored after switching
+project/view, and inconsistent revisions require refresh. Subversion/item
+editing and native roadmap tools remain subsequent work.
+
 ## Internal project roadmap API (0.6.2)
 
 Project-session-protected routes under `/api/projects/:id/roadmap` expose

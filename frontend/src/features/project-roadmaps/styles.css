@@ -1,0 +1,33 @@
+.roadmap { margin: 24px 36px; max-width: 1000px; min-width: 0; color: #e8deef; }
+.roadmap-toolbar, .roadmap-version-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.roadmap-toolbar { margin-bottom: 18px; }
+.roadmap h2, .roadmap h3 { margin: 0; font-weight: 550; overflow-wrap: anywhere; }
+.roadmap h2 { font-size: 20px; } .roadmap h3 { font-size: 16px; }
+.roadmap button { padding: 9px 13px; border: 1px solid #604971; border-radius: 6px; background: #2a2037; color: inherit; font-size: 12px; }
+.roadmap button:disabled { opacity: .45; cursor: default; }
+.roadmap button:focus-visible { outline: 2px solid var(--accent, #bd94ed); outline-offset: 3px; }
+.roadmap button.roadmap-primary { background: #bd94ed; border-color: #cda5f6; color: #21142f; font-weight: 650; }
+.roadmap-card { min-width: 0; border: 1px solid #392b49; border-radius: 10px; background: #1b1524; padding: 22px; }
+.roadmap-card > p, .roadmap-shared-note { font-size: 12px; line-height: 1.65; color: #b9a8ca; overflow-wrap: anywhere; }
+.roadmap-form { min-width: 0; }
+.roadmap-form .project-fields { padding: 22px 0; }
+.roadmap-form .project-actions { padding: 16px 0 0; }
+.roadmap-form .project-error, .roadmap-form .project-message { padding: 0 0 16px; }
+.project-dialog .roadmap-form .project-fields { padding: 24px 28px; }
+.project-dialog .roadmap-form .project-actions { padding: 18px 28px; }
+.project-dialog .roadmap-form > .project-error, .project-dialog .roadmap-form > .project-message { padding: 0 28px 18px; }
+.roadmap-progress { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 20px 0 8px; font-size: 12px; }
+.roadmap-progress div { display: grid; gap: 5px; }
+.roadmap-progress dt { color: #b9a8ca; } .roadmap-progress dd { margin: 0; }
+.roadmap-status { padding: 5px 9px; background: #30213e; border: 1px solid #574066; border-radius: 5px; color: #d4b4ff; font-size: 11px; }
+.roadmap-version-link > span { display: grid; gap: 4px; min-width: 0; }
+.roadmap-version-link strong { font-size: 12px; font-weight: 550; }
+.roadmap-version-link .roadmap-version-name { overflow-wrap: anywhere; font-size: 11px; }
+.roadmap-version-link small { color: #ac98bb; font-size: 10px; overflow-wrap: anywhere; }
+.roadmap .roadmap-set-current { margin-top: 12px; }
+.roadmap-subversion-count { margin-bottom: 0; padding-top: 16px; }
+@media (max-width: 600px) {
+  .roadmap { margin: 20px 14px; } .roadmap-card { padding: 16px; }
+  .project-dialog .roadmap-form .project-fields { padding: 20px; }
+  .project-dialog .roadmap-form .project-actions { padding: 16px 20px; }
+}
