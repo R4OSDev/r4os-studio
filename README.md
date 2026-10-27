@@ -1,3 +1,30 @@
+## Integrated project-roadmap acceptance (0.6.12)
+
+The internal project-roadmap scope (0.6.1–0.6.12) is implemented. Isolated
+acceptance uses two projects with three/two saved sessions, including two v8
+sessions each and a retained v7 native thread. Bound tools and an actual browser
+save share the same notes; another browser's stale save keeps its draft/focus
+and reports a conflict. Distinct open/done/discarded child states and every note
+level survive a complete original archive and the single atomic 0.1.X → 0.2.X
+rollover. The next version has empty vision/notes/subversions. Actual limited
+file tools write/read back durable knowledge under Docs before completion.
+
+Browser evidence covers default ON, explicit OFF, Save/Cancel, old-profile hints,
+keyboard controls, desktop/320px, streamed archive hash, retained local input,
+version-scoped paged history/tool receipts, reload and an actual isolated backend
+restart using unchanged stored data. The second project's Roadmap bytes and old
+native thread/profile remain unchanged. Original native histories are preserved.
+Network event notifications are a controlled SSE fixture; no model is invoked.
+
+Targeted qualification: 28 storage/domain/cleanup tests, 16 active-run broker/
+prompt/lifecycle/backup tests and the protected HTTP API test, plus build,
+TypeScript and strict lint. Conflict, open-work, missing rights and lost-response
+recovery cases exercise the real journal/broker. SDK file context alone is an
+empty isolated fixture; no compiler, VM or paid inference is required. All own
+QA directories/test servers are removed after checks. Internal cleanup requires
+an actual explicit user cleanup request; normal roadmap implementation does not
+archive or complete the external main roadmap.
+
 ## Roadmap lifecycle and isolated restore (0.6.11)
 
 Roadmap identity belongs to the immutable project UUID. Renaming a project or
