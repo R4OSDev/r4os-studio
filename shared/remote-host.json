@@ -1,0 +1,6 @@
+{
+  "hostProtocol": 1,
+  "catalogSchema": 1,
+  "maxChecks": 4,
+  "maxFrameBytes": 16384
+}

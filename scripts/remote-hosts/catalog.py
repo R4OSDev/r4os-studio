@@ -166,7 +166,7 @@ def public(db, row):
     last_test = None
     if row['last_test']:
         stored = json.loads(row['last_test'])
-        allowed = ('status', 'checkedAt', 'endpointRevision', 'credentialRevision', 'trustRevision', 'version')
+        allowed = ('status', 'checkedAt', 'endpointRevision', 'credentialRevision', 'trustRevision', 'version', 'kernel')
         if not isinstance(stored, dict) or set(stored) - set(allowed) or stored.get('status') not in ('success', 'offline', 'authentication_failed', 'hostkey_changed', 'not_r4os', 'transport_error', 'timeout'):
             raise CatalogFault('Remote Host test metadata needs local maintenance.', 503)
         last_test = {k: stored[k] for k in allowed if k in stored}
@@ -180,8 +180,8 @@ def public(db, row):
 def operation(directory, request):
     fields(request, ['operation'], ['id', 'input'])
     op = request['operation']
-    if op not in ('list', 'get', 'create', 'update', 'remove'): raise CatalogFault('Unsupported Remote Host operation.', 400)
-    fields(request, ['operation', *(['id'] if op in ('get', 'update', 'remove') else []), *(['input'] if op in ('create', 'update', 'remove') else [])])
+    if op not in ('list', 'get', 'create', 'update', 'remove', 'reset_trust'): raise CatalogFault('Unsupported Remote Host operation.', 400)
+    fields(request, ['operation', *(['id'] if op in ('get', 'update', 'remove', 'reset_trust') else []), *(['input'] if op in ('create', 'update', 'remove', 'reset_trust') else [])])
     ident = identity(request['id']) if 'id' in request else None
     data = request.get('input')
     if op == 'create':
@@ -191,9 +191,9 @@ def operation(directory, request):
         fields(data, ['requestId', 'revision'], ['name', 'description', 'address', 'port', 'user', 'password']); integer(data['revision'])
         content = changes(data)
         if not content: raise CatalogFault('No Remote Host changes were supplied.', 400)
-    elif op == 'remove':
+    elif op in ('remove', 'reset_trust'):
         fields(data, ['requestId', 'revision', 'confirm']); integer(data['revision'])
-        if data['confirm'] is not True: raise CatalogFault('Confirm removing this local Remote Host entry.', 400)
+        if data['confirm'] is not True: raise CatalogFault('Confirm this local Remote Host change.', 400)
     if data is not None:
         identity(data['requestId']); fingerprint = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
     with connection(directory, initialize=op == 'create') as db:
@@ -205,6 +205,8 @@ def operation(directory, request):
         if previous:
             if previous['fingerprint'] != fingerprint: raise CatalogFault('This request ID belongs to different Remote Host input.')
             return json.loads(previous['result'])
+        check = Path(directory) / 'Tests' / data['requestId'] / 'check.json'
+        if check.exists() or check.is_symlink(): raise CatalogFault('This request ID belongs to an original connection check.')
         if db.execute('SELECT count(*) FROM receipts').fetchone()[0] >= 10000: raise CatalogFault('Remote Host request history needs local maintenance.', 503)
         stamp = now()
         if op == 'create':
@@ -217,8 +219,14 @@ def operation(directory, request):
             row = db.execute('SELECT * FROM hosts WHERE id=?', (ident,)).fetchone()
             if row is None: raise CatalogFault('Remote Host is missing or was removed.', 404)
             if row['revision'] != data['revision']: raise CatalogFault('Remote Host settings changed. Reload saved values; your input has been retained.')
+            from checks import active
+            target_change = op in ('remove', 'reset_trust') or (op == 'update' and ('password' in content or any(content.get(k, row[k]) != row[k] for k in ('address', 'port', 'user'))))
+            if target_change and active(directory, ident): raise CatalogFault('Wait for the original connection check before changing its target, login or trust.')
             if op == 'remove':
                 db.execute('INSERT INTO retired VALUES (?,?)', (ident, stamp)); db.execute('DELETE FROM hosts WHERE id=?', (ident,))
+            elif op == 'reset_trust':
+                db.execute("UPDATE host_keys SET state='unbound',key_type=NULL,key_data=NULL,fingerprint=NULL,trusted_at=NULL WHERE host_id=?", (ident,))
+                db.execute('UPDATE hosts SET revision=revision+1,trust_revision=trust_revision+1,last_test=NULL,updated_at=? WHERE id=?', (stamp, ident))
             else:
                 endpoint = any(content.get(k, row[k]) != row[k] for k in ('address', 'port'))
                 credential = content.get('user', row['user']) != row['user'] or 'password' in content

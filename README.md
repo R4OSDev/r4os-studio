@@ -1,3 +1,48 @@
+## Remote SSH target and explicit checks (0.6.15)
+
+The private unprivileged broker uses the existing pinned SSH/SFTP binary hashes
+and native R4OS VER parser, with a separate saved endpoint/login/trust adapter.
+It uses no VM lease, NAT forward, image/boot identity or hardcoded VM login.
+Only an explicit Check connection admits VER; save/open/reload and capability
+reads never connect. Native zero exit, R4OS release and active kernel are all
+required before confirming R4OS. Offline, authentication failure, changed key,
+not-R4OS, timeout and transport failure remain distinct historical outcomes.
+
+Private runtime askpass files (0700/0600) supply passwords without argv/env secrets.
+Fixed arguments exclude external SSH config, proxies, forwarding, agent/identity
+keys and local commands. A first explicitly observed key is TOFU, including on
+failed login; this is not independent identity proof or confirmed R4OS. Existing
+trust is strict. Changed keys are never automatically accepted. An explicit,
+revisioned Reset host trust preserves check history and only allows a later
+explicit check to bind a new key. Endpoint/login changes invalidate readiness;
+active checks block target/login/trust/delete changes, while renaming stays safe.
+
+A secret-free intent precedes the connection. Original check IDs/results survive
+lost HTTP replies, interruption and broker restart without automatic connection
+replay. Trust and last-test metadata share an atomic SQLite request receipt;
+that receipt reconciles a lost sidecar-file write. Stale target revisions cannot
+publish readiness. Checks are limited to4, private clients to16, frames to16KiB,
+output to64KiB per stream and the check deadline to15s. History is limited to1000
+checks; interrupted temporary journal writes are retained and bounded.
+
+The explicit local `scripts/remote-hosts/install.py` prepares only a root-owned
+launcher/configuration and r4os-studio-remote.service. After the normal immutable
+update, `--adopt` starts it as r4os-studio with a private Unix socket, constrained
+write paths and network families. Runtime ownership is exclusive; an idle broker
+closes admissions before adoption, and active checks prevent its restart. No VM,
+agent/build worker or bootstrap configuration is replaced. The broader command/
+file-job lifecycle and automatic release adoption are qualified later in0.6.21.
+
+Eleven targeted Python tests exercise the actual pinned client's offline -G
+configuration and executable private askpass, plus controlled SSH outcomes,
+trust, target changes, atomic lost-result recovery, restart and adoption. Two
+HTTP tests use the real catalog and private Unix broker with a controlled SSH
+boundary. Browser1440/320 proves explicit tests, fingerprints/version display,
+key conflict/reset, login failure and lost-POST reconciliation without repeat.
+These fixtures are not a real remote R4OS/SSH handshake; no actual external host,
+VM, model or paid inference was used. Root-installed read-only capability/UID
+checks separately verify deployment without connecting to a saved host.
+
 ## Remote Host browser management (0.6.14)
 
 System areas now follow Settings, Virtual Machines, Remote Hosts, Updates.

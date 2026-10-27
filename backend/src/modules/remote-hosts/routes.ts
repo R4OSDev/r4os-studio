@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import type { RemoteHost } from '../../../../shared/remote-hosts.js';
+import type { RemoteHost, RemoteHostCapabilities, RemoteHostCheck } from '../../../../shared/remote-hosts.js';
 import { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { remoteHostStore } from './store.js';
+import { remoteHostBroker } from './broker.js';
 
 export async function remoteHostRoutes(app: FastifyInstance, { directory }: { directory: string }) {
   const sessions = new ProjectSessions('remote-hosts');
@@ -18,7 +19,17 @@ export async function remoteHostRoutes(app: FastifyInstance, { directory }: { di
   });
   app.get('/', async (request, reply) => ({ hosts: await remoteHostStore<RemoteHost[]>(directory, { operation: 'list' }), csrfToken: sessions.session(request, reply, true).token }));
   app.get<{ Params: { id: string } }>('/:id', async (request) => remoteHostStore<RemoteHost>(directory, { operation: 'get', id: request.params.id }));
+  app.get('/capabilities', async (): Promise<RemoteHostCapabilities> => {
+    try {
+      const value = await remoteHostBroker<RemoteHostCapabilities>({ protocol: 1, operation: 'capabilities' });
+      return { protocol: 1, test: value.test === true, commands: value.commands === true, files: value.files === true };
+    }
+    catch { return { protocol: 1, test: false, commands: false, files: false, reason: 'Remote host connection support is unavailable.' }; }
+  });
   app.post('/', { bodyLimit: 16384 }, async (request) => remoteHostStore<RemoteHost>(directory, { operation: 'create', input: request.body }));
   app.patch<{ Params: { id: string } }>('/:id', { bodyLimit: 16384 }, async (request) => remoteHostStore<RemoteHost>(directory, { operation: 'update', id: request.params.id, input: request.body }));
   app.delete<{ Params: { id: string } }>('/:id', { bodyLimit: 4096 }, async (request) => remoteHostStore<{ id: string; removed: true }>(directory, { operation: 'remove', id: request.params.id, input: request.body }));
+  app.post<{ Params: { id: string } }>('/:id/test', { bodyLimit: 4096 }, async (request) => remoteHostBroker<RemoteHostCheck>({ protocol: 1, operation: 'test', hostId: request.params.id, input: request.body }));
+  app.get<{ Params: { id: string; requestId: string } }>('/:id/tests/:requestId', async (request) => remoteHostBroker<RemoteHostCheck>({ protocol: 1, operation: 'read', hostId: request.params.id, requestId: request.params.requestId }));
+  app.post<{ Params: { id: string } }>('/:id/trust', { bodyLimit: 4096 }, async (request) => remoteHostStore<RemoteHost>(directory, { operation: 'reset_trust', id: request.params.id, input: request.body }));
 }

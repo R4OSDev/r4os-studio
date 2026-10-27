@@ -5,6 +5,7 @@ import type { RemoteHostsApi } from './useRemoteHosts';
 import { getHost, RemoteHostRequestError } from './api';
 import { projectRequestId } from '../projects/api';
 import './styles.css';
+import { HostConnection } from './HostConnection';
 
 const statusText = { success: 'R4OS connection confirmed', offline: 'Host is offline or unreachable', authentication_failed: 'Authentication failed', hostkey_changed: 'Host identity changed', not_r4os: 'R4OS was not confirmed', transport_error: 'Connection failed', timeout: 'Connection timed out' };
 
@@ -12,6 +13,7 @@ export function HostPanel({ id, view, api, navigate, setLeaveGuard }: { id: stri
   navigate: (id: string | null, view?: string) => void; setLeaveGuard: (guard: () => boolean) => void }) {
   const [loaded, setLoaded] = useState<{ id: string; host: RemoteHost } | null>(null), [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const changed = useCallback((host: RemoteHost) => setLoaded({ id: host.id, host }), []);
   useEffect(() => {
     if (!id || !api.ready) return;
     const controller = new AbortController();
@@ -31,11 +33,12 @@ export function HostPanel({ id, view, api, navigate, setLeaveGuard }: { id: stri
       <dt>Password</dt><dd>{host.passwordConfigured ? 'Stored privately' : 'Not configured'}</dd>
       <dt>Connection</dt><dd>{host.lastTest ? statusText[host.lastTest.status] : 'Not tested'}</dd>
       {host.lastTest && <><dt>Last checked</dt><dd>{new Date(host.lastTest.checkedAt).toLocaleString()}</dd></>}
+      {host.lastTest?.version && <><dt>R4OS release</dt><dd>{host.lastTest.version}</dd><dt>Kernel</dt><dd>{host.lastTest.kernel ?? 'Not reported'}</dd></>}
       <dt>Host key</dt><dd>{host.hostKey.fingerprint ?? 'Not trusted yet'}</dd>
     </dl>
     <p>A saved host is available for explicit tasks. Saving or opening this page does not connect.</p>
-    <div className="remote-actions"><button type="button" disabled>Check connection</button><button type="button" onClick={() => navigate(host.id, 'Settings')}>Edit settings</button></div>
-    <p>Connection testing is unavailable.</p>
+    <button type="button" onClick={() => navigate(host.id, 'Settings')}>Edit settings</button>
+    <HostConnection host={host} api={api} changed={changed} />
   </section>;
   return <HostSettings key={id ?? 'new'} host={host} api={api} navigate={navigate} setLeaveGuard={setLeaveGuard} />;
 }
