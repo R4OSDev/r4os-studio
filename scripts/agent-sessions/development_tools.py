@@ -82,7 +82,18 @@ class DevelopmentTools:
             if name == 'complete_development_job':
                 page = await self.request('complete_check', id=value['jobId'], input={'requestId': request_id})
                 return self.result(page['job'], page)
-            if name == 'stop_development_job': return self.result(await self.request('stop_job', id=value['jobId']))
+            if name == 'stop_development_job':
+                from vm_worker import broker_call
+                capabilities = await broker_call({'operation': 'capabilities'})
+                if capabilities.get('features', {}).get('stopReceipts') != 1:
+                    raise DevelopmentFault('The development coordinator must adopt the installed Stop-receipt support before this call.', 503)
+                stopped = await self.request('stop_job', id=value['jobId'])
+                receipt = stopped.get('stopReceipt') or {}
+                confirmed = (receipt.get('version') == 1 and receipt.get('jobId') == value['jobId']
+                    and receipt.get('confirmed') is True and receipt.get('outcome') in ('stopped', 'already-ended', 'not-started'))
+                return {'success': confirmed, **({} if confirmed else {'error': 'unknown'}),
+                    'output': encode({'job': stopped, 'stop': receipt}), 'developmentStop': receipt,
+                    'development': {'jobId': stopped['id'], 'kind': stopped['kind'], 'state': stopped['state']}}
             if name == 'capture_vm':
                 if not self.image_capable(): raise DevelopmentFault('This model has no confirmed native image capability. Choose an image-capable model.', 409)
                 if value.get('action', 'capture') == 'assess':

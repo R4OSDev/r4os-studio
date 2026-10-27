@@ -137,6 +137,12 @@ export interface DevelopmentEvidence {
     elapsedMilliseconds: number; revisionBefore: number; revisionAfter: number; contentChanged: boolean;
   };
 }
+export interface DevelopmentStopReceipt {
+  version: 1; jobId: string; requested: boolean; confirmed: boolean;
+  outcome: 'stopped' | 'already-ended' | 'not-started' | 'unconfirmed';
+  scope: 'worker' | 'owned-process'; jobState: DevelopmentJobState; recordedAt: string; reason: string;
+  guestEffectsMayRemain?: boolean; source?: string; receiptSha256?: string;
+}
 export interface DevelopmentCheck {
   state: DevelopmentCheckState;
   criteria: { expectedExitCode?: number; outputContains?: string[]; visual?: string };

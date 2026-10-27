@@ -10,7 +10,7 @@ import socket
 import sqlite3
 import struct
 
-from contracts import APP, ACTIVE, DevelopmentFault, LIMITS, encode, identity, protocol
+from contracts import APP, ACTIVE, DevelopmentFault, UnconfirmedGuestEffect, LIMITS, encode, identity, protocol
 from jobs import Jobs, folder
 from layout import save
 from profiles import eligible
@@ -289,7 +289,7 @@ class Host:
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
+                    'features': {'stopReceipts': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
@@ -458,11 +458,22 @@ class Host:
                 if self.unbound: raise DevelopmentFault('A development worker has no confirmed binding. Restore host support.', 503)
                 if op == 'stop_job':
                     job_id = identity(request['id']); job = store.get(job_id)
-                    if job['state'] in ACTIVE or await self.alive(job_id, job['kind']):
+                    if owner is not None: authorize(store, owner, op, peer_pid, job)
+                    requested = job['state'] in ACTIVE or await self.alive(job_id, job['kind'])
+                    if requested:
                         store.update(job_id, 'stopping', phase='stopping')
-                        await systemctl('stop', job_unit(job_id, job['kind']))
-                        store.update(job_id, 'interrupted', phase='stopped', error='Job stopped.')
-                    self.active.pop(job_id, None); return store.get(job_id)
+                        try: await systemctl('stop', job_unit(job_id, job['kind']))
+                        except (DevelopmentFault, asyncio.TimeoutError, OSError) as error:
+                            raise UnconfirmedGuestEffect('The Stop command has no confirmed worker receipt. Inspect the original job; it was not repeated.') from error
+                        if store.get(job_id)['state'] in ACTIVE:
+                            local = job['kind'] in ('build', 'package')
+                            store.update(job_id, 'interrupted' if local else 'unknown', phase='stopped' if local else 'recovery',
+                                error='Job stopped.' if local else 'The worker ended without a confirmed effect or cleanup receipt.')
+                    active = await self.alive(job_id, job['kind'])
+                    if not active: self.active.pop(job_id, None)
+                    from stopping import receipt
+                    job = store.get(job_id)
+                    return {**job, 'stopReceipt': receipt(store, job, requested, active)}
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
                 if owner is not None: authorize(store, owner, op, peer_pid, recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
                 if not previous:

@@ -1,5 +1,22 @@
 # R4OS Studio · App
 
+## Confirmed Stop command receipts (0.5.15)
+
+Stop command success is separate from the development job's outcome. The
+coordinator returns a bounded receipt for a confirmed worker end or the exact
+owned process closure/cleanup proof. An intentionally stopped job remains
+`interrupted`; its Stop tool card can be `completed`. Already ended and never
+launched applications are distinguished. Unknown/missing cleanup evidence stays
+unconfirmed and is not retried. Other guest jobs only confirm their host worker
+ended; completed guest writes are retained. No timeout or failed check becomes
+a passed job, and historical tool receipts remain original.
+
+New agents require `stopReceipts:1` before sending Stop. Coordinators and workers
+retain normal idle adoption/release binding. Job state alone or `busy:false` is
+insufficient proof for an application Stop. The browser shows the command
+receipt separately from the actual job result. Build/TypeScript, strict lint and
+static Python review only; no tests or new Stop/agent/project/VM runs performed.
+
 ## Animated Desktop screenshots (0.5.14)
 
 Capture distinguishes changing content from process/window identity. It checks

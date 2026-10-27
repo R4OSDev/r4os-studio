@@ -50,6 +50,11 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}
+        {i.tool === 'studio.stop_development_job' && i.developmentStop?.version === 1 && <p>
+          {i.developmentStop.confirmed ? (i.developmentStop.outcome === 'already-ended' ? 'Already ended. ' : i.developmentStop.outcome === 'not-started' ? 'Application was not started. ' : 'Stop confirmed. ') : 'Stop unconfirmed. '}
+          {i.developmentStop.scope === 'worker' ? 'Host worker only. ' : 'Owned application process. '}
+          Job status: {i.developmentStop.jobState}. {i.developmentStop.guestEffectsMayRemain === true && 'Completed guest writes are retained.'}
+        </p>}
         {typeof i.nextLine === 'number' && <p>More lines available from line {i.nextLine}.</p>}
         {typeof i.lineTruncated === 'number' && <p>Line {i.lineTruncated} exceeds the output limit.</p>}
         {typeof i.nextOffset === 'number' && <p>More entries available from offset {i.nextOffset}.</p>}
