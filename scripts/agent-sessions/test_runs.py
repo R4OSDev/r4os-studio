@@ -7,7 +7,8 @@ import tempfile
 import unittest
 import uuid
 
-from session_store import SessionStore, TOOL_IDS, encode
+from session_store import SessionStore, encode
+from profile import LEGACY_PROFILE, tools_for
 from run_store import admit, get_run, transition, events, item
 from store import connect, ProjectFault
 from worker import Worker
@@ -25,9 +26,9 @@ class Runs(unittest.TestCase):
         self.providers = self.root / 'Providers'; (self.providers / self.provider).mkdir(parents=True)
         (self.providers / 'providers.json').write_text(encode([{'id': self.provider, 'name': 'Fixture', 'type': 'openai', 'connected': True}]))
         (self.providers / self.provider / 'models_cache.json').write_text(encode({'models': [{'slug': 'fixture', 'visibility': 'list', 'supported_reasoning_levels': [{'effort': 'low'}]}]}))
-        self.settings = {'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'permissions': {t: True for t in TOOL_IDS}}
+        self.settings = {'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'permissions': {'studio.' + t: True for t in tools_for(LEGACY_PROFILE)}}
         with self.open() as s:
-            s.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (self.sid, self.pid, 'Fixture', encode(self.settings), '{}')); s.db.commit()
+            s.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (self.sid, self.pid, 'Fixture', encode(self.settings), encode({'profile': LEGACY_PROFILE}))); s.db.commit()
         self.data = {'requestId': str(uuid.uuid4()), 'revision': 1, 'text': 'Concurrent input'}
 
     def open(self):

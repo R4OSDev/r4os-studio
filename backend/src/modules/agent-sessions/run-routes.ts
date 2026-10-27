@@ -25,10 +25,10 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
         revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, text: { type: 'string', minLength: 1, maxLength: 65536 } } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ nativeWebSearch?: number; projectInstructions?: number; vmStartTools?: number; skillSessions?: number; skillAuthorTools?: number; globalSkills?: number; skillScripts?: number }>({ operation: 'capabilities' });
-    if (support.nativeWebSearch !== 1 || support.globalSkills !== 1 || support.skillScripts !== 1 || (ownerType === 'skill' ? (support.skillSessions !== 1 || support.skillAuthorTools !== 1) : (support.projectInstructions !== 1 || support.vmStartTools !== 1))) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
+    const support = await agentHost<{ roadmapSettings?: number; nativeWebSearch?: number; projectInstructions?: number; vmStartTools?: number; skillSessions?: number; skillAuthorTools?: number; globalSkills?: number; skillScripts?: number }>({ operation: 'capabilities' });
+    if (support.nativeWebSearch !== 1 || support.globalSkills !== 1 || support.skillScripts !== 1 || (ownerType === 'skill' ? (support.skillSessions !== 1 || support.skillAuthorTools !== 1) : (support.projectInstructions !== 1 || support.vmStartTools !== 1 || support.roadmapSettings !== 1))) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
     const run = await agentHost<AgentRun>({ operation: 'start_run', ...owner(request.params.id), sessionId: request.params.sessionId,
-      input: { ...request.body, nativeWebSearch: 1, skillSelection: 1, skillScripts: 1, ...(ownerType === 'project' ? { projectInstructions: 1 } : {}) } });
+      input: { ...request.body, nativeWebSearch: 1, skillSelection: 1, skillScripts: 1, ...(ownerType === 'project' ? { projectInstructions: 1, roadmapSettings: 1 } : {}) } });
     return reply.code(202).send({ run });
   });
   app.post<{ Params: Params & { runId: string } }>(base + '/runs/:runId/stop', {

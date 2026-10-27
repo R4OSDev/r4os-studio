@@ -1,3 +1,27 @@
+## Roadmap session preference (0.6.6)
+
+Project Session settings → Tools → Roadmap has one default-on switch.
+Missing `roadmapEnabled` is read as true without rewriting saved sessions;
+explicit false is retained. Save/Cancel, dirty guards, session revisions and
+busy-run restrictions use the existing settings flow. Each accepted run freezes
+its own choice; earlier accepted runs and native conversation content remain.
+Skill Manager sessions have no project Roadmap setting or access.
+
+The preference and actual tool availability are shown separately. The qualified
+original Codex 0.163.0 schemas expose `dynamicTools` on `thread/start`, without
+a corresponding field on `thread/resume`. Old v1–v7 and Skill profiles, native
+thread IDs, histories and permission keys are preserved. `studio-tools-v8` is
+reserved for the additive declarations in 0.6.7; creating a session in 0.6.6
+still uses v7. The UI states that a new session after that update is required.
+See the [official App Server documentation](https://learn.chatgpt.com/docs/app-server)
+and the locally qualified original schemas for this compatibility decision.
+
+The coordinator advertises `roadmapSettings:1`; a new project run requires that
+capability and a compatible worker release before admission. Older accepted
+worker releases continue normally. The Roadmap host gate requires a matching
+project owner, frozen ON and the additive profile before any Roadmap operation.
+No Roadmap tools are activated by this settings-only release.
+
 # R4OS Studio · App
 
 ## Version history and complete UTF-8 roadmap exports (0.6.5)

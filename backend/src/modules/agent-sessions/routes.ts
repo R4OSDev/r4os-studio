@@ -66,9 +66,16 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     return { session: await sessionStore<AgentSession>(directory, { operation: 'get', ...owner(request.params.id), sessionId: request.params.sessionId }, providers) };
   });
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
+    preValidation: async (request) => {
+      if (request.body && Object.hasOwn(request.body, 'roadmapEnabled')
+        && (ownerType !== 'project' || typeof request.body.roadmapEnabled !== 'boolean')) {
+        throw new ProjectError('Roadmap is a boolean setting for project sessions only.', 400);
+      }
+    },
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
       ...fields, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
       webSearchEnabled: { type: 'boolean' },
+      ...(ownerType === 'project' ? { roadmapEnabled: { type: 'boolean' } } : {}),
       permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9 },
       skillOverrides: { type: 'object', additionalProperties: { type: 'boolean' }, maxProperties: 256 },
     } } },

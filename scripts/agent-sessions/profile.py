@@ -14,6 +14,7 @@ COMPLETION_PROFILE = 'studio-tools-v4'
 UPDATE_PROFILE = 'studio-tools-v5'
 GIT_PROFILE = 'studio-tools-v6'
 PROFILE = 'studio-tools-v7'
+ROADMAP_PROFILE = 'studio-tools-v8'  # Reserved; declaration and activation follow in 0.6.7.
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE)

@@ -6,7 +6,7 @@ import { useSessionApi, sessionPath, busyRun, toolLabels, updateToolIds } from '
 
 const tools = Object.keys(toolLabels) as AgentToolId[];
 const sections = ['General', 'Tools', 'Skills'] as const;
-const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.webSearchEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
+const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.webSearchEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
 export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
@@ -45,7 +45,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
     setSaving(true); setError('');
     try {
       const { revision, name, permissions, providerId, model, effort, fastMode } = draft;
-      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision, name: name.trim(), permissions, providerId, model, effort, fastMode, webSearchEnabled: draft.webSearchEnabled ?? true, skillOverrides: draft.skillOverrides ?? {} });
+      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision, name: name.trim(), permissions, providerId, model, effort, fastMode, webSearchEnabled: draft.webSearchEnabled ?? true, ...(scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true } : {}), skillOverrides: draft.skillOverrides ?? {} });
       saved(result.session);
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -89,7 +89,11 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
         </div> : <div className="agent-permissions"><fieldset><legend>Web</legend>
           <label className="agent-permission"><span>Web search</span><input type="checkbox" role="switch" aria-label="Web search" checked={draft.webSearchEnabled ?? true} onChange={(e) => patch({ webSearchEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
           <p className="agent-terminal-hint">Search the web, open pages and find text. On by default. Changes apply from the next run. Availability depends on the selected model and account.</p>
-        </fieldset>{(scope === 'skill' ? ['Files', 'Terminal', 'Skills'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub']).map((group) => <fieldset key={group}><legend>{group}</legend>
+        </fieldset>{scope === 'project' && <fieldset><legend>Roadmap</legend>
+          <label className="agent-permission"><span>Roadmap</span><input type="checkbox" role="switch" aria-label="Roadmap" checked={draft.roadmapEnabled ?? true} onChange={(e) => patch({ roadmapEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
+          <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content remains in the native history.</p>
+          <p className="agent-terminal-hint" role="status">{draft.roadmapAccess?.available ? 'Roadmap tools available in this session.' : draft.roadmapAccess?.reason ?? 'New session required for Roadmap tools. This conversation keeps its original native tool profile.'}</p>
+        </fieldset>}{(scope === 'skill' ? ['Files', 'Terminal', 'Skills'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub']).map((group) => <fieldset key={group}><legend>{group}</legend>
           {tools.filter((id) => (scope === 'skill' ? id in draft.permissions : !['studio.validate_skill', 'studio.save_skill'].includes(id)) && (id === 'studio.push_project' ? 'GitHub' : updateToolIds.includes(id) ? 'Updates' : ['studio.validate_skill', 'studio.save_skill'].includes(id) ? 'Skills' : ['studio.exec_command', 'studio.write_stdin', 'studio.terminate_process'].includes(id) ? 'Terminal' : ['studio.build_project', 'studio.deploy_project', 'studio.run_project', 'studio.read_development_job', 'studio.stop_development_job', 'studio.complete_development_job'].includes(id) ? 'Build' : ['studio.capture_vm', 'studio.send_vm_input', 'studio.start_project_vm'].includes(id) ? 'VM' : 'Files') === group).map((id) => <label key={id} className="agent-permission">
             <span>{toolLabels[id]}</span><input type="checkbox" role="switch" aria-label={toolLabels[id]} checked={!!draft.permissions[id]} disabled={!(id in draft.permissions)} onChange={(e) => patch({ permissions: { ...draft.permissions, [id]: e.target.checked } })} /><span className="agent-switch" aria-hidden="true" />
           </label>)}

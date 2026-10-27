@@ -39,7 +39,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
     const opts = await app.inject({ url: base + '/options', headers });
     assert.equal(opts.statusCode, 200, opts.body);
-    assert.equal(opts.json().tools.length, 30);
+    assert.equal(opts.json().tools.length, 31);
     assert.equal(opts.json().providers[0].models[0].id, 'fixture-model');
     assert.equal(opts.json().engine.available, true);
     const payload = { name: 'First session', providerId: provider, model: 'fixture-model', effort: 'low', requestId: randomUUID() };
@@ -48,18 +48,25 @@ with sqlite3.connect(sys.argv[1]) as db:
     for (const reply of replies) assert.equal(reply.statusCode, 201, reply.body);
     const session = replies[0].json().session;
     assert.equal(replies[1].json().session.id, session.id);
-    assert.equal(Object.keys(session.permissions).length, 30);
+    assert.equal(Object.keys(session.permissions).length, 31);
     assert.equal(session.permissions['studio.commit_update'], false);
     assert.equal(session.permissions['studio.rollback_update'], false);
-    assert(Object.entries(session.permissions).filter(([key]) => !['studio.commit_update', 'studio.rollback_update'].includes(key)).every(([, value]) => value === true));
+    assert(Object.entries(session.permissions).filter(([key]) => !['studio.commit_update', 'studio.rollback_update', 'studio.push_project'].includes(key)).every(([, value]) => value === true));
     assert.equal(session.latestRun, null);
+    assert.equal(session.roadmapEnabled, true);
+    assert.equal(session.roadmapAccess.available, false);
+    assert.match(session.roadmapAccess.reason, /New session required/);
+    assert.equal(session.permissions['studio.push_project'], false);
     assert.equal((await app.inject({ url: base, headers })).json().sessions.length, 1);
     assert.equal((await app.inject({ method: 'POST', url: base, headers, payload: { ...payload, name: 'Different' } })).statusCode, 409);
     const url = base + '/' + session.id;
     const changed = { ...session.permissions, 'studio.write_file': false };
-    const update = await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, permissions: changed } });
+    const update = await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, permissions: changed, roadmapEnabled: false } });
     assert.equal(update.statusCode, 200, update.body);
     assert.equal(update.json().session.permissions['studio.write_file'], false);
+    assert.equal(update.json().session.roadmapEnabled, false);
+    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 2, roadmapEnabled: 'false' } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers: { cookie: headers.cookie }, payload: { revision: 2, roadmapEnabled: true } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, name: 'Stale' } })).statusCode, 409);
     const invalid = { ...changed }; delete invalid['studio.read_file']; invalid['studio.unknown'] = true;
     assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 2, permissions: invalid } })).statusCode, 400);
@@ -74,6 +81,8 @@ with sqlite3.connect(sys.argv[1]) as db:
       const restored = (await again.inject({ url, headers: h2 })).json().session;
       assert.equal(restored.permissions['studio.write_file'], false);
       assert.equal(restored.revision, 2);
+      assert.equal(restored.roadmapEnabled, false);
+      assert.equal(restored.engine.profile, session.engine.profile);
       await writeFile(join(providers, 'providers.json'), '[]');
       assert.equal((await again.inject({ url, headers: h2 })).statusCode, 200);
     } finally { await again.close(); }
