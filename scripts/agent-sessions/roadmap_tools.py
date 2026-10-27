@@ -10,6 +10,15 @@ class RoadmapTools:
     def __init__(self, worker): self.worker = worker
 
     async def call(self, name, arguments, call_id):
+        if name == 'cleanup_roadmap' and arguments.get('action') != 'status':
+            async with self.worker.terminals.lock:
+                async with self.worker.sandbox.lock:
+                    if any(not process.finished.is_set() for process in self.worker.terminals.processes.values()):
+                        return {'success': False, 'error': 'busy', 'output': 'Finish this run’s terminal processes before preparing cleanup.'}
+                    return await self.invoke(name, arguments, call_id)
+        return await self.invoke(name, arguments, call_id)
+
+    async def invoke(self, name, arguments, call_id):
         worker = self.worker
         require(worker)
         if worker.lease is None or worker.lease.closed:
@@ -27,12 +36,12 @@ class RoadmapTools:
             response = json.loads(raw)
             if response.get('error'):
                 code = response.get('code', 503)
-                uncertain = name == 'update_roadmap' and code >= 500
+                uncertain = (name == 'update_roadmap' or (name == 'cleanup_roadmap' and arguments.get('action') != 'status')) and code >= 500
                 return {'success': False, 'error': 'unknown' if uncertain else 'conflict' if code == 409 else 'denied' if code == 403 else 'failed',
                         'output': response['error'], 'roadmap': {'operation': name, 'code': code, 'requestId': arguments.get('requestId')},
                         **({'partialChangesPossible': True} if uncertain else {})}
             value = response['result']
-            summary = {'operation': name, 'requestId': arguments.get('requestId'), **{k: value[k] for k in ('revision', 'currentVersionId', 'requestId', 'versionId', 'sha256') if k in value}}
+            summary = {'operation': name, 'requestId': arguments.get('requestId'), **{k: value[k] for k in ('workflowId', 'phase', 'revision', 'currentVersionId', 'requestId', 'versionId', 'sha256') if k in value}}
             if value.get('available') is False:
                 return {'success': False, 'error': 'unavailable', 'output': value['message'], 'roadmap': summary}
             return {'success': True, 'output': encode(value), 'roadmap': summary}

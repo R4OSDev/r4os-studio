@@ -59,7 +59,13 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
                 or config.get('revision') != row[4] or worker.get('pid') != parent or worker.get('birth') != birth
                 or worker.get('release') != release or row[5] != 'studio_' + tool or row[6] != fingerprint):
             raise ProjectFault('Roadmap permission, profile, worker or original call binding changed.', 403)
-        yield
+        contexts = []
+        if tool == 'cleanup_roadmap':
+            for entry in db.execute("SELECT run_id,payload FROM items WHERE session_id=? AND item_id LIKE 'user-%' ORDER BY rowid DESC LIMIT 20", (session_id,)):
+                value = json.loads(entry[1])
+                if value.get('type') == 'user' and isinstance(value.get('text'), str):
+                    contexts.append({'runId': entry[0], 'text': value['text']})
+        yield {'config': config, 'sessionId': session_id, 'runId': run_id, 'contexts': contexts}
     finally:
         db.rollback(); db.close()
 
@@ -127,11 +133,13 @@ def read(projects, project_id, arguments):
     raise ProjectFault('Unsupported Roadmap read view.', 400)
 
 
-def call(projects, project_id, tool, arguments):
+def call(projects, project_id, tool, arguments, actor=None):
     if tool == 'read_roadmap': return read(projects, project_id, arguments)
     if tool == 'cleanup_roadmap':
-        return {'available': False, 'capability': 'cleanup', 'phase': arguments['action'],
-                'message': 'Cleanup prepare/status/finalize/cancel are not enabled in this release. No archive, document, status or version was changed.'}
+        from cleanup import call as cleanup_call
+        with connection(projects, project_id) as db:
+            if db is None: raise ProjectFault('Initialize this project roadmap before cleanup.', 404)
+            return cleanup_call(db, projects, project_id, arguments, actor)
     op = arguments['operation']; data = {k: v for k, v in arguments.items() if k != 'operation'}
     if op == 'initialize':
         fields(data, ['requestId'])
@@ -157,9 +165,14 @@ def main():
     if request['tool'] not in ('read_roadmap', 'update_roadmap', 'cleanup_roadmap'):
         raise ProjectFault('Unsupported Roadmap tool.', 400)
     validate_arguments(request['tool'], request['arguments'], 'studio-tools-v8')
-    with authorize(projects, project_id, session_id, run_id, descriptor, release, **{
-            'tool': request['tool'], 'call_id': request['callId'], 'arguments': request['arguments']}):
-        result = call(projects, project_id, request['tool'], request['arguments'])
+    bound = {'tool': request['tool'], 'call_id': request['callId'], 'arguments': request['arguments']}
+    with authorize(projects, project_id, session_id, run_id, descriptor, release, **bound) as actor:
+        def check():
+            with authorize(projects, project_id, session_id, run_id, descriptor, release, **bound) as fresh:
+                if fresh['config'] != actor['config']:
+                    raise ProjectFault('The frozen Roadmap run configuration changed.', 403)
+        actor['check'] = check
+        result = call(projects, project_id, request['tool'], request['arguments'], actor)
     rendered = encode({'result': result})
     if len(rendered.encode()) > 120000:
         raise ProjectFault('Roadmap result exceeds the tool limit. Read a smaller page or individual text field.', 413)

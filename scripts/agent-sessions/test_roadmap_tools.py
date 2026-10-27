@@ -172,7 +172,7 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
         raw = ''.join(chunks).encode()
         self.assertEqual(hashlib.sha256(raw).hexdigest(), exported['sha256']); self.assertEqual(len(raw), exported['byteLength'])
         self.assertIn(text, raw.decode())
-        unavailable = await self.call(worker, 'cleanup_roadmap', {'action': 'prepare', 'cleanupRequested': True})
+        unavailable = await self.call(worker, 'cleanup_roadmap', {'action': 'finalize'})
         self.assertEqual(unavailable['error'], 'unavailable')
         self.assertFalse((worker.store.workspace / 'Docs').exists())
 

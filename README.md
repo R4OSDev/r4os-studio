@@ -1,3 +1,55 @@
+## Roadmap cleanup preparation (0.6.9)
+
+The bound v8 cleanup tool now enables `prepare`, read-only `status`, and `cancel`.
+Finalization remains unavailable until 0.6.10. No main-version status or current
+binding changes, and no next version is created by preparation or documentation
+confirmation. Native declarations remain exactly those from 0.6.7.
+
+An initial prepare needs `cleanupRequested:true`, a stable UUID request ID and
+the exact current version/revision. It links the caller's explicit intent to a
+real user cleanup request in this project's session, including a pending request
+from an earlier run. A consumed active/completed request cannot start another
+workflow; reconciling a cancelled attempt for the same version can retain the
+original authorization without another blanket confirmation.
+The host also requires frozen Read file, Write file and Create directory rights,
+the original run/worker/lease and no live terminal processes. It serializes with
+this run's file/terminal tools and never reacquires an independent workspace lock.
+Open subversions/tasks/checks must be resolved honestly; discarded work retains
+reason notes and historical child statuses. Nothing is silently marked done.
+
+The private SQLite workflow journal retains version/revision, workspace identity,
+original user request hash, baseline document hashes, archive attempts and exact
+request receipts. A complete immutable 0.6.5 export is copied and hash-verified
+at `Docs/Changelogs/0.1.X.txt`. Descriptor-relative no-follow directory/file access
+and atomic no-replace publication preserve other targets. An identical original
+archive is confirmed; a different archive or a link is a conflict. Interrupted
+own stages are retained and a subsequent original prepare can resume without
+rewriting a published archive. Active workflows block ordinary roadmap edits.
+
+The agent reads existing Docs files and makes meaningful knowledge updates with
+the separately permitted file tools. A second `prepare` uses a **new** request
+ID, original workflow/version/revision/current binding, `cleanupRequested:true`,
+`documents:[{path,expectedSha256,sha256}]` and `documentationSummary`. The server
+checks original baseline hashes, canonical regular UTF-8 files under Docs outside
+Changelogs, actual final hashes and the complete original archive again. It never
+rewrites documentation or claims to verify the semantic completeness of the
+agent's selection. Empty selections require an honest summary. Confirming a
+missing archive fails without recreating it.
+
+`status(workflowId)` returns the original archive/document receipts and phase;
+these are historical verification receipts, not a continuous claim about current
+file contents. Optional `documents` selects at most eight receipt paths with their
+known current hash and `expectedSha256:null` to recover original/recorded hashes
+without file writes. Exact request replay returns its original result. `cancel`
+releases the workflow while preserving archive, stages and document changes.
+
+Limits: 512 baseline documents, 4 MiB per knowledge file and 64 MiB total baseline,
+12 directory levels, 1,024 entries per directory, 32 confirmed documents, eight
+archive attempts, 192 MiB staging, the existing 96 MiB complete-export limit,
+1,000 workflows and existing 64 MiB database/50,000 receipt limits. Exhaustion,
+conflicts and interrupted phases preserve data for reconciliation. No automatic
+root installation, external API, project/VM reset or paid model inference is used.
+
 ## Bound Roadmap instructions (0.6.8)
 
 Every new qualified project run receives the release-bound English contract in
