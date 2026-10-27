@@ -70,3 +70,21 @@ export interface RoadmapMutationResult extends RoadmapBinding {
   entity: RoadmapRecord | { id: string; kind: RoadmapTarget['kind']; deleted: true }
     | { kind: RoadmapTarget['kind']; ids: string[] };
 }
+export interface RoadmapExport extends RoadmapBinding {
+  id: string;
+  projectId: string;
+  roadmapId: string;
+  versionId: string;
+  number: string;
+  filename: string;
+  encoding: 'utf-8';
+  byteLength: number;
+  sha256: string;
+  createdAt: string;
+}
+export interface RoadmapExportInput {
+  requestId: string;
+  versionId: string;
+  expectedRevision: number;
+  currentVersionId: string;
+}

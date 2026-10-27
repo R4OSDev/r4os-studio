@@ -27,6 +27,7 @@ class RoadmapStorageTests(unittest.TestCase):
         with closing(connect(self.root)) as db, db:
             for index, identity in enumerate(self.ids):
                 (self.root / identity / 'Workspace').mkdir(parents=True)
+                (self.root / identity / 'Workspace/module.R4MF').write_text('Own isolated roadmap fixture\n')
                 db.execute('''INSERT INTO projects(id,name,description,language,template,module_name,pins,
                     created_at,updated_at,state) VALUES(?,?,'','Zig','desktop',?,'{}','now','now','ready')''',
                            (identity, f'Project {index}', f'TEST{index}'))
@@ -134,6 +135,24 @@ class RoadmapStorageTests(unittest.TestCase):
         with acquire(self.root, self.ids[1], exclusive=True):
             self.assertEqual(self.process('initialize', self.ids[1])['code'], 409)
         self.assertFalse((self.root / self.ids[1] / 'Roadmap').exists())
+
+    def test_legacy_source_root_cannot_receive_or_absorb_private_roadmap_data(self):
+        from layout import migrate
+        from store import ProjectFault
+        project = self.root / self.ids[0]
+        (project / 'Workspace/module.R4MF').rename(project / 'module.R4MF')
+        (project / 'Workspace').rmdir()
+        with self.assertRaises(ProjectFault) as error:
+            self.call('initialize')
+        self.assertEqual(error.exception.code, 409)
+        self.assertFalse((project / 'Roadmap').exists())
+        (project / 'Roadmap').mkdir()
+        (project / 'Roadmap/Roadmap.sqlite').write_bytes(b'Existing private state')
+        with self.assertRaises(ProjectFault):
+            migrate(self.root, self.ids[0])
+        self.assertEqual((project / 'Roadmap/Roadmap.sqlite').read_bytes(), b'Existing private state')
+        self.assertTrue((project / 'module.R4MF').is_file())
+        self.assertFalse((project / 'Workspace').exists())
 
 
 if __name__ == '__main__':

@@ -7,6 +7,7 @@ import { mutate, roadmapRequest } from './api';
 import { versionStatusLabels } from './model';
 import { Subversions } from './Subversions';
 import type { EntryEditor } from './Subversions';
+import { ExportVersion } from './ExportVersion';
 import './styles.css';
 
 export function Progress({ progress }: { progress: RoadmapProgress }) {
@@ -101,6 +102,8 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
         <div className="roadmap-version-heading"><h3>{model.version.number} · {model.version.title}</h3>
           <span className="roadmap-status">{versionStatusLabels[model.version.status]}{state.roadmap.currentVersionId === model.version.id ? ' · Current' : ''}</span></div>
         <Progress progress={model.version.progress} />
+        <ExportVersion key={model.version.id + ':' + model.epoch} id={id} versionId={model.version.id} token={token} binding={state.roadmap}
+          disabled={dirty || actionBusy || formBusy} busyChanged={setActionBusy} />
         {(state.roadmap.currentVersionId !== model.version.id || pendingSelection) && <button type="button" className="roadmap-set-current" disabled={dirty || actionBusy || formBusy}
           onClick={() => void selectCurrent(state.roadmap, model.version!)}>{pendingSelection ? 'Confirm original selection' : 'Make current version'}</button>}
         {!editor && <RoadmapForm key={model.version.id + ':' + model.epoch} id={id} token={token}

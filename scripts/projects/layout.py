@@ -64,6 +64,9 @@ def inventory(path):
 
 def migrate(projects, identity, rollback=False):
     project = project_directory(projects, identity)
+    private_roadmap = project / 'Roadmap/Roadmap.sqlite'
+    if not (project / 'Workspace').exists() and (private_roadmap.exists() or private_roadmap.is_symlink()):
+        raise ProjectFault('This legacy project has private roadmap data. Reconcile its private data before migrating sources; all files were preserved.')
     journals = Path(projects) / '.studio/layouts'
     journals.mkdir(mode=0o700, parents=True, exist_ok=True); folder(journals)
     journal = journals / (identity + '.json')

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createApp } from '../src/app.js';
@@ -15,7 +15,10 @@ await test('project roadmap API uses project sessions, strict mutations, receipt
   try {
     const session = await app.inject('/api/projects');
     const headers = { cookie: String(session.headers['set-cookie']).split(';')[0], 'x-csrf-token': session.json().csrfToken };
-    for (const identity of [id, other]) await mkdir(join(directory, identity, 'Workspace'), { recursive: true });
+    for (const identity of [id, other]) {
+      await mkdir(join(directory, identity, 'Workspace'), { recursive: true });
+      await writeFile(join(directory, identity, 'Workspace/module.R4MF'), 'Own isolated roadmap fixture\n');
+    }
     await promisify(execFile)('/usr/bin/python3', ['-B', '-c', `
 import sqlite3,sys
 with sqlite3.connect(sys.argv[1]) as db:
@@ -68,6 +71,25 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal(large.statusCode, 200, large.body);
     assert.equal(large.json().entity.notes, unicode);
     assert.equal(large.json().entity.vision, unicode);
+    const binding = (await app.inject({ url: url + '/revision', headers })).json();
+    const archiveInput = { requestId: randomUUID(), versionId: root.currentVersionId,
+      expectedRevision: binding.revision, currentVersionId: binding.currentVersionId };
+    assert.equal((await app.inject({ method: 'POST', url: url + '/exports', payload: archiveInput })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/exports', headers, payload: { ...archiveInput, path: '/' } })).statusCode, 400);
+    const exported = await app.inject({ method: 'POST', url: url + '/exports', headers, payload: archiveInput });
+    assert.equal(exported.statusCode, 200, exported.body);
+    assert.equal(exported.json().filename, '0.1.X.txt');
+    assert.equal((await app.inject({ method: 'POST', url: url + '/exports', headers, payload: archiveInput })).body, exported.body);
+    const downloadPath = url + '/exports/' + exported.json().id + '/content';
+    assert.equal((await app.inject(downloadPath)).statusCode, 403);
+    const downloaded = await app.inject({ url: downloadPath, headers });
+    assert.equal(downloaded.statusCode, 200, downloaded.body);
+    assert.equal(downloaded.headers['content-disposition'], 'attachment; filename="0.1.X.txt"');
+    assert.equal(downloaded.headers['x-content-sha256'], exported.json().sha256);
+    assert.equal(Buffer.byteLength(downloaded.body), exported.json().byteLength);
+    assert.equal(createHash('sha256').update(downloaded.rawPayload).digest('hex'), exported.json().sha256);
+    assert(downloaded.body.includes(unicode));
+    assert.deepEqual((await app.inject({ url: url + '/revision', headers })).json(), binding);
   } finally {
     await app.close();
     await rm(temporary, { recursive: true, force: true });

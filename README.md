@@ -1,5 +1,38 @@
 # R4OS Studio · App
 
+## Version history and complete UTF-8 roadmap exports (0.6.5)
+
+Main versions retain their full hierarchy after status/current-selection
+changes. A selected current or historical version can be exported as
+`0.1.X.txt`, without a V prefix. Export saved version prepares an immutable
+server snapshot and downloads its verified UTF-8 text. Project roadmap notes,
+description, version vision/notes, every subversion, task and acceptance item,
+all notes, discarded work, stable IDs, ordering, statuses, revisions and
+timestamps are included. Internal receipts are not roadmap entries.
+
+The fixed adapter uses a verified SQLite backup, streams a deterministic
+archive, seals length/SHA-256 and publishes atomically under private
+`Roadmap/Exports/<request-uuid>/`. Only the selected version's text and metadata
+are retained; the temporary database copy is removed. Repeated request IDs
+return the original result even after subsequent roadmap edits. Preparing or
+downloading an export changes no roadmap revision, content, status or current
+version and creates no next version. No Workspace changelog is written by a
+download; explicit cleanup remains a later, separately invoked workflow.
+
+POST exports uses Projects session/host/origin/CSRF and frozen version/current/
+revision binding. Downloads require the same project session, verify SHA-256
+before streaming, preserve UTF-8 bytes and have bounded backpressure, concurrent
+streams and lifetime locks. The internal adapter also supplies bounded UTF-8
+chunks with safe continuation offsets, revision and hash. Cache bounds are
+96 MiB per complete archive, 512 MiB including staging and1024 entries per
+project, with preparation deadlines. An invalid, corrupt or oversized export
+fails while preserving source data; a partial file is never published as a
+complete archive. Existing export files are not overwritten or silently pruned.
+Roadmaps require the current Workspace layout so private storage stays outside
+all source namespaces. Legacy projects must migrate sources first. If an old
+legacy project already has private roadmap data, the source migration refuses
+to move that data into Workspace and preserves all files for explicit recovery.
+
 ## Roadmap subversions, tasks and acceptance items (0.6.4)
 
 Selected main versions now show expandable subversions with their own number,

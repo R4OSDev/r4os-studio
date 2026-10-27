@@ -13,7 +13,7 @@ import uuid
 from schema import APPLICATION_ID, SCHEMA, SCHEMA_VERSION
 from project_maintenance import project
 from project_use import acquire
-from layout import project_directory, sync
+from layout import project_directory, sync, workspace
 from store import ProjectFault
 
 MAX_DATABASE_BYTES = 64 * 1024 * 1024
@@ -122,7 +122,11 @@ def connection(projects, identity, initialize=False):
     # Lifetime locks coordinate deletion, not workspace edits or agent runs.
     with acquire(projects, identity):
         project(projects, identity)
-        directory = project_directory(projects, identity) / 'Roadmap'
+        parent = project_directory(projects, identity)
+        if not (parent / 'Workspace').exists() and not (parent / 'Workspace').is_symlink():
+            raise RoadmapFault('Migrate this project to the Workspace layout before using its roadmap. Existing files were preserved.', 409)
+        workspace(projects, identity, require_current=True)
+        directory = parent / 'Roadmap'
         if not directory.exists() and not directory.is_symlink():
             if not initialize:
                 yield None

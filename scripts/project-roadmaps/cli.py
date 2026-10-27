@@ -12,16 +12,17 @@ from model import snapshot
 from validation import fields
 from reads import read
 from mutations import mutate
+from exports import chunk, open_archive, prepare
 
 
 def operation(projects, request):
-    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit'])
+    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset'])
     name = request['operation']
-    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate'):
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'export', 'export_info', 'export_chunk'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
     if name in ('read', 'initialize'):
         fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])
-    elif name == 'mutate':
+    elif name in ('mutate', 'export'):
         fields(request, ['operation', 'projectId', 'input'])
     with connection(projects, request['projectId'], initialize=name == 'initialize') as db:
         if db is None:
@@ -30,6 +31,14 @@ def operation(projects, request):
             return {'exists': False, 'projectId': request['projectId']}
         if name == 'mutate':
             return mutate(db, request['projectId'], request['input'])
+        if name == 'export':
+            return prepare(db, projects, request['projectId'], request['input'])
+        if name == 'export_info':
+            fields(request, ['operation', 'projectId', 'exportId'])
+            with open_archive(projects, request['projectId'], request['exportId']) as (info, _):
+                return info
+        if name == 'export_chunk':
+            return chunk(projects, request['projectId'], request)
         if name == 'initialize' and 'requestId' in request:
             return mutate(db, request['projectId'], {'requestId': request['requestId']}, initialize=True)
         if name in ('read', 'initialize'):

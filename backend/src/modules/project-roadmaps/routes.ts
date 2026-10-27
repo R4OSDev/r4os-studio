@@ -3,6 +3,7 @@ import type { RoadmapMutation, RoadmapTarget } from '../../../../shared/project-
 import type { ProjectSessions } from '../projects/sessions.js';
 import { roadmapStore } from './store.js';
 import { ProjectError } from '../projects/store.js';
+import { roadmapExportRoutes } from './exports.js';
 
 const uuid = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const pageQuery = { type: 'object', additionalProperties: false, properties: {
@@ -39,6 +40,7 @@ function strictMutation(value: RoadmapMutation) {
 }
 
 export function roadmapRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions) {
+  roadmapExportRoutes(app, directory, sessions);
   const parameterSchema = (path: string) => {
     const names = [...path.matchAll(/:([a-zA-Z]+)/g)].map((match) => match[1]);
     return { type: 'object', required: names, properties: Object.fromEntries(names.map((name) => [name, uuid])) };

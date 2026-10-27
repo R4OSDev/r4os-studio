@@ -48,6 +48,14 @@
 .roadmap-notes { margin-top: 13px; font-size: 12px; }
 .roadmap-notes summary { color: #d0b4e7; cursor: pointer; }
 .roadmap-note-text { padding-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; line-height: 1.7; color: #c7b7d5; }
+.roadmap-export { margin: 18px 0 12px; font-size: 12px; min-width: 0; }
+.roadmap-export-result { display: grid; gap: 10px; margin-top: 12px; }
+.roadmap-export-result a { color: #d4b4ff; overflow-wrap: anywhere; }
+.roadmap-export-result summary { color: #c7b7d5; cursor: pointer; }
+.roadmap-export-result dl { margin-bottom: 0; line-height: 1.6; }
+.roadmap-export-result dl div { margin-top: 8px; }
+.roadmap-export-result dt { color: #b9a8ca; }
+.roadmap-export-result dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .roadmap { margin: 20px 14px; } .roadmap-card { padding: 16px; }
   .project-dialog .roadmap-form .project-fields { padding: 20px; }

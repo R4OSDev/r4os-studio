@@ -17,7 +17,7 @@ export function roadmapStore<T>(directory: string, request: { operation: string;
     const terminate = () => {
       try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
     };
-    const timer = setTimeout(() => { terminate(); finish(new ProjectError('The roadmap service did not respond.')); }, 10_000);
+    const timer = setTimeout(() => { terminate(); finish(new ProjectError('The roadmap service did not respond.')); }, request.operation === 'export' ? 30_000 : 10_000);
     child.on('error', () => finish(new ProjectError('Roadmap storage is unavailable.')));
     child.stdin.on('error', () => { /* The close event handles rejected input. */ });
     child.stdout.on('data', (chunk: Buffer) => {
