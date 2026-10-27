@@ -9,14 +9,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import ProjectFault
 from storage import connection
 from model import snapshot
+from validation import fields
+from reads import read
+from mutations import mutate
 
 
 def operation(projects, request):
-    if (not isinstance(request, dict) or set(request) != {'operation', 'projectId'}
-            or request['operation'] not in ('read', 'initialize')):
+    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit'])
+    name = request['operation']
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'mutate'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
-    with connection(projects, request['projectId'], initialize=request['operation'] == 'initialize') as db:
-        return {'exists': True, 'roadmap': snapshot(db)} if db else {'exists': False, 'projectId': request['projectId']}
+    if name in ('read', 'initialize'):
+        fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])
+    elif name == 'mutate':
+        fields(request, ['operation', 'projectId', 'input'])
+    with connection(projects, request['projectId'], initialize=name == 'initialize') as db:
+        if db is None:
+            if name not in ('read', 'overview'):
+                raise ProjectFault('Initialize this project roadmap before continuing.', 404)
+            return {'exists': False, 'projectId': request['projectId']}
+        if name == 'mutate':
+            return mutate(db, request['projectId'], request['input'])
+        if name == 'initialize' and 'requestId' in request:
+            return mutate(db, request['projectId'], {'requestId': request['requestId']}, initialize=True)
+        if name in ('read', 'initialize'):
+            return {'exists': True, 'roadmap': snapshot(db)}
+        return read(db, request['projectId'], request)
 
 
 def main():

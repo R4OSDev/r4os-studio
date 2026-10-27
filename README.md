@@ -1,5 +1,31 @@
 # R4OS Studio · App
 
+## Internal project roadmap API (0.6.2)
+
+Project-session-protected routes under `/api/projects/:id/roadmap` expose
+overview, current/historical versions, subversions, tasks and separate
+acceptance items, including notes on every level. Reads never initialize a
+missing roadmap. Explicit `POST /initialize` uses a durable request ID.
+`POST /mutations` accepts narrowly typed create/update/status, append/replace
+notes, complete-collection reorder, confirmed removal and explicit current
+version selection; replacing an entire roadmap is not an editing operation.
+
+Each accepted mutation binds the project, exact target/parents, expected
+roadmap revision, current main version ID and unique request ID. The original
+result is stored in the same SQLite transaction; exact retries return that
+result even after later edits, while changed input, stale revisions and old
+current bindings return conflicts. Concurrent note appends use short
+transactions and retain the rejected input for a reconciled retry. Browser
+session, allowed host/origin and CSRF checks use the existing Projects policy.
+Private database paths are never accepted from clients or returned in errors.
+
+Collection pages hold at most20 entries and continuation cursors bind project,
+parent and revision. Edits invalidate older cursors. Notes/text, request and
+response sizes, entry counts, stored receipts and database size are bounded.
+Versions and work items keep distinct status models; completing tasks does not
+implicitly complete or roll over any version. Browser editing and native agent
+tools remain subsequent work. No existing project is initialized on installation.
+
 ## Shared project roadmap storage (0.6.1)
 
 Project roadmaps now have a typed hierarchy and a private, project-scoped
