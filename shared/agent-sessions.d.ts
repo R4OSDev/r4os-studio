@@ -15,12 +15,14 @@ export interface AgentRun { id: string; sessionId: string; owner?: SessionOwner;
 export interface AgentSession {
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean };
+  webSearchEnabled?: boolean;
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
   skillOverrides: Record<string, boolean>;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
+  webSearchEnabled?: boolean;
   skillOverrides?: Record<string, boolean>;
 }
 export interface SessionOptions {
@@ -28,11 +30,13 @@ export interface SessionOptions {
   development?: import('./project-development.js').DevelopmentOptions;
   providers: { id: string; name: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean }[];
+  nativeTools?: { id: 'web_search'; defaultEnabled: boolean }[];
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }
 export interface SessionItem {
   id: string; runId: string; type: string; text?: string; tool?: string; status?: string;
   arguments?: unknown; output?: string; error?: string; exitCode?: number; [key: string]: unknown;
+  webSearch?: { action: 'search' | 'openPage' | 'findInPage' | 'other'; queries?: string[]; url?: string; pattern?: string; sources?: { title: string; url: string }[]; truncated?: boolean };
 }
 export interface SessionHistory { items: SessionItem[]; before: number | null; cursor: number }
 export interface AgentEvent { seq: number; kind: string; runId: string | null; payload: unknown }

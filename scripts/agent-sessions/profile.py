@@ -77,7 +77,8 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False):
+    if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     tools_for(selected_profile)
     binary = regular(binary)
     if digest(binary) != CODEX_SHA256:
@@ -126,7 +127,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     settings = {
         'cli_auth_credentials_store': 'file', 'model_catalog_json': '/session/models.json',
         'sqlite_home': '/session/state', 'log_dir': '/session/logs', 'project_doc_max_bytes': 0,
-        'project_root_markers': [], 'web_search': 'disabled',
+        'project_root_markers': [], 'web_search': 'live' if web_search_enabled else 'disabled',
         'agents.enabled': False, 'tools.update_plan.enabled': False,
         'tools.experimental_request_user_input.enabled': False,
         'skills.include_instructions': False, 'skills.bundled.enabled': False,

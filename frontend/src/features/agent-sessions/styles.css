@@ -134,3 +134,6 @@
 .agent-skill-choices > p { color: var(--muted); }
 .agent-skill-choices .agent-permission { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .agent-skill-choices small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; overflow-wrap: anywhere; }
+.agent-web-search { padding: 0 14px 10px; overflow-wrap: anywhere; }
+.agent-web-search ul { padding-left: 20px; }
+.agent-web-search li + li { margin-top: 6px; }

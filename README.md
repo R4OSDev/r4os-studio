@@ -1,5 +1,38 @@
 # R4OS Studio · App
 
+## Native Web search session tool (0.5.13)
+
+Session settings → Tools → Web → Web search is ON by default in project and skill
+sessions. It uses the existing Codex provider to search, open pages and find text;
+availability remains subject to the selected model/account. The additive
+`webSearchEnabled` setting defaults to true when absent and is frozen at run
+admission. OFF is explicit; settings require the same revision and idle guards.
+Existing native threads and v1–v6 dynamic declarations are retained, with no
+session migration. Previously accepted runs keep their original release/snapshot.
+
+Codex 0.163.0 receives `web_search=live` or `disabled` both at process preparation
+and thread start/resume. The existing forced `supports_search_tool=false` stays:
+it controls general tool discovery, not hosted web search. Other native features,
+terminal/build network isolation and provider credential handling are unchanged.
+New runs require the coordinator's nativeWebSearch capability and a compatible
+worker; old snapshots without this field remain OFF. No separate search API key
+or downloaded privileged installer is needed. Idle coordinators adopt normally.
+
+Native `webSearch` lifecycle events are stored as tool cards with bounded Search,
+Open page and Find in page metadata. Only approved query/action fields and up to
+24 unique HTTP(S) result links are projected; opaque result bodies stay in the
+native conversation. No URL is fetched by Studio's browser or Python adapter.
+Ordinary Markdown source links can be displayed in answers. Local file Search
+remains separate. Interrupted/unfinished cards use the existing run recovery;
+unknown effects are not replayed. Turning search off does not erase previously
+retrieved material from the preserved conversation.
+
+Qualified against official configuration/app-server documentation, original
+source 8c076942cb70fba8e5c4732c23f1faabc4aed484 and the installed binary's cached
+experimental schemas (WebSearchMode, ThreadItem/WebSearchAction and thread config).
+Build/TypeScript, strict lint and static Python/source/schema review only; no
+test suites, paid inference or user-session/VM runs were performed.
+
 ## Development authorization for v6 sessions (0.5.12)
 
 The development coordinator and its workers now accept `studio-tools-v6` wherever

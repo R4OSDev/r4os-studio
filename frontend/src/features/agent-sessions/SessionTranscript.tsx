@@ -4,11 +4,13 @@ import { toolLabels, useSessionApi } from './api';
 import { DevelopmentCard, DevelopmentImage, developmentRef } from './DevelopmentCard';
 import { CodeBlock, MessageText } from './Transcript';
 import { SkillCard } from './SkillCard';
+import { WebSearchCard } from './WebSearchCard';
 
 type ToolEntry = { item: SessionItem; jobId?: string };
 type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolEntry[] }
   | { kind: 'message'; key: string; item: SessionItem };
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
+const toolLabel = (item: SessionItem) => item.type === 'terminal' ? 'Terminal' : item.tool === 'web_search' ? 'Web search' : toolLabels[item.tool ?? ''] ?? 'Tool call';
 
 function GitHubReceipt({ value }: { value: unknown }) {
   const ref = value as { id?: string; state?: string; commit?: string; pushed?: boolean } | null;
@@ -43,8 +45,8 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
       onScroll={(event) => { const element = event.currentTarget; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24; }}>
       {tools.map(({ item: i, jobId }) => <details key={itemKey(i)} className={`agent-tool ${i.status ?? ''}`}
         onToggle={(event) => { if (event.currentTarget.open) { follow.current = false; setExpanded(true); } }}>
-        <summary><span title={i.type === 'terminal' ? 'Terminal' : toolLabels[i.tool ?? ''] ?? 'Tool call'}>{i.type === 'terminal' ? 'Terminal' : toolLabels[i.tool ?? ''] ?? 'Tool call'}</span><span className="agent-tool-status">{i.status}</span></summary>
-        <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />
+        <summary><span title={toolLabel(i)}>{toolLabel(i)}</span><span className="agent-tool-status">{i.status}</span></summary>
+        {i.tool === 'web_search' ? <WebSearchCard value={i.webSearch} /> : <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />}
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}

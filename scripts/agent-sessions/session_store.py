@@ -77,6 +77,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
     for v in providers(provider_dir):
         values.append({'id': v['id'], 'name': v['name'], 'models': provider_models(provider_dir, v['id'])})
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in tools_for(selected_profile)],
+            'nativeTools': [{'id': 'web_search', 'defaultEnabled': True}],
             'engine': engine(r4os, selected_profile)}
 
 
@@ -103,6 +104,8 @@ def validate_settings(data, provider_dir):
         raise ProjectFault('Select an available model and reasoning effort.', 400)
     if type(data.get('fastMode', False)) is not bool:
         raise ProjectFault('Invalid Fast Mode setting.', 400)
+    if type(data.get('webSearchEnabled', True)) is not bool:
+        raise ProjectFault('Invalid Web search setting.', 400)
     if data.get('fastMode', False) and not model['fastModeAvailable']:
         raise ProjectFault('Fast Mode is unavailable for the selected model.', 400)
     if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in tools_for(data.get('engine', {}).get('profile', PROFILE))} or any(type(v) is not bool for v in data['permissions'].values()):
@@ -183,6 +186,7 @@ PRAGMA user_version=1;
     def present(self, row):
         settings = json.loads(row['settings'])
         settings.setdefault('fastMode', False)
+        settings.setdefault('webSearchEnabled', True)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
         if self.owner_type == 'skill' and engine.get('profile') not in SKILL_PROFILES:
@@ -214,6 +218,7 @@ PRAGMA user_version=1;
                 raise ProjectFault('The session limit for this workspace has been reached.')
             settings = {k: data[k] for k in ('providerId', 'model', 'effort')}
             settings['fastMode'] = data.get('fastMode', False)
+            settings['webSearchEnabled'] = True
             settings['permissions'] = {'studio.' + v: default_enabled(v) for v in tools_for(self.selected_profile)}
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
@@ -229,10 +234,12 @@ PRAGMA user_version=1;
             if self.db.in_transaction: self.db.rollback()
 
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
         if 'fastMode' in data and type(data['fastMode']) is not bool:
             raise ProjectFault('Invalid Fast Mode setting.', 400)
+        if 'webSearchEnabled' in data and type(data['webSearchEnabled']) is not bool:
+            raise ProjectFault('Invalid Web search setting.', 400)
         self.db.execute('BEGIN IMMEDIATE')
         try:
             previous = self.get(session_id)
@@ -240,7 +247,7 @@ PRAGMA user_version=1;
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1', (session_id,)).fetchone():
                 raise ProjectFault('Stop or resolve the current run before changing session settings.')
             value = {**previous, **data}
-            settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions')}
+            settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'webSearchEnabled')}
             choices = skill_preferences.normalize(value['skillOverrides'])
             skill_change = choices != previous['skillOverrides']
             value['name'] = text(value['name'], 120)
