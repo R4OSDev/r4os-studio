@@ -1,3 +1,31 @@
+## Remote Host browser management (0.6.14)
+
+System areas now follow Settings, Virtual Machines, Remote Hosts, Updates.
+Remote Hosts has + New Host and UUID-bound names in the second column, with
+Overview/Settings in the third. Deep links use #system/remote-hosts/UUID/settings
+or /overview; reload and browser back/forward restore the actual host/view.
+Existing #updates links select Updates after the navigation addition.
+
+New Host offers editable name/description/address, port22, user r4os and a masked
+rosebud default. Existing hosts display no password input until an explicit
+Change password selection; saving or cancelling clears entered secret text.
+Ordinary edits preserve the stored password and UUID. The overview shows current
+safe metadata, actual saved test status and fingerprint. Check connection stays
+unavailable until the SSH adapter is installed; viewing/saving does not connect.
+
+Save/Cancel, dirty-navigation and unload guards, preserved stale drafts with
+explicit reload, confirmed local removal and bounded retry of an original
+uncertain request are integrated. Secrets are not persisted in browser storage.
+List/detail generations and aborts prevent delayed other-host replies from
+binding the selected form. Host names are data; a host named LLM Provider cannot
+select provider features. Empty/unavailable/missing-host states offer retry.
+
+Isolated real-API browser evidence covers default/custom logins, password-free
+stored views, save/cancel/conflicts, keyboard focus,1440/320 layouts, deep-link
+reload/back/forward, delayed detail responses and confirmed local removal.
+Build/TypeScript and strict lint pass. The shared hook continues the ordinary
+initial provider-metadata read; no provider account action or SSH test is invoked.
+
 ## Private Remote Host catalog (0.6.13)
 
 `/api/remote-hosts` provides local create/list/read/revisioned edit/confirmed remove

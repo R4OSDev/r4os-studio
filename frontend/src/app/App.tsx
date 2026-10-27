@@ -19,12 +19,16 @@ import { editorRegistry } from '../features/project-editor/registry';
 import { useConnections } from '../features/github-connections/useConnections';
 import { ConnectionPanel } from '../features/github-connections/ConnectionPanel';
 import { parseRoadmapRoute, roadmapHash } from '../features/project-roadmaps/location';
+import { useRemoteHosts } from '../features/remote-hosts/useRemoteHosts';
+import { HostPanel } from '../features/remote-hosts/HostPanel';
+import { parseRemoteHostRoute, remoteHostHash } from '../features/remote-hosts/location';
 
 const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const projectRoute = /^#projects\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const roadmapRoute = parseRoadmapRoute(window.location.hash);
+const remoteHostRoute = parseRemoteHostRoute(window.location.hash);
 const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
 
@@ -42,6 +46,7 @@ export function App() {
   const toolsLeaveGuard = useRef<() => boolean>(() => true);
   const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
+  const [remoteHostId, setRemoteHostId] = useState<string | null>(remoteHostRoute?.id ?? null);
   const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? roadmapRoute?.projectId ?? null);
   const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(roadmapRoute
     ? { [roadmapRoute.projectId]: { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmapRoute.versionId } }
@@ -61,7 +66,7 @@ export function App() {
     if ((value.section === 'Roadmap' || parseRoadmapRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
   }, []);
   const [selected, setSelected] = useState<Selection>({
-    group: window.location.hash === '#updates' ? 2 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: 0,
+    group: remoteHostRoute ? 2 : window.location.hash === '#updates' ? 3 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: remoteHostRoute?.view === 'Settings' ? 1 : 0,
   });
   useEffect(() => {
     const restore = () => {
@@ -70,13 +75,15 @@ export function App() {
       const project = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(hash);
       const projectEntry = /^#projects\/([a-f0-9-]{36})$/.exec(hash);
       const roadmap = parseRoadmapRoute(hash);
+      const remoteHost = parseRemoteHostRoute(hash);
       const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
-      if (!project && !projectEntry && !roadmap && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
+      if (!project && !projectEntry && !roadmap && !remoteHost && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
       if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
         window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
       }
       acceptedHash.current = hash;
-      if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId }); setTab('Projects'); }
+      if (remoteHost) { setRemoteHostId(remoteHost.id); setSelected({ group: 2, item: 0, view: remoteHost.view === 'Settings' ? 1 : 0 }); setTab('System'); }
+      else if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId }); setTab('Projects'); }
       else if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
       else if (projectEntry) {
         setProjectId(projectEntry[1]); setTab('Projects');
@@ -86,7 +93,7 @@ export function App() {
       else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
       else if (hash === '#tools') { setSkillId(null); setTab('Tools'); }
       else if (hash === '#projects') setTab('Projects');
-      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 2, item: 0, view: 0 }); }
+      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 3, item: 0, view: 0 }); }
     };
     window.addEventListener('hashchange', restore);
     window.addEventListener('popstate', restore);
@@ -99,12 +106,15 @@ export function App() {
   const group = groups[selected.group];
   const vmPage = tab === 'System' && group.name === 'Virtual Machines';
   const updatePage = tab === 'System' && group.name === 'Updates';
+  const remotePage = tab === 'System' && group.name === 'Remote Hosts';
+  const remoteHosts = useRemoteHosts(remotePage);
+  const activeRemoteHost = remoteHosts.hosts.find((host) => host.id === remoteHostId);
   const vms = useVms(vmPage);
   const activeVm = vms.vms.find((vm) => vm.id === vmId);
-  const componentItems = vmPage ? ['+ New VM', ...vms.vms.map((vm) => vm.name)] : group.items;
-  const selectedComponent = vmPage ? (activeVm ? vms.vms.indexOf(activeVm) + 1 : 0) : selected.item;
+  const componentItems = remotePage ? ['+ New Host', ...remoteHosts.hosts.map((host) => host.name)] : vmPage ? ['+ New VM', ...vms.vms.map((vm) => vm.name)] : group.items;
+  const selectedComponent = remotePage ? (activeRemoteHost ? remoteHosts.hosts.indexOf(activeRemoteHost) + 1 : 0) : vmPage ? (activeVm ? vms.vms.indexOf(activeVm) + 1 : 0) : selected.item;
   const item = componentItems[selectedComponent];
-  const providerPage = !vmPage && tab === 'System' && item === 'LLM Provider';
+  const providerPage = tab === 'System' && group.name === 'Settings' && item === 'LLM Provider';
   const systemPromptPage = tab === 'System' && group.name === 'Settings' && item === 'System Prompt';
   const skillPromptPage = tab === 'System' && group.name === 'Settings' && item === 'Skill Manager Prompt';
   const githubPage = tab === 'System' && group.name === 'Settings' && item === 'GitHub';
@@ -112,18 +122,25 @@ export function App() {
   const activeConnection = github.connections.find((connection) => connection.id === connectionView);
   const providers = useProviders(providerPage);
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex', 'R4UPack'] : []) : [];
+  const availableViews = remotePage ? (remoteHostId ? ['Overview', 'Settings'] : []) : githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex', 'R4UPack'] : []) : [];
   const selectedView = githubPage ? (activeConnection ? github.connections.indexOf(activeConnection) + 1 : 0) : providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : updatePage && item === 'Components' ? 0 : selected.view;
   const view = availableViews[selectedView];
   const componentKind: ComponentKind | 'c' | undefined = updatePage && item !== 'R4OS Studio'
     ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', C: 'c', Rust: 'rust', QEMU: 'qemu', Codex: 'codex', R4UPack: 'r4upack', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind | 'c'>)[view ?? item] : undefined;
 
+  function navigateRemoteHost(id: string | null, nextView = 'Overview') {
+    setRemoteHostId(id); setSelected({ group: 2, item: 0, view: id && nextView === 'Settings' ? 1 : 0 });
+    const hash = remoteHostHash(id, nextView);
+    if (window.location.hash !== hash) window.history.pushState(null, '', hash);
+  }
+
   function select(patch: Partial<Selection>) {
     if (!settingsLeaveGuard.current()) return;
     const next = { ...selected, ...patch };
+    if (next.group === 2) { navigateRemoteHost(remoteHostId, next.view === 1 ? 'Settings' : 'Overview'); return; }
     if (next.group === 0 && next.item === 1) window.history.replaceState(null, '', '#system-prompt');
     else if (next.group === 0 && next.item === 3) window.history.replaceState(null, '', '#skill-manager-prompt');
-    else if (['#system-prompt', '#skill-manager-prompt'].includes(window.location.hash)) window.history.replaceState(null, '', window.location.pathname);
+    else if (['#system-prompt', '#skill-manager-prompt'].includes(window.location.hash) || parseRemoteHostRoute(window.location.hash)) window.history.replaceState(null, '', window.location.pathname);
     setSelected((previous) => ({ ...previous, ...patch }));
   }
 
@@ -147,7 +164,7 @@ export function App() {
     if (value === tab) return true;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
     const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId) : null;
-    window.history.pushState(null, '', value === 'Projects' ? (roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
+    window.history.pushState(null, '', value === 'Projects' ? (roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 
@@ -191,9 +208,9 @@ export function App() {
             <div className="column-heading">Components</div>
             <div className="nav-items">
               {componentItems.map((name, index) => (
-                <button type="button" key={vmPage && index > 0 ? vms.vms[index - 1].id : name} className={`nav-item ${selectedComponent === index ? 'selected' : ''}`}
+                <button type="button" key={remotePage && index > 0 ? remoteHosts.hosts[index - 1].id : vmPage && index > 0 ? vms.vms[index - 1].id : name} className={`nav-item ${selectedComponent === index ? 'selected' : ''}`}
                   aria-current={selectedComponent === index ? 'true' : undefined}
-                  onClick={() => { if (vmPage) setVmId(index ? vms.vms[index - 1].id : null); select({ item: index, view: 0 }); }}>
+                  onClick={() => { if (remotePage) { if (settingsLeaveGuard.current()) navigateRemoteHost(remoteHosts.hosts[index - 1]?.id ?? null); return; } if (vmPage) setVmId(index ? vms.vms[index - 1].id : null); select({ item: index, view: 0 }); }}>
                   <span className="provider-view-name">{name}</span>{vmPage && index > 0 && <span className={`vm-nav-status ${vms.vms[index - 1].state}`} title={vms.vms[index - 1].state} />}{availableViews.length > 0 && <Icon name="chevron" className="item-chevron" />}
                 </button>
               ))}
@@ -216,7 +233,7 @@ export function App() {
                         ? 'Remaining usage is not available.' : 'Lowest reported remaining usage across quota windows.'}>
                         {remaining == null ? '—' : percent(remaining)}
                       </span>}
-                  </> : githubPage || vmPage || updatePage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
+                  </> : githubPage || vmPage || remotePage || updatePage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
                 </button>;
               })}
             </div>
@@ -224,8 +241,8 @@ export function App() {
         </aside>
 
         <main className="main-area">
-          <div className="page-heading"><h1>{vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
+          <div className="page-heading"><h1>{remotePage ? activeRemoteHost?.name ?? (remoteHostId ? 'Remote Host' : 'New Remote Host') : vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
+          {remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
         </main>
         </>}
       </div>
