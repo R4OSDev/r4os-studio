@@ -49,6 +49,8 @@ def compose(config):
     # guidance without changing their frozen source text/revision/hash.
     if config.get('permissions', {}).get('studio.exec_command') and TERMINAL_TIMING not in text:
         text += '\n\n' + TERMINAL_TIMING
+    from roadmap_instructions import compose as roadmap_instructions
+    text += roadmap_instructions(config)
     if 'skillAccess' not in config: return text
     from skill_application import catalog_text
     return text + catalog_text(config['skillAccess'])

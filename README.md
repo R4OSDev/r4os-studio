@@ -1,3 +1,21 @@
+## Bound Roadmap instructions (0.6.8)
+
+Every new qualified project run receives the release-bound English contract in
+`shared/project-roadmap-instructions.txt`, appended to its frozen global/project
+sources. Both the default prompt and saved custom prompts use this composition;
+saved text, revisions, hashes and `Workspace/Agents.md` remain exact. OFF and old
+native profiles receive an explicit availability notice; Skill Manager sessions
+receive no project Roadmap contract. Existing worker releases stay pinned.
+
+The contract separates normal roadmap implementation from an explicit cleanup
+request. It requires read-before-write/current revision, preserving notes and
+history, separate tasks/checks and actual evidence. Cleanup triggers, complete
+UTF-8 archive, durable Docs knowledge, readback/hash verification and exactly
+one next empty version are explained in order, with no extra blanket approval.
+Unknown receipts, unavailable phases, open work, archive conflicts, file rights
+and concurrency must be reconciled; no status-only or shell bypass is authorized.
+The native v8 declaration/schema is unchanged by this prompt integration.
+
 ## Bound project Roadmap tools (0.6.7)
 
 New project sessions use additive `studio-tools-v8` with
