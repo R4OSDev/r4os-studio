@@ -1,3 +1,53 @@
+## Roadmap lifecycle and isolated restore (0.6.11)
+
+Roadmap identity belongs to the immutable project UUID. Renaming a project or
+removing an unused session does not change its common Roadmap database. Existing
+project lifetime/workspace locks prevent deletion while a reader or worker is
+active. Confirmed project deletion removes only that project's Roadmap, export
+cache, workflow journal, sessions and Workspace docs; interior links are unlinked
+without following them. Other projects, global settings and VMs remain intact.
+
+The existing seven-source backup already covers every Roadmap.sqlite using its
+SQLite online backup, including committed live-WAL rows; it omits database
+sidecars after the snapshot. Private workflows/export receipts, original session
+evidence and Workspace/Docs are in the existing Projects source. No backup source,
+timer, VM inclusion or host permission was added. Each database is consistent;
+its snapshot and separately copied documents are not one global transaction.
+
+After restoring only into a new isolated offline directory, use the matching
+release's manual read-only diagnostic:
+
+```sh
+python3 scripts/project-roadmaps/inspect_restore.py --offline \
+  --projects /absolute/new-restore/App/Data/Projects --project PROJECT_UUID
+```
+
+It validates registered project/schema bindings and compares archive/document
+hashes, original stored cleanup intent and workspace identity with workflow
+receipts. It does not activate data, acquire/create runtime locks, rewrite files,
+rebind an inode, finalize a workflow or create a next version. A restored workspace
+has a new inode; pending workflows require reconciliation even when all bytes
+match. Keep original snapshots, receipts and file order together, inspect any
+cross-file drift and review durable Docs. After deliberate activation by existing
+host maintenance, cancel an old pending workflow and prepare again only against
+the reviewed restored state and original valid cleanup intent. Cancelling retains
+the archive and documents. Missing intent or conflicting archives require review;
+neither a new authorization nor a successful rollover is fabricated.
+
+Only deliberately selected Workspace docs participate in Git status/commits and
+normal ignore rules. Private Roadmap, settings and Sessions are siblings outside
+Git/agent file namespaces. Imports preserve source docs and exact portable pins,
+receive a new project UUID, and initialize their own empty internal roadmap only
+on explicit initialization. An old text changelog is not imported as live state;
+there is no automatic external R4Roadmap import. SDK/manifest validation remains
+the existing pinned adapter; the isolated registration test uses a controlled SDK
+fixture and does not claim a compiler run.
+
+Qualified native v8 and legacy profile gates remain additive and unchanged; this
+release needs no new host installer or root/bootstrap change. Two isolated actual
+broker/lifecycle/backup tests and a source-only real-Git import/registration test
+cover the behavior above, without accounts, inference, user projects or VMs.
+
 ## Roadmap cleanup finalization and history (0.6.10)
 
 `cleanup finalize` now rechecks the actual original user-message hash/context,

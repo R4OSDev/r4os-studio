@@ -156,6 +156,13 @@ class GitTests(unittest.TestCase):
         action = Operations(self.config, self.job()); action.initialize()
         portable = {'language': 'Zig', 'template': 'terminal', 'moduleName': 'QA', 'pins': {'sdk': {'revision': 'a' * 40}}}
         create(self.source, portable)
+        (self.source / 'Docs/Changelogs').mkdir(parents=True)
+        (self.source / 'Docs/Decision.md').write_text('Intentionally selected durable knowledge\n')
+        (self.source / 'Docs/Changelogs/0.1.X.txt').write_text('Historical source archive; not live internal state\n')
+        for name in ('Roadmap/Roadmap.sqlite', 'Sessions/private.json'):
+            private = self.projects / self.identity / name; private.parent.mkdir(parents=True, exist_ok=True)
+            private.write_text('Private state never enters Git\n')
+        self.assertTrue(all(not name.startswith(('Roadmap/', 'Sessions/')) for name in inventory(self.source)))
         action.git.run('add', '--all'); action.git.run('-c', 'user.name=Own QA', '-c', 'user.email=qa@example.invalid', 'commit', '--no-gpg-sign', '-m', 'Import fixture')
         commit = action.git.head(); new_id = str(uuid.uuid4())
         class Api:
@@ -170,11 +177,34 @@ class GitTests(unittest.TestCase):
                     (self.root / 'FETCH_HEAD').write_text(commit + '\n'); return b'', 0
                 return super().run(*args, **kwargs)
         job = self.job('import', {'connectionId': str(uuid.uuid4()), 'tokenRevision': 1, 'userId': 7, 'repository': {'id': 11, 'owner': 'octocat', 'name': 'own-qa'}, 'branch': 'main'})
-        job['projectId'] = new_id
+        job['projectId'] = new_id; job['id'] = new_id
+        (self.jobs / new_id).mkdir()
         with patch('importing.GitHub', Api), patch('importing.Git', RemoteFixture): result = prepare(self.config, job)
         value = result['import']; self.assertEqual(value['projectId'], new_id); self.assertNotEqual(new_id, self.identity)
         self.assertEqual(value['commit'], commit); self.assertEqual(value['metadata']['pins'], portable['pins'])
         self.assertFalse((self.projects / new_id).exists()); self.assertEqual(readback(self.config, job), result)
+        from github_import import register
+        job['state'] = 'completed'; save(self.jobs / new_id / 'job.json', job)
+        (self.projects / '.studio/staging').mkdir(parents=True)
+        # SDK validation already has its own pinned qualification. Here its
+        # fixture isolates real registration/publication and source boundaries.
+        with connect(self.projects) as db, patch('github_import.checked_profile', return_value=({'pins': portable['pins']}, 'Zig', 'terminal')), patch('github_import.manifest', return_value='QA'):
+            registered = register(db, self.projects, self.root / 'R4OS', new_id, {'name': 'Own imported roadmap QA', 'description': '', 'snapshot': value['snapshot']})
+        db.close(); self.assertEqual(registered['id'], new_id)
+        target = self.projects / new_id
+        self.assertEqual((target / 'Workspace/Docs/Decision.md').read_bytes(), (self.source / 'Docs/Decision.md').read_bytes())
+        self.assertFalse((target / 'Roadmap').exists()); self.assertFalse((target / 'Sessions').exists())
+        import subprocess, sys
+        cli = Path(__file__).resolve().parents[1] / 'project-roadmaps/cli.py'
+        answer = subprocess.run([sys.executable, '-B', str(cli), str(self.projects)], input=json.dumps({'operation': 'initialize', 'projectId': new_id, 'requestId': str(uuid.uuid4())}), capture_output=True, text=True, check=True)
+        fresh = json.loads(answer.stdout)['result']
+        self.assertEqual(fresh['entity']['projectId'], new_id)
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(target / 'Roadmap/Roadmap.sqlite')) as roadmap_db:
+            self.assertEqual(roadmap_db.execute('SELECT count(*) FROM subversions').fetchone()[0], 0)
+            self.assertEqual(roadmap_db.execute('SELECT major,minor,status FROM versions').fetchall(), [(0, 1, 'open')])
+        self.assertEqual((self.projects / self.identity / 'Roadmap/Roadmap.sqlite').read_text(), 'Private state never enters Git\n')
 
     def test_commit_push_noop_and_lost_reply_reconcile_without_duplicate_commit(self):
         from pushing import push, reconcile as readback
