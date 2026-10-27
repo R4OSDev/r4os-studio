@@ -2,8 +2,7 @@
 from profile import ROADMAP_PROFILE
 from store import ProjectFault
 
-# The additive profile and its tool declarations are introduced in 0.6.7.
-TOOLS_READY = False
+TOOLS_READY = True
 
 
 def availability(profile):

@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
+from profile import ROADMAP_TOOLS, GUI_PROFILE, prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -130,6 +130,9 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in ROADMAP_TOOLS:
+            from roadmap_tools import RoadmapTools
+            return await RoadmapTools(self).call(name, arguments, call_id)
         if name == 'push_project' and self.store.owner_type == 'project':
             from github_tools import GitHubTools
             return await GitHubTools(self).call(arguments, call_id)
@@ -160,10 +163,18 @@ class Worker:
             return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
         try: validate_arguments(name[7:], arguments, self.config['engine'].get('profile', PROFILE))
         except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
+        roadmap_denial = None
+        if name[7:] in ROADMAP_TOOLS:
+            from roadmap_access import require
+            from store import ProjectFault
+            try: require(self)
+            except ProjectFault as error: roadmap_denial = str(error)
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
         previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
         if previous:
+            if roadmap_denial:
+                return await output({'success': False, 'error': 'disabled', 'output': roadmap_denial})
             if previous['arguments_hash'] != hashed:
                 return await output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
             if previous['result']:
@@ -190,13 +201,15 @@ class Worker:
         tool_id = name.replace('studio_', 'studio.', 1)
         if admission_closed:
             result = {'success': False, 'error': 'interrupted', 'output': 'The run is stopping.'}
-        elif not self.config['permissions'].get(tool_id, False):
+        elif roadmap_denial:
+            result = {'success': False, 'error': 'disabled', 'output': roadmap_denial}
+        elif name[7:] not in ROADMAP_TOOLS and not self.config['permissions'].get(tool_id, False):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
         else:
             try: result = await self.execute(name[7:], arguments, call_id)
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
-                uncertain = name[7:] in ('write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
+                uncertain = name[7:] in ('update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -210,7 +223,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill'):
+        for key in ('roadmap', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill'):
             if key in result: value[key] = result[key]
         value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
         base_size = len(encode({**value, 'output': ''}).encode())
@@ -258,7 +271,7 @@ class Worker:
                              if web_search_mode == 'live' else '\n\nSTUDIO WEB SEARCH: Web search is disabled for this run. Do not claim to browse or verify current online information. studio_search searches local files only.')
             if 'capture_vm' in tools_for(self.config['engine']['profile']):
                 instructions += ('\n\nSTUDIO GUI INPUT: This profile supports kind=guiText, extended key names and bounded key repeat in studio_send_vm_input. Use lowercase w/a/s/d for movement when the app expects them. '
-                    if self.config['engine']['profile'] == PROFILE else '\n\nSTUDIO GUI INPUT: This conversation retains its original key enum (Enter/Tab/Escape/Space). Full navigation keys require a new project session with the current tool profile. For GUI text, the existing schema permits kind=text with text and frameId together; without frameId, text is console-only. ')
+                    if self.config['engine']['profile'] in (GUI_PROFILE, PROFILE) else '\n\nSTUDIO GUI INPUT: This conversation retains its original key enum (Enter/Tab/Escape/Space). Full navigation keys require a new project session with the current tool profile. For GUI text, the existing schema permits kind=text with text and frameId together; without frameId, text is console-only. ')
                 instructions += 'GUI text and extended keys require a newly deployed GUI-input-v2 helper and a current focused window image. Text is limited to 64 Unicode characters/256 UTF-8 bytes without control characters. Send Enter separately. Inspect accepted/expected/complete and verify effects; never replay an unconfirmed or partial input automatically. Only the owned app receives queued codepoint events, not physical held keys or global clipboard paste.'
                 instructions += '\n\nSTUDIO IMAGE OBSERVATIONS: Screenshots of animations are observed between two bounded window checks, not atomically tied to a single guest content revision. Inspect the actual image; contentChanged is not a failed capture. Input requires a focused matching window and an image no older than 30 seconds; visual check completion requires a matching image no older than 120 seconds. A new deployment is needed for animation input with older helpers. Changed window geometry, focus or process still requires a new image. Image evidence proves only what was observed; do not claim that controls or animation were tested without corresponding evidence.'
                 instructions += '\n\nSTUDIO SCREENSHOT PRESENTATION: When the user requests a screenshot, present it inline in your answer using the exact presentation.markdown reference returned by studio_capture_vm. You can change its descriptive alt text. These stored image references can be reused in later replies; they require no new capture. Use only confirmed references from tool results, never invent an image reference or file URL. Presenting an image does not establish a passed check or complete a live execution.'

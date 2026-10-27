@@ -5,12 +5,13 @@ import { DevelopmentCard, DevelopmentImage, developmentRef } from './Development
 import { CodeBlock, MessageText } from './Transcript';
 import { SkillCard } from './SkillCard';
 import { WebSearchCard } from './WebSearchCard';
+import { roadmapLabels, RoadmapReceipt } from './RoadmapReceipt';
 
 type ToolEntry = { item: SessionItem; jobId?: string };
 type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolEntry[] }
   | { kind: 'message'; key: string; item: SessionItem };
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
-const toolLabel = (item: SessionItem) => item.type === 'terminal' ? 'Terminal' : item.tool === 'web_search' ? 'Web search' : toolLabels[item.tool ?? ''] ?? 'Tool call';
+const toolLabel = (item: SessionItem) => item.type === 'terminal' ? 'Terminal' : item.tool === 'web_search' ? 'Web search' : roadmapLabels[item.tool ?? ''] ?? toolLabels[item.tool ?? ''] ?? 'Tool call';
 
 function GitHubReceipt({ value }: { value: unknown }) {
   const ref = value as { id?: string; state?: string; commit?: string; pushed?: boolean } | null;
@@ -50,6 +51,7 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}
+        {scope === 'project' && roadmapLabels[i.tool ?? ''] && <RoadmapReceipt value={i.roadmap} />}
         {i.tool === 'studio.stop_development_job' && i.developmentStop?.version === 1 && <p>
           {i.developmentStop.confirmed ? (i.developmentStop.outcome === 'already-ended' ? 'Already ended. ' : i.developmentStop.outcome === 'not-started' ? 'Application was not started. ' : 'Stop confirmed. ') : 'Stop unconfirmed. '}
           {i.developmentStop.scope === 'worker' ? 'Host worker only. ' : 'Owned application process. '}

@@ -14,11 +14,11 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, TOOLS, tools_for, default_enabled
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, permission_tools, default_enabled
 from owner import owner_type, binding, skill_workspace
 import skill_preferences
 
-TOOL_IDS = tuple('studio.' + name for name in TOOLS)
+TOOL_IDS = tuple('studio.' + name for name in permission_tools(PROFILE))
 TERMINAL_STATES = ('completed', 'failed', 'interrupted')
 
 
@@ -76,7 +76,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
     values = []
     for v in providers(provider_dir):
         values.append({'id': v['id'], 'name': v['name'], 'models': provider_models(provider_dir, v['id'])})
-    return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in tools_for(selected_profile)],
+    return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
             'nativeTools': [{'id': 'web_search', 'defaultEnabled': True}],
             'engine': engine(r4os, selected_profile)}
 
@@ -110,7 +110,7 @@ def validate_settings(data, provider_dir):
         raise ProjectFault('Invalid Roadmap setting.', 400)
     if data.get('fastMode', False) and not model['fastModeAvailable']:
         raise ProjectFault('Fast Mode is unavailable for the selected model.', 400)
-    if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in tools_for(data.get('engine', {}).get('profile', PROFILE))} or any(type(v) is not bool for v in data['permissions'].values()):
+    if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in permission_tools(data.get('engine', {}).get('profile', PROFILE))} or any(type(v) is not bool for v in data['permissions'].values()):
         raise ProjectFault('Invalid tool permissions.', 400)
 
 
@@ -229,7 +229,7 @@ PRAGMA user_version=1;
             settings['fastMode'] = data.get('fastMode', False)
             settings['webSearchEnabled'] = True
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
-            settings['permissions'] = {'studio.' + v: default_enabled(v) for v in tools_for(self.selected_profile)}
+            settings['permissions'] = {'studio.' + v: default_enabled(v) for v in permission_tools(self.selected_profile)}
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)

@@ -1,3 +1,45 @@
+## Bound project Roadmap tools (0.6.7)
+
+New project sessions use additive `studio-tools-v8` with
+`studio.read_roadmap`, `studio.update_roadmap` and `studio.cleanup_roadmap`.
+The original v1–v7 and Skill declarations remain byte-identical; their native
+threads and histories keep their profiles. One `roadmapEnabled` switch controls
+all three tools, outside the original individual permission map. Old sessions
+show **New session required**; ON alone does not make tools available.
+
+The host checks frozen project ownership and the switch on every call, including
+historical result replay. A fixed unprivileged Python sidecar rechecks the
+actual worker PID/birth/release, session/run/revision, original durable tool
+intent and inherited workspace lease descriptor. Short mutations are serialized
+with Stop admission. It uses the same project lifetime lock, private database,
+strict read/mutation functions and durable UUID request receipts as the WebApp;
+it never requests a second unowned workspace admission. No project ID, SQL,
+service URL or host path is accepted from the model. Roadmap files are outside
+the workspace mounted into terminal/build/native namespaces.
+
+Reads return bounded metadata/text previews with explicit byte lengths and
+hashes. Use `view=text` to read every UTF-8-safe byte page of notes, description
+or vision; collections have revision-bound cursors. A prepared immutable export
+can also be read in byte pages and verified by its complete SHA-256. Stable
+request IDs and `view=receipt` reconcile lost responses without repeating effects.
+Tool cards retain bounded arguments, result revision/current version/request ID,
+conflicts and unknown outcomes.
+
+The full cleanup prepare/status/finalize/cancel input contract is declared now;
+these phases explicitly return unavailable until 0.6.9/0.6.10. No cleanup is
+emulated with ordinary edits. English tool descriptions already explain the
+explicit cleanup triggers and complete archive → Docs knowledge → verification
+→ Complete → exactly one next empty version sequence. Run prompt integration
+follows in 0.6.8.
+
+Explicit host compatibility maintenance before installing the v8 release:
+`python3 scripts/agent-sessions/install-roadmap-tool-support.py`. It verifies the
+existing updater hash, keeps a backup, preserves its configuration and changes
+only the accepted additive profile ceiling. After regular installation, use
+its `--adopt` mode only while agent workers/admissions are idle. Existing workers,
+VMs, providers, histories, pins and user data are retained. Git and development
+host authorization include v8 with the same existing frozen rights.
+
 ## Roadmap session preference (0.6.6)
 
 Project Session settings → Tools → Roadmap has one default-on switch.

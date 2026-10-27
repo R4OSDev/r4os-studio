@@ -52,6 +52,10 @@ class AgentGitTests(unittest.TestCase):
             raw, controls, _, _ = parent.recvmsg(65536, socket.CMSG_SPACE(4)); received = struct.unpack('i', controls[0][2])[0]
             self.assertEqual(json.loads(raw), request)
             AgentLease(self.config, self.identity, agent, received, helper.pid).verify()
+            for profile in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8'):
+                config['engine']['profile'] = profile
+                with closing(sqlite3.connect(db_path)) as db: db.execute('UPDATE runs SET config=?', (json.dumps(config),)); db.commit()
+                AgentLease(self.config, self.identity, agent, received, helper.pid).verify()
             wrong = (self.projects / '.studio' / ('workspace-' + self.identity + '.lock')).open('a+b')
             try:
                 with self.assertRaises(ProjectFault): AgentLease(self.config, self.identity, agent, wrong.fileno(), helper.pid).verify()

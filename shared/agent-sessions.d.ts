@@ -40,6 +40,7 @@ export interface SessionItem {
   id: string; runId: string; type: string; text?: string; tool?: string; status?: string;
   arguments?: unknown; output?: string; error?: string; exitCode?: number; [key: string]: unknown;
   developmentStop?: import('./project-development.js').DevelopmentStopReceipt;
+  roadmap?: { operation: string; code?: number; revision?: number; currentVersionId?: string; requestId?: string; versionId?: string; sha256?: string };
   webSearch?: { action: 'search' | 'openPage' | 'findInPage' | 'other'; queries?: string[]; url?: string; pattern?: string; sources?: { title: string; url: string }[]; truncated?: boolean };
 }
 export interface SessionHistory { items: SessionItem[]; before: number | null; cursor: number }

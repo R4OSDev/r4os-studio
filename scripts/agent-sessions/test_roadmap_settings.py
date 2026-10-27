@@ -46,7 +46,7 @@ class RoadmapSettings(unittest.TestCase):
         with self.open() as store, patch('session_store.engine', return_value=engine):
             new = store.create({'name': 'New', 'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'requestId': str(uuid.uuid4())}, self.providers)
             self.assertTrue(new['roadmapEnabled'])
-            self.assertFalse(new['roadmapAccess']['available'])
+            self.assertTrue(new['roadmapAccess']['available'])
             for n in range(1, 8):
                 profile = 'studio-tools-v' + str(n)
                 permissions = {'studio.' + t: default_enabled(t) for t in tools_for(profile)}
@@ -84,7 +84,7 @@ class RoadmapSettings(unittest.TestCase):
             worker = SimpleNamespace(store=store, config=frozen)
             with self.assertRaises(ProjectFault): require(worker)
             worker.config = {**frozen, 'roadmapEnabled': True, 'engine': {'profile': ROADMAP_PROFILE}}
-            with self.assertRaises(ProjectFault): require(worker)  # Profile is reserved, not active.
+            with patch('roadmap_access.TOOLS_READY', False), self.assertRaises(ProjectFault): require(worker)
             with patch('roadmap_access.TOOLS_READY', True):
                 require(worker)
                 worker.config['owner'] = {'type': 'project', 'id': str(uuid.uuid4())}

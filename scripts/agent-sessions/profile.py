@@ -13,8 +13,9 @@ VM_PROFILE = 'studio-tools-v3'
 COMPLETION_PROFILE = 'studio-tools-v4'
 UPDATE_PROFILE = 'studio-tools-v5'
 GIT_PROFILE = 'studio-tools-v6'
-PROFILE = 'studio-tools-v7'
-ROADMAP_PROFILE = 'studio-tools-v8'  # Reserved; declaration and activation follow in 0.6.7.
+GUI_PROFILE = 'studio-tools-v7'
+ROADMAP_PROFILE = 'studio-tools-v8'
+PROFILE = ROADMAP_PROFILE
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE)
@@ -32,7 +33,9 @@ UPDATE_TOOLS = ('read_update_package', 'plan_update_package', 'build_update_pack
 DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS
 GIT_TOOLS = ('push_project',)
 def default_enabled(tool): return tool not in ('commit_update','rollback_update','push_project')
-TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS + GIT_TOOLS
+ROADMAP_TOOLS = ('read_roadmap', 'update_roadmap', 'cleanup_roadmap')
+PRE_ROADMAP_TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS + GIT_TOOLS
+TOOLS = PRE_ROADMAP_TOOLS + ROADMAP_TOOLS
 
 def tools_for(profile):
     if profile == SKILL_PROFILE: return LEGACY_TOOLS
@@ -42,8 +45,14 @@ def tools_for(profile):
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
     if profile == COMPLETION_PROFILE: return LEGACY_TOOLS + COMPLETION_TOOLS
     if profile == UPDATE_PROFILE: return LEGACY_TOOLS + DEVELOPMENT_TOOLS
-    if profile in (GIT_PROFILE, PROFILE): return TOOLS
+    if profile in (GIT_PROFILE, GUI_PROFILE): return PRE_ROADMAP_TOOLS
+    if profile == ROADMAP_PROFILE: return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
+
+
+def permission_tools(profile):
+    # Roadmap has one grouped setting, outside the original permission map.
+    return tuple(t for t in tools_for(profile) if t not in ROADMAP_TOOLS)
 
 
 def digest(path):

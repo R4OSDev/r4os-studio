@@ -55,11 +55,14 @@ GIT_COMPATIBILITY = {**UPDATE_COMPATIBILITY,
 INPUT_COMPATIBILITY = {**GIT_COMPATIBILITY,
     'agentToolProfiles': GIT_COMPATIBILITY['agentToolProfiles'] + ['studio-tools-v7']}
 
+ROADMAP_COMPATIBILITY = {**INPUT_COMPATIBILITY,
+    'agentToolProfiles': INPUT_COMPATIBILITY['agentToolProfiles'] + ['studio-tools-v8']}
+
 def compatible(value):
     # Legacy releases remain valid rollback targets. New agent protocols require
     # this explicit host maintenance, never a downloaded privileged installer.
     previous = {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2']}
-    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY, SKILL_COMPATIBILITY, AUTHOR_COMPATIBILITY, UPDATE_COMPATIBILITY, GIT_COMPATIBILITY, INPUT_COMPATIBILITY)
+    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY, SKILL_COMPATIBILITY, AUTHOR_COMPATIBILITY, UPDATE_COMPATIBILITY, GIT_COMPATIBILITY, INPUT_COMPATIBILITY, ROADMAP_COMPATIBILITY)
 
 
 def now():

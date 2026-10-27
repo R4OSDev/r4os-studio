@@ -4,14 +4,14 @@ import json
 import unittest
 import importlib.util
 from pathlib import Path
-from profile import PROFILE, default_enabled, tools_for
+from profile import GIT_PROFILE, default_enabled, tools_for
 from tool_catalog import specifications, validate_arguments
 
 
 class GitHubProfileTest(unittest.TestCase):
     def test_v6_push_is_default_off_and_v5_native_declarations_are_unchanged(self):
-        self.assertEqual(PROFILE, 'studio-tools-v6'); self.assertFalse(default_enabled('push_project'))
-        self.assertIn('push_project', tools_for(PROFILE))
+        self.assertEqual(GIT_PROFILE, 'studio-tools-v6'); self.assertFalse(default_enabled('push_project'))
+        self.assertIn('push_project', tools_for(GIT_PROFILE))
         for old in ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-skill-tools-v1', 'studio-skill-tools-v2'):
             self.assertNotIn('push_project', tools_for(old))
         original = json.dumps(specifications('studio-tools-v5'), sort_keys=True, separators=(',', ':')).encode()

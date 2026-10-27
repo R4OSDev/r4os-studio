@@ -1,5 +1,5 @@
 """Stable Studio dynamic tool declarations; authorization is checked for every call."""
-from profile import TOOLS, PROFILE, SKILL_PROFILES, tools_for
+from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, SKILL_PROFILES, tools_for
 from copy import deepcopy
 
 
@@ -64,6 +64,8 @@ DEFS.update({
 
 from update_catalog import DEFS as UPDATE_DEFS
 DEFS.update(UPDATE_DEFS)
+from roadmap_catalog import DEFS as ROADMAP_DEFS
+DEFS.update(ROADMAP_DEFS)
 
 def specifications(profile=PROFILE):
     # The protocol persists dynamic declarations on first thread creation. Keep
@@ -72,7 +74,7 @@ def specifications(profile=PROFILE):
     result = []
     for name in tools_for(profile):
         description, schema = DEFS[name][0], deepcopy(DEFS[name][1])
-        if profile == PROFILE and name == 'send_vm_input':
+        if profile in (GUI_PROFILE, ROADMAP_PROFILE) and name == 'send_vm_input':
             description = ('Queue bounded events only for this session\'s owned process. kind=text is console input; '
                 'kind=guiText sends up to 64 Unicode characters/256 UTF-8 bytes to the focused GUI window. '
                 'GUI text, key and click require its image frameId from the last 30 seconds. '

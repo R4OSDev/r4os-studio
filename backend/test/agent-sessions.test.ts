@@ -54,8 +54,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert(Object.entries(session.permissions).filter(([key]) => !['studio.commit_update', 'studio.rollback_update', 'studio.push_project'].includes(key)).every(([, value]) => value === true));
     assert.equal(session.latestRun, null);
     assert.equal(session.roadmapEnabled, true);
-    assert.equal(session.roadmapAccess.available, false);
-    assert.match(session.roadmapAccess.reason, /New session required/);
+    assert.equal(session.roadmapAccess.available, true);
     assert.equal(session.permissions['studio.push_project'], false);
     assert.equal((await app.inject({ url: base, headers })).json().sessions.length, 1);
     assert.equal((await app.inject({ method: 'POST', url: base, headers, payload: { ...payload, name: 'Different' } })).statusCode, 409);
