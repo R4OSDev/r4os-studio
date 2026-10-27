@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { RoadmapBinding, RoadmapMutationResult, RoadmapProgress, RoadmapVersionHeader } from '../../../../shared/project-roadmaps';
 import { ProjectRequestError, projectRequestId } from '../projects/api';
 import { RoadmapForm } from './RoadmapForm';
 import type { RoadmapModel } from './useRoadmap';
 import { mutate, roadmapRequest } from './api';
 import { versionStatusLabels } from './model';
+import { Subversions } from './Subversions';
+import type { EntryEditor } from './Subversions';
 import './styles.css';
 
 export function Progress({ progress }: { progress: RoadmapProgress }) {
@@ -14,16 +16,17 @@ export function Progress({ progress }: { progress: RoadmapProgress }) {
   </div>)}</dl>;
 }
 
-function VersionDialog({ close, children }: { close: () => void; children: React.ReactNode }) {
+function VersionDialog({ close, children, title = 'New Version' }: { close: () => void; children: React.ReactNode; title?: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const element = dialog.current!, opener = document.activeElement;
     element.showModal(); element.querySelector<HTMLInputElement>('input')?.focus();
     return () => { element.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
   }, []);
-  return <dialog ref={dialog} className="project-dialog" aria-labelledby="roadmap-new-version-title"
+  return <dialog ref={dialog} className="project-dialog" aria-labelledby={titleId}
     onCancel={(event) => { event.preventDefault(); close(); }}>
-    <header className="project-dialog-header"><h2 id="roadmap-new-version-title">New Version</h2></header>
+    <header className="project-dialog-header"><h2 id={titleId}>{title}</h2></header>
     {children}
   </dialog>;
 }
@@ -36,6 +39,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
   const [actionBusy, setActionBusy] = useState(false), [actionError, setActionError] = useState('');
   const state = model.overview;
   const [formBusy, setFormBusy] = useState(false);
+  const [editor, setEditor] = useState<EntryEditor | null>(null);
   useEffect(() => { busyChanged(actionBusy || formBusy); return () => busyChanged(false); }, [actionBusy, formBusy, busyChanged]);
   const refresh = () => { if (!dirty || window.confirm('Discard unsaved roadmap changes and refresh?')) model.reload(); };
   async function initialize() {
@@ -78,6 +82,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
     <div className="roadmap-toolbar"><h2>Roadmap</h2><button type="button" disabled={actionBusy || formBusy} onClick={refresh}>Refresh</button></div>
     {model.loading && <p role="status">Loading roadmap…</p>}
     {(model.error || actionError) && <p className="project-error" role="alert">{model.error || actionError}</p>}
+    {model.remoteChanged && <p className="project-message" role="status">This roadmap changed in another view. Refresh when you are ready; your input has been retained.</p>}
     {state && !state.exists && <div className="roadmap-card"><h3>No roadmap yet</h3>
       <p>Initialize one shared roadmap for this project, starting with an empty 0.1.X version.</p>
       <button type="button" className="roadmap-primary" disabled={actionBusy} onClick={() => void initialize()}>{actionBusy ? 'Initializing…' : 'Initialize roadmap'}</button></div>}
@@ -98,12 +103,18 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
         <Progress progress={model.version.progress} />
         {(state.roadmap.currentVersionId !== model.version.id || pendingSelection) && <button type="button" className="roadmap-set-current" disabled={dirty || actionBusy || formBusy}
           onClick={() => void selectCurrent(state.roadmap, model.version!)}>{pendingSelection ? 'Confirm original selection' : 'Make current version'}</button>}
-        <RoadmapForm key={model.version.id + ':' + model.epoch} id={id} token={token}
+        {!editor && <RoadmapForm key={model.version.id + ':' + model.epoch} id={id} token={token}
           binding={{ revision: state.roadmap.revision, currentVersionId: state.roadmap.currentVersionId }}
           target={{ kind: 'version', id: model.version.id }} initial={{ number: model.version.number, title: model.version.title,
             status: model.version.status, vision: model.version.vision, notes: model.version.notes }}
-          saved={onSaved} cancel={model.reload} dirtyChanged={dirtyChanged} busyChanged={setFormBusy} />
-        <p className="roadmap-subversion-count">{model.version.subversionCount} subversions</p>
+          saved={onSaved} cancel={model.reload} dirtyChanged={dirtyChanged} busyChanged={setFormBusy} />}
+        <Subversions id={id} token={token} versionId={model.version.id} binding={state.roadmap} disabled={dirty || actionBusy || formBusy}
+          busyChanged={setActionBusy} changed={model.reload} edit={setEditor} />
+        {editor && <VersionDialog title={editor.title} close={() => { if (!formBusy) setEditor(null); }}>
+          <RoadmapForm key={editor.title + ':' + editor.target.id + ':' + model.epoch} id={id} token={token}
+            binding={state.roadmap} target={editor.target} initial={editor.initial} create={editor.create} notesMode={editor.notesMode}
+            saved={() => { setEditor(null); dirtyChanged(false); model.reload(); }} cancel={() => setEditor(null)} dirtyChanged={dirtyChanged} busyChanged={setFormBusy} />
+        </VersionDialog>}
       </div>}
     </>}
   </section>;

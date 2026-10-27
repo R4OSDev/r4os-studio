@@ -26,6 +26,28 @@
 .roadmap-version-link small { color: #ac98bb; font-size: 10px; overflow-wrap: anywhere; }
 .roadmap .roadmap-set-current { margin-top: 12px; }
 .roadmap-subversion-count { margin-bottom: 0; padding-top: 16px; }
+.roadmap-subversions { margin-top: 24px; padding-top: 22px; border-top: 1px solid #3b2c4b; min-width: 0; }
+.roadmap-collection-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 15px; }
+.roadmap-collection-heading h4 { margin: 0; font-size: 14px; font-weight: 550; }
+.roadmap-subversion-row { position: relative; margin-top: 12px; min-width: 0; }
+.roadmap-subversion { min-width: 0; border: 1px solid #483452; border-radius: 7px; background: #21192b; }
+.roadmap-subversion > summary { padding: 14px 75px 14px 14px; font-size: 13px; cursor: pointer; overflow-wrap: anywhere; }
+.roadmap-subversion > summary small { display: block; margin: 6px 0 0 16px; color: #c0a4d6; font-size: 11px; }
+.roadmap-subversion-body { padding: 2px 14px 18px; min-width: 0; }
+.roadmap-order-actions { position: absolute; top: 9px; right: 8px; display: flex; gap: 4px; }
+.roadmap-order-actions button { padding: 5px 8px; }
+.roadmap-item-description { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; max-height: 16rem; overflow: auto; }
+.roadmap-item-collection { border-top: 1px solid #44304f; margin-top: 22px; padding-top: 18px; min-width: 0; }
+.roadmap-item-group h5 { margin: 18px 0 10px; font-size: 12px; font-weight: 550; }
+.roadmap-item-group h5 span { margin-left: 6px; color: #b4a2c5; }
+.roadmap-item-group ul { list-style: none; padding: 0; margin: 0; }
+.roadmap-item { padding: 13px; border: 1px solid #43304f; border-radius: 6px; background: #19131f; min-width: 0; margin: 9px 0; }
+.roadmap-item > p { margin-top: 0; }
+.roadmap-entry-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.roadmap-entry-actions button { padding: 6px 9px; font-size: 11px; }
+.roadmap-notes { margin-top: 13px; font-size: 12px; }
+.roadmap-notes summary { color: #d0b4e7; cursor: pointer; }
+.roadmap-note-text { padding-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; line-height: 1.7; color: #c7b7d5; }
 @media (max-width: 600px) {
   .roadmap { margin: 20px 14px; } .roadmap-card { padding: 16px; }
   .project-dialog .roadmap-form .project-fields { padding: 20px; }

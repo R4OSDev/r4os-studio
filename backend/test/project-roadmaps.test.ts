@@ -36,6 +36,8 @@ with sqlite3.connect(sys.argv[1]) as db:
     const initialized = await app.inject({ method: 'POST', url: url + '/initialize', headers, payload: input });
     assert.equal(initialized.statusCode, 200, initialized.body);
     const root = initialized.json();
+    assert.deepEqual((await app.inject({ url: url + '/revision', headers })).json(), { revision: root.revision, currentVersionId: root.currentVersionId });
+    assert.equal((await app.inject(url + '/revision')).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: url + '/initialize', headers, payload: input })).body, initialized.body);
     const body = { requestId: randomUUID(), expectedRevision: root.revision, currentVersionId: root.currentVersionId,
       target: { kind: 'version', id: root.currentVersionId }, action: 'append_notes', input: { notes: 'Retained' } };

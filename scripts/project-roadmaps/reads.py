@@ -87,6 +87,9 @@ def read(db, project_id, request):
     operation = request['operation']
     db.execute('BEGIN')
     try:
+        if operation == 'revision':
+            fields(request, ['operation', 'projectId'])
+            return binding(db)
         if operation == 'overview':
             fields(request, ['operation', 'projectId'], ['cursor', 'limit'])
             return {'exists': True, 'roadmap': entity(db, 'roadmap', root_row(db)),

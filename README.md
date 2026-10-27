@@ -1,5 +1,27 @@
 # R4OS Studio · App
 
+## Roadmap subversions, tasks and acceptance items (0.6.4)
+
+Selected main versions now show expandable subversions with their own number,
+title, status, description, notes and separate progress. Add/edit and explicit
+up/down ordering use the shared revision-bound API. Ordering requires the full
+loaded collection. Expansion is remembered per project/subversion in browser
+session storage.
+
+Tasks and acceptance items are separate collections, each grouped into Open,
+Done and Discarded. They support create/edit, explicit status changes, readable
+notes, append/replace notes and confirmed targeted deletion. Deleting a
+subversion names its child counts and removes only that hierarchy. Completing
+tasks does not complete acceptance items or change a version's status.
+
+Dialogs share the existing Save/Cancel, focus, dirty/conflict and original-request
+recovery behavior. Parent/version IDs and current revision remain frozen for
+each submitted change. Other edits must be saved or cancelled first; errors do
+not discard drafts. Notes render as text, pagination and outputs stay bounded,
+and delayed responses cannot replace another project's selected view.
+While visible, a small revision read every five seconds reports changes from
+another view without replacing open input. Refresh remains an explicit action.
+
 ## Project roadmap navigation and main versions (0.6.3)
 
 Projects now includes Roadmap between GitHub and Settings. Its third column

@@ -66,6 +66,10 @@ export function roadmapRoutes(app: FastifyInstance, directory: string, sessions:
     sessions.session(request, reply);
     return roadmapStore(directory, { operation: 'current', projectId: request.params.id });
   });
+  app.get<{ Params: Params }>(base + '/revision', { schema: { params: parameterSchema(base) } }, async (request, reply) => {
+    sessions.session(request, reply);
+    return roadmapStore(directory, { operation: 'revision', projectId: request.params.id });
+  });
   const targets: { path: string; reference: (params: Params) => RoadmapTarget }[] = [
     { path: '', reference: () => ({ kind: 'roadmap' }) },
     { path: '/versions/:versionId', reference: (p) => ({ kind: 'version', id: p.versionId }) },

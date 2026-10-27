@@ -17,14 +17,17 @@ function savedRequest(key: string, target: RoadmapTarget, action: string): Roadm
   return value;
 }
 
-export function RoadmapForm({ id, token, binding, target, initial, create = false, saved, cancel, dirtyChanged, busyChanged }: {
+export function RoadmapForm({ id, token, binding, target, initial, create = false, notesMode = 'edit', saved, cancel, dirtyChanged, busyChanged }: {
   id: string; token: string; binding: RoadmapBinding; target: RoadmapTarget; initial: Input; create?: boolean;
+  notesMode?: 'edit' | 'append_notes' | 'replace_notes';
   saved: (result: RoadmapMutationResult) => void; cancel: () => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
 }) {
-  const key = `studio.roadmap.request.${id}.${target.kind}.${target.id ?? 'new'}`;
+  const parent = 'subversionId' in target ? `.${target.versionId}.${target.subversionId}` : 'versionId' in target ? '.' + target.versionId : '';
+  const key = `studio.roadmap.request.${id}.${target.kind}${parent}.${target.id ?? 'new'}${notesMode !== 'edit' ? '.' + notesMode : ''}`;
   const formId = useId();
-  const action = create ? 'create' : 'update';
+  const action = notesMode === 'edit' ? create ? 'create' : 'update' : notesMode;
+  const isItem = target.kind === 'task' || target.kind === 'acceptance';
   const [recovery] = useState(() => {
     try { return { request: savedRequest(key, target, action), error: '' }; }
     catch (cause) { return { request: null, error: (cause as Error).message }; }
@@ -68,22 +71,26 @@ export function RoadmapForm({ id, token, binding, target, initial, create = fals
     } finally { setBusy(false); }
   }
   const field = (name: 'number' | 'title' | 'description' | 'vision' | 'notes', label: string, multiline = false) => <div className="project-field" key={name}>
-    <label htmlFor={formId + '-' + name}>{label}</label>{multiline ? <textarea id={formId + '-' + name} rows={name === 'notes' ? 6 : 4} maxLength={32768}
+    <label htmlFor={formId + '-' + name}>{label}</label>{multiline ? <textarea id={formId + '-' + name} rows={name === 'notes' ? 6 : 4} maxLength={32768} required={name === 'description' && isItem}
       value={String(draft[name] ?? '')} onChange={(event) => setDraft({ ...draft, [name]: event.target.value })} />
       : <input id={formId + '-' + name} required={name === 'title' || (name === 'number' && !create)} maxLength={name === 'title' ? 240 : 35}
-        placeholder={name === 'number' && create ? 'Next version, or enter e.g. 0.2.X' : undefined}
+        placeholder={name === 'number' && create ? target.kind === 'subversion' ? 'Next subversion, or enter e.g. 0.1.1' : 'Next version, or enter e.g. 0.2.X' : undefined}
         value={String(draft[name] ?? '')} onChange={(event) => setDraft({ ...draft, [name]: event.target.value })} />}</div>;
-  return <form className="roadmap-form" aria-label={create ? 'New roadmap version' : target.kind === 'roadmap' ? 'Roadmap overview settings' : 'Main version settings'} onSubmit={(event) => void submit(event)}>
+  const noteLabel = ({ roadmap: 'Roadmap notes', version: 'Version notes', subversion: 'Subversion notes', task: 'Task notes', acceptance: 'Acceptance notes' })[target.kind];
+  return <form className="roadmap-form" aria-label={create ? 'New roadmap entry' : 'Roadmap entry settings'} onSubmit={(event) => void submit(event)}>
     <fieldset className="project-fields" disabled={busy || !!pending || !!recovery.error}>
+      {notesMode === 'edit' && <>
       {target.kind === 'roadmap' ? field('description', 'Roadmap description', true) : <>
-        {field('number', create ? 'Version number (optional)' : 'Version number')}
-        {field('title', 'Title')}
-        <div className="project-field"><label htmlFor={formId + '-status'}>Status</label><select id={formId + '-status'} value={draft.status ?? 'open'} onChange={(event) => setDraft({ ...draft, status: event.target.value as 'open' | 'complete' | 'discarded' })}>
-          <option value="open">Open</option><option value="complete">Complete</option><option value="discarded">Discarded</option>
+        {!isItem && <>{field('number', target.kind === 'subversion' ? create ? 'Subversion number (optional)' : 'Subversion number' : create ? 'Version number (optional)' : 'Version number')}
+          {field('title', 'Title')}</>}
+        {isItem && field('description', 'Description', true)}
+        <div className="project-field"><label htmlFor={formId + '-status'}>Status</label><select id={formId + '-status'} value={draft.status ?? 'open'} onChange={(event) => setDraft({ ...draft, status: event.target.value as NonNullable<Input['status']> })}>
+          <option value="open">Open</option>{isItem ? <option value="done">Done</option> : <option value="complete">Complete</option>}<option value="discarded">Discarded</option>
         </select></div>
-        {field('vision', 'Vision', true)}
+        {target.kind === 'version' ? field('vision', 'Vision', true) : !isItem && field('description', 'Description', true)}
       </>}
-      {field('notes', target.kind === 'roadmap' ? 'Roadmap notes' : 'Version notes', true)}
+      </>}
+      {field('notes', notesMode === 'append_notes' ? 'Notes to append' : noteLabel, true)}
     </fieldset>
     {error && <p className="project-error" role="alert">{error}</p>}
     {pending && !busy && <p className="project-message" role="status">An original request needs confirmation. Retry it before editing this entry.</p>}
@@ -91,7 +98,7 @@ export function RoadmapForm({ id, token, binding, target, initial, create = fals
     <div className="project-actions">
       <button type="button" disabled={busy || !!pending} onClick={cancel}>Cancel</button>
       <button type="submit" className="project-primary" disabled={busy || conflict || !!recovery.error || (!dirty && !create)}>
-        {busy ? 'Saving…' : pending ? 'Retry original request' : create ? 'Create version' : 'Save changes'}
+        {busy ? 'Saving…' : pending ? 'Retry original request' : create ? target.kind === 'version' ? 'Create version' : target.kind === 'subversion' ? 'Create subversion' : isItem && target.kind === 'task' ? 'Create task' : 'Create acceptance item' : notesMode === 'append_notes' ? 'Append notes' : 'Save changes'}
       </button>
     </div>
   </form>;

@@ -17,7 +17,7 @@ from mutations import mutate
 def operation(projects, request):
     fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit'])
     name = request['operation']
-    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'mutate'):
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
     if name in ('read', 'initialize'):
         fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])

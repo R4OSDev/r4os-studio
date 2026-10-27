@@ -77,7 +77,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
           <button key={section} type="button" disabled={saving || selected.deleting || !opening.ready} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
-            }}><Icon name={section === 'Sessions' ? 'terminal' : section === 'Editor' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
+            }}><Icon name={section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
       {selected && current.section === 'Roadmap' ? <RoadmapNavigation model={roadmap} selected={current.roadmapVersionId} disabled={saving || !opening.ready}
         choose={(id) => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); } }}
@@ -105,7 +105,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
         {current.section === 'GitHub' && <ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
-        {current.section === 'Roadmap' && <RoadmapPanel key={selected.id + ':' + epoch} id={selected.id} token={api.token} model={roadmap}
+        {current.section === 'Roadmap' && <RoadmapPanel key={selected.id + ':' + (current.roadmapVersionId ?? 'overview') + ':' + epoch} id={selected.id} token={api.token} model={roadmap}
           selectedVersionId={current.roadmapVersionId} creating={newRoadmapVersion} closeCreate={() => setNewRoadmapVersion(false)}
           created={(id) => { setNewRoadmapVersion(false); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); }}
           dirty={dirty} dirtyChanged={setDirty} busyChanged={setSaving} />}
