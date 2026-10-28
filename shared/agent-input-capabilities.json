@@ -33,9 +33,13 @@
     {
       "path": "codex-rs/protocol/src/openai_models.rs",
       "sha256": "4b080aeaf5c158104e27d8277f3bc03ee3ad55b55a41c30a788d831fb2e2a99f"
+    },
+    {
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+      "sha256": "8c10510bb88990aa0f0105e7a85c0bb7859db7232be29f84a6c66693600ef502"
     }
   ],
-  "nativeContractsSha256": "a2e7d60758d5c4a0ba0edf732e830601d0d1bc78b7cc280411d894453d0c943e",
+  "nativeContractsSha256": "a61a23315c062e1732bc9aea7d4fb143b1cb0279e844c05eb531b1a37a07f479",
   "layoutReferenceSha256": "629e6f8277d5806855f0d5dd476edec5c3006646e6ac48912cad42ea1a37e8d5",
   "goal": {
     "set": "thread/goal/set",
@@ -54,7 +58,12 @@
     "nativeIdleContinuation": true,
     "studioMultiTurnRunRequired": true,
     "setTokenBudget": false,
-    "publicControlAvailable": true
+    "publicControlAvailable": true,
+    "waitingThreadFlags": [
+      "waitingOnApproval",
+      "waitingOnUserInput"
+    ],
+    "coordinatorExecutionCapability": "nativeGoalExecution:1"
   },
   "attachments": {
     "nativeImageType": "localImage",

@@ -79,7 +79,7 @@ class Goals:
                 raise ProjectFault('This session reached its Goal command history limit.', 409)
             if data['action'] == 'play' and not snapshot['goal']: raise ProjectFault('Save a Goal before pressing Play.', 409)
             self.store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
-                (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase']}), 'pending', 'accepted', now()))
+                (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal']}), 'pending', 'accepted', now()))
             self.store.db.execute('''INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',?,NULL,NULL)
               ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,phase='pending',request_id=excluded.request_id,reason=NULL''',
                 (sid, key))
@@ -103,7 +103,7 @@ class Goals:
             next_run = run_id or (current['run_id'] if current else None)
             if current and current['native'] == raw and current['phase'] == next_phase and current['run_id'] == next_run: return self.snapshot(sid)
             previous=json.loads(current['native']) if current and current['native'] else None
-            control=lambda g: None if g is None else {k:g.get(k) for k in ('threadId','objective','status','tokenBudget')}
+            control=lambda g: None if g is None else {k:g.get(k) for k in ('threadId','objective','status','tokenBudget','createdAt')}
             changed=not current or control(previous)!=control(goal) or current['phase']!=next_phase or current['run_id']!=next_run
             self.store.db.execute('''INSERT INTO session_goals VALUES (?,1,?,NULL,?,NULL,?,NULL)
               ON CONFLICT(session_id) DO UPDATE SET native=excluded.native,revision=revision+?,
@@ -137,6 +137,8 @@ class Goals:
 
     def lost_worker(self, run_id):
         if not exists(self.store): return
+        from goal_worker import end_turns
+        end_turns(self.store,run_id)
         rows=self.store.db.execute('SELECT session_id,native FROM session_goals WHERE run_id=?',(run_id,)).fetchall()
         for row in rows:
             value=json.loads(row['native']) if row['native'] else None

@@ -1,3 +1,30 @@
+## Native multi-turn Goal execution (0.6.25)
+
+One accepted Goal run retains the same owner lease, release, provider/model/effort,
+permissions, skills and project/target pins across native turns. Goal activation
+and Codex idle continuation are the only starters. Original turn IDs/results are
+journaled, and transcript items carry turnId. An unconfirmed turn end stays unknown.
+
+Play is bound to the exact Goal observed at the user's request. A changed Goal or
+an automatic new Goal after completion pauses this execution and requires review
+and another Play. A newer native notification supersedes an older in-flight read.
+Usage-only observations preserve the control revision. Native waiting-input flags
+pause continuation, while unknown tool effects retain an unknown Goal phase.
+
+The1800-second host limit applies to the whole execution. Pause/Stop/limits never
+invent Goal completion or a token budget. New Play requests require the explicit
+nativeGoalExecution:1 coordinator capability; older active workers remain pinned.
+
+Five isolated tests run the actual Studio worker and original Codex0.163.0 binary
+against an owned loopback SSE fixture: two native turns to complete; pause during
+a turn without a next turn; native interruption with preserved text; host timeout
+with paused Goal; and three turns ending blocked. No additional turn/start or
+invented user message occurs; model/effort and lease are verified for every request.
+Native Goal tools are present in the real request's AdditionalTools input for the
+Responses Lite catalog model. Fixed local responses are protocol fixtures, with
+no model inference, external network or user credentials. Additional status/actor/
+read-order/goal-change checks and existing regressions are recorded separately.
+
 ## Durable session Goal controls (0.6.24)
 
 Authenticated project and Skill-session Goal routes use additive session_goals,

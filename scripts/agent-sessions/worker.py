@@ -21,6 +21,8 @@ from terminal import Terminals, bounded_text
 from system_prompt import snapshot as prompt_snapshot
 from owner import binding, open_lock
 
+HOST_RUN_SECONDS = 1800
+
 
 class Worker:
     def __init__(self, manifest):
@@ -320,7 +322,7 @@ class Worker:
             if self.stopping: self.outcome = 'interrupted'; return
             if self.goal_worker:
                 await self.goal_worker.activate()
-                await asyncio.wait_for(self.done.wait(), timeout=1800)
+                await asyncio.wait_for(self.done.wait(), timeout=HOST_RUN_SECONDS)
                 return
             self.turn_requested = True
             try:
@@ -337,7 +339,7 @@ class Worker:
                     self.uncertain_effect = True; self.outcome = 'unknown'
                     self.error = 'The run start was not confirmed. It was not submitted again.'
                     await self.stop()
-            await asyncio.wait_for(self.done.wait(), timeout=1800)
+            await asyncio.wait_for(self.done.wait(), timeout=HOST_RUN_SECONDS)
         except asyncio.TimeoutError:
             self.error = 'The agent run reached the host time limit.'; await self.stop()
         except Exception:
@@ -352,6 +354,9 @@ class Worker:
                 if goals.command(self.session_id, rid)['state'] == 'pending':
                     goals.finish(self.session_id, rid, 'unknown' if self.turn_requested else 'failed', self.error or 'The original Goal activation was not confirmed.')
             await self.cleanup()
+            if self.goal_worker:
+                from goal_worker import end_turns
+                end_turns(self.store,self.run_id)
             if self.lease: self.lease.close()
             reconcile_items(self.store, self.run_id, self.outcome)
             transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)

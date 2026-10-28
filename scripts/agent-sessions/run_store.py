@@ -22,6 +22,9 @@ def event(store, session_id, run_id, kind, payload, commit=True):
 
 
 def item(store, session_id, run_id, value, commit=True):
+    run = get_run(store, run_id)
+    if run['turn_id'] and json.loads(run['config']).get('goalExecution'):
+        value.setdefault('turnId', run['turn_id'])
     raw = encode(value)
     if len(raw.encode()) > 262144: raise ProjectFault('Agent item exceeds the output limit.')
     store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
@@ -61,7 +64,10 @@ def admit(store, session_id, data, provider_dir):
         if goal_mode:
             command = Goals(store).command(session_id, identity(data['goalRequestId']))
             snapshot = Goals(store).snapshot(session_id)
-            if command['state'] != 'pending' or json.loads(command['payload'])['action'] != 'play' or not snapshot['goal']:
+            goal_intent = json.loads(command['payload'])
+            captured_goal = goal_intent.get('_goal')
+            if (command['state'] != 'pending' or goal_intent['action'] != 'play' or not snapshot['goal'] or not captured_goal
+                    or any(snapshot['goal'].get(key) != captured_goal.get(key) for key in ('threadId','objective','createdAt','status'))):
                 raise ProjectFault('This run has no accepted Goal Play command.', 409)
         elif pending(store) or Goals(store).snapshot(session_id)['phase']=='unknown':
             raise ProjectFault('Reconcile the original Goal control before sending a message.', 409)
@@ -71,7 +77,7 @@ def admit(store, session_id, data, provider_dir):
         validate_settings(session, provider_dir)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
         if goal_mode:
-            snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': Goals(store).snapshot(session_id)['goal']['objective']}
+            snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective']}
         snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
         snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)

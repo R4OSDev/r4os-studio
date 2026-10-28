@@ -39,7 +39,7 @@ export interface SessionOptions {
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }
 export interface SessionItem {
-  id: string; runId: string; type: string; text?: string; tool?: string; status?: string;
+  id: string; runId: string; turnId?: string; type: string; text?: string; tool?: string; status?: string;
   arguments?: unknown; output?: string; error?: string; exitCode?: number; [key: string]: unknown;
   developmentStop?: import('./project-development.js').DevelopmentStopReceipt;
   roadmap?: { operation: string; code?: number; workflowId?: string; phase?: string; revision?: number; currentVersionId?: string; requestId?: string; versionId?: string; sha256?: string };

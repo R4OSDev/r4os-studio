@@ -12,6 +12,7 @@ await test('Goal routes bind project/skill owners and protect native commands', 
   const socket = join(root, 'host.sock'), previous = process.env.STUDIO_AGENTS_SOCKET;
   process.env.STUDIO_AGENTS_SOCKET = socket;
   const calls: Record<string, unknown>[] = [];
+  let execution = false;
   const ownerId = randomUUID(), sessionId = randomUUID(), requestId = randomUUID();
   const server = createServer((client) => {
     let raw = ''; client.setEncoding('utf8');
@@ -19,7 +20,7 @@ await test('Goal routes bind project/skill owners and protect native commands', 
       raw += part; if (!raw.includes('\n')) return;
       const call = JSON.parse(raw); calls.push(call);
       const snapshot = { owner: { type: call.ownerType, id: call.ownerId }, sessionId, threadId: null, revision: 0, goal: null, lastIntent: null, phase: 'idle' };
-      const result = call.operation === 'capabilities' ? { nativeGoals: 1 }
+      const result = call.operation === 'capabilities' ? { nativeGoals: 1, ...(execution ? { nativeGoalExecution: 1 } : {}) }
         : call.operation === 'goal' ? snapshot : { requestId, action: 'save', state: 'pending', snapshot };
       client.end(JSON.stringify({ result }) + '\n');
     });
@@ -40,6 +41,12 @@ await test('Goal routes bind project/skill owners and protect native commands', 
       assert.deepEqual(command, { operation: 'goal_command', ownerType: scope === 'projects' ? 'project' : 'skill', ownerId, sessionId, input: payload });
       assert.equal((await app.inject({ url, headers })).statusCode, 200);
       assert.equal((await app.inject({ url: url + '/requests/' + requestId, headers })).statusCode, 200);
+      execution = false;
+      const play = { requestId: randomUUID(), revision: 1, action: 'play' };
+      assert.equal((await app.inject({ method: 'POST', url, payload: play, headers })).statusCode, 503);
+      assert.equal(calls.at(-1)!.operation, 'capabilities');
+      execution = true;
+      assert.equal((await app.inject({ method: 'POST', url, payload: play, headers })).statusCode, 202);
       const before = calls.length;
       assert.equal((await app.inject({ method: 'POST', url, payload: { ...payload, action: 'invented' }, headers })).statusCode, 400);
       assert.equal(calls.length, before);

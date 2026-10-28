@@ -9,11 +9,18 @@ from session_store import encode
 from store import ProjectFault
 
 
+def end_turns(store, run_id):
+    if store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_turns'").fetchone():
+        with store.db: store.db.execute("UPDATE goal_turns SET status='unknown' WHERE run_id=? AND status='running'",(run_id,))
+
+
 class GoalWorker:
     def __init__(self, worker):
         self.worker=worker;self.goals=Goals(worker.store);self.idle=asyncio.Event();self.idle.set()
         self.native=None;self.server=None;self.lock=asyncio.Lock();self.tasks=set();self.clients=set();self.activating=True
         self.evaluator=None;self.closed=False;self.last_turn_status=None
+        self.generation=0
+        self.armed=False;self.completed_once=False
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -22,7 +29,11 @@ class GoalWorker:
 
     async def read(self):
         w=self.worker
+        generation=self.generation
         value=(await w.client.request('thread/goal/get',{'threadId':w.thread_id}))['goal']
+        # A notification received while this read was in flight supersedes its
+        # older snapshot, even when native timestamps share the same second.
+        if generation!=self.generation: return self.native
         self.native=value;self.goals.observe(w.session_id,w.thread_id,value,w.run_id)
         return value
 
@@ -41,6 +52,7 @@ class GoalWorker:
         w=self.worker;rid=w.config['goalExecution']['requestId']
         self.server=await asyncio.start_unix_server(self.control,path='\0r4os-studio-goal-'+w.run_id,limit=2049)
         self.goals.stage(w.session_id,rid,'native_activation');w.turn_requested=True
+        self.armed=True
         try:
             await w.client.request('thread/goal/set',{'threadId':w.thread_id,'status':'active','origin':'user'})
         except Exception:
@@ -76,24 +88,41 @@ class GoalWorker:
             else: w.outcome='completed'
             # Run completion only means this accepted execution ended. Native
             # Goal status remains paused/blocked/limited/complete as reported.
-            self.goals.observe(w.session_id,w.thread_id,value,w.run_id,phase='idle')
+            self.goals.observe(w.session_id,w.thread_id,value,w.run_id,phase='unknown' if w.uncertain_effect else 'idle')
             w.done.set()
 
     async def notify(self, method, params):
         w=self.worker
+        if method=='thread/status/changed':
+            status=params.get('status',{})
+            if status.get('type')=='active' and set(status.get('activeFlags',[])) & {'waitingOnApproval','waitingOnUserInput'}:
+                task=asyncio.create_task(self.pause());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
+            return True
         if method in ('thread/goal/updated','thread/goal/cleared'):
+            self.generation+=1
             self.native=params.get('goal') if method.endswith('updated') else None
             self.goals.observe(w.session_id,w.thread_id,self.native,w.run_id)
+            if self.armed and self.native:
+                changed=self.native['objective']!=w.config['goalExecution']['objective']
+                restarted=self.completed_once and self.native['status']=='active'
+                if changed or restarted:
+                    w.stopping=True;w.error='The Goal changed during this execution. Review it before pressing Play.'
+                    task=asyncio.create_task(w.stop());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
+                if self.native['status']=='complete': self.completed_once=True
             self.evaluate_later();return True
         if method=='turn/started':
             self.idle.clear()
             with w.store.db: w.store.db.execute('INSERT INTO goal_turns VALUES (?,?,?) ON CONFLICT(run_id,turn_id) DO UPDATE SET status=excluded.status',
                 (w.run_id,params['turn']['id'],'running'))
+            from run_store import event
+            event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':params['turn']['id'],'status':'running'})
         elif method=='turn/completed':
             turn=params['turn'];w.turn_id=turn['id'];self.idle.set()
             self.last_turn_status=turn['status']
             with w.store.db: w.store.db.execute('INSERT INTO goal_turns VALUES (?,?,?) ON CONFLICT(run_id,turn_id) DO UPDATE SET status=excluded.status',
                 (w.run_id,turn['id'],turn['status']))
+            from run_store import event
+            event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':turn['id'],'status':turn['status']})
             if turn['status'] in ('failed','interrupted'):
                 task=asyncio.create_task(self.pause());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
             self.evaluate_later();return True
@@ -108,6 +137,11 @@ class GoalWorker:
                 await w.client.request('thread/goal/set',{'threadId':w.thread_id,'status':'paused','origin':origin},timeout=5)
                 value=await self.read()
             if value and value['status']=='active': raise RuntimeError('Goal continuation remains unconfirmed.')
+            if w.uncertain_effect:
+                with w.store.db:
+                    w.store.db.execute("UPDATE session_goals SET phase='unknown',reason=?,revision=revision+1 WHERE session_id=?",
+                        ('A tool effect is unconfirmed. Inspect the original receipt before resuming this Goal.',w.session_id))
+                    self.goals.publish(w.session_id)
         except Exception:
             with w.store.db:
                 w.store.db.execute("UPDATE session_goals SET phase='unknown',reason=?,revision=revision+1 WHERE session_id=?",
