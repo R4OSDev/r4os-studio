@@ -4,6 +4,7 @@ import type { AgentRun, AgentSession } from '../../../../shared/agent-sessions';
 import type { EnvironmentNote, EnvironmentNoteDeletion } from '../../../../shared/environment-notes';
 import { busyRun, projectRequestId, useSessionApi } from './api';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
+import { environmentNoteRequestKey } from './environmentNoteStorage';
 import './environment-notes.css';
 
 type Pending = { requestId: string; noteId?: string; body: Record<string, string | number> };
@@ -19,7 +20,7 @@ export function EnvironmentNotes({ session, notes, token, reauth, close, run, st
   close: () => void; run?: AgentRun | null; stop: () => Promise<void>;
 }) {
   const { request, scope } = useSessionApi(), dialog = useRef<HTMLDialogElement>(null), closeButton = useRef<HTMLButtonElement>(null);
-  const storageKey = `studio.environment-notes.delete.${scope}.${session.owner.id}.${session.id}`;
+  const storageKey = environmentNoteRequestKey(scope, session.owner.id, session.id);
   const [pending, setPending] = useState<Pending | null>(() => stored(storageKey));
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   const [confirm, setConfirm] = useState<{ revision: number; count: number; name: string } | null>(null);

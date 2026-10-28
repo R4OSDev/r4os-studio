@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Project, ProjectDeleted } from '../../../../shared/projects';
 import { projectRequest } from './api';
 import { dirty as editorDirty, editorRegistry } from '../project-editor/registry';
+import { clearEnvironmentNoteRequests } from '../agent-sessions/environmentNoteStorage';
 
 export function DeleteProjectDialog({ project, token, close, deleted, busyChanged, changed }: {
   project: Project; token: string; close: () => void; deleted: (id: string) => void;
@@ -25,6 +26,7 @@ export function DeleteProjectDialog({ project, token, close, deleted, busyChange
     setBusy(true); setError('');
     try {
       await projectRequest<ProjectDeleted>('/' + project.id, token, 'DELETE', { revision: project.revision, confirm: true });
+      clearEnvironmentNoteRequests('project', project.id);
       deleted(project.id);
     } catch (cause) {
       setError((cause as Error).message || 'Deletion could not be confirmed. Retry this deletion.');

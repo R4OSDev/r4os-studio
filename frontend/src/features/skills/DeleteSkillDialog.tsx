@@ -3,6 +3,7 @@ import {createPortal} from 'react-dom';
 import type {SkillDeletionInput,SkillDeletionPreview,SkillDeletionReceipt} from '../../../../shared/skills';
 import {projectRequestId} from '../projects/api';
 import {request,SkillError} from './api';
+import {clearEnvironmentNoteRequests} from '../agent-sessions/environmentNoteStorage';
 const prefix='studio.skill.deletion.';
 type Pending={input:SkillDeletionInput;sessionIds:string[]};
 export function pendingSkillDeletion(selectedId:string|null){try{if(selectedId && sessionStorage.getItem(prefix+selectedId))return selectedId;for(let i=0;i<sessionStorage.length;i++){const key=sessionStorage.key(i);if(key?.startsWith(prefix))return key.slice(prefix.length);}}catch{/* Receipt reads remain available after refresh. */}return null;}
@@ -17,6 +18,7 @@ export function DeleteSkillDialog({id,token,reauth,close,deleted}:{id:string;tok
  const accept=useCallback(async(value:SkillDeletionReceipt)=>{
   if(value.id!==id || value.requestId!==pending?.input.requestId)throw Error('The deletion receipt belongs to another original request.');
   setReceipt(value);
+  if(value.state==='deleted')clearEnvironmentNoteRequests('skill',id);
   if(value.state==='deleted' && !finished.current){finished.current=true;sessionStorage.removeItem(prefix+id);const prefixes=[`studio.goal.skill.${id}.`,`studio.attachments.skill.${id}.`,`studio.notes.skill.${id}.`,`studio.skill.session.create.${id}`,...(pending?.sessionIds??[]).flatMap(sid=>[`studio.skill.session.run.${sid}`,`studio.skill.session.draft.${sid}`,`studio.skill.queue-control.${sid}`])];for(let n=sessionStorage.length-1;n>=0;n--){const key=sessionStorage.key(n);if(key && prefixes.some(prefix=>key===prefix || key.startsWith(prefix.endsWith('.')?prefix:prefix+'.')))sessionStorage.removeItem(key);}await deleted(id);close();}
   else if(value.state==='unknown')setError(value.reason??'Cleanup is unconfirmed. Check the original receipt or retry the same request.');
  },[id,pending,deleted,close]);
