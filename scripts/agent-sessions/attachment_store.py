@@ -241,6 +241,9 @@ class Attachments:
     def used(self,ident):
         """Positive references and uncertain old/config/item references all retain bytes."""
         ident=identity(ident)
+        if self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='session_messages'").fetchone():
+            for row in self.store.db.execute("SELECT frozen FROM session_messages WHERE session_id=? AND state IN ('queued','dispatching','accepted','unknown')", (self.sid,)):
+                if any(meta.get('id') == ident for meta in json.loads(row['frozen']).get('attachments', [])): return True
         if self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='attachment_refs'").fetchone():
             rows=self.store.db.execute('SELECT session_id,frozen FROM attachment_refs WHERE attachment_id=?',(ident,)).fetchall()
             for row in rows:

@@ -15,6 +15,23 @@ class GoalWorkerTests(unittest.IsolatedAsyncioTestCase):
     command=controls.GoalControlTests.command
     goal_worker=controls.GoalControlTests.goal_worker
 
+    async def test_queued_user_input_pauses_native_continuation_before_handoff(self):
+        from message_store import Messages
+        import uuid
+        w,native=await self.goal_worker()
+        await w.goal_worker.before_resume();await w.goal_worker.activate()
+        Messages(w.store).accept(self.sid,{'requestId':str(uuid.uuid4()),'revision':1,'mode':'queue','text':'Next human task'},self.providers)
+        await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'boundary'}})
+        await w.notify('turn/completed',{'threadId':w.thread_id,'turn':{'id':'boundary','status':'completed'}})
+        await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'racing-continuation'}})
+        await asyncio.sleep(.05)
+        await w.notify('turn/completed',{'threadId':w.thread_id,'turn':{'id':'racing-continuation','status':'interrupted'}})
+        await asyncio.sleep(.2)
+        self.assertTrue(w.goal_worker.queue_handoff)
+        self.assertEqual(w.goal_worker.native['status'],'paused')
+        self.assertTrue(w.done.is_set());self.assertEqual(w.outcome,'completed')
+        self.assertFalse(Messages(w.store).snapshot(self.sid)['held'])
+
     async def test_late_read_cannot_replace_newer_native_notification_in_same_second(self):
         w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
         await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'own-turn'}})

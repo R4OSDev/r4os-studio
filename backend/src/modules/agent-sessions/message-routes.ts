@@ -36,4 +36,12 @@ export function messageRoutes(app: FastifyInstance, security: ProjectSessions, o
     const message = await agentHost({ operation: 'submit_message', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body });
     return reply.code(202).send({ message });
   });
+  app.post<{ Params: Params; Body: { requestId: string; revision: number; action: 'resume' | 'cancel'; messageId?: string } }>(base + '/control', {
+    bodyLimit: 2048, schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'action'], properties: {
+      requestId: identity, revision: integer, action: { type: 'string', enum: ['resume', 'cancel'] }, messageId: identity,
+    } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return agentHost({ operation: 'message_control', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body });
+  });
 }

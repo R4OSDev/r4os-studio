@@ -22,6 +22,7 @@ class GoalWorker:
         self.generation=0
         self.armed=False;self.completed_once=False
         self.stop_reconcile=None
+        self.queue_handoff=False
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -84,6 +85,7 @@ class GoalWorker:
         if value is None or value['status']!='active':
             w=self.worker
             if w.uncertain_effect: w.outcome='unknown'
+            elif self.queue_handoff and value and value['status']=='paused': w.outcome='completed'
             elif w.stopping or self.last_turn_status=='interrupted': w.outcome='interrupted'
             elif self.last_turn_status=='failed': w.outcome='failed';w.error=w.error or 'The native Goal turn failed.'
             else: w.outcome='completed'
@@ -131,6 +133,12 @@ class GoalWorker:
                 (w.run_id,turn['id'],turn['status']))
             from run_store import event
             event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':turn['id'],'status':turn['status']})
+            from message_store import pending_queue
+            if turn['status']=='completed' and not w.stopping and pending_queue(w.store,w.session_id,authorized=True):
+                # Pause outside the serial RPC reader. A racing continuation is
+                # interrupted by the normal stopping admission before any tools.
+                self.queue_handoff=True;w.stopping=True
+                task=asyncio.create_task(self.pause());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
             if turn['status'] in ('failed','interrupted'):
                 task=asyncio.create_task(self.pause());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
             self.evaluate_later();return True

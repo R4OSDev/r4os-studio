@@ -43,6 +43,10 @@ await test('message API binds owner and session and protects mutation/readback',
     assert.deepEqual(calls.at(-1), { operation: 'message_receipt', projectId, sessionId, requestId });
     for (const change of [{ mode: 'other' }, { attachments: ['../secret'] }, { text: 'x'.repeat(74000) }])
       assert([400, 413].includes((await app.inject({ method: 'POST', url, headers, payload: { ...payload, ...change } })).statusCode));
+    const control = { requestId: randomUUID(), revision: 1, action: 'resume' };
+    assert.equal((await app.inject({ method: 'POST', url: url + '/control', payload: control, headers: { cookie: headers.cookie } })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: url + '/control', payload: control, headers })).statusCode, 200);
+    assert.deepEqual(calls.at(-1), { operation: 'message_control', projectId, sessionId, input: control });
     const skillUrl = `/api/skills/${projectId}/sessions/${sessionId}/messages`;
     const skillAuth = await app.inject('/api/skills');
     const skillHeaders = { cookie: String(skillAuth.headers['set-cookie']).split(';')[0], 'x-csrf-token': skillAuth.json().csrfToken };

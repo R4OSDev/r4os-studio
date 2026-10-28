@@ -47,7 +47,70 @@ def get_run(store, run_id):
     return row
 
 
-def admit(store, session_id, data, provider_dir, image_capability=None):
+def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None):
+    """Freeze a complete accepted selection without admitting a concurrent run."""
+    session = store.get(session_id)
+    goal_mode = data.get('mode') == 'goal'
+    command = goal_command
+    captured_goal = json.loads(command['payload'])['_goal'] if command else None
+    validate_settings(session, provider_dir)
+    from image_inputs import selected,qualify,history,reference
+    attachments = saved_attachments if saved_attachments is not None else (selected(store,session_id,data.get('attachments',[])) if not goal_mode and 'attachments' in data else [])
+    if saved_attachments:
+        from image_inputs import file_path
+        for metadata in saved_attachments: file_path(store, session_id, metadata)
+    if attachments and data.get('nativeImageInputs')!=1:raise ProjectFault('This request needs qualified native image support.',503)
+    if any(m['mode']!='localImage' for m in attachments) and data.get('documentInputs')!=1:
+        raise ProjectFault('This request needs qualified document input support.',503)
+    from document_inputs import qualify as document_qualify
+    document_qualify(store,session_id,session,attachments)
+    modalities=qualify(store,session_id,session,provider_dir,attachments)
+    request_hash=fingerprint(session_id,data,attachments)
+    snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
+    snapshot['inputContractVersion']=1
+    if 'attachments' in data:snapshot['attachments']=attachments
+    accepted=attachments+history(store,session_id)
+    if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)
+    if any(m['mode'] in ('text','pdfText') for m in accepted):snapshot['documentContext']=True
+    if goal_mode:
+        snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective'],
+            'threadId':captured_goal['threadId'],'commandFingerprint':command['fingerprint'],
+            'captureSha256':hashlib.sha256(encode(captured_goal).encode()).hexdigest()}
+        from goal_recovery import snapshot as recovery_snapshot
+        recovery=recovery_snapshot(store,session_id)
+        if recovery:snapshot['goalRecovery']=recovery
+    snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
+    from image_generation import freeze as freeze_image_capability
+    snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
+    snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
+    snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
+    from generated_images import GeneratedImages
+    generated_history=bool(GeneratedImages(store,session_id).rows())
+    if snapshot['nativeImageGeneration'] or generated_history:
+        from session_store import provider_models
+        selected_model=next((v for v in provider_models(provider_dir,session['providerId']) if v['id']==session['model']),None)
+        if not selected_model or selected_model.get('imageInputs')!='supported':
+            raise ProjectFault('This conversation has generated-image context or requests image generation. Select an image-capable model; its history was preserved.',409)
+        snapshot['imageInputModalities']=selected_model['inputModalities']
+    snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
+    snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
+    if data.get('skillSelection') == 1:
+        from skill_application import freeze
+        snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1)
+    if store.owner_type == 'skill':
+        if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
+        from skill_prompt import snapshot as skill_prompt_snapshot
+        snapshot['skillManagerPrompt'] = skill_prompt_snapshot(store.projects)
+    else:
+        snapshot['projectPins'] = store.project['pins']
+        from remote_context import snapshot as remote_snapshot
+        snapshot.update(remote_snapshot(store, session['engine']['profile'], data.get('remoteHostTools') == 1))
+        snapshot['systemPrompt'] = prompt_snapshot(store.projects)
+        snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+    return snapshot, attachments, request_hash
+
+
+def admit(store, session_id, data, provider_dir, image_capability=None, frozen=None):
     goal_mode = data.get('mode') == 'goal'
     expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'} | ({'attachments'} if 'attachments' in data else set())
     if (set(data) - set(CAPABILITIES) != expected
@@ -68,6 +131,9 @@ def admit(store, session_id, data, provider_dir, image_capability=None):
             return store.run_present(previous), False
         session = store.get(session_id)
         if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.')
+        if frozen is None and not goal_mode:
+            from message_store import pending_queue
+            if pending_queue(store, session_id): raise ProjectFault('Continue or remove the existing message queue before starting another run.',409)
         if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone():
             raise ProjectFault('Another run is using this workspace.')
         from goal_store import Goals, pending
@@ -85,61 +151,17 @@ def admit(store, session_id, data, provider_dir, image_capability=None):
         if store.owner_type == 'project':
             from project_maintenance import pending_git
             if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
-        validate_settings(session, provider_dir)
-        from image_inputs import selected,qualify,history,reference
-        attachments=selected(store,session_id,data.get('attachments',[])) if not goal_mode and 'attachments' in data else []
-        if attachments and data.get('nativeImageInputs')!=1:raise ProjectFault('This request needs qualified native image support.',503)
-        if any(m['mode']!='localImage' for m in attachments) and data.get('documentInputs')!=1:
-            raise ProjectFault('This request needs qualified document input support.',503)
-        from document_inputs import qualify as document_qualify
-        document_qualify(store,session_id,session,attachments)
-        modalities=qualify(store,session_id,session,provider_dir,attachments)
-        request_hash=fingerprint(session_id,data,attachments)
-        snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
-        snapshot['inputContractVersion']=1
-        if 'attachments' in data:snapshot['attachments']=attachments
-        accepted=attachments+history(store,session_id)
-        if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)
-        if any(m['mode'] in ('text','pdfText') for m in accepted):snapshot['documentContext']=True
-        if goal_mode:
-            snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective'],
-                'threadId':captured_goal['threadId'],'commandFingerprint':command['fingerprint'],
-                'captureSha256':hashlib.sha256(encode(captured_goal).encode()).hexdigest()}
-            from goal_recovery import snapshot as recovery_snapshot
-            recovery=recovery_snapshot(store,session_id)
-            if recovery:snapshot['goalRecovery']=recovery
-        snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
-        from image_generation import freeze as freeze_image_capability
-        snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
-        snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
-        snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
-        from generated_images import GeneratedImages
-        generated_history=bool(GeneratedImages(store,session_id).rows())
-        if snapshot['nativeImageGeneration'] or generated_history:
-            from session_store import provider_models
-            selected_model=next((v for v in provider_models(provider_dir,session['providerId']) if v['id']==session['model']),None)
-            if not selected_model or selected_model.get('imageInputs')!='supported':
-                raise ProjectFault('This conversation has generated-image context or requests image generation. Select an image-capable model; its history was preserved.',409)
-            snapshot['imageInputModalities']=selected_model['inputModalities']
-        snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
-        snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
-        if data.get('skillSelection') == 1:
-            from skill_application import freeze
-            snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1)
-        if store.owner_type == 'skill':
-            if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
-            from skill_prompt import snapshot as skill_prompt_snapshot
-            snapshot['skillManagerPrompt'] = skill_prompt_snapshot(store.projects)
-        else:
-            snapshot['projectPins'] = store.project['pins']
-            from remote_context import snapshot as remote_snapshot
-            snapshot.update(remote_snapshot(store, session['engine']['profile'], data.get('remoteHostTools') == 1))
-            snapshot['systemPrompt'] = prompt_snapshot(store.projects)
-            snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+        snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None)
+        if frozen is not None:
+            if snapshot != frozen: raise ProjectFault('The queued selection changed. The queue was held; review its original input.',409)
+            snapshot = frozen
         ident = str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
+        from image_inputs import reference
         reference(store,session_id,ident,attachments)
+        if frozen is not None:
+            store.db.execute("UPDATE session_messages SET state='dispatching',run_id=?,updated_at=? WHERE request_id=? AND session_id=? AND state='queued'", (ident, stamp, key, session_id))
         if not goal_mode:
             item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed',
                 **({'attachments':attachments} if attachments else {})}, False)
@@ -179,6 +201,8 @@ def _transition(store, run_id, state, error=None, turn_id=None, worker=None):
             store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
                              (row['session_id'], run_id, notice['id'], encode(notice)))
         store.db.execute('UPDATE sessions SET updated_at=? WHERE id=?', (now(), row['session_id']))
+        from message_store import observe_run
+        observe_run(store, row['session_id'], run_id, state, turn_id)
     return value
 
 

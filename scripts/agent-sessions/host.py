@@ -35,6 +35,7 @@ class Host:
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
         self.goal_readback_lock = asyncio.Lock()
         self.image_capability_lock=asyncio.Lock()
+        self.inboxes=set()
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
@@ -100,6 +101,11 @@ class Host:
                         reconcile_items(store, row['id'])
                         from goal_store import Goals
                         Goals(store).lost_worker(row['id'])
+                from message_store import Messages, exists
+                if exists(store):
+                    Messages(store).recover()
+                    for saved in store.db.execute('SELECT session_id FROM session_inboxes'):
+                        self.inboxes.add((kind, project_id, saved['session_id']))
                 from goal_store import Goals
                 live_plays={json.loads(r['config']).get('goalExecution',{}).get('requestId')
                     for r in store.db.execute('SELECT * FROM runs WHERE busy=1') if r['id'] in self.active}
@@ -139,13 +145,15 @@ class Host:
                     reconcile_items(store, run_id)
                     from goal_store import Goals
                     Goals(store).lost_worker(run_id)
+                from message_store import observe_run
+                with store.db: observe_run(store, row['session_id'], run_id, row['state'], row['turn_id'])
                 self.active.pop(run_id, None)
             finally: store.close()
         await self.check_unbound()
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -158,16 +166,38 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
-        if op in ('messages', 'message_receipt', 'submit_message'):
+        if op in ('messages', 'message_receipt', 'submit_message', 'message_control'):
             from message_store import Messages
+            capability = None
+            if op == 'submit_message':
+                preliminary = self.store(project_id, kind)
+                try:
+                    selected = preliminary.get(session_id)
+                    from message_store import exists
+                    previous = exists(preliminary) and preliminary.db.execute('SELECT 1 FROM session_messages WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
+                    latest = preliminary.db.execute('SELECT config FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (session_id,)).fetchone()
+                    if latest:
+                        from image_generation import freeze
+                        saved = json.loads(latest['config']).get('imageGenerationCapability')
+                        if saved and all(saved.get(k) == selected.get(k) for k in ('providerId','model','engine')): capability = freeze(selected, saved)
+                    if not previous and capability is None and selected.get('imageGenerationEnabled', True):
+                        from image_generation import inspect
+                        if self.image_capability_lock.locked(): raise ProjectFault('Image capability is busy. Your message was preserved.', 429)
+                        async with self.image_capability_lock: capability = await inspect(preliminary, session_id, self.config['providers'])
+                finally: preliminary.close()
             async with self.lock:
+                if op == 'message_control': await self.refresh()
                 store = self.store(project_id, kind)
                 try:
                     store.row(session_id)
                     messages = Messages(store)
                     if op == 'messages': return messages.snapshot(session_id, request.get('before'))
                     if op == 'message_receipt': return messages.receipt(session_id, request['requestId'])
-                    return messages.accept(session_id, request['input'])[0]
+                    self.inboxes.add((kind, project_id, session_id))
+                    if op == 'message_control': return messages.control(session_id, request['input'])
+                    flags = {'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,
+                             **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}
+                    return messages.accept(session_id, request['input'], self.config['providers'], flags, capability)[0]
                 finally: store.close()
         if op=='image_generation_capability':
             from image_generation import inspect
@@ -194,6 +224,9 @@ class Host:
                     if self.unbound: raise ProjectFault('Reconcile the original unbound workers before changing a Goal.',503)
                     if len(self.goal_tasks) >= 2: raise ProjectFault('Goal controls are busy. Read the original request before retrying.',429)
                     result, fresh = goals.accept(session_id, request['input'])
+                    if request['input'].get('action') in ('pause','stop'):
+                        from message_store import Messages
+                        Messages(store).hold(session_id, 'The user paused or stopped this session. Continue explicitly.')
                     if fresh:
                         key=(kind,project_id,session_id,result['requestId'])
                         task=asyncio.create_task(self.goal_command(*key)); self.goal_tasks[key]=task
@@ -256,34 +289,70 @@ class Host:
                         raise ProjectFault('The host is already running its maximum number of agent runs.')
                     run, fresh = admit(store, session_id, request['input'], self.config['providers'],image_capability)
                     if not fresh: return run
-                    try:
-                        release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
-                        if not release.is_relative_to('/opt/r4os-studio/releases'): raise ProjectFault('Invalid agent worker release.', 503)
-                        release_protocol(release)
-                        if not (release / 'scripts/agent-sessions/instructions.py').is_file():
-                            raise ProjectFault('This worker release cannot apply project instructions.', 503)
-                        if store.get(session_id)['engine']['profile'] not in supported_profiles(release): raise ProjectFault('This conversation needs a newer Studio release; its native thread was preserved.', 409)
-                        info = json.loads((release / 'release.json').read_text())
-                        meta = {'schema': 1, 'runId': run['id'], 'ownerType': kind, 'ownerId': project_id, 'sessionId': session_id,
-                                'providerId': store.get(session_id)['providerId'], 'projects': self.config['projects'],
-                                'r4os': self.config['r4os'], 'providers': self.config['providers'],
-                                'releaseRoot': str(release), 'release': info['id'], 'version': info['version']}
-                        if kind == 'project': meta['projectId'] = project_id
-                        parent = directory(self.root / run['id']); write_json(parent / 'worker.json', meta)
-                        self.active[run['id']] = meta
-                        await systemctl('start', '--no-block', UNIT.format(run['id']))
-                    except Exception:
-                        # A lost systemctl response may still have started a unit.
-                        # Keep its durable admission while it is alive or unknown.
-                        try: alive = await self.active_unit(run['id'])
-                        except Exception: alive = True
-                        if not alive:
-                            self.active.pop(run['id'], None)
-                            transition(store, run['id'], 'failed', 'The agent run service could not start.')
-                        raise
-                    return run
+                    return await self.launch_admitted(store, run, kind, project_id, session_id)
                 finally: store.close()
         raise ProjectFault('Unsupported agent coordinator operation.', 400)
+
+    async def launch_admitted(self, store, run, kind, project_id, session_id):
+        try:
+            release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
+            if not release.is_relative_to('/opt/r4os-studio/releases'): raise ProjectFault('Invalid agent worker release.', 503)
+            release_protocol(release)
+            if not (release / 'scripts/agent-sessions/instructions.py').is_file():
+                raise ProjectFault('This worker release cannot apply project instructions.', 503)
+            if store.get(session_id)['engine']['profile'] not in supported_profiles(release): raise ProjectFault('This conversation needs a newer Studio release; its native thread was preserved.', 409)
+            info = json.loads((release / 'release.json').read_text())
+            meta = {'schema': 1, 'runId': run['id'], 'ownerType': kind, 'ownerId': project_id, 'sessionId': session_id,
+                    'providerId': store.get(session_id)['providerId'], 'projects': self.config['projects'],
+                    'r4os': self.config['r4os'], 'providers': self.config['providers'],
+                    'releaseRoot': str(release), 'release': info['id'], 'version': info['version']}
+            if kind == 'project': meta['projectId'] = project_id
+            parent = directory(self.root / run['id']); write_json(parent / 'worker.json', meta)
+            self.active[run['id']] = meta
+            await systemctl('start', '--no-block', UNIT.format(run['id']))
+        except Exception:
+            # A lost systemctl response may still have started a unit.
+            # Keep its durable admission while it is alive or unknown.
+            try: alive = await self.active_unit(run['id'])
+            except Exception: alive = True
+            if not alive:
+                self.active.pop(run['id'], None)
+                transition(store, run['id'], 'failed', 'The agent run service could not start.')
+            raise
+        return run
+
+    async def dispatch_queues(self):
+        from message_store import Messages
+        if self.unbound or len(self.active) >= self.config.get('maxActiveRuns', 2): return
+        for kind, ident, sid in tuple(self.inboxes):
+            if len(self.active) >= self.config.get('maxActiveRuns', 2): return
+            store = None
+            try:
+                store = self.store(ident, kind)
+                messages = Messages(store)
+                row = messages.first(sid)
+                if row is None: continue
+                if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone(): continue
+                if any(binding(meta) == (kind, ident) for meta in self.active.values()): continue
+                frozen = json.loads(row['frozen'])
+                if 'config' not in frozen or 'runInput' not in frozen:
+                    messages.hold(sid, 'This legacy queued input has no frozen run selection. Remove and submit it explicitly.'); continue
+                from goal_store import Goals, pending
+                goal = Goals(store).snapshot(sid)
+                if pending(store) or goal['phase'] not in ('idle',): continue
+                if goal['goal'] and goal['goal']['status'] == 'active':
+                    messages.hold(sid, 'Pause the original Goal before continuing this queue.'); continue
+                config = frozen['config']
+                run, fresh = admit(store, sid, frozen['runInput'], self.config['providers'], config.get('imageGenerationCapability'), config)
+                if not fresh:
+                    messages.hold(sid, 'The original queued run already exists. Inspect its receipt; it was not started again.'); continue
+                await self.launch_admitted(store, run, kind, ident, sid)
+            except Exception as error:
+                if store:
+                    try: Messages(store).hold(sid, str(error) if isinstance(error, ProjectFault) else 'Queue dispatch could not be confirmed. Read the original message receipt.')
+                    except Exception: pass
+            finally:
+                if store: store.close()
 
     async def goal_command(self, kind, project_id, sid, rid):
         from goal_store import Goals
@@ -342,6 +411,8 @@ class Host:
             store.row(session_id)
             row = get_run(store, run_id)
             if row['session_id'] != session_id: raise ProjectFault('Run not found.', 404)
+            from message_store import Messages
+            Messages(store).hold(session_id, 'The user stopped this session. Continue the queue explicitly.')
             if row['busy'] or await self.active_unit(run_id):
                 transition(store, run_id, 'stopping')
                 await systemctl('stop', UNIT.format(run_id))
@@ -402,6 +473,7 @@ async def main():
             try:
                 async with host.lock:
                     await host.refresh()
+                    await host.dispatch_queues()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
                     if not host.active and not host.unbound and not host.goal_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)

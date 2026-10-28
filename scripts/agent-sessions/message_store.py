@@ -10,6 +10,28 @@ MAX_PENDING = 32
 MAX_BYTES = 2 * 1024 * 1024
 
 
+def exists(store):
+    return bool(store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_messages'").fetchone())
+
+
+def pending_queue(store, sid, authorized=False):
+    if not exists(store): return False
+    query = "SELECT 1 FROM session_messages m JOIN session_inboxes q ON q.session_id=m.session_id WHERE m.session_id=? AND m.mode='queue' AND m.state IN ('queued','dispatching','unknown')"
+    if authorized: query += ' AND q.held=0'
+    return bool(store.db.execute(query, (sid,)).fetchone())
+
+
+def observe_run(store, sid, run_id, state, turn_id=None):
+    if not exists(store): return
+    if state == 'running' and turn_id:
+        store.db.execute("UPDATE session_messages SET state='accepted',updated_at=? WHERE run_id=? AND state='dispatching'", (now(), run_id))
+    if state in ('failed', 'interrupted', 'unknown'):
+        store.db.execute('UPDATE session_inboxes SET held=1,reason=?,revision=revision+1 WHERE session_id=?',
+                         ('The preceding run ended without a confirmed natural completion. Continue explicitly.', sid))
+        store.db.execute("UPDATE session_messages SET state=?,error=?,updated_at=? WHERE run_id=? AND state='dispatching'",
+                         ('unknown' if state == 'unknown' else 'rejected', 'The original run did not confirm message acceptance.', now(), run_id))
+
+
 class Messages:
     def __init__(self, store):
         self.store = store
@@ -57,7 +79,7 @@ class Messages:
                 'held': bool(queue['held']) if queue else False, 'reason': queue['reason'] if queue else None,
                 'revision': queue['revision'] if queue else 0}
 
-    def accept(self, sid, data):
+    def accept(self, sid, data, provider_dir, capabilities=None, image_capability=None):
         if (not isinstance(data, dict) or not {'requestId', 'revision', 'mode', 'text'} <= set(data)
                 or set(data) - {'requestId', 'revision', 'mode', 'text', 'attachments', 'target'}
                 or data['mode'] not in ('queue', 'steer') or type(data['revision']) is not int or data['revision'] < 1):
@@ -67,9 +89,6 @@ class Messages:
         if (not isinstance(text, str) or any(0xd800 <= ord(c) <= 0xdfff for c in text)
                 or '\x00' in text or len(text.encode()) > 65536 or not text.strip() and not data.get('attachments')):
             raise ProjectFault('Enter a message of at most64 KiB or select Ready attachments.', 400)
-        if data.get('attachments'):
-            # The next dispatch release qualifies attachment lifetime/frozen mounts.
-            raise ProjectFault('This coordinator cannot yet queue attachments. Your input was preserved.', 503)
         target = data.get('target')
         if data['mode'] == 'steer':
             if (not isinstance(target, dict) or set(target) != {'runId', 'threadId', 'turnId'}
@@ -93,16 +112,24 @@ class Messages:
                 if not run or run['state'] != 'running' or run['turn_id'] != target['turnId'] or self.store.row(sid)['thread_id'] != target['threadId']:
                     raise ProjectFault('The expected native turn is no longer active. Your message was preserved.', 409)
                 raise ProjectFault('The original worker does not support direct messages yet. Your message was preserved.', 503)
-            count, size = self.store.db.execute("SELECT COUNT(*),COALESCE(SUM(length(CAST(input AS BLOB))),0) FROM session_messages WHERE session_id=? AND state IN ('pending','queued','dispatching','unknown')", (sid,)).fetchone()
+            count, size = self.store.db.execute("SELECT COUNT(*),COALESCE(SUM(length(CAST(input AS BLOB))+length(CAST(frozen AS BLOB))),0) FROM session_messages WHERE session_id=? AND state IN ('pending','queued','dispatching','unknown')", (sid,)).fetchone()
             raw = encode(data)
             if count >= MAX_PENDING or size + len(raw.encode()) > MAX_BYTES:
                 raise ProjectFault('The session message queue is full. Your input was preserved.', 429)
-            total = self.store.db.execute('SELECT COALESCE(SUM(length(CAST(input AS BLOB))),0) FROM session_messages WHERE session_id=?', (sid,)).fetchone()[0]
-            if total + len(raw.encode()) > 96 * 1024 * 1024: raise ProjectFault('The session message journal reached its storage limit.', 429)
+            total = self.store.db.execute('SELECT COALESCE(SUM(length(CAST(input AS BLOB))+length(CAST(frozen AS BLOB))),0) FROM session_messages WHERE session_id=?', (sid,)).fetchone()[0]
+            from run_store import capture_input
+            run_input = {k: v for k, v in data.items() if k not in ('mode', 'target')}
+            run_input.update(capabilities or {})
+            config, attachments, _ = capture_input(self.store, sid, run_input, provider_dir, image_capability)
+            frozen = {'config': config, 'runInput': run_input, 'attachments': attachments}
+            frozen_raw = encode(frozen)
+            charge = len(raw.encode()) + len(frozen_raw.encode())
+            if size + charge > MAX_BYTES: raise ProjectFault('The frozen message queue reached its storage limit. Your input was preserved.', 429)
+            if total + charge > 96 * 1024 * 1024: raise ProjectFault('The session message journal reached its storage limit.', 429)
             stamp = now()
             self.store.db.execute('''INSERT INTO session_messages(request_id,session_id,mode,state,input,input_hash,frozen,created_at,updated_at)
-                VALUES (?,?,?,'queued',?,?,?,?,?)''', (key, sid, data['mode'], raw, hashed, encode({'sessionRevision': session['revision']}), stamp, stamp))
-            self.store.db.execute("INSERT INTO session_inboxes VALUES (?,1,'Queue dispatch is not available in this release.',1) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1", (sid,))
+                VALUES (?,?,?,'queued',?,?,?,?,?)''', (key, sid, data['mode'], raw, hashed, frozen_raw, stamp, stamp))
+            self.store.db.execute('INSERT INTO session_inboxes VALUES (?,0,NULL,1) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1', (sid,))
             value = self.receipt(sid, key)
             from run_store import event
             event(self.store, sid, None, 'message', value, False)
@@ -110,3 +137,48 @@ class Messages:
             return value, True
         finally:
             if self.store.db.in_transaction: self.store.db.rollback()
+
+    def hold(self, sid, reason):
+        self.store.row(sid)
+        with self.store.db:
+            self.store.db.execute('INSERT INTO session_inboxes VALUES (?,1,?,1) ON CONFLICT(session_id) DO UPDATE SET held=1,reason=excluded.reason,revision=revision+1', (sid, reason))
+
+    def control(self, sid, data):
+        self.store.row(sid)
+        if (set(data) - {'requestId', 'revision', 'action', 'messageId'} or not {'requestId','revision','action'} <= set(data)
+                or data['action'] not in ('resume', 'cancel') or type(data['revision']) is not int):
+            raise ProjectFault('Invalid queue control.', 400)
+        key = identity(data['requestId']); raw = encode(data)
+        with self.store.db:
+            self.store.db.execute('BEGIN IMMEDIATE')
+            previous = self.store.db.execute('SELECT * FROM requests WHERE request_id=?', (key,)).fetchone()
+            hashed = hashlib.sha256(encode({'sessionId': sid, **data}).encode()).hexdigest()
+            if previous:
+                if previous['kind'] != 'message_control' or previous['payload_hash'] != hashed or previous['session_id'] != sid:
+                    raise ProjectFault('This request ID belongs to another queue action.', 409)
+                return json.loads(previous['response'])
+            queue = self.store.db.execute('SELECT * FROM session_inboxes WHERE session_id=?', (sid,)).fetchone()
+            if not queue or queue['revision'] != data['revision']: raise ProjectFault('The queue changed. Reload before continuing.', 409)
+            if data['action'] == 'cancel':
+                row = self.row(sid, data.get('messageId'))
+                if row['mode'] != 'queue' or row['state'] != 'queued': raise ProjectFault('Only an unsent queued message can be removed.', 409)
+                self.store.db.execute("UPDATE session_messages SET state='cancelled',updated_at=? WHERE request_id=?", (now(), row['request_id']))
+                self.store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?', (sid,))
+            else:
+                if 'messageId' in data: raise ProjectFault('Resume does not select another message.', 400)
+                if self.store.db.execute("SELECT 1 FROM session_messages WHERE session_id=? AND state='unknown'", (sid,)).fetchone():
+                    raise ProjectFault('Reconcile the original unknown message before continuing.', 409)
+                self.store.db.execute('UPDATE session_inboxes SET held=0,reason=NULL,revision=revision+1 WHERE session_id=?', (sid,))
+            result = self.snapshot(sid)
+            self.store.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', (key, 'message_control', hashed, sid, encode(result)))
+            return result
+
+    def recover(self):
+        # A coordinator restart revokes unattended dispatch, even for live workers.
+        for row in self.store.db.execute("SELECT DISTINCT session_id FROM session_messages WHERE mode='queue' AND state IN ('queued','dispatching','unknown')").fetchall():
+            self.hold(row['session_id'], 'The coordinator restarted. Continue the saved queue explicitly.')
+
+    def first(self, sid):
+        if not pending_queue(self.store, sid, authorized=True): return None
+        row = self.store.db.execute("SELECT * FROM session_messages WHERE session_id=? AND mode='queue' AND state IN ('queued','dispatching','unknown') ORDER BY seq LIMIT 1", (sid,)).fetchone()
+        return row if row['state'] == 'queued' else None
