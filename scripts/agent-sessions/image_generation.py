@@ -33,7 +33,7 @@ def evaluate(session,model,provider,account,engine,bridge=False):
     if not bridge:return finish('unavailable','The active worker release has no installed image output adapter yet.')
     return finish('available','Native image generation is available for this account, provider and model.')
 
-async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bridge=False):
+async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bridge=True):
     session=store.get(sid);overrides=overrides or {}
     if set(overrides)-{'providerId','model'}:raise ProjectFault('Unexpected image capability fields.',400)
     session={**session,**overrides};identity(session['providerId'])

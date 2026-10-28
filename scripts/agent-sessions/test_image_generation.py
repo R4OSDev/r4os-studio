@@ -52,11 +52,12 @@ class ImageGeneration(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ProjectFault):await inspect(store,self.sid,self.providers,{'providerId':str(uuid.uuid4())})
             native.assert_not_called()
 
-    async def test_unavailable_worker_output_adapter_fails_before_any_native_process(self):
+    async def test_mismatched_worker_capability_fails_before_any_native_process(self):
         with self.open() as store:
             session=store.get(self.sid);run,_=admit(store,self.sid,{'requestId':str(uuid.uuid4()),'revision':1,'text':'Own fixture','imageGenerationSettings':1},self.providers,self.supported(session))
         from worker import Worker
         worker=Worker({'projects':str(self.projects),'r4os':str(self.r4os),'providers':str(self.providers),'projectId':self.pid,'runId':run['id'],'release':'own'})
+        worker.config['imageGenerationCapability']['model']='changed'
         with patch('worker.prepare') as native_prepare,patch('worker.CodexRPC') as native:
             await worker.run();native_prepare.assert_not_called();native.assert_not_called()
         with self.open() as store:self.assertEqual(get_run(store,run['id'])['state'],'failed')

@@ -50,7 +50,7 @@ def decode_image(path):
                                     'Animated images are not supported. Attach one still frame.'):
                 raise ProjectFault(value['error'],400)
             raise ValueError()
-        if set(value)!={'mediaType','width','height','mode','decoder'} or value['mediaType'] not in ('image/png','image/jpeg','image/webp'):raise ValueError()
+        if set(value)!={'mediaType','width','height','mode','decoder','transparent'} or value['mediaType'] not in ('image/png','image/jpeg','image/webp'):raise ValueError()
         return {k:v for k,v in value.items() if k!='decoder'}
     except (OSError,ValueError,subprocess.TimeoutExpired):
         raise ProjectFault('Image validation failed. Use a complete still PNG/JPEG/WebP within16384 pixels per axis and40 million pixels, and install the qualified raster decoder.',400) from None

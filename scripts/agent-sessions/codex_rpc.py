@@ -7,11 +7,11 @@ class CodexRPC:
     def __init__(self, args, notification, server_request):
         self.args = args; self.notification = notification; self.server_request = server_request
         self.pending = {}; self.sequence = 0; self.child = None; self.reader = None
-        self.requests = set(); self.closing = False
+        self.requests = set(); self.closing = False; self.inbound_limit=1048576
 
     async def start(self):
         self.child = await asyncio.create_subprocess_exec(*self.args, stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=1048576, start_new_session=True)
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=self.inbound_limit, start_new_session=True)
         self.reader = asyncio.create_task(self.receive())
         await self.request('initialize', {'clientInfo': {'name': 'r4os_studio_agent', 'title': 'R4OS Studio', 'version': self.version},
                                         'capabilities': {'experimentalApi': True}})
@@ -47,7 +47,7 @@ class CodexRPC:
     async def receive(self):
         try:
             while raw := await self.child.stdout.readline():
-                if len(raw) > 1048576: raise RuntimeError('Agent frame exceeds the protocol limit.')
+                if len(raw) > self.inbound_limit: raise RuntimeError('Agent frame exceeds the protocol limit.')
                 frame = json.loads(raw)
                 if not isinstance(frame, dict): continue
                 if 'method' in frame and 'id' in frame:

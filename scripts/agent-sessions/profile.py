@@ -105,7 +105,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
     if type(image_generation_enabled) is not bool:raise ValueError('Invalid native image generation capability.')
@@ -200,6 +200,10 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         for source,target in attachment_mounts:
             if not re.fullmatch(r'/attachments/[a-f0-9-]{36}\.(png|jpg|webp)',target) or target in seen:raise ValueError('Invalid native image target.')
             seen.add(target);args+=['--ro-bind',str(regular(source)),target]
+    if image_generation_enabled:
+        if selected_profile not in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
+        generated_root=directory(generated_root)
+        directory(provider_home/'generated_images')
     args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
              '--bind', str(provider_home), '/codex', '--bind', str(state), '/session',
              '--bind', str(state / 'native'), '/codex/sessions',
@@ -209,6 +213,12 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
              '--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/session/home',
              '--setenv', 'CODEX_HOME', '/codex', '--setenv', 'PATH', '/usr/bin:/bin',
              '--setenv', 'LANG', 'C.UTF-8', '/bin/codex', 'app-server', '--listen', 'stdio://']
+    if generated_root is not None:
+        if not image_generation_enabled:raise ValueError('An output mount requires enabled native image generation.')
+        position=args.index('--chdir');args[position:position]=['--bind',str(generated_root),'/codex/generated_images']
+        # Bound individual native files (including unconfirmed output/history) without truncating existing data.
+        if any(p.stat().st_size>64*1024*1024 for p in (state/'native').rglob('*') if p.is_file()):raise ValueError('The native history exceeds this image runtime file bound; preserve and review it.')
+        args=['/usr/bin/prlimit','--fsize=67108864:67108864','--',*args]
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
     return args, {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,

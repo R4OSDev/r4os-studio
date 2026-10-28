@@ -1,3 +1,31 @@
+## Private native image outputs (0.6.43)
+
+A qualified ON run activates only the original native image tool. The worker
+rechecks the frozen account fingerprint before starting/resuming a thread.
+Codex saves into a per-session private shadow mount at /codex/generated_images;
+no project source or another provider conversation is mounted there.
+The confirmed output registry uses stable Studio UUIDs and native thread/run/item
+bindings. PNG bytes are decoded in the fixed networkless Pillow namespace,
+with SHA-256, dimensions and actual transparency retained. Repeated items reuse
+the same original. Published files survive a missing database receipt and can
+be reconciled without regeneration. Corrupt, foreign or changed outputs fail.
+
+Only image-aware workers/history reads accept up to24 MiB inbound RPC frames;
+outgoing RPC remains1 MiB. Images are limited to16 MiB,16384 per axis/40M pixels,
+eight per run,128/256 MiB per session and1 GiB per owner. Native files have a64 MiB
+process file bound; unknown native output is counted and retained for review.
+Studio events carry safe metadata, never native Base64/savedPath/raw failures.
+A native failure stops the run, including Goal continuation, without paid retry.
+Stop interrupts the original native turn. list_generated_images returns confirmed
+IDs; project conversion/import follows0.6.44.
+
+Original-binary/actual-worker fixtures generated one deterministic local2.3 MiB
+PNG, proved the real private save root, large frames and dynamic listing. Separate
+invalid credential/foreign-output references made no image request. A delayed
+local generation was stopped without an automatic repeat. These are synthetic
+protocol fixtures under an isolated kernel network, with no real provider/model
+inference. Existing native history is preserved. See Research evidence0.6.43.
+
 ## Native image capability and setting (0.6.42)
 
 New project/Skill sessions use additive studio-tools-v11/studio-skill-tools-v4.
