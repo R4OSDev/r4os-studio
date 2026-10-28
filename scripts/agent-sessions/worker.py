@@ -216,6 +216,8 @@ class Worker:
                 return await output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
             if previous['result']:
                 result = json.loads(previous['result'])
+                if name == 'studio_read_development_job':
+                    result = self.development.replay_read(arguments, result)
                 if result.get('error') != 'unknown':
                     if result.get('skillResources'):
                         current = {(entry['id'], entry['activeHash']) for entry in self.config.get('skillAccess', {}).get('entries', [])}

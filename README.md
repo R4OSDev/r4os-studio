@@ -1,3 +1,31 @@
+## Confirmed process closure with unavailable exit status (0.6.53)
+
+A Desktop application can end after an input such as its Quit key while the
+attached guest helper can no longer obtain its exit status. A subsequent
+`read_development_job` previously treated this unknown execution result as an
+unconfirmed tool effect, stopping the entire agent run and pausing its Goal.
+
+The agent adapter now distinguishes that case only when the private original
+intent, start and close receipts match the project, session, execution, target,
+settings and process generation, and confirm both process end and helper cleanup.
+It returns `exit_status_unavailable` with the closure receipt hash. The original
+job stays `unknown`, its exit code stays null, and all checks and evidence retain
+their actual results. An expected exit-code criterion remains inconclusive.
+Missing, damaged, foreign or incomplete receipts retain the existing protection.
+
+Re-reading a historical unknown status-call receipt uses the same read-only
+attestation. It never repeats a launch, input or other mutation, and never rewrites
+the original run, tool receipt or native history. A previously stopped Goal still
+requires an explicit Pause/Stop followed by Play to resume. Tool declarations,
+permissions, component pins and host/data protocols remain unchanged.
+
+Validation: seven new regressions, 77 focused tests (two skipped), production
+build/TypeScript and lint. The aggregate Python discovery has existing
+`skill_prompt` import collisions: its twelve affected cases also fail with the
+original 0.6.52 worker and adapter, and all affected modules pass in separate
+processes. The original incident's private receipts were attested read-only;
+no model inference or new guest application run was used for this correction.
+
 ## Watch a VM during development (0.6.52)
 
 The VM console opens in **Spectator mode** when a development operation holds

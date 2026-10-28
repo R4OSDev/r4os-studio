@@ -214,12 +214,71 @@ class DevelopmentTools:
     def result(self, job, page=None):
         from session_store import encode
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
-        uncertain = job['state'] == 'unknown'
+        closure = self.closed_without_exit_status(job)
+        if closure:
+            return {'success': False, 'error': 'exit_status_unavailable', 'reasonCode': 'guest_exit_status_unavailable',
+                    'output': encode({**(page or {'job': job}), 'executionReceipt': closure,
+                        'notice': 'The owned process has ended and its cleanup is confirmed. Its exit status is unavailable; '
+                            'the execution remains unknown, not successful. Inspect the saved checks and evidence before continuing. '
+                            'Do not repeat the launch merely because its exit code is missing.'}),
+                    'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
         failure = job['state'] in ('failed', 'interrupted', 'unknown')
         if job['state'] == 'running' and (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed':
             return {'success': False, 'error': 'readiness_unknown', 'output': encode(page or {'job': job}),
                     'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
         return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
+
+    def closed_without_exit_status(self, job):
+        """Attest closure from private originals without changing any job or receipt."""
+        from contracts import DevelopmentFault, digest, generation, identity
+        from recovery import read
+        worker = self.worker
+        if (job.get('kind') != 'execution' or job.get('state') != 'unknown'
+                or job.get('phase') not in ('guest_completed', 'reconciled') or not job.get('completedAt')
+                or job.get('error') is not None or job.get('exitCode') is not None
+                or job.get('projectId') != worker.manifest['projectId'] or job.get('sessionId') != worker.session_id):
+            return None
+        try:
+            root = worker.store.workspace.parent / 'Development/ExecutionWork' / identity(job['id'])
+            intent, started, closed = (read(root / name) for name in ('intent.json', 'started.json', 'closed.json'))
+            expected = {key: job[key] for key in ('executionId', 'deploymentId', 'target', 'settings')}
+            expected['jobId'] = job['id']; identity(expected['executionId'])
+            if any(type(value.get('schema')) is not int or value['schema'] != 1
+                    or any(value.get(key) != val for key, val in expected.items())
+                    for value in (intent, started, closed)):
+                return None
+            if (intent.get('state') != 'intent' or started.get('state') != 'started' or closed.get('state') != 'closed'
+                    or closed.get('applicationStarted') is False):
+                return None
+            process = job['process']; generation(process['generation'])
+            if type(process.get('instanceId')) is not int or process['instanceId'] <= 0: return None
+            required = {'instanceId': process['instanceId'], 'generation': process['generation'], 'state': 'completed',
+                'closeConfirmed': True, 'exitEvidenceUnavailable': True, 'exitCode': None, 'stopReason': None}
+            if any((started.get('process') or {}).get(key) != process[key] for key in ('instanceId', 'generation')):
+                return None
+            if any(any(key not in value or type(value[key]) is not type(val) or value[key] != val for key, val in required.items())
+                    for value in (closed.get('completion') or {}, job.get('guestState') or {})):
+                return None
+            if not all((closed.get('cleanupReceipt') or {}).get(key) is True
+                    for key in ('closed', 'serviceRemoved', 'watchdogRemoved')):
+                return None
+            return {'source': 'private-guest-close-receipt', 'receiptSha256': digest(root / 'closed.json'),
+                'processEndConfirmed': True, 'cleanupConfirmed': True, 'exitStatusConfirmed': False}
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, DevelopmentFault):
+            return None
+
+    def replay_read(self, arguments, result):
+        """Reclassify only a saved status read; never replay an old mutation."""
+        if (result.get('error') != 'unknown' or result.get('partialChangesPossible')
+                or (result.get('development') or {}).get('jobId') != arguments.get('jobId')):
+            return result
+        try:
+            page = json.loads(result['output']); job = page['job']
+            if job['id'] != arguments['jobId']: return result
+            observed = self.result(job, page)
+            return observed if observed.get('error') == 'exit_status_unavailable' else result
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return result
 
     async def stop_owned(self):
         try: await self.request('cancel_owned')
