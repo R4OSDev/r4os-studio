@@ -16,7 +16,7 @@ from store import ProjectFault
 from board_schema import SCHEMA,VERSION,APPLICATION_ID
 
 MAX_DATABASE_BYTES=128*1024*1024
-SUPPORTED_FEATURE_LEVEL=2
+SUPPORTED_FEATURE_LEVEL=3
 
 def regular(path):
     info=path.lstat()

@@ -3067,3 +3067,23 @@ replacement list. IDs, notes and metadata survive. Lost responses read the
 original receipt before any explicit same-request retry; conflicting order needs
 Review current order. Search filters follow0.6.39 and will use Move for unambiguous
 positions. No agent, workspace, model, build or VM operation is introduced.
+
+### Board metadata and filters (0.6.39)
+
+Card details include Low/Normal/High priority, an optional literal YYYY-MM-DD
+calendar date, board-scoped labels and up to100 checklist items. Save/Cancel is
+atomic; points keep their IDs when edited, checked or reordered. Cards show
+checklist progress, label names, priority and due date. No reminders or agent
+activity are triggered. Label rename keeps assignments; confirmed removal keeps
+cards and checklist data. The fixed Studio palette does not replace label text.
+
+Search reads the complete title/description in the private store, with bounded
+Unicode casefold matching. Label, priority and due filters combine with search;
+Clear filters and an empty result are explicit. Filtered views disable dragging
+and retain exact full-inventory Move. Conflict review preserves edited fields
+and refreshes untouched saved fields; checklist item revisions remain checked.
+Metadata writes raise feature level3 atomically, blocking older adapters and
+requiring older browser tabs to reload. Physical schema1 and existing IDs remain.
+21 focused unprivileged cases, real HTTP and browser1440/320 checks passed,
+including a leap date in Pacific/Honolulu and hidden-order-preserving filtered
+Move. No model or VM run was needed.

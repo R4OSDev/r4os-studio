@@ -45,7 +45,14 @@ def snapshot(db,project_id,ident):
         'cardCount':db.execute('SELECT COUNT(*) FROM cards WHERE column_id=? AND archived=0',(r['id'],)).fetchone()[0]}
         for r in db.execute('SELECT * FROM columns WHERE board_id=? ORDER BY position,id',(ident,))]
     cards=[card(db,r) for r in db.execute('SELECT cards.* FROM cards JOIN columns ON columns.id=cards.column_id WHERE cards.board_id=? ORDER BY columns.position,cards.position,cards.id',(ident,))]
-    return {'projectId':project_id,'revision':revision(db),'board':summary(db,row),'columns':columns,'cards':cards,'labels':[]}
+    labels=[{'id':r['id'],'boardId':r['board_id'],'name':r['name'],'color':r['color'],'revision':r['revision']} for r in db.execute('SELECT * FROM labels WHERE board_id=? ORDER BY name_key,id',(ident,))]
+    return {'projectId':project_id,'revision':revision(db),'board':summary(db,row),'columns':columns,'cards':cards,'labels':labels}
+
+def search(db,project_id,ident,query):
+    from board_validation import text
+    needle=text(query,256,True).casefold();parent=board(db,ident)
+    ids=[r['id'] for r in db.execute('SELECT id,title,description FROM cards WHERE board_id=? ORDER BY id',(ident,)) if needle in (r['title']+'\n'+r['description']).casefold()]
+    return {'projectId':project_id,'boardId':ident,'boardRevision':parent['revision'],'cardIds':ids}
 
 def receipt(db,rid):
     row=db.execute('SELECT result FROM requests WHERE id=?',(rid,)).fetchone() if db else None
