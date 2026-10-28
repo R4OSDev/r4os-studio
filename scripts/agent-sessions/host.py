@@ -37,6 +37,7 @@ class Host:
         self.image_capability_lock=asyncio.Lock()
         self.inboxes=set()
         self.message_tasks={}
+        self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
@@ -510,6 +511,26 @@ class Host:
             return store.run_present(get_run(store, run_id))
         finally: store.close()
 
+    async def reconcile_statistics(self):
+        # One existing owner/session per pass; never launch a worker/provider.
+        from contextlib import closing
+        from store import connect
+        from usage_stats import Usage
+        from stats_store import Source
+        with closing(connect(Path(self.config['projects']))) as db:
+            registered=[('project',r['id']) for r in db.execute("SELECT id FROM projects WHERE state='ready' ORDER BY id")]+owners(self.config['projects'])
+        if not registered:return
+        kind,ident=registered[self.stats_cursor%len(registered)];self.stats_cursor+=1
+        root=skills_root(self.config['projects']) if kind=='skill' else Path(self.config['projects'])
+        if not (root/ident/'Sessions/Sessions.sqlite').is_file():return
+        store=self.store(ident,kind)
+        try:
+            sessions=store.db.execute('SELECT id FROM sessions ORDER BY id').fetchall()
+            if not sessions:return
+            key=(kind,ident);index=self.stats_sessions.get(key,0);self.stats_sessions[key]=index+1
+            Usage(store,sessions[index%len(sessions)]['id']).scan();Source(store).flush()
+        finally:store.close()
+
     async def connection(self, reader, writer):
         task = asyncio.current_task(); self.connections.add(task)
         try:
@@ -561,6 +582,8 @@ async def main():
                             raise ValueError('Invalid coordinator release.')
                         replacement = script; stopped.set()
             except Exception: pass  # Preserve current workers and retry, never infer a new job.
+            try:await host.reconcile_statistics()
+            except Exception:pass  # Numeric capture failure cannot steer runs.
             try: await asyncio.wait_for(stopped.wait(), 2)
             except asyncio.TimeoutError: pass
     monitor = asyncio.create_task(maintain())

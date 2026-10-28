@@ -64,6 +64,8 @@ class Worker:
         self.skills = SkillTools(self)
         self.goal_worker = None
         self.message_worker = None
+        from usage_stats import WorkerUsage
+        self.usage_stats=WorkerUsage(self)
         if self.config.get('goalExecution'):
             from goal_worker import GoalWorker
             self.goal_worker = GoalWorker(self)
@@ -73,6 +75,7 @@ class Worker:
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
+        self.usage_stats.notify(method,params)
         if self.message_worker: self.message_worker.observe(method, params)
         if self.goal_worker and await self.goal_worker.notify(method, params): return
         if method == 'turn/started':
@@ -320,6 +323,7 @@ class Worker:
     async def cleanup(self):
         if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
         self.closing=True
+        await self.usage_stats.close()
         if self.message_worker: await self.message_worker.close()
         if self.goal_worker: await self.goal_worker.close()
         if self.interrupt_tasks:await asyncio.gather(*self.interrupt_tasks.values(),return_exceptions=True)
@@ -463,6 +467,7 @@ class Worker:
                 if goals.command(self.session_id, rid)['state'] == 'pending':
                     goals.finish(self.session_id, rid, 'unknown' if self.turn_requested else 'failed', self.error or 'The original Goal activation was not confirmed.')
             await self.cleanup()
+            self.usage_stats.finalize()
             if self.goal_worker:
                 from goal_worker import end_turns
                 self.goal_worker.clock.end(unknown=self.uncertain_effect or self.outcome=='unknown')
