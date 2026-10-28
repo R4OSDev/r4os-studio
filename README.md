@@ -1,3 +1,25 @@
+## Remote Host integrated qualification (0.6.22)
+
+System → Remote Hosts, independent project assignment and the five bound native
+agent tools are qualified as one workflow. VM development remains the default;
+explicitly selected Remote Host work uses the private SSH/SFTP broker. Credentials
+stay outside workspaces, native input, terminal environments and public receipts.
+Original unknown effects require human review and are never silently repeated.
+
+47 focused final integration checks cover real worker leases, v9 dispatch, bounded
+SFTP packets, endpoint aliases, lifecycle review, catalog and HTTP boundaries.
+Earlier retained desktop/320px and keyboard browser evidence covers editing,
+project combinations, controls and lost-response recovery. Immutable compatible
+broker releases are adopted only when idle; active workers keep their own release.
+Installed idle adoption is recorded separately with PID/configuration preservation.
+
+Transport/model behavior uses owned local protocol and worker fixtures. No actual
+external R4OS login, paid model inference or real model target-selection claim is
+made. R4OS SSH service support and native command limits are source-qualified;
+network reachability and credentials must be checked for each user's chosen host.
+The seven existing backup sources stay unchanged: private Data/RemoteHosts is
+excluded, while project references and secret-free job journals are included.
+
 ## Shared Remote Host lifecycle (0.6.21)
 
 Remote effects resolve the saved DNS/IP target once, record at most16 normalized
