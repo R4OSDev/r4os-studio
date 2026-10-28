@@ -45,7 +45,9 @@ class GeneratedImages:
     def check_capacity(self,run_id=None):
         rows=self.rows();own=0
         for path in self.root().iterdir():
-            if path.name=='Native':continue
+            if path.name in ('Native','Imports'):
+                if path.resolve(strict=True)!=path or not path.is_dir():raise ProjectFault('Unexpected private image directory.',409)
+                continue
             if path.suffix not in ('.image','.pending'):raise ProjectFault('Unexpected private image storage entry.',409)
             path=regular(path);st=path.stat();own+=st.st_size
             if st.st_nlink!=1 or st.st_uid!=os.getuid() or not 0<st.st_size<=MAX_IMAGE:raise ProjectFault('An original image requires storage review.',409)

@@ -1,3 +1,35 @@
+## Generated images as project assets (0.6.44)
+
+studio.list_generated_images returns only confirmed images from this session.
+studio.import_generated_image accepts a Studio image ID, an Assets/ relative
+path, original/png/ico/rgba32, bounded dimensions, contain/cover and explicit
+#RRGGBB[AA] background. The existing original run/workspace lease, import and
+Write file permissions are required; missing folders also need Create directory.
+Active terminals and unresolved project recovery block publication. Skills have
+no project importer. Source originals remain unchanged.
+
+A fixed unprivileged Pillow11.1.0 adapter has only readonly input and private
+output mounts, no network, credentials or project access, plus CPU/memory/file
+bounds. ICO output is actual32-bit BI_RGB bitmap data with bottom-up BGRA and
+AND mask, never embedded PNG. Raw .rgba is project-specific top-down straight
+RGBA, with exact dimensions/stride/hash; consuming code must match it.
+Outputs and transformations are deterministic and builds use stored bytes.
+
+Publication uses an open no-follow workspace descriptor and safe relative
+parents. New targets use create-only rename; replacements require the exact
+current SHA-256 and a checked atomic exchange. If a concurrent target appears,
+its displaced bytes are checked and restored. Hardlinks, links, traversal and
+foreign image IDs are rejected. Original tool results deduplicate retries;
+private publication journals survive interruption for read-only reconciliation.
+Unknown publication stops following mutations instead of replaying the import.
+The tool returns asset/hash/transform data and manifest/consumer guidance;
+it does not silently edit module.R4MF. Embedding and guest proof follow45–49.
+
+Twelve targeted cases used the real isolated converter and workspace publisher,
+including deterministic ICO/RGBA, alpha/aspect/crop/background, original tool
+retry, source preservation, denied rights, links and a raced target replacement.
+No provider/model or user VM calls were needed.
+
 ## Private native image outputs (0.6.43)
 
 A qualified ON run activates only the original native image tool. The worker
