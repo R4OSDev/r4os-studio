@@ -1,3 +1,26 @@
+## New Project recovery after a deleted GitHub setup (0.7.25)
+
+New Project now reads the status of a retained original creation request when
+the dialog opens. A confirmed deleted project releases only that browser request
+and its cached account, then resets the form to a blank local project. A late
+Retry receiving HTTP410 uses the same reset. Previously GitHub-backed requests
+kept their frozen input after deletion, leaving every reopening stuck on Retry.
+Deleted projects and repositories are never recreated by the status check.
+
+The session-protected `GET /api/projects/creation-requests/:requestId` distinguishes
+missing, pending, complete, deleting and deleted local creation receipts. It
+does not submit creation or GitHub work. A recovered existing project restores
+its Open local project action and reads only the original GitHub job; confirmed
+GitHub failure re-enables its connection/repository controls. Missing receipts,
+active/deleting requests, unknown GitHub outcomes and failed status reads retain
+the original request. Cancel alone still preserves an uncertain submission.
+
+The change requires no catalog migration or browser-storage reset. Existing
+deleted-request tombstones remain authoritative and the next loaded dialog can
+recover an old saved request. Validation uses an isolated HTTP/SQLite case and
+focused browser scenarios with synthetic GitHub replies; no real repositories,
+connections, user projects or VM state are changed for testing.
+
 ## Historical development recovery context (0.7.24)
 
 Goal continuation now includes the actual development job ID and its current,

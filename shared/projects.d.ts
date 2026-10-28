@@ -39,6 +39,9 @@ export interface ProjectInput {
   vmId: string | null; remoteHostId?: string | null; optionsRevision: string; requestId: string; guestFormats: string[];
   github?: { requestId: string; connectionId: string; tokenRevision: number; userId: number; repositoryName: string; private: boolean; owner?: string };
 }
+export interface ProjectCreationStatus {
+  requestId: string; state: 'missing' | 'pending' | 'complete' | 'deleting' | 'deleted'; project?: Project;
+}
 export interface Project extends ProjectSummary {
   description: string; language: ProjectLanguage; template: ProjectTemplate; moduleName: string;
   vmId: string | null; remoteHostId?: string | null; pins: ProjectPins; revision: number; createdAt: string; updatedAt: string;

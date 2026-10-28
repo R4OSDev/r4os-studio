@@ -1,7 +1,7 @@
 import { ProjectField } from './ProjectField';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { Project, ProjectInput, ProjectLanguage, ProjectOptions, ProjectTemplate } from '../../../../shared/projects';
+import type { Project, ProjectCreationStatus, ProjectInput, ProjectLanguage, ProjectOptions, ProjectTemplate } from '../../../../shared/projects';
 import { projectRequest, projectRequestId, ProjectRequestError } from './api';
 import type { GitHubAccount, GitHubJob } from '../../../../shared/project-github';
 import { ConnectionSelect } from '../github-connections/ConnectionSelect';
@@ -30,7 +30,10 @@ function CreateProjectDialog({ token, close, created, importProject }: {
   importProject: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [pending, setPending] = useState(savedRequest);
+  const [retained] = useState(savedRequest);
+  const [pending, setPending] = useState(retained);
+  const [checking, setChecking] = useState(!!retained);
+  const [notice, setNotice] = useState('');
   const [name, setName] = useState(pending?.name ?? '');
   const [description, setDescription] = useState(pending?.description ?? '');
   const [language, setLanguage] = useState<ProjectLanguage>(pending?.language ?? 'Zig');
@@ -52,6 +55,37 @@ function CreateProjectDialog({ token, close, created, importProject }: {
   const [localProject, setLocalProject] = useState<Project>();
   const [gitJob, setGitJob] = useState<GitHubJob>();
   const [accountBusy, setAccountBusy] = useState(false);
+  const resetDeleted = useCallback((requestId: string) => {
+    const current = savedRequest();
+    if (current && current.requestId !== requestId) throw new Error('The saved project request changed. Reopen this dialog.');
+    sessionStorage.removeItem(pendingKey); sessionStorage.removeItem(pendingKey + '.account');
+    setPending(null); setLocalProject(undefined); setGitJob(undefined); setAccount(null);
+    setName(''); setDescription(''); setLanguage('Zig'); setTemplate('terminal');
+    setVmId(''); setRemoteHostId(''); setGuestFormats('');
+    setRepositoryName(''); setRepositoryOwner(''); setVisibility('private'); setError('');
+    setNotice('The previous project was deleted. You can create a new project.');
+  }, []);
+  useEffect(() => {
+    if (!retained) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const status = await projectRequest<ProjectCreationStatus>('/creation-requests/' + retained.requestId, '', 'GET', undefined, controller.signal);
+        if (controller.signal.aborted) return;
+        if (status.requestId !== retained.requestId) throw new Error('The original project status could not be confirmed.');
+        if (status.state === 'deleted') { resetDeleted(retained.requestId); return; }
+        if (status.state === 'complete' && status.project) {
+          setLocalProject(status.project);
+          if (retained.github) {
+            const job = await projectRequest<GitHubJob>(`/${status.project.id}/github/jobs/${retained.github.requestId}`, '', 'GET', undefined, controller.signal);
+            if (!controller.signal.aborted) setGitJob(job);
+          }
+        }
+      } catch (cause) { if (!controller.signal.aborted) setError((cause as Error).message); }
+      finally { if (!controller.signal.aborted) setChecking(false); }
+    })();
+    return () => controller.abort();
+  }, [retained, resetDeleted]);
   useEffect(() => {
     const element = dialog.current!;
     const opener = document.activeElement;
@@ -73,8 +107,8 @@ function CreateProjectDialog({ token, close, created, importProject }: {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy || accountBusy || (!pending && (!supported || !options))) return;
-    setError('');
+    if (busy || checking || accountBusy || (!pending && (!supported || !options))) return;
+    setError(''); setNotice('');
     if (account && (!/^[A-Za-z0-9_.-]{1,100}$/.test(repositoryName.trim()) || ['.', '..'].includes(repositoryName.trim()))) {
       setError('Enter a valid repository name.'); return;
     }
@@ -105,6 +139,7 @@ function CreateProjectDialog({ token, close, created, importProject }: {
       await created(result.project);
     } catch (cause) {
       const failure = cause as ProjectRequestError;
+      if (failure.status === 410) { resetDeleted(input.requestId); return; }
       if (!input.github && failure.status && failure.status < 500) {
         sessionStorage.removeItem(pendingKey); setPending(null);
         if (failure.status === 409) { setLoading(true); setOptionsEpoch((value) => value + 1); }
@@ -122,7 +157,7 @@ function CreateProjectDialog({ token, close, created, importProject }: {
         <button type="button" aria-pressed="true" disabled={busy || !!pending}>Create new</button>
         <button type="button" aria-pressed="false" disabled={busy || !!pending} onClick={importProject}>Import from GitHub</button>
       </div>
-      <fieldset className="project-fields" disabled={busy || !!pending}>
+      <fieldset className="project-fields" disabled={busy || checking || !!pending}>
         <ProjectField id="project-name" label="Name">
           <input id="project-name" required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" /></ProjectField>
         <ProjectField id="project-description" label="Description">
@@ -149,7 +184,7 @@ function CreateProjectDialog({ token, close, created, importProject }: {
         {options && !options.vmsAvailable && <p className="project-message" role="status">Virtual machines could not be loaded.</p>}
         <HostSelect value={remoteHostId} changed={setRemoteHostId} disabled={busy || !!pending} />
       </fieldset>
-      <fieldset className="project-fields" disabled={busy || (!!pending && (!localProject || gitJob?.state !== 'failed'))}>
+      <fieldset className="project-fields" disabled={busy || checking || (!!pending && (!localProject || gitJob?.state !== 'failed'))}>
         <ConnectionSelect value={account} busyChanged={setAccountBusy} changed={(value) => { setAccount(value); if (value) sessionStorage.setItem(pendingKey + '.account', JSON.stringify(value)); else sessionStorage.removeItem(pendingKey + '.account'); }} />
         {(account || pending?.github) && <>
           <ProjectField id="github-repository-owner" label="Repository owner"><input id="github-repository-owner" maxLength={39} placeholder={account?.login ?? 'Account or organization'} value={repositoryOwner} onChange={(e) => setRepositoryOwner(e.target.value)} pattern="[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?" /></ProjectField>
@@ -160,11 +195,13 @@ function CreateProjectDialog({ token, close, created, importProject }: {
       </fieldset>
       {localProject && <p role="status">Local project created: {localProject.name}. GitHub setup keeps its original request.</p>}
       {gitJob && <p role="status">GitHub: {gitJob.phase} · {gitJob.state}</p>}
+      {checking && <p className="project-dialog-status" role="status">Checking the previous project…</p>}
+      {notice && <p className="project-dialog-status" role="status">{notice}</p>}
       {loading && <p className="project-dialog-status" role="status">Loading project options…</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
       <footer className="project-actions"><button type="button" disabled={busy} onClick={close}>Cancel</button>
-        {localProject && !busy && <button type="button" onClick={() => { sessionStorage.removeItem(pendingKey); sessionStorage.removeItem(pendingKey + '.account'); void created(localProject); }}>Open local project</button>}
-        <button className="project-primary" type="submit" disabled={busy || accountBusy || !token || (!pending && (!supported || !name.trim() || loading))}>
+        {localProject && !busy && !checking && <button type="button" onClick={() => { sessionStorage.removeItem(pendingKey); sessionStorage.removeItem(pendingKey + '.account'); void created(localProject); }}>Open local project</button>}
+        <button className="project-primary" type="submit" disabled={busy || checking || accountBusy || !token || (!pending && (!supported || !name.trim() || loading))}>
           {busy ? 'Creating…' : pending ? 'Retry' : account ? 'Create project & repository' : 'Create Project'}</button></footer>
     </form>
   </dialog>;

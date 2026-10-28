@@ -108,6 +108,21 @@ def connect(root):
 
 
 def operation(db, request, root):
+    if request.get('operation') == 'creation_status' and set(request) == {'operation', 'requestId'}:
+        key = request['requestId']
+        if not isinstance(key, str) or not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', key):
+            raise ProjectFault('Invalid project creation request.', 400)
+        if db.execute('SELECT 1 FROM retired_project_requests WHERE request_key=?', (key,)).fetchone():
+            return {'requestId': key, 'state': 'deleted'}
+        original = db.execute('SELECT project_id,phase FROM requests WHERE request_key=?', (key,)).fetchone()
+        if original is None: return {'requestId': key, 'state': 'missing'}
+        if db.execute('SELECT 1 FROM project_deletions WHERE project_id=?', (original['project_id'],)).fetchone():
+            return {'requestId': key, 'state': 'deleting'}
+        row = db.execute('SELECT * FROM projects WHERE id=?', (original['project_id'],)).fetchone()
+        if row is None: raise ProjectFault('The original project creation receipt is incomplete.', 503)
+        if original['phase'] == 'complete' and row['state'] == 'ready':
+            return {'requestId': key, 'state': 'complete', 'project': public(row, db)}
+        return {'requestId': key, 'state': 'pending'}
     if request == {'operation': 'list'}:
         return [{'id': row['id'], 'name': row['name'], **({'deleting': True} if row['deleting'] else {})}
                 for row in db.execute("SELECT p.id,p.name,d.project_id AS deleting FROM projects p LEFT JOIN project_deletions d ON d.project_id=p.id WHERE p.state='ready' OR d.project_id IS NOT NULL")]

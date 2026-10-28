@@ -115,6 +115,12 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
     sessions.session(request, reply);
     return projectStore(directory, { operation: 'vms' });
   });
+  app.get<{ Params: { requestId: string } }>('/creation-requests/:requestId', {
+    schema: { params: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: identity } } },
+  }, async (request, reply) => {
+    sessions.session(request, reply);
+    return projectStore(directory, { operation: 'creation_status', requestId: request.params.requestId });
+  });
   app.get<{ Params: { id: string } }>('/:id', { schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } } }, async (request, reply) => {
     sessions.session(request, reply);
     return { project: await projectStore<Project>(directory, { operation: 'get_settings', id: request.params.id }) };
