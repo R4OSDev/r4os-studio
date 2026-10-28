@@ -211,6 +211,10 @@ class Builder:
         expected_class = {'terminal': 'console', 'desktop': 'gui', 'service': 'service', 'subsystem': 'gui'}.get(self.store.project['template'])
         if ('kind=' + expected_kind.lower()).encode() not in result or (expected_class and ('r4x.class=' + expected_class).encode() not in result):
             raise DevelopmentFault('The produced container does not match its manifest identity.')
+        from resource_inventory import inspect as inspect_resource_inventory
+        resource_inventory=inspect_resource_inventory(binary,resource_inputs,source)
+        resource_inventory['inspectorSha256']=digest(self.inspector)
+        resource_inventory['pins']=self.job['pins']
         update_metadata = await self.update_identity(binary, entry)
         self.store.update(self.job['id'], phase='publishing')
         artifact_id = str(uuid.uuid4()); parent = folder(self.store.root / 'Artifacts'); stage = folder(parent / (artifact_id + '.new'))
@@ -235,6 +239,7 @@ class Builder:
                 'artifact': files[0], 'sourceSha256': self.store.get(self.job['id'])['source']['sha256']}
             proof_format = 'r4os-studio-sdk-build-v1'
         proof['studioResourceInputs']=resource_inputs
+        proof['studioResourceInventory']=resource_inventory
         save(stage / 'build-proof.json', proof)
         build_proof = {'format': proof_format, 'sha256': digest(stage / 'build-proof.json'),
                        'bytes': (stage / 'build-proof.json').stat().st_size}
@@ -245,7 +250,7 @@ class Builder:
             'manifestSha256': self.store.get(self.job['id'])['source']['manifestSha256'],
             'packageSha256': hash_value(files), 'kind': expected_kind, 'role': self.store.project['template'],
             'entry': name, 'files': files, 'createdAt': now(), 'pins': self.job['pins'],
-            'plan': plan, 'resourceInputs':resource_inputs, 'updateMetadata': update_metadata, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
+            'plan': plan, 'resourceInputs':resource_inputs, 'resourceInventory':resource_inventory, 'updateMetadata': update_metadata, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
         save(stage / 'artifact.json', record)
         with (stage / name).open('rb') as stream: os.fsync(stream.fileno())
         sync(stage); os.rename(stage, parent / artifact_id); sync(parent)

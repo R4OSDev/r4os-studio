@@ -78,6 +78,7 @@ class DevelopmentTools:
             if name == 'read_development_job':
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
                 page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0))
+                page=await self.with_artifact(page['job'],page)
                 return self.result(page['job'], page)
             if name == 'complete_development_job':
                 page = await self.request('complete_check', id=value['jobId'], input={'requestId': request_id})
@@ -176,7 +177,18 @@ class DevelopmentTools:
             if name == 'run_project' and job['state'] == 'running' and ((job.get('readiness') or {}).get('state') == 'ready'
                 or (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed'):
                 break
+        if name=='build_project':page=await self.with_artifact(job,page)
         return self.result(job, page)
+
+    async def with_artifact(self,job,page):
+        from contracts import DevelopmentFault
+        if job.get('kind')=='build' and job['state']=='completed' and job.get('artifactId'):
+            artifact=await self.request('artifact',id=job['artifactId'])
+            if (artifact.get('id')!=job['artifactId'] or artifact.get('buildId')!=job['id']
+                    or artifact.get('projectId')!=self.worker.manifest['projectId']):
+                raise DevelopmentFault('The artifact readback differs from this original project build.',409)
+            page={**(page or {'job':job}),'artifact':{key:artifact[key] for key in ('id','entry','files','resourceInputs','resourceInventory') if key in artifact}}
+        return page
 
     def original_build(self, job_id):
         """Read only this admitted build while an older host retains workers."""

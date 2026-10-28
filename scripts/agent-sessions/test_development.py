@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1]/"project-development"))
 import unittest,uuid
 from unittest.mock import AsyncMock,patch
 from types import SimpleNamespace
@@ -7,7 +10,7 @@ from development_tools import DevelopmentTools
 
 class ProfileTest(unittest.TestCase):
     def test_native_profiles_remain_distinct_and_strict(self):
-        self.assertEqual(len(specifications(LEGACY_PROFILE)),9);self.assertEqual(len(specifications(PROFILE)),30)
+        self.assertEqual(len(specifications(LEGACY_PROFILE)),9);self.assertEqual(len(specifications(PROFILE)),42)
         self.assertEqual(len(specifications(COMPLETION_PROFILE)),18)
         self.assertEqual(specifications(PROFILE)[:9],specifications(LEGACY_PROFILE))
         with self.assertRaises(ValueError):tools_for('unknown')

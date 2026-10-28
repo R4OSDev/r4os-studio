@@ -1,3 +1,26 @@
+## Verified R4X resource payloads and consumers (0.6.46)
+
+After the pinned official container inspector succeeds, a separate bounded
+R4M0/1 reader inventories the actual finished .R4X resource payloads. It matches
+kind, icon index/name, order, length and SHA-256 to the SDK-parsed declarations
+and immutable source bytes; SDK HELP BOM removal is explicit. Bounds, names,
+non-overlap, table size and source identity are checked. A mismatch fails the
+build before publication. Resource reports bind artifact/source/manifest hashes,
+project pins and the actual inspector hash. Existing artifacts are not migrated.
+
+The report marks Embedded only after actual payload comparison. Consumer and
+guest verification remain separate false fields. Builds and readonly job reads
+return this bounded artifact report through existing Agent tools, with original
+project/build identity checked, without adding or replacing tool declarations.
+
+Studio companion source recipes provide a real own-module resource read,
+bounded bitmap ICO/RGBA decoding and explicit alpha composition to0x00RRGGBB.
+Zig uses the pinned SDK ICO decoder; C/Rust consume the converter's32-bit bitmap
+ICO representation. Larger raw RGBA resources retain exact width/height/stride
+and are tiled to the matched R4DRAW raster limits (currently128x128), with
+caller-owned bounded buffers. This is a project representation, not an R4OS
+file standard or an assumed PNG decoder. Recipe discovery follows0.6.47.
+
 Actual isolated image-pipeline builds in0.6.45 used the existing local SDK0.64.92/Contract0.64.45 with Zig0.16.0 and the existing Rust1.99.0 profile. All three fresh R4X artifacts retain the imported icon and raster sources in their bound registration reports. User component defaults were read and preserved.
 
 ## Image resources in pinned builds (0.6.45)
