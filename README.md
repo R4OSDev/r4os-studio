@@ -1,3 +1,20 @@
+## Goal Stop after delayed native events (0.6.50)
+
+A completed worker Stop no longer hides a later native turn-start notification.
+Each distinct original thread/turn receives one bounded asynchronous interrupt;
+duplicate events reuse that interrupt. The RPC reader stays free to receive its
+reply. Cleanup fences new interrupt tasks and waits for those already submitted
+before closing the native client. Excess continued turn starts end as Unknown
+and close the worker. No new turn, replacement thread or model request is started.
+
+The original regression, two delayed turns, duplicate/foreign events, a blocked
+interrupt reply and cleanup were checked. An original Codex0.163.0/actual-worker
+fixture delays delivery of its real turn-start until Stop has ended, then
+confirms that exact turn is interrupted. The late-event fixture uses a private
+network namespace and deterministic local SSE, with no model inference. The
+remote-profile regression now verifies current profile11/42 tools alongside
+unchanged profile9/39 and profile10/40. All15 declaration sets are retained.
+
 ## Image pipeline qualification and retry bounds (0.6.49)
 
 Current image-capable session profiles use the pinned OpenAI authentication,

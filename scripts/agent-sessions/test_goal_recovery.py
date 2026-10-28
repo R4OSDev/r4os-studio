@@ -141,6 +141,41 @@ class GoalRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(get_run(w.store,w.run_id)['state'],'stopping')
         self.assertTrue(any(m=='turn/interrupt' and p['turnId']=='late-turn' for m,p in native.calls))
 
+    async def test_late_distinct_turns_interrupt_once_without_blocking_reader_and_cleanup_waits(self):
+        w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
+        transition(w.store,w.run_id,'stopping');await w.stop()
+        self.assertTrue(w.stop_task.done());self.assertIsNone(w.turn_id)
+        original=native.request;reply=asyncio.Event();received=[];cleanup=None
+        async def waiting(method,params,**kwargs):
+            if method=='turn/interrupt':received.append(params.copy());await reply.wait()
+            return await original(method,params,**kwargs)
+        try:
+            with patch.object(native,'request',side_effect=waiting),patch.object(native,'close',new_callable=AsyncMock) as close:
+                for thread,turn in ((w.thread_id,'late-first'),(w.thread_id,'late-second'),(w.thread_id,'late-first'),('foreign-thread','foreign-turn')):
+                    await asyncio.wait_for(w.notify('turn/started',{'threadId':thread,'turn':{'id':turn}}),.2)
+                await asyncio.sleep(0)
+                self.assertEqual([v['turnId'] for v in received],['late-first','late-second'])
+                self.assertTrue(all(v['threadId']==w.thread_id for v in received))
+                cleanup=asyncio.create_task(w.cleanup());await asyncio.sleep(.02)
+                self.assertFalse(cleanup.done());close.assert_not_awaited()
+                self.assertIsNone(w.defer_interrupt('after-close-fence'))
+                reply.set();await asyncio.wait_for(cleanup,1);close.assert_awaited_once()
+            self.assertEqual(Goals(w.store).snapshot(self.sid)['goal']['status'],'paused')
+            self.assertFalse(any(m=='turn/start' for m,_ in native.calls))
+        finally:
+            reply.set()
+            if cleanup:await cleanup
+
+    async def test_excess_turns_after_stop_are_bounded_and_end_unknown(self):
+        w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
+        transition(w.store,w.run_id,'stopping');await w.stop()
+        for i in range(65):await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'late-'+str(i)}})
+        await asyncio.gather(*w.interrupt_tasks.values())
+        calls=[p for m,p in native.calls if m=='turn/interrupt']
+        self.assertEqual(len(calls),64);self.assertEqual(len({p['turnId'] for p in calls}),64)
+        self.assertTrue(w.uncertain_effect);self.assertEqual(w.outcome,'unknown');self.assertTrue(w.done.is_set())
+        self.assertFalse(any(m=='turn/start' for m,_ in native.calls))
+
     async def test_explicit_new_play_carries_unknown_effect_references_without_arguments_or_replay(self):
         w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
         with w.store.db:w.store.db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,NULL)',

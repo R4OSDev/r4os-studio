@@ -124,8 +124,6 @@ class GoalWorker:
                 (w.run_id,params['turn']['id'],'running'))
             from run_store import event
             event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':params['turn']['id'],'status':'running'})
-            if w.stopping and not self.closed:
-                task=asyncio.create_task(w.stop());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
         elif method=='turn/completed':
             turn=params['turn'];w.turn_id=turn['id'];self.idle.set()
             self.last_turn_status=turn['status']

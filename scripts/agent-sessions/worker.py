@@ -54,7 +54,7 @@ class Worker:
         self.turn_requested = False
         self.uncertain_effect = False
         self.items = {}; self.lease = None
-        self.generated_started=set();self.stop_task=None
+        self.generated_started=set();self.stop_task=None;self.interrupt_tasks={};self.closing=False
         self.sandbox = Sandbox(self)
         from skill_resources import SkillResources
         self.skill_resources = SkillResources(self)
@@ -76,6 +76,7 @@ class Worker:
         if method == 'turn/started':
             self.turn_id = params['turn']['id']
             transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
+            if self.stopping:self.defer_interrupt(self.turn_id)
         elif method == 'turn/completed':
             self.turn_id = params['turn']['id']
             status = params['turn']['status']
@@ -278,6 +279,20 @@ class Worker:
         self.defer_stop()
         if asyncio.current_task() is not self.stop_task:await asyncio.shield(self.stop_task)
 
+    def defer_interrupt(self,turn_id):
+        if self.closing or not self.client or not self.thread_id or not turn_id:return None
+        key=(self.thread_id,turn_id)
+        if key not in self.interrupt_tasks:
+            if len(self.interrupt_tasks)>=64:
+                self.uncertain_effect=True;self.outcome='unknown'
+                self.error=self.error or 'Native turns continued after Stop. The worker will close without starting new work.'
+                self.done.set();return None
+            async def interrupt():
+                try:await self.client.request('turn/interrupt',{'threadId':key[0],'turnId':key[1]},timeout=5)
+                except Exception:pass  # Native process closure remains the final stop boundary.
+            self.interrupt_tasks[key]=asyncio.create_task(interrupt())
+        return self.interrupt_tasks[key]
+
     async def _stop(self):
         try:
             self.stopping = True
@@ -288,9 +303,8 @@ class Worker:
                 from remote_tools import RemoteTools
                 await RemoteTools(self).stop_owned()
             if 'run_project' in tools_for(self.config['engine']['profile']): await self.development.stop_owned()
-            if self.client and self.turn_id:
-                try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
-                except Exception: pass
+            interrupt=self.defer_interrupt(self.turn_id)
+            if interrupt:await asyncio.shield(interrupt)
         except Exception:
             self.uncertain_effect=True
             self.error=self.error or 'The original stop outcome could not be confirmed.'
@@ -301,7 +315,9 @@ class Worker:
 
     async def cleanup(self):
         if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
+        self.closing=True
         if self.goal_worker: await self.goal_worker.close()
+        if self.interrupt_tasks:await asyncio.gather(*self.interrupt_tasks.values(),return_exceptions=True)
         if 'run_remote_command' in tools_for(self.config['engine']['profile']):
             from remote_tools import RemoteTools
             await RemoteTools(self).stop_owned()
