@@ -2,7 +2,7 @@ export type Tab = 'System' | 'Projects' | 'Tools';
 
 export interface NavigationGroup {
   name: string;
-  icon: 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings';
+  icon: 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'statistics';
   items: string[];
 }
 
@@ -11,4 +11,5 @@ export const navigation: NavigationGroup[] = [
   { name: 'Virtual Machines', icon: 'system', items: [] },
   { name: 'Remote Hosts', icon: 'system', items: [] },
   { name: 'Updates', icon: 'box', items: ['R4OS Studio', 'Components', 'Tools', 'R4OS Releases'] },
+  { name: 'Statistics', icon: 'statistics', items: [] },
 ];

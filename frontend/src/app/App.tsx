@@ -1,3 +1,4 @@
+import { StatisticsPanel } from '../features/statistics/StatisticsPanel';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
@@ -27,6 +28,7 @@ import { parseRemoteHostRoute, remoteHostHash } from '../features/remote-hosts/l
 const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
+const projectStatisticsRoute = /^#projects\/([a-f0-9-]{36})\/statistics$/.exec(window.location.hash);
 const projectRoute = /^#projects\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const roadmapRoute = parseRoadmapRoute(window.location.hash);
 const boardRoute = parseBoardRoute(window.location.hash);
@@ -39,7 +41,7 @@ export function App() {
     const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || roadmapRoute || boardRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
+  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || projectStatisticsRoute || roadmapRoute || boardRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
   const [skillId, setSkillId] = useState<string | null>(skillRoute?.[1] ?? null);
   const [skillSessions, setSkillSessions] = useState<Record<string, string | undefined>>(skillRoute ? { [skillRoute[1]]: skillRoute[2] } : {});
   const navigateSkill = useCallback((id: string, session?: string) => setSkillSessions((previous) => ({ ...previous, [id]: session })), []);
@@ -49,15 +51,15 @@ export function App() {
   const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
   const [remoteHostId, setRemoteHostId] = useState<string | null>(remoteHostRoute?.id ?? null);
-  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? roadmapRoute?.projectId ?? boardRoute?.projectId ?? null);
-  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(boardRoute
+  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? projectStatisticsRoute?.[1] ?? roadmapRoute?.projectId ?? boardRoute?.projectId ?? null);
+  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(projectStatisticsRoute ? { [projectStatisticsRoute[1]]: { section: 'Statistics', settingsView: 'General' } } : boardRoute
     ? { [boardRoute.projectId]: { section: 'Boards', settingsView: 'General', boardId: boardRoute.boardId } } : roadmapRoute
     ? { [roadmapRoute.projectId]: { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmapRoute.versionId } }
     : sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
   const selectProject = useCallback((id: string | null) => {
     setProjectId(id);
     const selected = id ? projectNavigation[id] : undefined;
-    window.history.replaceState(null, '', id ? selected?.section === 'Boards' ? boardHash(id, selected.boardId) : selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId) : '#projects/' + id : '#projects');
+    window.history.replaceState(null, '', id ? selected?.section === 'Statistics' ? `#projects/${id}/statistics` : selected?.section === 'Boards' ? boardHash(id, selected.boardId) : selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId) : '#projects/' + id : '#projects');
   }, [projectNavigation]);
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const settingsLeaveGuard = useRef<() => boolean>(() => true);
@@ -65,40 +67,42 @@ export function App() {
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => {
     setProjectNavigation((previous) => ({ ...previous, [id]: value }));
-    const hash = value.section === 'Boards' ? boardHash(id, value.boardId) : value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
-    if ((value.section === 'Roadmap' || value.section === 'Boards' || parseRoadmapRoute(window.location.hash) || parseBoardRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
+    const hash = value.section === 'Statistics' ? `#projects/${id}/statistics` : value.section === 'Boards' ? boardHash(id, value.boardId) : value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
+    if ((value.section === 'Statistics' || /^#projects\/[a-f0-9-]{36}\/statistics$/.test(window.location.hash) || value.section === 'Roadmap' || value.section === 'Boards' || parseRoadmapRoute(window.location.hash) || parseBoardRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
   }, []);
   const [selected, setSelected] = useState<Selection>({
-    group: remoteHostRoute ? 2 : window.location.hash === '#updates' ? 3 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: remoteHostRoute?.view === 'Settings' ? 1 : 0,
+    group: window.location.hash === '#statistics' ? 4 : remoteHostRoute ? 2 : window.location.hash === '#updates' ? 3 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: remoteHostRoute?.view === 'Settings' ? 1 : 0,
   });
   useEffect(() => {
     const restore = () => {
       const hash = window.location.hash;
       if (hash === acceptedHash.current) return;
       const project = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(hash);
+      const projectStatistics = /^#projects\/([a-f0-9-]{36})\/statistics$/.exec(hash);
       const projectEntry = /^#projects\/([a-f0-9-]{36})$/.exec(hash);
       const roadmap = parseRoadmapRoute(hash);
       const board = parseBoardRoute(hash);
       const remoteHost = parseRemoteHostRoute(hash);
       const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
-      if (!project && !projectEntry && !roadmap && !board && !remoteHost && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
+      if (!project && !projectEntry && !projectStatistics && !roadmap && !board && !remoteHost && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates', '#statistics'].includes(hash)) return;
       if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
         window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
       }
       acceptedHash.current = hash;
-      if (remoteHost) { setRemoteHostId(remoteHost.id); setSelected({ group: 2, item: 0, view: remoteHost.view === 'Settings' ? 1 : 0 }); setTab('System'); }
+      if (projectStatistics) { setProjectId(projectStatistics[1]); navigateProject(projectStatistics[1], { section: 'Statistics', settingsView: 'General' }); setTab('Projects'); }
+      else if (remoteHost) { setRemoteHostId(remoteHost.id); setSelected({ group: 2, item: 0, view: remoteHost.view === 'Settings' ? 1 : 0 }); setTab('System'); }
       else if (board) { setProjectId(board.projectId); navigateProject(board.projectId, { section: 'Boards', settingsView: 'General', boardId: board.boardId }); setTab('Projects'); }
       else if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId }); setTab('Projects'); }
       else if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
       else if (projectEntry) {
         setProjectId(projectEntry[1]); setTab('Projects');
-        setProjectNavigation((previous) => ['Roadmap', 'Boards'].includes(previous[projectEntry[1]]?.section ?? '')
+        setProjectNavigation((previous) => ['Roadmap', 'Boards', 'Statistics'].includes(previous[projectEntry[1]]?.section ?? '')
           ? { ...previous, [projectEntry[1]]: { section: 'Sessions', settingsView: 'General' } } : previous);
       }
       else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
       else if (hash === '#tools') { setSkillId(null); setTab('Tools'); }
       else if (hash === '#projects') setTab('Projects');
-      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 3, item: 0, view: 0 }); }
+      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 3, item: 0, view: 0 }); else if (hash === '#statistics') setSelected({ group: 4, item: 0, view: 0 }); }
     };
     window.addEventListener('hashchange', restore);
     window.addEventListener('popstate', restore);
@@ -120,6 +124,7 @@ export function App() {
   const selectedComponent = remotePage ? (activeRemoteHost ? remoteHosts.hosts.indexOf(activeRemoteHost) + 1 : 0) : vmPage ? (activeVm ? vms.vms.indexOf(activeVm) + 1 : 0) : selected.item;
   const item = componentItems[selectedComponent];
   const providerPage = tab === 'System' && group.name === 'Settings' && item === 'LLM Provider';
+  const statisticsPage = tab === 'System' && group.name === 'Statistics';
   const systemPromptPage = tab === 'System' && group.name === 'Settings' && item === 'System Prompt';
   const skillPromptPage = tab === 'System' && group.name === 'Settings' && item === 'Skill Manager Prompt';
   const githubPage = tab === 'System' && group.name === 'Settings' && item === 'GitHub';
@@ -143,9 +148,10 @@ export function App() {
     if (!settingsLeaveGuard.current()) return;
     const next = { ...selected, ...patch };
     if (next.group === 2) { navigateRemoteHost(remoteHostId, next.view === 1 ? 'Settings' : 'Overview'); return; }
-    if (next.group === 0 && next.item === 1) window.history.replaceState(null, '', '#system-prompt');
+    if (next.group === 4) window.history.replaceState(null, '', '#statistics');
+    else if (next.group === 0 && next.item === 1) window.history.replaceState(null, '', '#system-prompt');
     else if (next.group === 0 && next.item === 3) window.history.replaceState(null, '', '#skill-manager-prompt');
-    else if (['#system-prompt', '#skill-manager-prompt'].includes(window.location.hash) || parseRemoteHostRoute(window.location.hash)) window.history.replaceState(null, '', window.location.pathname);
+    else if (['#system-prompt', '#skill-manager-prompt', '#statistics'].includes(window.location.hash) || parseRemoteHostRoute(window.location.hash)) window.history.replaceState(null, '', window.location.pathname);
     setSelected((previous) => ({ ...previous, ...patch }));
   }
 
@@ -168,9 +174,10 @@ export function App() {
     if (tab === 'Tools' && value !== tab && !toolsLeaveGuard.current()) return false;
     if (value === tab) return true;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
+    const projectStats = projectId && projectNavigation[projectId]?.section === 'Statistics' ? `#projects/${projectId}/statistics` : null;
     const board = projectId && projectNavigation[projectId]?.section === 'Boards' ? boardHash(projectId, projectNavigation[projectId].boardId) : null;
     const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId) : null;
-    window.history.pushState(null, '', value === 'Projects' ? (board ?? roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
+    window.history.pushState(null, '', value === 'Projects' ? (projectStats ?? board ?? roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 4 ? '#statistics' : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 
@@ -194,10 +201,10 @@ export function App() {
         </div>
       </header>
 
-      <div className="workspace" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
+      <div className={`workspace ${statisticsPage ? 'statistics-global' : tab === 'Projects' && projectNavigation[projectId ?? '']?.section === 'Statistics' ? 'statistics-project' : ''}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
         {tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
-        <aside className="navigation" aria-label={`${tab} navigation`}>
+        <aside className={`navigation ${statisticsPage ? 'statistics-global' : ''}`} aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
             <div className="column-heading">Areas</div>
             <div className="nav-items">
@@ -205,12 +212,12 @@ export function App() {
                 <button type="button" key={entry.name} className={`nav-item ${selected.group === index ? 'selected' : ''}`}
                   aria-current={selected.group === index ? 'true' : undefined}
                   onClick={() => select({ group: index, item: 0, view: 0 })}>
-                  <Icon name={entry.icon} /><span>{entry.name}</span><Icon name="chevron" className="item-chevron" />
+                  <Icon name={entry.icon} /><span>{entry.name}</span>{entry.name !== 'Statistics' && <Icon name="chevron" className="item-chevron" />}
                 </button>
               ))}
             </div>
           </nav>
-          <nav className="nav-column" aria-label="Components">
+          {!statisticsPage && <><nav className="nav-column" aria-label="Components">
             <div className="column-heading">Components</div>
             <div className="nav-items">
               {componentItems.map((name, index) => (
@@ -243,12 +250,12 @@ export function App() {
                 </button>;
               })}
             </div>
-          </nav>
+          </nav></>}
         </aside>
 
         <main className="main-area">
-          <div className="page-heading"><h1>{remotePage ? activeRemoteHost?.name ?? (remoteHostId ? 'Remote Host' : 'New Remote Host') : vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
+          <div className="page-heading"><h1>{statisticsPage ? 'Statistics' : remotePage ? activeRemoteHost?.name ?? (remoteHostId ? 'Remote Host' : 'New Remote Host') : vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
+          {statisticsPage ? <StatisticsPanel /> : remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} /> : null}
         </main>
         </>}
       </div>

@@ -1,3 +1,4 @@
+import { StatisticsPanel } from '../statistics/StatisticsPanel';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import { useProjects } from './useProjects';
@@ -26,7 +27,7 @@ const EditorPanel = lazy(() => import('../project-editor/EditorPanel'));
 const EditorFiles = lazy(() => import('../project-editor/EditorFiles'));
 
 export interface ProjectNavigation {
-  section: 'Sessions' | 'Editor' | 'GitHub' | 'Roadmap' | 'Boards' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string; roadmapVersionId?: string; boardId?: string;
+  section: 'Sessions' | 'Editor' | 'GitHub' | 'Roadmap' | 'Boards' | 'Statistics' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string; roadmapVersionId?: string; boardId?: string;
 }
 export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
   selectedId: string | null; select: (id: string | null) => void;
@@ -58,7 +59,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   useEffect(() => { setLeaveGuard(leave); return () => setLeaveGuard(() => true); }, [leave, setLeaveGuard]);
 
   return <>
-    <aside className="navigation" aria-label="Projects navigation">
+    <aside className={`navigation ${current.section === 'Statistics' ? 'statistics-project' : ''}`} aria-label="Projects navigation">
       <nav className="nav-column" aria-label="Projects">
         <div className="column-heading">Projects</div>
         <div className="nav-items" aria-busy={api.loading}>
@@ -78,11 +79,11 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav>
       {selected ? <nav className="nav-column" aria-label="Project sections">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Roadmap', 'Boards', 'Settings'] as const).map((section) =>
+        <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Roadmap', 'Boards', 'Statistics', 'Settings'] as const).map((section) =>
           <button key={section} type="button" disabled={saving || selected.deleting || !opening.ready} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
-            }}><Icon name={section === 'Boards' ? 'board' : section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
+            }}><Icon name={section === 'Statistics' ? 'statistics' : section === 'Boards' ? 'board' : section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
       {selected && current.section === 'Boards' ? <BoardNavigation model={boards} disabled={saving || !opening.ready} choose={id => {
         if (leave()) { setDirty(false); navigate(selected.id, { ...current, boardId: id }); }
@@ -104,13 +105,14 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
               : sessions.sessions.map((s) => <button key={s.id} type="button" className={`nav-item ${current.sessionId === s.id ? 'selected' : ''}`} aria-current={current.sessionId === s.id ? 'page' : undefined} onClick={() => chooseSession(s.id)}>
                 <span className="provider-view-name">{s.name}</span>{busyRun(s.latestRun?.state) && <span className="session-nav-status" aria-label="Run active" />}</button>)}
         </div>
-      </nav> : <div className="nav-column" aria-hidden="true" />}
+      </nav> : current.section === 'Statistics' ? null : <div className="nav-column" aria-hidden="true" />}
     </aside>
     <main className={`main-area ${current.section === 'Editor' ? 'editor-main' : current.section === 'Boards' ? 'boards-main' : ''}`} aria-label="Project content">
       {selected && !opening.ready && !selected.deleting && <p className="session-empty" role="status">Checking project GitHub status…</p>}
       {opening.notice && <p className="project-message" role="status">{opening.notice}</p>}
       {selected && (opening.ready || selected.deleting) && <>
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
+        {current.section === 'Statistics' && <StatisticsPanel key={selected.id} projectId={selected.id} reauth={api.reload} />}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
         {current.section === 'GitHub' && <ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Boards' && <BoardPanel key={selected.id + ':' + (current.boardId ?? 'auto')} id={selected.id} token={api.token} renewAuth={api.reload} model={boards} creating={newBoard}
