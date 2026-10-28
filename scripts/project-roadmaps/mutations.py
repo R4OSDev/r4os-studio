@@ -8,8 +8,9 @@ from storage import RoadmapFault, timestamp
 from validation import KINDS, fields, identity, integer, number, target, text
 
 
-def selected_input(value, allowed, require_description=False):
-    fields(value, optional=allowed)
+def selected_input(value, allowed, require_description=False, context='Roadmap input'):
+    fields(value, optional=allowed, context=context,
+           hint='Task and acceptance text uses description; title is not supported.' if require_description else '')
     result = {}
     for key, val in value.items():
         if key == 'status':
@@ -28,10 +29,10 @@ def create(db, reference, data, now):
         raise RoadmapFault('This project already has its roadmap.', 409)
     allowed = ('number', 'title', 'vision', 'notes', 'status') if kind == 'version' else (
         ('number', 'title', 'description', 'notes', 'status') if kind == 'subversion' else ('description', 'notes', 'status'))
-    value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'))
+    value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'), context=kind + ' create input')
     required = 'title' if kind in ('version', 'subversion') else 'description'
     if required not in value:
-        raise RoadmapFault('Enter a title or description for the new roadmap entry.', 400)
+        raise RoadmapFault(kind + ' create input requires ' + required + '.', 400)
     table = KINDS[kind]
     if db.execute('SELECT count(*) FROM ' + table).fetchone()[0] >= (1000 if kind == 'version' else 10000):
         raise RoadmapFault('This roadmap collection has reached its entry limit.', 413)
@@ -68,7 +69,7 @@ def update(db, reference, data, now, action):
         allowed = ('description', 'notes') if kind == 'roadmap' else (
             ('number', 'title', 'vision', 'notes', 'status') if kind == 'version' else (
                 ('number', 'title', 'description', 'notes', 'status') if kind == 'subversion' else ('description', 'notes', 'status')))
-        value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'))
+        value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'), context=kind + ' update input')
         if not value:
             raise RoadmapFault('Select a field to change.', 400)
         if 'status' in value:

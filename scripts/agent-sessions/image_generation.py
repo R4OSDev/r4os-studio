@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 from codex_rpc import CodexRPC
-from profile import CODEX_SHA256,CODEX_VERSION,IMAGE_PROFILE,IMAGE_SKILL_PROFILE,prepare
+from profile import CODEX_SHA256,CODEX_VERSION,IMAGE_PROFILES,IMAGE_SKILL_PROFILE,prepare
 from session_store import provider_models,providers,identity,encode,now
 from store import ProjectFault
 
@@ -15,7 +15,7 @@ def evaluate(session,model,provider,account,engine,bridge=False):
     def finish(state,reason):result.update(state=state,available=state=='available',reason=reason);return result
     if engine.get('sha256')!=CODEX_SHA256 or engine.get('version')!=CODEX_VERSION:
         return finish('unavailable','Select the qualified Codex 0.163.0 runtime before using image generation.')
-    if session['engine'].get('profile') not in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):
+    if session['engine'].get('profile') not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE):
         return finish('unavailable','New session required for generated-image tools. This conversation keeps its original profile.')
     if not model or model.get('imageInputs')=='unknown':return result
     if model.get('imageInputs')!='supported':return finish('unavailable','The selected model does not support the image modality required by the native image tool.')

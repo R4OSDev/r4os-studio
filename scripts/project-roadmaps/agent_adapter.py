@@ -55,7 +55,7 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
         parent = os.getppid(); birth = (Path('/proc') / str(parent) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
         fingerprint = hashlib.sha256(encode({'tool': 'studio_' + tool, 'arguments': arguments}).encode()).hexdigest()
         if (config.get('owner') != {'type': 'project', 'id': project_id}
-                or config.get('roadmapEnabled') is not True or config.get('engine', {}).get('profile') not in ('studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11')
+                or config.get('roadmapEnabled') is not True or config.get('engine', {}).get('profile') not in ('studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11','studio-tools-v12')
                 or config.get('revision') != row[4] or worker.get('pid') != parent or worker.get('birth') != birth
                 or worker.get('release') != release or row[5] != 'studio_' + tool or row[6] != fingerprint):
             raise ProjectFault('Roadmap permission, profile, worker or original call binding changed.', 403)
@@ -102,7 +102,9 @@ def read(projects, project_id, arguments):
     view = arguments['view']; extra = {k: v for k, v in arguments.items() if k != 'view'}
     common = {'projectId': project_id}
     if view in ('overview', 'current', 'revision'):
-        fields(extra, optional=('cursor', 'limit') if view == 'overview' else ())
+        fields(extra, optional=('cursor', 'limit') if view == 'overview' else (),
+               context='read_roadmap view=' + view,
+               hint='expectedRevision is allowed only for view=text. This view returns the latest revision.')
         return compact(operation(projects, {'operation': view, **common, **extra}))
     if view in ('versions', 'subversions', 'tasks', 'acceptances'):
         return compact(operation(projects, {'operation': 'list', 'collection': view, **common, **extra}))

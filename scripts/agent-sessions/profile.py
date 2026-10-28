@@ -18,8 +18,10 @@ ROADMAP_PROFILE = 'studio-tools-v8'
 REMOTE_PROFILE = 'studio-tools-v9'
 DOCUMENT_PROFILE = 'studio-tools-v10'
 IMAGE_PROFILE = 'studio-tools-v11'
-REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE,IMAGE_PROFILE)
-PROFILE = IMAGE_PROFILE
+CONTRACT_PROFILE = 'studio-tools-v12'
+IMAGE_PROFILES = (IMAGE_PROFILE, CONTRACT_PROFILE)
+REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE,*IMAGE_PROFILES)
+PROFILE = CONTRACT_PROFILE
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 DOCUMENT_SKILL_PROFILE = 'studio-skill-tools-v3'
@@ -63,7 +65,7 @@ def tools_for(profile):
     if profile == ROADMAP_PROFILE: return PRE_REMOTE_TOOLS
     if profile == REMOTE_PROFILE: return PRE_ATTACHMENT_TOOLS
     if profile == DOCUMENT_PROFILE:return PRE_IMAGE_TOOLS
-    if profile == IMAGE_PROFILE:return TOOLS
+    if profile in IMAGE_PROFILES:return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 
 
@@ -173,7 +175,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
-    if selected_profile in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):
+    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE):
         from image_provider import PROVIDER
         settings['model_provider']=PROVIDER
     settings['features.fast_mode'] = fast_mode
@@ -203,7 +205,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
             if not re.fullmatch(r'/attachments/[a-f0-9-]{36}\.(png|jpg|webp)',target) or target in seen:raise ValueError('Invalid native image target.')
             seen.add(target);args+=['--ro-bind',str(regular(source)),target]
     if image_generation_enabled:
-        if selected_profile not in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
+        if selected_profile not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
         generated_root=directory(generated_root)
         directory(provider_home/'generated_images')
     args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
@@ -223,7 +225,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         args=['/usr/bin/prlimit','--fsize=67108864:67108864','--',*args]
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
-    if selected_profile in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):
+    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE):
         from image_provider import configuration
         args+=['-c',configuration()]
     return args, {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,

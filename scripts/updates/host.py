@@ -65,13 +65,15 @@ DOCUMENT_COMPATIBILITY = {**REMOTE_COMPATIBILITY,
     'agentToolProfiles': REMOTE_COMPATIBILITY['agentToolProfiles'] + ['studio-tools-v10','studio-skill-tools-v3']}
 IMAGE_COMPATIBILITY = {**DOCUMENT_COMPATIBILITY,
     'agentToolProfiles':DOCUMENT_COMPATIBILITY['agentToolProfiles']+['studio-tools-v11','studio-skill-tools-v4']}
+CONTRACT_COMPATIBILITY = {**IMAGE_COMPATIBILITY,
+    'agentToolProfiles': IMAGE_COMPATIBILITY['agentToolProfiles'] + ['studio-tools-v12']}
 
 
 def compatible(value):
     # Legacy releases remain valid rollback targets. New agent protocols require
     # this explicit host maintenance, never a downloaded privileged installer.
     previous = {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2']}
-    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY, SKILL_COMPATIBILITY, AUTHOR_COMPATIBILITY, UPDATE_COMPATIBILITY, GIT_COMPATIBILITY, INPUT_COMPATIBILITY, ROADMAP_COMPATIBILITY, REMOTE_COMPATIBILITY, DOCUMENT_COMPATIBILITY,IMAGE_COMPATIBILITY)
+    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY, SKILL_COMPATIBILITY, AUTHOR_COMPATIBILITY, UPDATE_COMPATIBILITY, GIT_COMPATIBILITY, INPUT_COMPATIBILITY, ROADMAP_COMPATIBILITY, REMOTE_COMPATIBILITY, DOCUMENT_COMPATIBILITY,IMAGE_COMPATIBILITY,CONTRACT_COMPATIBILITY)
 
 
 def now():

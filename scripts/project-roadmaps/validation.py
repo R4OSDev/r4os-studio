@@ -7,9 +7,17 @@ KINDS = {'roadmap': 'roadmap', 'version': 'versions', 'subversion': 'subversions
 UUID = re.compile(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}')
 
 
-def fields(value, required=(), optional=()):
-    if not isinstance(value, dict) or not set(required) <= value.keys() or set(value) - set(required) - set(optional):
-        raise RoadmapFault('Unexpected roadmap fields.', 400)
+def fields(value, required=(), optional=(), *, context='Roadmap request', hint=''):
+    if not isinstance(value, dict):
+        raise RoadmapFault(context + ' must be an object.', 400)
+    missing = sorted(set(required) - value.keys())
+    unexpected = sorted(set(value) - set(required) - set(optional))
+    if missing or unexpected:
+        details = []
+        if missing: details.append('missing fields: ' + ', '.join(missing))
+        if unexpected: details.append('unexpected fields: ' + ', '.join(repr(key[:80]) for key in unexpected[:8]))
+        details.append('allowed fields: ' + (', '.join(sorted(set(required) | set(optional))) or '(none)'))
+        raise RoadmapFault(context + ': ' + '; '.join(details) + '.' + (' ' + hint if hint else ''), 400)
     return value
 
 

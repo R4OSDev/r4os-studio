@@ -1,3 +1,31 @@
+## Roadmap tool contract correction (0.6.51)
+
+New project sessions use the additive `studio-tools-v12` profile with operation-,
+view-, action- and target-specific Roadmap schemas. Task and acceptance text
+belongs in `description`; versions and subversions use `title`. Only text reads
+accept `expectedRevision`. Validation errors identify missing/unexpected fields,
+allowed fields and their context. The English contract is also composed into
+future runs of existing v8–v11 conversations. All 15 previous native declarations,
+thread identities, permissions and stored roadmap data remain compatible.
+Existing active workers keep their bound release until the run ends.
+
+Local host compatibility: run
+`python3 scripts/agent-sessions/install-roadmap-contract-support.py` explicitly
+as root before the regular update. After installing the immutable release and
+waiting for admitted agent runs to finish, use its `--adopt` option. Development
+and Git coordinators adopt the release at idle; adopt the Remote Host broker
+with `python3 scripts/remote-hosts/install.py --adopt`, which checks active work
+and closes admissions before restarting. Existing protocols and rights remain
+the same. Do not reinitialize the bootstrap or replace stored session profiles.
+
+The original Codex 0.163.0 process and an isolated local SSE fixture confirm that
+the model receives the kind/field constraints (normalized update schema:
+4,930 bytes, below native lossy compaction). A saved v11 conversation resumes
+with the same thread and improved guidance/errors; corrected calls create one
+task. Creation's conditional title/description requirement is also enforced in
+the host before effects. Focused agent/roadmap/HTTP tests, build, TypeScript and
+lint passed. No live provider inference or user-project run is used for testing.
+
 ## Goal Stop after delayed native events (0.6.50)
 
 A completed worker Stop no longer hides a later native turn-start notification.

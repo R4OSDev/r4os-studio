@@ -33,7 +33,7 @@ def validate(args):
 def check_worker(worker):
     row=get_run(worker.store,worker.run_id)
     if (worker.store.owner_type!='project' or worker.config.get('owner')!={'type':'project','id':worker.store.project_id}
-            or worker.config['engine']['profile']!='studio-tools-v11' or not row['busy'] or row['state'] not in ('starting','running')
+            or worker.config['engine']['profile'] not in ('studio-tools-v11','studio-tools-v12') or not row['busy'] or row['state'] not in ('starting','running')
             or worker.stopping or worker.lease is None or worker.lease.closed):raise ProjectFault('Import needs this project’s active original run and workspace lease.',403)
     if not worker.config['permissions'].get('studio.import_generated_image') or not worker.config['permissions'].get('studio.write_file'):
         raise ProjectFault('Import generated image and Write file permissions are required.',403)
