@@ -19,6 +19,7 @@ def operation(projects,request):
     if level>SUPPORTED_FEATURE_LEVEL:raise ProjectFault('Reload R4OS Studio to match the available Board features. Your data was preserved.',409)
     if op in ('mutate','card') and level<2:raise ProjectFault('Reload R4OS Studio to use Board cards and columns.',409)
     if (op=='search' or op=='mutate' and (request.get('input',{}).get('action') in ('create_label','update_label','delete_label') or set(request.get('input',{}).get('input',{}))&{'priority','dueDate','labelIds','checklist'})) and level<3:raise ProjectFault('Reload R4OS Studio to use Board metadata.',409)
+    if op=='mutate' and request.get('input',{}).get('action') in ('archive_board','restore_board','delete_board','archive_card','restore_card') and level<4:raise ProjectFault('Reload R4OS Studio to use Board archives.',409)
     if 'boardId' in request:identity(request['boardId'])
     with connection(projects,project_id,op=='create',client_level=level) as db:
         if db is not None and op in ('list','get','receipt','card','search'):db.execute('BEGIN')

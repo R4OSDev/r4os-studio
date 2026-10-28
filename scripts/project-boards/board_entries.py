@@ -4,7 +4,7 @@ from board_model import column,card_row
 from board_validation import fields,identity,integer,text,MAX_COLUMNS,MAX_CARDS
 from store import ProjectFault
 
-ACTIONS=('create_column','update_column','delete_column','create_card','update_card','delete_card','move_card','move_column','create_label','update_label','delete_label')
+ACTIONS=('create_column','update_column','delete_column','create_card','update_card','delete_card','move_card','move_column','create_label','update_label','delete_label','archive_board','restore_board','delete_board','archive_card','restore_card')
 
 def normalize(db,table,parent_key,parent):
     for position,row in enumerate(db.execute('SELECT id,position FROM '+table+' WHERE '+parent_key+'=? ORDER BY position,id',(parent,)).fetchall()):
@@ -61,6 +61,9 @@ def apply(db,bid,action,data,stamp):
     elif action in ('create_label','update_label','delete_label'):
         from board_metadata import edit_label
         result=edit_label(db,bid,action,data,stamp)
+    elif action in ('archive_board','restore_board','delete_board','archive_card','restore_card'):
+        from board_archive import apply as archive
+        result=archive(db,bid,action,data,stamp)
     else:raise ProjectFault('Unsupported Board entry action.',400)
     db.execute('UPDATE boards SET revision=revision+1,order_revision=order_revision+?,updated_at=? WHERE id=?',(int(reordered),stamp,bid))
     return result

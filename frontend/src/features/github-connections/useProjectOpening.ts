@@ -7,7 +7,12 @@ interface Opening { id: string | null; phase: 'checking' | 'prompt' | 'updating'
 export function useProjectOpening(id: string | null, token: string) {
   const [value, setValue] = useState<Opening>({ id: null, phase: 'checking' });
   const generation = useRef(0);
+  const opened = useRef<string | null>(null);
   useEffect(() => {
+    // CSRF rotation is not another project opening. Preserve mounted forms and
+    // the user's existing Update/Ignore decision when refreshing browser auth.
+    if (id && opened.current === id) return;
+    opened.current = null;
     const controller = new AbortController(), current = ++generation.current;
     const timer = window.setTimeout(() => {
       if (!id || !token) return;
@@ -15,16 +20,17 @@ export function useProjectOpening(id: string | null, token: string) {
       void (async () => {
         try {
           const bound = await projectRequest<{ binding: GitHubProjectBinding | null }>(`/${id}/github`, '', 'GET', undefined, controller.signal);
-          if (!bound.binding) { if (!controller.signal.aborted && generation.current === current) setValue({ id, phase: 'ready' }); return; }
+          if (!bound.binding) { if (!controller.signal.aborted && generation.current === current) { opened.current = id; setValue({ id, phase: 'ready' }); } return; }
           const requestId = projectRequestId();
           const accepted = await projectRequest<GitHubJob>(`/${id}/github/jobs`, token, 'POST', { requestId, kind: 'check', input: {} }, controller.signal);
           const job = await waitGitJob(id, requestId, accepted, undefined, controller.signal);
           if (controller.signal.aborted || generation.current !== current) return;
           if (job.state !== 'completed' || !job.result || !('snapshot' in job.result)) throw new Error(job.error ?? 'Remote state could not be checked.');
           const status = job.result;
+          opened.current = id;
           setValue({ id, phase: status.behind > 0 && ['behind', 'diverged'].includes(status.state) ? 'prompt' : 'ready', status });
         } catch (e) {
-          if (!controller.signal.aborted && generation.current === current) setValue({ id, phase: 'ready', notice: 'GitHub status unavailable: ' + (e as Error).message });
+          if (!controller.signal.aborted && generation.current === current) { opened.current = id; setValue({ id, phase: 'ready', notice: 'GitHub status unavailable: ' + (e as Error).message }); }
         }
       })();
     }, 0);

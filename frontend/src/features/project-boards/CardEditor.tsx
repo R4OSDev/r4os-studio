@@ -8,8 +8,8 @@ import type { useBoardChange } from './useBoardChange';
 type Control = ReturnType<typeof useBoardChange>;
 type Read = { card: BoardCard; boardRevision: number };
 
-export function CardEditor({ projectId, boardId, cardId, boardRevision, labels, control, close, dirtyChanged }: {
-  projectId: string; boardId: string; cardId: string; boardRevision: number; labels: BoardLabel[]; control: Control; close: () => void; dirtyChanged: (value: boolean) => void;
+export function CardEditor({ projectId, boardId, cardId, boardRevision, labels, readOnly, readError, control, close, dirtyChanged }: {
+  projectId: string; boardId: string; cardId: string; boardRevision: number; labels: BoardLabel[]; readOnly: boolean; readError: string; control: Control; close: () => void; dirtyChanged: (value: boolean) => void;
 }) {
   const [current, setCurrent] = useState<Read | null>(null), [error, setError] = useState('');
   useEffect(() => {
@@ -21,10 +21,10 @@ export function CardEditor({ projectId, boardId, cardId, boardRevision, labels, 
     }).catch((failure: Error) => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
   }, [projectId, boardId, cardId, boardRevision]);
-  return current ? <CardForm current={current} labels={labels} error={error} control={control} close={close} dirtyChanged={dirtyChanged} />
+  return current ? <CardForm current={current} labels={labels} readOnly={readOnly} error={readError || error} control={control} close={close} dirtyChanged={dirtyChanged} />
     : <BoardDialog title="Card details" close={close}><div className="board-dialog-body"><p role={error ? 'alert' : 'status'}>{error || 'Loading card…'}</p></div><footer className="project-actions"><button type="button" onClick={close}>Cancel</button></footer></BoardDialog>;
 }
-function CardForm({ current, labels, error, control, close, dirtyChanged }: { current: Read; labels: BoardLabel[]; error: string; control: Control; close: () => void; dirtyChanged: (value: boolean) => void }) {
+function CardForm({ current, labels, readOnly, error, control, close, dirtyChanged }: { current: Read; labels: BoardLabel[]; readOnly: boolean; error: string; control: Control; close: () => void; dirtyChanged: (value: boolean) => void }) {
   const [baseline, setBaseline] = useState(current), [draft, setDraft] = useState(() => cardDraft(current.card));
   const { title, description } = draft;
   const fields = Object.keys(draft) as (keyof CardDraft)[];
@@ -35,14 +35,15 @@ function CardForm({ current, labels, error, control, close, dirtyChanged }: { cu
   useEffect(() => { dirtyChanged(dirty); return () => dirtyChanged(false); }, [dirty, dirtyChanged]);
   const invalid = !title.trim() || Array.from(title.trim()).length > 240 || Array.from(description).length > 16000 || draft.checklist.some(item => !item.text.trim() || Array.from(item.text.trim()).length > 240) || draft.labelIds.some(id => !labels.some(label => label.id === id));
   function submit(remove = false) {
-    if (locked || conflict || !!error || (!remove && invalid)) return;
+    if (locked || readOnly || conflict || !!error || (!remove && (invalid || current.card.archived))) return;
     void control.perform({ kind: 'mutate', boardId: current.card.boardId, body: { requestId: projectRequestId(), expectedRevision: baseline.boardRevision,
       action: remove ? 'delete_card' : 'update_card', input: { cardId: current.card.id, expectedCardRevision: baseline.card.revision,
         ...(remove ? { confirm: true as const } : { ...Object.fromEntries(fields.filter(changed).map(key => [key, key === 'checklist' ? draft.checklist.map(({ id, text, checked, revision }) => ({ id, text, checked, revision })) : draft[key]])) }) } } });
   }
   return <BoardDialog title="Card details" close={() => { if (!control.busy) close(); }}><form onSubmit={event => { event.preventDefault(); submit(); }}>
-    <fieldset className="project-fields" disabled={locked || deleting}><label className="project-field">Title<input value={title} maxLength={960} onChange={event => { const title = event.target.value; setDraft(old => ({ ...old, title })); }} /></label>
+    <fieldset className="project-fields" disabled={locked || readOnly || current.card.archived || deleting}><label className="project-field">Title<input value={title} maxLength={960} onChange={event => { const title = event.target.value; setDraft(old => ({ ...old, title })); }} /></label>
       <label className="project-field">Description<textarea rows={6} value={description} maxLength={64000} onChange={event => { const description = event.target.value; setDraft(old => ({ ...old, description })); }} /></label><CardMetadataFields draft={draft} setDraft={setDraft} labels={labels} /></fieldset>
+    {current.card.archived && <p className="project-dialog-status">Archived card. Restore it to edit its details.</p>}
     {conflict && <div className="board-conflict" role="status"><p>This card or Board changed. Your draft was preserved.</p><p className="board-current-text">Saved: {current.card.title}{'\n' + current.card.description}{'\nPriority: ' + current.card.priority + ' · Due: ' + (current.card.dueDate ?? 'none')}{'\nLabels: ' + labels.filter(label => current.card.labelIds.includes(label.id)).map(label => label.name).join(', ')}{'\nChecklist: ' + current.card.checklist.map(item => (item.checked ? '☑ ' : '☐ ') + item.text).join(' · ')}</p>
       <button type="button" disabled={locked} onClick={() => {
         const saved = cardDraft(current.card), next = { ...draft };
@@ -60,8 +61,8 @@ function CardForm({ current, labels, error, control, close, dirtyChanged }: { cu
     {(error || control.error) && <p className="project-dialog-error" role="alert">{error || control.error}</p>}
     {control.pending && <div className="board-conflict"><button type="button" disabled={control.busy} onClick={() => void control.check()}>Check original change</button><button type="button" disabled={control.busy} onClick={() => void control.retry()}>Retry original change</button></div>}
     {deleting && <div className="board-conflict" role="group" aria-label="Confirm card deletion"><p>Permanently delete <strong>{current.card.title}</strong> and its details?</p>
-      <button type="button" disabled={locked} onClick={() => setDeleting(false)}>Keep card</button><button type="button" className="board-danger" disabled={locked || conflict || !!error} onClick={() => submit(true)}>Delete permanently</button></div>}
-    <footer className="project-actions"><button type="button" className="board-danger" disabled={locked || !!error} onClick={() => setDeleting(true)}>Delete card</button>
-      <button type="button" disabled={control.busy} onClick={close}>Cancel</button><button className="project-primary" disabled={locked || deleting || conflict || invalid || !dirty || !!error}>Save</button></footer>
+      <button type="button" disabled={locked} onClick={() => setDeleting(false)}>Keep card</button><button type="button" className="board-danger" disabled={locked || readOnly || conflict || !!error} onClick={() => submit(true)}>Delete permanently</button></div>}
+    <footer className="project-actions"><button type="button" disabled={locked || readOnly || conflict || !!error || dirty} onClick={() => void control.perform({ kind: 'mutate', boardId: current.card.boardId, body: { requestId: projectRequestId(), expectedRevision: baseline.boardRevision, action: current.card.archived ? 'restore_card' : 'archive_card', input: { cardId: current.card.id, expectedCardRevision: baseline.card.revision } } })}>{current.card.archived ? 'Restore card' : 'Archive card'}</button><button type="button" className="board-danger" disabled={locked || readOnly || !!error} onClick={() => setDeleting(true)}>Delete card</button>
+      <button type="button" disabled={control.busy} onClick={close}>Cancel</button><button className="project-primary" disabled={locked || readOnly || current.card.archived || deleting || conflict || invalid || !dirty || !!error}>Save</button></footer>
   </form></BoardDialog>;
 }

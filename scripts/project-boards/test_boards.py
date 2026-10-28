@@ -72,7 +72,7 @@ class Boards(unittest.TestCase):
 
     def test_corruption_unknown_schema_links_and_invalid_text_preserve_existing_bytes(self):
         self.create();path=self.projects/self.pid/'Boards/Boards.sqlite'
-        with sqlite3.connect(path) as db:db.execute('PRAGMA user_version=999')
+        with closing(sqlite3.connect(path)) as db,db:db.execute('PRAGMA user_version=999')
         before=path.read_bytes()
         with self.assertRaises(ProjectFault):self.call()
         self.assertEqual(path.read_bytes(),before)
@@ -95,7 +95,7 @@ class Boards(unittest.TestCase):
 
     def test_future_feature_level_and_legacy_source_layout_are_preserved(self):
         self.create();path=self.projects/self.pid/'Boards/Boards.sqlite'
-        with sqlite3.connect(path) as db:db.execute('UPDATE meta SET feature_level=99')
+        with closing(sqlite3.connect(path)) as db,db:db.execute('UPDATE meta SET feature_level=99')
         before=path.read_bytes()
         with self.assertRaises(ProjectFault):self.call()
         self.assertEqual(path.read_bytes(),before)

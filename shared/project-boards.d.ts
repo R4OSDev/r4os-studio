@@ -18,11 +18,11 @@ export interface BoardSnapshot { projectId: string; revision: number; board: Boa
 export interface BoardCreate { requestId: string; expectedRevision: number; name: string; description?: string }
 export interface BoardUpdate { requestId: string; expectedRevision: number; name?: string; description?: string }
 export interface BoardOrder { requestId: string; expectedRevision: number; ids: string[] }
-export type BoardEntryAction = 'create_column' | 'update_column' | 'delete_column' | 'create_card' | 'update_card' | 'delete_card' | 'move_card' | 'move_column' | 'create_label' | 'update_label' | 'delete_label';
+export type BoardEntryAction = 'create_column' | 'update_column' | 'delete_column' | 'create_card' | 'update_card' | 'delete_card' | 'move_card' | 'move_column' | 'create_label' | 'update_label' | 'delete_label' | 'archive_board' | 'restore_board' | 'delete_board' | 'archive_card' | 'restore_card';
 export interface BoardMutation {
   requestId: string; expectedRevision: number; expectedOrderRevision?: number; action: BoardEntryAction;
   input: { columnId?: string; sourceColumnId?: string; targetColumnId?: string; expectedColumnRevision?: number; cardId?: string; expectedCardRevision?: number; position?: number; title?: string; description?: string; confirm?: true; priority?: BoardCard['priority']; dueDate?: string | null; labelIds?: string[]; checklist?: Omit<BoardChecklistItem, 'position'>[]; labelId?: string; expectedLabelRevision?: number; name?: string; color?: BoardColor };
 }
-export interface BoardReceipt { requestId: string; projectRevision: number; boardId?: string; revision?: number; board?: BoardSummary; cardId?: string; columnId?: string; deleted?: boolean; movedCards?: number; unchanged?: boolean; labelId?: string; labelRemoved?: boolean }
+export interface BoardReceipt { requestId: string; projectRevision: number; boardId?: string; revision?: number; board?: BoardSummary; cardId?: string; columnId?: string; deleted?: boolean; movedCards?: number; unchanged?: boolean; labelId?: string; labelRemoved?: boolean; boardArchived?: boolean; cardArchived?: boolean; boardDeleted?: boolean }
 
 export interface BoardSearch { projectId: string; boardId: string; boardRevision: number; cardIds: string[] }

@@ -100,6 +100,15 @@ with sqlite3.connect(sys.argv[1]) as db:
     const found = await app.inject({ url: base + '/' + bid + '/search?clientLevel=3&q=description%20needle', headers });
     assert.equal(found.statusCode, 200, found.body); assert.deepEqual(found.json().cardIds, [cardId]);
     assert.equal((await app.inject({ method: 'POST', url: metadataUrl, headers, payload: { ...metadata, requestId: randomUUID(), expectedRevision: metadataSaved.json().revision, input: { cardId, expectedCardRevision: metadataCard.revision + 1, dueDate: false } } })).statusCode, 400);
+    const archiveUrl = metadataUrl.replace('clientLevel=3', 'clientLevel=4');
+    const archiveSnapshot = (await app.inject({ url: base + '/' + bid + '?clientLevel=4', headers })).json();
+    const archived = await app.inject({ method: 'POST', url: archiveUrl, headers, payload: { requestId: randomUUID(), expectedRevision: archiveSnapshot.board.revision, action: 'archive_board', input: {} } });
+    assert.equal(archived.statusCode, 200, archived.body); assert.equal(archived.json().boardArchived, true);
+    const readArchived = await app.inject({ url: base + '/' + bid + '?clientLevel=4', headers });
+    assert.deepEqual(readArchived.json().cards, archiveSnapshot.cards);
+    assert.equal((await app.inject({ url: base + '?clientLevel=3', headers })).statusCode, 409);
+    const restoredBoard = await app.inject({ method: 'POST', url: archiveUrl, headers, payload: { requestId: randomUUID(), expectedRevision: archived.json().revision, action: 'restore_board', input: {} } });
+    assert.equal(restoredBoard.statusCode, 200, restoredBoard.body);
     const database = join(directory, id, 'Boards/Boards.sqlite');
     await writeFile(database, 'Owned unknown data; must never be reinitialized');
     const bytes = await readFile(database);

@@ -23,9 +23,10 @@ function strict(value: unknown, allowed: string[]) {
 function strictEntry(value: BoardMutation) {
   strict(value, ['requestId', 'expectedRevision', 'expectedOrderRevision', 'action', 'input']);
   if (Object.hasOwn(value, 'expectedOrderRevision') && !Number.isSafeInteger(value.expectedOrderRevision)) throw new ProjectError('Invalid Board order revision.', 400);
-  const allowed = {
+  const allowed: Record<BoardMutation['action'], string[]> = {
     create_column: ['title'], update_column: ['columnId', 'expectedColumnRevision', 'title'], delete_column: ['columnId', 'expectedColumnRevision', 'confirm', 'targetColumnId'],
     create_card: ['columnId', 'title', 'description'], update_card: ['cardId', 'expectedCardRevision', 'title', 'description', 'priority', 'dueDate', 'labelIds', 'checklist'], delete_card: ['cardId', 'expectedCardRevision', 'confirm'],
+    archive_board: [], restore_board: [], delete_board: ['confirm'], archive_card: ['cardId', 'expectedCardRevision'], restore_card: ['cardId', 'expectedCardRevision'],
     create_label: ['name', 'color'], update_label: ['labelId', 'expectedLabelRevision', 'name', 'color'], delete_label: ['labelId', 'expectedLabelRevision', 'confirm'],
     move_card: ['cardId', 'expectedCardRevision', 'sourceColumnId', 'targetColumnId', 'position'], move_column: ['columnId', 'expectedColumnRevision', 'position'],
   };
@@ -86,7 +87,7 @@ export function boardRoutes(app: FastifyInstance, directory: string, sessions: P
     bodyLimit: 131072, preValidation: async request => strictEntry(request.body),
     schema: { params: parameterSchema(['id', 'boardId']), querystring, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'expectedRevision', 'action', 'input'], properties: {
-        requestId: uuid, expectedRevision: revision, expectedOrderRevision: { ...revision, minimum: 1 }, action: { enum: ['create_column', 'update_column', 'delete_column', 'create_card', 'update_card', 'delete_card', 'move_card', 'move_column', 'create_label', 'update_label', 'delete_label'] },
+        requestId: uuid, expectedRevision: revision, expectedOrderRevision: { ...revision, minimum: 1 }, action: { enum: ['create_column', 'update_column', 'delete_column', 'create_card', 'update_card', 'delete_card', 'move_card', 'move_column', 'create_label', 'update_label', 'delete_label', 'archive_board', 'restore_board', 'delete_board', 'archive_card', 'restore_card'] },
         input: { type: 'object', additionalProperties: false, properties: {
           columnId: uuid, sourceColumnId: uuid, targetColumnId: uuid, cardId: uuid, expectedColumnRevision: { ...revision, minimum: 1 }, expectedCardRevision: { ...revision, minimum: 1 }, position: { type: 'integer', minimum: 0, maximum: 1000 },
           priority: { enum: ['low', 'normal', 'high'] }, dueDate: { anyOf: [{ type: 'string', pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' }, { type: 'null' }] },

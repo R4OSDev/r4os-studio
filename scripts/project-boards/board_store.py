@@ -16,7 +16,7 @@ from store import ProjectFault
 from board_schema import SCHEMA,VERSION,APPLICATION_ID
 
 MAX_DATABASE_BYTES=128*1024*1024
-SUPPORTED_FEATURE_LEVEL=3
+SUPPORTED_FEATURE_LEVEL=4
 
 def regular(path):
     info=path.lstat()
@@ -80,6 +80,10 @@ def connection(projects,project_id,create=False,client_level=None):
             if client_level is not None and binding[1]>client_level:raise ProjectFault('Reload R4OS Studio to use the current Board features. Your original data was preserved.',409)
             if binding[1]==1 and any(db.execute('SELECT 1 FROM '+table+' LIMIT 1').fetchone() for table in ('cards','labels','checklist','card_labels')):
                 raise ProjectFault('Board feature metadata needs maintenance. Existing data was preserved.',503)
+            for table,parent_key in (('boards',None),('columns','board_id'),('cards','column_id'),('checklist','card_id')):
+                grouped=' GROUP BY '+parent_key if parent_key else ''
+                if db.execute('SELECT COUNT(*) FROM '+table+grouped+' HAVING COUNT(*)>0 AND (MIN(position)!=0 OR MAX(position)!=COUNT(*)-1 OR COUNT(DISTINCT position)!=COUNT(*)) LIMIT 1').fetchone():
+                    raise ProjectFault('Board order metadata needs maintenance. Existing data was preserved.',503)
             page_size=db.execute('PRAGMA page_size').fetchone()[0];db.execute('PRAGMA max_page_count='+str(MAX_DATABASE_BYTES//page_size))
             yield db
         finally:db.close()

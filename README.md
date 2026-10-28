@@ -3087,3 +3087,30 @@ requiring older browser tabs to reload. Physical schema1 and existing IDs remain
 21 focused unprivileged cases, real HTTP and browser1440/320 checks passed,
 including a leap date in Pacific/Honolulu and hidden-order-preserving filtered
 Move. No model or VM run was needed.
+
+### Board archives and lifecycle (0.6.40)
+
+Boards and cards have separate archive/restore actions. Show archived exposes
+archived entries; Board archive leaves every card's own state intact. Archived
+contents remain readable; restore precedes edits. Permanent Board deletion names
+its columns/cards/labels/checklist counts and cascades only the selected Board.
+Original receipts remain available after deletion, so a lost reply does not
+recreate or repeat the removal. Archive writes raise data/browser level4; physical
+schema1 and existing stable IDs remain unchanged.
+
+Visible views refresh every15 seconds and on focus. Saved changes never replace
+an open local draft; revision review remains explicit. A removed current Board
+keeps its draft and error instead of selecting another Board. A definite expired
+auth rejection refreshes only the browser token; another user Save is required.
+Boards hold shared project lifetime only, allowing manual edits beside active
+agent/Goal/build and exclusive source locks, while confirmed project deletion
+waits and removes only its own private data. Rename keeps UUID ownership.
+
+The existing seven-source ZIP64 backup already takes an online SQLite snapshot
+of private Projects databases. A real isolated backup/restore with a live Board
+WAL and concurrent writes preserved IDs, archive flags, labels, checklist, dates,
+receipts and0600. Sidecars are excluded. No backup source was added; restore does
+not provide a global snapshot across databases/files. Real private Git status
+still contains Workspace sources only. Corrupt schema, non-dense order or disk
+failure preserve original data/request identity for inspection, with no automatic
+repair or destructive replay. No native tool/profile or VM/remote state changed.

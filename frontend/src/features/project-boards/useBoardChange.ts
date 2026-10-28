@@ -12,7 +12,7 @@ function read(key: string): BoardChange | null {
       && (!['update', 'mutate'].includes(value.kind) || /^[a-f0-9-]{36}$/.test(value.boardId)) ? value : null;
   } catch { return null; }
 }
-export function useBoardChange(projectId: string, token: string, accepted: (receipt: BoardReceipt, change: BoardChange) => void, busyChanged: (value: boolean) => void, reload: () => void) {
+export function useBoardChange(projectId: string, token: string, accepted: (receipt: BoardReceipt, change: BoardChange) => void, busyChanged: (value: boolean) => void, reload: () => void, renewAuth: () => Promise<void>) {
   const key = 'studio.boards.request.' + projectId;
   const [pending, setPending] = useState(() => read(key)), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const current = useRef(pending), mounted = useRef(true), active = useRef(false), acceptedRef = useRef(accepted);
@@ -55,6 +55,7 @@ export function useBoardChange(projectId: string, token: string, accepted: (rece
       if (issue.status >= 400 && issue.status < 500) {
         sessionStorage.removeItem(key); current.current = null; setPending(null); setError(issue.message);
         if (issue.status === 409) reload();
+        if (issue.status === 403) await renewAuth(); // Refresh auth only; preserve the draft and require another explicit Save.
       } else await check(change); // Read-only recovery; never automatically POST again.
     } finally { active.current = false; if (mounted.current) setBusy(false); }
   }

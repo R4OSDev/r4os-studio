@@ -37,6 +37,7 @@ def mutate(db,project_id,operation,data,ident=None):
             fields(data,('requestId','expectedRevision'),('name','description'))
             if not set(data)&{'name','description'}:raise ProjectFault('Choose a Board field to change.',400)
             row=board(db,ident)
+            if row['archived']:raise ProjectFault('Restore this archived Board before editing it.',409)
             if row['revision']!=data['expectedRevision']:raise ProjectFault('This Board changed. Your draft was preserved; reload before saving.',409)
             name=text(data.get('name',row['name']));description=text(data.get('description',row['description']),8000,True,True)
             db.execute('UPDATE boards SET name=?,name_key=?,description=?,revision=revision+1,updated_at=? WHERE id=?',(name,name_key(name),description,stamp,ident))
@@ -48,6 +49,10 @@ def mutate(db,project_id,operation,data,ident=None):
         elif operation=='mutate':
             fields(data,('requestId','expectedRevision','action','input'),('expectedOrderRevision',));row=board(db,ident)
             if row['revision']!=data['expectedRevision']:raise ProjectFault('This Board changed. Your draft was preserved; reload before saving.',409)
+            if row['archived'] and data['action'] not in ('restore_board','delete_board'):raise ProjectFault('Restore this archived Board before making changes.',409)
+            if data['action'] in ('update_card','move_card'):
+                from board_model import card_row
+                if card_row(db,ident,identity(data['input'].get('cardId')))['archived']:raise ProjectFault('Restore this archived card before editing or moving it.',409)
             if data['action'] in ('move_card','move_column'):
                 if row['order_revision']!=integer(data.get('expectedOrderRevision')):raise ProjectFault('The Board order changed. Review the current order before moving.',409)
             elif 'expectedOrderRevision' in data:raise ProjectFault('This Board action does not accept an order revision.',400)
@@ -56,7 +61,9 @@ def mutate(db,project_id,operation,data,ident=None):
         else:raise ProjectFault('Unsupported Board mutation.',400)
         db.execute('UPDATE meta SET revision=revision+1 WHERE singleton=1')
         result={'requestId':rid,'projectRevision':revision(db),**extra}
-        if ident:result.update(boardId=ident,revision=board(db,ident)['revision'],board=summary(db,board(db,ident)))
+        if ident:
+            result['boardId']=ident
+            if not extra.get('boardDeleted'):result.update(revision=board(db,ident)['revision'],board=summary(db,board(db,ident)))
         db.execute('INSERT INTO requests VALUES(?,?,?,?)',(rid,fingerprint,encode(result),stamp));db.commit();return result
     finally:
         if db.in_transaction:db.rollback()

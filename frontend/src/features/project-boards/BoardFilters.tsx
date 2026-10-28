@@ -26,8 +26,8 @@ export function useBoardFilters(projectId: string, data: BoardSnapshot | null) {
   return { query, setQuery, label, setLabel, priority, setPriority, due, setDue, active, searching, error: needle ? Array.from(needle).length > 256 ? 'Use at most256 search characters.' : error : '', includes,
     clear: () => { setQuery(''); setLabel(''); setPriority(''); setDue(''); setError(''); } };
 }
-export function BoardFilters({ data, filters }: { data: BoardSnapshot; filters: ReturnType<typeof useBoardFilters> }) {
-  const visible = data.cards.filter(card => !card.archived && filters.includes(card)).length, total = data.cards.filter(card => !card.archived).length;
+export function BoardFilters({ data, filters, showArchived }: { data: BoardSnapshot; showArchived: boolean; filters: ReturnType<typeof useBoardFilters> }) {
+  const visible = data.cards.filter(card => (showArchived || !card.archived) && filters.includes(card)).length, total = data.cards.filter(card => showArchived || !card.archived).length;
   return <div className="board-filters" role="search" aria-label="Filter cards"><label>Search cards<input type="search" placeholder="Title or description" value={filters.query} maxLength={1024} onChange={event => filters.setQuery(event.target.value)} /></label>
     <label>Label<select value={filters.label} onChange={event => filters.setLabel(event.target.value)}><option value="">All labels</option>{data.labels.map(label => <option key={label.id} value={label.id}>{label.name}</option>)}{filters.label && !data.labels.some(label => label.id === filters.label) && <option value={filters.label}>Removed label</option>}</select></label>
     <label>Priority<select value={filters.priority} onChange={event => filters.setPriority(event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
