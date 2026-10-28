@@ -36,6 +36,7 @@ export interface SessionAttachment {
 export interface RunAttachment {
   id: string; sha256: string; mediaType: string; size: number; mode: AttachmentInputMode;
 }
+export type FrozenAttachment = Omit<SessionAttachment, 'state' | 'referenced' | 'storedBytes'>;
 export interface AttachmentReceipt {
   requestId: string; state: 'pending' | 'ready' | 'rejected' | 'unknown' | 'removed';
   attachment?: SessionAttachment; reason?: string;

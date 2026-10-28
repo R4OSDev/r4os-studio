@@ -62,7 +62,10 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
       next = { state: 'ready', attachment: value, progress: 100, error: undefined, retryable: false };
       files.delete(key + ':' + original.requestId);
     } else if (receipt.state === 'pending') next = { state: 'checking', error: undefined };
-    else next = { state: 'error', error: receipt.reason ?? 'This upload is unavailable. Select a new file or remove this draft.', retryable: false };
+    else {
+      files.delete(key + ':' + original.requestId);
+      next = { state: 'error', error: receipt.reason ?? 'This upload is unavailable. Select a new file or remove this draft.', retryable: false };
+    }
     store(old => old.map(item => item.requestId === original.requestId ? { ...item, ...next } : item));
   }, [key, sessionId, store]);
   useEffect(() => {

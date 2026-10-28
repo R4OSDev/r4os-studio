@@ -2998,3 +2998,17 @@ Send fingerprint. Offline restore uses the same readonly provenance checks.
 File manifests are lower-trust task data, preserve Send order and grant no
 Goal/tool/Remote/transfer rights. Native Goal limits and input extraction limits
 remain explicit; historical tools and saved prompt hashes remain unchanged.
+
+### Goal and attachments accepted together (0.6.34)
+
+Project and Skill sessions provide the two-row Goal UI, run model controls and
+attachment paperclip in Studio colors, with responsive controls down to320px.
+Save does not start work; explicit Play enables native continuation. Pause keeps
+the current turn, Stop interrupts the owned run, and only explicit Send binds
+Ready files. Original replies and historical files remain owner-bound.
+The actual pinned native binary/Studio worker are qualified with deterministic
+local protocol fixtures: a Goal reuses historical image inputs and reads past
+documents through the real broker on the same thread, alongside native
+continuation/Stop/limits/recovery. These checks use no model inference or paid
+requests. Three isolated browser groups and authenticated HTTP checks pass.
+See Docs/Goal-Attachments.md and the0.6.34 evidence matrix for scope and limits.

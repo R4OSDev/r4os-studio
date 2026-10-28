@@ -40,7 +40,7 @@ export interface SessionOptions {
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }
 export interface SessionItem {
-  attachments?: import('./agent-inputs.js').SessionAttachment[];
+  attachments?: import('./agent-inputs.js').FrozenAttachment[];
   id: string; runId: string; turnId?: string; type: string; text?: string; tool?: string; status?: string;
   arguments?: unknown; output?: string; error?: string; exitCode?: number; [key: string]: unknown;
   developmentStop?: import('./project-development.js').DevelopmentStopReceipt;

@@ -12,9 +12,10 @@ function StorageDialog({ control, close }: { control: ReturnType<typeof useAttac
   const dialog = useRef<HTMLDialogElement>(null), [listing, setListing] = useState<AttachmentListing | null>(null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => {
-    dialog.current?.showModal(); let alive = true;
+    const element = dialog.current!, opener = document.activeElement;
+    element.showModal(); let alive = true;
     void control.listStored().then(value => { if (alive) setListing(value); }).catch((failure: Error) => { if (alive) setError(failure.message); });
-    return () => { alive = false; };
+    return () => { alive = false; element.close(); if (opener instanceof HTMLElement && opener.isConnected && !opener.matches(':disabled')) opener.focus(); };
     // The keyed session owns this dialog. Refresh uses the latest control below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

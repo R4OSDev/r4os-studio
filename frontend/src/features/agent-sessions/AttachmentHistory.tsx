@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import type { SessionAttachment } from '../../../../shared/agent-inputs';
+import type { FrozenAttachment } from '../../../../shared/agent-inputs';
 import { useSessionApi, sessionPath } from './api';
 
-export function AttachmentHistory({ files, projectId, sessionId }: { files: SessionAttachment[]; projectId: string; sessionId: string }) {
+export function AttachmentHistory({ files, projectId, sessionId }: { files: FrozenAttachment[]; projectId: string; sessionId: string }) {
   const { base } = useSessionApi();
   return <ul className="agent-attachment-list agent-attachment-history" aria-label="Sent attachments">{files.slice(0, 8).filter(file =>
     typeof file.id === 'string' && /^[a-f0-9-]{36}$/.test(file.id) && typeof file.name === 'string').map(file =>
     <HistoryFile key={file.id} file={file} url={base + sessionPath(projectId, sessionId) + '/attachments/' + file.id} />)}</ul>;
 }
-function HistoryFile({ file, url }: { file: SessionAttachment; url: string }) {
+function HistoryFile({ file, url }: { file: FrozenAttachment; url: string }) {
   const [failed, setFailed] = useState(false);
   return <li className="agent-attachment-card">
     {file.mode === 'localImage' && !failed && <img src={url + '/preview'} alt={'Preview: ' + file.name} loading="lazy" onError={() => setFailed(true)} />}
