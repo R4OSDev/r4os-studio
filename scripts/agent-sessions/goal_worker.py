@@ -27,6 +27,8 @@ class GoalWorker:
         self.activation=worker.config.get('goalExecution')
         self.live_active_seen=False
         self.handlers=set()
+        from goal_clock import GoalClock
+        self.clock=GoalClock(worker)
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -41,7 +43,13 @@ class GoalWorker:
         # older snapshot, even when native timestamps share the same second.
         if generation!=self.generation: return self.native
         self.native=value;self.goals.observe(w.session_id,w.thread_id,value,w.run_id)
+        self.measure()
         return value
+
+    def measure(self):
+        if self.armed and self.native and self.native['status']=='active' and self.activation:
+            self.clock.start(self.activation['requestId'])
+        if self.idle.is_set() and self.native and self.native['status']!='active':self.clock.end()
 
     async def before_resume(self):
         w=self.worker
@@ -153,6 +161,7 @@ class GoalWorker:
             self.native=params.get('goal') if method.endswith('updated') else None
             if not self.dormant and self.native and self.native['status']=='active': self.live_active_seen=True
             self.goals.observe(w.session_id,w.thread_id,self.native,w.run_id)
+            self.measure()
             if self.dormant and not self.activating and self.native and self.native['status']=='active':
                 w.error='A native Goal was activated without a browser Play. Review the Goal before continuing.'
                 w.defer_stop()
@@ -173,6 +182,7 @@ class GoalWorker:
         elif method=='turn/completed':
             turn=params['turn'];w.turn_id=turn['id'];self.idle.set()
             self.last_turn_status=turn['status']
+            self.measure()
             with w.store.db: w.store.db.execute('INSERT INTO goal_turns VALUES (?,?,?) ON CONFLICT(run_id,turn_id) DO UPDATE SET status=excluded.status',
                 (w.run_id,turn['id'],turn['status']))
             from run_store import event
@@ -274,6 +284,8 @@ class GoalWorker:
             value=await self.read()
             if command['action']=='play':
                 proof=LiveGoals(w.store).evidence(w.session_id,rid)
+                if self.clock.state=='running' and not self.idle.is_set():
+                    raise ProjectFault('The previous Goal turn is still pausing. Wait for its confirmed end before Play.',409)
                 if not value or value['objective']!=proof['goal']['objective'] or value['status'] in ('active','usageLimited','budgetLimited','complete'):
                     raise ProjectFault('The saved Goal changed, is already active or reached its limit. Review it before Play.',409)
                 self.activating=True;self.dormant=False;self.armed=True
@@ -308,6 +320,7 @@ class GoalWorker:
     async def close(self):
         if self.closed:return
         self.closed=True
+        await self.clock.close()
         if self.server: self.server.close();await self.server.wait_closed()
         for writer in tuple(self.clients): writer.close()
         handlers=self.handlers-{asyncio.current_task()}

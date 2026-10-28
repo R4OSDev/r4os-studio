@@ -151,6 +151,10 @@ class Goals:
         if not exists(self.store): return
         from goal_worker import end_turns
         end_turns(self.store,run_id)
+        try:
+            from goal_clock import lost
+            lost(self.store,run_id)
+        except Exception:pass  # Statistics cannot change Goal recovery.
         for command in self.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
             if json.loads(command['payload']).get('target',{}).get('runId')==run_id:
                 self.finish(command['session_id'],command['request_id'],'failed' if command['stage'] in ('accepted','worker_received') else 'unknown',

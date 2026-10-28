@@ -5,4 +5,4 @@ export interface StatisticsSnapshot {
   longestGoalMs?: number | null;
   coverage: { state: 'notReported' | 'partial' | 'unavailable'; since: string | null; updatedAt: string | null; historicalComplete: boolean; hasGaps: boolean; delayed?: boolean };
 }
-export interface GoalClockSnapshot { executionId: string; durationMs: number; state: 'running' | 'ended' | 'unknown'; referenceAt: string; sampledAt: string; staleAfterMs: number }
+export interface GoalClockSnapshot { executionId: string; durationMs: number; state: 'running' | 'ended' | 'unknown'; referenceAt: string; sampledAt: string; staleAfterMs: number; ageMs: number }

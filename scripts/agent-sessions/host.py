@@ -247,6 +247,11 @@ class Host:
                 store=self.store(project_id,kind)
                 try:return await inspect(store,session_id,self.config['providers'],request.get('selection'))
                 finally:store.close()
+        if op=='goal_clock':
+            from goal_clock import snapshot
+            store=self.store(project_id,kind)
+            try:return {'clock':snapshot(store,session_id)}
+            finally:store.close()
         if op=='goal_readback':
             from goal_readback import readback
             if self.goal_readback_lock.locked():raise ProjectFault('Another native Goal readback is in progress.',429)

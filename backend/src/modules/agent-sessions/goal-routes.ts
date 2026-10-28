@@ -15,6 +15,10 @@ export function goalRoutes(app: FastifyInstance, security: ProjectSessions, owne
     security.session(request, reply);
     return { goal: await agentHost<SessionGoal>({ operation: 'goal', ...owner(request.params.id), sessionId: request.params.sessionId }) };
   });
+  app.get<{ Params: Params }>(base + '/clock', { schema: { params } }, async (request, reply) => {
+    security.session(request, reply);
+    return agentHost({ operation: 'goal_clock', ...owner(request.params.id), sessionId: request.params.sessionId });
+  });
   app.post<{ Params: Params }>(base + '/readback', { bodyLimit: 1024, schema: { params,
     body: { type: 'object', additionalProperties: false, maxProperties: 0 } },
   }, async (request, reply) => {

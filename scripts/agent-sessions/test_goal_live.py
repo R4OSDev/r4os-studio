@@ -198,3 +198,15 @@ class LiveGoalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Goals(w.store).receipt(self.sid,data['requestId'])['state'],'confirmed')
         self.assertEqual(get_run(w.store,w.run_id)['state'],'running')
         self.assertTrue(all(call.args[0]=='show' for call in control.call_args_list))
+
+    async def test_clock_begins_at_live_play_and_counts_until_paused_turn_ends(self):
+        from goal_clock import GoalClock,snapshot
+        w,native=await self.prepared();await w.goal_worker.start_control()
+        tick=[100000000000];w.goal_worker.clock=GoalClock(w,lambda:tick[0])
+        tick[0]+=30000000000;self.assertIsNone(snapshot(w.store,self.sid))
+        receipt,_=await self.live(w,'play');self.assertEqual(receipt['state'],'confirmed')
+        tick[0]+=4000000000;await self.live(w,'pause')
+        tick[0]+=3000000000
+        await w.notify('turn/completed',{'threadId':w.thread_id,'turn':{'id':'current-turn','status':'completed'}})
+        await asyncio.wait_for(w.done.wait(),1)
+        clock=snapshot(w.store,self.sid);self.assertEqual(clock['state'],'ended');self.assertEqual(clock['durationMs'],7000)

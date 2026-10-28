@@ -465,6 +465,7 @@ class Worker:
             await self.cleanup()
             if self.goal_worker:
                 from goal_worker import end_turns
+                self.goal_worker.clock.end(unknown=self.uncertain_effect or self.outcome=='unknown')
                 self.goal_worker.finish_pending()
                 end_turns(self.store,self.run_id)
             try:
