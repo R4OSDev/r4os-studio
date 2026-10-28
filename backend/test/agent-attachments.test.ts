@@ -55,6 +55,12 @@ await test('binary uploads preserve original receipts and enforce owner, CSRF an
       const imageUpload = await app.inject({ method: 'POST', url: base + '/uploads/' + randomUUID() + '?name=own.png', payload: imageBytes, headers: binary });
       assert.equal(imageUpload.statusCode, 200, imageUpload.body);
       assert.equal(imageUpload.json().attachment.mode, 'localImage'); assert.equal(imageUpload.json().attachment.width, 3);
+      const preview = await app.inject({ url: base + '/' + imageUpload.json().attachment.id + '/preview', headers });
+      assert.equal(preview.statusCode, 200, preview.body); assert.deepEqual(preview.rawPayload, imageBytes);
+      assert.equal(preview.headers['content-type'], 'image/png'); assert.equal(preview.headers['x-content-type-options'], 'nosniff');
+      assert.equal((await app.inject(base + '/' + imageUpload.json().attachment.id + '/preview')).statusCode, 403);
+      assert.equal((await app.inject({ url: base + '/' + uploaded.json().attachment.id + '/preview', headers })).statusCode, 415);
+      assert.equal((await app.inject({ url: `/api/${scope}/${randomUUID()}/sessions/${sid}/attachments/${imageUpload.json().attachment.id}/preview`, headers })).statusCode, 404);
       const pdfUpload = await app.inject({ method: 'POST', url: base + '/uploads/' + randomUUID() + '?name=own.pdf', payload: pdfBytes, headers: binary });
       assert.equal(pdfUpload.statusCode, 200, pdfUpload.body);
       assert.equal(pdfUpload.json().attachment.mode, 'pdfText'); assert.equal(pdfUpload.json().attachment.pages, 1);

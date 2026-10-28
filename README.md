@@ -2958,3 +2958,16 @@ UTF8 text/source/Markdown/JSON/CSV/logs and extracted PDF text reach the native 
 Qualified Poppler25.03.0 runs in a fixed networkless readonly namespace with512MiB/10CPU-/15wall-second limits,128usable pages and2MiB extracted text. EOF covers available text only; truncated prefixes, missing scans/images and visual layout are explicit. Valid encrypted/scanned/unextractable/too-many-page originals remain private but readable:false and cannot be sent as read content. Derived bytes reserve quota before publication. No OCR/general Files API, execution or automatic workspace/Git/VM/Remote import.
 
 Install the local PDF runtime with python3 scripts/install-attachment-support.py --pdf (--check --pdf is read-only). Explicit profile compatibility uses scripts/agent-sessions/install-document-tool-support.py; configuration/pins/old worker releases/VMs are preserved. Its --adopt only follows immutable installation and an idle coordinator. The fixed rollback guard now covers document references. Actual original Codex binary/Studio worker/new Skill3 profile with deterministic isolated SSE proves real PDF text, bounded source input and native broker continuation to an initially omitted marker, one original Send/Turn and no paid/model inference. Composer/history UI follow0.6.31/32.
+
+### Composer attachments (0.6.31)
+
+The session composer places Goal, model settings, Attach files and Send in the
+Studio design. Multiple files, drop and pasted images use the same private
+bounded upload pipeline. Cards show verified raster previews, progress, limits
+and removal; HTML/SVG/PDF never render as active embeds. Only explicit Send
+binds Ready compatible files. Goal Play leaves unsent drafts untouched.
+Original upload/send IDs are persisted before POST; lost upload replies are
+reconciled by receipt GETs, and explicit Send retry retains the exact original
+ordered body. Text/Ready files survive reload and session/model switches.
+Desktop, 768px and 320px browser checks use real HTTP/stores and a deterministic
+native adapter without model inference. See Docs/Goal-Attachments.md.

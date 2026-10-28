@@ -9,10 +9,13 @@ import { ComposerSettings } from './ComposerSettings';
 import { useGoal } from './useGoal';
 import { GoalControls, GoalEditor, goalLabel } from './GoalControls';
 import type { SessionGoal } from '../../../../shared/agent-inputs';
+import { useAttachments } from './useAttachments';
+import { AttachmentButton, AttachmentCards } from './AttachmentComposer';
 
-type Pending = { requestId: string; revision: number; text: string };
+type Pending = { requestId: string; revision: number; text: string; attachments?: string[] };
 function readPending(key: string): Pending | null {
-  try { const v = JSON.parse(sessionStorage.getItem(key) ?? 'null'); return v && typeof v.requestId === 'string' && typeof v.text === 'string' && Number.isInteger(v.revision) ? v : null; } catch { return null; }
+  try { const v = JSON.parse(sessionStorage.getItem(key) ?? 'null'); return v && typeof v.requestId === 'string' && typeof v.text === 'string' && Number.isInteger(v.revision)
+    && (v.attachments === undefined || (Array.isArray(v.attachments) && v.attachments.length <= 8 && v.attachments.every((id: unknown) => typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id)))) ? v : null; } catch { return null; }
 }
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
 function merge(previous: SessionItem[], value: SessionItem) {
@@ -36,6 +39,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [settings, setSettings] = useState(false);
   const [choiceSaving, setChoiceSaving] = useState(false);
   const [goalEditor, setGoalEditor] = useState(false);
+  const [dragging, setDragging] = useState(false), dragDepth = useRef(0);
+  const attachments = useAttachments(projectId, sessionId, session, token, refreshAuth);
   const refreshSession = useCallback(async () => {
     const result = await projectRequest<{ session: AgentSession }>(base);
     setSession(result.session);
@@ -95,17 +100,19 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
   const active = busyRun(run?.state) || nativeActive;
   async function send(event: FormEvent) {
-    event.preventDefault(); if (!session || sending || choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown' || (!pending && (active || !text.trim()))) return;
-    const data = pending ?? { requestId: projectRequestId(), revision: session.revision, text };
+    event.preventDefault(); if (!session || sending || choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown' || (!pending && (active || (!text.trim() && !attachments.hasFiles) || !!attachments.issue))) return;
+    const data = pending ?? { requestId: projectRequestId(), revision: session.revision, text,
+      ...(attachments.hasFiles ? { attachments: attachments.selected.map(value => value.id) } : {}) };
     try { sessionStorage.setItem(pendingKey, JSON.stringify(data)); } catch { setError('Enable session storage before sending.'); return; }
     setPending(data); setSending(true); setError('');
     try {
       const r = await projectRequest<{ run: AgentRun }>(base + '/runs', token, 'POST', data);
+      attachments.accepted(data.attachments ?? []);
       setSession((s) => s ? { ...s, latestRun: r.run } : s); sessionStorage.removeItem(pendingKey); sessionStorage.removeItem(draftKey);
       setPending(null); setText(''); follow.current = true; changed();
     } catch (e) {
       const failure = e as ProjectRequestError;
-      if (failure.status && failure.status < 500) { sessionStorage.removeItem(pendingKey); setPending(null); }
+      if (failure.status && failure.status < 500) { sessionStorage.removeItem(pendingKey); setPending(null); await refreshSession().catch(() => undefined); }
       setError(failure.message);
       if (failure.status === 403) await refreshAuth();
     } finally { setSending(false); }
@@ -138,17 +145,27 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     </div>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}
-    <form className="agent-composer" onSubmit={(e) => void send(e)}>
+    <form className={'agent-composer' + (dragging ? ' dragging' : '')} onSubmit={(e) => void send(e)}
+      onDragEnter={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); dragDepth.current++; setDragging(true); } }}
+      onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = sending || pending ? 'none' : 'copy'; } }}
+      onDragLeave={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } } }}
+      onDrop={event => { if (event.dataTransfer.files.length) { event.preventDefault(); dragDepth.current = 0; setDragging(false); if (session && !sending && !pending && !settings && !goalEditor) attachments.add(Array.from(event.dataTransfer.files)); } }}>
       <textarea aria-label="Message" placeholder="Message the agent…" rows={3} maxLength={65536} value={pending?.text ?? text} disabled={sending || !!pending || active || !session}
         onChange={(e) => { setText(e.target.value); try { sessionStorage.setItem(draftKey, e.target.value); } catch { /* send reports storage failure */ } }}
+        onPaste={event => {
+          const images = Array.from(event.clipboardData.items).filter(item => item.kind === 'file' && item.type.startsWith('image/')).flatMap(item => { const file = item.getAsFile(); return file ? [file] : []; });
+          if (images.length) { event.preventDefault(); if (session && !sending && !pending && !settings && !goalEditor) attachments.add(images); }
+        }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
+      <AttachmentCards control={attachments} disabled={sending || !!pending} />
       <div className="agent-composer-footer">
         <GoalControls control={goal} run={run} disabled={!session || sending || choiceSaving || !!pending || settings || stopping}
           editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
         {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings || goal.changing || goalEditor}
           busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
+        <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
         <div className="agent-compose-actions">{busyRun(run?.state) && (run?.mode !== 'goal' || !goal.available || !!goal.error) && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
-          <button className="agent-send" disabled={sending || choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown' || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
+          <button className="agent-send" disabled={sending || choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown' || !session || (!pending && (active || (!text.trim() && !attachments.hasFiles) || !!attachments.issue))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
       </div>
       {goal.goal?.phase === 'pausing' && <p className="agent-goal-message" role="status">Pausing after current turn.</p>}
       {!goal.execution && goal.available && <p className="agent-goal-message" role="status">Finish current runs before starting a Goal.</p>}

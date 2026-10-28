@@ -221,3 +221,14 @@ class Attachments:
         with self.store.db:self.store.db.execute("UPDATE session_attachments SET state='removed' WHERE id=?",(row['id'],))
         # Physical bytes remain private until reference-aware cleanup qualifies.
         return {'id':row['id'],'removed':True}
+
+    def preview(self,ident):
+        row=self.row(ident)
+        if row['state']!='ready':raise ProjectFault('This image is not available for draft preview.',409)
+        metadata=json.loads(row['metadata'])
+        if metadata.get('mode')!='localImage':raise ProjectFault('Only checked raster images have an inline preview.',415)
+        from image_inputs import file_path
+        path=file_path(self.store,self.sid,metadata)
+        # Internal helper response only. The HTTP route streams bytes and never
+        # returns this private path in browser JSON or Studio events.
+        return {'path':str(path),'attachment':{**metadata,'state':'ready'}}

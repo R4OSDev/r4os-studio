@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AttachmentListing, AttachmentReceipt } from '../../../../shared/agent-inputs.js';
+import type { AttachmentListing, AttachmentReceipt, SessionAttachment } from '../../../../shared/agent-inputs.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { sessionStore } from './store.js';
@@ -11,14 +12,29 @@ const fields = { id: identity, sessionId: identity };
 const params = { type: 'object', additionalProperties: false, required: ['id', 'sessionId'], properties: fields };
 type Params = { id: string; sessionId: string };
 const uploads = new Set<FastifyRequest>();
+const previews = new Set<FastifyRequest>();
 const maxFileBytes = 16 * 1024 * 1024;
 
 export function attachmentRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, ownerType: 'project' | 'skill', providers?: string) {
   const base = '/:id/sessions/:sessionId/attachments';
   const owner = (id: string) => ({ ownerType, ownerId: id });
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: maxFileBytes }, (_request, body, done) => done(null, body));
-  app.addHook('onResponse', async (request) => { uploads.delete(request); });
-  app.addHook('onError', async (request) => { uploads.delete(request); });
+  app.addHook('onResponse', async (request) => { uploads.delete(request); previews.delete(request); });
+  app.addHook('onError', async (request) => { uploads.delete(request); previews.delete(request); });
+  app.get<{ Params: Params & { attachmentId: string } }>(base + '/:attachmentId/preview', {
+    schema: { params: { ...params, required: [...params.required, 'attachmentId'], properties: { ...fields, attachmentId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    if (previews.size >= 8) throw new ProjectError('Too many image previews are open.', 429);
+    previews.add(request); request.raw.once('aborted', () => previews.delete(request));
+    const image = await attachmentStore<{ path: string; attachment: SessionAttachment }>(directory,
+      { operation: 'preview', ...owner(request.params.id), sessionId: request.params.sessionId, attachmentId: request.params.attachmentId });
+    if (image.attachment.mode !== 'localImage' || !['image/png', 'image/jpeg', 'image/webp'].includes(image.attachment.mediaType))
+      throw new ProjectError('This attachment has no raster preview.', 415);
+    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Security-Policy', "default-src 'none'; sandbox").header('Content-Disposition', 'inline; filename="attachment-image"')
+      .type(image.attachment.mediaType).send(createReadStream(image.path, { highWaterMark: 65536 }));
+  });
   app.get<{ Params: Params }>(base, { schema: { params } }, async (request, reply) => {
     security.session(request, reply);
     return attachmentStore<AttachmentListing>(directory, { operation: 'list', ...owner(request.params.id), sessionId: request.params.sessionId });

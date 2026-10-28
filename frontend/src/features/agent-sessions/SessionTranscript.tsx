@@ -91,6 +91,6 @@ export function SessionTranscript({ items, projectId, sessionId, token }: { item
     ? <ToolCallBlock key={entry.key} tools={entry.tools} projectId={projectId} token={token} />
     : <article key={entry.key} className={`agent-message ${entry.item.type}`}>
       {entry.item.type !== 'notice' && <div className="agent-message-role">{entry.item.type === 'user' ? 'You' : 'Agent'}</div>}
-      <MessageText text={entry.item.text ?? ''} markdown={entry.item.type === 'assistant'} projectId={scope === 'project' ? projectId : undefined} sessionId={sessionId} />
+      <MessageText text={entry.item.text || (entry.item.type === 'user' && Array.isArray(entry.item.attachments) ? `${entry.item.attachments.length} attachment${entry.item.attachments.length === 1 ? '' : 's'}` : '')} markdown={entry.item.type === 'assistant'} projectId={scope === 'project' ? projectId : undefined} sessionId={sessionId} />
     </article>);
 }

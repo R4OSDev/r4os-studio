@@ -54,9 +54,9 @@
 .agent-model-controls:disabled { opacity:.55; }
 .agent-composer-footer .agent-compose-actions { flex-shrink:0; margin:0 0 0 auto; }
 .agent-composer { container-type:inline-size; }
-.agent-composer-footer .agent-composer-settings { flex:2 1 440px; }
-.agent-composer-footer .agent-account-choice,.agent-composer-footer .agent-model-choice { flex-basis:140px; }
-.agent-goal { flex:1 1 240px; min-width:0; max-width:340px; padding:4px 8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
+.agent-composer-footer .agent-composer-settings { flex:2 1 420px; }
+.agent-composer-footer .agent-account-choice,.agent-composer-footer .agent-model-choice { flex-basis:120px; }
+.agent-goal { flex:1 1 220px; min-width:0; max-width:320px; padding:4px 8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
 .agent-goal-top { display:flex; align-items:center; gap:7px; min-width:0; }
 .agent-goal-buttons { display:flex; flex:none; gap:3px; }
 .agent-goal-buttons button { display:grid; place-items:center; width:30px; height:26px; padding:4px; border:1px solid #4e3a5f; border-radius:4px; background:#2c2036; color:#cbb7dc; }
@@ -84,6 +84,28 @@
 .agent-goal-editor-help span { white-space:nowrap; }
 .agent-goal-conflict { font-size:12px; color:#dfc4d1; }
 .agent-goal-saved { max-height:100px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color:#bdabc9; }
+.agent-attachment-picker { flex:none; }
+.agent-attachment-picker>button { display:grid; place-items:center; width:36px; height:34px; border:1px solid #574164; border-radius:6px; color:#d8c3e9; background:#2d203a; }
+.agent-attachment-picker .icon { width:21px; height:21px; }
+.agent-attachment-picker>button:disabled,.agent-attachment-card button:disabled { opacity:.45; cursor:default; }
+.agent-attachment-picker button:focus-visible,.agent-attachment-card button:focus-visible { outline:2px solid #b98ce2; outline-offset:2px; }
+.agent-attachment-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:8px; max-height:180px; overflow:auto; margin:10px 0 0; padding:2px; list-style:none; }
+.agent-attachment-card { display:flex; gap:9px; align-items:flex-start; min-width:0; padding:9px; border:1px solid #4e3a5f; border-radius:6px; background:#241a2e; }
+.agent-attachment-card.has-error { border-color:#87576d; }
+.agent-attachment-card>img,.agent-attachment-file { flex:none; width:52px; height:46px; object-fit:contain; border-radius:4px; background:#16111c; }
+.agent-attachment-file { display:grid; place-items:center; color:#b49bc9; }
+.agent-attachment-file .icon { width:25px; height:25px; }
+.agent-attachment-detail { min-width:0; flex:1; font-size:11px; line-height:1.5; }
+.agent-attachment-detail strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#e0d2eb; font-weight:550; }
+.agent-attachment-detail>span { display:block; color:#b3a0c4; overflow-wrap:anywhere; }
+.agent-attachment-detail>p { margin:4px 0 0; font-size:10px; color:#d3b8ca; overflow-wrap:anywhere; }
+.agent-attachment-detail progress { width:100%; height:5px; accent-color:#b98ce2; }
+.agent-attachment-remove { flex:none; padding:0; width:26px; height:26px; border:1px solid #574164; border-radius:4px; background:#30213c; color:#dfc9ed; font-size:19px; line-height:1; }
+.agent-attachment-recovery { display:flex; gap:5px; flex-wrap:wrap; margin-top:5px; }
+.agent-attachment-recovery button { border:1px solid #574164; border-radius:4px; background:#30213c; color:#d8c4e9; font:inherit; font-size:10px; padding:3px 6px; }
+.agent-attachment-message { margin:6px 0 0; color:#c9b3dc; font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.agent-attachment-message.error { color:#e4b5c3; }
+.agent-composer.dragging { outline:2px solid #b98ce2; outline-offset:-3px; background:#2c2037; }
 @container (max-width:760px) { .agent-goal { flex-basis:100%; max-width:none; } }
 .agent-choice-error { margin:8px 0 0; color:#ffb8c6; font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
 @media (max-width:440px) { .agent-composer-settings { flex-basis:100%; } .agent-model-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } .agent-model-controls label { max-width:none; } .agent-model-controls select { min-width:0; max-width:100%; } }
