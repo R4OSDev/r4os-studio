@@ -1,3 +1,29 @@
+## Agent runs without an overall time limit (0.6.54)
+
+Normal turns and native multi-turn Goals no longer have a Studio wall-clock
+deadline. The former fixed 1800-second host timer interrupted healthy work after
+30 minutes, even while it was making progress. An admitted run now observes its
+original native execution until completion, Pause/Stop, an actual failure or a
+provider/Goal limit. No replacement timer, token budget, retry or second agent
+starter is introduced. The installed worker service already has unlimited
+RuntimeMaxSec and CPU time; no host reinstallation is needed.
+
+Terminal bookkeeping also permits more than 32 commands during one long run.
+Completed processes whose output has been collected release a cached handle slot;
+their run-owned durable transcript retains the final exit code, signal and reason.
+Polling or terminating an old completed handle returns that final status without
+replaying output or executing anything. Undelivered output is retained, and four
+simultaneous processes remain the concurrency limit. Individual command, RPC,
+build, guest, storage and image limits keep their own scope.
+
+Regression tests advance the actual worker's clock by seven days, checking normal
+completion, native Goal continuation, the held owner lease and explicit Stop.
+Namespace tests execute 65 commands as the unprivileged service user, verify old
+handle readback and preserve live-process and undelivered-output bounds. This is
+simulated elapsed-time qualification, not a claimed week-long production test.
+The 82 focused cases, production build/TypeScript and lint passed. No additional
+model inference or user project/VM execution was started for this hotfix.
+
 ## Confirmed process closure with unavailable exit status (0.6.53)
 
 A Desktop application can end after an input such as its Quit key while the
@@ -365,7 +391,7 @@ and another Play. A newer native notification supersedes an older in-flight read
 Usage-only observations preserve the control revision. Native waiting-input flags
 pause continuation, while unknown tool effects retain an unknown Goal phase.
 
-The1800-second host limit applies to the whole execution. Pause/Stop/limits never
+The original 1800-second whole-execution limit was removed in 0.6.54. Pause/Stop/limits never
 invent Goal completion or a token budget. New Play requests require the explicit
 nativeGoalExecution:1 coordinator capability; older active workers remain pinned.
 
@@ -3048,7 +3074,8 @@ host mounts and the inner mount/PID/network namespaces enforce execution scope.
 
 0.3.12 adds run-owned terminal tools with pipes or PTY, input/EOF, output polling,
 explicit termination and real exit/signal/timeout states. Handles are opaque and
-expire with the run. Up to four concurrent processes and 32 handles per run;
+expire with the run. Up to four concurrent processes and 32 cached handles; completed
+handles with collected output are retired while durable final status remains readable;
 default command timeout two minutes, maximum ten. Output is bounded and marked
 when clipped. Commands run without network in their own PID namespace, with only
 the project workspace writable and pinned components readable. A private run

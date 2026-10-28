@@ -32,6 +32,70 @@ class TextBounds(unittest.TestCase):
 
 @unittest.skipIf(os.getuid() == 0, 'Run this namespace test as an unprivileged user.')
 class Terminal(unittest.TestCase):
+    def test_completed_commands_reuse_slots_and_old_handles_retain_final_status(self):
+        fixture = Runs(); fixture.setUp()
+        store = fixture.open().__enter__()
+        try:
+            run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            manager = Terminals(worker)
+            async def scenario():
+                first = None
+                try:
+                    for _ in range(65):
+                        result = await manager.call('exec_command', {'cmd': 'printf OK', 'yield_time_ms': 100})
+                        self.assertTrue(result['success'], result); first = first or result['processId']
+                        while result['state'] != 'exited':
+                            result = await manager.call('write_stdin', {'processId': result['processId'], 'yield_time_ms': 100})
+                        self.assertEqual(result['exitCode'], 0); self.assertLessEqual(len(manager.processes), 32)
+                    self.assertNotIn(first, manager.processes)
+                    for name in ('write_stdin', 'terminate_process'):
+                        ended = await manager.call(name, {'processId': first})
+                        self.assertTrue(ended['success']); self.assertEqual(ended['state'], 'exited'); self.assertEqual(ended['exitCode'], 0)
+                        self.assertEqual(ended['output'], '')
+                    rejected = await manager.call('write_stdin', {'processId': first, 'chars': 'must not execute'})
+                    self.assertEqual(rejected['error'], 'processExited')
+                    self.assertEqual(store.db.execute("SELECT count(*) FROM items WHERE json_extract(payload,'$.type')='terminal'").fetchone()[0], 65)
+                    self.assertEqual((await manager.call('write_stdin', {'processId': str(uuid.uuid4())}))['error'], 'unknownProcess')
+                finally: await manager.close()
+            asyncio.run(scenario())
+        finally: store.close(); fixture.tearDown()
+
+    def test_four_live_processes_still_limit_concurrency(self):
+        fixture = Runs(); fixture.setUp()
+        store = fixture.open().__enter__()
+        try:
+            run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            manager = Terminals(worker)
+            async def scenario():
+                try:
+                    for _ in range(4):
+                        self.assertTrue((await manager.call('exec_command', {'cmd': 'sleep 60', 'yield_time_ms': 100}))['success'])
+                    self.assertEqual((await manager.call('exec_command', {'cmd': 'printf extra'}))['error'], 'processLimit')
+                    self.assertEqual(len(manager.processes), 4)
+                finally: await manager.close()
+            asyncio.run(scenario())
+        finally: store.close(); fixture.tearDown()
+
+    def test_completed_processes_with_pending_output_are_not_discarded(self):
+        fixture = Runs(); fixture.setUp()
+        store = fixture.open().__enter__()
+        try:
+            run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            manager = Terminals(worker)
+            async def scenario():
+                for _ in range(32):
+                    finished = asyncio.Event(); finished.set()
+                    manager.processes[str(uuid.uuid4())] = SimpleNamespace(finished=finished, pending='Keep this output')
+                result = await manager.call('exec_command', {'cmd': 'printf must-not-start'})
+                self.assertEqual(result['error'], 'processLimit'); self.assertEqual(len(manager.processes), 32)
+                self.assertTrue(all(p.pending == 'Keep this output' for p in manager.processes.values()))
+                await manager.close()
+            asyncio.run(scenario())
+        finally: store.close(); fixture.tearDown()
+
     def test_pipes_pty_timeouts_handles_and_cleanup(self):
         fixture = Runs(); fixture.setUp()
         store = fixture.open().__enter__()

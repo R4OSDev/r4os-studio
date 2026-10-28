@@ -2,6 +2,7 @@
 import asyncio
 import codecs
 import errno
+import json
 import os
 from pathlib import Path
 import pty
@@ -151,8 +152,16 @@ class Terminals:
             except (OSError, ValueError, ProjectFault) as error:
                 return {'success': False, 'error': 'preparationFailed', 'output': str(error) if isinstance(error, ProjectFault) else 'The workspace environment is unavailable. No command started.'}
             async with self.lock:
-                if sum(not p.finished.is_set() for p in self.processes.values()) >= 4 or len(self.processes) >= 32:
+                if sum(not p.finished.is_set() for p in self.processes.values()) >= 4:
                     return {'success': False, 'error': 'processLimit', 'output': 'This run reached its process limit.'}
+                # Bound live bookkeeping, not the number of commands across a
+                # multi-day Goal. Keep undelivered output; final status remains
+                # available from the run-owned durable terminal item.
+                for ident, process in tuple(self.processes.items()):
+                    if len(self.processes) < 32: break
+                    if process.finished.is_set() and not process.pending: del self.processes[ident]
+                if len(self.processes) >= 32:
+                    return {'success': False, 'error': 'processLimit', 'output': 'Collect pending terminal output before starting another process.'}
                 names = parts(args.get('workdir', '.')); relative = '/'.join(names)
                 # Inspect cwd within a file sandbox; host never follows a path
                 # supplied by a command. Bubblewrap resolves it in its own root.
@@ -188,7 +197,18 @@ class Terminals:
                 self.tasks.add(task); task.add_done_callback(self.tasks.discard)
             return await process.result(args.get('yield_time_ms', 1000))
         process = self.processes.get(args['processId'])
-        if process is None: return {'success': False, 'error': 'unknownProcess', 'output': 'This handle does not belong to an active process in this run.'}
+        if process is None:
+            worker = self.worker
+            row = worker.store.db.execute('SELECT payload FROM items WHERE session_id=? AND run_id=? AND item_id=?',
+                (worker.session_id, worker.run_id, 'process-' + args['processId'])).fetchone()
+            value = json.loads(row[0]) if row else {}
+            if (value.get('type') != 'terminal' or value.get('processId') != args['processId']
+                    or value.get('runId') != worker.run_id or value.get('status') not in ('completed', 'failed')):
+                return {'success': False, 'error': 'unknownProcess', 'output': 'This handle does not belong to an active process in this run.'}
+            if name == 'write_stdin' and args.get('chars'):
+                return {'success': False, 'error': 'processExited', 'output': 'This process has exited.'}
+            return {'success': True, 'processId': args['processId'], 'state': 'exited', 'output': '', 'outputTruncated': False,
+                'exitCode': value.get('exitCode'), 'signal': value.get('signal'), 'reason': value.get('reason')}
         async with process.io_lock:
             if name == 'write_stdin': return await process.input(args)
             if name == 'terminate_process':
