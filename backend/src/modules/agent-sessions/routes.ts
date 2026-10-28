@@ -1,3 +1,4 @@
+import { environmentNoteRoutes } from './environment-note-routes.js';
 import type { FastifyInstance } from 'fastify';
 import type { AgentSession, SessionCreate, SessionHistory, SessionOptions, SessionUpdate } from '../../../../shared/agent-sessions.js';
 import type { ProjectSessions } from '../projects/sessions.js';
@@ -20,6 +21,7 @@ const projectParams = { type: 'object', required: ['id'], properties: { id: iden
 type SessionParams = { id: string; sessionId: string };
 
 export function agentSessionRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, providers?: string, ownerType: 'project' | 'skill' = 'project') {
+  environmentNoteRoutes(app, security, ownerType);
   attachmentRoutes(app, directory, security, ownerType, providers);
   generatedRoutes(app, directory, security, ownerType);
   const route = '/:id/sessions';

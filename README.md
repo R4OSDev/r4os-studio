@@ -3628,3 +3628,5 @@ limits remain in Docs/Project-Boards.md and local0.6.41 acceptance records.
 0.7.17 adds the separate Delete skill action and named scope confirmation dialog. Cancel preserves local edits; active bindings remain independent. Original deletion receipts survive response loss and reload without resubmission. Confirmed success clears only typed Skill/session caches and returns to a neutral manager view.
 
 0.7.18 completes full skill deletion qualification. Minimal UUID/source tombstones prevent automatic builtin resurrection after catalogue copies or bundle updates. Active published cross-owner references block deletion; confirmed finished history/copies remain intact. Attributed inactive runtime records and preferences are cleaned, while numeric lifetime statistics and existing backup boundaries remain intact.
+
+0.7.19 introduces private per-session environment note storage and protected browser read/delete APIs. Typed bounded content, collection revisions, read-before-write, normalized dedupe and atomic call receipts preserve originals and prevent replay resurrection after deletion. Agent tools/settings and the overlay follow in0.7.20/21.

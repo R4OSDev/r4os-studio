@@ -160,7 +160,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op in ('skill_delete_preview','skill_delete','skill_delete_receipt'):
             import skill_delete
             ident=identity(request['ownerId'])
@@ -209,6 +209,15 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
+        if op in ('environment_notes','delete_environment_notes','environment_note_receipt'):
+            from environment_notes import Notes
+            store=self.store(project_id,kind)
+            try:
+                notes=Notes(store)
+                if op=='environment_notes':return notes.listing(session_id,request.get('query'))
+                if op=='environment_note_receipt':return notes.deletion_receipt(session_id,request['requestId'])
+                return notes.delete(session_id,request['input'],request.get('noteId'))
+            finally:store.close()
         if op in ('messages', 'message_receipt', 'submit_message', 'message_control'):
             from message_store import Messages
             capability = None
