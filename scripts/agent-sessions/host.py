@@ -36,6 +36,7 @@ class Host:
         self.goal_readback_lock = asyncio.Lock()
         self.image_capability_lock=asyncio.Lock()
         self.inboxes=set()
+        self.message_tasks={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
@@ -153,7 +154,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -169,7 +170,7 @@ class Host:
         if op in ('messages', 'message_receipt', 'submit_message', 'message_control'):
             from message_store import Messages
             capability = None
-            if op == 'submit_message':
+            if op == 'submit_message' and request.get('input',{}).get('mode') != 'steer':
                 preliminary = self.store(project_id, kind)
                 try:
                     selected = preliminary.get(session_id)
@@ -197,7 +198,20 @@ class Host:
                     if op == 'message_control': return messages.control(session_id, request['input'])
                     flags = {'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,
                              **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}
-                    return messages.accept(session_id, request['input'], self.config['providers'], flags, capability)[0]
+                    if request['input'].get('mode') == 'steer':
+                        meta = self.active.get(request['input'].get('target',{}).get('runId'))
+                        if not meta or binding(meta)!=(kind,project_id) or meta['sessionId']!=session_id:
+                            raise ProjectFault('The direct target has no confirmed original worker binding.',409)
+                        validate_release(meta)
+                        original = get_run(store, request['input']['target']['runId'])
+                        if json.loads(original['worker'] or '{}').get('release') != meta['release']:
+                            raise ProjectFault('The direct target no longer has its original worker release.',403)
+                    message, fresh = messages.accept(session_id, request['input'], self.config['providers'], flags, capability)
+                    if fresh and message['mode']=='steer':
+                        key = (kind,project_id,session_id,message['requestId'])
+                        task = asyncio.create_task(self.deliver_message(*key));self.message_tasks[key]=task
+                        task.add_done_callback(lambda _, key=key: self.message_tasks.pop(key,None))
+                    return message
                 finally: store.close()
         if op=='image_generation_capability':
             from image_generation import inspect
@@ -320,6 +334,18 @@ class Host:
                 transition(store, run['id'], 'failed', 'The agent run service could not start.')
             raise
         return run
+
+    async def deliver_message(self, kind, ident, sid, request_id):
+        from message_store import Messages
+        from message_worker import live_message
+        store = self.store(ident,kind)
+        try:
+            await live_message(store,sid,request_id)
+        except BaseException as error:
+            state = 'rejected' if isinstance(error,(FileNotFoundError,ConnectionRefusedError)) or isinstance(error,ProjectFault) and error.code in (403,404) else 'unknown'
+            Messages(store).finish(sid,request_id,state,'The original direct worker receipt could not be confirmed. No message was submitted again.')
+            if isinstance(error,asyncio.CancelledError): raise
+        finally: store.close()
 
     async def dispatch_queues(self):
         from message_store import Messages
@@ -475,7 +501,7 @@ async def main():
                     await host.refresh()
                     await host.dispatch_queues()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:

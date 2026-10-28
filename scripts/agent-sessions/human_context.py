@@ -42,6 +42,18 @@ def text(db,sid,rid,owner):
     except (KeyError,TypeError,ValueError,AttributeError):return None
 
 
+def steering_texts(db,sid,rid,owner):
+    """Only private accepted user intents can add mid-run human authority."""
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='session_messages'").fetchone(): return
+    for row in db.execute("SELECT input,input_hash,frozen FROM session_messages WHERE session_id=? AND run_id=? AND mode='steer' AND state='accepted' ORDER BY seq DESC", (sid,rid)):
+        try:
+            data=json.loads(row[0]);frozen=json.loads(row[2])
+            if (frozen['config'].get('owner')==owner and data['target']['runId']==rid
+                    and digest({'sessionId':sid,**data})==row[1] and isinstance(data['text'],str)):
+                yield data['text']
+        except (KeyError,TypeError,ValueError):continue
+
+
 def contexts(db,sid,current_run,owner):
     cursor=db.execute('SELECT id,config FROM runs WHERE session_id=? ORDER BY rowid DESC',(sid,))
     try:
@@ -50,6 +62,7 @@ def contexts(db,sid,current_run,owner):
             # A new Play chooses its own objective. Older Play objectives remain
             # verifiable for existing receipts, not fresh implicit cleanup grants.
             if config.get('goalExecution') and row[0]!=current_run:continue
+            for direct in steering_texts(db,sid,row[0],owner):yield {'runId':row[0],'text':direct}
             value=text(db,sid,row[0],owner)
             if value is not None:yield {'runId':row[0],'text':value}
     finally:cursor.close()

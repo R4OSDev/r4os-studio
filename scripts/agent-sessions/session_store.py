@@ -304,7 +304,11 @@ PRAGMA user_version=1;
         return {'items': [json.loads(r['payload']) for r in reversed(rows)], 'before': cursor, 'cursor': event_cursor}
 
     def run_present(self, r):
+        thread = self.row(r['session_id'])['thread_id']
+        worker = json.loads(r['worker'] or '{}')
+        support = r['state']=='running' and bool(thread and r['turn_id']) and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
+                'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
                 **({'mode':'goal'} if json.loads(r['config']).get('goalExecution') else {}),
                 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}

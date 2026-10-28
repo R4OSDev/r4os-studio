@@ -63,12 +63,14 @@ class Worker:
         from skill_tools import SkillTools
         self.skills = SkillTools(self)
         self.goal_worker = None
+        self.message_worker = None
         if self.config.get('goalExecution'):
             from goal_worker import GoalWorker
             self.goal_worker = GoalWorker(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
+        if self.message_worker: self.message_worker.observe(method, params)
         if self.goal_worker and await self.goal_worker.notify(method, params): return
         if method == 'turn/started':
             self.turn_id = params['turn']['id']
@@ -315,6 +317,7 @@ class Worker:
     async def cleanup(self):
         if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
         self.closing=True
+        if self.message_worker: await self.message_worker.close()
         if self.goal_worker: await self.goal_worker.close()
         if self.interrupt_tasks:await asyncio.gather(*self.interrupt_tasks.values(),return_exceptions=True)
         if 'run_remote_command' in tools_for(self.config['engine']['profile']):
@@ -408,6 +411,13 @@ class Worker:
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
             if self.stopping: self.outcome = 'interrupted'; return
+            from message_worker import MessageWorker
+            self.message_worker = MessageWorker(self)
+            await self.message_worker.start()
+            from profile import CODEX_VERSION, CODEX_SHA256
+            qualified_messages = self.config['engine'].get('version')==CODEX_VERSION and self.config['engine'].get('sha256')==CODEX_SHA256
+            message_identity = {'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid()),'profile':profile,'messageProtocol':1 if qualified_messages else 0,'messageTurnActive':False}
+            transition(self.store,self.run_id,'starting',worker=message_identity)
             if self.goal_worker:
                 await self.goal_worker.activate()
                 await self.done.wait()
@@ -418,8 +428,9 @@ class Worker:
                              'clientUserMessageId': self.row['request_id'], 'input': native_input(self.store,self.run_id,self.config),
                              'model': self.config['model'], 'effort': self.config['effort'], 'serviceTier': service_tier})
                 self.turn_id = result['turn']['id']
+                message_identity['messageTurnActive'] = True
                 if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
-                                                       worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid()), 'profile': profile})
+                                                       worker=message_identity)
             except asyncio.TimeoutError:
                 # A missing RPC reply does not negate a native started/completed
                 # event. Continue observing this one turn; never send it again.

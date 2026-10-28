@@ -3,6 +3,13 @@ import asyncio
 import json
 
 
+class RPCRejected(RuntimeError):
+    """A native error reply, distinct from a lost connection or response."""
+    def __init__(self, code):
+        super().__init__('The native agent rejected this request.')
+        self.code = code
+
+
 class CodexRPC:
     def __init__(self, args, notification, server_request):
         self.args = args; self.notification = notification; self.server_request = server_request
@@ -58,7 +65,7 @@ class CodexRPC:
                 elif 'id' in frame:
                     future = self.pending.get(frame['id'])
                     if future and not future.done():
-                        if 'error' in frame: future.set_exception(RuntimeError('The agent request was rejected.'))
+                        if 'error' in frame: future.set_exception(RPCRejected(frame['error'].get('code')))
                         else: future.set_result(frame.get('result'))
         except asyncio.CancelledError: pass
         except Exception: pass
