@@ -37,6 +37,7 @@ class Host:
         self.image_capability_lock=asyncio.Lock()
         self.inboxes=set()
         self.message_tasks={}
+        self.skill_delete_tasks={}
         self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -159,7 +160,24 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op in ('skill_delete_preview','skill_delete','skill_delete_receipt'):
+            import skill_delete
+            ident=identity(request['ownerId'])
+            try:
+                if op=='skill_delete_receipt':
+                    from contextlib import closing
+                    with closing(skill_delete.packages.connect(skills_root(self.config['projects']))) as db:return skill_delete.original(db,request['requestId'],ident)
+                if op=='skill_delete_preview':
+                    with skill_delete.lifecycle.lock(skills_root(self.config['projects']),fault=ProjectFault):return (await skill_delete.preview(self,ident))[0]
+                rid=identity(request['input']['requestId'])
+                if len(self.skill_delete_tasks)>=2 and rid not in self.skill_delete_tasks:raise ProjectFault('Skill cleanup is busy. Read the original request before retrying.',429)
+                result=await skill_delete.delete(self,ident,request['input'])
+                if result['state']!='deleted' and rid not in self.skill_delete_tasks:
+                    task=asyncio.create_task(skill_delete.resume(self,rid));self.skill_delete_tasks[rid]=task
+                    task.add_done_callback(lambda _,rid=rid:self.skill_delete_tasks.pop(rid,None))
+                return result
+            except skill_delete.packages.SkillFault as error:raise ProjectFault(str(error),error.code) from None
         if op == 'statistics':
             from stats_store import read,scope
             selection=request.get('scope','global')
@@ -424,6 +442,7 @@ class Host:
                     messages.hold(sid, 'The original queued run already exists. Inspect its receipt; it was not started again.'); continue
                 await self.launch_admitted(store, run, kind, ident, sid)
             except Exception as error:
+                if isinstance(error,ProjectFault) and error.code==423:continue
                 if store:
                     try: Messages(store).hold(sid, str(error) if isinstance(error, ProjectFault) else 'Queue dispatch could not be confirmed. Read the original message receipt.')
                     except Exception: pass
@@ -578,14 +597,16 @@ async def main():
                     await host.refresh()
                     await host.dispatch_queues()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:
                             raise ValueError('Invalid coordinator release.')
                         replacement = script; stopped.set()
             except Exception: pass  # Preserve current workers and retry, never infer a new job.
-            try:await host.reconcile_statistics()
+            try:
+                from skill_lifecycle import api as lifecycle
+                with lifecycle.lock(Path(config['projects']).parent/'Skills',fault=ProjectFault):await host.reconcile_statistics()
             except Exception:pass  # Numeric capture failure cannot steer runs.
             try: await asyncio.wait_for(stopped.wait(), 2)
             except asyncio.TimeoutError: pass

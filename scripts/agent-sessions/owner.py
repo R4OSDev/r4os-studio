@@ -31,6 +31,8 @@ def skills_root(projects): return Path(projects).absolute().parent / 'Skills'
 
 
 def skill_workspace(projects, ident):
+    from skill_lifecycle import api
+    if api.deleted(skills_root(projects),ident):raise ProjectFault('Skill was deleted.',404)
     root = skills_root(projects); path = root / 'Skills.sqlite'
     try:
         if path.resolve(strict=True) != path or not stat.S_ISREG(path.stat().st_mode): raise ValueError()

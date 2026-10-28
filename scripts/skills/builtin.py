@@ -14,6 +14,7 @@ def ensure(db,root,node,api,base=BASE):
     manifest_path=base/(SOURCE+'.json');manifest=json.loads(manifest_path.read_text())
     if manifest.get('schema')!=1 or not isinstance(manifest.get('files'),dict):raise api.SkillFault('The shipped update skill manifest is invalid.',503)
     ident=api.identity(manifest['id']);contents={}
+    if api.lifecycle.deleted(root,ident):return {'installed':False,'deleted':True}
     for rel,expected in manifest['files'].items():
         path=base/SOURCE/api.relative(rel)
         if path.resolve(strict=True)!=path:raise api.SkillFault('The shipped skill resource is linked.',503)
@@ -28,6 +29,7 @@ def ensure(db,root,node,api,base=BASE):
         with db:db.execute('CREATE TABLE IF NOT EXISTS builtin_packages(source_id TEXT PRIMARY KEY,skill_id TEXT NOT NULL UNIQUE,bundle_hash TEXT,draft_hash TEXT,active_hash TEXT,status TEXT NOT NULL)')
         claim=db.execute('SELECT * FROM builtin_packages WHERE source_id=?',(SOURCE,)).fetchone()
         row=db.execute('SELECT * FROM skills WHERE id=?',(ident,)).fetchone()
+        if row and row['state']=='deleting':return {'installed':False,'deleting':True}
         if claim is None:
             if row is not None:return {'installed':False,'preservedUserChanges':True,'reason':'The shipped ID already belongs to a user skill.'}
             with db:db.execute('INSERT INTO builtin_packages VALUES(?,?,NULL,NULL,NULL,?)',(SOURCE,ident,'creating'))

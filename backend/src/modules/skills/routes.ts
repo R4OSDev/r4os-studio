@@ -4,6 +4,7 @@ import type { Skill, SkillDetail, SkillFileContent, SkillValidation } from '../.
 import { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { skillStore } from './store.js';
+import { agentHost } from '../agent-sessions/host.js';
 import { agentSessionRoutes } from '../agent-sessions/routes.js';
 import { runRoutes } from '../agent-sessions/run-routes.js';
 import { dirname, join } from 'node:path';
@@ -30,6 +31,20 @@ export async function skillRoutes(app: FastifyInstance, { directory, providerDir
   app.get('/', async (request, reply) => {
     const session = sessions.session(request, reply, true);
     return { skills: await skillStore<Skill[]>(directory, { operation: 'list' }), csrfToken: session.token };
+  });
+  const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
+  const deletionParams = { type: 'object', required: ['id'], additionalProperties: false, properties: { id: identity } };
+  app.get<{Params:{id:string}}>('/:id/deletion', {schema:{params:deletionParams}}, async(request,reply)=>{
+    sessions.session(request,reply);return agentHost({operation:'skill_delete_preview',ownerId:request.params.id});
+  });
+  app.get<{Params:{id:string;requestId:string}}>('/:id/deletion/:requestId', {schema:{params:{...deletionParams,required:['id','requestId'],properties:{id:identity,requestId:identity}}}}, async(request,reply)=>{
+    sessions.session(request,reply);return agentHost({operation:'skill_delete_receipt',ownerId:request.params.id,requestId:request.params.requestId});
+  });
+  app.post<{Params:{id:string};Body:{requestId:string;revision:number;scopeHash:string;confirmName:string}}>('/:id/deletion', {bodyLimit:2048,schema:{params:deletionParams,body:{type:'object',additionalProperties:false,required:['requestId','revision','scopeHash','confirmName'],properties:{requestId:identity,revision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER},scopeHash:{type:'string',pattern:'^[a-f0-9]{64}$'},confirmName:{type:'string',maxLength:120}}}}}, async(request,reply)=>{
+    const support=await agentHost<{skillDeletion?:number}>({operation:'capabilities'});
+    if(support.skillDeletion!==1)throw new ProjectError('Wait for the agent coordinator to adopt safe skill deletion.',503);
+    const result=await agentHost<{state:string}>({operation:'skill_delete',ownerId:request.params.id,input:request.body});
+    return reply.code(result.state==='deleted'?200:202).send(result);
   });
   app.post('/', { bodyLimit: 4096 }, async (request) => skillStore<SkillDetail>(directory, { operation: 'create', input: body(request.body) }));
   app.patch<{ Params: { id: string } }>('/:id', { bodyLimit: 4096 }, async (request) => {

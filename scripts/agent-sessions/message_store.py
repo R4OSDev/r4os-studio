@@ -1,3 +1,4 @@
+from skill_lifecycle import guarded
 """Private user-message intents. Creating an intent never invokes a model."""
 import hashlib
 import json
@@ -82,6 +83,7 @@ class Messages:
                 'held': bool(queue['held']) if queue else False, 'reason': queue['reason'] if queue else None,
                 'revision': queue['revision'] if queue else 0}
 
+    @guarded
     def accept(self, sid, data, provider_dir, capabilities=None, image_capability=None):
         if (not isinstance(data, dict) or not {'requestId', 'revision', 'mode', 'text'} <= set(data)
                 or set(data) - {'requestId', 'revision', 'mode', 'text', 'attachments', 'target'}

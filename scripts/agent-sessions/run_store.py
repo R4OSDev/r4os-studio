@@ -1,3 +1,4 @@
+from skill_lifecycle import guarded
 """Run admission, durable events and tool receipts shared by host and run workers."""
 import hashlib
 import json
@@ -113,6 +114,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     return snapshot, attachments, request_hash
 
 
+@guarded
 def admit(store, session_id, data, provider_dir, image_capability=None, frozen=None):
     goal_mode = data.get('mode') == 'goal'
     expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'} | ({'attachments'} if 'attachments' in data else set())

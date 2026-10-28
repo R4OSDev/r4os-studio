@@ -5,6 +5,7 @@ import datetime
 import errno
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -15,6 +16,9 @@ import stat
 import subprocess
 import sys
 import uuid
+
+spec_lifecycle=importlib.util.spec_from_file_location('studio_skill_lifecycle',Path(__file__).with_name('lifecycle.py'))
+lifecycle=importlib.util.module_from_spec(spec_lifecycle);spec_lifecycle.loader.exec_module(lifecycle)
 
 MAX_FILE = 1024 * 1024
 MAX_TOTAL = 8 * MAX_FILE
@@ -174,7 +178,7 @@ def summary(row):
 
 
 @contextmanager
-def locked(root, ident, author=None):
+def author_locked(root, ident, author=None):
     identity(ident)
     if author is not None:
         author.verify(root, ident)
@@ -196,7 +200,13 @@ def locked(root, ident, author=None):
         yield
 
 
+@contextmanager
+def locked(root, ident, author=None):
+    with lifecycle.lock(root,fault=SkillFault):
+        with author_locked(root,ident,author):yield
+
 def detail(db, root, ident):
+    if lifecycle.deleted(root,ident):raise SkillFault('Skill was deleted.',404)
     row = db.execute("SELECT * FROM skills WHERE id=? AND state='ready'", (ident,)).fetchone()
     value = summary(row)
     files, _, tree_hash = inventory(folder(root / ident) / 'Workspace')
@@ -206,6 +216,7 @@ def detail(db, root, ident):
 def create(db, root, data):
     if set(data) != {'id', 'name'}: raise SkillFault('Unexpected skill fields.', 400)
     ident = identity(data['id']); name = data['name']
+    if lifecycle.deleted(root,ident):raise SkillFault('This skill identity was deleted. Create a new skill explicitly.',409)
     if not isinstance(name, str) or not name.strip() or len(name) > 120 or any(ord(c) < 32 or 0xD800 <= ord(c) <= 0xDFFF for c in name):
         raise SkillFault('Enter a skill display name of at most 120 characters.', 400)
     with locked(root, ident):
@@ -349,7 +360,7 @@ def main():
             from builtin import ensure
             result=ensure(db,root,node,sys.modules[__name__])
         elif operation == 'list' and set(request) == {'operation'}:
-            result = [summary(row) for row in db.execute("SELECT * FROM skills WHERE state='ready' ORDER BY created_at,id")]
+            result = [summary(row) for row in db.execute("SELECT * FROM skills WHERE state='ready' ORDER BY created_at,id") if not lifecycle.deleted(root,row['id'])]
         elif operation == 'create' and set(request) == {'operation', 'input'}: result = create(db, root, request['input'])
         elif operation in ('get', 'validate') and set(request) == {'operation', 'id'}:
             ident = identity(request['id']); result = detail(db, root, ident)

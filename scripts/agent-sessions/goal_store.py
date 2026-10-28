@@ -1,3 +1,4 @@
+from skill_lifecycle import goal_guard
 """Additive native Goal observations and idempotent, session-bound user intent."""
 import hashlib
 import json
@@ -53,6 +54,7 @@ class Goals:
         return json.loads(row['response']) if row['response'] else {'requestId': rid, 'action': json.loads(row['payload'])['action'],
                 'state': row['state'], 'snapshot': self.snapshot(sid)}
 
+    @goal_guard
     def accept(self, sid, data):
         if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target'}
                 or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int

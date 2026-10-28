@@ -29,6 +29,8 @@ def catalog(projects):
         if len(rows) > 256: raise ValueError()
         result = []
         for row in rows:
+            from skill_lifecycle import api
+            if api.deleted(skills_root(projects),row['id']):continue
             value = packages.summary(row); packages.identity(value['id'])
             if not isinstance(value['name'], str) or not 1 <= len(value['name']) <= 120: raise ValueError()
             if not isinstance(value['description'], str) or len(value['description']) > 1024: raise ValueError()
@@ -43,7 +45,10 @@ def catalog(projects):
 
 def revision(projects, entry, verify_files=False):
     try:
-        ident = packages.identity(entry['id']); tree_hash = entry['activeHash']
+        ident = packages.identity(entry['id'])
+        from skill_lifecycle import api
+        if api.deleted(skills_root(projects),ident) or ident not in {v['id'] for v in catalog(projects)}:raise ValueError()
+        tree_hash = entry['activeHash']
         if not isinstance(tree_hash, str) or not re.fullmatch('[a-f0-9]{64}', tree_hash): raise ValueError()
         root = skills_root(projects) / ident / 'Revisions' / tree_hash
         raw, _ = packages.regular(packages.folder(root) / 'revision.json')

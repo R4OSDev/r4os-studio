@@ -1,3 +1,4 @@
+from skill_lifecycle import guarded,initialize
 """Bounded project session catalog. Fixed operations, never arbitrary SQL or paths."""
 import datetime
 from contextlib import closing
@@ -119,6 +120,7 @@ def validate_settings(data, provider_dir):
 
 
 class SessionStore:
+    @initialize
     def __init__(self, projects, r4os, project_id, kind='project'):
         from project_use import acquire
         self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
@@ -219,6 +221,7 @@ PRAGMA user_version=1;
 
     def get(self, session_id): return self.present(self.row(session_id))
 
+    @guarded
     def create(self, data, provider_dir):
         if set(data) - {'fastMode'} != {'name', 'providerId', 'model', 'effort', 'requestId'}:
             raise ProjectFault('Unexpected session fields.', 400)
@@ -251,6 +254,7 @@ PRAGMA user_version=1;
         finally:
             if self.db.in_transaction: self.db.rollback()
 
+    @guarded
     def update(self, session_id, data, provider_dir):
         if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'roadmapEnabled'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
