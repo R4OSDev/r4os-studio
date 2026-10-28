@@ -3610,3 +3610,5 @@ limits remain in Docs/Project-Boards.md and local0.6.41 acceptance records.
 0.7.8 exposes live Goal editing, paused Save and explicit Play in the browser. Matching worker capability and run/thread/turn binding are required. Original receipt recovery preserves drafts and prevents duplicate activation; Stop remains reachable in the editor.
 
 0.7.9 completes live Goal recovery and authorization. Worker identity and claimed original commands survive coordinator reconstruction; unknown effects are never replayed. Captured live Play adds verifiable current human intent without changing the ordinary request. Backup/restore preserves its ledger; draft, Stop, queue and native usage behavior are qualified with isolated fixtures.
+
+0.7.10 introduces private numeric statistics receipts, bounded per-session outboxes and a central lifetime SQLite aggregate under Projects/.studio/statistics. Protected read-only Global/project/session APIs preserve missing values, exact decimal token sums, original receipts and damaged storage. Goal and response measurements follow in the next releases.

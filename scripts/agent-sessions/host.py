@@ -158,7 +158,26 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'statistics':
+            from stats_store import read,scope
+            selection=request.get('scope','global')
+            if selection=='global':return read(self.config['projects'])
+            kind,ident=binding(request)
+            if selection=='project':
+                if kind!='project':raise ProjectFault('Project statistics need a project owner.',400)
+                from store import connect
+                from contextlib import closing
+                with closing(connect(Path(self.config['projects']))) as catalog:
+                    if not catalog.execute("SELECT 1 FROM projects WHERE id=? AND state='ready'",(ident,)).fetchone():raise ProjectFault('Project not found.',404)
+                return read(self.config['projects'],'project:'+scope({'type':kind,'id':ident}))
+            if selection=='session':
+                store=self.store(ident,kind)
+                try:
+                    sid=identity(request['sessionId']);store.row(sid)
+                    return read(self.config['projects'],'session:'+scope({'type':kind,'id':ident},sid))
+                finally:store.close()
+            raise ProjectFault('Invalid statistics scope.',400)
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:

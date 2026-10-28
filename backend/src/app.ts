@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { statisticsRoutes } from './modules/statistics/routes.js';
 import { vmRoutes } from './modules/virtual-machines/routes.js';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +41,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
     ...providers,
   });
 
+  app.register(statisticsRoutes, { prefix: '/api/statistics' });
   app.register(vmRoutes, { prefix: '/api/vms' });
   app.register(updateRoutes, { prefix: '/api/updates' });
   app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory });

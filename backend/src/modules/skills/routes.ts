@@ -1,3 +1,4 @@
+import { scopedStatisticsRoutes } from '../statistics/routes.js';
 import type { FastifyInstance } from 'fastify';
 import type { Skill, SkillDetail, SkillFileContent, SkillValidation } from '../../../../shared/skills.js';
 import { ProjectSessions } from '../projects/sessions.js';
@@ -13,6 +14,7 @@ function body(value: unknown): Record<string, unknown> {
 }
 export async function skillRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions('skills');
+  scopedStatisticsRoutes(app, sessions, 'skill');
   app.setErrorHandler((cause, _request, reply) => {
     if ((cause as { code?: string }).code === 'FST_ERR_CTP_BODY_TOO_LARGE')
       return reply.code(413).send({ message: 'The request exceeds the allowed file size.' });

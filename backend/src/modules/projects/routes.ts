@@ -1,3 +1,4 @@
+import { scopedStatisticsRoutes } from '../statistics/routes.js';
 import type { FastifyInstance } from 'fastify';
 import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResponse, ProjectDeleted } from '../../../../shared/projects.js';
 import { listProjects, projectStore, ProjectError } from './store.js';
@@ -48,6 +49,7 @@ function validateFields(value: unknown, allowed: string[]) {
 
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
+  scopedStatisticsRoutes(app, sessions, 'project');
   roadmapRoutes(app, directory, sessions);
   boardRoutes(app, directory, sessions);
   await projectGithubRoutes(app, directory, sessions);

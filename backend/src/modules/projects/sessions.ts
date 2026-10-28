@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ProjectError } from './store.js';
 
 export class ProjectSessions {
-  constructor(private scope: 'projects' | 'settings' | 'github' | 'skills' | 'remote-hosts' = 'projects') {}
+  constructor(private scope: 'projects' | 'settings' | 'github' | 'skills' | 'remote-hosts' | 'statistics' = 'projects') {}
   private sessions = new Map<string, { token: string; expires: number }>();
   private displayName() { return this.scope === 'remote-hosts' ? 'Remote Hosts' : this.scope === 'projects' ? 'Projects' : 'Settings'; }
   private hosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]', hostname(),

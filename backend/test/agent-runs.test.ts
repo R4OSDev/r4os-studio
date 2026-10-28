@@ -21,7 +21,7 @@ await test('run API protects mutations and resumes durable events', async () => 
       input += part;
       if (!input.includes('\n')) return;
       const call = JSON.parse(input); calls.push(call);
-      client.end(JSON.stringify({ result: call.operation === 'capabilities' ? { ...(images ? { nativeImageInputs: 1, documentInputs: 1, imageGenerationSettings: 1 } : {}), globalSkills: 1, skillScripts: 1, projectInstructions: 1, vmStartTools: 1, nativeWebSearch: 1, roadmapTools: 1, roadmapSettings: 1, remoteHostTools: 1 } : call.operation === 'events' ? {
+      client.end(JSON.stringify({ result: call.operation === 'capabilities' ? { ...(images ? { nativeImageInputs: 1, documentInputs: 1, imageGenerationSettings: 1 } : {}), liveGoalPreparation: 1, globalSkills: 1, skillScripts: 1, projectInstructions: 1, vmStartTools: 1, nativeWebSearch: 1, roadmapTools: 1, roadmapSettings: 1, remoteHostTools: 1 } : call.operation === 'events' ? {
         events: [{ seq: 7, runId, kind: 'notice', payload: { text: 'Grüße 🦀' } }], session: {},
       } : { id: runId, sessionId, state: 'queued' } }) + '\n');
     });
@@ -36,7 +36,7 @@ await test('run API protects mutations and resumes durable events', async () => 
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload })).statusCode, 403);
     const accepted = await app.inject({ method: 'POST', url: url + '/runs', payload, headers });
     assert.equal(accepted.statusCode, 202); assert.equal(accepted.json().run.id, runId);
-    assert.deepEqual(calls.find((call) => call.operation === 'start_run'), { operation: 'start_run', projectId: id, sessionId, input: { ...payload, projectInstructions: 1, skillSelection: 1, skillScripts: 1, nativeWebSearch: 1, roadmapSettings: 1, remoteHostTools: 1, nativeImageInputs: 1, documentInputs: 1, imageGenerationSettings: 1 } });
+    assert.deepEqual(calls.find((call) => call.operation === 'start_run'), { operation: 'start_run', projectId: id, sessionId, input: { ...payload, projectInstructions: 1, skillSelection: 1, skillScripts: 1, nativeWebSearch: 1, roadmapSettings: 1, remoteHostTools: 1, nativeImageInputs: 1, documentInputs: 1, imageGenerationSettings: 1, liveGoalPreparation: 1 } });
     const selection = [randomUUID(), randomUUID()];
     const imageOnly = { ...payload, requestId: randomUUID(), text: '', attachments: selection };
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload: imageOnly, headers })).statusCode, 202);
