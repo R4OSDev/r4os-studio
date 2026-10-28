@@ -5,6 +5,7 @@ import { sessionStore } from './store.js';
 import { developmentHost } from '../project-development/host.js';
 import { ProjectError } from '../projects/store.js';
 import type { DevelopmentJobPage } from '../../../../shared/project-development.js';
+import { agentHost } from './host.js';
 import { attachmentRoutes } from './attachment-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
@@ -63,12 +64,19 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     const session = await sessionStore<AgentSession>(directory, { operation: 'create', ...owner(request.params.id), input: request.body }, providers);
     return reply.code(201).send({ session });
   });
+  app.get<{ Params: SessionParams; Querystring: { providerId?: string; model?: string } }>(route + '/:sessionId/image-capability', {
+    schema: { params, querystring: { type: 'object', additionalProperties: false, properties: { providerId: identity, model: { type: 'string', minLength: 1, maxLength: 120 } } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    return agentHost({ operation: 'image_generation_capability', ...owner(request.params.id), sessionId: request.params.sessionId, selection: request.query });
+  });
   app.get<{ Params: SessionParams }>(route + '/:sessionId', { schema: { params } }, async (request, reply) => {
     security.session(request, reply);
     return { session: await sessionStore<AgentSession>(directory, { operation: 'get', ...owner(request.params.id), sessionId: request.params.sessionId }, providers) };
   });
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     preValidation: async (request) => {
+      if (request.body && Object.hasOwn(request.body, 'imageGenerationEnabled') && typeof request.body.imageGenerationEnabled !== 'boolean') throw new ProjectError('Image generation must be a boolean setting.',400);
       if (request.body && Object.hasOwn(request.body, 'roadmapEnabled')
         && (ownerType !== 'project' || typeof request.body.roadmapEnabled !== 'boolean')) {
         throw new ProjectError('Roadmap is a boolean setting for project sessions only.', 400);
@@ -76,7 +84,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     },
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
       ...fields, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-      webSearchEnabled: { type: 'boolean' },
+      webSearchEnabled: { type: 'boolean' }, imageGenerationEnabled: { type: 'boolean' },
       ...(ownerType === 'project' ? { roadmapEnabled: { type: 'boolean' } } : {}),
       permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9 },
       skillOverrides: { type: 'object', additionalProperties: { type: 'boolean' }, maxProperties: 256 },

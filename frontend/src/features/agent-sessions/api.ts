@@ -9,6 +9,7 @@ export const toolLabels: Record<string, string> = {
   'studio.exec_command': 'Run command', 'studio.write_stdin': 'Process input', 'studio.terminate_process': 'Terminate process',
   'studio.list_directory': 'List directory', 'studio.read_file': 'Read file', 'studio.search': 'Search',
   'studio.read_attachment': 'Read attachment',
+  'studio.list_generated_images': 'List generated images', 'studio.import_generated_image': 'Import generated image',
   'studio.write_file': 'Write file', 'studio.apply_patch': 'Apply patch', 'studio.create_directory': 'Create directory',
   'studio.build_project': 'Build project', 'studio.deploy_project': 'Deploy project', 'studio.run_project': 'Run project',
   'studio.complete_development_job': 'Complete checks',
@@ -40,3 +41,5 @@ export const updateToolIds = ['studio.read_update_package', 'studio.plan_update_
   'studio.check_update_vm', 'studio.upload_update_package', 'studio.install_update_package', 'studio.commit_update',
   'studio.verify_update', 'studio.resume_update', 'studio.abort_update', 'studio.rollback_update', 'studio.cleanup_update_transport'];
 export const remoteToolIds = ['studio.get_remote_host', 'studio.run_remote_command', 'studio.remote_files', 'studio.read_remote_job', 'studio.stop_remote_job'];
+
+export const imageToolIds = ['studio.list_generated_images', 'studio.import_generated_image'];

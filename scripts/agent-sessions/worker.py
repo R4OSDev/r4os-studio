@@ -137,6 +137,9 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in ('list_generated_images','import_generated_image'):
+            from generation_tools import execute
+            return await execute(self,name,arguments,call_id)
         if name=='read_attachment':
             from document_inputs import read_attachment
             return await read_attachment(self,arguments)
@@ -277,6 +280,9 @@ class Worker:
         for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
         try:
             if self.row['state'] == 'stopping': self.outcome = 'interrupted'; return
+            if self.config.get('nativeImageGeneration') is True:
+                self.error='This worker release has no qualified image output adapter. No model was started.'
+                raise __import__('store').ProjectFault(self.error,503)
             self.lease = open_lock(self.store.projects, self.store.owner_type, self.store.owner_id)
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
             if self.config.get('inputContractVersion')==1 and self.goal_worker:

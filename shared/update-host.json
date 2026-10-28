@@ -18,7 +18,9 @@
     "studio-tools-v8",
     "studio-tools-v9",
     "studio-tools-v10",
-    "studio-skill-tools-v3"
+    "studio-skill-tools-v3",
+    "studio-tools-v11",
+    "studio-skill-tools-v4"
   ],
   "developmentHostProtocol": 1,
   "developmentWorkerProtocol": 1,

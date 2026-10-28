@@ -17,12 +17,14 @@ GUI_PROFILE = 'studio-tools-v7'
 ROADMAP_PROFILE = 'studio-tools-v8'
 REMOTE_PROFILE = 'studio-tools-v9'
 DOCUMENT_PROFILE = 'studio-tools-v10'
-REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE)
-PROFILE = DOCUMENT_PROFILE
+IMAGE_PROFILE = 'studio-tools-v11'
+REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE,IMAGE_PROFILE)
+PROFILE = IMAGE_PROFILE
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 DOCUMENT_SKILL_PROFILE = 'studio-skill-tools-v3'
-SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE)
+IMAGE_SKILL_PROFILE = 'studio-skill-tools-v4'
+SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE,IMAGE_SKILL_PROFILE)
 AUTHOR_TOOLS = ('validate_skill', 'save_skill')
 SANDBOX_MODE = 'workspace-write'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
@@ -43,12 +45,15 @@ PRE_REMOTE_TOOLS = PRE_ROADMAP_TOOLS + ROADMAP_TOOLS
 REMOTE_TOOLS = ('get_remote_host', 'run_remote_command', 'remote_files', 'read_remote_job', 'stop_remote_job')
 PRE_ATTACHMENT_TOOLS = PRE_REMOTE_TOOLS + REMOTE_TOOLS
 ATTACHMENT_TOOLS = ('read_attachment',)
-TOOLS = PRE_ATTACHMENT_TOOLS + ATTACHMENT_TOOLS
+PRE_IMAGE_TOOLS = PRE_ATTACHMENT_TOOLS + ATTACHMENT_TOOLS
+IMAGE_TOOLS = ('list_generated_images','import_generated_image')
+TOOLS = PRE_IMAGE_TOOLS + IMAGE_TOOLS
 
 def tools_for(profile):
     if profile == SKILL_PROFILE: return LEGACY_TOOLS
     if profile == AUTHOR_PROFILE: return LEGACY_TOOLS + AUTHOR_TOOLS
     if profile == DOCUMENT_SKILL_PROFILE:return LEGACY_TOOLS+AUTHOR_TOOLS+ATTACHMENT_TOOLS
+    if profile == IMAGE_SKILL_PROFILE:return LEGACY_TOOLS+AUTHOR_TOOLS+ATTACHMENT_TOOLS+('list_generated_images',)
     if profile == LEGACY_PROFILE: return LEGACY_TOOLS
     if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
@@ -57,7 +62,8 @@ def tools_for(profile):
     if profile in (GIT_PROFILE, GUI_PROFILE): return PRE_ROADMAP_TOOLS
     if profile == ROADMAP_PROFILE: return PRE_REMOTE_TOOLS
     if profile == REMOTE_PROFILE: return PRE_ATTACHMENT_TOOLS
-    if profile == DOCUMENT_PROFILE:return TOOLS
+    if profile == DOCUMENT_PROFILE:return PRE_IMAGE_TOOLS
+    if profile == IMAGE_PROFILE:return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 
 
@@ -99,9 +105,11 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
+    if type(image_generation_enabled) is not bool:raise ValueError('Invalid native image generation capability.')
+    if image_generation_enabled and 'image_generation' not in features:raise ValueError('This runtime has no qualified native image generation feature.')
     if goals_enabled and 'goals' not in features: raise ValueError('This runtime has no qualified Goal feature.')
     tools_for(selected_profile)
     binary = regular(binary)
@@ -165,12 +173,16 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
+    if selected_profile in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):settings['model_provider']='openai'
     settings['features.fast_mode'] = fast_mode
     settings['features.sqlite'] = True
     settings['features.skip_host_skill_discovery'] = True
     # Only a qualified controller/worker opts in. Ordinary one-turn workers
     # retain the previous feature set until their lifecycle supports Goals.
     if goals_enabled: settings['features.goals'] = True
+    if image_generation_enabled:
+        settings['features.image_generation']=True
+        if 'imagegenext' in features:settings['features.imagegenext']=True
     # Hide user config in the runtime mount namespace; the original file is
     # never rewritten. The virtual cwd is empty and contains no project config.
     (state / 'config.toml').write_text('')

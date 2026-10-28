@@ -38,7 +38,7 @@ class AgentLease:
                 WHERE r.id=? AND s.id=? AND s.project_id=?''', (self.value['runId'], self.value['sessionId'], self.identity)).fetchone()
         if not row or row[0] not in ('starting', 'running') or row[1] != 1: raise ProjectFault('The agent run is no longer accepting Git effects.', 409)
         config, worker = json.loads(row[2]), json.loads(row[3] or '{}')
-        if (config.get('owner') != {'type': 'project', 'id': self.identity} or config.get('engine', {}).get('profile') not in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10')
+        if (config.get('owner') != {'type': 'project', 'id': self.identity} or config.get('engine', {}).get('profile') not in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11')
                 or config.get('permissions', {}).get('studio.push_project') is not True or config.get('revision') != row[4] or row[4] != self.value['revision']
                 or worker.get('pid') != self.value['workerPid'] or worker.get('birth') != self.value['workerBirth'] or process(self.value['workerPid'])[1] != self.value['workerBirth']):
             raise ProjectFault('Agent Git permission, profile or worker binding changed.', 403)

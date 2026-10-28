@@ -1,5 +1,5 @@
 export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio.terminate_process'
-  | 'studio.read_attachment'
+  | 'studio.read_attachment' | 'studio.list_generated_images' | 'studio.import_generated_image'
   | 'studio.list_directory' | 'studio.read_file' | 'studio.search' | 'studio.write_file'
   | 'studio.apply_patch' | 'studio.create_directory'
   | 'studio.validate_skill' | 'studio.save_skill'
@@ -18,6 +18,7 @@ export interface AgentSession {
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean };
   webSearchEnabled?: boolean;
+  imageGenerationEnabled?: boolean;
   roadmapEnabled?: boolean;
   roadmapAccess?: { available: boolean; reason?: string };
   remoteHostAccess?: { available: boolean; assignedId?: string | null; hostName?: string; reason?: string };
@@ -28,6 +29,7 @@ export interface SessionCreate { name: string; providerId: string; model: string
 export interface SessionUpdate {
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
   webSearchEnabled?: boolean;
+  imageGenerationEnabled?: boolean;
   roadmapEnabled?: boolean;
   skillOverrides?: Record<string, boolean>;
 }
@@ -36,7 +38,7 @@ export interface SessionOptions {
   development?: import('./project-development.js').DevelopmentOptions;
   providers: { id: string; name: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean; imageInputs?: 'supported' | 'unsupported' | 'unknown'; inputModalities?: ('text' | 'image' | 'audio')[] | null }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean }[];
-  nativeTools?: { id: 'web_search'; defaultEnabled: boolean }[];
+  nativeTools?: { id: 'web_search' | 'image_generation'; defaultEnabled: boolean }[];
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }
 export interface SessionItem {
@@ -56,3 +58,5 @@ export interface RemoteReceiptSummary {
   binding?: { id: string; endpointRevision: number; credentialRevision: number; trustRevision: number };
   localClientEndConfirmed?: boolean; remoteProcessEndConfirmed?: boolean; commandReturnConfirmed?: boolean; commandExitCode?: number | null;
 }
+
+export interface NativeImageCapability { schema: 1; providerId?: string; model?: string; engine?: AgentSession['engine']; checkedAt?: string; state: 'available' | 'unavailable' | 'unknown'; available: boolean; qualified: boolean; reason: string; accountType?: string; accountPlan?: string; accountSha256?: string; inputModalities?: ('text' | 'image' | 'audio')[] | null; policySha256?: string }

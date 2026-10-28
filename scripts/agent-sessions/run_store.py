@@ -7,7 +7,7 @@ from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
 from project_agents import snapshot as project_snapshot
 
-CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs')
+CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs','imageGenerationSettings')
 
 
 def fingerprint(session_id,data,attachments=()):
@@ -47,7 +47,7 @@ def get_run(store, run_id):
     return row
 
 
-def admit(store, session_id, data, provider_dir):
+def admit(store, session_id, data, provider_dir, image_capability=None):
     goal_mode = data.get('mode') == 'goal'
     expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'} | ({'attachments'} if 'attachments' in data else set())
     if (set(data) - set(CAPABILITIES) != expected
@@ -109,6 +109,10 @@ def admit(store, session_id, data, provider_dir):
             recovery=recovery_snapshot(store,session_id)
             if recovery:snapshot['goalRecovery']=recovery
         snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
+        from image_generation import freeze as freeze_image_capability
+        snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
+        snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
+        snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
         snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
         if data.get('skillSelection') == 1:

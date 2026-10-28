@@ -55,6 +55,8 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert(Object.entries(session.permissions).filter(([key]) => !['studio.commit_update', 'studio.rollback_update', 'studio.push_project'].includes(key)).every(([, value]) => value === true));
     assert.equal(session.latestRun, null);
     assert.equal(session.roadmapEnabled, true);
+    assert.equal(session.imageGenerationEnabled, true);
+    assert(optionTools.includes('studio.list_generated_images'));assert(optionTools.includes('studio.import_generated_image'));
     assert.equal(session.roadmapAccess.available, true);
     assert.equal(session.permissions['studio.push_project'], false);
     assert.equal((await app.inject({ url: base, headers })).json().sessions.length, 1);
@@ -86,6 +88,11 @@ with sqlite3.connect(sys.argv[1]) as db:
       await writeFile(join(providers, 'providers.json'), '[]');
       assert.equal((await again.inject({ url, headers: h2 })).statusCode, 200);
     } finally { await again.close(); }
+    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture provider', type: 'openai', connected: true }]));
+    const disabledImages = await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 2, imageGenerationEnabled: false } });
+    assert.equal(disabledImages.statusCode, 200, disabledImages.body);assert.equal(disabledImages.json().session.imageGenerationEnabled, false);
+    const imageRevision=disabledImages.json().session.revision;
+    for (const value of ['true', 1, null]) assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: imageRevision, imageGenerationEnabled: value } })).statusCode, 400);
     const db = join(directory, ids[0], 'Sessions/Sessions.sqlite');
     await writeFile(db, 'preserve corrupt data');
     assert.equal((await app.inject({ url: base, headers })).statusCode, 503);

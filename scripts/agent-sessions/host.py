@@ -34,6 +34,7 @@ class Host:
         self.root = directory(Path(config['projects']) / '.studio/agents')
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
         self.goal_readback_lock = asyncio.Lock()
+        self.image_capability_lock=asyncio.Lock()
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
@@ -140,7 +141,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -153,6 +154,13 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
+        if op=='image_generation_capability':
+            from image_generation import inspect
+            if self.image_capability_lock.locked():raise ProjectFault('Another image capability read is in progress. Try again shortly.',429)
+            async with self.image_capability_lock:
+                store=self.store(project_id,kind)
+                try:return await inspect(store,session_id,self.config['providers'],request.get('selection'))
+                finally:store.close()
         if op=='goal_readback':
             from goal_readback import readback
             if self.goal_readback_lock.locked():raise ProjectFault('Another native Goal readback is in progress.',429)
@@ -184,6 +192,17 @@ class Host:
         if op == 'stop_run':
             async with self.lock: return await self.stop(project_id, session_id, identity(request['runId']), kind)
         if op == 'start_run':
+            image_capability=None
+            if request.get('input',{}).get('imageGenerationSettings')==1:
+                preliminary=self.store(project_id,kind)
+                try:
+                    previous=preliminary.db.execute('SELECT 1 FROM runs WHERE request_id=?',(request['input'].get('requestId'),)).fetchone()
+                    selected=preliminary.get(session_id)
+                    if not previous and selected.get('imageGenerationEnabled',True):
+                        from image_generation import inspect
+                        if self.image_capability_lock.locked():raise ProjectFault('An image capability read is in progress. No run was started; try again shortly.',429)
+                        async with self.image_capability_lock:image_capability=await inspect(preliminary,session_id,self.config['providers'])
+                finally:preliminary.close()
             async with self.lock:
                 await self.refresh()
                 if self.unbound: raise ProjectFault('An agent worker has no confirmed binding. Restore host support before starting another run.', 503)
@@ -220,7 +239,7 @@ class Host:
                             raise ProjectFault('This worker release cannot provide frozen skill script resources.', 503)
                     if not previous and len(self.active) >= self.config.get('maxActiveRuns', 2):
                         raise ProjectFault('The host is already running its maximum number of agent runs.')
-                    run, fresh = admit(store, session_id, request['input'], self.config['providers'])
+                    run, fresh = admit(store, session_id, request['input'], self.config['providers'],image_capability)
                     if not fresh: return run
                     try:
                         release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
@@ -263,7 +282,7 @@ class Host:
                 try:
                     run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':project_id,'sessionId':sid,
                         'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
-                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,
+                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,
                             **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
                 except Exception:
                     original=store.db.execute('SELECT * FROM runs WHERE request_id=? AND session_id=?',(rid,sid)).fetchone()
@@ -369,7 +388,7 @@ async def main():
                 async with host.lock:
                     await host.refresh()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.goal_readback_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:

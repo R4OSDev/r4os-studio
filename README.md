@@ -1,3 +1,25 @@
+## Native image capability and setting (0.6.42)
+
+New project/Skill sessions use additive studio-tools-v11/studio-skill-tools-v4.
+All13 earlier tool declarations retain their exact hashes and native histories.
+Tools → Images defaults Image generation to ON without migrating old settings;
+OFF persists through reload and name edits. A readonly account/provider/model
+check uses the pinned Codex0.163.0 binary and never starts a thread or turn.
+The admitted run freezes selection, engine, account policy digest and setting;
+original run retries retain the original binding. Skills gain no project import.
+
+The original binary was qualified in a network-isolated, synthetic local protocol
+fixture. Image modality, provider imageGeneration, ChatGPT auth/eligible plan
+and the native feature flag jointly control image_gen.imagegen disclosure.
+Responses Lite carries tools in AdditionalTools input. Unknown capability remains
+unknown. Public capability results contain no email, credential or raw account.
+
+This release stages the setting and immutable tool declarations. It reports the
+missing image output adapter honestly and refuses a generation-enabled worker
+before launching the model;0.6.43 adds the private output path,0.6.44 the importer.
+No live provider or paid image generation was used. Separate local host maintenance
+extends accepted profiles while preserving the bootstrap, data and live workers.
+
 ## Goal composer and editor (0.6.26)
 
 A two-line Goal strip sits to the left of Account/Model/Reasoning/Fast Mode.
