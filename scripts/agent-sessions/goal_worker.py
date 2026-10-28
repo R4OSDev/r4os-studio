@@ -24,6 +24,8 @@ class GoalWorker:
         self.stop_reconcile=None
         self.queue_handoff=False
         self.dormant=dormant
+        self.activation=worker.config.get('goalExecution')
+        self.live_active_seen=False
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -76,7 +78,6 @@ class GoalWorker:
         self.evaluate_later()
 
     def evaluate_later(self):
-        if self.dormant: return
         if self.closed or (self.evaluator and not self.evaluator.done()): return
         task=asyncio.create_task(self.evaluate_safe());self.evaluator=task;self.tasks.add(task);task.add_done_callback(self.tasks.discard)
 
@@ -91,10 +92,16 @@ class GoalWorker:
     async def evaluate(self):
         await asyncio.sleep(.05)
         if self.activating or self.lock.locked() or not self.idle.is_set() or self.worker.done.is_set(): return
+        if self.dormant:
+            if self.last_turn_status and not self.retain_at_boundary():
+                self.worker.outcome={'completed':'completed','interrupted':'interrupted','failed':'failed'}.get(self.last_turn_status,'unknown')
+                self.worker.done.set()
+            return
         value=await self.read()
         if not self.idle.is_set(): return
         if value is None or value['status']!='active':
             w=self.worker
+            if self.retain_at_boundary(): return
             if w.uncertain_effect: w.outcome='unknown'
             elif self.queue_handoff and value and value['status']=='paused': w.outcome='completed'
             elif w.stopping or self.last_turn_status=='interrupted': w.outcome='interrupted'
@@ -104,6 +111,20 @@ class GoalWorker:
             # Goal status remains paused/blocked/limited/complete as reported.
             self.goals.observe(w.session_id,w.thread_id,value,w.run_id,phase='unknown' if w.uncertain_effect else 'idle')
             w.done.set()
+
+    def retain_at_boundary(self):
+        # Serialize the acceptance/terminal boundary with the coordinator's
+        # SQLite transaction. An accepted command wins; closing rejects later ones.
+        w=self.worker
+        w.store.db.execute('BEGIN IMMEDIATE')
+        try:
+            pending=w.store.db.execute("SELECT payload FROM goal_commands WHERE session_id=? AND state='pending'",(w.session_id,)).fetchall()
+            if any(json.loads(r['payload']).get('target',{}).get('runId')==w.run_id for r in pending): return True
+            row=w.store.db.execute('SELECT worker FROM runs WHERE id=?',(w.run_id,)).fetchone()
+            meta=json.loads(row['worker'] or '{}');meta['liveGoalOpen']=False
+            w.store.db.execute('UPDATE runs SET worker=? WHERE id=?',(encode(meta),w.run_id))
+            return False
+        finally: w.store.db.commit()
 
     async def notify(self, method, params):
         w=self.worker
@@ -122,12 +143,13 @@ class GoalWorker:
         if method in ('thread/goal/updated','thread/goal/cleared'):
             self.generation+=1
             self.native=params.get('goal') if method.endswith('updated') else None
+            if not self.dormant and self.native and self.native['status']=='active': self.live_active_seen=True
             self.goals.observe(w.session_id,w.thread_id,self.native,w.run_id)
             if self.dormant and not self.activating and self.native and self.native['status']=='active':
                 w.error='A native Goal was activated without a browser Play. Review the Goal before continuing.'
                 w.defer_stop()
             if self.armed and self.native:
-                changed=self.native['objective']!=w.config['goalExecution']['objective']
+                changed=self.native['objective']!=self.activation['objective']
                 restarted=self.completed_once and self.native['status']=='active'
                 if changed or restarted:
                     w.stopping=True;w.error='The Goal changed during this execution. Review it before pressing Play.'
@@ -147,7 +169,7 @@ class GoalWorker:
                 (w.run_id,turn['id'],turn['status']))
             from run_store import event
             event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':turn['id'],'status':turn['status']})
-            if self.dormant: return False
+            if self.dormant: return self.retain_at_boundary()
             from message_store import pending_queue
             if turn['status']=='completed' and not w.stopping and pending_queue(w.store,w.session_id,authorized=True):
                 # Pause outside the serial RPC reader. A racing continuation is
@@ -195,7 +217,12 @@ class GoalWorker:
                 raise ProjectFault('The Goal command belongs to another worker.',403)
             async with self.lock:
                 row=self.goals.command(w.session_id,data['requestId']);command=json.loads(row['payload'])
-                if command.get('target'): raise ProjectFault('Live Goal control is not enabled in this worker release.',503)
+                if command.get('target'):
+                    await self.live_command(data['requestId'],row,command)
+                    result={'result':self.goals.receipt(w.session_id,data['requestId'])}
+                    writer.write((encode(result)+'\n').encode());await writer.drain()
+                    self.evaluate_later()
+                    return
                 if command['action']=='play': raise ProjectFault('This worker cannot accept another Play.',409)
                 if row['state']=='pending' and row['stage']!='native_paused':
                     self.goals.stage(w.session_id,data['requestId'],'native_pause')
@@ -215,6 +242,55 @@ class GoalWorker:
             self.clients.discard(writer);writer.close()
             try: await writer.wait_closed()
             except Exception: pass
+
+    async def live_command(self,rid,row,command):
+        w=self.worker
+        if row['state']!='pending': return
+        selection=command['target']
+        if (selection['runId']!=w.run_id or selection['threadId']!=w.thread_id
+                or w.stopping or w.done.is_set() or self.closed):
+            self.goals.finish(w.session_id,rid,'failed','The original live run ended or is stopping. Preserve the draft.')
+            return
+        # Once a native mutation has been submitted, a repeated delivery may
+        # only read its original receipt. Recovery never repeats the mutation.
+        if row['stage']!='accepted': return
+        from goal_live import LiveGoals
+        from goal_contract import save_params
+        from goal_control import matches
+        try:
+            value=await self.read()
+            if command['action']=='play':
+                proof=LiveGoals(w.store).evidence(w.session_id,rid)
+                if not value or value['objective']!=proof['goal']['objective'] or value['status'] in ('active','usageLimited','budgetLimited','complete'):
+                    raise ProjectFault('The saved Goal changed, is already active or reached its limit. Review it before Play.',409)
+                self.activating=True;self.dormant=False;self.armed=True
+                self.activation={**proof['goal'],'requestId':rid}
+                method,params='thread/goal/set',{'threadId':w.thread_id,'status':'active','origin':'user'}
+            elif command['action']=='save':
+                if value and value['status']=='active': raise ProjectFault('Pause the active Goal before changing its text.',409)
+                method,params=save_params(w.thread_id,command['objective'],value)
+            else:
+                if not value:
+                    self.goals.finish(w.session_id,rid);return
+                method,params='thread/goal/set',{'threadId':w.thread_id,'status':'paused','origin':'user'}
+            self.goals.stage(w.session_id,rid,'native_live_mutation')
+            try: await w.client.request(method,params,timeout=10)
+            except Exception: pass  # Only readback may confirm a lost reply.
+            value=await self.read()
+            confirmed=(value and value['objective']==self.activation['objective'] and (value['status']=='active' or self.live_active_seen and value['status']=='complete')) if command['action']=='play' else matches(command['action'],command.get('objective'),value)
+            if not confirmed:
+                self.goals.finish(w.session_id,rid,'unknown','The original live Goal mutation was not confirmed. It was not repeated.')
+                if command['action']=='play': w.uncertain_effect=True;w.defer_stop()
+            else:
+                if command['action']=='play':
+                    with w.store.db: w.store.db.execute("UPDATE goal_activations SET state='confirmed' WHERE request_id=?",(rid,))
+                self.goals.finish(w.session_id,rid,phase='idle' if self.idle.is_set() or command['action']!='pause' else 'pausing')
+        except Exception as error:
+            latest=self.goals.command(w.session_id,rid)
+            self.goals.finish(w.session_id,rid,'failed' if latest['stage']=='accepted' else 'unknown',str(error) if isinstance(error,ProjectFault) else 'The original live command could not be confirmed. It was not repeated.')
+            if command['action']=='play' and latest['stage']!='accepted': w.uncertain_effect=True;w.defer_stop()
+        finally:
+            self.activating=False;self.evaluate_later()
 
     async def close(self):
         self.closed=True

@@ -39,7 +39,7 @@ export function goalRoutes(app: FastifyInstance, security: ProjectSessions, owne
   }, async (request, reply) => {
     security.mutation(request, reply);
     const support = await agentHost<{ liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeImageInputs?: number; documentInputs?: number; imageGenerationSettings?: number }>({ operation: 'capabilities' });
-    if (request.body.target && support.liveGoalControl !== 1) throw new ProjectError('This worker release prepares live Goals; live control is not enabled yet. Your draft was preserved.', 503);
+    if (request.body.target && support.liveGoalControl !== 1) throw new ProjectError('This coordinator cannot control a live Goal yet. Your draft was preserved.', 503);
     if (support.nativeGoals !== 1) throw new ProjectError('The agent coordinator must adopt Goal support first.', 503);
     if (request.body.action === 'play' && (support.imageGenerationSettings !== 1 || support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
       throw new ProjectError('Wait for current runs to finish before starting a Goal.', 503);

@@ -45,7 +45,7 @@ class Host:
         return state in ('active', 'activating', 'deactivating', 'reloading')
 
     async def goal_worker_matches(self, meta, row):
-        if not json.loads(row['config']).get('goalExecution'):return True
+        if not (json.loads(row['config']).get('goalExecution') or json.loads(row['config']).get('nativeGoalPreparation')):return True
         try:
             pid=int(await systemctl('show',UNIT.format(row['id']),'--property=MainPID','--value'))
             if pid<=0 or (Path('/proc')/str(pid)).stat().st_uid!=self.config['uid']:return False
@@ -154,7 +154,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'liveGoalPreparation':1, 'liveGoalControl':0, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -241,7 +241,15 @@ class Host:
                     if op == 'goal_receipt': return goals.receipt(session_id, identity(request['requestId']))
                     if self.unbound: raise ProjectFault('Reconcile the original unbound workers before changing a Goal.',503)
                     if len(self.goal_tasks) >= 2: raise ProjectFault('Goal controls are busy. Read the original request before retrying.',429)
-                    if request['input'].get('target'): raise ProjectFault('This coordinator prepares live Goals; live control needs the next worker release.',503)
+                    previous=__import__('goal_store').exists(store) and store.db.execute('SELECT 1 FROM goal_commands WHERE request_id=?',(request['input'].get('requestId'),)).fetchone()
+                    if request['input'].get('target') and not previous:
+                        target=request['input']['target']; meta=self.active.get(target.get('runId'))
+                        if not meta or binding(meta)!=(kind,project_id) or meta['sessionId']!=session_id:
+                            raise ProjectFault('The live Goal target has no confirmed original worker binding.',409)
+                        validate_release(meta)
+                        original=get_run(store,target['runId'])
+                        if json.loads(original['worker'] or '{}').get('release')!=meta['release'] or not await self.goal_worker_matches(meta,original):
+                            raise ProjectFault('The original live Goal worker identity or release changed.',403)
                     result, fresh = goals.accept(session_id, request['input'])
                     if request['input'].get('action') in ('pause','stop'):
                         from message_store import Messages
@@ -399,6 +407,10 @@ class Host:
         store=self.store(project_id,kind); goals=Goals(store)
         try:
             data=json.loads(goals.command(sid,rid)['payload'])
+            if data.get('target'):
+                await live_control(store,sid,rid)
+                if data['action']=='stop': await self.stop(project_id,sid,data['target']['runId'],kind)
+                return
             if data['action']=='play':
                 session=store.get(sid)
                 goals.stage(sid,rid,'admitting_worker')

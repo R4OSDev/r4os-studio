@@ -36,7 +36,8 @@ class LiveGoals:
                 or session['thread_id']!=selection['threadId'] or data.get('sessionRevision')!=session['revision']):
             raise ProjectFault('The original live Goal target changed or is stopping. The draft was preserved.',409)
         worker=json.loads(row['worker'] or '{}')
-        if worker.get('liveGoalPreparation')!=1: raise ProjectFault('This worker has no prepared live Goal capability. Wait for a new compatible run.',503)
+        if worker.get('liveGoalControl')!=1: raise ProjectFault('This worker has no live Goal capability. Wait for a new compatible run.',503)
+        if worker.get('liveGoalOpen') is not True: raise ProjectFault('The original run is closing. Preserve the draft and choose a new action.',409)
         config=json.loads(row['config'])
         if config.get('owner')!={'type':self.store.owner_type,'id':self.store.owner_id}:
             raise ProjectFault('Live Goal target belongs to another owner.',403)

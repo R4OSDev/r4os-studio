@@ -423,7 +423,7 @@ class Worker:
             from profile import CODEX_VERSION, CODEX_SHA256
             qualified_messages = self.config['engine'].get('version')==CODEX_VERSION and self.config['engine'].get('sha256')==CODEX_SHA256
             message_identity = {'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid()),'profile':profile,'messageProtocol':1 if qualified_messages else 0,'messageTurnActive':False}
-            if self.config.get('nativeGoalPreparation') is True: message_identity.update(liveGoalPreparation=1,liveGoalControl=0)
+            if self.config.get('nativeGoalPreparation') is True: message_identity.update(liveGoalPreparation=1,liveGoalControl=1,liveGoalOpen=True)
             transition(self.store,self.run_id,'starting',worker=message_identity)
             if self.config.get('goalExecution'):
                 await self.goal_worker.activate()
@@ -434,10 +434,11 @@ class Worker:
                 result = await self.client.request('turn/start', {'threadId': self.thread_id,
                              'clientUserMessageId': self.row['request_id'], 'input': native_input(self.store,self.run_id,self.config),
                              'model': self.config['model'], 'effort': self.config['effort'], 'serviceTier': service_tier})
-                self.turn_id = result['turn']['id']
-                message_identity['messageTurnActive'] = True
-                if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
-                                                       worker=message_identity)
+                if not self.turn_id:
+                    self.turn_id = result['turn']['id']
+                    message_identity['messageTurnActive'] = True
+                    if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,
+                                                           worker=message_identity)
             except asyncio.TimeoutError:
                 # A missing RPC reply does not negate a native started/completed
                 # event. Continue observing this one turn; never send it again.
