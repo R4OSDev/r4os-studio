@@ -36,20 +36,28 @@ def main():
             stream=io.BytesIO();image.save(stream,format='PNG',optimize=False,compress_level=9);output=stream.getvalue()
         elif fmt=='rgba32':output=image.tobytes('raw','RGBA')
         elif fmt=='ico':
-            stride=width*4;mask_stride=((width+31)//32)*4;pixels=image.tobytes('raw','BGRA',stride,-1);alpha=image.getchannel('A')
-            mask=bytearray(mask_stride*height)
-            for y in range(height):
-                for x in range(width):
-                    if alpha.getpixel((x,height-1-y))==0:mask[y*mask_stride+x//8]|=1<<(7-x%8)
-            dib=struct.pack('<IiiHHIIiiII',40,width,height*2,1,32,0,len(pixels)+len(mask),0,0,0,0)+pixels+mask
-            output=struct.pack('<HHHBBBBHHII',0,1,1,width%256,height%256,0,0,1,32,len(dib),22)+dib
+            images=[image]
+            if image.size!=(32,32):
+                small=Image.new('RGBA',(32,32),rgba)
+                resized=ImageOps.fit(image,(32,32),method=Image.Resampling.LANCZOS) if fit=='cover' else ImageOps.contain(image,(32,32),method=Image.Resampling.LANCZOS)
+                small.alpha_composite(resized,((32-resized.width)//2,(32-resized.height)//2));images.append(small)
+            blobs=[];entries=[];offset=6+16*len(images)
+            for bitmap in images:
+                w,h=bitmap.size;stride=w*4;mask_stride=((w+31)//32)*4;pixels=bitmap.tobytes('raw','BGRA',stride,-1);alpha=bitmap.getchannel('A')
+                mask=bytearray(mask_stride*h)
+                for y in range(h):
+                    for x in range(w):
+                        if alpha.getpixel((x,h-1-y))==0:mask[y*mask_stride+x//8]|=1<<(7-x%8)
+                dib=struct.pack('<IiiHHIIiiII',40,w,h*2,1,32,0,len(pixels)+len(mask),0,0,0,0)+pixels+mask
+                entries.append(struct.pack('<BBBBHHII',w%256,h%256,0,0,1,32,len(dib),offset));blobs.append(dib);offset+=len(dib)
+            output=struct.pack('<HHH',0,1,len(images))+b''.join(entries)+b''.join(blobs)
         else:raise ValueError('Unsupported prepared format.')
     if not 0<len(output)<=64*1024*1024:raise ValueError('Prepared image size limit exceeded.')
     path=Path('/out/prepared');path.write_bytes(output);path.chmod(0o600)
     print(json.dumps({'size':len(output),'sha256':hashlib.sha256(output).hexdigest(),'format':fmt,'width':image.width,'height':image.height,'transparent':image.getchannel('A').getextrema()[0]<255,
-        'transform':{'adapter':'studio-image-v1/Pillow11.1.0','sourceSize':source_size,'fit':options.get('fit','contain'),'background':background,'outputSize':list(image.size)},
+        'transform':{'adapter':'studio-image-v2/Pillow11.1.0','sourceSize':source_size,'fit':options.get('fit','contain'),'background':background,'outputSize':list(image.size)},
         **({'pixelOrder':'RGBA','stride':image.width*4,'rowOrder':'top-down','alpha':'straight','headerBytes':0,'resourceFormat':'project-specific raw RGBA32; not an R4OS file standard'} if fmt=='rgba32' else {}),
-        **({'encoding':'ICO BITMAPINFOHEADER/BI_RGB/32bpp BGRA bottom-up + AND mask'} if fmt=='ico' else {})}))
+        **({'encoding':'ICO BITMAPINFOHEADER/BI_RGB/32bpp BGRA bottom-up + AND mask','iconSizes':[list(v.size) for v in images]} if fmt=='ico' else {})}))
 
 if __name__=='__main__':
     try:main()

@@ -48,7 +48,7 @@ class Imports(unittest.IsolatedAsyncioTestCase):
         self.images.check_capacity()
     async def test_actual_bitmap_ico_and_rgba_outputs_preserve_aspect_alpha_and_reproduce(self):
         ico={**self.args,'path':'Assets/Icon.ico','format':'ico','options':{'width':64,'height':64,'fit':'contain'}}
-        first=await self.call(ico,'ico');path=self.worker.store.workspace/ico['path'];raw=path.read_bytes();self.assertEqual(struct.unpack_from('<I',raw,22)[0],40);self.assertEqual(struct.unpack_from('<H',raw,36)[0],32);self.assertNotIn(b'\x89PNG',raw[:70])
+        first=await self.call(ico,'ico');path=self.worker.store.workspace/ico['path'];raw=path.read_bytes();offset=struct.unpack_from('<I',raw,18)[0];self.assertEqual(struct.unpack_from('<I',raw,offset)[0],40);self.assertEqual(struct.unpack_from('<H',raw,offset+14)[0],32);self.assertNotIn(b'\x89PNG',raw[:offset+40]);self.assertIn([32,32],first['generatedAsset']['iconSizes'])
         with Image.open(path) as image:self.assertEqual(image.size,(64,64));self.assertEqual(image.convert('RGBA').getpixel((0,0))[3],0)
         other=await self.call({**ico,'path':'Assets/Icon2.ico'},'ico2');self.assertEqual(first['generatedAsset']['sha256'],other['generatedAsset']['sha256'])
         result=await self.call({**self.args,'path':'Assets/Scene.rgba','format':'rgba32','options':{'width':160,'background':'#00000000'}},'rgba');meta=result['generatedAsset'];self.assertEqual((meta['width'],meta['height'],meta['stride'],meta['pixelOrder']),(160,80,640,'RGBA'))

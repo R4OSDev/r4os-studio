@@ -34,7 +34,9 @@ export interface DevelopmentSource {
   directories: string[];
   pins: ProjectPins;
 }
+export interface ResourceInputReport { schema: 1; available: boolean; stage: 'Registered' | 'Unknown'; reason?: string; sourceSha256?: string; manifestSha256?: string; entries?: { kind: 'icon' | 'help' | 'file'; index: number; name?: string; path: string; bytes: number; sha256: string }[]; unregisteredAssets?: string[]; unregisteredCount?: number; consumerVerified?: boolean; embeddedVerified?: boolean; guestVerified?: boolean }
 export interface DevelopmentArtifact {
+  resourceInputs?: ResourceInputReport;
   updateMetadata?: { available: boolean; reason?: string; identity?: import('./update-packages.js').NativeUpdateIdentity; payloadKind?: string; inspectorSha256?: string; adapterSha256?: string; sdkRevision?: string; manifest?: Record<string, unknown> };
   id: string;
   projectId: string;

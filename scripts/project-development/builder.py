@@ -174,6 +174,8 @@ class Builder:
             raise DevelopmentFault('The manifest name or language differs from the project identity.')
         expected_kind = {'library': 'R4L', 'driver': 'R4D', 'protocol': 'R4P'}.get(self.store.project['template'], 'R4X')
         if entry['kind'] != expected_kind: raise DevelopmentFault('The manifest kind differs from the project role.')
+        from resource_inputs import collect as collect_resource_inputs
+        resource_inputs=collect_resource_inputs(entry,self.store.get(self.job['id'])['source'])
         plan = None
         if expected_kind == 'R4X':
             exported = json.loads(await self.execute([catalog, 'plan', '--manifest', '/workspace/module.R4MF'], True))
@@ -232,6 +234,7 @@ class Builder:
                 'containerInspection': result.decode('utf-8', errors='replace'),
                 'artifact': files[0], 'sourceSha256': self.store.get(self.job['id'])['source']['sha256']}
             proof_format = 'r4os-studio-sdk-build-v1'
+        proof['studioResourceInputs']=resource_inputs
         save(stage / 'build-proof.json', proof)
         build_proof = {'format': proof_format, 'sha256': digest(stage / 'build-proof.json'),
                        'bytes': (stage / 'build-proof.json').stat().st_size}
@@ -242,7 +245,7 @@ class Builder:
             'manifestSha256': self.store.get(self.job['id'])['source']['manifestSha256'],
             'packageSha256': hash_value(files), 'kind': expected_kind, 'role': self.store.project['template'],
             'entry': name, 'files': files, 'createdAt': now(), 'pins': self.job['pins'],
-            'plan': plan, 'updateMetadata': update_metadata, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
+            'plan': plan, 'resourceInputs':resource_inputs, 'updateMetadata': update_metadata, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
         save(stage / 'artifact.json', record)
         with (stage / name).open('rb') as stream: os.fsync(stream.fileno())
         sync(stage); os.rename(stage, parent / artifact_id); sync(parent)

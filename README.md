@@ -1,3 +1,28 @@
+Actual isolated image-pipeline builds in0.6.45 used the existing local SDK0.64.92/Contract0.64.45 with Zig0.16.0 and the existing Rust1.99.0 profile. All three fresh R4X artifacts retain the imported icon and raster sources in their bound registration reports. User component defaults were read and preserved.
+
+## Image resources in pinned builds (0.6.45)
+
+The existing immutable source capture includes binary Assets files with their
+actual hashes. Before compiling, Studio binds the pinned SDK catalog's parsed
+ICON/HELP/RESOURCE declarations to that snapshot; it does not parse or rewrite
+R4MF itself. Missing/excluded paths, links and duplicate resource names fail.
+The new resourceInputs report records icon order, named resource hashes,
+manifest/source identity and unregistered Assets. It reports Registered, with
+embedding/consumer/guest verification explicitly false until separate checks.
+The additive report is retained in build-proof.json and artifact.json.
+
+Zig/C use the existing official manifest SDK builder and a private package
+inclusion covering all captured files. Rust uses the existing pinned official
+Build-RustModule script. The original project manifest, package file, compiler,
+SDK/Contract and Rust pins remain unchanged. No source or build path contacts
+a model or requires a full R4OS workspace.
+
+Actual builds exposed the SDK's extra application ICON rule: a classic ICO must
+include a32x32 bitmap entry. The deterministic converter now includes that entry
+alongside any requested larger bitmap size (no PNG entries). Generic runtime
+RESOURCE icons retain the requested size. Conversion receipts list all sizes.
+This change was verified against the real SDK packer, not just an ICO viewer.
+
 ## Generated images as project assets (0.6.44)
 
 studio.list_generated_images returns only confirmed images from this session.
