@@ -30,4 +30,16 @@ export interface RemoteHostRemoval { requestId: string; revision: number; confir
 export interface RemoteHostList { hosts: RemoteHost[]; csrfToken: string }
 export interface RemoteHostCheck { requestId: string; hostId: string; phase: 'accepted' | 'connecting' | 'complete' | 'unknown'; createdAt: string; updatedAt: string;
   host?: RemoteHost; invalidated?: boolean; message?: string }
-export interface RemoteHostCapabilities { protocol: 1; test: boolean; commands: boolean; files: boolean; reason?: string }
+export interface RemoteHostCapabilities { protocol: 1; test: boolean; commands: boolean; files: boolean; lifecycle?: 1; reason?: string }
+export interface RemoteJobSummary {
+  id: string; requestId: string; projectId: string; projectName: string; sessionId: string; hostId: string; hostName: string;
+  operation: string; state: 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'unknown' | 'unknown_reviewed';
+  phase: string; commandPreview: string; action?: string; createdAt: string; updatedAt: string;
+}
+export interface RemoteJobDetail extends Omit<RemoteJobSummary, 'projectName' | 'commandPreview'> {
+  command?: string; transfer?: Record<string, unknown>; result?: Record<string, unknown> | null;
+  review?: { requestId: string; reviewedAt: string; originalOutcome: 'unknown'; message: string };
+  endpointIdentity?: { address: string; port: number; addresses: string[]; connectAddress: string };
+}
+export interface RemoteReviewInput { requestId: string; expectedUpdatedAt: string; confirmUnknown: true }
+export interface RemoteReviewReceipt { requestId: string; projectId: string; hostId: string; jobId: string; state: 'unknown_reviewed'; originalOutcome: 'unknown'; reviewedAt: string; remoteProcessEndConfirmed: false }

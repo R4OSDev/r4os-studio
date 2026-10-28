@@ -76,7 +76,7 @@ class RemoteBindings(unittest.TestCase):
     def test_unknown_remote_job_blocks_reassignment_and_project_deletion(self):
         project = self.new(None, self.hosts[0]['id']); path = self.projects / project['id'] / 'RemoteHosts/Jobs.sqlite'; path.parent.mkdir()
         with closing(sqlite3.connect(path)) as db, db:
-            db.executescript(f"CREATE TABLE jobs(state TEXT); INSERT INTO jobs VALUES('unknown'); PRAGMA user_version=1; PRAGMA application_id={REMOTE_JOBS_APPLICATION_ID};")
+            db.executescript(f"CREATE TABLE jobs(state TEXT,payload TEXT); INSERT INTO jobs VALUES('unknown','{{}}'); PRAGMA user_version=1; PRAGMA application_id={REMOTE_JOBS_APPLICATION_ID};")
         with self.assertRaises(ProjectFault): self.change(project, remoteHostId=self.hosts[1]['id'])
         with self.assertRaises(ProjectFault): delete.delete(self.projects, project['id'], {'revision': project['revision'], 'confirm': True}, {'agents': True, 'development': True})
         with closing(sqlite3.connect(path)) as db, db: db.execute("UPDATE jobs SET state='completed'")

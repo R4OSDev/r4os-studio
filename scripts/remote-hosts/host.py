@@ -30,14 +30,23 @@ class Host:
     def capabilities(self):
         transport_profile()
         version = json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']
-        return {'protocol': 1, 'test': True, 'commands': self.allow_agent_profile, 'files': self.allow_agent_profile, 'version': version,
+        return {'protocol': 1, 'lifecycle': 1, 'test': True, 'commands': self.allow_agent_profile, 'files': self.allow_agent_profile, 'version': version,
                 'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
 
     async def request(self, request):
-        fields(request, ['protocol', 'operation'], ['hostId', 'input', 'requestId'])
+        fields(request, ['protocol', 'operation'], ['hostId', 'input', 'requestId', 'projectId', 'jobId'])
         if type(request['protocol']) is not int or request['protocol'] != 1: raise CatalogFault('Unsupported remote broker protocol.', 400)
         op = request['operation']
         if op == 'capabilities': fields(request, ['protocol', 'operation']); return self.capabilities()
+        if op in ('jobs', 'job', 'review_job', 'review_receipt'):
+            import lifecycle
+            required = ['protocol', 'operation', 'hostId'] + (['projectId', 'jobId'] if op != 'jobs' else []) + (['input'] if op == 'review_job' else ['requestId'] if op == 'review_receipt' else [])
+            fields(request, required)
+            if op == 'jobs': return lifecycle.listings(self.commands.projects, request['hostId'])
+            if op == 'job': return lifecycle.details(self.commands.projects, request['projectId'], request['hostId'], request['jobId'])
+            if op == 'review_receipt': return lifecycle.receipt(self.commands.projects, request['projectId'], request['hostId'], request['jobId'], request['requestId'])
+            if not self.accepting: raise CatalogFault('Remote support is adopting a release. Preserve this review request.', 503)
+            return lifecycle.review(self.commands.projects, request['projectId'], request['hostId'], request['jobId'], request['input'])
         if op == 'prepare_adoption':
             fields(request, ['protocol', 'operation'])
             if self.active or self.commands.active: return {'ready': False, 'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
@@ -94,19 +103,24 @@ class Host:
 
     async def agent_request(self, request, descriptor, peer_pid):
         held = os.dup(descriptor)
-        try: return self.agent_dispatch(request, held, peer_pid)
+        try:
+            value = self.agent_dispatch(request, held, peer_pid)
+            if not request.get('requireLifecycle') and isinstance(value, dict) and value.get('state') == 'unknown_reviewed':
+                return {**value, 'state': 'unknown'}
+            return value
         finally: os.close(held)
 
     def agent_dispatch(self, request, descriptor, peer_pid):
         from actor import Actor
-        fields(request, ['protocol', 'operation', 'projectId', 'actor'], ['tool', 'callId', 'arguments'])
+        fields(request, ['protocol', 'operation', 'projectId', 'actor'], ['tool', 'callId', 'arguments', 'requireLifecycle'])
+        if 'requireLifecycle' in request and (type(request['requireLifecycle']) is not int or request['requireLifecycle'] != 1): raise CatalogFault('This worker needs compatible Remote Host lifecycle support.', 400)
         if type(request['protocol']) is not int or request['protocol'] != 1 or not self.allow_agent_profile:
             raise CatalogFault('Remote agent work requires the compatible project tool profile.', 403)
         actor = Actor(self.commands.projects, request['projectId'], request['actor'], descriptor, peer_pid)
         if request['operation'] == 'stop_owned':
-            fields(request, ['protocol', 'operation', 'projectId', 'actor']); return self.commands.stop_owned(actor)
+            fields(request, ['protocol', 'operation', 'projectId', 'actor'], ['requireLifecycle']); return self.commands.stop_owned(actor)
         if request['operation'] not in ('tool', 'observe'): raise CatalogFault('Invalid remote agent operation.', 400)
-        fields(request, ['protocol', 'operation', 'projectId', 'actor', 'tool', 'callId', 'arguments'])
+        fields(request, ['protocol', 'operation', 'projectId', 'actor', 'tool', 'callId', 'arguments'], ['requireLifecycle'])
         if request['operation'] == 'observe':
             if request['tool'] not in ('run_remote_command', 'remote_files'): raise CatalogFault('This tool has no original remote receipt.', 400)
             return self.commands.observe(actor, request['callId'], request['arguments'], request['tool'])
@@ -154,10 +168,27 @@ async def serve(config):
     import agent_channel
     agent_server = agent_channel.start(host, runtime / 'agent.sock', asyncio.get_running_loop())
     stopping = asyncio.Event(); loop = asyncio.get_running_loop()
+    replacement = None
     for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, stopping.set)
+    async def maintain():
+        nonlocal replacement
+        from adoption import BASE, candidate, prepare
+        current = Path(__file__).resolve()
+        # An isolated checkout test server never adopts the production tree.
+        if not current.is_relative_to(BASE): return
+        while not stopping.is_set():
+            try:
+                source = candidate()
+                if source != current and prepare(host, source): replacement = source; stopping.set()
+            except Exception: pass  # Preserve the running release and all original work.
+            try: await asyncio.wait_for(stopping.wait(), 2)
+            except asyncio.TimeoutError: pass
+    monitor = asyncio.create_task(maintain())
     async with server: await stopping.wait()
+    monitor.cancel(); await asyncio.gather(monitor, return_exceptions=True)
     server.close(); await server.wait_closed(); await host.stop()
     await asyncio.to_thread(agent_server.shutdown); agent_server.server_close()
+    if replacement: os.execv('/usr/bin/python3', ['/usr/bin/python3', '-B', str(replacement), sys.argv[1]])
 
 
 if __name__ == '__main__': asyncio.run(main())

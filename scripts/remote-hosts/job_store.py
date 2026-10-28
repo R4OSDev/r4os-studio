@@ -52,8 +52,11 @@ def public(row):
     value = json.loads(row['payload'])
     return {'id': row['id'], 'requestId': row['request_id'], 'projectId': value['actor']['projectId'],
             'sessionId': row['session_id'], 'runId': row['run_id'], 'hostId': row['host_id'],
-            'hostName': value['host']['name'], 'operation': value['operation'], 'state': row['state'], 'phase': row['phase'],
+            'hostName': value['host']['name'], 'operation': value['operation'],
+            'state': 'unknown_reviewed' if row['state'] == 'unknown' and value.get('review') else row['state'], 'phase': row['phase'],
             'deadlineAt': value.get('deadlineAt'),
+            **({'endpointIdentity': value['endpointIdentity']} if value.get('endpointIdentity') else {}),
+            **({'review': value['review']} if value.get('review') else {}),
             **({'transfer': value['files']} if value.get('files') else {'command': value.get('command')}),
             'binding': {k: value['host'][k] for k in ('id', 'endpointRevision', 'credentialRevision', 'trustRevision')},
             'createdAt': row['created_at'], 'updatedAt': row['updated_at'], 'result': json.loads(row['result']) if row['result'] else None}
@@ -74,6 +77,15 @@ def update(projects, project_id, job_id, state, phase, result=None):
         db.execute('UPDATE jobs SET state=?,phase=?,result=?,updated_at=? WHERE id=?', (state, phase, json.dumps(result) if result is not None else None, now(), job_id))
 
 
+def bind_endpoint(projects, project_id, job_id, value):
+    with connection(projects, project_id) as db, db:
+        row = db.execute('SELECT payload FROM jobs WHERE id=?', (job_id,)).fetchone()
+        if row is None: raise CatalogFault('The accepted remote job disappeared.', 503)
+        payload = json.loads(row['payload']); payload['endpointIdentity'] = value
+        db.execute("UPDATE jobs SET payload=?,phase='endpoint_bound',updated_at=? WHERE id=?", (json.dumps(payload), now(), job_id))
+        return payload
+
+
 def recover(projects):
     from store import connect
     with closing(connect(Path(projects))) as db: ids = [row[0] for row in db.execute("SELECT id FROM projects WHERE state='ready'")]
@@ -81,11 +93,12 @@ def recover(projects):
         with connection(projects, project_id) as db:
             if db is None: continue
             with db:
-                for row in db.execute("SELECT id,result FROM jobs WHERE state IN ('queued','starting','running','stopping')").fetchall():
+                for row in db.execute("SELECT id,result,phase FROM jobs WHERE state IN ('queued','starting','running','stopping')").fetchall():
                     previous = json.loads(row['result']) if row['result'] else {}
+                    safe_phase = row['phase'] in ('accepted', 'endpoint_bound', 'client_preparation', 'remote_read')
                     value = {**previous, 'localClientEndConfirmed': False, 'remoteProcessEndConfirmed': False, 'effectConfirmed': False,
-                             'message': 'The original worker was interrupted. No remote operation was replayed.'}
-                    db.execute("UPDATE jobs SET state='unknown',phase='worker_interrupted',result=?,updated_at=? WHERE id=?", (json.dumps(value), now(), row['id']))
+                             'message': 'The original worker was interrupted before effect dispatch. Nothing was replayed.' if safe_phase else 'The original worker was interrupted. No remote operation was replayed.'}
+                    db.execute("UPDATE jobs SET state=?,phase='worker_interrupted',result=?,updated_at=? WHERE id=?", ('failed' if safe_phase else 'unknown', json.dumps(value), now(), row['id']))
 
 
 def host_busy(projects, host_id):
@@ -95,5 +108,7 @@ def host_busy(projects, host_id):
     with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2)) as db: ids = [row[0] for row in db.execute('SELECT id FROM projects')]
     for project_id in ids:
         with connection(projects, project_id) as db:
-            if db and db.execute("SELECT 1 FROM jobs WHERE host_id=? AND state IN ('queued','starting','running','stopping','unknown') LIMIT 1", (host_id,)).fetchone(): return True
+            if db:
+                for row in db.execute("SELECT state,payload FROM jobs WHERE host_id=? AND state IN ('queued','starting','running','stopping','unknown')", (host_id,)):
+                    if row['state'] != 'unknown' or not json.loads(row['payload']).get('review'): return True
     return False

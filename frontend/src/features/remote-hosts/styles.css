@@ -17,3 +17,9 @@
 .remote-host-panel dl { display: grid; grid-template-columns: minmax(100px,1fr) minmax(0,2fr); gap: 12px; font-size: 13px; }
 .remote-host-panel dt { color: var(--muted); }.remote-host-panel dd { margin: 0; min-width: 0; }
 @media(max-width:600px) { .remote-host-panel { width:calc(100% - 28px); margin:22px 14px; padding:16px; }.remote-actions { flex-direction:column; }.remote-host-panel dl { grid-template-columns:1fr; gap:7px; }.remote-host-panel dd { margin-bottom:10px; } }
+.remote-jobs { margin-top: 1.5rem; border-top: 1px solid #392b49; padding-top: 1rem; min-width: 0; }
+.remote-jobs ul { list-style: none; padding: 0; display: grid; gap: .5rem; }
+.remote-jobs li > button { display: flex; justify-content: space-between; gap: .8rem; width: 100%; text-align: left; }
+.remote-jobs li > button span { min-width: 0; overflow-wrap: anywhere; }
+.remote-jobs .agent-code-block { max-width: 100%; }
+.remote-jobs [role="status"] > button { margin: .3rem .5rem .3rem 0; }

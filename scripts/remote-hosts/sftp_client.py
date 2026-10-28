@@ -48,7 +48,7 @@ class RemoteSftp:
 
     async def __aenter__(self):
         try:
-            self.process = await asyncio.create_subprocess_exec(*self.ssh.argv(), '-s', self.ssh.destination(), 'sftp',
+            self.process = await asyncio.create_subprocess_exec(*self.ssh.argv(), '-s', '--', self.ssh.destination(), 'sftp',
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env=self.ssh.environment(), start_new_session=True)
             self.ssh.processes.add(self.process)

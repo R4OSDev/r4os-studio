@@ -19,7 +19,7 @@ class RemoteTools:
                 or worker.config.get('engine', {}).get('profile') != REMOTE_PROFILE or worker.lease is None or worker.lease.closed):
             raise ProjectFault('This conversation has no active project Remote Host lease.', 403)
         birth = (Path('/proc') / str(os.getpid()) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
-        return {'protocol': 1, 'projectId': worker.store.project_id,
+        return {'protocol': 1, 'requireLifecycle': 1, 'projectId': worker.store.project_id,
                 'actor': {'sessionId': worker.session_id, 'runId': worker.run_id, 'workerPid': os.getpid(), 'workerBirth': birth,
                           'release': worker.manifest['release'], 'revision': worker.config['revision']}}
 
@@ -89,7 +89,7 @@ class RemoteTools:
         if name == 'get_remote_host':
             return {'success': value.get('available', False), 'output': encode(value), 'remote': summary,
                     **({'error': 'unavailable'} if not value.get('available', False) else {})}
-        unknown = value.get('state') == 'unknown' and name in ('run_remote_command', 'remote_files')
+        unknown = value.get('state') in ('unknown', 'unknown_reviewed') and name in ('run_remote_command', 'remote_files')
         failed = value.get('state') == 'failed' and name in ('run_remote_command', 'remote_files')
         running = value.get('state') in ('queued', 'starting', 'running', 'stopping') and name in ('run_remote_command', 'remote_files')
         result = {'success': not (unknown or failed or running), 'output': encode(value), 'remote': summary}

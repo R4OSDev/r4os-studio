@@ -87,7 +87,7 @@ class RemoteTransport:
         return args
 
     def destination(self, sftp=False):
-        address = host_address(self.target['address'])
+        address = host_address(self.target.get('connectAddress', self.target['address']))
         return '[' + address + ']' if sftp and ':' in address else address
 
     def environment(self):
@@ -96,7 +96,7 @@ class RemoteTransport:
                 'STUDIO_REMOTE_REQUEST': self.request_id, 'STUDIO_REMOTE_AUTH_ROOT': str(self.auth)}
 
     async def execute(self, command, timeout=15, limit=65536):
-        process = await asyncio.create_subprocess_exec(*self.argv(), self.destination(), command,
+        process = await asyncio.create_subprocess_exec(*self.argv(), '--', self.destination(), command,
             stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             env=self.environment(), start_new_session=True)
         self.processes.add(process); buffers = {'stdout': bytearray(), 'stderr': bytearray()}
@@ -143,7 +143,7 @@ class RemoteTransport:
         try:
             if abort.is_set(): flags['stoppedLocally'] = True
             else:
-                process = await asyncio.create_subprocess_exec(*self.argv(), self.destination(), command,
+                process = await asyncio.create_subprocess_exec(*self.argv(), '--', self.destination(), command,
                     stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                     env=self.environment(), start_new_session=True)
                 self.processes.add(process); flags['dispatched'] = True

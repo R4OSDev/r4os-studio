@@ -1,3 +1,39 @@
+## Shared Remote Host lifecycle (0.6.21)
+
+Remote effects resolve the saved DNS/IP target once, record at most16 normalized
+IP addresses and pin one numeric SSH peer. Shared name/IP/port locks cover all
+projects and duplicate catalog aliases; a competing effect fails before dispatch.
+Original unknown effects block aliases as well. Legacy uncertainty without a
+recorded resolved peer requires explicit review before further effects. Bounded
+VER/file reads remain possible; no lock against external R4OS clients is claimed.
+SSH option parsing ends before the destination/command, and saved HostKeyAlias
+trust remains independent of the pinned numeric peer.
+
+System → Remote Hosts → Overview now lists bounded private job history and
+original receipts. A human may acknowledge an unchanged unknown result after
+current project agent runs end. This atomic, request-bound review records
+unknown_reviewed without changing original output, exit uncertainty or remote
+end proof. It permits new work and target maintenance; original request replay
+still never dispatches or becomes success. Lost review replies retain the same
+request ID and reconcile read-only after reload. Agents have no review tool.
+An explicit offline lifecycle-cli.py supports orphaned restore receipts as the
+data owner without connecting or rebinding a machine.
+
+Broker setup now includes the existing private Projects job path, preserving
+bootstrap, configuration and VM/worker units. Compatible immutable root-owned
+releases are adopted only while no checks/jobs are active; admissions close
+before re-exec. Existing work keeps its original adapter. The first installation
+from pre-adoption releases uses explicit --adopt. New workers require lifecycle
+support before remote admission. Ordinary VM work stays independent.
+
+Data/RemoteHosts is outside the unchanged seven-source backup policy. Projects
+already includes local host references and secret-free original receipts. A
+restore needs conscious local target binding and uncertainty review; GitHub
+Workspace metadata carries neither local Host UUIDs nor stored credentials.
+Fixtures qualify alias serialization, review/recovery, immutable adoption checks,
+SSH argument boundaries, HTTP and1440/320 keyboard/browser operation. No actual
+Remote Host connection, user VM run or paid inference was used.
+
 ## Explicit Remote Host task guidance (0.6.20)
 
 Bound English instructions now accompany frozen public host metadata. They

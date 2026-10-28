@@ -1,4 +1,5 @@
 import type { RemoteHost, RemoteHostInput, RemoteHostChange, RemoteHostRemoval, RemoteHostList, RemoteHostCapabilities, RemoteHostCheck } from '../../../../shared/remote-hosts';
+import type { RemoteJobSummary, RemoteJobDetail, RemoteReviewInput, RemoteReviewReceipt } from '../../../../shared/remote-hosts';
 
 export class RemoteHostRequestError extends Error { constructor(message: string, public status: number) { super(message); } }
 async function request<T>(path: string, method = 'GET', body?: unknown, token?: string, signal?: AbortSignal): Promise<T> {
@@ -17,3 +18,8 @@ export const hostCapabilities = (signal?: AbortSignal) => request<RemoteHostCapa
 export const checkHost = (id: string, body: { requestId: string; revision: number }, token: string) => request<RemoteHostCheck>('/' + encodeURIComponent(id) + '/test', 'POST', body, token);
 export const readHostCheck = (id: string, requestId: string, signal?: AbortSignal) => request<RemoteHostCheck>('/' + encodeURIComponent(id) + '/tests/' + encodeURIComponent(requestId), 'GET', undefined, undefined, signal);
 export const resetHostTrust = (id: string, body: RemoteHostRemoval, token: string) => request<RemoteHost>('/' + encodeURIComponent(id) + '/trust', 'POST', body, token);
+const jobPath = (hostId: string, projectId: string, jobId: string) => '/' + encodeURIComponent(hostId) + '/jobs/' + encodeURIComponent(projectId) + '/' + encodeURIComponent(jobId);
+export const listHostJobs = (hostId: string, signal?: AbortSignal) => request<{ jobs: RemoteJobSummary[]; truncated: boolean }>('/' + encodeURIComponent(hostId) + '/jobs', 'GET', undefined, undefined, signal);
+export const getHostJob = (hostId: string, projectId: string, jobId: string, signal?: AbortSignal) => request<RemoteJobDetail>(jobPath(hostId, projectId, jobId), 'GET', undefined, undefined, signal);
+export const reviewHostJob = (hostId: string, projectId: string, jobId: string, body: RemoteReviewInput, token: string) => request<RemoteReviewReceipt>(jobPath(hostId, projectId, jobId) + '/review', 'POST', body, token);
+export const getHostReview = (hostId: string, projectId: string, jobId: string, requestId: string, signal?: AbortSignal) => request<RemoteReviewReceipt>(jobPath(hostId, projectId, jobId) + '/reviews/' + encodeURIComponent(requestId), 'GET', undefined, undefined, signal);

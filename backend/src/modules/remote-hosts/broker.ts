@@ -11,9 +11,13 @@ export interface RemoteTargetBinding {
 export type RemoteBrokerRequest = { protocol: 1; operation: 'capabilities' }
   | { protocol: 1; operation: 'test'; hostId: string; input: unknown }
   | { protocol: 1; operation: 'read'; hostId: string; requestId: string };
+type RemoteLifecycleRequest = { protocol: 1; operation: 'jobs'; hostId: string }
+  | { protocol: 1; operation: 'job'; hostId: string; projectId: string; jobId: string }
+  | { protocol: 1; operation: 'review_job'; hostId: string; projectId: string; jobId: string; input: unknown }
+  | { protocol: 1; operation: 'review_receipt'; hostId: string; projectId: string; jobId: string; requestId: string };
 export interface RemoteBrokerCapabilities { protocol: 1; test: boolean; commands: boolean; files: boolean }
 
-export function remoteHostBroker<T>(request: RemoteBrokerRequest): Promise<T> {
+export function remoteHostBroker<T>(request: RemoteBrokerRequest | RemoteLifecycleRequest): Promise<T> {
   return new Promise((resolve, reject) => {
     const socket = connect(process.env.STUDIO_REMOTE_HOSTS_SOCKET ?? '/run/r4os-studio-remote/host.sock');
     socket.setEncoding('utf8'); let raw = '', bytes = 0, settled = false;

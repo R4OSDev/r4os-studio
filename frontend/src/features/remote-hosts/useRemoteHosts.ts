@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RemoteHost, RemoteHostInput, RemoteHostChange, RemoteHostRemoval } from '../../../../shared/remote-hosts';
-import { listHosts, createHost, updateHost, removeHost, checkHost, resetHostTrust } from './api';
+import type { RemoteHost, RemoteHostInput, RemoteHostChange, RemoteHostRemoval, RemoteReviewInput } from '../../../../shared/remote-hosts';
+import { listHosts, createHost, updateHost, removeHost, checkHost, resetHostTrust, reviewHostJob } from './api';
 
 export function useRemoteHosts(active: boolean) {
   const [hosts, setHosts] = useState<RemoteHost[]>([]), [token, setToken] = useState('');
@@ -37,6 +37,7 @@ export function useRemoteHosts(active: boolean) {
   };
   const check = (host: RemoteHost, requestId: string, revision = host.revision) => checkHost(host.id, { requestId, revision }, token);
   const resetTrust = async (host: RemoteHost, requestId: string, revision = host.revision) => { const saved = await resetHostTrust(host.id, { requestId, revision, confirm: true }, token); accept(saved); return saved; };
-  return { hosts, loading: loading || (active && !token && !error), error, ready: !!token, refresh, save, remove, accept, check, resetTrust };
+  const review = (hostId: string, projectId: string, jobId: string, input: RemoteReviewInput) => reviewHostJob(hostId, projectId, jobId, input, token);
+  return { hosts, loading: loading || (active && !token && !error), error, ready: !!token, refresh, save, remove, accept, check, resetTrust, review };
 }
 export type RemoteHostsApi = ReturnType<typeof useRemoteHosts>;

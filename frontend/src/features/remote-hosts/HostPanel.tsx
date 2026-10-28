@@ -6,6 +6,7 @@ import { getHost, RemoteHostRequestError } from './api';
 import { projectRequestId } from '../projects/api';
 import './styles.css';
 import { HostConnection } from './HostConnection';
+import { HostJobs } from './HostJobs';
 
 const statusText = { success: 'R4OS connection confirmed', offline: 'Host is offline or unreachable', authentication_failed: 'Authentication failed', hostkey_changed: 'Host identity changed', not_r4os: 'R4OS was not confirmed', transport_error: 'Connection failed', timeout: 'Connection timed out' };
 
@@ -39,6 +40,7 @@ export function HostPanel({ id, view, api, navigate, setLeaveGuard }: { id: stri
     <p>A saved host is available for explicit tasks. Saving or opening this page does not connect.</p>
     <button type="button" onClick={() => navigate(host.id, 'Settings')}>Edit settings</button>
     <HostConnection host={host} api={api} changed={changed} />
+    <HostJobs key={host.id} host={host} api={api} />
   </section>;
   return <HostSettings key={id ?? 'new'} host={host} api={api} navigate={navigate} setLeaveGuard={setLeaveGuard} />;
 }

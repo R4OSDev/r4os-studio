@@ -22,7 +22,7 @@ export async function remoteHostRoutes(app: FastifyInstance, { directory }: { di
   app.get('/capabilities', async (): Promise<RemoteHostCapabilities> => {
     try {
       const value = await remoteHostBroker<RemoteHostCapabilities>({ protocol: 1, operation: 'capabilities' });
-      return { protocol: 1, test: value.test === true, commands: value.commands === true, files: value.files === true };
+      return { protocol: 1, test: value.test === true, commands: value.commands === true, files: value.files === true, ...(value.lifecycle === 1 ? { lifecycle: 1 as const } : {}) };
     }
     catch { return { protocol: 1, test: false, commands: false, files: false, reason: 'Remote host connection support is unavailable.' }; }
   });
@@ -32,4 +32,8 @@ export async function remoteHostRoutes(app: FastifyInstance, { directory }: { di
   app.post<{ Params: { id: string } }>('/:id/test', { bodyLimit: 4096 }, async (request) => remoteHostBroker<RemoteHostCheck>({ protocol: 1, operation: 'test', hostId: request.params.id, input: request.body }));
   app.get<{ Params: { id: string; requestId: string } }>('/:id/tests/:requestId', async (request) => remoteHostBroker<RemoteHostCheck>({ protocol: 1, operation: 'read', hostId: request.params.id, requestId: request.params.requestId }));
   app.post<{ Params: { id: string } }>('/:id/trust', { bodyLimit: 4096 }, async (request) => remoteHostStore<RemoteHost>(directory, { operation: 'reset_trust', id: request.params.id, input: request.body }));
+  app.get<{ Params: { id: string } }>('/:id/jobs', async (request) => remoteHostBroker({ protocol: 1, operation: 'jobs', hostId: request.params.id }));
+  app.get<{ Params: { id: string; projectId: string; jobId: string } }>('/:id/jobs/:projectId/:jobId', async (request) => remoteHostBroker({ protocol: 1, operation: 'job', hostId: request.params.id, projectId: request.params.projectId, jobId: request.params.jobId }));
+  app.post<{ Params: { id: string; projectId: string; jobId: string } }>('/:id/jobs/:projectId/:jobId/review', { bodyLimit: 4096 }, async (request) => remoteHostBroker({ protocol: 1, operation: 'review_job', hostId: request.params.id, projectId: request.params.projectId, jobId: request.params.jobId, input: request.body }));
+  app.get<{ Params: { id: string; projectId: string; jobId: string; requestId: string } }>('/:id/jobs/:projectId/:jobId/reviews/:requestId', async (request) => remoteHostBroker({ protocol: 1, operation: 'review_receipt', hostId: request.params.id, projectId: request.params.projectId, jobId: request.params.jobId, requestId: request.params.requestId }));
 }

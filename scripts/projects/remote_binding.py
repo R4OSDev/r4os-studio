@@ -2,6 +2,7 @@
 from contextlib import contextmanager, closing
 import importlib.util
 import fcntl
+import json
 import os
 from pathlib import Path
 import re
@@ -72,5 +73,6 @@ def assert_change_safe(projects, project_id):
     with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2)) as db:
         if db.execute('PRAGMA application_id').fetchone()[0] != REMOTE_JOBS_APPLICATION_ID or db.execute('PRAGMA user_version').fetchone()[0] != 1:
             raise ProjectFault('The original remote job schema needs maintenance.', 503)
-        if db.execute("SELECT 1 FROM jobs WHERE state IN ('queued','starting','running','stopping','unknown') LIMIT 1").fetchone():
-            raise ProjectFault('Finish or reconcile this project’s original remote jobs before changing its assigned host.', 409)
+        for state, payload in db.execute("SELECT state,payload FROM jobs WHERE state IN ('queued','starting','running','stopping','unknown')"):
+            if state != 'unknown' or not json.loads(payload).get('review'):
+                raise ProjectFault('Finish or reconcile this project’s original remote jobs before changing its assigned host.', 409)

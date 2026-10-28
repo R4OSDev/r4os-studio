@@ -14,6 +14,7 @@ export function RemoteReceipt({ value }: { value: RemoteReceiptSummary }) {
     {value.stopRequested === true && <p>Local cancellation requested.</p>}
     {value.localClientEndConfirmed === true && <p>Local SSH client ended.</p>}
     {value.remoteProcessEndConfirmed === false && <p>Remote process end remains unconfirmed.</p>}
-    {value.state === 'unknown' && <p>The original result is unconfirmed. Inspect this job before further changes.</p>}
+    {value.state === 'unknown_reviewed' && <p>Uncertainty acknowledged. The original outcome remains unknown.</p>}
+    {['unknown', 'unknown_reviewed'].includes(value.state ?? '') && <p>The original result is unconfirmed. Inspect this job before further changes.</p>}
   </div>;
 }

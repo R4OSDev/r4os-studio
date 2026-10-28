@@ -7,6 +7,7 @@ from pathlib import Path
 import pwd
 import subprocess
 import tempfile
+import importlib.util
 
 CONFIG = Path('/etc/r4os-studio-remote/config.json')
 DISPATCH = Path('/opt/r4os-studio/bin/remote-host.py')
@@ -80,6 +81,8 @@ ReadWritePaths="''' + quoted + '''" /run/r4os-studio-remote
 WantedBy=multi-user.target
 '''
     install_file(UNIT, service, 0o644); control('daemon-reload')
+    spec = importlib.util.spec_from_file_location('remote_project_job_setup', Path(__file__).with_name('install-job-support.py'))
+    job_setup = importlib.util.module_from_spec(spec); spec.loader.exec_module(job_setup); job_setup.main()
     print('Private unprivileged remote broker prepared. Install the compatible immutable release, then use --adopt.')
 
 

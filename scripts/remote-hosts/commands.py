@@ -2,7 +2,6 @@
 import asyncio
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-import fcntl
 import hashlib
 import json
 import os
@@ -11,9 +10,10 @@ import sqlite3
 import uuid
 
 from catalog import CatalogFault, connection as hosts, fields, identity, integer, now, public as host_public
-from transport import RemoteTransport, private_directory
+from transport import RemoteTransport
 from actor import encode, still_running
 import job_store as jobs
+import endpoints
 from store import connect
 from remote_binding import get as assigned_host
 from project_use import acquire
@@ -110,7 +110,7 @@ class Commands:
             if life: life.close()
             if held is not None: os.close(held)
 
-    def unknown_at_endpoint(self, host):
+    def unknown_at_endpoint(self, host, resolved=None):
         path = self.projects / 'Projects.sqlite'
         with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2)) as db:
             ids = [row[0] for row in db.execute('SELECT id FROM projects')]
@@ -118,8 +118,15 @@ class Commands:
             with jobs.connection(self.projects, project_id) as db:
                 if db is None: continue
                 for row in db.execute("SELECT payload FROM jobs WHERE state='unknown'"):
-                    target = json.loads(row[0])['host']
+                    payload = json.loads(row[0]); target = payload['host']
+                    if payload.get('review'): continue
                     if (target['address'], target['port']) == (host['address'], host['port']): return True
+                    if resolved is not None:
+                        original = payload.get('endpointIdentity')
+                        # Legacy uncertainty without a recorded resolved peer
+                        # cannot safely be excluded as a DNS alias. Human review
+                        # preserves the unknown result while permitting new work.
+                        if original is None or endpoints.overlaps(original, resolved): return True
         return False
 
     async def run(self, job_id, payload):
@@ -130,17 +137,17 @@ class Commands:
                 await asyncio.sleep(.25)
         monitor = asyncio.create_task(watch())
         try:
-            # Serialize effects for the canonical configured endpoint, including
-            # duplicate host entries. DNS alias qualification follows in0.6.21.
-            locks = private_directory(self.runtime / 'endpoint-locks')
-            digest = hashlib.sha256(encode([payload['host']['address'], payload['host']['port']]).encode()).hexdigest()
-            endpoint = os.open(locks / (digest + '.lock'), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-            try: fcntl.flock(endpoint, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError: raise CatalogFault('This endpoint already has an active Studio command.', 409)
+            effect = payload['command'].strip().upper() != 'VER' if payload['operation'] == 'command' else payload['files']['action'] == 'upload'
+            resolved = await endpoints.resolve(payload['host'])
+            endpoint = endpoints.Reservation(self.runtime, resolved, effect)
+            if effect and self.unknown_at_endpoint(payload['host'], resolved):
+                raise CatalogFault('An original uncertain effect may belong to this resolved endpoint. Review it before new work; no effect was sent.', 409)
+            payload = jobs.bind_endpoint(self.projects, pid, job_id, resolved)
             if entry['abort'].is_set(): raise CatalogFault('The original run stopped before command dispatch.', 409)
             # Recheck current target immediately before password materialization.
             from checks import target
             private = target(self.directory, {'hostId': payload['host']['id'], 'binding': target_binding(payload['host'])})
+            private['connectAddress'] = resolved['connectAddress']
             if not still_running(self.projects, payload['actor']): raise CatalogFault('The original run ended before dispatch.', 409)
             jobs.update(self.projects, pid, job_id, 'starting', 'client_preparation')
             async with self.transport(private, self.runtime, job_id) as client:
@@ -164,12 +171,12 @@ class Commands:
                              **({'transferProgress': original['result']['transferProgress']} if (original.get('result') or {}).get('transferProgress') else {}),
                              'nativeStatus': getattr(error, 'native_code', None),
                              'message': ('The original effect could not be confirmed. It was not repeated.' if possible else
-                                         str(error) if payload['operation'] == 'files' and isinstance(error, CatalogFault) else
+                                         str(error) if isinstance(error, CatalogFault) else
                                          'The operation was not dispatched. Its original request was preserved.')})
             except Exception: pass
         finally:
             monitor.cancel(); await asyncio.gather(monitor, return_exceptions=True)
-            if endpoint is not None: os.close(endpoint)
+            if endpoint is not None: endpoint.close()
             os.close(entry['fd']); entry['life'].close(); self.active.pop(job_id, None)
             if payload.get('snapshot'):
                 # The receipt retains its hash and original target; terminal
