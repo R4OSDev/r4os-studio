@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentSession } from '../../../../shared/agent-sessions';
 import type { GoalAction, GoalCommand, GoalReceipt, SessionGoal } from '../../../../shared/agent-inputs';
-import { projectRequestId, ProjectRequestError, sessionPath, useSessionApi } from './api';
+import { busyRun, projectRequestId, ProjectRequestError, sessionPath, useSessionApi } from './api';
 
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 function stored(key: string): GoalCommand | null {
@@ -20,6 +20,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const key = `studio.goal.${scope}.${projectId}.${sessionId}`;
   const [goal, setGoal] = useState<SessionGoal | null>(null);
   const [available, setAvailable] = useState(false), [execution, setExecution] = useState(false);
+  const [liveExecution, setLiveExecution] = useState(false);
   const [readback, setReadback] = useState(false), [checking, setChecking] = useState(false);
   const [pending, setPending] = useState<GoalCommand | null>(() => stored(key));
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
@@ -43,12 +44,12 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     const load = async () => {
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
       observe(state.goal); setAvailable(support.nativeGoals === 1 && support.enabled !== false);
       setExecution(support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1 && support.enabled !== false);
-      setReadback(support.nativeGoalReadback === 1);
+      setReadback(support.nativeGoalReadback === 1); setLiveExecution(support.liveGoalControl === 1);
       if (support.nativeGoals === 1 && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
@@ -116,8 +117,11 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   }
   async function perform(action: GoalAction, objective?: string, revision?: number) {
     if (!goal || !available || pending || posting || checking || !session) return false;
+    const run = session.latestRun;
+    if (busyRun(run?.state) && run?.mode !== 'goal' && (!liveExecution || !run?.goalControlSupport)) { setError('This run cannot accept live Goal control yet. Wait for a ready compatible run; your draft is preserved.'); return false; }
+    const target = busyRun(run?.state) && run?.goalControlSupport && run.threadId && run.turnId ? { runId: run.id, threadId: run.threadId, turnId: run.turnId } : undefined;
     return submit({ requestId: projectRequestId(), revision: revision ?? goal.revision, action,
-      ...(action === 'save' ? { objective: objective ?? '' } : {}), ...(action === 'play' ? { sessionRevision: session.revision } : {}) });
+      ...(action === 'save' ? { objective: objective ?? '' } : {}), ...(action === 'play' || target ? { sessionRevision: session.revision } : {}), ...(target ? { target } : {}) });
   }
   async function check() {
     setCheckAgain(false); setRefresh((value) => value + 1);
@@ -133,7 +137,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
       if (issue.status === 403) await refreshAuth().catch(() => undefined);
     } finally { if (current === generation.current) setChecking(false); }
   }
-  return { goal, available, execution, pending, posting, checking, error, checkAgain, observe, perform,
+  return { goal, available, execution, liveExecution, pending, posting, checking, error, checkAgain, observe, perform,
     changing: checking || posting || !!pending || goal?.phase === 'pending', draftKey: key + '.draft',
     retry: () => pending ? submit(pending) : Promise.resolve(false),
     check };

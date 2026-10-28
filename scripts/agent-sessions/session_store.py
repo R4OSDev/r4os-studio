@@ -307,8 +307,14 @@ PRAGMA user_version=1;
         thread = self.row(r['session_id'])['thread_id']
         worker = json.loads(r['worker'] or '{}')
         support = r['state']=='running' and bool(thread and r['turn_id']) and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True
+        activation=None
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_activations'").fetchone():
+            saved=self.db.execute('SELECT a.request_id,c.state FROM goal_activations a JOIN goal_commands c USING(request_id) WHERE a.run_id=? ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1',(r['id'],)).fetchone()
+            if saved: activation={'requestId':saved['request_id'],'state':saved['state']}
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
+                'goalControlSupport':r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
+                **({'goalActivation':activation} if activation else {}),
                 **({'mode':'goal'} if json.loads(r['config']).get('goalExecution') else {}),
                 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}

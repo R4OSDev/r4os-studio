@@ -31,23 +31,25 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
 }) {
   const group = useRef<HTMLDivElement>(null), textButton = useRef<HTMLButtonElement>(null);
   const state = control.goal, status = state?.goal?.status;
-  const active = busyRun(run?.state) || (status === 'active' && state?.phase !== 'unknown');
+  const running = busyRun(run?.state);
+  const liveReady = control.liveExecution && run?.goalControlSupport;
+  const active = (running && !liveReady) || (status === 'active' && state?.phase !== 'unknown');
   const ready = !disabled && control.available && !control.changing && !editor;
   const confirmed = state?.phase === 'idle' || state?.phase === 'pausing';
   const stopped = confirmed && state?.lastIntent === 'stop' && status !== 'active';
-  const canStopRun = busyRun(run?.state) && run?.mode === 'goal';
+  const canStopRun = busyRun(run?.state);
   useEffect(() => { if (ready && document.activeElement === group.current) textButton.current?.focus(); }, [ready]);
   return <div className="agent-goal" role="group" aria-label="Goal controls" aria-busy={control.changing} ref={group} tabIndex={-1}>
     <div className="agent-goal-top">
       <div className="agent-goal-buttons">
-        <button type="button" aria-label="Play goal" title="Start or resume this Goal" aria-pressed={!!(confirmed && status === 'active')}
+        <button type="button" aria-label="Play goal" title={running ? (liveReady ? 'Activate this Goal in the current run' : 'Wait for a ready compatible worker') : 'Start or resume this Goal'} aria-pressed={!!(confirmed && status === 'active')}
           disabled={!ready || inputBusy || active || state?.phase !== 'idle' || !control.execution}
           onClick={() => state?.goal ? void control.perform('play') : openEditor()}><Icon name="play" /></button>
         <button type="button" aria-label="Pause goal" title="Pause after the current turn" aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
           disabled={!ready || ((!state?.goal || status !== 'active') && state?.phase !== 'unknown')} onClick={() => void control.perform('pause')}><Icon name="pause" /></button>
         <button type="button" aria-label="Stop goal" title="Pause the Goal and interrupt its run" aria-pressed={!!stopped}
-          disabled={disabled || editor || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
-          onClick={() => { if (canStopRun && (control.changing || !control.available || control.error)) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>
+          disabled={disabled || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
+          onClick={() => { if (canStopRun) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>
       </div>
       <span className="agent-goal-state" role="status" title={state?.phase === 'pausing' ? 'Pausing after current turn' : goalLabel(control)}>{goalLabel(control)}</span>
       <span className="agent-goal-caption">GOAL</span>
@@ -57,9 +59,12 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
   </div>;
 }
 
-export function GoalEditor({ control, activeOrdinaryRun, close, dirtyChanged }: {
-  control: Control; activeOrdinaryRun: boolean; close: () => void; dirtyChanged: (value: boolean) => void;
+export function GoalEditor({ control, run, stopRun, close, dirtyChanged }: {
+  control: Control; run?: AgentRun | null; stopRun: () => Promise<void>; close: () => void; dirtyChanged: (value: boolean) => void;
 }) {
+  const activeRun = busyRun(run?.state);
+  const activeOrdinaryRun = activeRun && run?.mode !== 'goal' && (!control.liveExecution || !run?.goalControlSupport);
+  const activeGoal = control.goal?.goal?.status === 'active';
   const saved = control.goal?.goal?.objective ?? '';
   const [baseline, setBaseline] = useState({ revision: control.goal?.revision ?? 0, text: saved });
   const [text, setText] = useState(() => { try { return sessionStorage.getItem(control.draftKey) ?? saved; } catch { return saved; } });
@@ -81,7 +86,7 @@ export function GoalEditor({ control, activeOrdinaryRun, close, dirtyChanged }: 
   function discard() { if (control.posting) return; sessionStorage.removeItem(control.draftKey); close(); }
   async function save(event: FormEvent) {
     event.preventDefault(); event.stopPropagation();
-    if (invalid || control.changing || activeOrdinaryRun || control.goal?.phase === 'unknown') return;
+    if (invalid || control.changing || activeOrdinaryRun || activeGoal || control.goal?.phase === 'unknown') return;
     if (await control.perform('save', normalized, baseline.revision)) close();
   }
   return createPortal(<dialog className="project-dialog agent-goal-dialog" ref={dialog} aria-labelledby="goal-editor-title"
@@ -92,15 +97,16 @@ export function GoalEditor({ control, activeOrdinaryRun, close, dirtyChanged }: 
       <textarea id="goal-objective" rows={6} maxLength={16000} value={text} disabled={control.posting} onChange={(event) => {
         setText(event.target.value); try { sessionStorage.setItem(control.draftKey, event.target.value); } catch { /* Submission checks durable storage. */ }
       }} aria-describedby="goal-editor-help goal-editor-count" aria-invalid={invalid} />
-      <div className="agent-goal-editor-help"><p id="goal-editor-help">Save keeps the Goal paused. Play starts it.</p><span id="goal-editor-count">{count} / 4000</span></div>
-      {activeOrdinaryRun && <p className="project-dialog-status">Wait for the current chat run before saving a Goal.</p>}
+      <div className="agent-goal-editor-help"><p id="goal-editor-help">Save keeps the Goal paused. Play activates it in the current ready run. Queued messages take priority after the current turn.</p><span id="goal-editor-count">{count} / 4000</span></div>
+      {activeOrdinaryRun && <p className="project-dialog-status">This worker is not ready for live Goal control. Your draft is preserved.</p>}
+      {activeGoal && <p className="project-dialog-status">Pause the active Goal before changing its text.</p>}
       {control.goal?.phase === 'unknown' && <p className="project-dialog-error">Pause or Stop the unconfirmed Goal before editing it.</p>}
       {invalid && <p className="project-dialog-error" role="alert">Enter valid text with at most 4000 Unicode characters.</p>}
       {conflict && <div className="agent-goal-conflict"><p>The saved Goal changed. Your draft is preserved.</p><p className="agent-goal-saved">{saved || 'No saved Goal'}</p>
         <button type="button" onClick={() => setBaseline({ revision: control.goal!.revision, text: saved })}>Review saved goal</button></div>}
       {control.error && <p className="project-dialog-error" role="alert">{control.error}</p>}
-      <footer className="project-actions"><button type="button" disabled={control.posting} onClick={discard}>Discard</button>
-        <button className="project-primary" disabled={invalid || !!conflict || control.changing || activeOrdinaryRun || control.goal?.phase === 'unknown'}>{control.posting ? 'Saving…' : 'Save'}</button></footer>
+      <footer className="project-actions">{activeGoal && <button type="button" disabled={control.changing} onClick={() => void control.perform('pause')}>Pause goal</button>}{activeRun && <button type="button" onClick={() => void stopRun()}>Stop current run</button>}<button type="button" disabled={control.posting} onClick={discard}>Discard</button>
+        <button className="project-primary" disabled={invalid || !!conflict || control.changing || activeOrdinaryRun || activeGoal || control.goal?.phase === 'unknown'}>{control.posting ? 'Saving…' : 'Save'}</button></footer>
     </form>
   </dialog>, document.body);
 }
