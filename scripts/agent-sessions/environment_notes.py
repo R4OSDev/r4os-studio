@@ -48,6 +48,12 @@ class Notes:
         count=self.store.db.execute('SELECT COUNT(*) FROM environment_notes WHERE session_id=? AND data IS NOT NULL',(sid,)).fetchone()[0]
         return revision[0] if revision else 0,count
     def listing(self,sid,query=None):
+        own=not self.store.db.in_transaction
+        if own:self.store.db.execute('BEGIN')
+        try:return self._listing(sid,query)
+        finally:
+            if own:self.store.db.commit()
+    def _listing(self,sid,query=None):
         query=query or {};revision,count=self.current(sid)
         if not set(query)<={'before','limit','query','kind','category','id'}:raise ProjectFault('Invalid environment note filter.',400)
         limit=query.get('limit',30);before=query.get('before',2**53-1)

@@ -80,6 +80,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   });
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     preValidation: async (request) => {
+      if (request.body && Object.hasOwn(request.body, 'environmentNotesEnabled') && typeof request.body.environmentNotesEnabled !== 'boolean') throw new ProjectError('Environment notes must be a boolean setting.',400);
       if (request.body && Object.hasOwn(request.body, 'imageGenerationEnabled') && typeof request.body.imageGenerationEnabled !== 'boolean') throw new ProjectError('Image generation must be a boolean setting.',400);
       if (request.body && Object.hasOwn(request.body, 'roadmapEnabled')
         && (ownerType !== 'project' || typeof request.body.roadmapEnabled !== 'boolean')) {
@@ -88,7 +89,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     },
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
       ...fields, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-      webSearchEnabled: { type: 'boolean' }, imageGenerationEnabled: { type: 'boolean' },
+      webSearchEnabled: { type: 'boolean' }, environmentNotesEnabled: { type: 'boolean' }, imageGenerationEnabled: { type: 'boolean' },
       ...(ownerType === 'project' ? { roadmapEnabled: { type: 'boolean' } } : {}),
       permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9 },
       skillOverrides: { type: 'object', additionalProperties: { type: 'boolean' }, maxProperties: 256 },

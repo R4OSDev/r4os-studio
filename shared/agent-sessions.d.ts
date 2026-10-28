@@ -18,8 +18,10 @@ export interface AgentSession {
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean };
   webSearchEnabled?: boolean;
+  environmentNotesEnabled?: boolean;
   imageGenerationEnabled?: boolean;
   roadmapEnabled?: boolean;
+  environmentNotesAccess?: { available: boolean; reason?: string };
   roadmapAccess?: { available: boolean; reason?: string };
   remoteHostAccess?: { available: boolean; assignedId?: string | null; hostName?: string; reason?: string };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
@@ -29,6 +31,7 @@ export interface SessionCreate { name: string; providerId: string; model: string
 export interface SessionUpdate {
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
   webSearchEnabled?: boolean;
+  environmentNotesEnabled?: boolean;
   imageGenerationEnabled?: boolean;
   roadmapEnabled?: boolean;
   skillOverrides?: Record<string, boolean>;

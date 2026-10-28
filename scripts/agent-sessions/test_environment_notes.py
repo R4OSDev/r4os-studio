@@ -12,7 +12,9 @@ class EnvironmentNotes(unittest.TestCase):
     tearDown=fixtures.Runs.tearDown
     open=fixtures.Runs.open
     def ready(self,store):
-        run,_=admit(store,self.sid,self.data,self.providers);transition(store,run['id'],'running',turn_id='own-turn')
+        from test_environment_note_tools import NoteTools
+        NoteTools.current(self,store)
+        run,_=admit(store,self.sid,{**self.data,'environmentNotesSettings':1},self.providers);transition(store,run['id'],'running',turn_id='own-turn')
         return run['id']
     def call(self,store,rid,call,tool):
         with store.db:store.db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,NULL)',(rid,call,'studio_'+tool,call,'intent','{}'))

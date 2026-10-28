@@ -8,7 +8,7 @@ from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
 from project_agents import snapshot as project_snapshot
 
-CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs','imageGenerationSettings','liveGoalPreparation')
+CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs','imageGenerationSettings','liveGoalPreparation','environmentNotesSettings')
 
 
 def fingerprint(session_id,data,attachments=()):
@@ -69,6 +69,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     request_hash=fingerprint(session_id,data,attachments)
     snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
     snapshot['inputContractVersion']=1
+    from environment_note_tools import availability
+    snapshot['environmentNotesEnabled']=bool(data.get('environmentNotesSettings')==1 and session.get('environmentNotesEnabled',True) and availability(session['engine'].get('profile'))['available'])
     if 'liveGoalPreparation' in data:
         from profile import CODEX_VERSION, CODEX_SHA256
         snapshot['nativeGoalPreparation'] = data['liveGoalPreparation']==1 and session['engine'].get('version')==CODEX_VERSION and session['engine'].get('sha256')==CODEX_SHA256

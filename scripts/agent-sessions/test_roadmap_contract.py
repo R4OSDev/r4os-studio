@@ -6,7 +6,7 @@ import uuid
 
 import test_roadmap_tools as fixtures
 from instructions import compose
-from profile import PROFILE
+from profile import CONTRACT_PROFILE as PROFILE
 from tool_catalog import specifications, validate_arguments
 
 

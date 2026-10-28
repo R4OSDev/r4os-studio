@@ -45,6 +45,8 @@ def base(config):
 
 def compose(config):
     text = base(config)
+    from environment_note_tools import instructions as environment_instructions
+    text += environment_instructions(config)
     from input_instructions import compose as input_instructions
     text += input_instructions(config)
     from goal_recovery import instructions as recovery_instructions

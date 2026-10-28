@@ -15,7 +15,7 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, IMAGE_SKILL_PROFILE, SKILL_PROFILES, permission_tools, default_enabled
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, NOTES_SKILL_PROFILE, SKILL_PROFILES, permission_tools, default_enabled
 from owner import owner_type, binding, skill_workspace
 import skill_preferences
 
@@ -110,6 +110,7 @@ def validate_settings(data, provider_dir):
         raise ProjectFault('Invalid Fast Mode setting.', 400)
     if type(data.get('webSearchEnabled', True)) is not bool:
         raise ProjectFault('Invalid Web search setting.', 400)
+    if type(data.get('environmentNotesEnabled',True)) is not bool:raise ProjectFault('Invalid Environment notes setting.',400)
     if type(data.get('imageGenerationEnabled',True)) is not bool:raise ProjectFault('Invalid Image generation setting.',400)
     if type(data.get('roadmapEnabled', True)) is not bool:
         raise ProjectFault('Invalid Roadmap setting.', 400)
@@ -124,7 +125,7 @@ class SessionStore:
     def __init__(self, projects, r4os, project_id, kind='project'):
         from project_use import acquire
         self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
-        self.selected_profile = IMAGE_SKILL_PROFILE if kind == 'skill' else PROFILE
+        self.selected_profile = NOTES_SKILL_PROFILE if kind == 'skill' else PROFILE
         self.project_use = acquire(projects, project_id) if kind == 'project' else None
         try: self.open(projects, r4os, project_id)
         except BaseException:
@@ -196,12 +197,15 @@ PRAGMA user_version=1;
         settings.setdefault('fastMode', False)
         settings.setdefault('webSearchEnabled', True)
         settings.setdefault('imageGenerationEnabled',True)
+        settings.setdefault('environmentNotesEnabled',True)
         if self.owner_type == 'project':
             settings.setdefault('roadmapEnabled', True)
         else:
             settings.pop('roadmapEnabled', None)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
+        from environment_note_tools import availability
+        settings['environmentNotesAccess'] = availability(engine.get('profile'))
         if self.owner_type == 'project':
             from roadmap_access import availability
             settings['roadmapAccess'] = availability(engine.get('profile'))
@@ -239,6 +243,7 @@ PRAGMA user_version=1;
             settings['fastMode'] = data.get('fastMode', False)
             settings['webSearchEnabled'] = True
             settings['imageGenerationEnabled']=True
+            settings['environmentNotesEnabled']=True
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
             settings['permissions'] = {'studio.' + v: default_enabled(v) for v in permission_tools(self.selected_profile)}
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
@@ -256,12 +261,13 @@ PRAGMA user_version=1;
 
     @guarded
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'roadmapEnabled'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
         if 'roadmapEnabled' in data and (self.owner_type != 'project' or type(data['roadmapEnabled']) is not bool):
             raise ProjectFault('Roadmap is a boolean setting for project sessions only.', 400)
         if 'fastMode' in data and type(data['fastMode']) is not bool:
             raise ProjectFault('Invalid Fast Mode setting.', 400)
+        if 'environmentNotesEnabled' in data and type(data['environmentNotesEnabled']) is not bool:raise ProjectFault('Invalid Environment notes setting.',400)
         if 'imageGenerationEnabled' in data and type(data['imageGenerationEnabled']) is not bool:raise ProjectFault('Invalid Image generation setting.',400)
         if 'webSearchEnabled' in data and type(data['webSearchEnabled']) is not bool:
             raise ProjectFault('Invalid Web search setting.', 400)
@@ -274,7 +280,7 @@ PRAGMA user_version=1;
             from goal_store import pending
             if pending(self): raise ProjectFault('Wait for the original Goal control before changing session settings.', 409)
             value = {**previous, **data}
-            settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'webSearchEnabled', 'imageGenerationEnabled')}
+            settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled')}
             if self.owner_type == 'project': settings['roadmapEnabled'] = value['roadmapEnabled']
             choices = skill_preferences.normalize(value['skillOverrides'])
             skill_change = choices != previous['skillOverrides']

@@ -5,12 +5,12 @@ provider ID with the exact built-in authentication/routing/capability defaults,
 and zero HTTP or stream retries. Keep it available when Images is OFF so the
 same native thread can resume without changing its provider identity.
 """
-from profile import IMAGE_PROFILES,IMAGE_SKILL_PROFILE,CODEX_VERSION
+from profile import IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE,CODEX_VERSION
 
 PROVIDER='studio_openai_images'
 
 def selection(profile):
-    return {'modelProvider':PROVIDER} if profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE) else {}
+    return {'modelProvider':PROVIDER} if profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE) else {}
 
 def configuration():
     return ('model_providers.'+PROVIDER+'={name="OpenAI",wire_api="responses",'

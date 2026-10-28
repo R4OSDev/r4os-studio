@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import ROADMAP_PROFILE, REMOTE_PROFILES, REMOTE_TOOLS, ROADMAP_TOOLS, GUI_PROFILE, prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
+from profile import NOTE_TOOLS, ROADMAP_PROFILE, REMOTE_PROFILES, REMOTE_TOOLS, ROADMAP_TOOLS, GUI_PROFILE, prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -163,6 +163,9 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in NOTE_TOOLS:
+            from environment_note_tools import execute
+            return execute(self,name,arguments,call_id)
         if name in ('list_generated_images','import_generated_image'):
             from generation_tools import execute
             return await execute(self,name,arguments,call_id)
@@ -205,6 +208,11 @@ class Worker:
             return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
         try: validate_arguments(name[7:], arguments, self.config['engine'].get('profile', PROFILE))
         except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
+        if name[7:] in NOTE_TOOLS:
+            from environment_note_tools import require
+            from store import ProjectFault
+            try:require(self)
+            except ProjectFault as error:return await output({'success':False,'error':'disabled','output':str(error)})
         roadmap_denial = None
         if name[7:] in ROADMAP_TOOLS:
             from roadmap_access import require
@@ -219,6 +227,9 @@ class Worker:
                 return await output({'success': False, 'error': 'disabled', 'output': roadmap_denial})
             if previous['arguments_hash'] != hashed:
                 return await output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
+            if name[7:] in NOTE_TOOLS:
+                from environment_note_tools import replay
+                return await output(replay(self,name[7:],arguments,previous))
             if previous['result']:
                 result = json.loads(previous['result'])
                 if name == 'studio_read_development_job':
@@ -247,7 +258,7 @@ class Worker:
             result = {'success': False, 'error': 'interrupted', 'output': 'The run is stopping.'}
         elif roadmap_denial:
             result = {'success': False, 'error': 'disabled', 'output': roadmap_denial}
-        elif name[7:] not in ROADMAP_TOOLS and not self.config['permissions'].get(tool_id, False):
+        elif name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS) and not self.config['permissions'].get(tool_id, False):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
         else:
             try: result = await self.execute(name[7:], arguments, call_id)

@@ -19,14 +19,17 @@ REMOTE_PROFILE = 'studio-tools-v9'
 DOCUMENT_PROFILE = 'studio-tools-v10'
 IMAGE_PROFILE = 'studio-tools-v11'
 CONTRACT_PROFILE = 'studio-tools-v12'
-IMAGE_PROFILES = (IMAGE_PROFILE, CONTRACT_PROFILE)
+NOTES_PROFILE = 'studio-tools-v13'
+IMAGE_PROFILES = (IMAGE_PROFILE, CONTRACT_PROFILE, NOTES_PROFILE)
 REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE,*IMAGE_PROFILES)
-PROFILE = CONTRACT_PROFILE
+PROFILE = NOTES_PROFILE
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 DOCUMENT_SKILL_PROFILE = 'studio-skill-tools-v3'
 IMAGE_SKILL_PROFILE = 'studio-skill-tools-v4'
-SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE,IMAGE_SKILL_PROFILE)
+NOTES_SKILL_PROFILE = 'studio-skill-tools-v5'
+SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE)
+NOTE_TOOLS = ('read_environment_notes','record_environment_note')
 AUTHOR_TOOLS = ('validate_skill', 'save_skill')
 SANDBOX_MODE = 'workspace-write'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
@@ -52,6 +55,8 @@ IMAGE_TOOLS = ('list_generated_images','import_generated_image')
 TOOLS = PRE_IMAGE_TOOLS + IMAGE_TOOLS
 
 def tools_for(profile):
+    if profile == NOTES_PROFILE:return TOOLS + NOTE_TOOLS
+    if profile == NOTES_SKILL_PROFILE:return tools_for(IMAGE_SKILL_PROFILE) + NOTE_TOOLS
     if profile == SKILL_PROFILE: return LEGACY_TOOLS
     if profile == AUTHOR_PROFILE: return LEGACY_TOOLS + AUTHOR_TOOLS
     if profile == DOCUMENT_SKILL_PROFILE:return LEGACY_TOOLS+AUTHOR_TOOLS+ATTACHMENT_TOOLS
@@ -71,7 +76,7 @@ def tools_for(profile):
 
 def permission_tools(profile):
     # Roadmap has one grouped setting, outside the original permission map.
-    return tuple(t for t in tools_for(profile) if t not in ROADMAP_TOOLS)
+    return tuple(t for t in tools_for(profile) if t not in (*ROADMAP_TOOLS,*NOTE_TOOLS))
 
 
 def digest(path):
@@ -175,7 +180,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
-    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE):
+    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):
         from image_provider import PROVIDER
         settings['model_provider']=PROVIDER
     settings['features.fast_mode'] = fast_mode
@@ -205,7 +210,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
             if not re.fullmatch(r'/attachments/[a-f0-9-]{36}\.(png|jpg|webp)',target) or target in seen:raise ValueError('Invalid native image target.')
             seen.add(target);args+=['--ro-bind',str(regular(source)),target]
     if image_generation_enabled:
-        if selected_profile not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
+        if selected_profile not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
         generated_root=directory(generated_root)
         directory(provider_home/'generated_images')
     args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
@@ -225,7 +230,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         args=['/usr/bin/prlimit','--fsize=67108864:67108864','--',*args]
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
-    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE):
+    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):
         from image_provider import configuration
         args+=['-c',configuration()]
     return args, {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
