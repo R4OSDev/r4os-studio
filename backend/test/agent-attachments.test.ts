@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -57,6 +57,10 @@ await test('binary uploads preserve original receipts and enforce owner, CSRF an
       assert.equal(imageUpload.json().attachment.mode, 'localImage'); assert.equal(imageUpload.json().attachment.width, 3);
       const preview = await app.inject({ url: base + '/' + imageUpload.json().attachment.id + '/preview', headers });
       assert.equal(preview.statusCode, 200, preview.body); assert.deepEqual(preview.rawPayload, imageBytes);
+      const download = await app.inject({ url: base + '/' + uploaded.json().attachment.id + '/download', headers });
+      assert.equal(download.statusCode, 200); assert.deepEqual(download.rawPayload, payload);
+      assert.equal(download.headers['content-type'], 'application/octet-stream'); assert(String(download.headers['content-disposition']).startsWith('attachment;'));
+      assert.equal((await app.inject(base + '/' + uploaded.json().attachment.id + '/download')).statusCode, 403);
       assert.equal(preview.headers['content-type'], 'image/png'); assert.equal(preview.headers['x-content-type-options'], 'nosniff');
       assert.equal((await app.inject(base + '/' + imageUpload.json().attachment.id + '/preview')).statusCode, 403);
       assert.equal((await app.inject({ url: base + '/' + uploaded.json().attachment.id + '/preview', headers })).statusCode, 415);
@@ -91,7 +95,8 @@ await test('binary uploads preserve original receipts and enforce owner, CSRF an
       assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + uploaded.json().attachment.id, headers })).statusCode, 200);
       assert.equal((await app.inject({ url: base, headers })).json().attachments.length, 2);
       const ownerRoot = join(root, scope === 'skills' ? 'Skills' : 'Projects', id);
-      assert.equal(await readFile(join(ownerRoot, 'Sessions', sid, 'Attachments', uploaded.json().attachment.id, 'original.txt'), 'utf8'), payload.toString());
+      await assert.rejects(access(join(ownerRoot, 'Sessions', sid, 'Attachments', uploaded.json().attachment.id)));
+      assert.equal((await app.inject({ url: base + '/uploads/' + rid, headers })).json().state, 'removed');
     }
   } finally { await app.close(); await rm(root, { recursive: true, force: true }); }
 });

@@ -20,6 +20,7 @@ def main():
         elif op=='receipt':result=attachments.receipt(request['requestId'])
         elif op=='remove':result=attachments.remove(request['attachmentId'])
         elif op=='preview':result=attachments.preview(request['attachmentId'])
+        elif op=='download':result=attachments.access(request['attachmentId'])
         else:raise ProjectFault('Unsupported attachment operation.',400)
         print(json.dumps({'result':result},ensure_ascii=False))
     finally:store.close()

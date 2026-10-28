@@ -21,19 +21,21 @@ export function attachmentRoutes(app: FastifyInstance, directory: string, securi
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: maxFileBytes }, (_request, body, done) => done(null, body));
   app.addHook('onResponse', async (request) => { uploads.delete(request); previews.delete(request); });
   app.addHook('onError', async (request) => { uploads.delete(request); previews.delete(request); });
-  app.get<{ Params: Params & { attachmentId: string } }>(base + '/:attachmentId/preview', {
+  for (const operation of ['preview', 'download'] as const) app.get<{ Params: Params & { attachmentId: string } }>(base + '/:attachmentId/' + operation, {
     schema: { params: { ...params, required: [...params.required, 'attachmentId'], properties: { ...fields, attachmentId: identity } } },
   }, async (request, reply) => {
     security.session(request, reply);
     if (previews.size >= 8) throw new ProjectError('Too many image previews are open.', 429);
     previews.add(request); request.raw.once('aborted', () => previews.delete(request));
     const image = await attachmentStore<{ path: string; attachment: SessionAttachment }>(directory,
-      { operation: 'preview', ...owner(request.params.id), sessionId: request.params.sessionId, attachmentId: request.params.attachmentId });
-    if (image.attachment.mode !== 'localImage' || !['image/png', 'image/jpeg', 'image/webp'].includes(image.attachment.mediaType))
+      { operation, ...owner(request.params.id), sessionId: request.params.sessionId, attachmentId: request.params.attachmentId });
+    if (operation === 'preview' && (image.attachment.mode !== 'localImage' || !['image/png', 'image/jpeg', 'image/webp'].includes(image.attachment.mediaType)))
       throw new ProjectError('This attachment has no raster preview.', 415);
+    const filename = encodeURIComponent(image.attachment.name).replace(/['()*]/g, value => '%' + value.charCodeAt(0).toString(16));
     return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
-      .header('Content-Security-Policy', "default-src 'none'; sandbox").header('Content-Disposition', 'inline; filename="attachment-image"')
-      .type(image.attachment.mediaType).send(createReadStream(image.path, { highWaterMark: 65536 }));
+      .header('Content-Security-Policy', "default-src 'none'; sandbox")
+      .header('Content-Disposition', operation === 'preview' ? 'inline; filename="attachment-image"' : `attachment; filename="attachment"; filename*=UTF-8''${filename}`)
+      .type(operation === 'preview' ? image.attachment.mediaType : 'application/octet-stream').send(createReadStream(image.path, { highWaterMark: 65536 }));
   });
   app.get<{ Params: Params }>(base, { schema: { params } }, async (request, reply) => {
     security.session(request, reply);

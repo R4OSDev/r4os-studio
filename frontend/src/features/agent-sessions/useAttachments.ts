@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
-import type { AttachmentReceipt, SessionAttachment } from '../../../../shared/agent-inputs';
+import type { AttachmentListing, AttachmentReceipt, SessionAttachment } from '../../../../shared/agent-inputs';
 import { ProjectRequestError, projectRequestId, sessionPath, useSessionApi } from './api';
 
 export interface AttachmentDraft {
@@ -173,6 +173,13 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
         : selected.some(value => value.mode !== 'localImage' && (value.extractedBytes ?? 0) > 8192)
           && (!session?.permissions['studio.read_attachment'] || !session.permissions['studio.read_file']) ? 'Enable Read attachment and Read file for long documents, or use a new session.' : '';
   return { drafts, selected, issue, error, add, remove, checkStatus,
+    listStored: () => request<AttachmentListing>(base),
+    removeStored: async (id: string) => {
+      setError('');
+      const draft = current.current.find(value => value.attachment?.id === id);
+      if (draft) { await remove(draft); return; }
+      await request(base + '/' + id, token, 'DELETE');
+    },
     preview: (id: string) => apiBase + base + '/' + id + '/preview',
     accepted: (ids: string[]) => { store(old => old.filter(value => !value.attachment || !ids.includes(value.attachment.id))); },
     hasFiles: drafts.length > 0, ready: !!drafts.length && !issue };

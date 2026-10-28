@@ -95,6 +95,7 @@ def reference(store,sid,run_id,records):
         run_id TEXT NOT NULL REFERENCES runs(id), session_id TEXT NOT NULL REFERENCES sessions(id),
         attachment_id TEXT NOT NULL REFERENCES session_attachments(id), frozen TEXT NOT NULL,
         PRIMARY KEY(run_id,attachment_id))''')
+    store.db.execute('CREATE INDEX IF NOT EXISTS attachment_ref_identity ON attachment_refs(attachment_id,session_id)')
     for meta in records:store.db.execute('INSERT INTO attachment_refs VALUES (?,?,?,?)',(run_id,sid,meta['id'],encode(meta)))
 
 

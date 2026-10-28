@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import type { AttachmentDraft, useAttachments } from './useAttachments';
+import { AttachmentStorage } from './AttachmentStorage';
 
 type Control = ReturnType<typeof useAttachments>;
 const size = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MiB` : bytes >= 1024 ? `${Math.ceil(bytes / 1024)} KiB` : `${bytes} bytes`;
@@ -39,5 +40,6 @@ export function AttachmentCards({ control, disabled }: { control: Control; disab
     {!!control.drafts.length && <ul className="agent-attachment-list" aria-label="Selected attachments">{control.drafts.map(item => <Card key={item.requestId} item={item} control={control} disabled={disabled} />)}</ul>}
     {control.issue && <p className="agent-attachment-message" role="status">{control.issue}</p>}
     {control.error && <p className="agent-attachment-message error" role="alert">{control.error}</p>}
+    <AttachmentStorage control={control} disabled={disabled} />
   </>;
 }

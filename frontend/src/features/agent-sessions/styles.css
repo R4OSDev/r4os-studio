@@ -191,3 +191,6 @@
 .agent-web-search { padding: 0 14px 10px; overflow-wrap: anywhere; }
 .agent-web-search ul { padding-left: 20px; }
 .agent-web-search li + li { margin-top: 6px; }
+.agent-attachment-history{margin-top:12px;max-height:none}.agent-attachment-history a{color:var(--accent);font-size:.8rem}.agent-stored-uploads{align-self:flex-end;font-size:.72rem;padding:2px 0;color:var(--muted);background:none;border:0;text-decoration:underline;cursor:pointer}.agent-storage-dialog{max-width:min(600px,calc(100vw - 28px))}.agent-storage-files{list-style:none;padding:0;max-height:45vh;overflow:auto}.agent-storage-files li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}.agent-storage-files li>span{min-width:0;overflow-wrap:anywhere}.agent-storage-files small{display:block;color:var(--muted);margin-top:4px}.agent-storage-files button{flex-shrink:0}.agent-stored-uploads:focus-visible,.agent-attachment-history a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.agent-storage-dialog>p{margin:16px 20px;font-size:13px;line-height:1.5}.agent-storage-dialog>.agent-storage-files{margin:16px 20px}.agent-storage-files li{border-bottom-color:#3b2c4b}

@@ -2971,3 +2971,16 @@ reconciled by receipt GETs, and explicit Send retry retains the exact original
 ordered body. Text/Ready files survive reload and session/model switches.
 Desktop, 768px and 320px browser checks use real HTTP/stores and a deterministic
 native adapter without model inference. See Docs/Goal-Attachments.md.
+
+### Attachment history and cleanup (0.6.32)
+
+User message cards retain authenticated previews and original attachment downloads.
+Bytes are rechecked against their original size/hash; SVG/HTML/PDF are never
+active embeds. Stored uploads shows session usage and allows explicit removal
+of unused uploads. Admission and cleanup serialize through the same SQLite lock.
+Accepted refs, older run/message refs and uncertain/corrupt references retain
+files. Durable removing plus bounded own-file deletion supports interrupted
+cleanup without releasing quota prematurely. Original receipts remain retained.
+Project backup/isolated restore uses the same seven sources; Skills stays excluded.
+Native histories and their additional disk usage are not cleaned or counted as
+raw upload bytes. Existing release bindings and worker file limits still apply.

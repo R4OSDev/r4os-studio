@@ -88,16 +88,15 @@ class Uploads(unittest.TestCase):
             with self.assertRaises(ProjectFault):Attachments(store,str(uuid.uuid4()))
             self.assertFalse((store.directory/self.sid/'Attachments').exists())
 
-    def test_remove_draft_hides_card_but_keeps_original_bytes_and_quota(self):
+    def test_remove_unused_draft_releases_quota_but_preserves_original_receipt(self):
         raw=b'private original'
         with self.open() as store:
             attachments=Attachments(store,self.sid);result=attachments.upload(self.upload_data(raw),io.BytesIO(raw));ident=result['attachment']['id']
-            before=attachments.usage();attachments.remove(ident)
-            self.assertEqual(attachments.listing()['attachments'],[]);self.assertEqual(attachments.usage(),before)
-            self.assertEqual((attachments.root()/ident/'original.txt').read_bytes(),raw)
-            with patch('attachment_store.MAX_SESSION',len(raw)):
-                with self.assertRaises(ProjectFault):attachments.upload(self.upload_data(b'one'),io.BytesIO(b'one'))
+            attachments.remove(ident)
+            self.assertEqual(attachments.listing()['attachments'],[]);self.assertEqual(attachments.usage()['sessionBytes'],0)
+            self.assertFalse((attachments.root()/ident).exists())
             self.assertEqual(attachments.receipt(result['requestId'])['state'],'removed')
+            self.assertFalse(attachments.remove(ident)['retainedForHistory'])
 
     def test_lost_publication_after_final_rename_stays_unknown_and_charged(self):
         raw=b'original publication';data=self.upload_data(raw)

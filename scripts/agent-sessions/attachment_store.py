@@ -119,14 +119,14 @@ class Attachments:
         if state=='pending':
             owner=json.loads(row['worker'])
             if birth(owner['pid'])!=owner['birth']:state='unknown'
-        result={'requestId':rid,'state':state}
+        result={'requestId':rid,'state':'removed' if state in ('removing','purged') else state}
         if state=='ready':result['attachment']={**json.loads(row['metadata']),'state':'ready'}
         if row['reason']:result['reason']=row['reason']
         if state=='unknown':result['reason']='The original upload was not confirmed. No attachment was published and no upload was repeated.'
         return result
 
     def usage(self):
-        rows=self.store.db.execute("SELECT session_id,metadata FROM session_attachments WHERE state IN ('pending','unknown','ready','removed')").fetchall() if self.exists() else []
+        rows=self.store.db.execute("SELECT session_id,metadata FROM session_attachments WHERE state IN ('pending','unknown','ready','removed','removing')").fetchall() if self.exists() else []
         own=[r for r in rows if r['session_id']==self.sid]
         charged=lambda r:json.loads(r['metadata']).get('storedBytes',json.loads(r['metadata'])['size'])
         return {'sessionBytes':sum(charged(r) for r in own),'ownerBytes':sum(charged(r) for r in rows),
@@ -142,7 +142,9 @@ class Attachments:
             pdf=subprocess.run(['/usr/bin/pdftotext','-v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=2)
             pdf_available=b'pdftotext version 25.03.0' in pdf.stderr
         except (OSError,subprocess.TimeoutExpired):pdf_available=False
-        return {'attachments':[{**json.loads(r[0]),'state':'ready'} for r in rows],
+        cleaning=self.store.db.execute("SELECT id,metadata FROM session_attachments WHERE session_id=? AND state='removing'",(self.sid,)).fetchall() if self.exists() else []
+        return {'attachments':[{**json.loads(r[0]),'state':'ready','referenced':self.used(json.loads(r[0])['id'])} for r in rows],
+            'cleanupPending':[{'id':r['id'],'name':json.loads(r['metadata'])['name']} for r in cleaning],
             'limits':{'maxFiles':MAX_FILES,'maxFileBytes':MAX_FILE,'maxRunBytes':MAX_RUN,'maxSessionBytes':MAX_SESSION,
                 'maxOwnerBytes':MAX_OWNER,'maxSessionFiles':MAX_SESSION_FILES,'maxOwnerFiles':MAX_OWNER_FILES,
                 'maxTextBytes':2*1024*1024,'maxImagePixels':40_000_000,'maxImageDimension':16384,'maxPdfPages':128},
@@ -210,23 +212,81 @@ class Attachments:
         except Exception as error:
             # This exclusive temporary file is ours; finalized bytes/other IDs
             # are preserved on any uncertainty and never treated as Ready.
-            if not finalized and temp.exists() and temp.is_file() and not temp.is_symlink():temp.unlink();sync(parent)
+            if not finalized and temp.exists() and temp.is_file() and not temp.is_symlink():
+                try:temp.unlink();sync(parent)
+                except OSError:finalized=True  # A full disk can also prevent confirming cleanup.
             message=str(error) if isinstance(error,ProjectFault) else 'The attachment could not be validated. Existing files were preserved.'
             with self.store.db:self.store.db.execute('UPDATE session_attachments SET state=?,reason=? WHERE id=?',('unknown' if finalized else 'rejected',message,ident))
         return self.receipt(rid)
 
     def remove(self,ident):
-        row=self.row(ident)
-        if row['state'] in ('pending','unknown'):raise ProjectFault('Reconcile the original upload before removing its draft.',409)
-        with self.store.db:self.store.db.execute("UPDATE session_attachments SET state='removed' WHERE id=?",(row['id'],))
-        # Physical bytes remain private until reference-aware cleanup qualifies.
-        return {'id':row['id'],'removed':True}
+        ident=identity(ident);self.store.db.execute('BEGIN IMMEDIATE')
+        try:
+            row=self.row(ident)
+            if row['state'] in ('pending','unknown'):raise ProjectFault('Reconcile the original upload before removing its draft.',409)
+            used=self.used(ident)
+            if used:
+                if row['state']=='removing':raise ProjectFault('An inconsistent attachment reference needs maintenance. Existing bytes were preserved.',503)
+                self.store.db.execute("UPDATE session_attachments SET state='removed' WHERE id=?",(ident,));self.store.db.commit()
+                return {'id':ident,'removed':True,'retainedForHistory':True}
+            # This lock serializes with admission's atomic Run+reference commit.
+            # Durable removing closes new Send admission before filesystem work.
+            self.store.db.execute("UPDATE session_attachments SET state='removing' WHERE id=?",(ident,));self.store.db.commit()
+        finally:
+            if self.store.db.in_transaction:self.store.db.rollback()
+        self.purge(row)
+        with self.store.db:self.store.db.execute("UPDATE session_attachments SET state='purged',reason=NULL WHERE id=?",(ident,))
+        return {'id':ident,'removed':True,'retainedForHistory':False}
+
+    def used(self,ident):
+        """Positive references and uncertain old/config/item references all retain bytes."""
+        ident=identity(ident)
+        if self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='attachment_refs'").fetchone():
+            rows=self.store.db.execute('SELECT session_id,frozen FROM attachment_refs WHERE attachment_id=?',(ident,)).fetchall()
+            for row in rows:
+                data=json.loads(row['frozen'])
+                if row['session_id']!=self.sid or data.get('id')!=ident or data.get('sessionId')!=self.sid:
+                    raise ProjectFault('Attachment ownership metadata needs maintenance. Existing files were preserved.',503)
+            if rows:return True
+        for table,column in [('runs','config'),('items','payload')]:
+            for row in self.store.db.execute('SELECT '+column+' FROM '+table+' WHERE session_id=?',(self.sid,)):
+                try:
+                    value=json.loads(row[0]);records=value.get('attachments',[])
+                    if not isinstance(value,dict) or not isinstance(records,list) or any(not isinstance(v,dict) for v in records):raise ValueError()
+                    if any(v.get('id')==ident for v in records):return True
+                except (ValueError,TypeError,AttributeError):
+                    raise ProjectFault('Attachment references need maintenance. Existing files were preserved.',503) from None
+        return False
+
+    def purge(self,row):
+        parent=self.store.directory/self.sid/'Attachments'/identity(row['id'])
+        if not parent.exists() and not parent.is_symlink():return
+        from image_inputs import SUFFIX
+        meta=json.loads(row['metadata']);suffix=SUFFIX.get(meta.get('mediaType'))
+        allowed={'original.'+suffix} if suffix else set()
+        if meta.get('mode')=='pdfText':allowed.add('extracted.txt')
+        try:
+            if parent.resolve(strict=True)!=parent or not parent.is_dir():raise ValueError()
+            # Preserve unfamiliar entries, links, hardlinks or identities. Never
+            # traverse a directory tree to infer ownership of unexpected files.
+            entries=list(parent.iterdir())
+            for path in entries:
+                status=path.lstat()
+                if (path.name not in allowed or not stat.S_ISREG(status.st_mode) or status.st_nlink!=1 or status.st_uid!=os.getuid()):raise ValueError()
+            for path in entries:path.unlink()
+            sync(parent);parent.rmdir();sync(parent.parent)
+        except (OSError,ValueError):
+            raise ProjectFault('Unused upload cleanup is incomplete. Retry removal; the original receipt and quota were retained.',503) from None
 
     def preview(self,ident):
+        return self.access(ident,True)
+
+    def access(self,ident,preview=False):
         row=self.row(ident)
-        if row['state']!='ready':raise ProjectFault('This image is not available for draft preview.',409)
+        if row['state']!='ready' and not (row['state']=='removed' and self.used(ident)):
+            raise ProjectFault('This attachment is unavailable. Its original receipt was preserved.',409)
         metadata=json.loads(row['metadata'])
-        if metadata.get('mode')!='localImage':raise ProjectFault('Only checked raster images have an inline preview.',415)
+        if preview and metadata.get('mode')!='localImage':raise ProjectFault('Only checked raster images have an inline preview.',415)
         from image_inputs import file_path
         path=file_path(self.store,self.sid,metadata)
         # Internal helper response only. The HTTP route streams bytes and never
