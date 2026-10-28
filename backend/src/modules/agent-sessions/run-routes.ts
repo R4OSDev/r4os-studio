@@ -23,6 +23,12 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
     try { return await agentHost({ operation: 'capabilities' }); }
     catch { return { enabled: false, protocol: 1, message: 'Agent host support is unavailable.' }; }
   });
+  app.get<{ Params: Params & { requestId: string } }>(base + '/runs/requests/:requestId', {
+    schema: { params: { ...params, required: [...params.required, 'requestId'], properties: { ...params.properties, requestId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return { run: await agentHost<AgentRun>({ operation: 'run_receipt', ...owner(request.params.id), sessionId: request.params.sessionId, requestId: request.params.requestId }) };
+  });
   app.post<{ Params: Params; Body: { requestId: string; revision: number; text: string; attachments?: string[] } }>(base + '/runs', {
     bodyLimit: 72 * 1024, schema: { params, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'revision', 'text'], properties: { requestId: identity,

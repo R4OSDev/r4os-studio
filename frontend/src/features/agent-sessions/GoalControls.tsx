@@ -26,8 +26,8 @@ export function goalLabel(control: Control) {
   return status ? ({ active: 'Active', paused: 'Paused', blocked: 'Blocked', usageLimited: 'Usage limit', budgetLimited: 'Budget limit', complete: 'Complete' })[status] : 'Ready';
 }
 
-export function GoalControls({ control, run, disabled, editor, openEditor, stopRun }: {
-  control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; stopRun: () => Promise<void>;
+export function GoalControls({ control, run, disabled, editor, openEditor, stopRun, inputBusy = false }: {
+  control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; stopRun: () => Promise<void>; inputBusy?: boolean;
 }) {
   const group = useRef<HTMLDivElement>(null), textButton = useRef<HTMLButtonElement>(null);
   const state = control.goal, status = state?.goal?.status;
@@ -41,7 +41,7 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
     <div className="agent-goal-top">
       <div className="agent-goal-buttons">
         <button type="button" aria-label="Play goal" title="Start or resume this Goal" aria-pressed={!!(confirmed && status === 'active')}
-          disabled={!ready || active || state?.phase !== 'idle' || !control.execution}
+          disabled={!ready || inputBusy || active || state?.phase !== 'idle' || !control.execution}
           onClick={() => state?.goal ? void control.perform('play') : openEditor()}><Icon name="play" /></button>
         <button type="button" aria-label="Pause goal" title="Pause after the current turn" aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
           disabled={!ready || ((!state?.goal || status !== 'active') && state?.phase !== 'unknown')} onClick={() => void control.perform('pause')}><Icon name="pause" /></button>
@@ -53,7 +53,7 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
       <span className="agent-goal-caption">GOAL</span>
     </div>
     <button type="button" className="agent-goal-text" aria-label="Edit goal" title={state?.goal?.objective ?? 'Set a goal'} ref={textButton}
-      disabled={disabled || !control.available || control.changing} onClick={openEditor}>{state?.goal?.objective ?? 'Set a goal'}</button>
+      disabled={disabled || inputBusy || !control.available || control.changing} onClick={openEditor}>{state?.goal?.objective ?? 'Set a goal'}</button>
   </div>;
 }
 

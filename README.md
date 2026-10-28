@@ -1,3 +1,9 @@
+## Live composer and message queue in0.7.4
+
+The composer stays editable during active runs and pending HTTP requests. Enter queues a complete input, Ctrl+Enter delivers text to the original active turn, and Shift+Enter inserts a newline. Idle Enter/Ctrl+Enter send normally. IME composition, repeated keys and other modifiers do not submit. Queue message and Send now expose the same actions, with an ordered queue, Remove for unsent entries and explicit Continue after a hold. Stop stays independent of a pending send.
+
+A versioned draft and the exact original request are retained separately per session. Acknowledgement clears only the submitted draft version and attachment IDs; newer typing remains. Reload/reconnect reads original message or run receipts without automatic POST or inference. Rejected/unknown inputs remain available for explicit review and resubmission. Existing account/model controls, Goals and attachments are preserved. The actual browser fixture covers1440/320px, mouse/touch/keyboard, FIFO, Stop/Continue, response loss, reauthentication and multiple tabs without provider inference.
+
 ## Direct active-turn messages in0.7.3
 
 The owning worker exposes a bounded private user-control socket with UID/PID/birth/release checks. Direct text uses native turn/steer with the original thread, expected turn and stable client message ID; it never starts a replacement turn. Durable intent precedes sending, RPC/native user-item receipts deduplicate visible messages, and uncertain outcomes are read back without retransmission. Stop or a changed target rejects new delivery. Live availability is reported only for the qualified runtime and an active native turn; old workers and live attachments remain explicit, preserving the full input for an intentional queue/send action. Accepted private user intents also retain verifiable human provenance. Browser keyboard controls follow0.7.4.

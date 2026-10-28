@@ -62,11 +62,13 @@ class Messages:
 
     def receipt(self, sid, request_id): return self.present(self.row(sid, request_id))
 
-    def snapshot(self, sid, before=None):
+    def snapshot(self, sid, before=None, view='all'):
         self.store.row(sid)
+        if view not in ('all','pending'): raise ProjectFault('Invalid message view.',400)
         if before is not None and (type(before) is not int or not 1 <= before <= 9007199254740991):
             raise ProjectFault('Invalid message cursor.', 400)
-        rows = self.store.db.execute('SELECT * FROM session_messages WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT 51',
+        selection = " AND state IN ('pending','queued','dispatching','unknown')" if view=='pending' else ''
+        rows = self.store.db.execute('SELECT * FROM session_messages WHERE session_id=? AND seq<?'+selection+' ORDER BY seq DESC LIMIT 51',
                                      (sid, before or 9007199254740991)).fetchall()
         selected = []; size = 0
         for row in rows[:50]:

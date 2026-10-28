@@ -175,6 +175,7 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
       : selected.some(value => value.mode === 'localImage') && model?.imageInputs !== 'supported' ? (model?.imageInputs === 'unsupported' ? 'This model does not support images. Choose another model; your files are preserved.' : 'Image support is unavailable. Reload the model choices before sending images.')
         : selected.some(value => value.mode !== 'localImage' && (value.extractedBytes ?? 0) > 8192)
           && (!session?.permissions['studio.read_attachment'] || !session.permissions['studio.read_file']) ? 'Enable Read attachment and Read file for long documents, or use a new session.' : '';
+  const accepted = useCallback((ids: string[]) => { store(old => old.filter(value => !value.attachment || !ids.includes(value.attachment.id))); }, [store]);
   return { drafts, selected, issue, error, add, remove, checkStatus,
     listStored: () => request<AttachmentListing>(base),
     removeStored: async (id: string) => {
@@ -184,6 +185,6 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
       await request(base + '/' + id, token, 'DELETE');
     },
     preview: (id: string) => apiBase + base + '/' + id + '/preview',
-    accepted: (ids: string[]) => { store(old => old.filter(value => !value.attachment || !ids.includes(value.attachment.id))); },
+    accepted,
     hasFiles: drafts.length > 0, ready: !!drafts.length && !issue };
 }

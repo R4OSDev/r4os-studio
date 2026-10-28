@@ -38,6 +38,16 @@
 .agent-composer textarea { display:block; width:100%; resize:vertical; min-height:70px; max-height:240px; border:1px solid #4e3a5f; border-radius:7px; background:#15101c; padding:12px 14px; color:#eee5fa; font:inherit; font-size:13px; line-height:1.6; }
 .agent-composer textarea:focus { outline:2px solid #a87ed2; outline-offset:1px; }
 .agent-composer textarea:disabled { opacity:.55; }
+.agent-keyboard-hint { margin:7px 0 0; color:#b8a6c8; font-size:10px; overflow-wrap:anywhere; }
+.agent-message-queue { flex:0 0 auto; max-height:190px; overflow:auto; padding:9px 18px; border-top:1px solid #493553; background:#201828; font-size:11px; }
+.agent-queue-heading { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.agent-message-queue ol { padding-left:20px; margin:8px 0 0; }
+.agent-message-queue li { display:flex; align-items:flex-start; gap:8px; margin:6px 0; }
+.agent-message-queue details { flex:1; min-width:0; overflow-wrap:anywhere; }
+.agent-message-queue p,.agent-pending-message p { white-space:pre-wrap; overflow-wrap:anywhere; max-height:140px; overflow:auto; }
+.agent-message-queue button,.agent-pending-message button { padding:5px 8px; border:1px solid #634676; border-radius:5px; font:inherit; background:#2d203a; }
+.agent-pending-message { margin-top:8px; padding:8px; border:1px solid #634676; border-radius:5px; font-size:11px; overflow-wrap:anywhere; }
+.agent-pending-message button { margin:4px 7px 0 0; }
 .agent-compose-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:11px; }
 .agent-compose-actions button,.agent-older { padding:9px 17px; font-size:11px; border-radius:6px; border:1px solid #4e3a5f; background:#2d203a; }
 .agent-compose-actions .agent-send { background:#ba91e7; border-color:#c49bf0; color:#21132e; font-weight:650; }

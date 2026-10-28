@@ -154,7 +154,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -192,7 +192,7 @@ class Host:
                 try:
                     store.row(session_id)
                     messages = Messages(store)
-                    if op == 'messages': return messages.snapshot(session_id, request.get('before'))
+                    if op == 'messages': return messages.snapshot(session_id, request.get('before'), request.get('view','all'))
                     if op == 'message_receipt': return messages.receipt(session_id, request['requestId'])
                     self.inboxes.add((kind, project_id, session_id))
                     if op == 'message_control': return messages.control(session_id, request['input'])
@@ -247,6 +247,14 @@ class Host:
                         task.add_done_callback(lambda _, key=key: self.goal_tasks.pop(key,None))
                     return result
                 finally: store.close()
+        if op == 'run_receipt':
+            store = self.store(project_id,kind)
+            try:
+                store.row(session_id)
+                row = store.db.execute('SELECT * FROM runs WHERE session_id=? AND request_id=?',(session_id,identity(request['requestId']))).fetchone()
+                if not row: raise ProjectFault('Original run request not found.',404)
+                return store.run_present(row)
+            finally: store.close()
         if op == 'events':
             store = self.store(project_id, kind)
             try: return events(store, session_id, request.get('after', 0))

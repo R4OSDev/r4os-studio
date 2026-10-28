@@ -11,11 +11,11 @@ type Params = { id: string; sessionId: string };
 export function messageRoutes(app: FastifyInstance, security: ProjectSessions, ownerType: 'project' | 'skill') {
   const base = '/:id/sessions/:sessionId/messages';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
-  app.get<{ Params: Params; Querystring: { before?: number } }>(base, {
-    schema: { params, querystring: { type: 'object', additionalProperties: false, properties: { before: integer } } },
+  app.get<{ Params: Params; Querystring: { before?: number; view?: 'all' | 'pending' } }>(base, {
+    schema: { params, querystring: { type: 'object', additionalProperties: false, properties: { before: integer, view: { type: 'string', enum: ['all','pending'] } } } },
   }, async (request, reply) => {
     security.session(request, reply); reply.header('Cache-Control', 'private, no-store');
-    return agentHost({ operation: 'messages', ...owner(request.params.id), sessionId: request.params.sessionId, before: request.query.before });
+    return agentHost({ operation: 'messages', ...owner(request.params.id), sessionId: request.params.sessionId, before: request.query.before, view: request.query.view });
   });
   app.get<{ Params: Params & { requestId: string } }>(base + '/:requestId', {
     schema: { params: { ...params, required: [...params.required, 'requestId'], properties: { ...params.properties, requestId: identity } } },
