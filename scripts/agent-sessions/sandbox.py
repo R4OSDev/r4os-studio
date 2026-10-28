@@ -86,6 +86,10 @@ class Sandbox:
         import json
         from file_worker import Fault
         try:
+            from image_recipes import target as image_recipe_target,read as read_image_recipe
+            recipe=image_recipe_target(arguments)
+            if recipe is not None:
+                async with self.lock:return await read_image_recipe(self.worker,name,arguments,recipe)
             if name == 'apply_patch' and self.worker.skill_resources.patch_target(arguments.get('patch', '')):
                 return {'success': False, 'error': 'readOnly', 'output': 'Published skill resources are read-only. No patch changes were applied.'}
             if arguments.get('root', 'workspace') == 'workspace':

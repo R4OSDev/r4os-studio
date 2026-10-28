@@ -1,3 +1,30 @@
+## Agent image workflow and readonly knowledge (0.6.47)
+
+A current English run contract explains the real native tool, confirmed Studio
+IDs, conflict-protected import, original preservation, formats and explicit
+RESOURCE/ICON registration plus consuming code. It keeps Generated/Imported/
+Registered/Embedded/guest proof separate, requires the actual resource report
+and existing pins, and explains OFF/unknown/legacy/account/write-right limits.
+Inspect available references before edits; use accepted image bytes/native
+output, correct reference arguments, and no assumed workspace upload. Reuse
+confirmed outputs; never repair a failure through automatic generation/model
+switching, new keys or invented paths. Actual human intent remains authoritative.
+
+Small qualified companion recipes are available lazily through the existing
+SDK file tools at __studio_image_recipes__/README.txt and images.zig/.h/.rs.
+This readonly virtual path is explicitly a Studio companion, not an installed
+SDK directory or terminal path. The private networkless reader exposes only
+companion files and preserves real SDK-path collisions. No compiler/provider
+process is started for a knowledge read. The index includes application-icon,
+named toolbar and larger raster call patterns, buffer/alpha/stride/error notes.
+Global/project prompt sources, revisions and hashes are not rewritten.
+
+All15 native tool declarations retain their exact0.6.42 hashes; old threads
+and their original schemas remain compatible. Fourteen focused instruction/
+readonly-namespace/human-intent/Goal cases, Build/TypeScript and strict Lint
+qualify the update without model inference. Native image bytes/protocol,
+format decoders and actual R4X resource evidence remain qualified in42–46.
+
 ## Verified R4X resource payloads and consumers (0.6.46)
 
 After the pinned official container inspector succeeds, a separate bounded

@@ -36,3 +36,32 @@ No helper calls a model, downloads a decoder, changes pins or authorizes a VM,
 Remote Host, GitHub push, Goal change or Roadmap cleanup. Use fixed existing
 image bytes for rebuilds. Failure, interruption or a lost reply never grants
 permission to generate or import again automatically.
+
+Small call patterns (use caller-owned, adequately sized buffers):
+
+Zig, named toolbar ICO:
+  const sys = app.system();
+  const bytes = images.own(&sys,3,0,"TOOLBAR.ICO",&iconBytes) orelse return -20;
+  const icon = images.icon(bytes,32,&pixels,background) orelse return -21;
+  if(images.draw(paint.canvas,16,16,icon.width,icon.height,&pixels,&scratch)<0)
+      return -22;
+
+C, named toolbar ICO:
+  int32_t count=studio_image_read(app,3,0,"TOOLBAR.ICO",icon_bytes,sizeof icon_bytes);
+  if(count<=0 || !studio_icon(icon_bytes,(size_t)count,32,pixels,pixel_capacity,
+                             background,&width,&height)) return -20;
+  if(studio_image_draw(canvas,16,16,width,height,pixels,pixel_capacity,
+                       scratch,scratch_capacity)<0) return -21;
+
+Rust, named toolbar ICO:
+  let count=images::read(app,3,0,c"TOOLBAR.ICO",icon_bytes).ok_or(-20)?;
+  let (w,h)=images::icon(&icon_bytes[..count],32,pixels,background).ok_or(-21)?;
+  if !images::draw(paint,16,16,w as u32,h as u32,pixels,scratch){return Err(-22);}
+
+For the larger scene use RESOURCE=SCENE:<returned .rgba path>, read name SCENE,
+require count == width*height*4 from the import receipt, and call rgba with that
+exact stride before drawing. For a desktop application icon use ICON=<returned
+.ico path>; it is the type1/index0 module resource, separately from a named
+RESOURCE=TOOLBAR.ICO entry. Do not replace the app's window lifecycle or startup
+contract to copy these small call patterns. If a resource is missing or rejected,
+show the app error instead of painting a fake successful result.
