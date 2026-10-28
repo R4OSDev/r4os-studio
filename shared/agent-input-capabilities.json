@@ -85,7 +85,13 @@
     "maxImageDimension": 16384,
     "maxExtractedBytes": 2097152,
     "maxPdfPages": 128,
-    "publicUploadAvailable": false
+    "publicUploadAvailable": true,
+    "maxSessionBytes": 268435456,
+    "maxOwnerBytes": 1073741824,
+    "maxSessionFiles": 256,
+    "maxOwnerFiles": 2048,
+    "rasterDecoder": "Pillow11.1.0 in isolated bounded namespace",
+    "uploadStartsRun": false
   },
-  "scope": "Qualified contracts only. Ordinary single-turn workers keep Goals off; controller/multi-turn implementation follows. No inference, external file API or provider credential migration."
+  "scope": "Qualified native Goal controls/execution and private checked uploads. Images and document delivery require their subsequent qualified run adapters; no inference from upload."
 }

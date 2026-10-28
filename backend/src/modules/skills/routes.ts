@@ -14,6 +14,8 @@ function body(value: unknown): Record<string, unknown> {
 export async function skillRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions('skills');
   app.setErrorHandler((cause, _request, reply) => {
+    if ((cause as { code?: string }).code === 'FST_ERR_CTP_BODY_TOO_LARGE')
+      return reply.code(413).send({ message: 'The request exceeds the allowed file size.' });
     const error = cause instanceof ProjectError ? cause : new ProjectError('The skill request could not be completed.', 400);
     void reply.code(error.statusCode).send({ message: error.message });
   });

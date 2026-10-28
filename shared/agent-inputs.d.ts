@@ -34,6 +34,18 @@ export interface SessionAttachment {
 export interface RunAttachment {
   id: string; sha256: string; mediaType: string; size: number; mode: AttachmentInputMode;
 }
+export interface AttachmentReceipt {
+  requestId: string; state: 'pending' | 'ready' | 'rejected' | 'unknown' | 'removed';
+  attachment?: SessionAttachment; reason?: string;
+}
+export interface AttachmentListing {
+  attachments: SessionAttachment[];
+  limits: { maxFiles: number; maxFileBytes: number; maxRunBytes: number; maxSessionBytes: number;
+    maxOwnerBytes: number; maxSessionFiles: number; maxOwnerFiles: number; maxTextBytes: number;
+    maxImagePixels: number; maxImageDimension: number };
+  supported: { images: boolean; text: boolean; pdf: boolean };
+  usage: { sessionBytes: number; ownerBytes: number; sessionFiles: number; ownerFiles: number };
+}
 export interface AgentInputCapabilities {
   goal: { available: boolean; reason?: string; maxObjectiveChars: number; budgetControls: false };
   attachments: { available: boolean; reason?: string; maxFiles: number; maxFileBytes: number; maxRunBytes: number };
