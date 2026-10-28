@@ -9,8 +9,8 @@ import { MessageText } from '../agent-sessions/Transcript';
 import { request } from './api';
 
 type Action = 'new' | 'rename' | 'upload' | null;
-export default function SkillEditor({ id, token, remembered, setLeaveGuard, refreshAuth }: {
-  id: string; token: string; remembered: (skill: Skill) => void; setLeaveGuard: (guard: () => boolean) => void; refreshAuth: () => Promise<void>;
+export default function SkillEditor({ id, token, remembered, setLeaveGuard, refreshAuth, deleteSkill }: {
+  id: string; token: string; remembered: (skill: Skill) => void; setLeaveGuard: (guard: () => boolean) => void; refreshAuth: () => Promise<void>; deleteSkill: () => void;
 }) {
   const [detail, setDetail] = useState<SkillDetail>(), [documents, setDocuments] = useState<Record<string, EditorDocument>>({});
   const [active, setActive] = useState('SKILL.md'), [name, setName] = useState(''), [busy, setBusy] = useState(false);
@@ -139,6 +139,7 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
     finally { setBusy(false); }
   }
   return <section className="skill-editor" aria-label="View skill">
+    <button type="button" className="skill-delete-action" disabled={busy || !detail} onClick={deleteSkill}>Delete skill</button>
     <div className="skill-heading"><label htmlFor="skill-display-name">Skill name</label><input id="skill-display-name" value={name} maxLength={120} disabled={busy || !detail} onChange={event => setName(event.target.value)} />
       <p>{detail?.skill.activeRevision ? `Active revision ${detail.skill.activeRevision}` : 'Draft · no active revision'}{detail && detail.draftHash !== detail.skill.activeHash ? ' · draft differs' : ''}</p></div>
     {error && <div className="skill-message error" role="alert">{error}<button type="button" disabled={busy} onClick={() => void reload()}>Reload</button></div>}

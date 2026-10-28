@@ -1,3 +1,4 @@
+import { DeleteSkillDialog, pendingSkillDeletion } from './DeleteSkillDialog';
 import { projectRequestId } from '../projects/api';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../../app/Icon';
@@ -17,10 +18,12 @@ const SkillEditor = lazy(() => import('./SkillEditor'));
 type Props = { selectedId: string | null; sessionId?: string; select: (id: string | null) => void; navigate: (id: string, sessionId?: string) => void; setLeaveGuard: (guard: () => boolean) => void };
 export default function ToolsWorkspace(props: Props) { return <SessionScope.Provider value="skill"><SkillWorkspace {...props} /></SessionScope.Provider>; }
 function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard }: Props) {
+  const [deletionId,setDeletionId]=useState<string|null>(()=>pendingSkillDeletion(selectedId));
+  const selectedRef=useRef(selectedId);useEffect(()=>{selectedRef.current=selectedId;},[selectedId]);
   const api = useSkills(), active = api.skills.find((s) => s.id === selectedId);
   const sessions = useSessions(active?.id ?? null);
   const [newSession, setNewSession] = useState(false), [sessionDirty, setSessionDirty] = useState(false), [sessionBusy, setSessionBusy] = useState(false);
-  const { reload: reloadSessions } = sessions, { reload: reloadSkills } = api;
+  const { reload: reloadSessions } = sessions, { reload: reloadSkills, forget: forgetSkill } = api;
   const changed = useCallback(() => { reloadSessions(); void reloadSkills(); }, [reloadSessions, reloadSkills]);
   const childGuard = useRef<() => boolean>(() => true);
   const setChildGuard = useCallback((guard: () => boolean) => { childGuard.current = guard; }, []);
@@ -47,6 +50,8 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
   }
   function chooseSession(id?: string) { if (!active || !leave()) return; navigate(active.id, id); window.history.pushState(null, '', '#tools/skills/' + active.id + (id ? '/sessions/' + id : '')); }
   function closeNew() { if (!busy && (!name || window.confirm('Discard the new skill name?'))) setCreating(false); }
+  const closeDeletion=useCallback(()=>setDeletionId(null),[]);
+  const finishDeletion=useCallback(async(id:string)=>{forgetSkill(id);await reloadSkills();if(selectedRef.current===id){setChildGuard(()=>true);setSessionDirty(false);select(null);navigate(id);window.history.replaceState(null,'','#tools');}},[forgetSkill,reloadSkills,select,navigate,setChildGuard]);
   return <>
     <aside className="navigation" aria-label="Tools navigation">
       <nav className="nav-column" aria-label="Tools"><div className="column-heading">TOOLS</div>
@@ -70,11 +75,12 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
         <div className="nav-items skill-session-list">{sessions.error ? <><p className="skill-nav-message" role="alert">{sessions.error}</p><button className="nav-item" onClick={sessions.reload}>Retry</button></> : sessions.loading ? <p className="skill-nav-message" role="status">Loading sessions…</p> : sessions.sessions.map((session) => <button key={session.id} type="button" className={`nav-item ${session.id === sessionId ? 'selected' : ''}`} aria-current={session.id === sessionId ? 'page' : undefined} onClick={() => { if (session.id !== sessionId) chooseSession(session.id); }}><span className="provider-view-name">{session.name}</span>{busyRun(session.latestRun?.state) && <span className="session-nav-status" aria-label="Run active" />}</button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
     </aside>
-    <main className="main-area skill-main" aria-label="Tools content">
+    <main className="main-area skill-main" aria-label="Tools content" tabIndex={-1}>
       {active && sessionId ? sessions.loading ? <p className="skill-empty">Loading session…</p> : sessions.sessions.some((session) => session.id === sessionId) ? <SessionPanel key={'skill:' + active.id + ':' + sessionId} projectId={active.id} sessionId={sessionId} token={api.token} changed={changed} refreshAuth={api.reload} dirtyChanged={setSessionDirty} busyChanged={setSessionBusy} /> : <p className="skill-empty">The selected session is unavailable. Select a session or View Skill.</p> : active ? <Suspense fallback={<p className="skill-empty">Loading skill…</p>}><SkillEditor key={active.id} id={active.id} token={api.token}
-        remembered={api.remember} setLeaveGuard={setChildGuard} refreshAuth={api.reload} /></Suspense>
+        deleteSkill={()=>setDeletionId(active.id)} remembered={api.remember} setLeaveGuard={setChildGuard} refreshAuth={api.reload} /></Suspense>
         : <p className="skill-empty">{selectedId && api.token ? 'The selected skill is unavailable. Select another skill or create one.' : 'Select a skill or create one.'}</p>}
     </main>
+    {deletionId && <DeleteSkillDialog key={deletionId} id={deletionId} token={api.token} reauth={api.reload} close={closeDeletion} deleted={finishDeletion} />}
     {newSession && active && <NewSessionDialog key={active.id} projectId={active.id} token={api.token} close={() => setNewSession(false)} dirtyChanged={setSessionDirty} busyChanged={setSessionBusy} created={(session) => { setNewSession(false); setSessionDirty(false); sessions.reload(); navigate(active.id, session.id); window.history.pushState(null, '', '#tools/skills/' + active.id + '/sessions/' + session.id); }} />}
     {creating && <EditorDialog label="New skill" busy={busy} close={closeNew}>
       <form onSubmit={(event) => void create(event)}><h2>New skill</h2><label htmlFor="new-skill-name">Skill name</label>

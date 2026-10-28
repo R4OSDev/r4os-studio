@@ -60,22 +60,23 @@ def contexts(projects,ident):
 def scope(db,root,ident):
     detail=packages.detail(db,root,ident);revision=detail['skill']['revision']
     revisions=[list(r) for r in db.execute('SELECT number,hash FROM revisions WHERE skill_id=? ORDER BY number',(ident,))]
-    path=root/ident/'Sessions/Sessions.sqlite';session_count=0;metadata=[]
+    path=root/ident/'Sessions/Sessions.sqlite';session_count=0;session_ids=[];metadata=[]
     if path.exists():
         with database(path) as sessions:
-            session_count=sessions.execute('SELECT COUNT(*) FROM sessions').fetchone()[0]
+            session_ids=[r[0] for r in sessions.execute('SELECT id FROM sessions ORDER BY id')];session_count=len(session_ids)
             for table in [r[0] for r in sessions.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]:
                 if table.startswith('statistic') or table=='goal_clocks':continue
                 if table in ('events','items','tools'):
                     metadata.append((table,*sessions.execute('SELECT COUNT(*),COALESCE(MAX(rowid),0) FROM "'+table+'"').fetchone()))
                 else:
                     # User metadata is hashed privately, never returned in the preview.
-                    rows=sessions.execute('SELECT * FROM "'+table+'" ORDER BY rowid').fetchall()
-                    if sum(len(encode(list(r)).encode()) for r in rows)>8*1024*1024:raise ProjectFault('Skill deletion scope exceeds its metadata limit.',503)
-                    metadata.append((table,[list(r) for r in rows]))
+                    columns={'runs':'id,state,busy,payload_hash,request_id,completed_at','sessions':'id,revision,updated_at,thread_id','session_messages':'request_id,state,input_hash','goal_commands':'request_id,state,stage,fingerprint'}.get(table,'*')
+                    tree=hashlib.sha256()
+                    for row in sessions.execute('SELECT '+columns+' FROM "'+table+'" ORDER BY rowid'):tree.update(encode(list(row)).encode()+b'\n')
+                    metadata.append((table,tree.hexdigest()))
     inode=(root/ident).lstat()
     value={'id':ident,'revision':revision,'draft':detail['draftHash'],'revisions':revisions,'sessions':metadata,'device':inode.st_dev,'inode':inode.st_ino}
-    return {'id':ident,'name':detail['skill']['name'],'revision':revision,'scopeHash':hashlib.sha256(encode(value).encode()).hexdigest(),'files':len(detail['files']),'revisions':len(revisions),'sessions':session_count,'device':inode.st_dev,'inode':inode.st_ino}
+    return {'id':ident,'name':detail['skill']['name'],'revision':revision,'scopeHash':hashlib.sha256(encode(value).encode()).hexdigest(),'files':len(detail['files']),'revisions':len(revisions),'sessions':session_count,'sessionIds':session_ids,'device':inode.st_dev,'inode':inode.st_ino}
 
 def receipt(row):return {'requestId':row['request_id'],'id':row['skill_id'],'state':'deleted' if row['phase']=='deleted' else 'unknown' if row['error'] else 'deleting','phase':row['phase'],**({'reason':row['error']} if row['error'] else {})}
 
@@ -153,6 +154,7 @@ async def finish(host,db,root,row):
         if selected.is_symlink() or selected.resolve(strict=True)!=selected or (selected.stat().st_dev,selected.stat().st_ino)!=(row['device'],row['inode']):
             raise ProjectFault('The original skill directory identity changed. Existing data was preserved.',503)
     elif row['phase']=='reserved':raise ProjectFault('The original skill directory could not be confirmed.',503)
+    if row['phase']=='staged' and source.exists():raise ProjectFault('The original skill directory unexpectedly reappeared. Existing data was preserved.',503)
     if row['phase']=='reserved':
         if source.exists():
             preserve_pending(host.config['projects'],source/'Sessions/Sessions.sqlite')

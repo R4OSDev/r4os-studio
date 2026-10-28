@@ -29,3 +29,11 @@
 
 .skill-fixed-views { flex: 0 0 auto; padding-bottom: 8px; }
 .skill-session-list { min-height: 0; flex: 1; overflow-y: auto; }
+.skill-delete-action { padding:8px 12px; border:1px solid #805266; border-radius:6px; color:#f1b5c6; background:#3c2331; cursor:pointer; }
+.skill-editor>.skill-delete-action { align-self:flex-end; margin:16px 24px 0 auto; }
+.skill-delete-action:disabled { opacity:.4;cursor:default; }
+.skill-delete-dialog { width:min(650px,calc(100vw - 28px));max-width:650px; }
+.skill-delete-content { padding:0 24px 18px;font-size:13px;line-height:1.65; }
+.skill-delete-content label { display:flex;flex-direction:column;gap:8px; }
+.skill-delete-content input { width:100%;box-sizing:border-box;padding:10px;border:1px solid #6c4c82;border-radius:6px;background:#19131f;color:#e9dcf2; }
+.skill-delete-id,.skill-delete-content li span { display:block;font-size:10px;color:#b8a5c8;overflow-wrap:anywhere; }
