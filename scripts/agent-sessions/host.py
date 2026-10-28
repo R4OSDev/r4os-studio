@@ -198,6 +198,10 @@ class Host:
                     if op == 'message_control': return messages.control(session_id, request['input'])
                     flags = {'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,
                              **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}
+                    if store.db.execute('SELECT 1 FROM session_messages WHERE request_id=?', (request['input'].get('requestId'),)).fetchone():
+                        # An original receipt outlives its active worker/turn.
+                        # Compare the immutable input before checking fresh targets.
+                        return messages.accept(session_id, request['input'], self.config['providers'], flags, capability)[0]
                     if request['input'].get('mode') == 'steer':
                         meta = self.active.get(request['input'].get('target',{}).get('runId'))
                         if not meta or binding(meta)!=(kind,project_id) or meta['sessionId']!=session_id:

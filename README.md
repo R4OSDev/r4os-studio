@@ -1,3 +1,9 @@
+## Run-message recovery and acceptance in0.7.5
+
+Original message receipts remain available after their worker or native turn ends. Inbox revisions cover intake, dispatch and acknowledgement, preventing stale status responses from rolling the queue back. Unknown original inputs are retained and never retried; explicit Continue advances only separate unsent inputs. A later explicit ordinary Send starts a new chain after an empty earlier Stop hold.
+
+Queue acceptance means Studio durably saved the input; direct acceptance means the native active turn accepted it, not that the model has finished acting on it. Check original request reads status. Retry same request uses the same durable identity and cannot repeat a possibly effective steer. Review rejected/unconfirmed originals before an intentional new submission. Stop/Pause hold later work; changed settings or frozen pins require review and explicit removal/resubmission. Live attachments use Queue message as a complete input. Existing Projects backup/restore retains the private journal and Ready attachments, while restore starts no model work. Skill sessions keep their existing separate backup boundary. The native/tool Unknown policy and original image-generation outcomes remain intact.
+
 ## Live composer and message queue in0.7.4
 
 The composer stays editable during active runs and pending HTTP requests. Enter queues a complete input, Ctrl+Enter delivers text to the original active turn, and Shift+Enter inserts a newline. Idle Enter/Ctrl+Enter send normally. IME composition, repeated keys and other modifiers do not submit. Queue message and Send now expose the same actions, with an ordered queue, Remove for unsent entries and explicit Continue after a hold. Stop stays independent of a pending send.

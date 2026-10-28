@@ -98,6 +98,10 @@ class Steering(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(host.lock.locked())
         await asyncio.gather(*tuple(host.message_tasks.values()))
         self.assertEqual(Messages(w.store).receipt(self.sid,data['requestId'])['state'],'accepted')
+        host.active.clear()
+        with patch('host.validate_release') as ended:
+            replay=await host.handle({'operation':'submit_message','projectId':self.pid,'sessionId':self.sid,'input':data})
+            self.assertEqual(replay['state'],'accepted');ended.assert_not_called()
         foreign={**self.input(w),'target':{**data['target'],'runId':str(uuid.uuid4())}}
         with self.assertRaises(ProjectFault):
             await host.handle({'operation':'submit_message','projectId':self.pid,'sessionId':self.sid,'input':foreign})

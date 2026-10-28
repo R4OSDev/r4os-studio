@@ -162,6 +162,13 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         reference(store,session_id,ident,attachments)
         if frozen is not None:
             store.db.execute("UPDATE session_messages SET state='dispatching',run_id=?,updated_at=? WHERE request_id=? AND session_id=? AND state='queued'", (ident, stamp, key, session_id))
+            store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?',(session_id,))
+        else:
+            from message_store import exists as inbox_exists
+            if not goal_mode and inbox_exists(store):
+                # A new explicit ordinary send authorizes its own chain. Empty
+                # holds from an earlier Stop must not disable future input.
+                store.db.execute('UPDATE session_inboxes SET held=0,reason=NULL,revision=revision+1 WHERE session_id=?',(session_id,))
         if not goal_mode:
             item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed',
                 **({'attachments':attachments} if attachments else {})}, False)

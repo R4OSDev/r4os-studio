@@ -16,7 +16,7 @@ def exists(store):
 
 def pending_queue(store, sid, authorized=False):
     if not exists(store): return False
-    query = "SELECT 1 FROM session_messages m JOIN session_inboxes q ON q.session_id=m.session_id WHERE m.session_id=? AND m.mode='queue' AND m.state IN ('queued','dispatching','unknown')"
+    query = "SELECT 1 FROM session_messages m JOIN session_inboxes q ON q.session_id=m.session_id WHERE m.session_id=? AND m.mode='queue' AND m.state IN ('queued','dispatching')"
     if authorized: query += ' AND q.held=0'
     return bool(store.db.execute(query, (sid,)).fetchone())
 
@@ -24,7 +24,8 @@ def pending_queue(store, sid, authorized=False):
 def observe_run(store, sid, run_id, state, turn_id=None):
     if not exists(store): return
     if state == 'running' and turn_id:
-        store.db.execute("UPDATE session_messages SET state='accepted',updated_at=? WHERE run_id=? AND state='dispatching'", (now(), run_id))
+        changed = store.db.execute("UPDATE session_messages SET state='accepted',updated_at=? WHERE run_id=? AND state='dispatching'", (now(), run_id)).rowcount
+        if changed: store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?',(sid,))
     if state in ('failed', 'interrupted', 'unknown'):
         store.db.execute('UPDATE session_inboxes SET held=1,reason=?,revision=revision+1 WHERE session_id=?',
                          ('The preceding run ended without a confirmed natural completion. Continue explicitly.', sid))
@@ -159,6 +160,7 @@ class Messages:
             row = self.row(sid, request_id)
             if row['state'] == 'accepted': return self.present(row)
             self.store.db.execute('UPDATE session_messages SET state=?,error=?,updated_at=? WHERE request_id=?', (state, error, now(), request_id))
+            self.store.db.execute('INSERT INTO session_inboxes VALUES (?,0,NULL,1) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1', (sid,))
             value = self.receipt(sid, request_id)
             from run_store import event, item
             event(self.store, sid, row['run_id'], 'message', value, False)
