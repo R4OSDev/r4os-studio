@@ -1,3 +1,31 @@
+## Goal composer and editor (0.6.26)
+
+A two-line Goal strip sits to the left of Account/Model/Reasoning/Fast Mode.
+Play/Pause/Stop use confirmed status colors and aria-pressed. Clicking the Goal
+opens Edit goal with Save/Discard. Save stays paused and never submits the chat
+form or its unsent text. Escape discards the draft. Empty Save clears the binding.
+The dialog preserves Unicode text, uses the native4000-scalar limit, and restores
+focus. Goal conflicts preserve the draft and require review of the saved Goal.
+
+Pending, pausing, stopped, complete, blocked, limits and unavailable/unknown states
+are explicit. Original request bodies/IDs survive reload in session storage; lost
+answers cause reads, with only an explicit same-request retry. Model controls lock
+from confirmed native active state before delayed run events. Existing run Stop
+remains reachable during pending or unavailable Goal control.
+
+Play binds both Goal and displayed session/settings revisions. A stale model choice
+is rejected before a run is admitted; the selected settings are refreshed for review.
+The backend requires nativeGoalExecution:2, so older active coordinators/workers keep
+their release while new Play waits for compatible idle adoption. Old receipts remain
+readable. Existing native threads and tool declarations are unchanged.
+
+25 focused control/contract cases, two HTTP checks and an owned1440/320 keyboard
+browser workflow qualify editing, conflict recovery, lost reply/reload, native state
+labels, model-choice protection and no horizontal overflow. Send is reachable at320.
+The browser uses a deterministic adapter with actual stores/HTTP; original native
+runtime qualification is retained in0.6.24/25. No model inference or user VM work.
+Attachment selection and paperclip follow in0.6.28–32.
+
 ## Native multi-turn Goal execution (0.6.25)
 
 One accepted Goal run retains the same owner lease, release, provider/model/effort,

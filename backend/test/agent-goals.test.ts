@@ -20,7 +20,7 @@ await test('Goal routes bind project/skill owners and protect native commands', 
       raw += part; if (!raw.includes('\n')) return;
       const call = JSON.parse(raw); calls.push(call);
       const snapshot = { owner: { type: call.ownerType, id: call.ownerId }, sessionId, threadId: null, revision: 0, goal: null, lastIntent: null, phase: 'idle' };
-      const result = call.operation === 'capabilities' ? { nativeGoals: 1, ...(execution ? { nativeGoalExecution: 1 } : {}) }
+      const result = call.operation === 'capabilities' ? { nativeGoals: 1, ...(execution ? { nativeGoalExecution: 2 } : {}) }
         : call.operation === 'goal' ? snapshot : { requestId, action: 'save', state: 'pending', snapshot };
       client.end(JSON.stringify({ result }) + '\n');
     });
@@ -42,7 +42,7 @@ await test('Goal routes bind project/skill owners and protect native commands', 
       assert.equal((await app.inject({ url, headers })).statusCode, 200);
       assert.equal((await app.inject({ url: url + '/requests/' + requestId, headers })).statusCode, 200);
       execution = false;
-      const play = { requestId: randomUUID(), revision: 1, action: 'play' };
+      const play = { requestId: randomUUID(), revision: 1, sessionRevision: 1, action: 'play' };
       assert.equal((await app.inject({ method: 'POST', url, payload: play, headers })).statusCode, 503);
       assert.equal(calls.at(-1)!.operation, 'capabilities');
       execution = true;

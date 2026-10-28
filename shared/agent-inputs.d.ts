@@ -9,7 +9,7 @@ export interface NativeGoal {
 }
 export type GoalAction = 'save' | 'play' | 'pause' | 'stop';
 export interface GoalCommand {
-  requestId: string; revision: number; action: GoalAction; objective?: string;
+  requestId: string; revision: number; action: GoalAction; objective?: string; sessionRevision?: number;
 }
 export interface SessionGoal {
   owner: SessionOwner; sessionId: string; threadId: string | null;

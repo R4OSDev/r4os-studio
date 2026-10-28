@@ -24,13 +24,14 @@ export function goalRoutes(app: FastifyInstance, security: ProjectSessions, owne
   app.post<{ Params: Params; Body: GoalCommand }>(base, { bodyLimit: 24 * 1024,
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'action'], properties: {
       requestId: identity, revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      sessionRevision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
       action: { type: 'string', enum: ['save', 'play', 'pause', 'stop'] }, objective: { type: 'string', maxLength: 16000 },
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
     const support = await agentHost<{ nativeGoals?: number; nativeGoalExecution?: number }>({ operation: 'capabilities' });
     if (support.nativeGoals !== 1) throw new ProjectError('The agent coordinator must adopt Goal support first.', 503);
-    if (request.body.action === 'play' && support.nativeGoalExecution !== 1)
+    if (request.body.action === 'play' && support.nativeGoalExecution !== 2)
       throw new ProjectError('Wait for current runs to finish before starting a Goal.', 503);
     const receipt = await agentHost<GoalReceipt>({ operation: 'goal_command', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body });
     return reply.code(receipt.state === 'pending' ? 202 : 200).send({ receipt });

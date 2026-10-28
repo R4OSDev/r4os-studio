@@ -118,7 +118,7 @@ class GoalWorkerTests(unittest.IsolatedAsyncioTestCase):
         with self.open() as store:
             await self.command(store,native)
             goals=Goals(store);rid=str(uuid.uuid4())
-            goals.accept(self.sid,{'requestId':rid,'revision':goals.snapshot(self.sid)['revision'],'action':'play'})
+            goals.accept(self.sid,{'requestId':rid,'revision':goals.snapshot(self.sid)['revision'],'action':'play','sessionRevision':1})
             native.goal['objective']='Changed after original Play'
             goals.observe(self.sid,native.thread,native.goal.copy())
             with self.assertRaises(ProjectFault):admit(store,self.sid,{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':1},self.providers)

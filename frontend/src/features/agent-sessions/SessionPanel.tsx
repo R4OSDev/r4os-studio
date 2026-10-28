@@ -6,6 +6,9 @@ import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
 import { ComposerSettings } from './ComposerSettings';
+import { useGoal } from './useGoal';
+import { GoalControls, GoalEditor, goalLabel } from './GoalControls';
+import type { SessionGoal } from '../../../../shared/agent-inputs';
 
 type Pending = { requestId: string; revision: number; text: string };
 function readPending(key: string): Pending | null {
@@ -32,9 +35,16 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
   const [choiceSaving, setChoiceSaving] = useState(false);
+  const [goalEditor, setGoalEditor] = useState(false);
+  const refreshSession = useCallback(async () => {
+    const result = await projectRequest<{ session: AgentSession }>(base);
+    setSession(result.session);
+  }, [base, projectRequest]);
+  const goal = useGoal(projectId, sessionId, session, token, refreshAuth, refreshSession);
+  const observeGoal = goal.observe;
   useEffect(() => {
-    busyChanged(choiceSaving || sending || stopping); return () => busyChanged(false);
-  }, [choiceSaving, sending, stopping, busyChanged]);
+    busyChanged(choiceSaving || sending || stopping || goal.posting); return () => busyChanged(false);
+  }, [choiceSaving, sending, stopping, goal.posting, busyChanged]);
   const load = useCallback(async (signal: AbortSignal) => {
     const h = await projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal);
     const r = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal);
@@ -57,6 +67,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, [field]: String(i[field] ?? '') + p.text } : i));
       }
       if (event.kind === 'run') { setSession((s) => s ? { ...s, latestRun: event.payload as AgentRun } : s); changed(); }
+      if (event.kind === 'goal') observeGoal(event.payload as SessionGoal);
       if (event.kind === 'notice') {
         const notice = event.payload as { text: string };
         setItems((old) => merge(old, { id: 'notice-' + event.seq, runId: event.runId ?? '', type: 'notice', text: notice.text }));
@@ -76,13 +87,15 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: Error) => { if (!controller.signal.aborted) { setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth, apiBase]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal]);
   useEffect(() => {
     if (follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items]);
-  const run = session?.latestRun, active = busyRun(run?.state);
+  const run = session?.latestRun;
+  const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
+  const active = busyRun(run?.state) || nativeActive;
   async function send(event: FormEvent) {
-    event.preventDefault(); if (!session || sending || choiceSaving || settings || (!pending && (active || !text.trim()))) return;
+    event.preventDefault(); if (!session || sending || choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown' || (!pending && (active || !text.trim()))) return;
     const data = pending ?? { requestId: projectRequestId(), revision: session.revision, text };
     try { sessionStorage.setItem(pendingKey, JSON.stringify(data)); } catch { setError('Enable session storage before sending.'); return; }
     setPending(data); setSending(true); setError('');
@@ -116,8 +129,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
-      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.state ?? 'Ready') : connection}</span>
-        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
+      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal) : run?.state ?? 'Ready') : connection}</span>
+        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
@@ -130,12 +143,21 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         onChange={(e) => { setText(e.target.value); try { sessionStorage.setItem(draftKey, e.target.value); } catch { /* send reports storage failure */ } }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
       <div className="agent-composer-footer">
-        {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings}
+        <GoalControls control={goal} run={run} disabled={!session || sending || choiceSaving || !!pending || settings || stopping}
+          editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
+        {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings || goal.changing || goalEditor}
           busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
-        <div className="agent-compose-actions">{active && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
-          <button className="agent-send" disabled={sending || choiceSaving || settings || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
+        <div className="agent-compose-actions">{busyRun(run?.state) && (run?.mode !== 'goal' || !goal.available || !!goal.error) && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
+          <button className="agent-send" disabled={sending || choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown' || !session || (!pending && (active || !text.trim()))}>{sending ? 'Sending…' : pending ? 'Retry send' : 'Send'}</button></div>
       </div>
+      {goal.goal?.phase === 'pausing' && <p className="agent-goal-message" role="status">Pausing after current turn.</p>}
+      {!goal.execution && goal.available && <p className="agent-goal-message" role="status">Finish current runs before starting a Goal.</p>}
+      {goal.goal?.phase === 'unknown' && <p className="agent-goal-message" role="status">The original Goal state is unconfirmed. Pause or Stop before resuming.</p>}
+      {goal.error && <p className="agent-goal-message error" role="alert">{goal.error}</p>}
+      {(goal.checkAgain || !goal.available) && <div className="agent-goal-recovery"><button type="button" disabled={goal.posting} onClick={goal.check}>Check Goal status</button>
+        {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
     </form>
+    {goalEditor && <GoalEditor control={goal} activeOrdinaryRun={active && run?.mode !== 'goal'} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
     {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;
 }

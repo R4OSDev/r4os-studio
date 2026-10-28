@@ -67,6 +67,7 @@ def admit(store, session_id, data, provider_dir):
             goal_intent = json.loads(command['payload'])
             captured_goal = goal_intent.get('_goal')
             if (command['state'] != 'pending' or goal_intent['action'] != 'play' or not snapshot['goal'] or not captured_goal
+                    or goal_intent.get('sessionRevision') != session['revision']
                     or any(snapshot['goal'].get(key) != captured_goal.get(key) for key in ('threadId','objective','createdAt','status'))):
                 raise ProjectFault('This run has no accepted Goal Play command.', 409)
         elif pending(store) or Goals(store).snapshot(session_id)['phase']=='unknown':

@@ -106,7 +106,7 @@ class GoalControlTests(unittest.IsolatedAsyncioTestCase):
         native=Native()
         with self.open() as store:
             await self.command(store,native)
-            receipt,_=Goals(store).accept(self.sid,{'requestId':str(uuid.uuid4()),'revision':Goals(store).snapshot(self.sid)['revision'],'action':'play'})
+            receipt,_=Goals(store).accept(self.sid,{'requestId':str(uuid.uuid4()),'revision':Goals(store).snapshot(self.sid)['revision'],'action':'play','sessionRevision':1})
             run,_=admit(store,self.sid,{'requestId':receipt['requestId'],'revision':1,'mode':'goal','goalRequestId':receipt['requestId']},self.providers)
         w=Worker({'projects':str(self.projects),'r4os':str(self.r4os),'projectId':self.pid,'runId':run['id'],'release':'own-fixture'})
         w.client=native;w.thread_id=native.thread
@@ -145,7 +145,7 @@ class GoalControlTests(unittest.IsolatedAsyncioTestCase):
         w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
         Goals(w.store).lost_worker(w.run_id);snapshot=Goals(w.store).snapshot(self.sid)
         self.assertEqual(snapshot['phase'],'unknown');self.assertEqual(snapshot['goal']['status'],'active')
-        with self.assertRaises(ProjectFault): Goals(w.store).accept(self.sid,{'requestId':str(uuid.uuid4()),'revision':snapshot['revision'],'action':'play'})
+        with self.assertRaises(ProjectFault): Goals(w.store).accept(self.sid,{'requestId':str(uuid.uuid4()),'revision':snapshot['revision'],'action':'play','sessionRevision':1})
         self.assertEqual(sum(method=='thread/goal/set' and params.get('status')=='active' for method,params in native.calls),1)
 
     async def live_exit(self,action,text=None):
@@ -177,6 +177,17 @@ class GoalControlTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stop_pauses_then_uses_existing_run_stop_and_keeps_objective(self):
         await self.live_exit('stop')
+
+    async def test_stale_session_settings_cannot_activate_a_goal_with_another_model_choice(self):
+        native=Native()
+        with self.open() as store:
+            await self.command(store,native)
+            store.update(self.sid,{'revision':1,'name':'Changed in another browser'},self.providers)
+            goals=Goals(store);rid=str(uuid.uuid4());before=len(native.calls)
+            with self.assertRaises(ProjectFault):goals.accept(self.sid,{'requestId':rid,'revision':goals.snapshot(self.sid)['revision'],'sessionRevision':1,'action':'play'})
+            self.assertEqual(len(native.calls),before);self.assertFalse(store.db.execute('SELECT 1 FROM runs').fetchone())
+            receipt,fresh=goals.accept(self.sid,{'requestId':rid,'revision':goals.snapshot(self.sid)['revision'],'sessionRevision':2,'action':'play'})
+            self.assertTrue(fresh);self.assertEqual(receipt['state'],'pending')
 
 
 class GoalSkillControls(unittest.IsolatedAsyncioTestCase):

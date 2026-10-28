@@ -54,8 +54,9 @@ class Goals:
                 'state': row['state'], 'snapshot': self.snapshot(sid)}
 
     def accept(self, sid, data):
-        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective'}
+        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision'}
                 or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int
+                or ('sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1))
                 or data['action'] not in ('save','play','pause','stop')
                 or (('objective' in data) != (data['action'] == 'save'))):
             raise ProjectFault('Invalid Goal command.', 400)
@@ -72,6 +73,8 @@ class Goals:
                 return self.receipt(sid, key), False
             snapshot = self.snapshot(sid)
             if snapshot['revision'] != data['revision']: raise ProjectFault('The Goal changed. Reload before changing it.', 409)
+            if data['action']=='play' and data.get('sessionRevision')!=self.store.row(sid)['revision']:
+                raise ProjectFault('Session settings changed. Reload before pressing Play.',409)
             if pending(self.store): raise ProjectFault('Reconcile the original pending Goal command first.', 409)
             if snapshot['phase'] == 'unknown' and data['action'] not in ('pause','stop'):
                 raise ProjectFault('Pause the original unconfirmed Goal before changing it.', 409)

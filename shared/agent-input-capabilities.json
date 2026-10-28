@@ -63,7 +63,8 @@
       "waitingOnApproval",
       "waitingOnUserInput"
     ],
-    "coordinatorExecutionCapability": "nativeGoalExecution:1"
+    "coordinatorExecutionCapability": "nativeGoalExecution:2",
+    "playBindsSessionRevision": true
   },
   "attachments": {
     "nativeImageType": "localImage",
