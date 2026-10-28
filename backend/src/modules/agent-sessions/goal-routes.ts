@@ -37,9 +37,9 @@ export function goalRoutes(app: FastifyInstance, security: ProjectSessions, owne
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ nativeGoals?: number; nativeGoalExecution?: number; nativeImageInputs?: number }>({ operation: 'capabilities' });
+    const support = await agentHost<{ nativeGoals?: number; nativeGoalExecution?: number; nativeImageInputs?: number; documentInputs?: number }>({ operation: 'capabilities' });
     if (support.nativeGoals !== 1) throw new ProjectError('The agent coordinator must adopt Goal support first.', 503);
-    if (request.body.action === 'play' && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1))
+    if (request.body.action === 'play' && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
       throw new ProjectError('Wait for current runs to finish before starting a Goal.', 503);
     const receipt = await agentHost<GoalReceipt>({ operation: 'goal_command', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body });
     return reply.code(receipt.state === 'pending' ? 202 : 200).send({ receipt });

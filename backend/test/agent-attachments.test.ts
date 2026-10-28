@@ -26,6 +26,9 @@ await test('binary uploads preserve original receipts and enforce owner, CSRF an
     const imagePath = join(root, 'own.png');
     await promisify(execFile)('/usr/bin/python3', ['-c', 'from PIL import Image;import sys;Image.new("RGB",(3,2),"purple").save(sys.argv[1])', imagePath]);
     const imageBytes = await readFile(imagePath);
+    const pdfPath = join(root, 'own.pdf');
+    await promisify(execFile)('/usr/bin/python3', ['-c', 'import sys;from pathlib import Path;sys.path.insert(0,str(Path("scripts/agent-sessions").absolute()));from test_document_inputs import pdf;Path(sys.argv[1]).write_bytes(pdf("OWN_HTTP_PDF_TEXT"))', pdfPath]);
+    const pdfBytes = await readFile(pdfPath);
     for (const scope of ['projects', 'skills']) {
       const auth = await app.inject(`/api/${scope}`);
       const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
@@ -52,6 +55,10 @@ await test('binary uploads preserve original receipts and enforce owner, CSRF an
       const imageUpload = await app.inject({ method: 'POST', url: base + '/uploads/' + randomUUID() + '?name=own.png', payload: imageBytes, headers: binary });
       assert.equal(imageUpload.statusCode, 200, imageUpload.body);
       assert.equal(imageUpload.json().attachment.mode, 'localImage'); assert.equal(imageUpload.json().attachment.width, 3);
+      const pdfUpload = await app.inject({ method: 'POST', url: base + '/uploads/' + randomUUID() + '?name=own.pdf', payload: pdfBytes, headers: binary });
+      assert.equal(pdfUpload.statusCode, 200, pdfUpload.body);
+      assert.equal(pdfUpload.json().attachment.mode, 'pdfText'); assert.equal(pdfUpload.json().attachment.pages, 1);
+      assert.equal(pdfUpload.json().attachment.readable, true); assert(pdfUpload.json().attachment.extractedBytes > 0); assert(!pdfUpload.body.includes('_text'));
       const other = `/api/${scope}/${randomUUID()}/sessions/${sid}/attachments`;
       assert.equal((await app.inject({ url: other + '/uploads/' + rid, headers })).statusCode, 404);
       assert.equal((await app.inject({ method: 'DELETE', url: other + '/' + uploaded.json().attachment.id, headers })).statusCode, 404);
@@ -76,7 +83,7 @@ await test('binary uploads preserve original receipts and enforce owner, CSRF an
       const history = await app.inject({ url: `/api/${scope}/${id}/sessions/${sid}/history`, headers }); assert.deepEqual(history.json().items, []);
       assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + uploaded.json().attachment.id, headers: { cookie: headers.cookie } })).statusCode, 403);
       assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + uploaded.json().attachment.id, headers })).statusCode, 200);
-      assert.equal((await app.inject({ url: base, headers })).json().attachments.length, 1);
+      assert.equal((await app.inject({ url: base, headers })).json().attachments.length, 2);
       const ownerRoot = join(root, scope === 'skills' ? 'Skills' : 'Projects', id);
       assert.equal(await readFile(join(ownerRoot, 'Sessions', sid, 'Attachments', uploaded.json().attachment.id, 'original.txt'), 'utf8'), payload.toString());
     }

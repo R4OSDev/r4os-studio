@@ -14,7 +14,7 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, AUTHOR_PROFILE, SKILL_PROFILES, permission_tools, default_enabled
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, DOCUMENT_SKILL_PROFILE, SKILL_PROFILES, permission_tools, default_enabled
 from owner import owner_type, binding, skill_workspace
 import skill_preferences
 
@@ -121,7 +121,7 @@ class SessionStore:
     def __init__(self, projects, r4os, project_id, kind='project'):
         from project_use import acquire
         self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
-        self.selected_profile = AUTHOR_PROFILE if kind == 'skill' else PROFILE
+        self.selected_profile = DOCUMENT_SKILL_PROFILE if kind == 'skill' else PROFILE
         self.project_use = acquire(projects, project_id) if kind == 'project' else None
         try: self.open(projects, r4os, project_id)
         except BaseException:

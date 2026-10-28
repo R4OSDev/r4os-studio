@@ -1,12 +1,12 @@
 """Project-only Roadmap capability; saved preference is separate from tools."""
-from profile import ROADMAP_PROFILE, REMOTE_PROFILE
+from profile import ROADMAP_PROFILE, REMOTE_PROFILES
 from store import ProjectFault
 
 TOOLS_READY = True
 
 
 def availability(profile):
-    if TOOLS_READY and profile in (ROADMAP_PROFILE, REMOTE_PROFILE):
+    if TOOLS_READY and profile in (ROADMAP_PROFILE,*REMOTE_PROFILES):
         return {'available': True}
     return {'available': False, 'reason':
             ('New session required for Roadmap tools. This conversation keeps its original native tool profile.'

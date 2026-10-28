@@ -43,13 +43,13 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     const load = async () => {
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
       observe(state.goal); setAvailable(support.nativeGoals === 1 && support.enabled !== false);
-      setExecution(support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.enabled !== false);
+      setExecution(support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1 && support.enabled !== false);
       setReadback(support.nativeGoalReadback === 1);
-      if (support.nativeGoals === 1 && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1))
+      if (support.nativeGoals === 1 && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });

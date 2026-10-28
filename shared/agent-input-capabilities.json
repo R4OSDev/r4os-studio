@@ -96,7 +96,15 @@
     "coordinatorImageCapability": "nativeImageInputs:1",
     "imageOnlySend": true,
     "requiresAcceptedReferenceForMount": true,
-    "historicalSentImagesRemainReadonly": true
+    "historicalSentImagesRemainReadonly": true,
+    "documentInputsAvailable": true,
+    "coordinatorDocumentCapability": "documentInputs:1",
+    "documentProjectProfile": "studio-tools-v10",
+    "documentSkillProfile": "studio-skill-tools-v3",
+    "inlineDocumentBytes": 8192,
+    "maxDocumentChunkBytes": 32768,
+    "pdfExtractor": "Poppler25.03.0 in isolated bounded namespace",
+    "pdfVisualInput": false
   },
   "scope": "Qualified native Goal controls/execution and private checked uploads. Images and document delivery require their subsequent qualified run adapters; no inference from upload."
 }

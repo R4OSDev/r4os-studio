@@ -10,8 +10,10 @@ from profile import regular,CODEX_VERSION,CODEX_SHA256
 from session_store import encode,identity,provider_models
 from store import ProjectFault
 
-SUFFIX={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'}
-FIELDS=('id','sessionId','name','mediaType','size','sha256','mode','createdAt','width','height')
+SUFFIX={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','text/plain':'txt','application/pdf':'pdf'}
+MODES={'image/png':'localImage','image/jpeg':'localImage','image/webp':'localImage','text/plain':'text','application/pdf':'pdfText'}
+FIELDS=('id','sessionId','name','mediaType','size','sha256','mode','createdAt','width','height','pages',
+    'extractedBytes','extractedSha256','readable','truncated','limitation','encrypted')
 
 
 def model_modalities(raw):
@@ -34,7 +36,7 @@ def frozen(metadata):
 def file_path(store,sid,meta):
     try:
         ident=identity(meta['id'])
-        if (meta['sessionId']!=sid or meta['mode']!='localImage' or meta['mediaType'] not in SUFFIX
+        if (meta['sessionId']!=sid or meta['mediaType'] not in SUFFIX or meta['mode']!=MODES[meta['mediaType']]
                 or type(meta['size']) is not int or not 0<meta['size']<=16*1024*1024
                 or not isinstance(meta['sha256'],str) or not re.fullmatch('[a-f0-9]{64}',meta['sha256'])):raise ValueError()
         path=regular(store.directory/sid/'Attachments'/ident/('original.'+SUFFIX[meta['mediaType']]))
@@ -45,7 +47,7 @@ def file_path(store,sid,meta):
                     or status.st_size!=meta['size'] or hashlib.file_digest(stream,'sha256').hexdigest()!=meta['sha256']):raise ValueError()
         return path
     except (OSError,ValueError,KeyError,TypeError):
-        raise ProjectFault('An original image attachment is missing or changed. Its draft, history and receipt were preserved.',409) from None
+        raise ProjectFault('An original attachment is missing or changed. Its draft, history and receipt were preserved.',409) from None
 
 
 def namespace(meta):return '/attachments/'+meta['id']+'.'+SUFFIX[meta['mediaType']]
@@ -59,7 +61,6 @@ def selected(store,sid,ids):
         row=attachments.row(ident)
         if row['state']!='ready':raise ProjectFault('Only confirmed Ready attachments can be sent.',409)
         meta=json.loads(row['metadata'])
-        if meta.get('mode')!='localImage':raise ProjectFault('Text/PDF delivery needs its qualified document adapter. Your upload was preserved.',409)
         meta=frozen(meta);file_path(store,sid,meta);records.append(meta)
     if sum(m['size'] for m in records)>MAX_RUN:raise ProjectFault('Selected attachments exceed32 MiB for one Send.',400)
     return records
@@ -78,7 +79,7 @@ def history(store,sid):
 
 
 def qualify(store,sid,session,provider_dir,records):
-    if not records and not history(store,sid):return
+    if not any(m['mode']=='localImage' for m in records+history(store,sid)):return
     engine=session['engine']
     if engine.get('version')!=CODEX_VERSION or engine.get('sha256')!=CODEX_SHA256:
         raise ProjectFault('Images require the qualified native runtime. The conversation and uploads were preserved.',409)
@@ -101,14 +102,18 @@ def mounts(store,sid,config):
     records={m['id']:m for m in history(store,sid)}
     for meta in config.get('attachments',[]):
         if meta['id'] not in records or records[meta['id']]!=meta:raise ProjectFault('This image has no original accepted Send reference.',409)
-    return [(str(file_path(store,sid,meta)),namespace(meta)) for meta in records.values()]
+    return [(str(file_path(store,sid,meta)),namespace(meta)) for meta in records.values() if meta['mode']=='localImage']
 
 
 def native_input(store,run_id,config):
     from run_store import request_text
     text=request_text(store,run_id);values=[]
     if text:values.append({'type':'text','text':text})
-    for meta in config.get('attachments',[]):values.append({'type':'localImage','path':namespace(meta)})
+    for meta in config.get('attachments',[]):
+        if meta['mode']=='localImage':values.append({'type':'localImage','path':namespace(meta)})
+        else:
+            from document_inputs import native_text
+            values.append({'type':'text','text':native_text(store,meta['sessionId'],meta)})
     return values
 
 

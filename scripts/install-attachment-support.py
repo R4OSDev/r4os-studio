@@ -33,14 +33,21 @@ def main():
     if '--agent-guard' in sys.argv:return agent_guard()
     if '--check' not in sys.argv:
         if os.getuid()!=0:raise SystemExit('Run the explicit local installer as root, or use --check.')
-        subprocess.run(['/usr/bin/apt-get','--assume-yes','--no-install-recommends','install','python3-pil=11.1.0-5+deb13u4'],check=True)
+        packages=['python3-pil=11.1.0-5+deb13u4']
+        if '--pdf' in sys.argv:packages.append('poppler-utils=25.03.0-5+deb13u4')
+        subprocess.run(['/usr/bin/apt-get','--assume-yes','--no-install-recommends','install',*packages],check=True)
     from PIL import Image,features,__version__
     if __version__!='11.1.0' or not features.check('webp'):raise SystemExit('The qualified Pillow11.1.0/WebP decoder is unavailable.')
     import io
     for kind in ('PNG','JPEG','WEBP'):
         buf=io.BytesIO();Image.new('RGB',(2,2),'purple').save(buf,kind);buf.seek(0)
         with Image.open(buf,formats=[kind]) as image:image.load();assert image.size==(2,2)
-    print(json.dumps({'pillow':__version__,'formats':['PNG','JPEG','WEBP'],'projectAndProviderDataChanged':False,'serviceRestart':False}))
+    result={'pillow':__version__,'formats':['PNG','JPEG','WEBP'],'projectAndProviderDataChanged':False,'serviceRestart':False}
+    if '--pdf' in sys.argv:
+        version=subprocess.run(['/usr/bin/pdftotext','-v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
+        if b'pdftotext version 25.03.0' not in version.stderr:raise SystemExit('The qualified Poppler25.03.0 PDF extractor is unavailable.')
+        result['pdfText']='Poppler25.03.0'
+    print(json.dumps(result))
 
 
 if __name__=='__main__':main()

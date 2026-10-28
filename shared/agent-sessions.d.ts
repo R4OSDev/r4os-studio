@@ -1,4 +1,5 @@
 export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio.terminate_process'
+  | 'studio.read_attachment'
   | 'studio.list_directory' | 'studio.read_file' | 'studio.search' | 'studio.write_file'
   | 'studio.apply_patch' | 'studio.create_directory'
   | 'studio.validate_skill' | 'studio.save_skill'

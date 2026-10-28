@@ -18,9 +18,12 @@ def attachment_guard(meta,release):
     try:
         with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=5)) as db:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='attachment_refs'").fetchone():return
-            images=db.execute("SELECT 1 FROM attachment_refs WHERE session_id=? AND json_extract(frozen,'$.mode')='localImage' LIMIT 1",(meta['sessionId'],)).fetchone()
-        if images and not (release/'scripts/agent-sessions/image_inputs.py').is_file():
-            raise SystemExit('This release cannot resume the native image conversation. Original history and attachments were preserved.')
+            modes={row[0] for row in db.execute("SELECT DISTINCT json_extract(frozen,'$.mode') FROM attachment_refs WHERE session_id=?",(meta['sessionId'],))}
+        if modes-{'localImage','text','pdfText'}:raise SystemExit('The attachment input mode is not qualified. Original history was preserved.')
+        for mode in modes:
+            adapter='image_inputs.py' if mode=='localImage' else 'document_inputs.py'
+            if not (release/'scripts/agent-sessions'/adapter).is_file():
+                raise SystemExit('This release cannot resume this attachment conversation. Original history and files were preserved.')
     except sqlite3.Error:raise SystemExit('Native attachment history could not be checked. No model was started.') from None
 
 

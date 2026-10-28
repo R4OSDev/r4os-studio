@@ -1,12 +1,12 @@
 """Bound English guidance and allowlisted frozen data; saved texts stay exact."""
 import json
 from pathlib import Path
-from profile import REMOTE_PROFILE, REMOTE_TOOLS
+from profile import REMOTE_PROFILES, REMOTE_TOOLS
 
 
 def compose(config):
     if config.get('owner', {}).get('type') != 'project': return ''
-    permissions = config.get('permissions', {}); compatible = config.get('engine', {}).get('profile') == REMOTE_PROFILE
+    permissions = config.get('permissions', {}); compatible = config.get('engine', {}).get('profile') in REMOTE_PROFILES
     source = config.get('remoteHostContext') or config.get('remoteHostBinding')
     host = None
     if isinstance(source, dict):

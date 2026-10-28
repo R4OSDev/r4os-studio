@@ -11,7 +11,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
-from profile import ROADMAP_PROFILE, REMOTE_TOOLS, ROADMAP_TOOLS, GUI_PROFILE, prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
+from profile import ROADMAP_PROFILE, REMOTE_PROFILES, REMOTE_TOOLS, ROADMAP_TOOLS, GUI_PROFILE, prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -137,6 +137,9 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name=='read_attachment':
+            from document_inputs import read_attachment
+            return await read_attachment(self,arguments)
         if name in REMOTE_TOOLS:
             from remote_tools import RemoteTools
             return await RemoteTools(self).call(name, arguments, call_id)
@@ -295,7 +298,7 @@ class Worker:
                              if web_search_mode == 'live' else '\n\nSTUDIO WEB SEARCH: Web search is disabled for this run. Do not claim to browse or verify current online information. studio_search searches local files only.')
             if 'capture_vm' in tools_for(self.config['engine']['profile']):
                 instructions += ('\n\nSTUDIO GUI INPUT: This profile supports kind=guiText, extended key names and bounded key repeat in studio_send_vm_input. Use lowercase w/a/s/d for movement when the app expects them. '
-                    if self.config['engine']['profile'] in (GUI_PROFILE, ROADMAP_PROFILE, PROFILE) else '\n\nSTUDIO GUI INPUT: This conversation retains its original key enum (Enter/Tab/Escape/Space). Full navigation keys require a new project session with the current tool profile. For GUI text, the existing schema permits kind=text with text and frameId together; without frameId, text is console-only. ')
+                    if self.config['engine']['profile'] in (GUI_PROFILE, ROADMAP_PROFILE,*REMOTE_PROFILES) else '\n\nSTUDIO GUI INPUT: This conversation retains its original key enum (Enter/Tab/Escape/Space). Full navigation keys require a new project session with the current tool profile. For GUI text, the existing schema permits kind=text with text and frameId together; without frameId, text is console-only. ')
                 instructions += 'GUI text and extended keys require a newly deployed GUI-input-v2 helper and a current focused window image. Text is limited to 64 Unicode characters/256 UTF-8 bytes without control characters. Send Enter separately. Inspect accepted/expected/complete and verify effects; never replay an unconfirmed or partial input automatically. Only the owned app receives queued codepoint events, not physical held keys or global clipboard paste.'
                 instructions += '\n\nSTUDIO IMAGE OBSERVATIONS: Screenshots of animations are observed between two bounded window checks, not atomically tied to a single guest content revision. Inspect the actual image; contentChanged is not a failed capture. Input requires a focused matching window and an image no older than 30 seconds; visual check completion requires a matching image no older than 120 seconds. A new deployment is needed for animation input with older helpers. Changed window geometry, focus or process still requires a new image. Image evidence proves only what was observed; do not claim that controls or animation were tested without corresponding evidence.'
                 instructions += '\n\nSTUDIO SCREENSHOT PRESENTATION: When the user requests a screenshot, present it inline in your answer using the exact presentation.markdown reference returned by studio_capture_vm. You can change its descriptive alt text. These stored image references can be reused in later replies; they require no new capture. Use only confirmed references from tool results, never invent an image reference or file URL. Presenting an image does not establish a passed check or complete a live execution.'

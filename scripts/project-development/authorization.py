@@ -34,18 +34,18 @@ def authorize(store, owner, operation, peer_pid, job=None, stopping=False, recov
         if worker.get('birth') != birth(peer_pid): raise ValueError()
     except (OSError, ValueError): raise DevelopmentFault('The agent worker process identity changed.', 403)
     config = json.loads(row[3])
-    if config['revision'] != row[4] or config['projectPins'] != store.project['pins'] or config['engine']['profile'] not in ('studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9'):
+    if config['revision'] != row[4] or config['projectPins'] != store.project['pins'] or config['engine']['profile'] not in ('studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10'):
         raise DevelopmentFault('This agent run has no matching development profile or settings.', 403)
-    if operation in UPDATE_PERMISSIONS and config['engine']['profile'] not in ('studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9'):
+    if operation in UPDATE_PERMISSIONS and config['engine']['profile'] not in ('studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10'):
         raise DevelopmentFault('Create a new project session for update tools. Existing history remains in its original profile.',403)
     required=update_permission(operation,job,recovery_action) if operation in UPDATE_PERMISSIONS else PERMISSIONS.get(operation)
     if not stopping and required and not config['permissions'].get('studio.' + required, False):
         raise DevelopmentFault('This development tool is disabled for this agent run.', 403)
     if job and (job['projectId'] != store.id or job.get('sessionId') != owner['sessionId']):
         raise DevelopmentFault('This development job belongs to another session.', 403)
-    if operation in ('vm_start', 'wait_vm_start') and config['engine']['profile'] not in ('studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9'):
+    if operation in ('vm_start', 'wait_vm_start') and config['engine']['profile'] not in ('studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10'):
         raise DevelopmentFault('Create a new session to enable the VM start tool.', 403)
-    if operation == 'complete_check' and (config['engine']['profile'] not in ('studio-tools-v4','studio-tools-v5','studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9') or not all(config['permissions'].get('studio.' + name) for name in ('run_project', 'stop_development_job'))):
+    if operation == 'complete_check' and (config['engine']['profile'] not in ('studio-tools-v4','studio-tools-v5','studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10') or not all(config['permissions'].get('studio.' + name) for name in ('run_project', 'stop_development_job'))):
         raise DevelopmentFault('Check completion requires its completion, run and stop permissions.', 403)
     action=recovery_action or (job or {}).get('recoveryAction')
     if operation in ('update_recovery','wait_update') and action=='resume-batch' and not config['permissions'].get('studio.commit_update'):
@@ -63,13 +63,13 @@ def authorize_job(store, job, allow_stopping=False):
     config = json.loads(row[2]) if row else {}
     permission = update_permission(job['kind'],job) if job['kind'] in UPDATE_PERMISSIONS else PERMISSIONS[job['kind']]
     if (not row or row[0] != job['sessionId'] or (not allow_stopping and row[1] in ('stopping', 'interrupted', 'failed', 'unknown'))
-        or config.get('engine', {}).get('profile') not in ('studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9') or config.get('projectPins') != job['pins']
+        or config.get('engine', {}).get('profile') not in ('studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10') or config.get('projectPins') != job['pins']
         or not config.get('permissions', {}).get('studio.' + permission)):
         raise DevelopmentFault('This job no longer has an authorized agent snapshot.', 403)
     if job['kind'] in UPDATE_PERMISSIONS:
-        if config.get('engine',{}).get('profile') not in ('studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9'):
+        if config.get('engine',{}).get('profile') not in ('studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10'):
             raise DevelopmentFault('This original agent profile has no update capability.',403)
         if job.get('recoveryAction')=='resume-batch' and not config['permissions'].get('studio.commit_update'):
             raise DevelopmentFault('This batch resume no longer has its frozen commit permission.',403)
-    if job['kind'] == 'vm_start' and (config['engine']['profile'] not in ('studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9') or not row[3] or row[1] != 'running'):
+    if job['kind'] == 'vm_start' and (config['engine']['profile'] not in ('studio-tools-v3', 'studio-tools-v4', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10') or not row[3] or row[1] != 'running'):
         raise DevelopmentFault('VM startup requires its original active agent turn.', 403)

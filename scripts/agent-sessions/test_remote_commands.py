@@ -69,10 +69,15 @@ class RemoteCommandTests(unittest.IsolatedAsyncioTestCase):
         # in0.6.19. This fixture changes only trusted stored engine/config fields.
         config = json.loads(worker.store.db.execute('SELECT config FROM runs WHERE id=?', (worker.run_id,)).fetchone()[0])
         config['engine']['profile'] = profile; config['remoteHostBinding'] = self.host
+        from profile import permission_tools
+        allowed={'studio.'+name for name in permission_tools(profile)}
+        config['permissions']={key:value for key,value in config['permissions'].items() if key in allowed}
         config['permissions'].update({'studio.' + name: enabled for name in ('run_remote_command', 'read_remote_job', 'stop_remote_job')})
         engine = json.loads(worker.store.row(worker.session_id)['engine']); engine['profile'] = profile
+        settings=json.loads(worker.store.row(worker.session_id)['settings'])
+        settings['permissions']={key:value for key,value in config['permissions'].items() if key in allowed}
         with worker.store.db:
-            worker.store.db.execute('UPDATE sessions SET engine=? WHERE id=?', (encode(engine), worker.session_id))
+            worker.store.db.execute('UPDATE sessions SET engine=?,settings=? WHERE id=?', (encode(engine),encode(settings), worker.session_id))
             worker.store.db.execute('UPDATE runs SET config=? WHERE id=?', (encode(config), worker.run_id))
         worker.config = config
 
@@ -155,7 +160,7 @@ class RemoteCommandTests(unittest.IsolatedAsyncioTestCase):
         self.finish(worker)
         other_id = str(uuid.uuid4()); row = worker.store.row(worker.session_id)
         with worker.store.db:
-            worker.store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (other_id, self.pid, 'Other own fixture', row['settings'], encode({'profile': 'studio-tools-v9'})))
+            worker.store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (other_id, self.pid, 'Other own fixture', row['settings'], row['engine']))
         other = self.start(other_id); self.reserve(other)
         for tool in ('read_remote_job', 'stop_remote_job'):
             denied = await self.call(other, tool, {'jobId': result['id']}); self.assertEqual(denied['code'], 403)

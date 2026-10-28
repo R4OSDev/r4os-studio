@@ -2,15 +2,15 @@
 import json,unittest,uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock,patch
-from profile import PROFILE,COMPLETION_PROFILE,AUTHOR_PROFILE,UPDATE_TOOLS,tools_for,default_enabled
+from profile import UPDATE_PROFILE,COMPLETION_PROFILE,AUTHOR_PROFILE,UPDATE_TOOLS,tools_for,default_enabled
 from tool_catalog import specifications,validate_arguments
 from contracts import DevelopmentFault,UnconfirmedGuestEffect
 from development_tools import DevelopmentTools
 
 class Declarations(unittest.TestCase):
  def test_old_profiles_and_skill_context_keep_exact_declared_boundaries(self):
-  self.assertEqual(len(specifications(PROFILE)),30);self.assertEqual(len(specifications(COMPLETION_PROFILE)),18)
-  self.assertEqual(specifications(PROFILE)[:18],specifications(COMPLETION_PROFILE))
+  self.assertEqual(len(specifications(UPDATE_PROFILE)),30);self.assertEqual(len(specifications(COMPLETION_PROFILE)),18)
+  self.assertEqual(specifications(UPDATE_PROFILE)[:18],specifications(COMPLETION_PROFILE))
   self.assertTrue(set(UPDATE_TOOLS).isdisjoint(tools_for(AUTHOR_PROFILE)))
   self.assertFalse(default_enabled('commit_update'));self.assertFalse(default_enabled('rollback_update'))
   self.assertTrue(default_enabled('read_update_package'))

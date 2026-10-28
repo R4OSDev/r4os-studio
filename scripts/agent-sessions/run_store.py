@@ -7,7 +7,7 @@ from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
 from project_agents import snapshot as project_snapshot
 
-CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs')
+CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs')
 
 
 def fingerprint(session_id,data,attachments=()):
@@ -89,11 +89,17 @@ def admit(store, session_id, data, provider_dir):
         from image_inputs import selected,qualify,history,reference
         attachments=selected(store,session_id,data.get('attachments',[])) if not goal_mode and 'attachments' in data else []
         if attachments and data.get('nativeImageInputs')!=1:raise ProjectFault('This request needs qualified native image support.',503)
+        if any(m['mode']!='localImage' for m in attachments) and data.get('documentInputs')!=1:
+            raise ProjectFault('This request needs qualified document input support.',503)
+        from document_inputs import qualify as document_qualify
+        document_qualify(store,session_id,session,attachments)
         modalities=qualify(store,session_id,session,provider_dir,attachments)
         request_hash=fingerprint(session_id,data,attachments)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
         if 'attachments' in data:snapshot['attachments']=attachments
-        if attachments or history(store,session_id):snapshot.update(imageContext=True,imageInputModalities=modalities)
+        accepted=attachments+history(store,session_id)
+        if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)
+        if any(m['mode'] in ('text','pdfText') for m in accepted):snapshot['documentContext']=True
         if goal_mode:
             snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective']}
             from goal_recovery import snapshot as recovery_snapshot

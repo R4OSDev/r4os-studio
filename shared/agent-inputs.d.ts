@@ -30,6 +30,7 @@ export interface SessionAttachment {
   state: 'ready' | 'rejected'; createdAt: string;
   width?: number; height?: number; pages?: number;
   extractedBytes?: number; limitation?: string;
+  extractedSha256?: string; readable?: boolean; truncated?: boolean; encrypted?: boolean; storedBytes?: number;
 }
 export interface RunAttachment {
   id: string; sha256: string; mediaType: string; size: number; mode: AttachmentInputMode;
@@ -42,7 +43,7 @@ export interface AttachmentListing {
   attachments: SessionAttachment[];
   limits: { maxFiles: number; maxFileBytes: number; maxRunBytes: number; maxSessionBytes: number;
     maxOwnerBytes: number; maxSessionFiles: number; maxOwnerFiles: number; maxTextBytes: number;
-    maxImagePixels: number; maxImageDimension: number };
+    maxImagePixels: number; maxImageDimension: number; maxPdfPages: number };
   supported: { images: boolean; text: boolean; pdf: boolean };
   usage: { sessionBytes: number; ownerBytes: number; sessionFiles: number; ownerFiles: number };
 }

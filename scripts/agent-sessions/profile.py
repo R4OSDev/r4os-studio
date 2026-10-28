@@ -16,10 +16,13 @@ GIT_PROFILE = 'studio-tools-v6'
 GUI_PROFILE = 'studio-tools-v7'
 ROADMAP_PROFILE = 'studio-tools-v8'
 REMOTE_PROFILE = 'studio-tools-v9'
-PROFILE = REMOTE_PROFILE
+DOCUMENT_PROFILE = 'studio-tools-v10'
+REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE)
+PROFILE = DOCUMENT_PROFILE
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
-SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE)
+DOCUMENT_SKILL_PROFILE = 'studio-skill-tools-v3'
+SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE)
 AUTHOR_TOOLS = ('validate_skill', 'save_skill')
 SANDBOX_MODE = 'workspace-write'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
@@ -38,11 +41,14 @@ ROADMAP_TOOLS = ('read_roadmap', 'update_roadmap', 'cleanup_roadmap')
 PRE_ROADMAP_TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS + GIT_TOOLS
 PRE_REMOTE_TOOLS = PRE_ROADMAP_TOOLS + ROADMAP_TOOLS
 REMOTE_TOOLS = ('get_remote_host', 'run_remote_command', 'remote_files', 'read_remote_job', 'stop_remote_job')
-TOOLS = PRE_REMOTE_TOOLS + REMOTE_TOOLS
+PRE_ATTACHMENT_TOOLS = PRE_REMOTE_TOOLS + REMOTE_TOOLS
+ATTACHMENT_TOOLS = ('read_attachment',)
+TOOLS = PRE_ATTACHMENT_TOOLS + ATTACHMENT_TOOLS
 
 def tools_for(profile):
     if profile == SKILL_PROFILE: return LEGACY_TOOLS
     if profile == AUTHOR_PROFILE: return LEGACY_TOOLS + AUTHOR_TOOLS
+    if profile == DOCUMENT_SKILL_PROFILE:return LEGACY_TOOLS+AUTHOR_TOOLS+ATTACHMENT_TOOLS
     if profile == LEGACY_PROFILE: return LEGACY_TOOLS
     if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
     if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
@@ -50,7 +56,8 @@ def tools_for(profile):
     if profile == UPDATE_PROFILE: return LEGACY_TOOLS + DEVELOPMENT_TOOLS
     if profile in (GIT_PROFILE, GUI_PROFILE): return PRE_ROADMAP_TOOLS
     if profile == ROADMAP_PROFILE: return PRE_REMOTE_TOOLS
-    if profile == REMOTE_PROFILE: return TOOLS
+    if profile == REMOTE_PROFILE: return PRE_ATTACHMENT_TOOLS
+    if profile == DOCUMENT_PROFILE:return TOOLS
     raise ValueError('This session profile needs compatible Studio host support.')
 
 

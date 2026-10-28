@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from profile import REMOTE_PROFILE
+from profile import REMOTE_PROFILES
 from session_store import encode
 from run_store import item
 from store import ProjectFault
@@ -16,7 +16,7 @@ class RemoteTools:
     def frame(self):
         worker = self.worker
         if (worker.store.owner_type != 'project' or worker.config.get('owner') != {'type': 'project', 'id': worker.store.project_id}
-                or worker.config.get('engine', {}).get('profile') != REMOTE_PROFILE or worker.lease is None or worker.lease.closed):
+                or worker.config.get('engine', {}).get('profile') not in REMOTE_PROFILES or worker.lease is None or worker.lease.closed):
             raise ProjectFault('This conversation has no active project Remote Host lease.', 403)
         birth = (Path('/proc') / str(os.getpid()) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
         return {'protocol': 1, 'requireLifecycle': 1, 'projectId': worker.store.project_id,

@@ -25,7 +25,7 @@ class AuthorizationTest(unittest.TestCase):
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM jobs').fetchone()[0],1)
     def test_pid_birth_revision_profile_and_stopping_gate(self):
         authorize(self.store,self.owner,'build',os.getpid(),self.job)
-        for profile in ('studio-tools-v8', 'studio-tools-v9'):
+        for profile in ('studio-tools-v8', 'studio-tools-v9','studio-tools-v10'):
             self.config['engine']['profile']=profile;self.save()
             authorize(self.store,self.owner,'build',os.getpid(),self.job)
             authorize(self.store,self.owner,'vm_start',os.getpid(),self.job)

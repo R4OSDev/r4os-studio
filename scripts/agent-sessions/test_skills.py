@@ -39,7 +39,12 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         self.config = {'projects': str(self.projects), 'providers': str(self.providers), 'r4os': str(self.r4os), 'uid': os.getuid(), 'maxActiveRuns': 2}
 
     def tearDown(self): self.temp.cleanup()
-    def open(self, ident=None): return closing(SessionStore(self.projects, self.r4os, ident or self.ids[0], 'skill'))
+    def open(self, ident=None):
+        store=SessionStore(self.projects,self.r4os,ident or self.ids[0],'skill')
+        # This retained fixture deliberately qualifies historical v2 threads.
+        # Current v3 defaults are exercised by HTTP/native document fixtures.
+        store.selected_profile=self.engine['profile']
+        return closing(store)
     def settings(self): return {'name': 'Author', 'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'requestId': str(uuid.uuid4())}
     def input(self): return {'requestId': str(uuid.uuid4()), 'revision': self.session['revision'], 'text': 'Edit this skill draft.'}
     def admit(self):

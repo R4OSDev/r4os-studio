@@ -56,19 +56,41 @@ def decode_image(path):
         raise ProjectFault('Image validation failed. Use a complete still PNG/JPEG/WebP within16384 pixels per axis and40 million pixels, and install the qualified raster decoder.',400) from None
 
 
+def decode_pdf(path):
+    script=Path(__file__).with_name('pdf_check.py').absolute()
+    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all','--cap-drop','ALL']
+    for root in ('/usr','/lib','/lib64'):
+        if Path(root).exists():args+=['--ro-bind',root,root]
+    args+=['--dev','/dev','--proc','/proc','--tmpfs','/tmp','--ro-bind',str(regular(path)),'/input',
+        '--ro-bind',str(script),'/check.py','--clearenv','--setenv','LANG','C.UTF-8',
+        '/usr/bin/python3','-I','-B','/check.py']
+    try:
+        result=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=False)
+        if result.returncode or len(result.stdout)>8*1024*1024:raise ValueError()
+        value=json.loads(result.stdout)
+        if (value.get('mode')!='pdfText' or value.get('mediaType')!='application/pdf' or type(value.get('readable')) is not bool
+                or type(value.get('truncated')) is not bool or not isinstance(value.get('_text'),str)
+                or len(value['_text'].encode('utf-8'))>2*1024*1024):raise ValueError()
+        return value
+    except (OSError,ValueError,subprocess.TimeoutExpired):
+        raise ProjectFault('PDF validation failed or the qualified Poppler25.03.0 decoder is unavailable. Use a valid PDF or UTF-8 text.',400) from None
+
+
 def inspect(path,name,claimed):
     with regular(path).open('rb') as stream:head=stream.read(16)
     if head.startswith(b'\x89PNG\r\n\x1a\n') or head.startswith(b'\xff\xd8') or (head[:4]==b'RIFF' and head[8:12]==b'WEBP'):
         return decode_image(path)
+    if head.startswith(b'%PDF-'):return decode_pdf(path)
     extension=name.rsplit('.',1)[-1].lower() if '.' in name else ''
     if extension not in TEXT_EXTENSIONS and not (not extension and claimed.startswith('text/')):
-        raise ProjectFault('Unsupported attachment. Use PNG/JPEG/WebP or UTF-8 text/source files. PDF text support is not installed yet.',400)
+        raise ProjectFault('Unsupported attachment. Use PNG/JPEG/WebP, a valid PDF, or UTF-8 text/source files.',400)
     try:
         content=regular(path).read_bytes().decode('utf-8-sig')
         if '\x00' in content:raise ValueError()
     except (UnicodeError,ValueError):raise ProjectFault('Text attachments must contain valid UTF-8 without NUL bytes.',400) from None
     if len(content.encode('utf-8'))>2*1024*1024:raise ProjectFault('Text attachments exceed2 MiB. Attach a smaller document or source excerpt.',400)
-    return {'mode':'text','mediaType':'text/plain','extractedBytes':len(content.encode('utf-8'))}
+    return {'mode':'text','mediaType':'text/plain','extractedBytes':len(content.encode('utf-8')),
+        'extractedSha256':hashlib.sha256(content.encode('utf-8')).hexdigest(),'readable':True,'truncated':False}
 
 
 class Attachments:
@@ -106,7 +128,8 @@ class Attachments:
     def usage(self):
         rows=self.store.db.execute("SELECT session_id,metadata FROM session_attachments WHERE state IN ('pending','unknown','ready','removed')").fetchall() if self.exists() else []
         own=[r for r in rows if r['session_id']==self.sid]
-        return {'sessionBytes':sum(json.loads(r['metadata'])['size'] for r in own),'ownerBytes':sum(json.loads(r['metadata'])['size'] for r in rows),
+        charged=lambda r:json.loads(r['metadata']).get('storedBytes',json.loads(r['metadata'])['size'])
+        return {'sessionBytes':sum(charged(r) for r in own),'ownerBytes':sum(charged(r) for r in rows),
             'sessionFiles':len(own),'ownerFiles':len(rows)}
 
     def listing(self):
@@ -115,11 +138,15 @@ class Attachments:
             from PIL import features,__version__
             images=__version__=='11.1.0' and features.check('webp')
         except ImportError:images=False
+        try:
+            pdf=subprocess.run(['/usr/bin/pdftotext','-v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=2)
+            pdf_available=b'pdftotext version 25.03.0' in pdf.stderr
+        except (OSError,subprocess.TimeoutExpired):pdf_available=False
         return {'attachments':[{**json.loads(r[0]),'state':'ready'} for r in rows],
             'limits':{'maxFiles':MAX_FILES,'maxFileBytes':MAX_FILE,'maxRunBytes':MAX_RUN,'maxSessionBytes':MAX_SESSION,
                 'maxOwnerBytes':MAX_OWNER,'maxSessionFiles':MAX_SESSION_FILES,'maxOwnerFiles':MAX_OWNER_FILES,
-                'maxTextBytes':2*1024*1024,'maxImagePixels':40_000_000,'maxImageDimension':16384},
-            'supported':{'images':images,'text':True,'pdf':False},'usage':self.usage()}
+                'maxTextBytes':2*1024*1024,'maxImagePixels':40_000_000,'maxImageDimension':16384,'maxPdfPages':128},
+            'supported':{'images':images,'text':True,'pdf':pdf_available},'usage':self.usage()}
 
     def upload(self,data,stream):
         if set(data)!={'requestId','name','mediaType','size','sha256'}:raise ProjectFault('Unexpected upload fields.',400)
@@ -160,14 +187,30 @@ class Attachments:
                     target.write(chunk);hashed.update(chunk)
                 target.flush();os.fsync(target.fileno())
             if total!=size or hashed.hexdigest()!=sha:raise ProjectFault('The received attachment size or SHA-256 does not match.',400)
-            info=inspect(temp,name,claimed);meta.update(info)
-            suffix={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','text/plain':'txt'}[info['mediaType']]
+            info=inspect(temp,name,claimed);extracted=info.pop('_text',None);meta.update(info)
+            if extracted is not None:
+                extracted=extracted.encode('utf-8')
+                if hashlib.sha256(extracted).hexdigest()!=info['extractedSha256'] or len(extracted)!=info['extractedBytes']:raise ProjectFault('PDF extraction identity changed.',409)
+                self.store.db.execute('BEGIN IMMEDIATE')
+                try:
+                    usage=self.usage()
+                    if usage['sessionBytes']+len(extracted)>MAX_SESSION or usage['ownerBytes']+len(extracted)>MAX_OWNER:
+                        raise ProjectFault('Attachment storage cannot hold this PDF text. Existing files were preserved.',409)
+                    meta['storedBytes']=size+len(extracted)
+                    self.store.db.execute('UPDATE session_attachments SET metadata=? WHERE id=?',(encode(meta),ident));self.store.db.commit()
+                finally:
+                    if self.store.db.in_transaction:self.store.db.rollback()
+                text_path=parent/'extracted.txt'
+                fd=os.open(text_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                finalized=True  # Derived bytes reserve the original until publication is certain.
+                with os.fdopen(fd,'wb') as target:target.write(extracted);target.flush();os.fsync(target.fileno())
+            suffix={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','text/plain':'txt','application/pdf':'pdf'}[info['mediaType']]
             os.replace(temp,parent/('original.'+suffix));finalized=True;sync(parent)
             with self.store.db:self.store.db.execute("UPDATE session_attachments SET state='ready',metadata=? WHERE id=?",(encode(meta),ident))
         except Exception as error:
             # This exclusive temporary file is ours; finalized bytes/other IDs
             # are preserved on any uncertainty and never treated as Ready.
-            if temp.exists() and temp.is_file() and not temp.is_symlink():temp.unlink();sync(parent)
+            if not finalized and temp.exists() and temp.is_file() and not temp.is_symlink():temp.unlink();sync(parent)
             message=str(error) if isinstance(error,ProjectFault) else 'The attachment could not be validated. Existing files were preserved.'
             with self.store.db:self.store.db.execute('UPDATE session_attachments SET state=?,reason=? WHERE id=?',('unknown' if finalized else 'rejected',message,ident))
         return self.receipt(rid)

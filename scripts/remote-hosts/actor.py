@@ -10,6 +10,7 @@ import stat
 from catalog import CatalogFault, fields, identity
 
 PROFILE = 'studio-tools-v9'  # Activated with the complete declarations in 0.6.19.
+PROFILES = ('studio-tools-v9','studio-tools-v10')
 TOOLS = ('get_remote_host', 'run_remote_command', 'remote_files', 'read_remote_job', 'stop_remote_job')
 
 
@@ -51,8 +52,8 @@ class Actor:
                 (self.context['runId'], self.context['sessionId'], self.project_id)).fetchone()
             if not row or (not cleanup and (row[0] not in ('starting', 'running') or row[1] != 1)): raise CatalogFault('This run is no longer accepting remote work.', 403)
             config, worker = json.loads(row[2]), json.loads(row[3] or '{}')
-            if (config.get('owner') != {'type': 'project', 'id': self.project_id} or config.get('engine', {}).get('profile') != PROFILE
-                    or json.loads(row[5]).get('profile') != PROFILE
+            if (config.get('owner') != {'type': 'project', 'id': self.project_id} or config.get('engine', {}).get('profile') not in PROFILES
+                    or json.loads(row[5]).get('profile') != config.get('engine',{}).get('profile')
                     or config.get('revision') != row[4] or row[4] != self.context['revision']
                     or worker.get('pid') != self.context['workerPid'] or worker.get('birth') != self.context['workerBirth']
                     or worker.get('release') != self.context['release'] or process(worker['pid'])[1] != worker['birth']):

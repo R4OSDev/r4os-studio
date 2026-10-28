@@ -115,7 +115,8 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.directory.iterdir() if p.is_file()})
 
     def test_v9_schemas_old_profile_separation_and_new_session_defaults(self):
-        self.assertEqual(PROFILE, 'studio-tools-v9'); self.assertEqual(len(specifications(PROFILE)), 39)
+        self.assertEqual(PROFILE, 'studio-tools-v10'); self.assertEqual(len(specifications(PROFILE)), 40)
+        self.assertEqual(len(specifications('studio-tools-v9')),39)
         self.assertFalse(set(REMOTE_TOOLS) & set(tools_for(ROADMAP_PROFILE)))
         for profile in SKILL_PROFILES: self.assertFalse(set(REMOTE_TOOLS) & set(tools_for(profile)))
         rid = str(uuid.uuid4())
