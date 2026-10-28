@@ -15,7 +15,7 @@ def end_turns(store, run_id):
 
 
 class GoalWorker:
-    def __init__(self, worker):
+    def __init__(self, worker, dormant=False):
         self.worker=worker;self.goals=Goals(worker.store);self.idle=asyncio.Event();self.idle.set()
         self.native=None;self.server=None;self.lock=asyncio.Lock();self.tasks=set();self.clients=set();self.activating=True
         self.evaluator=None;self.closed=False;self.last_turn_status=None
@@ -23,6 +23,7 @@ class GoalWorker:
         self.armed=False;self.completed_once=False
         self.stop_reconcile=None
         self.queue_handoff=False
+        self.dormant=dormant
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -41,18 +42,27 @@ class GoalWorker:
 
     async def before_resume(self):
         w=self.worker
+        if not w.thread_id: return
         # Read/neutralize saved active state while the native thread is unloaded.
         # Resume must not authorize any implicit old work before this Play.
         value=await self.read()
         if value and value['status']=='active':
             await w.client.request('thread/goal/set',{'threadId':w.thread_id,'status':'paused','origin':'automatic'})
             value=await self.read()
+        if self.dormant:
+            if value and value['status']=='active': raise ProjectFault('Saved Goal could not be paused before resume.',503)
+            return
         if not value or value['objective']!=w.config['goalExecution']['objective'] or value['status']=='active':
             raise ProjectFault('The saved Goal changed before its worker started.',409)
 
+    async def start_control(self):
+        if self.server is None:
+            self.server=await asyncio.start_unix_server(self.control,path='\0r4os-studio-goal-'+self.worker.run_id,limit=2049)
+        if self.dormant: self.activating=False
+
     async def activate(self):
         w=self.worker;rid=w.config['goalExecution']['requestId']
-        self.server=await asyncio.start_unix_server(self.control,path='\0r4os-studio-goal-'+w.run_id,limit=2049)
+        await self.start_control()
         self.goals.stage(w.session_id,rid,'native_activation');w.turn_requested=True
         self.armed=True
         try:
@@ -66,6 +76,7 @@ class GoalWorker:
         self.evaluate_later()
 
     def evaluate_later(self):
+        if self.dormant: return
         if self.closed or (self.evaluator and not self.evaluator.done()): return
         task=asyncio.create_task(self.evaluate_safe());self.evaluator=task;self.tasks.add(task);task.add_done_callback(self.tasks.discard)
 
@@ -112,6 +123,9 @@ class GoalWorker:
             self.generation+=1
             self.native=params.get('goal') if method.endswith('updated') else None
             self.goals.observe(w.session_id,w.thread_id,self.native,w.run_id)
+            if self.dormant and not self.activating and self.native and self.native['status']=='active':
+                w.error='A native Goal was activated without a browser Play. Review the Goal before continuing.'
+                w.defer_stop()
             if self.armed and self.native:
                 changed=self.native['objective']!=w.config['goalExecution']['objective']
                 restarted=self.completed_once and self.native['status']=='active'
@@ -133,6 +147,7 @@ class GoalWorker:
                 (w.run_id,turn['id'],turn['status']))
             from run_store import event
             event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':turn['id'],'status':turn['status']})
+            if self.dormant: return False
             from message_store import pending_queue
             if turn['status']=='completed' and not w.stopping and pending_queue(w.store,w.session_id,authorized=True):
                 # Pause outside the serial RPC reader. A racing continuation is
@@ -180,6 +195,7 @@ class GoalWorker:
                 raise ProjectFault('The Goal command belongs to another worker.',403)
             async with self.lock:
                 row=self.goals.command(w.session_id,data['requestId']);command=json.loads(row['payload'])
+                if command.get('target'): raise ProjectFault('Live Goal control is not enabled in this worker release.',503)
                 if command['action']=='play': raise ProjectFault('This worker cannot accept another Play.',409)
                 if row['state']=='pending' and row['stage']!='native_paused':
                     self.goals.stage(w.session_id,data['requestId'],'native_pause')

@@ -8,8 +8,10 @@ export interface NativeGoal {
   tokenBudget?: number | null;
 }
 export type GoalAction = 'save' | 'play' | 'pause' | 'stop';
+export interface GoalLiveTarget { runId: string; threadId: string; turnId: string }
 export interface GoalCommand {
   requestId: string; revision: number; action: GoalAction; objective?: string; sessionRevision?: number;
+  target?: GoalLiveTarget;
 }
 export interface SessionGoal {
   owner: SessionOwner; sessionId: string; threadId: string | null;

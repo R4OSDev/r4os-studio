@@ -3601,3 +3601,6 @@ while lifetime protection blocks project deletion. No provider inference or user
 VM/project run is part of this acceptance. Desktop/320px, keyboard, touch,
 confirmed deletion, reload and protected data are checked. Full evidence and
 limits remain in Docs/Project-Boards.md and local0.6.41 acceptance records.
+
+
+0.7.6 prepares dormant native Goal capability for newly admitted compatible runs. Saved Active is paused before resume; ordinary completion remains ordinary. A separate immutable human Play ledger binds owner/session/run/thread/turn and the captured Goal without changing the original run request. Live control is reserved for the subsequent release; old workers keep their original capabilities.

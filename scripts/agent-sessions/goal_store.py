@@ -54,18 +54,25 @@ class Goals:
                 'state': row['state'], 'snapshot': self.snapshot(sid)}
 
     def accept(self, sid, data):
-        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision'}
+        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target'}
                 or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int
                 or ('sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1))
                 or data['action'] not in ('save','play','pause','stop')
                 or (('objective' in data) != (data['action'] == 'save'))):
             raise ProjectFault('Invalid Goal command.', 400)
         key = identity(data['requestId']); self.store.row(sid)
+        if 'target' in data:
+            from goal_live import target
+            target(data['target'])
         try:
             if data['action'] == 'save': objective(data['objective'], allow_empty=True)
         except ValueError as error: raise ProjectFault(str(error), 400) from None
         fingerprint = hashlib.sha256(encode({'sessionId': sid, **data}).encode()).hexdigest()
-        self.schema(); self.store.db.execute('BEGIN IMMEDIATE')
+        self.schema()
+        if 'target' in data:
+            from goal_live import LiveGoals
+            LiveGoals(self.store).schema()
+        self.store.db.execute('BEGIN IMMEDIATE')
         try:
             previous = self.store.db.execute('SELECT * FROM goal_commands WHERE request_id=?', (key,)).fetchone()
             if previous:
@@ -83,6 +90,7 @@ class Goals:
             if data['action'] == 'play' and not snapshot['goal']: raise ProjectFault('Save a Goal before pressing Play.', 409)
             self.store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
                 (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal']}), 'pending', 'accepted', now()))
+            if 'target' in data: LiveGoals(self.store).bind(sid,data,snapshot['goal'])
             self.store.db.execute('''INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',?,NULL,NULL)
               ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,phase='pending',request_id=excluded.request_id,reason=NULL''',
                 (sid, key))
