@@ -73,6 +73,7 @@ export async function exchangeWorkerCapability(id: string) {
     const pin = JSON.parse(await readFile(join(runtimePath(id), 'worker.json'), 'utf8'));
     if (typeof pin.release !== 'string' || !/^\/opt\/r4os-studio\/releases\/[a-zA-Z0-9.-]+$/.test(pin.release)) return { buildTreeVersion: 0 };
     const value = JSON.parse(await readFile(join(pin.release, 'shared/exchange-host.json'), 'utf8'));
-    return { buildTreeVersion: value.interface === 'r4os-studio-exchange' && value.schema === 1 && value.buildTreeVersion === 1 ? 1 : 0 };
+    const supported = value.interface === 'r4os-studio-exchange' && value.schema === 1 && value.buildTreeVersion === 1;
+    return { buildTreeVersion: supported ? 1 : 0, limits: supported ? value.limits : undefined };
   } catch { return { buildTreeVersion: 0 }; }
 }

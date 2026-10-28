@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, open, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -11,7 +11,9 @@ const directory = join(testRoot, 'R4OS'); await mkdir(directory);
 process.env.STUDIO_R4OS_DIR = directory;
 process.env.STUDIO_VM_NETWORK_CAPABILITY = join(directory, 'network-capability.json');
 const { vmRoutes } = await import('../src/modules/virtual-machines/routes.js');
-const { createShareImage } = await import('../src/modules/virtual-machines/share.js');
+const { createShareImage, hashShareFile } = await import('../src/modules/virtual-machines/share.js');
+const { exchangeImageBytes, exchangeLimits } = await import('../src/modules/virtual-machines/exchange-policy.js');
+const { prepareExchangeIdentity } = await import('../src/modules/virtual-machines/exchange-identity.js');
 const { prepareShare, finishShare, shareState } = await import('../src/modules/virtual-machines/share-sync.js');
 const { exec } = await import('../src/modules/virtual-machines/systemd.js');
 
@@ -74,7 +76,9 @@ await test('persistent FAT32 exchange exports guest edits, survives starts, dete
   const path = join(directory, randomUUID()); await mkdir(join(path, 'Exchange/Share'), { recursive: true });
   await writeFile(join(path, 'Exchange/Share/TEST.TXT'), 'VM private artifact');
   await prepareShare(path);
-  const disk = await readFile(join(path, 'Disks/exchange.img'));
+  const imageFile = await open(join(path, 'Disks/exchange.img'), 'r'), disk = Buffer.alloc(1048576 + 90);
+  try { await imageFile.read(disk, 0, disk.length, 0); } finally { await imageFile.close(); }
+  assert.equal((await stat(join(path, 'Disks/exchange.img'))).size, exchangeImageBytes);
   assert.equal(disk[450], 0x0c); assert.equal(disk.readUInt32LE(454), 2048);
   assert.equal(disk.subarray(1048576 + 82, 1048576 + 90).toString(), 'FAT32   ');
   const { stdout } = await exec('/usr/bin/mtype', ['-i', join(path, 'Disks/exchange.img') + '@@1048576', '::/TEST.TXT']);
@@ -133,5 +137,43 @@ await test('empty exchange can start and stop; interrupted export is recovered b
   await assert.rejects(prepareShare(legacy), /Unsupported guest Exchange path/);
   assert.equal(await readFile(join(legacy, 'Exchange/Share/OLD.TXT'), 'utf8'), 'edited while stopped');
   assert.equal((await shareState(legacy))?.pending, true);
+});
+await test('larger exchange preserves pending legacy guest edits and hashes a full-quota file in chunks', async () => {
+  const path = join(directory, randomUUID()), share = join(path, 'Exchange/Share');
+  await mkdir(share, { recursive: true }); await mkdir(join(path, 'Disks'));
+  await writeFile(join(share, 'OLD.TXT'), 'old baseline'); await prepareExchangeIdentity(path);
+  const baseline = Object.create(null);
+  for (const name of ['OLD.TXT', 'STXCHG.JSN']) {
+    const data = await readFile(join(share, name));
+    baseline[name.toLowerCase()] = { name, kind: 'file', size: data.length, sha256: createHash('sha256').update(data).digest('hex') };
+  }
+  await writeFile(join(path, 'Exchange/state.json'), JSON.stringify({ schema: 2, pending: true, session: randomUUID(), baseline }));
+  const image = join(path, 'Disks/exchange.img'), legacy = await open(image, 'wx');
+  try {
+    await legacy.truncate(257 * 1024 * 1024);
+    const mbr = Buffer.alloc(512); mbr[450] = 0x0c; mbr.writeUInt32LE(2048, 454);
+    mbr.writeUInt32LE(256 * 1024 * 1024 / 512, 458); mbr[510] = 0x55; mbr[511] = 0xaa;
+    await legacy.write(mbr, 0, mbr.length, 0);
+  } finally { await legacy.close(); }
+  await exec('/usr/sbin/mkfs.fat', ['-F', '32', '-n', 'R4SHARE', '--offset=2048', image]);
+  for (const name of ['OLD.TXT', 'STXCHG.JSN']) await exec('/usr/bin/mcopy', ['-i', image + '@@1048576', join(share, name), '::/' + name]);
+  const guest = join(path, 'guest'); await writeFile(guest, 'pending guest edit');
+  await exec('/usr/bin/mcopy', ['-o', '-i', image + '@@1048576', guest, '::/OLD.TXT']);
+  await writeFile(join(share, 'HOST.TXT'), 'independent host edit');
+  await prepareShare(path);
+  assert.equal((await stat(image)).size, exchangeImageBytes);
+  for (const [name, expected] of [['OLD.TXT', 'pending guest edit'], ['HOST.TXT', 'independent host edit']]) {
+    assert.equal(await readFile(join(share, name), 'utf8'), expected);
+    assert.equal((await exec('/usr/bin/mtype', ['-i', image + '@@1048576', '::/' + name])).stdout, expected);
+  }
+  assert.equal(createHash('sha256').update(await readFile(join(share, 'STXCHG.JSN'))).digest('hex'), baseline['stxchg.jsn'].sha256);
+  await finishShare(path);
+  // Sparse input exercises the actual 1 GiB reader without allocating a giant
+  // test buffer or repeatedly copying gigabytes through a guest VM.
+  const large = await open(join(share, 'LARGE.BIN'), 'wx');
+  try { await large.truncate(exchangeLimits.bytes); } finally { await large.close(); }
+  const hash = createHash('sha256'), chunk = Buffer.alloc(1024 * 1024);
+  for (let size = 0; size < exchangeLimits.bytes; size += chunk.length) hash.update(chunk);
+  assert.equal(await hashShareFile(share, { name: 'LARGE.BIN', size: exchangeLimits.bytes, kind: 'file' }, Date.now() + 30_000), hash.digest('hex'));
 });
 await rm(testRoot, { recursive: true, force: true });

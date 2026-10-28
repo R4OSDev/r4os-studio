@@ -3,7 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exec } from './systemd.js';
-import { shareFiles, validSharePath, createShareImage, boundShare, readShareFile, exchangeLimits, type ShareEntry } from './share.js';
+import { shareFiles, validSharePath, createShareImage, boundShare, hashShareFile, exchangeLimits, type ShareEntry } from './share.js';
+import { exchangeImageBytes, supportedExchangeImage } from './exchange-policy.js';
 import { prepareExchangeIdentity, verifyExchangeMarker } from './exchange-identity.js';
 import { VmError } from './paths.js';
 
@@ -39,32 +40,36 @@ export async function shareState(directory: string): Promise<SyncState | undefin
   validate(state.baseline); state.baseline = Object.assign(Object.create(null), state.baseline); return state;
 }
 async function save(directory: string, state: SyncState) { await json(statePath(directory), { ...state, schema: 2 }); }
-async function manifest(path: string): Promise<Manifest> {
+async function manifest(path: string, deadline = Date.now() + exchangeLimits.seconds * 1000): Promise<Manifest> {
   const result: Manifest = Object.create(null);
-  for (const entry of await shareFiles(path)) result[entry.name.toLowerCase()] = { ...entry,
-    sha256: createHash('sha256').update(entry.kind === 'directory' ? 'directory' : await readShareFile(path, entry)).digest('hex') };
+  for (const entry of await shareFiles(path, deadline)) result[entry.name.toLowerCase()] = { ...entry,
+    sha256: entry.kind === 'directory' ? createHash('sha256').update('directory').digest('hex') : await hashShareFile(path, entry, deadline) };
   return result;
 }
 const equal = (a?: Entry, b?: Entry) => a?.sha256 === b?.sha256 && a?.kind === b?.kind && a?.name === b?.name;
 const same = (a: Manifest, b: Manifest) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((key) => equal(a[key], b[key]));
-async function extract(directory: string, target: string) {
+async function extract(directory: string, target: string, deadline = Date.now() + exchangeLimits.seconds * 1000) {
   const info = await lstat(imagePath(directory));
-  if (!info.isFile() || info.isSymbolicLink() || info.size !== 257 * 1024 * 1024) throw new VmError('Invalid Exchange image.');
-  const deadline = Date.now() + exchangeLimits.seconds * 1000, entries: ShareEntry[] = [];
+  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || !supportedExchangeImage(info.size)) throw new VmError('Invalid Exchange image.');
+  const entries: ShareEntry[] = [], names = new Set<string>();
+  // Long names for every allowed entry, plus mtools' dot entries. Do not cap a
+  // valid 4096-file listing at the old 64 KiB diagnostic buffer.
+  const listingBytes = (exchangeLimits.files + exchangeLimits.directories + 2) * (exchangeLimits.depth * 101 + 8);
   const run = (command: string, args: string[]) => {
-    const timeout = Math.min(30_000, deadline - Date.now()); if (timeout <= 0) throw new VmError('Exchange export exceeded its deadline.');
-    return exec(command, args, { timeout, maxBuffer: 64 * 1024 });
+    const timeout = deadline - Date.now(); if (timeout <= 0) throw new VmError('Exchange export exceeded its deadline.');
+    return exec(command, args, { timeout, maxBuffer: listingBytes });
   };
   async function scan(parent = '') {
     const { stdout } = await run('/usr/bin/mdir', ['-a', '-b', '-i', imagePath(directory) + '@@1048576', '::/' + (parent ? parent + '/' : '')]);
     const lines = stdout.split(/\r?\n/).filter(Boolean);
-    if (lines.length > exchangeLimits.files + exchangeLimits.directories) throw new VmError('Too many guest Exchange entries.');
+    if (lines.length > exchangeLimits.files + exchangeLimits.directories + 2) throw new VmError('Too many guest Exchange entries.');
     for (const line of lines) {
       const isDir = line.endsWith('/'), name = line.slice(3, isDir ? -1 : undefined);
       if (name === (parent ? parent + '/.' : '.') || name === (parent ? parent + '/..' : '..')) continue;
       if (!line.startsWith('::/') || !validSharePath(name, isDir) || dirname(name) !== (parent || '.'))
         throw new VmError('Unsupported guest Exchange path. Preserve exchange.img and recover the files before restarting.');
-      if (entries.some((e) => e.name.toLowerCase() === name.toLowerCase())) throw new VmError('Guest Exchange paths conflict ignoring case.');
+      if (names.has(name.toLowerCase())) throw new VmError('Guest Exchange paths conflict ignoring case.');
+      names.add(name.toLowerCase());
       const entry: ShareEntry = { name, size: 0, kind: isDir ? 'directory' : 'file' }; entries.push(entry);
       if (entries.length > exchangeLimits.files + exchangeLimits.directories) throw new VmError('Too many guest Exchange entries.');
       if (isDir) { boundShare(entries); await mkdir(join(target, name), { mode: 0o700 }); await scan(name); }
@@ -76,18 +81,16 @@ async function extract(directory: string, target: string) {
       }
     }
   }
-  await scan(); return manifest(target);
+  await scan(); return manifest(target, deadline);
 }
-async function copyTree(target: string, entries: Manifest, source: (key: string) => string) {
-  await mkdir(target, { mode: 0o700 }); const deadline = Date.now() + exchangeLimits.seconds * 1000;
+async function copyTree(target: string, entries: Manifest, source: (key: string) => string, deadline: number) {
+  await mkdir(target, { mode: 0o700 });
   const ordered = Object.entries(entries).sort((a, b) => a[1].name.split('/').length - b[1].name.split('/').length);
   for (const [key, entry] of ordered) {
     if (Date.now() > deadline) throw new VmError('Exchange copy exceeded its deadline.');
     if (entry.kind === 'directory') await mkdir(join(target, entry.name), { mode: 0o700 });
     else {
-      const data = await readShareFile(source(key), entry);
-      if (createHash('sha256').update(data).digest('hex') !== entry.sha256) throw new VmError('Exchange source changed during publication.');
-      await writeFile(join(target, entry.name), data, { mode: 0o600, flag: 'wx', flush: true });
+      if (await hashShareFile(source(key), entry, deadline, join(target, entry.name)) !== entry.sha256) throw new VmError('Exchange source changed during publication.');
     }
   }
   for (const [, entry] of ordered.reverse()) if (entry.kind === 'directory') await sync(join(target, entry.name));
@@ -111,12 +114,13 @@ async function recoverMerge(directory: string) {
 }
 /** Only after QEMU exits. A whole-tree atomic swap handles parent/type changes and is replay-safe. */
 export async function finishShare(directory: string) {
+  const deadline = Date.now() + exchangeLimits.seconds * 1000;
   await recoverMerge(directory);
   const state = await shareState(directory); if (!state?.pending) return;
   const share = join(directory, 'Exchange/Share'), temp = await mkdtemp(join(directory, 'Exchange/.sync-'));
   let stage: string | undefined, journaled = false;
   try {
-    const guest = await extract(directory, temp), host = await manifest(share);
+    const guest = await extract(directory, temp, deadline), host = await manifest(share, deadline);
     await verifyExchangeMarker(directory, temp); await verifyExchangeMarker(directory, share);
     const merged: Manifest = { ...host };
     const changed = Object.keys({ ...state.baseline, ...guest }).filter((key) => !equal(state.baseline[key], guest[key]));
@@ -126,13 +130,13 @@ export async function finishShare(directory: string) {
     if (conflicts.length || structural) {
       state.session = randomUUID(); const backup = join(directory, 'Exchange/Conflicts', state.session);
       await mkdir(backup, { recursive: true, mode: 0o700 });
-      await copyTree(join(backup, 'Guest'), guest, () => temp); await copyTree(join(backup, 'Host'), host, () => share);
+      await copyTree(join(backup, 'Guest'), guest, () => temp, deadline); await copyTree(join(backup, 'Host'), host, () => share, deadline);
       await json(join(backup, 'conflicts.json'), { conflicts, structural, baseline: state.baseline, guest, host });
       throw new VmError(`Exchange conflict. Both trees are preserved in Exchange/Conflicts/${state.session}/. Resolve host files against the baseline or guest version, then retry exchange sync.`);
     }
     const id = randomUUID(); stage = join(directory, 'Exchange/.merge-' + id);
-    await copyTree(stage, merged, (key) => changed.includes(key) ? temp : share);
-    if (!same(merged, await manifest(stage)) || !same(host, await manifest(share))) throw new VmError('Exchange changed during sync. Retry when host edits have finished.');
+    await copyTree(stage, merged, (key) => changed.includes(key) ? temp : share, deadline);
+    if (!same(merged, await manifest(stage, deadline)) || !same(host, await manifest(share, deadline))) throw new VmError('Exchange changed during sync. Retry when host edits have finished.');
     const result = { ...state, baseline: guest, pending: false, error: undefined, lastSyncedAt: new Date().toISOString() };
     await json(join(directory, 'Exchange/merge.json'), { schema: 1, id, before: await inode(share), after: await inode(stage), state: result }); journaled = true;
     await exec('/usr/bin/python3', [fileURLToPath(new URL('../../../../scripts/exchange-swap.py', import.meta.url)), join(directory, 'Exchange'), id], { timeout: 30_000 });
@@ -155,10 +159,15 @@ export async function prepareShare(directory: string) {
     } finally { await rm(temp, { recursive: true, force: true }); }
   }
   await prepareExchangeIdentity(directory);
-  const host = await manifest(join(directory, 'Exchange/Share')); let exists = true;
-  try { const info = await lstat(imagePath(directory)); if (!info.isFile() || info.isSymbolicLink() || info.size !== 257 * 1024 * 1024) throw new VmError('Invalid Exchange image.'); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') exists = false; else throw error; }
-  if (!exists || !same(host, state.baseline)) await createShareImage(directory);
+  const host = await manifest(join(directory, 'Exchange/Share')); let currentSize = 0;
+  try {
+    const info = await lstat(imagePath(directory));
+    if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || !supportedExchangeImage(info.size)) throw new VmError('Invalid Exchange image.');
+    currentSize = info.size;
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  // Export/merge above must succeed before a legacy disk is replaced. Even an
+  // unchanged host tree needs the new capacity on its next stopped start.
+  if (currentSize !== exchangeImageBytes || !same(host, state.baseline)) await createShareImage(directory);
   if (!same(host, await manifest(join(directory, 'Exchange/Share')))) throw new VmError('Host Exchange changed during import. Stop editing and retry.');
   await save(directory, { ...state, baseline: host, session: randomUUID(), pending: true, error: undefined });
 }

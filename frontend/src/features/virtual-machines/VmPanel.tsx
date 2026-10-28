@@ -7,6 +7,7 @@ import { ReleaseSettings } from './ReleaseSettings';
 import { VmConsole } from './Console';
 import { DevelopmentAccess } from './DevelopmentAccess';
 import { vmRequestId } from './api';
+import exchangePolicy from '../../../../shared/exchange-host.json';
 import './styles.css';
 
 function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: (id: string | null) => void }) {
@@ -75,7 +76,7 @@ function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
         setBusy(true); setError(''); void api.request(`/${vm.id}/files/${encodeURIComponent(file.name)}`, 'DELETE').then(refresh).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
       }}>Remove</button></li>)}</ul>
     {!files.some((file) => file.name.split('/').slice(0, -1).join('/') === path) && <p className="vm-help">The exchange folder is empty.</p>}
-    <p className="vm-help">Root files and Build subfolders only. ASCII names; no links. Up to 128 files, 96 MiB, 128 folders and 6 levels, including reserved metadata. STXCHG.JSN is managed by Studio. Remove folders after emptying them.</p>
+    <p className="vm-help">Root files and Build subfolders only. ASCII names; no links. Up to {exchangePolicy.limits.files} files, {exchangePolicy.limits.bytes / 1024 ** 3} GiB, {exchangePolicy.limits.directories} folders and {exchangePolicy.limits.depth} levels, including reserved metadata. STXCHG.JSN is managed by Studio. Remove folders after emptying them. Existing VMs receive the larger drive after a full stop and start.</p>
   </div>;
 }
 function Logs({ api, vm }: { api: VmApi; vm: VirtualMachine }) {

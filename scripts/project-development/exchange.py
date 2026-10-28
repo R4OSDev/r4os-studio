@@ -5,6 +5,7 @@ import re
 import string
 import uuid
 from contracts import DevelopmentFault
+from exchange_policy import EXCHANGE_LIMITS
 from sftp import batch, quote, validate_download
 
 async def resolve(ssh, info, target):
@@ -35,8 +36,12 @@ async def resolve(ssh, info, target):
         for _, local in candidates: local.unlink(missing_ok=True)
 
 def require_tree(info):
-    if info.get('exchangeWorker', {}).get('buildTreeVersion') != 1:
-        raise DevelopmentFault('The running VM uses an older Exchange worker. Stop and start this VM before deploying to Build.', reason_code='exchange_worker_upgrade_required')
+    worker = info.get('exchangeWorker') or {}
+    limits = worker.get('limits') or {}
+    if worker.get('buildTreeVersion') != 1 or any(
+            type(limits.get(key)) is not int or limits[key] < EXCHANGE_LIMITS[key]
+            for key in ('files', 'bytes', 'directories', 'depth')):
+        raise DevelopmentFault('The running VM uses an older Exchange worker with smaller limits. Stop and start this VM to prepare the larger Exchange drive before deploying.', reason_code='exchange_worker_upgrade_required')
 
 def directory(target, project_name, deployment_name=None):
     exchange = target.get('exchange') or {}
@@ -57,8 +62,12 @@ def preflight(entries, sizes, new_files, new_directories, output_files=0):
     # Include create-only SFTP stage/backup slots, final receipts, and registered
     # bounded runtime output. No old package is silently removed to make room.
     required = sum(sizes) + max(sizes, default=0) + 32768 + output_files * 65536
-    if len(files) + new_files + 2 + output_files > 128 or len(entries) - len(files) + new_directories > 128 or sum(item['bytes'] for item in files) + required > 96 * 1024 * 1024:
-        raise DevelopmentFault('Exchange has insufficient quota for this package, receipts, transfer staging and output. Existing files were preserved.')
+    used = {'files': len(files) + new_files + 2 + output_files,
+        'directories': len(entries) - len(files) + new_directories,
+        'bytes': sum(item['bytes'] for item in files) + required}
+    if any(used[key] > EXCHANGE_LIMITS[key] for key in used):
+        detail = ', '.join(f'{used[key]}/{EXCHANGE_LIMITS[key]} {key}' for key in used)
+        raise DevelopmentFault('Exchange has insufficient quota for this package, receipts, transfer staging and output (' + detail + '). Existing files were preserved.', reason_code='exchange_quota_exceeded')
 
 
 def sftp_directory(deployment):

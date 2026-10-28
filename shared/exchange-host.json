@@ -5,11 +5,17 @@
   "buildTreeVersion": 1,
   "marker": "STXCHG.JSN",
   "dataSchema": 2,
+  "image": {
+    "offsetBytes": 1048576,
+    "partitionBytes": 2147483648,
+    "legacyBytes": 269484032
+  },
+  "stopSeconds": 900,
   "limits": {
-    "files": 128,
-    "bytes": 100663296,
-    "directories": 128,
+    "files": 4096,
+    "bytes": 1073741824,
+    "directories": 1024,
     "depth": 6,
-    "syncSeconds": 120
+    "syncSeconds": 600
   }
 }

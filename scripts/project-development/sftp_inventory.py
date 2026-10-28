@@ -8,6 +8,7 @@ import re
 import struct
 import stat
 from contracts import DevelopmentFault
+from exchange_policy import EXCHANGE_LIMITS
 
 
 def u32(value): return struct.pack('>I', value)
@@ -59,7 +60,7 @@ async def inventory(ssh, exchange):
     async def scan():
         await send(b'\x01' + u32(3)); version = await receive()
         if version.take(1) != b'\x02' or version.number() != 3: raise DevelopmentFault('The guest does not support SFTP v3 inventory.')
-        result = []; queue = ['']; seen = set()
+        result = []; queue = ['']; seen = set(); files = directories = total_bytes = 0
         while queue:
             parent = queue.pop(0); path = '/' + exchange['drive'] + '/' + parent
             kind, packet = await request(11, string(path))
@@ -82,19 +83,21 @@ async def inventory(ssh, exchange):
                     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}', name) or name.endswith('.'):
                         raise DevelopmentFault('Exchange contains unsupported filenames. Preserve and resolve them before deploying.')
                     relative = parent + '/' + name if parent else name
-                    if relative.count('/') >= 6 or relative.lower() in seen: raise DevelopmentFault('Exchange paths exceed the supported depth or collide.')
+                    if relative.count('/') >= EXCHANGE_LIMITS['depth'] or relative.lower() in seen: raise DevelopmentFault('Exchange paths exceed the supported depth or collide.')
                     seen.add(relative.lower()); result.append({'path': relative, 'directory': directory, 'bytes': size})
                     if directory:
                         if relative.split('/')[0].lower() != 'build': raise DevelopmentFault('Exchange contains a folder outside Build. No upload was started.')
                         queue.append(relative)
-                    files = [item for item in result if not item['directory']]
-                    if len(files) > 128 or len(result) - len(files) > 128 or sum(item['bytes'] for item in files) > 96 * 1024 * 1024:
+                        directories += 1
+                    else:
+                        files += 1; total_bytes += size
+                    if files > EXCHANGE_LIMITS['files'] or directories > EXCHANGE_LIMITS['directories'] or total_bytes > EXCHANGE_LIMITS['bytes']:
                         raise DevelopmentFault('Exchange quota is exceeded. Existing files were preserved.')
                 if packet.offset != len(packet.data): raise DevelopmentFault('Unexpected SFTP directory metadata.')
             kind, packet = await request(4, string(handle))
             if kind != 101 or packet.number() != 0: raise DevelopmentFault('The Exchange directory handle could not be closed.')
         return result
-    try: return await asyncio.wait_for(scan(), 120)
+    try: return await asyncio.wait_for(scan(), EXCHANGE_LIMITS['syncSeconds'])
     except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError, ConnectionError):
         raise DevelopmentFault('The read-only Exchange inventory did not complete. No upload was started.') from None
     finally:
