@@ -33,12 +33,25 @@ class Host:
         self.config = config
         self.root = directory(Path(config['projects']) / '.studio/agents')
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
+        self.goal_readback_lock = asyncio.Lock()
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
     async def active_unit(self, run_id):
         state = await systemctl('show', UNIT.format(identity(run_id)), '--property=ActiveState', '--value')
         return state in ('active', 'activating', 'deactivating', 'reloading')
+
+    async def goal_worker_matches(self, meta, row):
+        if not json.loads(row['config']).get('goalExecution'):return True
+        try:
+            pid=int(await systemctl('show',UNIT.format(row['id']),'--property=MainPID','--value'))
+            if pid<=0 or (Path('/proc')/str(pid)).stat().st_uid!=self.config['uid']:return False
+            worker=json.loads(row['worker'] or '{}')
+            if not worker:return row['state']=='queued'
+            birth=(Path('/proc')/str(pid)/'stat').read_text().rsplit(') ',1)[1].split()[19]
+            return (worker.get('pid')==pid and worker.get('birth')==birth and worker.get('release')==meta['release']
+                and (Path('/proc')/str(pid)).stat().st_uid==self.config['uid'])
+        except (OSError,ValueError,KeyError,IndexError):return False
 
     def metadata(self, path):
         if path.resolve(strict=True) != path.absolute(): raise ValueError('Invalid worker record.')
@@ -73,7 +86,8 @@ class Host:
             try:
                 for row in store.db.execute('SELECT * FROM runs WHERE busy=1').fetchall():
                     value = manifests.get(row['id'])
-                    if value and binding(value) == (kind, project_id) and value['sessionId'] == row['session_id'] and await self.active_unit(row['id']):
+                    if (value and binding(value) == (kind, project_id) and value['sessionId'] == row['session_id']
+                            and await self.active_unit(row['id']) and await self.goal_worker_matches(value,row)):
                         self.active[row['id']] = value
                     else:
                         transition(store, row['id'], 'unknown', 'The run ended without a confirmed result; tool effects were not repeated.')
@@ -82,7 +96,9 @@ class Host:
                         from goal_store import Goals
                         Goals(store).lost_worker(row['id'])
                 from goal_store import Goals
-                if not store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone(): Goals(store).recover()
+                live_plays={json.loads(r['config']).get('goalExecution',{}).get('requestId')
+                    for r in store.db.execute('SELECT * FROM runs WHERE busy=1') if r['id'] in self.active}
+                Goals(store).recover(live_plays)
                 # Repair stale pending cards from earlier compatible releases
                 # using confirmed receipts, without replaying any tool operation.
                 finished = set()
@@ -124,7 +140,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -137,6 +153,13 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
+        if op=='goal_readback':
+            from goal_readback import readback
+            if self.goal_readback_lock.locked():raise ProjectFault('Another native Goal readback is in progress.',429)
+            async with self.goal_readback_lock:
+                store=self.store(project_id,kind)
+                try:return await asyncio.wait_for(readback(store,session_id),15)
+                finally:store.close()
         if op in ('goal', 'goal_receipt', 'goal_command'):
             from goal_store import Goals
             async with self.lock:
@@ -227,10 +250,19 @@ class Host:
             data=json.loads(goals.command(sid,rid)['payload'])
             if data['action']=='play':
                 session=store.get(sid)
-                run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':project_id,'sessionId':sid,
-                    'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
-                        'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,
-                        **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
+                goals.stage(sid,rid,'admitting_worker')
+                try:
+                    run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':project_id,'sessionId':sid,
+                        'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
+                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,
+                            **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
+                except Exception:
+                    original=store.db.execute('SELECT * FROM runs WHERE request_id=? AND session_id=?',(rid,sid)).fetchone()
+                    if not original or not original['busy']:
+                        goals.finish(sid,rid,'failed' if not original or original['state']=='failed' else 'unknown',
+                            'The original Goal run was not confirmed. No second run was submitted.')
+                        return
+                    run=store.run_present(original)
                 goals.stage(sid,rid,'worker_queued')
                 with store.db: store.db.execute('UPDATE session_goals SET run_id=? WHERE session_id=?',(run['id'],sid))
                 # Worker owns activation and final Play receipt. No second RPC.
@@ -328,7 +360,7 @@ async def main():
                 async with host.lock:
                     await host.refresh()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.goal_readback_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:

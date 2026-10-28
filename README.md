@@ -2924,3 +2924,10 @@ The independent local host timer runs at04:00 Europe/Berlin (Persistent=true, no
 Actual CIFS mounting is required. Private staging, per-database online SQLite consistency, bounded stable ordinary files, no-follow symlink handling, manifest metadata/full hashes, complete remote readback and create-only atomic publication precede rotation. The destination is /mnt/storagebox/R4OS_Studio; at most three completed own dated archives remain. Mount/write/verification failures preserve previous archives, with no local fallback or rotation. No global atomic application snapshot is claimed. Restore targets a new isolated directory with optional numeric owner restoration; active data is never overwritten. No web/agent permissions or VM/Studio interruptions are added. Exact policy/setup/limits are maintained locally in Docs/Backups.md and Tools/Backup/README.md.
 
 This release also centralizes usage-read invalidation in a stable callback so React cleanup remains equivalent and passes strict hook lint. The immutable0.4.23 tag retains its original warning; final account-switch/browser validation is repeated against0.4.24 before closing0.4.23.
+
+
+### Goal restart and Stop recovery (0.6.27)
+
+Coordinator adoption verifies the original Goal run/session/release, actual unit MainPID, process birth and UID. A lost start response retains the one durable admission; lost workers and original unconfirmed tool effects are never restarted or replayed. Late native Goal/turn notifications cannot undo Stop. Subsequent explicit Play freezes current account/model/effort/Fast Mode in the same native conversation and receives bounded unknown-effect references without tool arguments or credentials.
+
+The explicit Goal status read uses a separate credential-free, network-isolated native process: initialize and thread/goal/get only, without resume/start/turn. It preserves original receipts and uncertainty; newer concurrent observations take precedence. Qualified with the pinned original Codex binary and deterministic local SSE replies,39 unprivileged focused Python cases, protected HTTP routes and browser reload/readback/explicit Stop. No model inference or paid calls.

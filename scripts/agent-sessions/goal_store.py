@@ -132,9 +132,10 @@ class Goals:
             self.publish(sid)
         return result
 
-    def recover(self):
+    def recover(self, live_plays=()):
         if not exists(self.store): return
         for row in self.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
+            if row['request_id'] in live_plays and json.loads(row['payload'])['action']=='play':continue
             self.finish(row['session_id'],row['request_id'], 'failed' if row['stage']=='accepted' else 'unknown',
                         'The original Goal control process ended. No native mutation was repeated.')
 
@@ -142,10 +143,18 @@ class Goals:
         if not exists(self.store): return
         from goal_worker import end_turns
         end_turns(self.store,run_id)
-        rows=self.store.db.execute('SELECT session_id,native FROM session_goals WHERE run_id=?',(run_id,)).fetchall()
+        run=self.store.db.execute('SELECT session_id,config,state FROM runs WHERE id=?',(run_id,)).fetchone()
+        if run:
+            request=json.loads(run['config']).get('goalExecution',{}).get('requestId')
+            if request:
+                command=self.command(run['session_id'],request)
+                if command['state']=='pending':
+                    self.finish(run['session_id'],request,'failed' if run['state']=='failed' else 'unknown',
+                        'The original Goal worker ended before activation was confirmed. It was not restarted.')
+        rows=self.store.db.execute('SELECT session_id,native,phase FROM session_goals WHERE run_id=?',(run_id,)).fetchall()
         for row in rows:
             value=json.loads(row['native']) if row['native'] else None
-            if value and value['status']=='active':
+            if (value and value['status']=='active') or row['phase'] in ('pending','pausing'):
                 with self.store.db:
                     self.store.db.execute("UPDATE session_goals SET phase='unknown',reason=?,revision=revision+1 WHERE session_id=?",
                         ('The original Goal worker ended without a confirmed pause. Pause before resuming; nothing was restarted.',row['session_id']))

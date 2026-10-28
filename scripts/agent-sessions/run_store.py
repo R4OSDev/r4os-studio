@@ -79,6 +79,9 @@ def admit(store, session_id, data, provider_dir):
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
         if goal_mode:
             snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective']}
+            from goal_recovery import snapshot as recovery_snapshot
+            recovery=recovery_snapshot(store,session_id)
+            if recovery:snapshot['goalRecovery']=recovery
         snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
         snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)

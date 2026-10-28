@@ -21,6 +21,7 @@ class GoalWorker:
         self.evaluator=None;self.closed=False;self.last_turn_status=None
         self.generation=0
         self.armed=False;self.completed_once=False
+        self.stop_reconcile=None
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -93,6 +94,13 @@ class GoalWorker:
 
     async def notify(self, method, params):
         w=self.worker
+        if w.stopping and method in ('thread/goal/updated','thread/goal/cleared'):
+            # A queued notification cannot undo a user Stop. Read native state
+            # through the stopping worker instead of trusting an older event.
+            if not self.closed and (not self.stop_reconcile or self.stop_reconcile.done()):
+                task=asyncio.create_task(self.pause());self.stop_reconcile=task
+                self.tasks.add(task);task.add_done_callback(self.tasks.discard)
+            return True
         if method=='thread/status/changed':
             status=params.get('status',{})
             if status.get('type')=='active' and set(status.get('activeFlags',[])) & {'waitingOnApproval','waitingOnUserInput'}:
@@ -116,6 +124,8 @@ class GoalWorker:
                 (w.run_id,params['turn']['id'],'running'))
             from run_store import event
             event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':params['turn']['id'],'status':'running'})
+            if w.stopping and not self.closed:
+                task=asyncio.create_task(w.stop());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
         elif method=='turn/completed':
             turn=params['turn'];w.turn_id=turn['id'];self.idle.set()
             self.last_turn_status=turn['status']

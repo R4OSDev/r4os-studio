@@ -154,7 +154,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       {!goal.execution && goal.available && <p className="agent-goal-message" role="status">Finish current runs before starting a Goal.</p>}
       {goal.goal?.phase === 'unknown' && <p className="agent-goal-message" role="status">The original Goal state is unconfirmed. Pause or Stop before resuming.</p>}
       {goal.error && <p className="agent-goal-message error" role="alert">{goal.error}</p>}
-      {(goal.checkAgain || !goal.available) && <div className="agent-goal-recovery"><button type="button" disabled={goal.posting} onClick={goal.check}>Check Goal status</button>
+      {(goal.checkAgain || !goal.available || goal.goal?.phase === 'unknown') && <div className="agent-goal-recovery"><button type="button" disabled={goal.posting || goal.checking} onClick={() => void goal.check()}>Check Goal status</button>
         {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
     </form>
     {goalEditor && <GoalEditor control={goal} activeOrdinaryRun={active && run?.mode !== 'goal'} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}

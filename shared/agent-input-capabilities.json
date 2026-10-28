@@ -64,7 +64,14 @@
       "waitingOnUserInput"
     ],
     "coordinatorExecutionCapability": "nativeGoalExecution:2",
-    "playBindsSessionRevision": true
+    "playBindsSessionRevision": true,
+    "nativeReadback": {
+      "coordinatorCapability": "nativeGoalReadback:1",
+      "unloadedThreadOnly": true,
+      "network": "isolated",
+      "providerCredentials": false,
+      "startsTurn": false
+    }
   },
   "attachments": {
     "nativeImageType": "localImage",

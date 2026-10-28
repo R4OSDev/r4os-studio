@@ -16,6 +16,7 @@ export function normalizeGoal(value: string) {
 }
 
 export function goalLabel(control: Control) {
+  if (control.checking) return 'Checking…';
   if (!control.available) return 'Unavailable';
   if (control.pending) return ({ save: 'Saving…', play: 'Starting…', pause: 'Pausing…', stop: 'Stopping…' })[control.pending.action];
   if (control.goal?.phase === 'unknown') return 'Unconfirmed';

@@ -20,6 +20,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const key = `studio.goal.${scope}.${projectId}.${sessionId}`;
   const [goal, setGoal] = useState<SessionGoal | null>(null);
   const [available, setAvailable] = useState(false), [execution, setExecution] = useState(false);
+  const [readback, setReadback] = useState(false), [checking, setChecking] = useState(false);
   const [pending, setPending] = useState<GoalCommand | null>(() => stored(key));
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
   const [checkAgain, setCheckAgain] = useState(false), [refresh, setRefresh] = useState(0);
@@ -42,11 +43,12 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     const load = async () => {
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ nativeGoals?: number; nativeGoalExecution?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
       observe(state.goal); setAvailable(support.nativeGoals === 1 && support.enabled !== false);
       setExecution(support.nativeGoalExecution === 2 && support.enabled !== false);
+      setReadback(support.nativeGoalReadback === 1);
       if (support.nativeGoals === 1 && support.nativeGoalExecution !== 2)
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
@@ -113,12 +115,26 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     }
   }
   async function perform(action: GoalAction, objective?: string, revision?: number) {
-    if (!goal || !available || pending || posting || !session) return false;
+    if (!goal || !available || pending || posting || checking || !session) return false;
     return submit({ requestId: projectRequestId(), revision: revision ?? goal.revision, action,
       ...(action === 'save' ? { objective: objective ?? '' } : {}), ...(action === 'play' ? { sessionRevision: session.revision } : {}) });
   }
-  return { goal, available, execution, pending, posting, error, checkAgain, observe, perform,
-    changing: posting || !!pending || goal?.phase === 'pending', draftKey: key + '.draft',
+  async function check() {
+    setCheckAgain(false); setRefresh((value) => value + 1);
+    // An outstanding mutation is reconciled only through its original receipt.
+    if (pending || inflight.current || checking || !readback) return;
+    const current = generation.current; setChecking(true);
+    try {
+      const result = await request<{ goal: SessionGoal }>(base + '/readback', token, 'POST', {});
+      if (current === generation.current) observe(result.goal);
+    } catch (failure) {
+      if (current !== generation.current) return;
+      const issue = failure as ProjectRequestError; setError(issue.message);
+      if (issue.status === 403) await refreshAuth().catch(() => undefined);
+    } finally { if (current === generation.current) setChecking(false); }
+  }
+  return { goal, available, execution, pending, posting, checking, error, checkAgain, observe, perform,
+    changing: checking || posting || !!pending || goal?.phase === 'pending', draftKey: key + '.draft',
     retry: () => pending ? submit(pending) : Promise.resolve(false),
-    check: () => { setCheckAgain(false); setRefresh((value) => value + 1); } };
+    check };
 }
