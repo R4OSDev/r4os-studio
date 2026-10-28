@@ -1,3 +1,33 @@
+## Historical development recovery context (0.7.24)
+
+Goal continuation now includes the actual development job ID and its current,
+owner-bound state beside historical unknown run/tool references. Previously the
+context listed only agent run/call IDs and described every old unknown as still
+unconfirmed, even after the original execution had been reconciled. An agent
+could repeatedly query a run ID as a job ID and block an otherwise healthy Goal.
+
+The snapshot reads existing development storage without creating jobs or
+replaying tools. Creation calls match their deterministic original request and
+run; status reads match their referenced job. Project/session scope and job kind
+are checked. A confirmed guest end is included only when the job's close marker
+and recovery metadata match its committed recovery receipt. Missing, damaged or
+foreign evidence keeps the warning. Skill sessions never read project jobs.
+Only bounded IDs, states and reconciliation fields are exposed; arguments,
+credentials and raw tool output remain absent.
+
+Current recovery guidance distinguishes agent run IDs from development job IDs,
+historical unknown outcomes from a confirmed guest end, and status reads from
+application starts. Later original job readback supersedes an earlier snapshot.
+Confirmed closure permits new authorized work after inspection; it does not make
+an inconclusive test successful or permit replay of the original call. Original
+run/tool/job receipts and frozen old snapshots remain unchanged. The correction
+applies at the next Goal Play, including existing native profiles and threads;
+it does not resume a blocked Goal or restart a VM.
+
+Three focused cases cover the two historical closure outcomes, incomplete or
+foreign bindings, and existing unknown-write/no-replay protection. No provider
+inference or guest application execution is used for validation.
+
 ## Run-message recovery and acceptance in0.7.5
 
 Original message receipts remain available after their worker or native turn ends. Inbox revisions cover intake, dispatch and acknowledgement, preventing stale status responses from rolling the queue back. Unknown original inputs are retained and never retried; explicit Continue advances only separate unsent inputs. A later explicit ordinary Send starts a new chain after an empty earlier Stop hold.
