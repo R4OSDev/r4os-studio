@@ -158,6 +158,17 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
+        if op in ('messages', 'message_receipt', 'submit_message'):
+            from message_store import Messages
+            async with self.lock:
+                store = self.store(project_id, kind)
+                try:
+                    store.row(session_id)
+                    messages = Messages(store)
+                    if op == 'messages': return messages.snapshot(session_id, request.get('before'))
+                    if op == 'message_receipt': return messages.receipt(session_id, request['requestId'])
+                    return messages.accept(session_id, request['input'])[0]
+                finally: store.close()
         if op=='image_generation_capability':
             from image_generation import inspect
             if self.image_capability_lock.locked():raise ProjectFault('Another image capability read is in progress. Try again shortly.',429)

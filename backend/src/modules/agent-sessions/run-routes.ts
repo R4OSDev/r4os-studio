@@ -4,6 +4,7 @@ import type { ProjectSessions } from '../projects/sessions.js';
 import { agentHost } from './host.js';
 import { ProjectError } from '../projects/store.js';
 import { goalRoutes } from './goal-routes.js';
+import { messageRoutes } from './message-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const params = { type: 'object', additionalProperties: false, required: ['id', 'sessionId'], properties: { id: identity, sessionId: identity } };
@@ -12,6 +13,7 @@ type EventResponse = { events: AgentEvent[]; session: AgentSession };
 
 export function runRoutes(app: FastifyInstance, security: ProjectSessions, ownerType: 'project' | 'skill' = 'project') {
   goalRoutes(app, security, ownerType);
+  messageRoutes(app, security, ownerType);
   const base = '/:id/sessions/:sessionId';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
   const streams = new Set<() => void>();

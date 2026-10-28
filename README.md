@@ -1,3 +1,7 @@
+## Session message intents in0.7.1
+
+Private session SQLite now stores bounded user-message intents separately from run admission. Queue requests have stable IDs, atomic order and immutable payload hashes; readback is scoped to the project or skill session. HTTP mutations require the existing session/CSRF/Origin checks. Direct requests reject stale targets and workers without live-message support. This foundation does not dispatch the inbox yet; FIFO dispatch, native steering and composer controls follow in0.7.2–0.7.4. Codex0.163.0 steering fields were qualified with its schemas and original binary without provider credentials or inference. Existing tool profiles and native histories remain unchanged.
+
 ## Desktop launch command budget (0.6.57)
 
 Desktop preflight now includes the complete DESKRUN command and R4OS SSHD's
