@@ -281,9 +281,13 @@ class Worker:
             state = self.store.directory / self.session_id / 'Codex'
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
+            from image_inputs import mounts as image_mounts,native_input
+            try:mounts=image_mounts(self.store,self.session_id,self.config)
+            except __import__('store').ProjectFault as error:
+                self.error=str(error);raise
             args, profile = prepare(binary, provider_home, state,
                                     json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE),
-                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker))
+                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'))
             from instructions import compose
             instructions = compose(self.config)
             web_search_mode = 'live' if self.config.get('webSearchEnabled') is True else 'disabled'
@@ -327,7 +331,7 @@ class Worker:
             self.turn_requested = True
             try:
                 result = await self.client.request('turn/start', {'threadId': self.thread_id,
-                             'clientUserMessageId': self.row['request_id'], 'input': [{'type': 'text', 'text': request_text(self.store, self.run_id)}],
+                             'clientUserMessageId': self.row['request_id'], 'input': native_input(self.store,self.run_id,self.config),
                              'model': self.config['model'], 'effort': self.config['effort'], 'serviceTier': service_tier})
                 self.turn_id = result['turn']['id']
                 if not self.done.is_set(): transition(self.store, self.run_id, 'running', turn_id=self.turn_id,

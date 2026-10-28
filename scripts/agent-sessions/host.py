@@ -140,7 +140,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -191,6 +191,11 @@ class Host:
                 try:
                     # Duplicate requests are admitted idempotently even at capacity.
                     previous = store.db.execute('SELECT id FROM runs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
+                    from image_inputs import history as image_history
+                    if not previous and (request['input'].get('nativeImageInputs')==1 or image_history(store,session_id)):
+                        target=Path(self.config.get('workerReleaseRoot','/opt/r4os-studio/current')).resolve(strict=True)
+                        if not target.is_relative_to('/opt/r4os-studio/releases') or not (target/'scripts/agent-sessions/image_inputs.py').is_file():
+                            raise ProjectFault('This worker release cannot preserve native image inputs. The conversation and attachments were preserved.',503)
                     if not previous and request['input'].get('mode') == 'goal':
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if not target.is_relative_to('/opt/r4os-studio/releases') or not (target/'scripts/agent-sessions/goal_worker.py').is_file():
@@ -254,7 +259,7 @@ class Host:
                 try:
                     run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':project_id,'sessionId':sid,
                         'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
-                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,
+                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,
                             **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
                 except Exception:
                     original=store.db.execute('SELECT * FROM runs WHERE request_id=? AND session_id=?',(rid,sid)).fetchone()

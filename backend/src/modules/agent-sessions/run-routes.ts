@@ -21,16 +21,17 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
     try { return await agentHost({ operation: 'capabilities' }); }
     catch { return { enabled: false, protocol: 1, message: 'Agent host support is unavailable.' }; }
   });
-  app.post<{ Params: Params; Body: { requestId: string; revision: number; text: string } }>(base + '/runs', {
+  app.post<{ Params: Params; Body: { requestId: string; revision: number; text: string; attachments?: string[] } }>(base + '/runs', {
     bodyLimit: 72 * 1024, schema: { params, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'revision', 'text'], properties: { requestId: identity,
-        revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, text: { type: 'string', minLength: 1, maxLength: 65536 } } } },
+        revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, text: { type: 'string', maxLength: 65536 },
+        attachments: { type: 'array', maxItems: 8, uniqueItems: true, items: identity } } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ remoteHostTools?: number; roadmapTools?: number; roadmapSettings?: number; nativeWebSearch?: number; projectInstructions?: number; vmStartTools?: number; skillSessions?: number; skillAuthorTools?: number; globalSkills?: number; skillScripts?: number }>({ operation: 'capabilities' });
-    if (support.nativeWebSearch !== 1 || support.globalSkills !== 1 || support.skillScripts !== 1 || (ownerType === 'skill' ? (support.skillSessions !== 1 || support.skillAuthorTools !== 1) : (support.projectInstructions !== 1 || support.vmStartTools !== 1 || support.roadmapSettings !== 1 || support.roadmapTools !== 1 || support.remoteHostTools !== 1))) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
+    const support = await agentHost<{ nativeImageInputs?: number; remoteHostTools?: number; roadmapTools?: number; roadmapSettings?: number; nativeWebSearch?: number; projectInstructions?: number; vmStartTools?: number; skillSessions?: number; skillAuthorTools?: number; globalSkills?: number; skillScripts?: number }>({ operation: 'capabilities' });
+    if (support.nativeImageInputs !== 1 || support.nativeWebSearch !== 1 || support.globalSkills !== 1 || support.skillScripts !== 1 || (ownerType === 'skill' ? (support.skillSessions !== 1 || support.skillAuthorTools !== 1) : (support.projectInstructions !== 1 || support.vmStartTools !== 1 || support.roadmapSettings !== 1 || support.roadmapTools !== 1 || support.remoteHostTools !== 1))) throw new ProjectError('The agent coordinator must adopt this Studio release before starting a new run.', 503);
     const run = await agentHost<AgentRun>({ operation: 'start_run', ...owner(request.params.id), sessionId: request.params.sessionId,
-      input: { ...request.body, nativeWebSearch: 1, skillSelection: 1, skillScripts: 1, ...(ownerType === 'project' ? { projectInstructions: 1, roadmapSettings: 1, remoteHostTools: 1 } : {}) } });
+      input: { ...request.body, nativeWebSearch: 1, skillSelection: 1, skillScripts: 1, nativeImageInputs: 1, ...(ownerType === 'project' ? { projectInstructions: 1, roadmapSettings: 1, remoteHostTools: 1 } : {}) } });
     return reply.code(202).send({ run });
   });
   app.post<{ Params: Params & { runId: string } }>(base + '/runs/:runId/stop', {

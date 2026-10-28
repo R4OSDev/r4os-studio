@@ -91,7 +91,12 @@
     "maxSessionFiles": 256,
     "maxOwnerFiles": 2048,
     "rasterDecoder": "Pillow11.1.0 in isolated bounded namespace",
-    "uploadStartsRun": false
+    "uploadStartsRun": false,
+    "nativeImageInputsAvailable": true,
+    "coordinatorImageCapability": "nativeImageInputs:1",
+    "imageOnlySend": true,
+    "requiresAcceptedReferenceForMount": true,
+    "historicalSentImagesRemainReadonly": true
   },
   "scope": "Qualified native Goal controls/execution and private checked uploads. Images and document delivery require their subsequent qualified run adapters; no inference from upload."
 }

@@ -7,6 +7,15 @@ from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
 from project_agents import snapshot as project_snapshot
 
+CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs')
+
+
+def fingerprint(session_id,data,attachments=()):
+    value={k:v for k,v in data.items() if k not in CAPABILITIES}
+    if 'attachments' in value:
+        if value['attachments']!=[m['id'] for m in attachments]:raise ProjectFault('This request ID belongs to another attachment selection.',409)
+        value['attachments']=list(attachments)
+    return hashlib.sha256(encode({'sessionId':session_id,**value}).encode()).hexdigest()
 
 def event(store, session_id, run_id, kind, payload, commit=True):
     raw = encode(payload)
@@ -40,20 +49,21 @@ def get_run(store, run_id):
 
 def admit(store, session_id, data, provider_dir):
     goal_mode = data.get('mode') == 'goal'
-    expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'}
-    if (set(data) - {'projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools'} != expected
-        or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in ('projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools'))
+    expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'} | ({'attachments'} if 'attachments' in data else set())
+    if (set(data) - set(CAPABILITIES) != expected
+        or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in CAPABILITIES)
         or (('roadmapSettings' in data or 'remoteHostTools' in data) and store.owner_type != 'project')
         or ('skillScripts' in data and data.get('skillSelection') != 1)):
         raise ProjectFault('Unexpected run fields.', 400)
-    if not goal_mode and (not isinstance(data['text'], str) or not data['text'].strip() or len(data['text'].encode()) > 65536 or '\x00' in data['text']):
-        raise ProjectFault('Enter a message of at most 64 KiB.', 400)
-    key = identity(data['requestId']); request_hash = hashlib.sha256(encode({'sessionId': session_id,
-        **{k: v for k, v in data.items() if k not in ('projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools')}}).encode()).hexdigest()
+    if not goal_mode and (not isinstance(data['text'], str) or (not data['text'].strip() and not data.get('attachments'))
+            or any(0xd800<=ord(c)<=0xdfff for c in data['text']) or len(data['text'].encode()) > 65536 or '\x00' in data['text']):
+        raise ProjectFault('Enter a message of at most64 KiB or select Ready attachments.', 400)
+    key = identity(data['requestId'])
     store.db.execute('BEGIN IMMEDIATE')
     try:
         previous = store.db.execute('SELECT * FROM runs WHERE request_id=?', (key,)).fetchone()
         if previous:
+            request_hash=fingerprint(session_id,data,json.loads(previous['config']).get('attachments',[]))
             if previous['payload_hash'] != request_hash: raise ProjectFault('This request ID belongs to another run submission.')
             return store.run_present(previous), False
         session = store.get(session_id)
@@ -76,7 +86,14 @@ def admit(store, session_id, data, provider_dir):
             from project_maintenance import pending_git
             if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
         validate_settings(session, provider_dir)
+        from image_inputs import selected,qualify,history,reference
+        attachments=selected(store,session_id,data.get('attachments',[])) if not goal_mode and 'attachments' in data else []
+        if attachments and data.get('nativeImageInputs')!=1:raise ProjectFault('This request needs qualified native image support.',503)
+        modalities=qualify(store,session_id,session,provider_dir,attachments)
+        request_hash=fingerprint(session_id,data,attachments)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
+        if 'attachments' in data:snapshot['attachments']=attachments
+        if attachments or history(store,session_id):snapshot.update(imageContext=True,imageInputModalities=modalities)
         if goal_mode:
             snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective']}
             from goal_recovery import snapshot as recovery_snapshot
@@ -101,8 +118,10 @@ def admit(store, session_id, data, provider_dir):
         ident = str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
+        reference(store,session_id,ident,attachments)
         if not goal_mode:
-            item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed'}, False)
+            item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed',
+                **({'attachments':attachments} if attachments else {})}, False)
         unavailable = snapshot.get('skillAccess', {}).get('unavailable', [])
         if unavailable:
             item(store, session_id, ident, {'id': 'skill-notice-' + ident, 'runId': ident, 'type': 'notice', 'status': 'completed',

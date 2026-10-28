@@ -12,6 +12,7 @@ await test('run API protects mutations and resumes durable events', async () => 
   const socket = join(root, 'host.sock'), previous = process.env.STUDIO_AGENTS_SOCKET;
   process.env.STUDIO_AGENTS_SOCKET = socket;
   const calls: Record<string, unknown>[] = [];
+  let images = true;
   const id = randomUUID(), sessionId = randomUUID(), runId = randomUUID();
   const server = createServer((client) => {
     let input = '';
@@ -20,7 +21,7 @@ await test('run API protects mutations and resumes durable events', async () => 
       input += part;
       if (!input.includes('\n')) return;
       const call = JSON.parse(input); calls.push(call);
-      client.end(JSON.stringify({ result: call.operation === 'capabilities' ? { globalSkills: 1, skillScripts: 1, projectInstructions: 1, vmStartTools: 1, nativeWebSearch: 1, roadmapTools: 1, roadmapSettings: 1, remoteHostTools: 1 } : call.operation === 'events' ? {
+      client.end(JSON.stringify({ result: call.operation === 'capabilities' ? { ...(images ? { nativeImageInputs: 1 } : {}), globalSkills: 1, skillScripts: 1, projectInstructions: 1, vmStartTools: 1, nativeWebSearch: 1, roadmapTools: 1, roadmapSettings: 1, remoteHostTools: 1 } : call.operation === 'events' ? {
         events: [{ seq: 7, runId, kind: 'notice', payload: { text: 'Grüße 🦀' } }], session: {},
       } : { id: runId, sessionId, state: 'queued' } }) + '\n');
     });
@@ -35,7 +36,16 @@ await test('run API protects mutations and resumes durable events', async () => 
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload })).statusCode, 403);
     const accepted = await app.inject({ method: 'POST', url: url + '/runs', payload, headers });
     assert.equal(accepted.statusCode, 202); assert.equal(accepted.json().run.id, runId);
-    assert.deepEqual(calls.find((call) => call.operation === 'start_run'), { operation: 'start_run', projectId: id, sessionId, input: { ...payload, projectInstructions: 1, skillSelection: 1, skillScripts: 1, nativeWebSearch: 1, roadmapSettings: 1, remoteHostTools: 1 } });
+    assert.deepEqual(calls.find((call) => call.operation === 'start_run'), { operation: 'start_run', projectId: id, sessionId, input: { ...payload, projectInstructions: 1, skillSelection: 1, skillScripts: 1, nativeWebSearch: 1, roadmapSettings: 1, remoteHostTools: 1, nativeImageInputs: 1 } });
+    const selection = [randomUUID(), randomUUID()];
+    const imageOnly = { ...payload, requestId: randomUUID(), text: '', attachments: selection };
+    assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload: imageOnly, headers })).statusCode, 202);
+    assert.deepEqual((calls.at(-1)!.input as { attachments: string[] }).attachments, selection);
+    for (const attachments of [['/etc/passwd'], [selection[0], selection[0]], Array.from({ length: 9 }, () => randomUUID())])
+      assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload: { ...imageOnly, attachments }, headers })).statusCode, 400);
+    images = false;
+    assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload: imageOnly, headers })).statusCode, 503);
+    images = true;
     assert.equal((await app.inject({ method: 'POST', url: url + '/runs', payload: { ...payload, cwd: '/tmp' }, headers })).statusCode, 202);
     assert(!Object.hasOwn(calls.at(-1)!.input as object, 'cwd'));
     assert.equal((await app.inject({ method: 'POST', url: url + `/runs/${runId}/stop`, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);

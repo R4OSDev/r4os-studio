@@ -47,6 +47,8 @@ def compose(config):
     text = base(config)
     from goal_recovery import instructions as recovery_instructions
     text += recovery_instructions(config)
+    from image_inputs import instructions as image_instructions
+    text += image_instructions(config)
     # Saved custom prompts remain original. Bound workers apply current timing
     # guidance without changing their frozen source text/revision/hash.
     if config.get('permissions', {}).get('studio.exec_command') and TERMINAL_TIMING not in text:

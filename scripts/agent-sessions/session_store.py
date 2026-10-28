@@ -60,11 +60,14 @@ def provider_models(directory, provider_id):
     except (OSError, ValueError, KeyError):
         return []
     result = []
+    from image_inputs import model_images,model_modalities
     for m in sorted(values, key=lambda m: m.get('priority', 999)):
         if m.get('visibility') != 'list': continue
         efforts = [x['effort'] for x in m.get('supported_reasoning_levels', [])]
         if not efforts: efforts = [m.get('default_reasoning_level', 'low')]
         result.append({'id': m['slug'], 'name': m.get('display_name') or m['slug'],
+                       'imageInputs': model_images(m),
+                       'inputModalities': model_modalities(m),
                        'efforts': efforts, 'defaultEffort': m.get('default_reasoning_level') or efforts[0],
                        'fastModeAvailable': any(isinstance(tier, dict) and tier.get('id') in ('fast', 'priority')
                                                 for tier in (m.get('service_tiers') or []))

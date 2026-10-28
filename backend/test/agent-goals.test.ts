@@ -20,7 +20,7 @@ await test('Goal routes bind project/skill owners and protect native commands', 
       raw += part; if (!raw.includes('\n')) return;
       const call = JSON.parse(raw); calls.push(call);
       const snapshot = { owner: { type: call.ownerType, id: call.ownerId }, sessionId, threadId: null, revision: 0, goal: null, lastIntent: null, phase: 'idle' };
-      const result = call.operation === 'capabilities' ? { nativeGoals: 1, ...(execution ? { nativeGoalExecution: 2 } : {}), ...(readback ? { nativeGoalReadback: 1 } : {}) }
+      const result = call.operation === 'capabilities' ? { nativeGoals: 1, ...(execution ? { nativeGoalExecution: 2, nativeImageInputs: 1 } : {}), ...(readback ? { nativeGoalReadback: 1 } : {}) }
         : call.operation === 'goal' ? snapshot : { requestId, action: 'save', state: 'pending', snapshot };
       client.end(JSON.stringify({ result }) + '\n');
     });

@@ -92,7 +92,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
     if goals_enabled and 'goals' not in features: raise ValueError('This runtime has no qualified Goal feature.')
@@ -117,7 +117,9 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     source = state / 'models.provider.json'
     previous_source = json.loads(regular(source).read_text()) if source.exists() else None
     missing_model = catalog.exists() and model and not any(v.get('slug') == model for v in json.loads(regular(catalog).read_text())['models'])
-    if not catalog.exists() or missing_model or (catalog_source and previous_source and previous_source['providerId'] != catalog_source):
+    stale_modalities=(image_modalities is not None and catalog.exists() and model and not missing_model
+        and next(v for v in json.loads(regular(catalog).read_text())['models'] if v.get('slug')==model).get('input_modalities',['text','image'])!=image_modalities)
+    if not catalog.exists() or missing_model or stale_modalities or (catalog_source and previous_source and previous_source['providerId'] != catalog_source):
         # Only non-secret model metadata is read. AuthManager continues to use
         # the one original credential store and its original physical locks.
         cache = json.loads(regular(provider_home / 'models_cache.json').read_text())
@@ -139,6 +141,8 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
             raise ValueError('The agent model tool profile changed.')
     if model and not any(m['slug'] == model for m in data['models']):
         raise ValueError('The selected model is unavailable in this session profile.')
+    if image_modalities is not None and (not model or next(m for m in data['models'] if m['slug']==model).get('input_modalities',['text','image'])!=image_modalities):
+        raise ValueError('The selected native image modalities changed before this run. The conversation was preserved.')
     # The feature-name set is a versioned part of the qualified profile. Only
     # booleans and FeatureToml switches are included; bare config structs are not.
     settings = {
@@ -169,6 +173,14 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     args += ['--dir', '/etc']
     for path in ('/etc/ssl', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd'):
         if Path(path).exists(): args += ['--ro-bind', path, path]
+    if attachment_mounts:
+        if len(attachment_mounts)>256:raise ValueError('Too many native attachment mounts.')
+        args+=['--dir','/attachments']
+        import re
+        seen=set()
+        for source,target in attachment_mounts:
+            if not re.fullmatch(r'/attachments/[a-f0-9-]{36}\.(png|jpg|webp)',target) or target in seen:raise ValueError('Invalid native image target.')
+            seen.add(target);args+=['--ro-bind',str(regular(source)),target]
     args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
              '--bind', str(provider_home), '/codex', '--bind', str(state), '/session',
              '--bind', str(state / 'native'), '/codex/sessions',
