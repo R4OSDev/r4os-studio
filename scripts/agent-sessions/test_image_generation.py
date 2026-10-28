@@ -78,4 +78,29 @@ class ImageGeneration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls,['initialize','modelProvider/capabilities/read','account/read','close'])
             self.assertFalse(list((store.directory/self.sid).glob('.image-capability-*')))
 
+    async def test_generation_and_off_history_freeze_actual_modalities_and_reject_text_only_resume(self):
+        from generated_images import GeneratedImages
+        from test_generated_images import Generated
+        with self.open() as store:
+            session=store.get(self.sid);data={**self.data,'imageGenerationSettings':1}
+            run,_=admit(store,self.sid,data,self.providers,self.supported(session))
+            config=json.loads(get_run(store,run['id'])['config']);self.assertEqual(config['imageInputModalities'],['text','image'])
+            image=GeneratedImages(store,self.sid).accept(run['id'],'own-thread',Generated.native(self,Generated.png(self)))
+            transition(store,run['id'],'completed')
+            selected=store.update(self.sid,{'revision':1,'imageGenerationEnabled':False},self.providers)
+            second,_=admit(store,self.sid,{**data,'requestId':str(uuid.uuid4()),'revision':selected['revision']},self.providers)
+            config=json.loads(get_run(store,second['id'])['config']);self.assertFalse(config['nativeImageGeneration']);self.assertEqual(config['imageInputModalities'],['text','image'])
+            transition(store,second['id'],'completed')
+            cache=self.providers/self.provider/'models_cache.json';catalog=json.loads(cache.read_text());catalog['models'][0]['input_modalities']=['text'];cache.write_text(encode(catalog))
+            with self.assertRaises(ProjectFault):admit(store,self.sid,{**data,'requestId':str(uuid.uuid4()),'revision':selected['revision']},self.providers)
+            self.assertEqual(GeneratedImages(store,self.sid).get(image['id'])['sha256'],image['sha256'])
+
+    async def test_full_private_store_disables_generation_without_starting_native_or_changing_setting(self):
+        with self.open() as store,patch('generated_images.MAX_OWNER',1),patch('image_generation.prepare') as native:
+            path=store.directory/self.sid/'GeneratedImages/Native';path.mkdir(parents=True);(path/'unconfirmed.png').write_bytes(b'Preserve unknown original')
+            capability=await inspect(store,self.sid,self.providers);self.assertFalse(capability['available']);self.assertIn('limit',capability['reason'])
+            native.assert_not_called();self.assertTrue(store.get(self.sid)['imageGenerationEnabled'])
+            run,_=admit(store,self.sid,{**self.data,'imageGenerationSettings':1},self.providers,capability)
+            self.assertFalse(json.loads(get_run(store,run['id'])['config'])['nativeImageGeneration']);self.assertEqual((path/'unconfirmed.png').read_bytes(),b'Preserve unknown original')
+
 if __name__=='__main__':unittest.main()

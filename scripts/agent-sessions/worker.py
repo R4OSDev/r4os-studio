@@ -123,8 +123,13 @@ class Worker:
                 except Exception as error:
                     self.error=str(error) if isinstance(error,__import__('store').ProjectFault) else 'Image storage could not be confirmed. Native history was preserved; do not regenerate.'
                     self.uncertain_effect=True;self.defer_stop();return
+                if value['status']=='failed' and value.get('error')!='usageLimitExceeded':
+                    # Native failure metadata cannot establish whether the image
+                    # POST was processed before its response was lost.
+                    self.uncertain_effect=True;self.outcome='unknown'
+                    value.update(status='unknown',partialChangesPossible=True)
                 self.items[ident]=value;item(self.store,self.session_id,self.run_id,value)
-                if value['status']=='failed':
+                if value['status'] in ('failed','unknown'):
                     self.error=value['output'];self.defer_stop();return
             elif kind == 'webSearch':
                 if self.config.get('webSearchEnabled') is not True:
@@ -374,12 +379,14 @@ class Worker:
             if self.goal_worker: await self.goal_worker.before_resume()
             # Explicit default clears a Fast tier saved by an earlier native turn.
             service_tier = 'priority' if self.config.get('fastMode', False) else 'default'
+            from image_provider import selection as image_provider_selection
+            native_provider=image_provider_selection(self.config['engine'].get('profile',PROFILE))
             if self.thread_id:
-                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
+                try: await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
-                response = await self.client.request('thread/start', {'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
+                response = await self.client.request('thread/start', {**native_provider,'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
                            'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode},
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']

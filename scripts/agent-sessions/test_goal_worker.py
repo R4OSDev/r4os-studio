@@ -86,6 +86,20 @@ class GoalWorkerTests(unittest.IsolatedAsyncioTestCase):
         finally:
             reply.set();await w.goal_worker.close();w.store.close()
 
+    async def test_unconfirmed_native_image_failure_pauses_goal_and_preserves_unknown_outcome(self):
+        w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
+        w.config['nativeImageGeneration']=True
+        try:
+            await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'own-image-turn'}})
+            await w.notify('item/completed',{'threadId':w.thread_id,'item':{'id':'unconfirmed-image','type':'imageGeneration','status':'failed','failure':None}})
+            await asyncio.wait_for(w.stop_task,1)
+            state=Goals(w.store).snapshot(self.sid)
+            self.assertEqual(native.goal['status'],'paused');self.assertEqual(state['phase'],'unknown');self.assertEqual(w.outcome,'unknown')
+            value=next(i for i in w.store.history(self.sid)['items'] if i['id']=='unconfirmed-image')
+            self.assertEqual(value['status'],'unknown');self.assertTrue(value['partialChangesPossible'])
+            self.assertFalse(any(method=='turn/start' for method,_ in native.calls))
+        finally:await w.goal_worker.close();w.store.close()
+
     async def test_missing_native_turn_end_is_unknown_without_rewriting_prior_completed_turn(self):
         w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
         await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'finished'}})

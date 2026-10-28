@@ -1,3 +1,43 @@
+## Image pipeline qualification and retry bounds (0.6.49)
+
+Current image-capable session profiles use the pinned OpenAI authentication,
+routing, headers and capabilities with a private native provider ID and zero
+HTTP/stream retries. A lost image response otherwise caused five POSTs in the
+original native fixture. The bounded policy now makes one request, preserves
+an unknown outcome and pauses Goal continuation. A recognized usage limit also
+pauses the Goal. Existing conversations resume with their original thread ID;
+Images OFF keeps the bounded provider and confirmed native image context.
+Earlier tool profiles and all fifteen dynamic declaration sets are unchanged.
+Running workers keep their originally pinned release.
+
+The original Codex 0.163.0 binary and actual Studio worker were exercised with
+fixed local SSE/PNG fixtures in a kernel network namespace. The cases cover
+ON/OFF, account/model gates, rejected/corrupt/oversized output, storage failure,
+Stop, Goal limits/lost replies, same-thread provider migration and recovery.
+The project fixture executes native generation, image listing and both imports
+through the actual tool dispatcher. Its original PNG hash and converted ICO/
+RGBA hashes match the project sources and finished artifact resources.
+
+Actual Zig, C and Rust consumers were built with the existing SDK0.64.92,
+Contract0.64.45, Zig0.16.0 and Rust1.99.0 pins. The official inspector and bounded
+payload reader confirm ICON plus named TOOLBAR/SCENE bytes in each R4X. The
+256x128 raster uses multiple ABI-bounded tiles; the bitmap icon includes32x32
+and64x64 entries. Rebuilding the Zig consumer without provider access produces
+an identical R4X. These checks use the actual unprivileged, networkless Builder
+adapter; they are not a cold-cache production service resource-budget test.
+
+All three consumers visibly display their icon and raster in an isolated own
+Full0.87.14 guest with a verified base image and private QEMU overlay. A separate
+missing-resource case displays an explicit error. Per-artifact guest verification
+remains a separate runner result, never an automatic consequence of compilation
+or resource embedding. Browser media checks cover1440/320px, focus, reload,
+protected original downloads and foreign identities. Existing project backups
+include the private originals and receipts; the selected backup scope is unchanged.
+
+No real model/provider inference was performed. Live provider image generation
+remains unverified; deterministic native fixtures and actual builds/guest displays
+are the qualification evidence. Own test data and guest processes are removed.
+
 ## Generated-image history and recovery (0.6.48)
 
 Completed native image outputs have private, authenticated PNG previews and

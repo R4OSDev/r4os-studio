@@ -173,7 +173,9 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
-    if selected_profile in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):settings['model_provider']='openai'
+    if selected_profile in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):
+        from image_provider import PROVIDER
+        settings['model_provider']=PROVIDER
     settings['features.fast_mode'] = fast_mode
     settings['features.sqlite'] = True
     settings['features.skip_host_skill_discovery'] = True
@@ -221,5 +223,8 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         args=['/usr/bin/prlimit','--fsize=67108864:67108864','--',*args]
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
+    if selected_profile in (IMAGE_PROFILE,IMAGE_SKILL_PROFILE):
+        from image_provider import configuration
+        args+=['-c',configuration()]
     return args, {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
                   'catalogSha256': digest(catalog)}
