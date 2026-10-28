@@ -16,3 +16,12 @@
 .navigation.statistics-global { grid-template-columns:minmax(0,1fr); }
 .navigation.statistics-project { grid-template-columns:repeat(2,minmax(0,1fr)); }
 @media(max-width:800px) { .navigation.statistics-global { min-height:0; } .statistics-panel { padding:24px 16px; } .statistics-grid { grid-template-columns:minmax(0,1fr); } }
+.statistics-dialog { width: min(760px,calc(100vw - 28px)); max-width:760px; }
+.statistics-dialog .statistics-panel { padding:10px 20px 20px; }
+.statistics-dialog .statistics-grid { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
+.agent-goal-clock { flex:1; text-align:center; white-space:nowrap; font-size:11px; color:#dac5ed; font-variant-numeric:tabular-nums; }
+.agent-goal-clock.uncertain { color:#e0ba86; }
+.agent-goal:has(.agent-goal-clock) { flex-basis:300px; min-width:min(100%,270px); max-width:380px; }
+.agent-goal:has(.agent-goal-clock) .agent-goal-top { gap:5px; }
+.agent-goal:has(.agent-goal-clock) .agent-goal-state { flex:0 1 auto; }
+@media(max-width:520px) { .statistics-dialog .statistics-grid { grid-template-columns:minmax(0,1fr); } .agent-header-actions { gap:7px; } }

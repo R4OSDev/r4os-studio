@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import type { AgentRun } from '../../../../shared/agent-sessions';
 import { busyRun } from './api';
 import { Icon } from '../../app/Icon';
@@ -26,8 +26,8 @@ export function goalLabel(control: Control) {
   return status ? ({ active: 'Active', paused: 'Paused', blocked: 'Blocked', usageLimited: 'Usage limit', budgetLimited: 'Budget limit', complete: 'Complete' })[status] : 'Ready';
 }
 
-export function GoalControls({ control, run, disabled, editor, openEditor, stopRun, inputBusy = false }: {
-  control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; stopRun: () => Promise<void>; inputBusy?: boolean;
+export function GoalControls({ control, run, disabled, editor, openEditor, stopRun, inputBusy = false, runtime }: {
+  control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; stopRun: () => Promise<void>; inputBusy?: boolean; runtime?: ReactNode;
 }) {
   const group = useRef<HTMLDivElement>(null), textButton = useRef<HTMLButtonElement>(null);
   const state = control.goal, status = state?.goal?.status;
@@ -51,6 +51,7 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
           disabled={disabled || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
           onClick={() => { if (canStopRun) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>
       </div>
+      {runtime}
       <span className="agent-goal-state" role="status" title={state?.phase === 'pausing' ? 'Pausing after current turn' : goalLabel(control)}>{goalLabel(control)}</span>
       <span className="agent-goal-caption">GOAL</span>
     </div>

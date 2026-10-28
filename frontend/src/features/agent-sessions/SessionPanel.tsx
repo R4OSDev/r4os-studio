@@ -1,3 +1,4 @@
+import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
 import { useSessionApi, sessionPath, busyRun } from './api';
@@ -31,6 +32,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const log = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [statistics, setStatistics] = useState(false);
   const [choiceSaving, setChoiceSaving] = useState(false);
   const [goalEditor, setGoalEditor] = useState(false);
   const [dragging, setDragging] = useState(false), dragDepth = useRef(0);
@@ -136,6 +138,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal) : run?.state ?? 'Ready') : connection}</span>
+        <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
@@ -167,7 +170,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <AttachmentCards control={attachments} disabled={sending || !!pending} />
       <div className="agent-composer-footer">
         <GoalControls control={goal} run={run} disabled={!session || choiceSaving || settings || stopping} inputBusy={sending || !!pending}
-          editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
+          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
         {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings || goal.changing || goalEditor}
           busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
@@ -191,6 +194,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
     </form>
     {goalEditor && <GoalEditor control={goal} run={run} stopRun={stop} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
+    {statistics && <SessionStatistics ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setStatistics(false)} run={run} stop={stop} />}
     {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;
 }
