@@ -1,3 +1,5 @@
+import { EnvironmentNotes } from './EnvironmentNotes';
+import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
@@ -33,6 +35,9 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
   const [statistics, setStatistics] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth);
+  const observeNotes = notes.observe;
   const [choiceSaving, setChoiceSaving] = useState(false);
   const [goalEditor, setGoalEditor] = useState(false);
   const [dragging, setDragging] = useState(false), dragDepth = useRef(0);
@@ -77,6 +82,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, [field]: String(i[field] ?? '') + p.text } : i));
       }
       if (event.kind === 'run') { setSession((s) => s ? { ...s, latestRun: event.payload as AgentRun } : s); changed(); }
+      if (event.kind === 'environmentNotes') observeNotes(event.payload as { revision: number; count: number });
       if (event.kind === 'goal') observeGoal(event.payload as SessionGoal);
       if (event.kind === 'notice') {
         const notice = event.payload as { text: string };
@@ -97,7 +103,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: Error) => { if (!controller.signal.aborted) { setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes]);
   useEffect(() => {
     if (follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items]);
@@ -139,6 +145,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal) : run?.state ?? 'Ready') : connection}</span>
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
+        <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
@@ -194,6 +201,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
     </form>
     {goalEditor && <GoalEditor control={goal} run={run} stopRun={stop} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
+    {showNotes && session && <EnvironmentNotes key={notes.key} session={session} notes={notes} token={token} reauth={refreshAuth} close={() => setShowNotes(false)} run={run} stop={stop} />}
     {statistics && <SessionStatistics ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setStatistics(false)} run={run} stop={stop} />}
     {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
   </section>;

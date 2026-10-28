@@ -8,6 +8,7 @@ export const busyRun = (state?: string) => ['queued', 'starting', 'running', 'st
 export const toolLabels: Record<string, string> = {
   'studio.exec_command': 'Run command', 'studio.write_stdin': 'Process input', 'studio.terminate_process': 'Terminate process',
   'studio.list_directory': 'List directory', 'studio.read_file': 'Read file', 'studio.search': 'Search',
+  'studio.read_environment_notes': 'Read environment notes', 'studio.record_environment_note': 'Record environment note',
   'studio.read_attachment': 'Read attachment',
   'image_gen.imagegen': 'Generate image',
   'studio.list_generated_images': 'List generated images', 'studio.import_generated_image': 'Import generated image',
