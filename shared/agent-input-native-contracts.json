@@ -1,0 +1,553 @@
+{
+  "ThreadGoal": {
+    "properties": {
+      "createdAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "objective": {
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/definitions/ThreadGoalStatus"
+      },
+      "threadId": {
+        "type": "string"
+      },
+      "timeUsedSeconds": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "tokenBudget": {
+        "format": "int64",
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "tokensUsed": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "updatedAt": {
+        "format": "int64",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "createdAt",
+      "objective",
+      "status",
+      "threadId",
+      "timeUsedSeconds",
+      "tokensUsed",
+      "updatedAt"
+    ],
+    "type": "object"
+  },
+  "ThreadGoalSetParams": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "objective": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "origin": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ThreadGoalMutationOrigin"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Missing provenance does not supply user authorization."
+      },
+      "status": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ThreadGoalStatus"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "threadId": {
+        "type": "string"
+      },
+      "tokenBudget": {
+        "format": "int64",
+        "type": [
+          "integer",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "threadId"
+    ],
+    "title": "ThreadGoalSetParams",
+    "type": "object"
+  },
+  "ThreadGoalGetParams": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "threadId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "threadId"
+    ],
+    "title": "ThreadGoalGetParams",
+    "type": "object"
+  },
+  "ThreadGoalClearParams": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "origin": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ThreadGoalMutationOrigin"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Missing provenance does not supply user authorization."
+      },
+      "threadId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "threadId"
+    ],
+    "title": "ThreadGoalClearParams",
+    "type": "object"
+  },
+  "ThreadGoalStatus": {
+    "enum": [
+      "active",
+      "paused",
+      "blocked",
+      "usageLimited",
+      "budgetLimited",
+      "complete"
+    ],
+    "type": "string"
+  },
+  "ThreadGoalMutationOrigin": {
+    "description": "Distinguishes explicit user actions from automatic goal lifecycle mutations.",
+    "enum": [
+      "user",
+      "automatic"
+    ],
+    "type": "string"
+  },
+  "ThreadGoalUpdatedNotification": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "goal": {
+        "$ref": "#/definitions/ThreadGoal"
+      },
+      "threadId": {
+        "type": "string"
+      },
+      "turnId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "goal",
+      "threadId"
+    ],
+    "title": "ThreadGoalUpdatedNotification",
+    "type": "object"
+  },
+  "ThreadGoalClearedNotification": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+      "threadId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "threadId"
+    ],
+    "title": "ThreadGoalClearedNotification",
+    "type": "object"
+  },
+  "UserInput": {
+    "oneOf": [
+      {
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "text_elements": {
+            "default": [],
+            "description": "UI-defined spans within `text` used to render or persist special elements.",
+            "items": {
+              "$ref": "#/definitions/TextElement"
+            },
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "text"
+            ],
+            "title": "TextUserInputType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "type"
+        ],
+        "title": "TextUserInput",
+        "type": "object"
+      },
+      {
+        "anyOf": [
+          {
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "title": "UrlUserInput",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "fileId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fileId"
+            ],
+            "title": "FileIdUserInput",
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/ImageDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type": {
+            "enum": [
+              "image"
+            ],
+            "title": "ImageUserInputType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ImageUserInput",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/ImageDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "localImage"
+            ],
+            "title": "LocalImageUserInputType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "type"
+        ],
+        "title": "LocalImageUserInput",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "type": {
+            "enum": [
+              "audio"
+            ],
+            "title": "AudioUserInputType",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "url"
+        ],
+        "title": "AudioUserInput",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "localAudio"
+            ],
+            "title": "LocalAudioUserInputType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "type"
+        ],
+        "title": "LocalAudioUserInput",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "skill"
+            ],
+            "title": "SkillUserInputType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "type"
+        ],
+        "title": "SkillUserInput",
+        "type": "object"
+      },
+      {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "mention"
+            ],
+            "title": "MentionUserInputType",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "type"
+        ],
+        "title": "MentionUserInput",
+        "type": "object"
+      }
+    ]
+  },
+  "Model": {
+    "properties": {
+      "additionalSpeedTiers": {
+        "default": [],
+        "description": "Deprecated: use `serviceTiers` instead.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "availabilityNux": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ModelAvailabilityNux"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "availableAccessPrograms": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ModelAccessPrograms"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Null when the catalog does not provide access-program metadata."
+      },
+      "defaultReasoningEffort": {
+        "$ref": "#/definitions/ReasoningEffort"
+      },
+      "defaultServiceTier": {
+        "default": null,
+        "description": "Catalog default service tier id for this model, when one is configured.",
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "description": {
+        "type": "string"
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "hidden": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "string"
+      },
+      "inputModalities": {
+        "default": [
+          "text",
+          "image"
+        ],
+        "items": {
+          "$ref": "#/definitions/InputModality"
+        },
+        "type": "array"
+      },
+      "isDefault": {
+        "type": "boolean"
+      },
+      "model": {
+        "type": "string"
+      },
+      "modelSpecialty": {
+        "default": null,
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "multiAgentVersion": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/MultiAgentVersion"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Multi-agent runtime declared by this model, when available."
+      },
+      "serviceTiers": {
+        "default": [],
+        "items": {
+          "$ref": "#/definitions/ModelServiceTier"
+        },
+        "type": "array"
+      },
+      "supportedReasoningEfforts": {
+        "items": {
+          "$ref": "#/definitions/ReasoningEffortOption"
+        },
+        "type": "array"
+      },
+      "supportsPersonality": {
+        "default": false,
+        "description": "@deprecated Always false; models no longer support personality selection.",
+        "type": "boolean"
+      },
+      "upgrade": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "upgradeInfo": {
+        "anyOf": [
+          {
+            "$ref": "#/definitions/ModelUpgradeInfo"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "defaultReasoningEffort",
+      "description",
+      "displayName",
+      "hidden",
+      "id",
+      "isDefault",
+      "model",
+      "supportedReasoningEfforts"
+    ],
+    "type": "object"
+  },
+  "InputModality": {
+    "description": "Canonical user-input modality tags advertised by a model.",
+    "oneOf": [
+      {
+        "description": "Plain text turns and tool payloads.",
+        "enum": [
+          "text"
+        ],
+        "type": "string"
+      },
+      {
+        "description": "Image attachments included in user turns.",
+        "enum": [
+          "image"
+        ],
+        "type": "string"
+      },
+      {
+        "description": "Audio attachments included in user turns.",
+        "enum": [
+          "audio"
+        ],
+        "type": "string"
+      }
+    ]
+  }
+}

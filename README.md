@@ -1,3 +1,25 @@
+## Native Goal and attachment contracts (0.6.23)
+
+The qualified Codex0.163.0 Goal RPCs and notifications are recorded in
+shared/agent-input-capabilities.json with exact original source/schema/layout
+fingerprints. Public owner/session/thread-bound DTOs live in agent-inputs.d.ts.
+Native status and usage remain authoritative. Goal text uses4000 Unicode scalar
+values after the native Unicode White_Space trim. Saving uses origin=user and
+paused; unchanged text omits the objective field and never sets a token budget.
+
+Only explicit qualified controllers may opt into features.goals. Existing
+single-turn workers retain their previous switches and native tool declarations.
+An active Goal set and idle continuation may start native turns without turn/start;
+Studio needs one retained multi-turn run/lease, not another continuation loop.
+Control/execution and UI are integrated in the following releases.
+
+localImage is a real native input. General input_file is absent from this pinned
+protocol; bounded text/PDF access needs a separate read-only attachment adapter.
+Owned private image mounts avoid the1MiB RPC frame limit and contain no provider
+credentials. Native model input_modalities qualify image eligibility; no model
+name heuristic or separate Files/Responses client is introduced. No upload/control
+is advertised before its implementation. No inference was used for qualification.
+
 ## Remote Host integrated qualification (0.6.22)
 
 System → Remote Hosts, independent project assignment and the five bound native

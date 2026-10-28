@@ -92,8 +92,10 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
+    if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
+    if goals_enabled and 'goals' not in features: raise ValueError('This runtime has no qualified Goal feature.')
     tools_for(selected_profile)
     binary = regular(binary)
     if digest(binary) != CODEX_SHA256:
@@ -155,6 +157,9 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     settings['features.fast_mode'] = fast_mode
     settings['features.sqlite'] = True
     settings['features.skip_host_skill_discovery'] = True
+    # Only a qualified controller/worker opts in. Ordinary one-turn workers
+    # retain the previous feature set until their lifecycle supports Goals.
+    if goals_enabled: settings['features.goals'] = True
     # Hide user config in the runtime mount namespace; the original file is
     # never rewritten. The virtual cwd is empty and contains no project config.
     (state / 'config.toml').write_text('')

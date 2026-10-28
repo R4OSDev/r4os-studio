@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "qualifiedRuntime": {
+    "version": "0.163.0",
+    "sha256": "399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215"
+  },
+  "sourceRevision": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "sourceFiles": [
+    {
+      "path": "codex-rs/app-server/src/request_processors/thread_goal_processor.rs",
+      "sha256": "835fac66bc2ae9eb0e29b7a5a3da09cfea11cf2ca3dbd0384a296ce54db9b3e6"
+    },
+    {
+      "path": "codex-rs/ext/goal/src/runtime.rs",
+      "sha256": "9fd31e79fd06f68e192b799631cfd544b8e685dd7aa4b98b96a02da9e8ff9ea8"
+    },
+    {
+      "path": "codex-rs/ext/goal/src/extension.rs",
+      "sha256": "0af11f45975140a0774e2eb6f64c91db4ebbf5fd7515659e4d741b5790784793"
+    },
+    {
+      "path": "codex-rs/ext/goal/src/api.rs",
+      "sha256": "a08bb505652ff41540fcea628ab6bdda2fb8011c21450d10f0f240ae6ddfc157"
+    },
+    {
+      "path": "codex-rs/ext/goal/src/spec.rs",
+      "sha256": "db48400d291ecb642b0d1189c73eea81a412f4b13bc9f7d917dc0dbd3f7828ea"
+    },
+    {
+      "path": "codex-rs/protocol/src/protocol.rs",
+      "sha256": "d0e47e54aec3b117940f828ee3820a57c07e610710462785f1d3f9d08af4e83a"
+    },
+    {
+      "path": "codex-rs/protocol/src/openai_models.rs",
+      "sha256": "4b080aeaf5c158104e27d8277f3bc03ee3ad55b55a41c30a788d831fb2e2a99f"
+    }
+  ],
+  "nativeContractsSha256": "a2e7d60758d5c4a0ba0edf732e830601d0d1bc78b7cc280411d894453d0c943e",
+  "layoutReferenceSha256": "629e6f8277d5806855f0d5dd476edec5c3006646e6ac48912cad42ea1a37e8d5",
+  "goal": {
+    "set": "thread/goal/set",
+    "get": "thread/goal/get",
+    "clear": "thread/goal/clear",
+    "origin": "user",
+    "notifications": [
+      "thread/goal/updated",
+      "thread/goal/cleared"
+    ],
+    "feature": "goals",
+    "maxObjectiveChars": 4000,
+    "characterUnit": "Unicode scalar values after Rust White_Space trim",
+    "saveStatus": "paused",
+    "activationMayStartTurn": true,
+    "nativeIdleContinuation": true,
+    "studioMultiTurnRunRequired": true,
+    "setTokenBudget": false,
+    "publicControlAvailable": false
+  },
+  "attachments": {
+    "nativeImageType": "localImage",
+    "modelCapability": "inputModalities includes image; qualify exact selected model catalog",
+    "generalInputFileSupported": false,
+    "textPdfAdapter": "read-only owner/session/run-bound broker required",
+    "maxFiles": 8,
+    "maxFileBytes": 16777216,
+    "maxRunBytes": 33554432,
+    "maxImagePixels": 40000000,
+    "maxImageDimension": 16384,
+    "maxExtractedBytes": 2097152,
+    "maxPdfPages": 128,
+    "publicUploadAvailable": false
+  },
+  "scope": "Qualified contracts only. Ordinary single-turn workers keep Goals off; controller/multi-turn implementation follows. No inference, external file API or provider credential migration."
+}
