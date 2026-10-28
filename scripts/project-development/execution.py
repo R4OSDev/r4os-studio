@@ -221,8 +221,8 @@ class Execution:
                         raise DevelopmentFault('The guest deployment changed. No project process was started.')
                     path.unlink()
                 if desktop:
-                    from deskrun import capability, command
-                    command(deployment, job['settings']['arguments'], min(10000, job['settings']['timeoutSeconds'] * 1000))
+                    from deskrun import capability, command, DEFAULT_WAIT_MS
+                    command(deployment, job['settings']['arguments'], min(DEFAULT_WAIT_MS, job['settings']['timeoutSeconds'] * 1000))
                     guard(store, job, lease)
                     try: native_capability = await capability(ssh)
                     except DevelopmentFault as error:

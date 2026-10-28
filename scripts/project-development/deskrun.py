@@ -16,6 +16,12 @@ ERRORS = ('ok', 'transport', 'syntax', 'resolution', 'no_desktop', 'queue_full',
           'process_ended', 'invalid', 'unknown', 'stale_service')
 PHASES = ('request', 'accepted', 'starting', 'process', 'window', 'content')
 U64 = 18446744073709551615
+# R4OS SSHD wraps exec in `/NOAUTOEXEC /C ` before spawning Terminal.
+# Its 128-byte argument buffer includes NUL (SSHD dba200989d63,
+# buildExecTerminalArgs). Budget the entire command, including DESKRUN.
+SSH_EXEC_PREFIX = '/NOAUTOEXEC /C '
+SSH_EXEC_BYTES = 127 - len(SSH_EXEC_PREFIX.encode())
+DEFAULT_WAIT_MS = 5000
 
 
 class NotSubmitted(DevelopmentFault):
@@ -69,10 +75,15 @@ def command(deployment, arguments, wait_ms):
         raise NotSubmitted('The native Desktop target is not a verified Exchange Build application.')
     if any(ord(c) < 32 or ord(c) == 127 for c in arguments) or any(c in arguments for c in '&|<>;'):
         raise NotSubmitted('Desktop arguments cannot contain shell control characters.', 400)
-    tail = f'/JSON /WAIT:{wait_ms} /WAITFRAME "{path}"' + (' ' + arguments if arguments else '')
-    if len(tail.encode()) > 127:
-        raise NotSubmitted('DESKRUN options, target and application arguments together exceed 127 UTF-8 bytes. Shorten the application arguments.', 400)
-    return 'DESKRUN ' + tail
+    # Use DESKRUN's native five-second default without spending argument bytes
+    # on an optional flag. Short execution deadlines still get an explicit wait.
+    wait = '' if wait_ms == DEFAULT_WAIT_MS else f' /WAIT:{wait_ms}'
+    text = f'DESKRUN /JSON{wait} /WAITFRAME "{path}"' + (' ' + arguments if arguments else '')
+    size = len(text.encode())
+    if size > SSH_EXEC_BYTES:
+        raise NotSubmitted(f'Desktop launch requires {size} UTF-8 command bytes; R4OS SSHD allows {SSH_EXEC_BYTES} after its Terminal wrapper. Shorten the application arguments. No application was started.',
+            400, reason_code='desktop_arguments_too_long')
+    return text
 
 
 async def exchange(ssh, text, timeout):
@@ -184,7 +195,7 @@ class DesktopLaunch:
 
     async def start(self):
         loop = asyncio.get_running_loop(); self.deadline = loop.time() + self.job['settings']['timeoutSeconds']
-        wait_ms = min(10000, self.job['settings']['timeoutSeconds'] * 1000)
+        wait_ms = min(DEFAULT_WAIT_MS, self.job['settings']['timeoutSeconds'] * 1000)
         text = command(self.deployment, self.job['settings']['arguments'], wait_ms)
         heartbeat = asyncio.create_task(self.heartbeat())
         launch = asyncio.create_task(self.query(text, wait_ms / 1000 + 5, starting=True))

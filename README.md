@@ -1,3 +1,27 @@
+## Desktop launch command budget (0.6.57)
+
+Desktop preflight now includes the complete DESKRUN command and R4OS SSHD's
+15-byte `/NOAUTOEXEC /C ` Terminal wrapper in its 127-byte UTF-8 argument
+budget. Checking only the DESKRUN argument tail missed that wrapper. A command
+with `--world=F:\Build\PBF05AE8\D1FBF342\ABSENT` needed 130 bytes and SSHD
+rejected it before running DESKRUN, leaving no native launch identity.
+
+The launcher uses DESKRUN's native five-second default without the optional
+`/WAIT:10000` flag; shorter execution deadlines retain an explicit wait.
+The same example now uses 118 bytes including the wrapper. `/JSON`,
+`/WAITFRAME`, the absolute target and literal application arguments remain.
+Commands above 112 bytes fail before opening the guest controller or claiming
+execution quarantine, with required/allowed byte counts and a clear diagnostic.
+Arguments are never truncated and a launch is never retried. Actual transport
+loss without an original launch identity still remains unknown.
+
+Three focused regressions cover the original command, the exact UTF-8 buffer
+boundary with short/default waits, and preservation of unknown transport
+outcomes without replay. No user application or provider inference is started
+for those tests. The correction applies to newly admitted development jobs;
+running VMs do not need a different exporter. An old execution quarantine still
+requires its original closure proof or a confirmed VM stop before reuse.
+
 ## Nested Exchange paths and live Goal controls (0.6.56)
 
 Exchange now supports **16 path levels** beneath its root, including the Build,
