@@ -6,22 +6,28 @@ import sqlite3
 import sys
 sys.path.insert(1,str(Path(__file__).resolve().parents[1]/'projects'))
 from store import ProjectFault
-from board_store import connection
-from board_validation import fields,identity
-from board_model import listing,snapshot,receipt
+from board_store import connection,SUPPORTED_FEATURE_LEVEL
+from board_validation import fields,identity,integer
+from board_model import listing,snapshot,receipt,card,card_row,board
 from board_mutations import mutate
 
 def operation(projects,request):
-    fields(request,('operation','projectId'),('boardId','requestId','input'))
+    fields(request,('operation','projectId'),('boardId','requestId','cardId','input','clientLevel'))
     project_id=identity(request['projectId']);op=request['operation']
-    if op not in ('list','get','receipt','create','update','reorder'):raise ProjectFault('Unsupported browser Board operation.',400)
+    if op not in ('list','get','receipt','create','update','reorder','mutate','card'):raise ProjectFault('Unsupported browser Board operation.',400)
+    level=integer(request.get('clientLevel',1))
+    if level>SUPPORTED_FEATURE_LEVEL:raise ProjectFault('Reload R4OS Studio to match the available Board features. Your data was preserved.',409)
+    if op in ('mutate','card') and level<2:raise ProjectFault('Reload R4OS Studio to use Board cards and columns.',409)
     if 'boardId' in request:identity(request['boardId'])
-    with connection(projects,project_id,op=='create') as db:
-        if db is not None and op in ('list','get','receipt'):db.execute('BEGIN')
+    with connection(projects,project_id,op=='create',client_level=level) as db:
+        if db is not None and op in ('list','get','receipt','card'):db.execute('BEGIN')
         if op=='list':return listing(db,project_id)
         if op=='receipt':return receipt(db,identity(request['requestId']))
         if db is None:raise ProjectFault('Board not found in this project.',404)
         if op=='get':return snapshot(db,project_id,identity(request['boardId']))
+        if op=='card':
+            parent=board(db,identity(request['boardId']))
+            return {'card':card(db,card_row(db,request['boardId'],identity(request['cardId'])),True),'boardRevision':parent['revision']}
         return mutate(db,project_id,op,request['input'],request.get('boardId'))
 
 if __name__=='__main__':

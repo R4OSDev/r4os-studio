@@ -3039,3 +3039,15 @@ untouched fields. Mutations are saved in sessionStorage before POST; recovery
 reads the original receipt, with explicit same-body retry only. Controlled real
 HTTP/browser checks cover lost replies, reload, concurrent edits and120-character
 names without model, compiler or VM use. Card/column editing follows0.6.37.
+
+### Board columns and cards (0.6.37)
+
+Create/edit columns, quick Add card/Enter and card title/description dialogs are
+available. Removing an occupied column requires an explicit same-board target
+and atomically preserves all cards, including archived rows and their details.
+At least one column remains. Card deletion names the actual card and requires
+confirmation. Conflicts preserve drafts/untouched concurrent fields; independent
+quick drafts and original receipts remain safe. Feature level2 and a declared
+browser reader level protect older adapters/UI from misreading card data.
+Thirteen targeted unprivileged cases, authenticated HTTP and desktop/320px
+browser checks pass, without model, compiler, VM or source changes.

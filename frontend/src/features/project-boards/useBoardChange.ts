@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BoardCreate, BoardOrder, BoardReceipt, BoardUpdate } from '../../../../shared/project-boards';
+import type { BoardCreate, BoardMutation, BoardOrder, BoardReceipt, BoardUpdate } from '../../../../shared/project-boards';
 import { ProjectRequestError } from '../projects/api';
-import { createBoard, orderBoards, readBoardReceipt, updateBoard } from './api';
+import { createBoard, mutateBoard, orderBoards, readBoardReceipt, updateBoard } from './api';
 
-export type BoardChange = { kind: 'create'; body: BoardCreate } | { kind: 'update'; boardId: string; body: BoardUpdate } | { kind: 'order'; body: BoardOrder };
+export type BoardChange = { kind: 'create'; body: BoardCreate } | { kind: 'update'; boardId: string; body: BoardUpdate } | { kind: 'order'; body: BoardOrder } | { kind: 'mutate'; boardId: string; body: BoardMutation };
 function read(key: string): BoardChange | null {
   try {
     const value = JSON.parse(sessionStorage.getItem(key) ?? 'null');
-    return value && ['create', 'update', 'order'].includes(value.kind) && typeof value.body?.requestId === 'string'
+    return value && ['create', 'update', 'order', 'mutate'].includes(value.kind) && typeof value.body?.requestId === 'string'
       && /^[a-f0-9-]{36}$/.test(value.body.requestId) && Number.isSafeInteger(value.body.expectedRevision)
-      && (value.kind !== 'update' || /^[a-f0-9-]{36}$/.test(value.boardId)) ? value : null;
+      && (!['update', 'mutate'].includes(value.kind) || /^[a-f0-9-]{36}$/.test(value.boardId)) ? value : null;
   } catch { return null; }
 }
 export function useBoardChange(projectId: string, token: string, accepted: (receipt: BoardReceipt, change: BoardChange) => void, busyChanged: (value: boolean) => void, reload: () => void) {
@@ -21,14 +21,15 @@ export function useBoardChange(projectId: string, token: string, accepted: (rece
   useEffect(() => { busyChanged(busy); return () => busyChanged(false); }, [busy, busyChanged]);
   const finish = useCallback((receipt: BoardReceipt, change: BoardChange) => {
     if (!mounted.current || current.current?.body.requestId !== change.body.requestId) return;
-    if (receipt.requestId !== change.body.requestId || (change.kind === 'update' && receipt.boardId !== change.boardId)) throw new Error('The original Board receipt does not match this change.');
+    if (receipt.requestId !== change.body.requestId || ((change.kind === 'update' || change.kind === 'mutate') && receipt.boardId !== change.boardId)) throw new Error('The original Board receipt does not match this change.');
     sessionStorage.removeItem(key); current.current = null; setPending(null); setError(''); acceptedRef.current(receipt, change);
   }, [key]);
   const check = useCallback(async (change: BoardChange) => {
     try { finish(await readBoardReceipt(projectId, change.body.requestId), change); return true; }
     catch (failure) {
       if (!mounted.current) return false;
-      setError((failure as ProjectRequestError).status === 404 ? 'The original change has no confirmed receipt yet. Check again or retry the same change.' : 'The original Board change is unconfirmed. Check its receipt before continuing.');
+      const issue = failure as ProjectRequestError;
+      setError(issue.status === 404 ? 'The original change has no confirmed receipt yet. Check again or retry the same change.' : issue.status ? issue.message : 'The original Board change is unconfirmed. Check its receipt before continuing.');
       return false;
     }
   }, [finish, projectId]);
@@ -45,7 +46,8 @@ export function useBoardChange(projectId: string, token: string, accepted: (rece
     current.current = change; setPending(change); active.current = true; setBusy(true); setError('');
     try {
       const receipt = change.kind === 'create' ? await createBoard(projectId, token, change.body)
-        : change.kind === 'update' ? await updateBoard(projectId, change.boardId, token, change.body) : await orderBoards(projectId, token, change.body);
+        : change.kind === 'update' ? await updateBoard(projectId, change.boardId, token, change.body)
+          : change.kind === 'mutate' ? await mutateBoard(projectId, change.boardId, token, change.body) : await orderBoards(projectId, token, change.body);
       finish(receipt, change);
     } catch (failure) {
       if (!mounted.current) return;

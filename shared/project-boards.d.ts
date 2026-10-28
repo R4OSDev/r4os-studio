@@ -18,4 +18,9 @@ export interface BoardSnapshot { projectId: string; revision: number; board: Boa
 export interface BoardCreate { requestId: string; expectedRevision: number; name: string; description?: string }
 export interface BoardUpdate { requestId: string; expectedRevision: number; name?: string; description?: string }
 export interface BoardOrder { requestId: string; expectedRevision: number; ids: string[] }
-export interface BoardReceipt { requestId: string; projectRevision: number; boardId?: string; revision?: number; board?: BoardSummary }
+export type BoardEntryAction = 'create_column' | 'update_column' | 'delete_column' | 'create_card' | 'update_card' | 'delete_card';
+export interface BoardMutation {
+  requestId: string; expectedRevision: number; action: BoardEntryAction;
+  input: { columnId?: string; targetColumnId?: string; expectedColumnRevision?: number; cardId?: string; expectedCardRevision?: number; title?: string; description?: string; confirm?: true };
+}
+export interface BoardReceipt { requestId: string; projectRevision: number; boardId?: string; revision?: number; board?: BoardSummary; cardId?: string; columnId?: string; deleted?: boolean; movedCards?: number }

@@ -10,11 +10,12 @@ def encode(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,sepa
 def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def mutate(db,project_id,operation,data,ident=None):
-    fields(data,('requestId','expectedRevision'),('name','description','ids'))
+    fields(data,('requestId','expectedRevision'),('action','input') if operation=='mutate' else ('name','description','ids'))
     if 'name' in data:text(data['name'])
     if 'description' in data:text(data['description'],8000,True,True)
     rid=identity(data.get('requestId'));integer(data.get('expectedRevision'),0)
-    fingerprint=hashlib.sha256(encode({'projectId':project_id,'operation':operation,'boardId':ident,'input':data}).encode()).hexdigest()
+    try:fingerprint=hashlib.sha256(encode({'projectId':project_id,'operation':operation,'boardId':ident,'input':data}).encode()).hexdigest()
+    except UnicodeError:raise ProjectFault('Board text contains invalid Unicode.',400) from None
     db.execute('BEGIN IMMEDIATE')
     try:
         previous=db.execute('SELECT fingerprint,result FROM requests WHERE id=?',(rid,)).fetchone()
@@ -22,7 +23,7 @@ def mutate(db,project_id,operation,data,ident=None):
             if previous[0]!=fingerprint:raise ProjectFault('This Board request ID belongs to different original input.',409)
             return json.loads(previous[1])
         if db.execute('SELECT COUNT(*) FROM requests').fetchone()[0]>=16000:raise ProjectFault('Board request storage is full. Existing data was preserved.',409)
-        stamp=now()
+        stamp=now();extra={}
         if operation=='create':
             fields(data,('requestId','expectedRevision','name'),('description',))
             if revision(db)!=data['expectedRevision']:raise ProjectFault('The Board list changed. Reload before creating.',409)
@@ -44,9 +45,14 @@ def mutate(db,project_id,operation,data,ident=None):
             if revision(db)!=data['expectedRevision']:raise ProjectFault('The Board list changed. Reload before moving.',409)
             ids=order(data['ids'],[r[0] for r in db.execute('SELECT id FROM boards')])
             for position,key in enumerate(ids):db.execute('UPDATE boards SET position=? WHERE id=?',(position,key))
+        elif operation=='mutate':
+            fields(data,('requestId','expectedRevision','action','input'));row=board(db,ident)
+            if row['revision']!=data['expectedRevision']:raise ProjectFault('This Board changed. Your draft was preserved; reload before saving.',409)
+            from board_entries import apply
+            extra=apply(db,ident,data['action'],data['input'],stamp)
         else:raise ProjectFault('Unsupported Board mutation.',400)
         db.execute('UPDATE meta SET revision=revision+1 WHERE singleton=1')
-        result={'requestId':rid,'projectRevision':revision(db)}
+        result={'requestId':rid,'projectRevision':revision(db),**extra}
         if ident:result.update(boardId=ident,revision=board(db,ident)['revision'],board=summary(db,board(db,ident)))
         db.execute('INSERT INTO requests VALUES(?,?,?,?)',(rid,fingerprint,encode(result),stamp));db.commit();return result
     finally:

@@ -58,6 +58,27 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal((await app.inject({ url: `/api/projects/${randomUUID()}/boards`, headers })).statusCode, 404);
     assert.equal(await readFile(join(directory, id, 'Workspace/module.R4MF'), 'utf8'), 'Own Board fixture');
     await assert.rejects(access(join(directory, id, 'Workspace/Boards')));
+    const bid = created.boardId, columnId = snapshot.json().columns[0].id;
+    const mutationUrl = base + '/' + bid + '/mutations?clientLevel=2';
+    const cardInput = { requestId: randomUUID(), expectedRevision: 2, action: 'create_card', input: { columnId, title: 'Own HTTP card' } };
+    assert.equal((await app.inject({ method: 'POST', url: mutationUrl, payload: cardInput })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: mutationUrl, headers, payload: { ...cardInput, input: { ...cardInput.input, path: '/' } } })).statusCode, 400);
+    const cardCreated = await app.inject({ method: 'POST', url: mutationUrl, headers, payload: cardInput });
+    assert.equal(cardCreated.statusCode, 200, cardCreated.body);
+    assert.deepEqual((await app.inject({ method: 'POST', url: mutationUrl, headers, payload: cardInput })).json(), cardCreated.json());
+    assert.equal((await app.inject({ url: base, headers })).statusCode, 409);
+    const cardId = cardCreated.json().cardId;
+    const detail = await app.inject({ url: base + '/' + bid + '/cards/' + cardId + '?clientLevel=2', headers });
+    assert.equal(detail.statusCode, 200, detail.body); assert.equal(detail.json().card.title, 'Own HTTP card'); assert.equal(detail.json().boardRevision, 3);
+    const foreignColumn = (await app.inject({ url: base + '/' + second.json().boardId + '?clientLevel=2', headers })).json().columns[0].id;
+    for (const input of [{ columnId: foreignColumn, title: 'Wrong parent' }, { columnId, title: '\ud800' }]) {
+      const denied = await app.inject({ method: 'POST', url: mutationUrl, headers, payload: { ...cardInput, requestId: randomUUID(), expectedRevision: 3, input } });
+      assert([400, 404].includes(denied.statusCode), denied.body);
+    }
+    const moved = await app.inject({ method: 'POST', url: mutationUrl, headers, payload: { requestId: randomUUID(), expectedRevision: 3, action: 'delete_column', input: { columnId, expectedColumnRevision: 1, targetColumnId: snapshot.json().columns[1].id, confirm: true } } });
+    assert.equal(moved.statusCode, 200, moved.body); assert.equal(moved.json().movedCards, 1);
+    const afterMove = await app.inject({ url: base + '/' + bid + '/cards/' + cardId + '?clientLevel=2', headers });
+    assert.equal(afterMove.json().card.columnId, snapshot.json().columns[1].id);
     const database = join(directory, id, 'Boards/Boards.sqlite');
     await writeFile(database, 'Owned unknown data; must never be reinitialized');
     const bytes = await readFile(database);

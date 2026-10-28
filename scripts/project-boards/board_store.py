@@ -16,7 +16,7 @@ from store import ProjectFault
 from board_schema import SCHEMA,VERSION,APPLICATION_ID
 
 MAX_DATABASE_BYTES=128*1024*1024
-SUPPORTED_FEATURE_LEVEL=1
+SUPPORTED_FEATURE_LEVEL=2
 
 def regular(path):
     info=path.lstat()
@@ -48,7 +48,7 @@ def initialize(path,project_id):
     finally:os.close(fd)
 
 @contextmanager
-def connection(projects,project_id,create=False):
+def connection(projects,project_id,create=False,client_level=None):
     projects=Path(projects).absolute()
     with acquire(projects,project_id):
         try:project(projects,project_id)
@@ -77,6 +77,7 @@ def connection(projects,project_id,create=False):
             binding=db.execute('SELECT project_id,feature_level FROM meta WHERE singleton=1').fetchone()
             if not binding or binding[0]!=project_id:raise ProjectFault('Board storage belongs to another project.',503)
             if not 1<=binding[1]<=SUPPORTED_FEATURE_LEVEL:raise ProjectFault('This Board data needs a newer Studio release. Existing data was preserved.',503)
+            if client_level is not None and binding[1]>client_level:raise ProjectFault('Reload R4OS Studio to use the current Board features. Your original data was preserved.',409)
             if binding[1]==1 and any(db.execute('SELECT 1 FROM '+table+' LIMIT 1').fetchone() for table in ('cards','labels','checklist','card_labels')):
                 raise ProjectFault('Board feature metadata needs maintenance. Existing data was preserved.',503)
             page_size=db.execute('PRAGMA page_size').fetchone()[0];db.execute('PRAGMA max_page_count='+str(MAX_DATABASE_BYTES//page_size))
