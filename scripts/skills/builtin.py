@@ -14,7 +14,7 @@ def ensure(db,root,node,api,base=BASE):
     manifest_path=base/(SOURCE+'.json');manifest=json.loads(manifest_path.read_text())
     if manifest.get('schema')!=1 or not isinstance(manifest.get('files'),dict):raise api.SkillFault('The shipped update skill manifest is invalid.',503)
     ident=api.identity(manifest['id']);contents={}
-    if api.lifecycle.deleted(root,ident):return {'installed':False,'deleted':True}
+    if api.lifecycle.deleted(root,ident) or (root/'.deleted'/('source-'+hashlib.sha256(SOURCE.encode()).hexdigest()+'.json')).exists():return {'installed':False,'deleted':True}
     for rel,expected in manifest['files'].items():
         path=base/SOURCE/api.relative(rel)
         if path.resolve(strict=True)!=path:raise api.SkillFault('The shipped skill resource is linked.',503)

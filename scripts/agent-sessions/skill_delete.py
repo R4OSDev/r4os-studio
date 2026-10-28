@@ -164,12 +164,20 @@ async def finish(host,db,root,row):
     # A minimal durable user tombstone prevents automatic builtin resurrection.
     retired=packages.folder(root/'.deleted',True)
     packages.atomic(retired/(ident+'.json'),(encode({'id':ident,'deleted':True})+'\n').encode())
+    if has(db,'builtin_packages'):
+        for source in db.execute('SELECT source_id FROM builtin_packages WHERE skill_id=?',(ident,)):
+            key=hashlib.sha256(source[0].encode()).hexdigest()
+            packages.atomic(retired/('source-'+key+'.json'),(encode({'sourceId':source[0],'deleted':True})+'\n').encode())
     await asyncio.to_thread(remove,stage);packages.sync(stage.parent)
     for run_id in json.loads(row['runs']):
         target=host.root/identity(run_id)
         if (target/'worker.json').exists():
             meta=host.metadata(target/'worker.json')
             if binding(meta)!=('skill',ident):raise ProjectFault('A worker record belongs to another owner.',503)
+            runtime=Path(host.config.get('agentRuntime','/run/r4os-studio-agents'))/run_id
+            if runtime.exists() or runtime.is_symlink():
+                if runtime.parent.resolve(strict=True)!=runtime.parent:raise ProjectFault('The original worker runtime parent changed.',503)
+                remove(runtime)
             remove(target)
     prune_preferences(root,ident)
     with db:
