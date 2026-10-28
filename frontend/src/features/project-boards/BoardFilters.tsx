@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BoardCardSummary, BoardSnapshot, BoardSearch } from '../../../../shared/project-boards';
 import { searchBoard } from './api';
 export function calendarToday() { const date = new Date(); return `${date.getFullYear().toString().padStart(4, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`; }
-export function useBoardFilters(projectId: string, data: BoardSnapshot | null) {
+export function useBoardFilters(projectId: string, data: BoardSnapshot | null, refresh: () => void) {
   const [query, setQuery] = useState(''), [label, setLabel] = useState(''), [priority, setPriority] = useState(''), [due, setDue] = useState('');
   const [match, setMatch] = useState<{ query: string; value: BoardSearch } | null>(null), [error, setError] = useState('');
   const boardId = data?.board.id, revision = data?.board.revision, needle = query.trim(), active = !!(needle || label || priority || due);
@@ -12,10 +12,11 @@ export function useBoardFilters(projectId: string, data: BoardSnapshot | null) {
     const timer = setTimeout(() => { void searchBoard(projectId, boardId, needle, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       if (value.projectId !== projectId || value.boardId !== boardId) throw new Error('The search reply belongs to another Board.');
+      if (value.boardRevision !== revision) refresh();
       setMatch({ query: needle, value }); setError('');
     }).catch((failure: Error) => { if (!controller.signal.aborted) setError(failure.message); }); }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [projectId, boardId, revision, needle]);
+  }, [projectId, boardId, revision, needle, refresh]);
   const searching = !!needle && (match?.query !== needle || match.value.boardId !== boardId || match.value.boardRevision !== revision);
   function includes(card: BoardCardSummary) {
     if (needle && (searching || !match?.value.cardIds.includes(card.id))) return false;

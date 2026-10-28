@@ -70,9 +70,9 @@ export function BoardPanel({ id, token, renewAuth, model, creating, closeCreate,
     setNotice(receipt.boardDeleted ? 'Board deleted.' : receipt.boardArchived !== undefined ? receipt.boardArchived ? 'Board archived.' : 'Board restored.' : receipt.cardArchived !== undefined ? receipt.cardArchived ? 'Card archived.' : 'Card restored.' : change.kind === 'mutate' && change.body.action.startsWith('move_') ? `${receipt.cardId ? 'Card' : 'Column'} moved.` : receipt.deleted ? receipt.cardId ? 'Card deleted.' : `Column removed. ${receipt.movedCards ?? 0} cards preserved.` : 'Board change saved.');
     if (change.kind === 'create' && receipt.boardId) created(receipt.boardId);
   }, busyChanged, model.reload, renewAuth);
-  const data = model.snapshot, locked = control.busy || !!control.pending;
+  const data = model.snapshot, locked = control.busy || !!control.pending || model.loading;
   const readOnly = !!data?.board.archived;
-  const filters = useBoardFilters(id, data);
+  const filters = useBoardFilters(id, data, model.reload);
   const drag = useBoardDrag(data, !locked && !readOnly && !showArchivedCards && !model.error && !model.loading && !movingEntry && !filters.active, body => void control.perform({ kind: 'mutate', boardId: data!.board.id, body }));
   return <section className="project-boards" aria-label="Project boards">
     <header className="board-toolbar"><div><h2>{data?.board.name ?? 'Boards'}</h2>{data?.board.description && <p className="board-description">{data.board.description}</p>}</div>

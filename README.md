@@ -3114,3 +3114,23 @@ not provide a global snapshot across databases/files. Real private Git status
 still contains Workspace sources only. Corrupt schema, non-dense order or disk
 failure preserve original data/request identity for inspection, with no automatic
 repair or destructive replay. No native tool/profile or VM/remote state changed.
+
+### Boards acceptance (0.6.41)
+
+The integrated private Board workflow is qualified with separate owned browser
+fixtures for CRUD/occupied-column transfer, actual mouse drag plus keyboard/touch
+Move, checklist/labels/calendar/search/filter and archive/two-tab/recovery flows.
+A search that observes a concurrent Board revision refreshes its snapshot before
+showing results; filtered views keep exact full-inventory Move. New Board waits
+for a current catalog snapshot after an accepted change. Local drafts,
+original receipts and old-client guards remain in force.
+
+All13 existing agent tool declarations, worker/broker sources and Goal/attachment
+instructions are unchanged from0.6.34, before Boards. There is no Board tool or
+prompt data. Real terminal, native and build namespace probes exclude private
+Boards and browser auth; kernel network namespaces remain isolated. Busy
+agent/Goal/build records and an exclusive source lock allow manual Board edits,
+while lifetime protection blocks project deletion. No provider inference or user
+VM/project run is part of this acceptance. Desktop/320px, keyboard, touch,
+confirmed deletion, reload and protected data are checked. Full evidence and
+limits remain in Docs/Project-Boards.md and local0.6.41 acceptance records.
