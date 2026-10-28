@@ -60,25 +60,13 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
                 or worker.get('release') != release or row[5] != 'studio_' + tool or row[6] != fingerprint):
             raise ProjectFault('Roadmap permission, profile, worker or original call binding changed.', 403)
         def contexts():
-            cursor = db.execute("SELECT run_id,payload FROM items WHERE session_id=? AND item_id LIKE 'user-%' ORDER BY rowid DESC", (session_id,))
-            try:
-                for entry in cursor:
-                    value = json.loads(entry[1])
-                    if value.get('type') == 'user' and isinstance(value.get('text'), str):
-                        yield {'runId': entry[0], 'text': value['text']}
-            finally: cursor.close()
+            from human_context import contexts as human_contexts
+            yield from human_contexts(db,session_id,run_id,{'type':'project','id':project_id})
 
         def verify_origin(origin):
             fields(origin, ['runId', 'sessionId', 'sha256']); identity(origin['runId']); identity(origin['sessionId'])
-            cursor = db.execute("""SELECT i.payload,r.config FROM items i JOIN runs r ON r.id=i.run_id
-                JOIN sessions s ON s.id=r.session_id WHERE r.id=? AND s.id=? AND s.project_id=?
-                AND i.item_id LIKE 'user-%' AND i.session_id=s.id""", (origin['runId'], origin['sessionId'], project_id))
-            try: entry = cursor.fetchone()
-            finally: cursor.close()
-            if not entry: return None
-            value, original_config = json.loads(entry[0]), json.loads(entry[1])
-            if original_config.get('owner') != {'type': 'project', 'id': project_id} or value.get('type') != 'user': return None
-            return value.get('text')
+            from human_context import text as human_text
+            return human_text(db,origin['sessionId'],origin['runId'],{'type':'project','id':project_id})
         yield {'config': config, 'sessionId': session_id, 'runId': run_id, 'contexts': contexts, 'verify_origin': verify_origin}
     finally:
         db.rollback(); db.close()

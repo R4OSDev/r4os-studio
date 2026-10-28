@@ -45,6 +45,8 @@ def base(config):
 
 def compose(config):
     text = base(config)
+    from input_instructions import compose as input_instructions
+    text += input_instructions(config)
     from goal_recovery import instructions as recovery_instructions
     text += recovery_instructions(config)
     from image_inputs import instructions as image_instructions

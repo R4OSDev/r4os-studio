@@ -279,6 +279,11 @@ class Worker:
             if self.row['state'] == 'stopping': self.outcome = 'interrupted'; return
             self.lease = open_lock(self.store.projects, self.store.owner_type, self.store.owner_id)
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if self.config.get('inputContractVersion')==1 and self.goal_worker:
+                from human_context import text as human_text
+                if human_text(self.store.db,self.session_id,self.run_id,self.config['owner'])!=self.config['goalExecution']['objective']:
+                    self.error='The original human Goal Play evidence changed. Preserve the run and review it.'
+                    raise __import__('store').ProjectFault(self.error,409)
             if self.store.owner_type == 'project': await self.build_snapshots.start()
             transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())})
             state = self.store.directory / self.session_id / 'Codex'

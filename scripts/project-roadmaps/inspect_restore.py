@@ -11,6 +11,7 @@ import stat
 import sys
 
 sys.path.insert(1, str(Path(__file__).resolve().parents[1] / 'projects'))
+sys.path.insert(1, str(Path(__file__).resolve().parents[1] / 'agent-sessions'))
 from cleanup_files import directory, file_hash, document, signature
 from cleanup import TRIGGER
 from schema import APPLICATION_ID, SCHEMA_VERSION
@@ -51,15 +52,9 @@ def origin_matches(project, project_id, origin):
     try:
         identity(origin['runId']); identity(origin['sessionId'])
         with database(project / 'Sessions/Sessions.sqlite', maximum=32 * 1024**3, check=False) as db:
-            rows = db.execute("""SELECT i.payload,r.config FROM items i JOIN runs r ON r.id=i.run_id
-                JOIN sessions s ON s.id=r.session_id WHERE r.id=? AND s.id=? AND s.project_id=?
-                AND i.session_id=s.id AND i.item_id LIKE 'user-%'""", (origin['runId'], origin['sessionId'], project_id))
-            for row in rows:
-                message, config = json.loads(row[0]), json.loads(row[1])
-                text = message.get('text')
-                if (message.get('type') == 'user' and isinstance(text, str) and config.get('owner') == {'type': 'project', 'id': project_id}
-                        and TRIGGER.search(text) is not None and hashlib.sha256(text.encode()).hexdigest() == origin['sha256']): return True
-            return False
+            from human_context import text as human_text
+            text=human_text(db,origin['sessionId'],origin['runId'],{'type':'project','id':project_id})
+            return isinstance(text,str) and TRIGGER.search(text) is not None and hashlib.sha256(text.encode()).hexdigest()==origin['sha256']
     except (OSError, ValueError, KeyError, TypeError, AttributeError, ProjectFault, sqlite3.Error): return False
 
 

@@ -96,12 +96,15 @@ def admit(store, session_id, data, provider_dir):
         modalities=qualify(store,session_id,session,provider_dir,attachments)
         request_hash=fingerprint(session_id,data,attachments)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
+        snapshot['inputContractVersion']=1
         if 'attachments' in data:snapshot['attachments']=attachments
         accepted=attachments+history(store,session_id)
         if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)
         if any(m['mode'] in ('text','pdfText') for m in accepted):snapshot['documentContext']=True
         if goal_mode:
-            snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective']}
+            snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective'],
+                'threadId':captured_goal['threadId'],'commandFingerprint':command['fingerprint'],
+                'captureSha256':hashlib.sha256(encode(captured_goal).encode()).hexdigest()}
             from goal_recovery import snapshot as recovery_snapshot
             recovery=recovery_snapshot(store,session_id)
             if recovery:snapshot['goalRecovery']=recovery

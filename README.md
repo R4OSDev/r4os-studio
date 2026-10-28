@@ -2984,3 +2984,17 @@ cleanup without releasing quota prematurely. Original receipts remain retained.
 Project backup/isolated restore uses the same seven sources; Skills stays excluded.
 Native histories and their additional disk usage are not cleaned or counted as
 raw upload bytes. Existing release bindings and worker file limits still apply.
+
+### Goal/input contracts and human authority (0.6.33)
+
+New runs compose a release-bound English input contract after unchanged saved
+global/project/Skill prompt sources. A human Goal Play freezes the command
+fingerprint, full objective capture hash and native thread. Worker/roadmap
+sidecars verify the original accepted human instruction; document contents and
+user-like item IDs do not establish it. Explicit Roadmap cleanup Goals can use
+the existing archive/Docs/single-rollover workflow, while ordinary implementation
+Goals cannot. Existing human message authority is checked against the original
+Send fingerprint. Offline restore uses the same readonly provenance checks.
+File manifests are lower-trust task data, preserve Send order and grant no
+Goal/tool/Remote/transfer rights. Native Goal limits and input extraction limits
+remain explicit; historical tools and saved prompt hashes remain unchanged.
