@@ -3012,3 +3012,17 @@ documents through the real broker on the same thread, alongside native
 continuation/Stop/limits/recovery. These checks use no model inference or paid
 requests. Three isolated browser groups and authenticated HTTP checks pass.
 See Docs/Goal-Attachments.md and the0.6.34 evidence matrix for scope and limits.
+
+### Browser-only private Boards foundation (0.6.35)
+
+Projects Boards use a separate private Boards/Boards.sqlite outside Workspace and
+sessions. The fixed browser adapter/API requires Projects auth, Host/Origin/CSRF,
+strict fields, parent UUIDs, revisions and durable original request IDs.
+Creation, rename/description, list ordering and readonly original receipts are
+available at /api/projects/:id/boards; the visible UI follows0.6.36. Initial
+creation supplies three empty columns. Reads/updates do not initialize boards.
+Atomic create-only storage, FULLsync, relational parent keys, feature-level
+compatibility and bounded capacity preserve existing data on uncertainty.
+No agent broker operations, tools or prompt hooks are added. Actual namespace
+checks keep private Boards files and browser credentials out of native/terminal
+views. Legacy projects require the separated Workspace layout first.

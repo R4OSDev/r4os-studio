@@ -11,6 +11,7 @@ import { projectGithubRoutes } from '../project-github/routes.js';
 import { gitHost } from '../project-github/client.js';
 import type { GitHubJob } from '../../../../shared/project-github.js';
 import { roadmapRoutes } from '../project-roadmaps/routes.js';
+import { boardRoutes } from '../project-boards/routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -48,6 +49,7 @@ function validateFields(value: unknown, allowed: string[]) {
 export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
   const sessions = new ProjectSessions();
   roadmapRoutes(app, directory, sessions);
+  boardRoutes(app, directory, sessions);
   await projectGithubRoutes(app, directory, sessions);
   editorRoutes(app, directory, sessions);
   agentSessionRoutes(app, directory, sessions, providerDirectory);
