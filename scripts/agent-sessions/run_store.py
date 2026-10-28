@@ -36,12 +36,14 @@ def get_run(store, run_id):
 
 
 def admit(store, session_id, data, provider_dir):
-    if (set(data) - {'projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools'} != {'requestId', 'revision', 'text'}
+    goal_mode = data.get('mode') == 'goal'
+    expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'}
+    if (set(data) - {'projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools'} != expected
         or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in ('projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools'))
         or (('roadmapSettings' in data or 'remoteHostTools' in data) and store.owner_type != 'project')
         or ('skillScripts' in data and data.get('skillSelection') != 1)):
         raise ProjectFault('Unexpected run fields.', 400)
-    if not isinstance(data['text'], str) or not data['text'].strip() or len(data['text'].encode()) > 65536 or '\x00' in data['text']:
+    if not goal_mode and (not isinstance(data['text'], str) or not data['text'].strip() or len(data['text'].encode()) > 65536 or '\x00' in data['text']):
         raise ProjectFault('Enter a message of at most 64 KiB.', 400)
     key = identity(data['requestId']); request_hash = hashlib.sha256(encode({'sessionId': session_id,
         **{k: v for k, v in data.items() if k not in ('projectInstructions', 'skillSelection', 'skillScripts', 'nativeWebSearch', 'roadmapSettings', 'remoteHostTools')}}).encode()).hexdigest()
@@ -55,11 +57,21 @@ def admit(store, session_id, data, provider_dir):
         if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.')
         if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone():
             raise ProjectFault('Another run is using this workspace.')
+        from goal_store import Goals, pending
+        if goal_mode:
+            command = Goals(store).command(session_id, identity(data['goalRequestId']))
+            snapshot = Goals(store).snapshot(session_id)
+            if command['state'] != 'pending' or json.loads(command['payload'])['action'] != 'play' or not snapshot['goal']:
+                raise ProjectFault('This run has no accepted Goal Play command.', 409)
+        elif pending(store) or Goals(store).snapshot(session_id)['phase']=='unknown':
+            raise ProjectFault('Reconcile the original Goal control before sending a message.', 409)
         if store.owner_type == 'project':
             from project_maintenance import pending_git
             if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
         validate_settings(session, provider_dir)
         snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
+        if goal_mode:
+            snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': Goals(store).snapshot(session_id)['goal']['objective']}
         snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
         snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
@@ -79,7 +91,8 @@ def admit(store, session_id, data, provider_dir):
         ident = str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
-        item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed'}, False)
+        if not goal_mode:
+            item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed'}, False)
         unavailable = snapshot.get('skillAccess', {}).get('unavailable', [])
         if unavailable:
             item(store, session_id, ident, {'id': 'skill-notice-' + ident, 'runId': ident, 'type': 'notice', 'status': 'completed',

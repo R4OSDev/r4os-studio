@@ -260,6 +260,8 @@ PRAGMA user_version=1;
             if previous['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before saving.')
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1', (session_id,)).fetchone():
                 raise ProjectFault('Stop or resolve the current run before changing session settings.')
+            from goal_store import pending
+            if pending(self): raise ProjectFault('Wait for the original Goal control before changing session settings.', 409)
             value = {**previous, **data}
             settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'webSearchEnabled')}
             if self.owner_type == 'project': settings['roadmapEnabled'] = value['roadmapEnabled']
@@ -296,6 +298,7 @@ PRAGMA user_version=1;
 
     def run_present(self, r):
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
+                **({'mode':'goal'} if json.loads(r['config']).get('goalExecution') else {}),
                 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}
 

@@ -62,9 +62,14 @@ class Worker:
         self.development = DevelopmentTools(self)
         from skill_tools import SkillTools
         self.skills = SkillTools(self)
+        self.goal_worker = None
+        if self.config.get('goalExecution'):
+            from goal_worker import GoalWorker
+            self.goal_worker = GoalWorker(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
+        if self.goal_worker and await self.goal_worker.notify(method, params): return
         if method == 'turn/started':
             self.turn_id = params['turn']['id']
             transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
@@ -237,6 +242,9 @@ class Worker:
 
     async def stop(self):
         self.stopping = True
+        if self.goal_worker:
+            user_stop = get_run(self.store,self.run_id)['state']=='stopping' and not self.uncertain_effect
+            await self.goal_worker.pause(origin='user' if user_stop else 'automatic')
         if 'run_remote_command' in tools_for(self.config['engine']['profile']):
             from remote_tools import RemoteTools
             await RemoteTools(self).stop_owned()
@@ -249,6 +257,7 @@ class Worker:
             self.done.set()
 
     async def cleanup(self):
+        if self.goal_worker: await self.goal_worker.close()
         if 'run_remote_command' in tools_for(self.config['engine']['profile']):
             from remote_tools import RemoteTools
             await RemoteTools(self).stop_owned()
@@ -272,7 +281,7 @@ class Worker:
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
             args, profile = prepare(binary, provider_home, state,
                                     json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE),
-                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False))
+                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker))
             from instructions import compose
             instructions = compose(self.config)
             web_search_mode = 'live' if self.config.get('webSearchEnabled') is True else 'disabled'
@@ -294,10 +303,11 @@ class Worker:
             self.client.version = self.manifest['version']
             await self.client.start()
             self.thread_id = self.store.row(self.session_id)['thread_id']
+            if self.goal_worker: await self.goal_worker.before_resume()
             # Explicit default clears a Fast tier saved by an earlier native turn.
             service_tier = 'priority' if self.config.get('fastMode', False) else 'default'
             if self.thread_id:
-                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode}})
+                try: await self.client.request('thread/resume', {'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
@@ -308,6 +318,10 @@ class Worker:
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
             if self.stopping: self.outcome = 'interrupted'; return
+            if self.goal_worker:
+                await self.goal_worker.activate()
+                await asyncio.wait_for(self.done.wait(), timeout=1800)
+                return
             self.turn_requested = True
             try:
                 result = await self.client.request('turn/start', {'threadId': self.thread_id,
@@ -331,6 +345,12 @@ class Worker:
                 self.outcome = 'unknown' if self.turn_requested else 'failed'
             self.error = self.error or 'The agent service could not confirm this run. Existing data was preserved.'
         finally:
+            if self.goal_worker:
+                if self.outcome not in ('completed',): await self.goal_worker.pause()
+                from goal_store import Goals
+                goals = Goals(self.store); rid = self.config['goalExecution']['requestId']
+                if goals.command(self.session_id, rid)['state'] == 'pending':
+                    goals.finish(self.session_id, rid, 'unknown' if self.turn_requested else 'failed', self.error or 'The original Goal activation was not confirmed.')
             await self.cleanup()
             if self.lease: self.lease.close()
             reconcile_items(self.store, self.run_id, self.outcome)
@@ -369,6 +389,8 @@ def finalize(manifest):
             state = 'interrupted' if stopped else ('failed' if row['state'] == 'queued' else 'unknown')
             reconcile_items(store, row['id'], state)
             transition(store, row['id'], state, 'Run stopped.' if stopped else 'The run service exited without a confirmed result; tool effects were not repeated.')
+            from goal_store import Goals
+            Goals(store).lost_worker(row['id'])
     finally: store.close()
 
 

@@ -1,3 +1,32 @@
+## Durable session Goal controls (0.6.24)
+
+Authenticated project and Skill-session Goal routes use additive session_goals,
+goal_commands and goal_turns tables in the existing private Sessions.sqlite.
+Native state is authoritative; observations, button intent and original receipts
+are distinct. Revision/fingerprint conflicts cannot replace another request.
+A paused controller materializes a persistent thread without turn/start, preserves
+unchanged native usage, and reads back a lost reply without resending the mutation.
+
+Play admits an owned execution with frozen settings and no invented user message.
+The native Goal activates the first turn. The worker's retained multi-turn/control
+foundation follows the same lease/release and has no turn/start continuation loop.
+Pause permits the current turn to finish. Stop pauses before the existing run stop;
+editing an active Goal pauses and fully ends that worker before applying new text.
+Empty Save clears only the binding. A native stopped status is never invented.
+Native continuation/recovery qualification follows0.6.25/27; composer UI follows26.
+
+The live control channel verifies worker PID/birth and UID, and accepts only a
+stored own command ID. It exposes no arbitrary RPC or paths. Unknown effects retain
+the original receipts, block activation, and require explicit Pause/Stop to recover.
+Coordinator restart never replays Goal commands. Lost workers remain unconfirmed.
+Existing profiles and normal one-turn feature switches remain unchanged.
+
+26 unprivileged control/regression cases and four HTTP checks pass. The actual
+pinned binary/controller saves/reads/stops/clears the same owned paused thread in
+an isolated namespace with zero accepted runs/inference. Fixture-controlled live
+Play/Pause/Stop/edit order and two native-turn notifications are separate evidence;
+this release makes no paid-model or actual native continuation qualification claim.
+
 ## Native Goal and attachment contracts (0.6.23)
 
 The qualified Codex0.163.0 Goal RPCs and notifications are recorded in

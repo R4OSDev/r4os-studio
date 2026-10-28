@@ -1,0 +1,36 @@
+import type { FastifyInstance } from 'fastify';
+import type { GoalCommand, GoalReceipt, SessionGoal } from '../../../../shared/agent-inputs.js';
+import type { ProjectSessions } from '../projects/sessions.js';
+import { agentHost } from './host.js';
+import { ProjectError } from '../projects/store.js';
+
+const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
+const params = { type: 'object', additionalProperties: false, required: ['id', 'sessionId'], properties: { id: identity, sessionId: identity } };
+type Params = { id: string; sessionId: string };
+
+export function goalRoutes(app: FastifyInstance, security: ProjectSessions, ownerType: 'project' | 'skill') {
+  const base = '/:id/sessions/:sessionId/goal';
+  const owner = (id: string) => ({ ownerType, ownerId: id });
+  app.get<{ Params: Params }>(base, { schema: { params } }, async (request, reply) => {
+    security.session(request, reply);
+    return { goal: await agentHost<SessionGoal>({ operation: 'goal', ...owner(request.params.id), sessionId: request.params.sessionId }) };
+  });
+  app.get<{ Params: Params & { requestId: string } }>(base + '/requests/:requestId', {
+    schema: { params: { ...params, required: ['id', 'sessionId', 'requestId'], properties: { ...params.properties, requestId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    return { receipt: await agentHost<GoalReceipt>({ operation: 'goal_receipt', ...owner(request.params.id), sessionId: request.params.sessionId, requestId: request.params.requestId }) };
+  });
+  app.post<{ Params: Params; Body: GoalCommand }>(base, { bodyLimit: 24 * 1024,
+    schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'action'], properties: {
+      requestId: identity, revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      action: { type: 'string', enum: ['save', 'play', 'pause', 'stop'] }, objective: { type: 'string', maxLength: 16000 },
+    } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    const support = await agentHost<{ nativeGoals?: number }>({ operation: 'capabilities' });
+    if (support.nativeGoals !== 1) throw new ProjectError('The agent coordinator must adopt Goal support first.', 503);
+    const receipt = await agentHost<GoalReceipt>({ operation: 'goal_command', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body });
+    return reply.code(receipt.state === 'pending' ? 202 : 200).send({ receipt });
+  });
+}

@@ -32,7 +32,7 @@ class Host:
     def __init__(self, config):
         self.config = config
         self.root = directory(Path(config['projects']) / '.studio/agents')
-        self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set()
+        self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
@@ -79,6 +79,10 @@ class Host:
                         transition(store, row['id'], 'unknown', 'The run ended without a confirmed result; tool effects were not repeated.')
                         from worker import reconcile_items
                         reconcile_items(store, row['id'])
+                        from goal_store import Goals
+                        Goals(store).lost_worker(row['id'])
+                from goal_store import Goals
+                if not store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone(): Goals(store).recover()
                 # Repair stale pending cards from earlier compatible releases
                 # using confirmed receipts, without replaying any tool operation.
                 finished = set()
@@ -112,13 +116,15 @@ class Host:
                     transition(store, run_id, 'unknown', 'The run service stopped without a confirmed result.')
                     from worker import reconcile_items
                     reconcile_items(store, run_id)
+                    from goal_store import Goals
+                    Goals(store).lost_worker(run_id)
                 self.active.pop(run_id, None)
             finally: store.close()
         await self.check_unbound()
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'nativeGoals': 1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -131,6 +137,23 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
+        if op in ('goal', 'goal_receipt', 'goal_command'):
+            from goal_store import Goals
+            async with self.lock:
+                store = self.store(project_id, kind)
+                try:
+                    goals = Goals(store)
+                    if op == 'goal': return goals.snapshot(session_id)
+                    if op == 'goal_receipt': return goals.receipt(session_id, identity(request['requestId']))
+                    if self.unbound: raise ProjectFault('Reconcile the original unbound workers before changing a Goal.',503)
+                    if len(self.goal_tasks) >= 2: raise ProjectFault('Goal controls are busy. Read the original request before retrying.',429)
+                    result, fresh = goals.accept(session_id, request['input'])
+                    if fresh:
+                        key=(kind,project_id,session_id,result['requestId'])
+                        task=asyncio.create_task(self.goal_command(*key)); self.goal_tasks[key]=task
+                        task.add_done_callback(lambda _, key=key: self.goal_tasks.pop(key,None))
+                    return result
+                finally: store.close()
         if op == 'events':
             store = self.store(project_id, kind)
             try: return events(store, session_id, request.get('after', 0))
@@ -145,6 +168,10 @@ class Host:
                 try:
                     # Duplicate requests are admitted idempotently even at capacity.
                     previous = store.db.execute('SELECT id FROM runs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
+                    if not previous and request['input'].get('mode') == 'goal':
+                        target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
+                        if not target.is_relative_to('/opt/r4os-studio/releases') or not (target/'scripts/agent-sessions/goal_worker.py').is_file():
+                            raise ProjectFault('This worker release has no native multi-turn Goal support.',503)
                     if not previous and request['input'].get('roadmapSettings') == 1:
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if kind != 'project' or not target.is_relative_to('/opt/r4os-studio/releases') or not (target / 'scripts/agent-sessions/roadmap_access.py').is_file():
@@ -192,6 +219,48 @@ class Host:
                 finally: store.close()
         raise ProjectFault('Unsupported agent coordinator operation.', 400)
 
+    async def goal_command(self, kind, project_id, sid, rid):
+        from goal_store import Goals
+        from goal_control import idle_control, live_control
+        store=self.store(project_id,kind); goals=Goals(store)
+        try:
+            data=json.loads(goals.command(sid,rid)['payload'])
+            if data['action']=='play':
+                session=store.get(sid)
+                run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':project_id,'sessionId':sid,
+                    'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
+                        'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,
+                        **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
+                goals.stage(sid,rid,'worker_queued')
+                with store.db: store.db.execute('UPDATE session_goals SET run_id=? WHERE session_id=?',(run['id'],sid))
+                # Worker owns activation and final Play receipt. No second RPC.
+                return
+            busy=store.db.execute('SELECT * FROM runs WHERE busy=1').fetchone()
+            if busy:
+                if busy['session_id']!=sid: raise ProjectFault('Another session is using this workspace.',409)
+                if not json.loads(busy['config']).get('goalExecution'):
+                    if data['action']!='stop': raise ProjectFault('Wait for the ordinary run to finish before changing this Goal.',409)
+                    await self.stop(project_id,sid,busy['id'],kind)
+                else:
+                    for attempt in range(30):
+                        try:
+                            await live_control(store,sid,rid)
+                            if data['action'] in ('save','stop'):
+                                await self.stop(project_id,sid,busy['id'],kind)
+                                if data['action']=='save': await idle_control(store,sid,rid,self.config['providers'])
+                                else: goals.finish(sid,rid)
+                            return
+                        except (FileNotFoundError,ConnectionRefusedError):
+                            if attempt==29: raise
+                            await asyncio.sleep(.1)
+            await idle_control(store,sid,rid,self.config['providers'])
+        except BaseException as error:
+            row=goals.command(sid,rid)
+            goals.finish(sid,rid,'failed' if row['stage']=='accepted' else 'unknown',
+                str(error) if isinstance(error,ProjectFault) else 'The original Goal command could not be confirmed. Read its result before another action.')
+            if isinstance(error,asyncio.CancelledError): raise
+        finally: store.close()
+
     async def stop(self, project_id, session_id, run_id, kind='project'):
         store = self.store(project_id, kind)
         try:
@@ -205,6 +274,14 @@ class Host:
                 if row['busy']: transition(store, run_id, 'interrupted', 'Run stopped.')
             self.active.pop(run_id, None)
             self.unbound.discard(run_id)
+            if json.loads(row['config']).get('goalExecution'):
+                from goal_store import Goals
+                goals=Goals(store);goals.lost_worker(run_id)
+                snapshot=goals.snapshot(session_id)
+                if snapshot['goal'] and snapshot['goal']['status']=='paused':
+                    with store.db:
+                        store.db.execute("UPDATE session_goals SET last_intent='stop',phase=CASE WHEN phase='pending' THEN phase ELSE 'idle' END,revision=revision+1 WHERE session_id=?",(session_id,))
+                        goals.publish(session_id)
             return store.run_present(get_run(store, run_id))
         finally: store.close()
 
@@ -251,7 +328,7 @@ async def main():
                 async with host.lock:
                     await host.refresh()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:

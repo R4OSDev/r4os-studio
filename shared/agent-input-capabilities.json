@@ -54,7 +54,7 @@
     "nativeIdleContinuation": true,
     "studioMultiTurnRunRequired": true,
     "setTokenBudget": false,
-    "publicControlAvailable": false
+    "publicControlAvailable": true
   },
   "attachments": {
     "nativeImageType": "localImage",

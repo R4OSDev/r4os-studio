@@ -121,8 +121,9 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([p['threadId'] for method, p in seen if method == 'thread/resume'], ['same-native-author-thread'])
         self.assertTrue(all('Skill Manager instructions' in p['baseInstructions'] for method, p in seen if method.startswith('thread/')))
         instructions = [p['baseInstructions'] for method, p in seen if method.startswith('thread/')]
-        self.assertTrue(instructions[0].endswith('Skill author prompt A'))
-        self.assertTrue(instructions[1].endswith('Skill author prompt B'))
+        # The frozen custom source precedes current runtime/tool guidance.
+        self.assertIn('Skill author prompt A', instructions[0]); self.assertNotIn('Skill author prompt B', instructions[0])
+        self.assertIn('Skill author prompt B', instructions[1]); self.assertNotIn('Skill author prompt A', instructions[1])
         self.assertEqual(read_prompt(self.projects), project_prompt)
         fail_resume = True; run = self.admit(); worker = Worker(self.manifest(run))
         with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
