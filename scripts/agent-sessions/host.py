@@ -110,6 +110,10 @@ class Host:
                 from goal_store import Goals
                 live_plays={json.loads(r['config']).get('goalExecution',{}).get('requestId')
                     for r in store.db.execute('SELECT * FROM runs WHERE busy=1') if r['id'] in self.active}
+                if __import__('goal_store').exists(store):
+                    for command in store.db.execute("SELECT * FROM goal_commands WHERE state='pending' AND stage!='accepted'"):
+                        target=json.loads(command['payload']).get('target')
+                        if target and target['runId'] in self.active: live_plays.add(command['request_id'])
                 Goals(store).recover(live_plays)
                 # Repair stale pending cards from earlier compatible releases
                 # using confirmed receipts, without replaying any tool operation.

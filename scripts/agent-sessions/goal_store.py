@@ -143,7 +143,7 @@ class Goals:
     def recover(self, live_plays=()):
         if not exists(self.store): return
         for row in self.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
-            if row['request_id'] in live_plays and json.loads(row['payload'])['action']=='play':continue
+            if row['request_id'] in live_plays:continue
             self.finish(row['session_id'],row['request_id'], 'failed' if row['stage']=='accepted' else 'unknown',
                         'The original Goal control process ended. No native mutation was repeated.')
 
@@ -151,6 +151,10 @@ class Goals:
         if not exists(self.store): return
         from goal_worker import end_turns
         end_turns(self.store,run_id)
+        for command in self.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
+            if json.loads(command['payload']).get('target',{}).get('runId')==run_id:
+                self.finish(command['session_id'],command['request_id'],'failed' if command['stage'] in ('accepted','worker_received') else 'unknown',
+                    'The original live Goal worker ended. No mutation or inference was repeated.')
         run=self.store.db.execute('SELECT session_id,config,state FROM runs WHERE id=?',(run_id,)).fetchone()
         if run:
             request=json.loads(run['config']).get('goalExecution',{}).get('requestId')

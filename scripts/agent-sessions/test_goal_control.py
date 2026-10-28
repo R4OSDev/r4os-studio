@@ -113,7 +113,7 @@ class GoalControlTests(unittest.IsolatedAsyncioTestCase):
         from lease import birth
         import os
         transition(w.store,w.run_id,'starting',worker={'pid':os.getpid(),'birth':birth(os.getpid()),'release':'own-fixture'})
-        self.addAsyncCleanup(w.goal_worker.close);self.addCleanup(w.store.close)
+        self.addCleanup(w.store.close);self.addAsyncCleanup(w.goal_worker.close)
         return w,native
 
     async def test_play_admits_without_fake_message_and_native_turn_end_does_not_complete_goal(self):

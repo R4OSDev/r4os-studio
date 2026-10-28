@@ -26,6 +26,7 @@ class GoalWorker:
         self.dormant=dormant
         self.activation=worker.config.get('goalExecution')
         self.live_active_seen=False
+        self.handlers=set()
         self.goals.schema()
         with worker.store.db:
             worker.store.db.execute('''CREATE TABLE IF NOT EXISTS goal_turns(
@@ -119,7 +120,14 @@ class GoalWorker:
         w.store.db.execute('BEGIN IMMEDIATE')
         try:
             pending=w.store.db.execute("SELECT payload FROM goal_commands WHERE session_id=? AND state='pending'",(w.session_id,)).fetchall()
-            if any(json.loads(r['payload']).get('target',{}).get('runId')==w.run_id for r in pending): return True
+            if any(json.loads(r['payload']).get('target',{}).get('runId')==w.run_id for r in pending):
+                # The coordinator may disappear before delivery. Revisit only
+                # original status; this watcher never submits a native command.
+                async def revisit():
+                    await asyncio.sleep(.2)
+                    self.evaluate_later()
+                task=asyncio.create_task(revisit());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
+                return True
             row=w.store.db.execute('SELECT worker FROM runs WHERE id=?',(w.run_id,)).fetchone()
             meta=json.loads(row['worker'] or '{}');meta['liveGoalOpen']=False
             w.store.db.execute('UPDATE runs SET worker=? WHERE id=?',(encode(meta),w.run_id))
@@ -207,6 +215,7 @@ class GoalWorker:
     async def control(self,reader,writer):
         if len(self.clients)>=4: writer.close();return
         self.clients.add(writer);w=self.worker
+        handler=asyncio.current_task();self.handlers.add(handler)
         try:
             peer=writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12)
             if struct.unpack('3i',peer)[1] not in (0,os.getuid()): raise ProjectFault('Goal control peer is not authorized.',403)
@@ -239,6 +248,7 @@ class GoalWorker:
             try: await writer.drain()
             except Exception: pass
         finally:
+            self.handlers.discard(handler)
             self.clients.discard(writer);writer.close()
             try: await writer.wait_closed()
             except Exception: pass
@@ -254,6 +264,9 @@ class GoalWorker:
         # Once a native mutation has been submitted, a repeated delivery may
         # only read its original receipt. Recovery never repeats the mutation.
         if row['stage']!='accepted': return
+        with w.store.db:
+            claimed=w.store.db.execute("UPDATE goal_commands SET stage='worker_received' WHERE request_id=? AND state='pending' AND stage='accepted'",(rid,)).rowcount
+        if not claimed:return
         from goal_live import LiveGoals
         from goal_contract import save_params
         from goal_control import matches
@@ -287,14 +300,24 @@ class GoalWorker:
                 self.goals.finish(w.session_id,rid,phase='idle' if self.idle.is_set() or command['action']!='pause' else 'pausing')
         except Exception as error:
             latest=self.goals.command(w.session_id,rid)
-            self.goals.finish(w.session_id,rid,'failed' if latest['stage']=='accepted' else 'unknown',str(error) if isinstance(error,ProjectFault) else 'The original live command could not be confirmed. It was not repeated.')
-            if command['action']=='play' and latest['stage']!='accepted': w.uncertain_effect=True;w.defer_stop()
+            self.goals.finish(w.session_id,rid,'failed' if latest['stage'] in ('accepted','worker_received') else 'unknown',str(error) if isinstance(error,ProjectFault) else 'The original live command could not be confirmed. It was not repeated.')
+            if command['action']=='play' and latest['stage'] not in ('accepted','worker_received'): w.uncertain_effect=True;w.defer_stop()
         finally:
             self.activating=False;self.evaluate_later()
 
     async def close(self):
+        if self.closed:return
         self.closed=True
         if self.server: self.server.close();await self.server.wait_closed()
         for writer in tuple(self.clients): writer.close()
+        handlers=self.handlers-{asyncio.current_task()}
+        for handler in handlers: handler.cancel()
+        if handlers: await asyncio.gather(*handlers,return_exceptions=True)
         for task in tuple(self.tasks): task.cancel()
         if self.tasks: await asyncio.gather(*self.tasks,return_exceptions=True)
+
+    def finish_pending(self):
+        for row in self.worker.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
+            if json.loads(row['payload']).get('target',{}).get('runId')==self.worker.run_id:
+                self.goals.finish(self.worker.session_id,row['request_id'],'failed' if row['stage'] in ('accepted','worker_received') else 'unknown',
+                    'The original worker closed before this command was confirmed. Nothing was repeated.')

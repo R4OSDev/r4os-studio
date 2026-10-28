@@ -23,8 +23,8 @@ class LiveGoalTests(unittest.IsolatedAsyncioTestCase):
             run,_=admit(store,self.sid,{**self.data,'liveGoalPreparation':1},self.providers)
         w=Worker({'projects':str(self.projects),'r4os':str(self.r4os),'projectId':self.pid,'runId':run['id'],'release':'own-fixture'})
         w.client=native;w.thread_id=native.thread
-        transition(w.store,w.run_id,'running',turn_id='current-turn',worker={'liveGoalPreparation':1,'liveGoalControl':1,'liveGoalOpen':True,'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())})
-        self.addAsyncCleanup(w.goal_worker.close);self.addCleanup(w.store.close)
+        transition(w.store,w.run_id,'running',turn_id='current-turn',worker={'liveGoalPreparation':1,'liveGoalControl':1,'liveGoalOpen':True,'release':'own-fixture','pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())})
+        self.addCleanup(w.store.close);self.addAsyncCleanup(w.goal_worker.close)
         await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'current-turn'}})
         return w,native
 
@@ -107,3 +107,94 @@ class LiveGoalTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(w.done.is_set())
         with self.assertRaises(ProjectFault):await self.live(w,'play')
         self.assertEqual(native.goal['status'],'paused')
+
+    async def test_recovery_keeps_only_claimed_original_command_and_never_replays(self):
+        w,native=await self.prepared();goals=Goals(w.store)
+        def command():return {'requestId':str(uuid.uuid4()),'revision':goals.snapshot(self.sid)['revision'],'action':'play','sessionRevision':1,'target':{'runId':w.run_id,'threadId':w.thread_id,'turnId':w.turn_id}}
+        first=command();goals.accept(self.sid,first);goals.recover()
+        self.assertEqual(goals.receipt(self.sid,first['requestId'])['state'],'failed')
+        second=command();goals.accept(self.sid,second);goals.stage(self.sid,second['requestId'],'native_live_mutation')
+        goals.recover({second['requestId']});self.assertEqual(goals.receipt(self.sid,second['requestId'])['state'],'pending')
+        transition(w.store,w.run_id,'unknown');goals.lost_worker(w.run_id)
+        self.assertEqual(goals.receipt(self.sid,second['requestId'])['state'],'unknown')
+        self.assertFalse(any(p.get('status')=='active' for _,p in native.calls))
+
+    async def test_live_goal_human_context_rejects_corrupted_capture_and_older_run(self):
+        from human_context import contexts
+        w,native=await self.prepared();await w.goal_worker.start_control()
+        receipt,data=await self.live(w,'play');owner={'type':'project','id':self.pid}
+        self.assertIn('Own Goal',[c['text'] for c in contexts(w.store.db,self.sid,w.run_id,owner)])
+        self.assertNotIn('Own Goal',[c['text'] for c in contexts(w.store.db,self.sid,'different-current-run',owner)])
+        with w.store.db:w.store.db.execute("UPDATE goal_activations SET capture_hash='corrupt' WHERE request_id=?",(data['requestId'],))
+        self.assertNotIn('Own Goal',[c['text'] for c in contexts(w.store.db,self.sid,w.run_id,owner)])
+
+    async def test_stop_during_activation_keeps_original_receipt_without_second_effect(self):
+        from goal_control import live_control
+        w,native=await self.prepared();await w.goal_worker.start_control();goals=Goals(w.store)
+        original=native.request;arrived=asyncio.Event();release=asyncio.Event()
+        async def delayed(method,params,**kwargs):
+            result=await original(method,params,**kwargs)
+            if method=='thread/goal/set' and params.get('status')=='active':arrived.set();await release.wait()
+            return result
+        native.request=delayed
+        data={'requestId':str(uuid.uuid4()),'revision':goals.snapshot(self.sid)['revision'],'action':'play','sessionRevision':1,'target':{'runId':w.run_id,'threadId':w.thread_id,'turnId':w.turn_id}}
+        goals.accept(self.sid,data);task=asyncio.create_task(live_control(w.store,self.sid,data['requestId']))
+        await asyncio.wait_for(arrived.wait(),1)
+        transition(w.store,w.run_id,'stopping');await w.stop();release.set()
+        receipt=await task;self.assertIn(receipt['state'],('unknown','confirmed'))
+        self.assertEqual(native.goal['status'],'paused');self.assertTrue(w.stopping)
+        self.assertEqual(sum(m=='thread/goal/set' and p.get('status')=='active' for m,p in native.calls),1)
+
+    async def test_original_identity_change_blocks_control_before_mutation(self):
+        from goal_control import live_control
+        import json
+        w,native=await self.prepared();await w.goal_worker.start_control();goals=Goals(w.store)
+        data={'requestId':str(uuid.uuid4()),'revision':goals.snapshot(self.sid)['revision'],'action':'play','sessionRevision':1,'target':{'runId':w.run_id,'threadId':w.thread_id,'turnId':w.turn_id}}
+        goals.accept(self.sid,data);meta=json.loads(get_run(w.store,w.run_id)['worker']);meta['birth']='other-process'
+        transition(w.store,w.run_id,'running',worker=meta)
+        with self.assertRaises(ProjectFault):await live_control(w.store,self.sid,data['requestId'])
+        self.assertEqual(native.goal['status'],'paused')
+
+    @unittest.skipIf(os.getuid()!=0,'Existing backup script is root-readable.')
+    async def test_existing_backup_restore_preserves_live_play_ledger_without_replay(self):
+        import json,shutil,sys
+        from pathlib import Path
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from contextlib import closing
+        from unittest.mock import patch
+        from session_store import SessionStore
+        w,native=await self.prepared();await w.goal_worker.start_control()
+        receipt,data=await self.live(w,'play');await w.stop()
+        sys.path.insert(1,str(Path(__file__).resolve().parents[3]/'Tools/Backup'))
+        import backup
+        from restore import restore
+        root=self.root/'owned-backup';root.mkdir()
+        for source in backup.SOURCES:
+            path=root/source
+            if source=='AGENTS.md':path.write_text('Owned Live Goal backup')
+            else:path.mkdir(parents=True,exist_ok=True)
+        shutil.copytree(self.projects,root/'App/Data/Projects',dirs_exist_ok=True)
+        paths=backup.Paths(root,self.root/'mount',self.root/'mount/backup',self.root/'backup-state',self.root/'backup.lock');paths.mount.mkdir()
+        result=backup.run(paths,lambda _:('owned-mount',),datetime(2026,10,28,4,tzinfo=ZoneInfo('Europe/Berlin')))
+        restored=self.root/'restored';restore(paths.destination/result['archive'],restored)
+        with closing(SessionStore(restored/'App/Data/Projects',self.r4os,self.pid)) as store:
+            proof=LiveGoals(store).evidence(self.sid,data['requestId'])
+            self.assertEqual(proof['goal']['objective'],'Own Goal')
+            self.assertEqual(Goals(store).receipt(self.sid,data['requestId']),receipt)
+        self.assertEqual(sum(m=='thread/goal/set' and p.get('status')=='active' for m,p in native.calls),1)
+
+    async def test_coordinator_reconstruction_recognizes_originally_normal_live_goal_worker(self):
+        from host import Host
+        from unittest.mock import AsyncMock,patch
+        w,native=await self.prepared();await w.goal_worker.start_control();receipt,data=await self.live(w,'play')
+        host=Host({'projects':str(self.projects),'r4os':str(self.r4os),'providers':str(self.providers),'uid':os.getuid()})
+        record=host.root/w.run_id;record.mkdir();(record/'worker.json').write_text('{}')
+        meta={'projectId':self.pid,'sessionId':self.sid,'runId':w.run_id,'release':'own-fixture'}
+        control=AsyncMock(return_value=str(os.getpid()))
+        with patch.object(host,'metadata',return_value=meta),patch.object(host,'active_unit',AsyncMock(return_value=True)),patch.object(host,'check_unbound',AsyncMock()),patch('host.systemctl',control):
+            await host.recover()
+        self.assertEqual(host.active[w.run_id],meta)
+        self.assertEqual(Goals(w.store).receipt(self.sid,data['requestId'])['state'],'confirmed')
+        self.assertEqual(get_run(w.store,w.run_id)['state'],'running')
+        self.assertTrue(all(call.args[0]=='show' for call in control.call_args_list))

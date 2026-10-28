@@ -3608,3 +3608,5 @@ limits remain in Docs/Project-Boards.md and local0.6.41 acceptance records.
 0.7.7 enables explicit live Goal Save/Play through the original worker control channel. Save stays paused; Play preserves native usage and the original run snapshot. Acceptance and terminal completion share a database fence; lost replies are read, never resubmitted as another run. Original Codex protocol fixtures demonstrate native continuation after the initial ordinary turn.
 
 0.7.8 exposes live Goal editing, paused Save and explicit Play in the browser. Matching worker capability and run/thread/turn binding are required. Original receipt recovery preserves drafts and prevents duplicate activation; Stop remains reachable in the editor.
+
+0.7.9 completes live Goal recovery and authorization. Worker identity and claimed original commands survive coordinator reconstruction; unknown effects are never replayed. Captured live Play adds verifiable current human intent without changing the ordinary request. Backup/restore preserves its ledger; draft, Stop, queue and native usage behavior are qualified with isolated fixtures.
