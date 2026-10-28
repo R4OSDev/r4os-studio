@@ -91,4 +91,27 @@ class Imports(unittest.IsolatedAsyncioTestCase):
         for options in ({'width':True},{'background':None},{'background':'url(http://invalid)'},{'fit':'stretch'}):
             with self.assertRaises(ProjectFault):validate({**self.args,'format':'png','options':options})
 
+    async def test_existing_sdk_asset_spelling_and_case_collisions(self):
+        root=self.worker.store.workspace/'assets';root.mkdir();(root/'note.txt').write_text('Original SDK note')
+        result=await self.call();self.assertEqual(result['generatedAsset']['path'],'assets/Image.png')
+        self.assertFalse((self.worker.store.workspace/'Assets').exists())
+        with self.assertRaises(ProjectFault):await self.call({**self.args,'path':'ASSETS/image.PNG'},'case-only-target')
+        self.assertEqual((root/'note.txt').read_text(),'Original SDK note')
+        (self.worker.store.workspace/'Assets').mkdir()
+        with self.assertRaises(ProjectFault):await self.call({**self.args,'path':'Assets/other.png'},'ambiguous-root')
+        self.assertFalse((self.worker.store.workspace/'Assets/other.png').exists())
+
+    async def test_original_published_import_recovers_without_replaying_and_preserves_user_edits(self):
+        from image_recovery import reconcile_imports
+        params={'threadId':self.worker.thread_id,'turnId':self.worker.turn_id,'namespace':None,'tool':'studio_import_generated_image','callId':'owned-import','arguments':self.args}
+        first=await self.worker.tool(params);self.assertTrue(first['success'])
+        first=json.loads(self.worker.store.db.execute("SELECT result FROM tools WHERE call_id='owned-import'").fetchone()[0]);path=self.worker.store.workspace/first['generatedAsset']['path'];inode=path.stat().st_ino
+        with self.worker.store.db:self.worker.store.db.execute("UPDATE tools SET state='unknown',result=NULL WHERE call_id='owned-import'")
+        reconcile_imports(self.worker.store,self.sid);row=self.worker.store.db.execute("SELECT * FROM tools WHERE call_id='owned-import'").fetchone()
+        self.assertEqual(row['state'],'completed');self.assertTrue(json.loads(row['result'])['generatedAsset']);self.assertEqual(path.stat().st_ino,inode)
+        path.write_bytes(b'User edit after import')
+        with self.worker.store.db:self.worker.store.db.execute("UPDATE tools SET state='unknown',result=NULL WHERE call_id='owned-import'")
+        reconcile_imports(self.worker.store,self.sid)
+        self.assertEqual(path.read_bytes(),b'User edit after import');self.assertIsNone(self.worker.store.db.execute("SELECT result FROM tools WHERE call_id='owned-import'").fetchone()[0])
+
 if __name__=='__main__':unittest.main()

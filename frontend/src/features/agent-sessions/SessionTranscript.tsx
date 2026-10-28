@@ -8,6 +8,7 @@ import { WebSearchCard } from './WebSearchCard';
 import { roadmapLabels, RoadmapReceipt } from './RoadmapReceipt';
 import { RemoteReceipt } from './RemoteReceipt';
 import { AttachmentHistory } from './AttachmentHistory';
+import { GeneratedCard } from './GeneratedImage';
 
 type ToolEntry = { item: SessionItem; jobId?: string };
 type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolEntry[] }
@@ -23,9 +24,9 @@ function GitHubReceipt({ value }: { value: unknown }) {
     {typeof ref.commit === 'string' && /^[a-f0-9]{40,64}$/.test(ref.commit) && <div><dt>Commit</dt><dd>{ref.commit.slice(0, 12)}</dd></div>}</dl>;
 }
 
-function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projectId: string; token: string }) {
+function ToolCallBlock({ tools, projectId, sessionId, token }: { tools: ToolEntry[]; projectId: string; sessionId: string; token: string }) {
   const { scope } = useSessionApi();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false), [opened, setOpened] = useState<Set<string>>(() => new Set());
   const listId = useId(), list = useRef<HTMLDivElement>(null), follow = useRef(true);
   useLayoutEffect(() => {
     if (follow.current && list.current) list.current.scrollTop = list.current.scrollHeight;
@@ -47,9 +48,10 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
     <div className="agent-tool-list" id={listId} ref={list} tabIndex={0} role="group" aria-label="Tool calls"
       onScroll={(event) => { const element = event.currentTarget; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24; }}>
       {tools.map(({ item: i, jobId }) => <details key={itemKey(i)} className={`agent-tool ${i.status ?? ''}`}
-        onToggle={(event) => { if (event.currentTarget.open) { follow.current = false; setExpanded(true); } }}>
+        onToggle={(event) => { const active = event.currentTarget.open; setOpened(previous => { const next = new Set(previous); if (active) next.add(itemKey(i)); else next.delete(itemKey(i)); return next; }); if (active) { follow.current = false; setExpanded(true); } }}>
         <summary><span title={toolLabel(i)}>{toolLabel(i)}</span><span className="agent-tool-status">{i.status}</span></summary>
         {i.tool === 'web_search' ? <WebSearchCard value={i.webSearch} /> : <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />}
+        {opened.has(itemKey(i)) && (i.tool === 'image_gen.imagegen' || i.generatedAsset) && <GeneratedCard value={i.generatedImage} asset={i.generatedAsset} projectId={projectId} sessionId={sessionId} status={i.status} />}
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}
@@ -75,7 +77,6 @@ function ToolCallBlock({ tools, projectId, token }: { tools: ToolEntry[]; projec
 }
 
 export function SessionTranscript({ items, projectId, sessionId, token }: { items: SessionItem[]; projectId: string; sessionId: string; token: string }) {
-  const { scope } = useSessionApi();
   const entries: TranscriptEntry[] = [], jobs = new Set<string>();
   for (const item of items) {
     const key = itemKey(item);
@@ -89,10 +90,10 @@ export function SessionTranscript({ items, projectId, sessionId, token }: { item
     } else entries.push({ kind: 'message', key, item });
   }
   return entries.map((entry) => entry.kind === 'tools'
-    ? <ToolCallBlock key={entry.key} tools={entry.tools} projectId={projectId} token={token} />
+    ? <ToolCallBlock key={entry.key} tools={entry.tools} projectId={projectId} sessionId={sessionId} token={token} />
     : <article key={entry.key} className={`agent-message ${entry.item.type}`}>
       {entry.item.type !== 'notice' && <div className="agent-message-role">{entry.item.type === 'user' ? 'You' : 'Agent'}</div>}
-      <MessageText text={entry.item.text || (entry.item.type === 'user' && Array.isArray(entry.item.attachments) ? `${entry.item.attachments.length} attachment${entry.item.attachments.length === 1 ? '' : 's'}` : '')} markdown={entry.item.type === 'assistant'} projectId={scope === 'project' ? projectId : undefined} sessionId={sessionId} />
+      <MessageText text={entry.item.text || (entry.item.type === 'user' && Array.isArray(entry.item.attachments) ? `${entry.item.attachments.length} attachment${entry.item.attachments.length === 1 ? '' : 's'}` : '')} markdown={entry.item.type === 'assistant'} projectId={projectId} sessionId={sessionId} />
       {entry.item.type === 'user' && Array.isArray(entry.item.attachments) && <AttachmentHistory files={entry.item.attachments} projectId={projectId} sessionId={sessionId} />}
     </article>);
 }

@@ -328,7 +328,12 @@ def operation(projects, r4os, provider_dir, request):
         if op == 'create': return store.create(request['input'], provider_dir)
         if op == 'get': return store.get(request['sessionId'])
         if op == 'update': return store.update(request['sessionId'], request['input'], provider_dir)
-        if op == 'history': return store.history(request['sessionId'], request.get('before'), request.get('limit', 50))
+        if op == 'history':
+            try:
+                from image_recovery import reconcile
+                reconcile(store,request['sessionId'])
+            except Exception:pass  # Original unknown items/data remain; never replay effects.
+            return store.history(request['sessionId'], request.get('before'), request.get('limit', 50))
         raise ProjectFault('Unsupported session operation.', 400)
     finally: store.close()
 

@@ -64,4 +64,17 @@ class Generated(unittest.TestCase):
         rpc=CodexRPC([],None,None);self.assertEqual(rpc.inbound_limit,1048576);rpc.inbound_limit=RPC_IMAGE_LIMIT
         self.assertGreater(RPC_IMAGE_LIMIT,4*((MAX_IMAGE+2)//3));self.assertLessEqual(RPC_IMAGE_LIMIT,32*1024*1024)
 
+    def test_palette_transparency_reports_used_alpha_and_owner_quota_charges_orphan_native_files(self):
+        with self.open() as store:
+            run,_=admit(store,self.sid,self.data,self.providers);images=GeneratedImages(store,self.sid)
+            palette=Image.new('P',(2,2),0);palette.putpalette([255,0,0,0,255,0]+[0]*762)
+            out=io.BytesIO();palette.save(out,format='PNG',transparency=1)
+            opaque=images.accept(run['id'],'own-thread',{**self.native(out.getvalue()),'id':'opaque','savedPath':None});self.assertFalse(opaque['transparent'])
+            palette.putpixel((0,0),1);out=io.BytesIO();palette.save(out,format='PNG',transparency=1)
+            alpha=images.accept(run['id'],'own-thread',{**self.native(out.getvalue()),'id':'alpha','savedPath':None});self.assertTrue(alpha['transparent'])
+            orphan=store.directory/str(uuid.uuid4())/'GeneratedImages/Native';orphan.mkdir(parents=True);(orphan/'unconfirmed.png').write_bytes(b'x'*1024)
+            with patch('generated_images.MAX_OWNER',1000):
+                with self.assertRaises(ProjectFault):images.check_capacity()
+            self.assertEqual((orphan/'unconfirmed.png').stat().st_size,1024)
+
 if __name__=='__main__':unittest.main()

@@ -48,7 +48,7 @@ function useImage(endpoint: string) {
   return state?.endpoint === endpoint ? state : null;
 }
 
-function ImageDialog({ url, alt, filename, close }: { url: string; alt: string; filename: string; close: () => void }) {
+export function ImageDialog({ url, alt, filename, close }: { url: string; alt: string; filename: string; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null), title = useId();
   const [actual, setActual] = useState(false);
   useEffect(() => {

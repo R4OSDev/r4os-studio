@@ -1,3 +1,31 @@
+## Generated-image history and recovery (0.6.48)
+
+Completed native image outputs have private, authenticated PNG previews and
+original downloads in the transcript, with dimensions, transparency and hashes.
+Expanded import cards show the actual project path and converted format. Inline
+replies may use the exact `presentation.markdown` returned by the image tools.
+Media references are bound to the current owner and session; opening a preview
+or reloading history never requests generation or repeats an import.
+
+Recovery reads only the original pinned-native completed receipt and original
+published import journal. It checks session/thread/run/turn/item identity and
+existing target hashes; unknown or user-edited targets stay preserved. A failed
+image generation or usage limit pauses Goal continuation, and Stop keeps the RPC
+reader available for the pause/interrupt replies. Outputs are reused from their
+confirmed IDs, not attached automatically as a new user reference. Existing
+image history retains its bounded image readback when generation is switched OFF.
+
+Import resolves the unique existing spelling of `Assets`, including the SDK's
+`assets` folder, and rejects ambiguous case collisions. Private capacity charges
+native files, validated originals and pending conversion stages across the owner.
+A full image store disables new generation without changing the saved setting.
+Imported assets remain ordinary Workspace/Git sources. Private originals and
+journals are outside Workspace and are included in the existing Projects backup;
+Skills data remains outside the explicitly selected seven-source backup scope.
+Backup uses online SQLite copies and stable files, not a global cross-file snapshot.
+Confirmed project deletion removes its private image data; there is no separate
+session-delete feature. No real provider inference was used for qualification.
+
 ## Agent image workflow and readonly knowledge (0.6.47)
 
 A current English run contract explains the real native tool, confirmed Studio

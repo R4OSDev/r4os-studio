@@ -7,6 +7,7 @@ import { ProjectError } from '../projects/store.js';
 import type { DevelopmentJobPage } from '../../../../shared/project-development.js';
 import { agentHost } from './host.js';
 import { attachmentRoutes } from './attachment-routes.js';
+import { generatedRoutes } from './generated-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -20,6 +21,7 @@ type SessionParams = { id: string; sessionId: string };
 
 export function agentSessionRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, providers?: string, ownerType: 'project' | 'skill' = 'project') {
   attachmentRoutes(app, directory, security, ownerType, providers);
+  generatedRoutes(app, directory, security, ownerType);
   const route = '/:id/sessions';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
   if (ownerType === 'project') app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {

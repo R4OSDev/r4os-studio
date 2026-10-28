@@ -18,6 +18,21 @@ MAX_IMAGES=128
 MAX_RUN_IMAGES=8
 RPC_IMAGE_LIMIT=24*1024*1024
 
+def public(meta,sid):
+    fields=('id','sessionId','runId','threadId','itemId','sha256','size','mediaType','width','height','transparent','createdAt')
+    try:
+        result={key:meta[key] for key in fields}
+        if result['sessionId']!=sid or any(identity(result[key])!=result[key] for key in ('id','sessionId','runId')):raise ValueError()
+        if any(not isinstance(result[key],str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}',result[key]) for key in ('threadId','itemId')):raise ValueError()
+        if (not re.fullmatch('[a-f0-9]{64}',result['sha256']) or type(result['size']) is not int or not 0<result['size']<=MAX_IMAGE
+                or result['mediaType']!='image/png' or type(result['transparent']) is not bool
+                or any(type(result[key]) is not int or not 0<result[key]<=16384 for key in ('width','height'))
+                or result['width']*result['height']>40_000_000 or not isinstance(result['createdAt'],str) or len(result['createdAt'])>64):raise ValueError()
+        reference='studio-generated-image:'+result['id']
+        result['presentation']={'reference':reference,'markdown':'![Generated image]('+reference+')'}
+        return result
+    except (KeyError,TypeError,ValueError):raise ProjectFault('The generated-image metadata needs review. Original data was preserved.',503) from None
+
 class GeneratedImages:
     def __init__(self,store,sid):self.store=store;self.sid=identity(sid);store.row(self.sid)
     def exists(self):return self.store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='generated_images'").fetchone() is not None
@@ -31,18 +46,38 @@ class GeneratedImages:
     def native_root(self):return directory(self.root()/'Native')
     def rows(self):
         return self.store.db.execute('SELECT * FROM generated_images WHERE session_id=? ORDER BY created_at,id',(self.sid,)).fetchall() if self.exists() else []
-    def list(self):return [json.loads(row['metadata']) for row in self.rows()]
+    def list(self):return [public(json.loads(row['metadata']),self.sid) for row in self.rows()]
     def get(self,ident):
         ident=identity(ident)
         row=self.store.db.execute('SELECT * FROM generated_images WHERE id=? AND session_id=?',(ident,self.sid)).fetchone() if self.exists() else None
         if not row:raise ProjectFault('Generated image not found in this session.',404)
-        return json.loads(row['metadata'])
+        return public(json.loads(row['metadata']),self.sid)
     def path(self,ident):
         meta=self.get(ident);path=regular(self.root()/(ident+'.image'));st=path.stat()
         if st.st_nlink!=1 or st.st_uid!=os.getuid() or st.st_size!=meta['size'] or not 0<st.st_size<=MAX_IMAGE or hashlib.sha256(path.read_bytes()).hexdigest()!=meta['sha256']:
             raise ProjectFault('The original generated image is missing or changed. It was preserved and was not regenerated.',409)
         return path
+    def owner_disk_usage(self):
+        # Charge confirmed copies, native originals and unconfirmed conversion
+        # stages across this owner, not only database rows. Never follow links.
+        total=files=directories=0
+        for session in self.store.directory.iterdir():
+            if not re.fullmatch(r'[a-f0-9-]{36}',session.name):continue
+            root=session/'GeneratedImages'
+            if not root.exists() and not root.is_symlink():continue
+            if session.resolve(strict=True)!=session or root.resolve(strict=True)!=root or not root.is_dir():raise ProjectFault('Unexpected private image owner storage.',409)
+            for parent,children,names in os.walk(root,followlinks=False):
+                directories+=1
+                if directories>4096:raise ProjectFault('Private image storage exceeds the directory bound.',413)
+                for name in children:
+                    if (Path(parent)/name).is_symlink():raise ProjectFault('Unexpected private image storage link.',409)
+                for name in names:
+                    path=regular(Path(parent)/name);info=path.stat();files+=1;total+=info.st_size
+                    if info.st_uid!=os.getuid() or info.st_nlink!=1 or files>8192 or total>MAX_OWNER:raise ProjectFault('The owner private image storage limit was reached. Original files were retained.',413)
+        return total
+
     def check_capacity(self,run_id=None):
+        self.owner_disk_usage()
         rows=self.rows();own=0
         for path in self.root().iterdir():
             if path.name in ('Native','Imports'):
@@ -86,9 +121,9 @@ class GeneratedImages:
         if previous:
             meta=json.loads(previous[0])
             if meta['sha256']!=hashed:raise ProjectFault('The original image item changed its bytes. Both native records were preserved.',409)
-            self.path(meta['id']);return meta
+            self.path(meta['id']);return public(meta,self.sid)
         own,total=self.check_capacity(run_id)
-        if own+len(data)>MAX_SESSION or total+len(data)>MAX_OWNER:raise ProjectFault('Generated image storage limit reached; original native data retained.',413)
+        if own+len(data)>MAX_SESSION or total+len(data)>MAX_OWNER or self.owner_disk_usage()+len(data)>MAX_OWNER:raise ProjectFault('Generated image storage limit reached; original native data retained.',413)
         image_id=str(uuid.uuid5(uuid.UUID(self.sid),thread_id+':'+ident));root=self.root();path=root/(image_id+'.image');temporary=root/(image_id+'.pending')
         created_temporary=False
         try:
@@ -111,7 +146,7 @@ class GeneratedImages:
             sync(root)
             with self.store.db:
                 self.store.db.execute('INSERT INTO generated_images VALUES(?,?,?,?,?,?,?)',(image_id,self.sid,run_id,thread_id,ident,encode(meta),meta['createdAt']))
-            return meta
+            return public(meta,self.sid)
         except Exception:
             # A fully published orphan is retained for read-only reconciliation, never regenerated.
             if created_temporary and temporary.exists():temporary.unlink()

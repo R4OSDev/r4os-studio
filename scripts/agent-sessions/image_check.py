@@ -21,7 +21,7 @@ def main():
         if getattr(image,'n_frames',1)!=1:raise InputFault('Animated images are not supported. Attach one still frame.')
         image.verify()
     with Image.open('/input',formats=['PNG','JPEG','WEBP']) as image:
-        image.load();transparent=('A' in image.getbands() and image.getchannel('A').getextrema()[0]<255) or 'transparency' in image.info
+        image.load();transparent=image.convert('RGBA').getchannel('A').getextrema()[0]<255
     print(json.dumps({'mediaType':{'PNG':'image/png','JPEG':'image/jpeg','WEBP':'image/webp'}[kind],
         'width':width,'height':height,'transparent':bool(transparent),'mode':'localImage','decoder':'Pillow '+__version__}))
 

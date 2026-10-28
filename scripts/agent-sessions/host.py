@@ -93,6 +93,10 @@ class Host:
                     else:
                         transition(store, row['id'], 'unknown', 'The run ended without a confirmed result; tool effects were not repeated.')
                         from worker import reconcile_items
+                        try:
+                            from image_recovery import reconcile
+                            reconcile(store,row['session_id'],row['id'],finalizing=True)
+                        except Exception:pass
                         reconcile_items(store, row['id'])
                         from goal_store import Goals
                         Goals(store).lost_worker(row['id'])

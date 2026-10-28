@@ -5,6 +5,8 @@ import Markdown, { defaultUrlTransform } from 'react-markdown';
 import type { Components } from 'react-markdown';
 import type { UrlTransform } from 'react-markdown';
 import { ReplyImage, replyImageReference } from './ReplyImage';
+import { GeneratedPreview, generatedReference } from './GeneratedImage';
+import { useSessionApi } from './api';
 
 // Render a text transcript, never a live terminal. In particular OSC 52 must
 // never alter the browser clipboard or survive a user copying visible output.
@@ -53,8 +55,10 @@ export function CodeBlock({ text, label = 'Copy code', language = '' }: { text: 
 
 const imageScope = createContext<{ projectId: string; sessionId: string } | null>(null);
 function MarkdownImage({ src, alt }: { src?: string | Blob; alt?: string }) {
-  const scope = useContext(imageScope), image = typeof src === 'string' ? replyImageReference(src) : null;
-  return scope && image ? <ReplyImage {...scope} {...image} alt={alt ?? ''} />
+  const { scope: ownerType } = useSessionApi();
+  const scope = useContext(imageScope), generated = typeof src === 'string' ? generatedReference(src) : null, image = typeof src === 'string' ? replyImageReference(src) : null;
+  if (scope && generated) return <GeneratedPreview {...scope} imageId={generated} alt={alt} />;
+  return scope && ownerType === 'project' && image ? <ReplyImage {...scope} {...image} alt={alt ?? ''} />
     : <span className="agent-image-alt">{alt || 'Image unavailable.'}</span>;
 }
 function containsImage(children: ReactNode): boolean {
@@ -62,7 +66,7 @@ function containsImage(children: ReactNode): boolean {
     && (child.type === MarkdownImage || containsImage(child.props.children)));
 }
 const messageUrl: UrlTransform = (value, key, node) => key === 'src' && node.tagName === 'img'
-  ? (replyImageReference(value) ? value : '') : defaultUrlTransform(value);
+  ? (replyImageReference(value) || generatedReference(value) ? value : '') : defaultUrlTransform(value);
 const components: Components = {
   pre({ children }) {
     const code = isValidElement<{ children?: ReactNode; className?: string }>(children) ? children.props : {};

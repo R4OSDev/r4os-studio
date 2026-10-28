@@ -41,6 +41,13 @@ async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bri
     model=next((value for value in provider_models(provider_dir,session['providerId']) if value['id']==session['model']),None)
     fallback=evaluate(session,model,None,None,session['engine'],bridge)
     if fallback['state']=='unavailable' or not model:return fallback
+    from generated_images import GeneratedImages
+    try:GeneratedImages(store,sid).check_capacity()
+    except (ProjectFault,ValueError,OSError) as error:
+        return {**fallback,'state':'unavailable','available':False,'reason':str(error) if isinstance(error,ProjectFault) else 'Private image storage requires review. Original files were preserved.'}
+    history=store.directory/sid/'Codex/native'
+    if history.exists() and any(path.stat().st_size>64*1024*1024 for path in history.rglob('*') if path.is_file()):
+        return {**fallback,'state':'unavailable','available':False,'reason':'Original native history exceeds the image runtime file bound. Generation is unavailable until review; existing history was preserved.'}
     parent=store.directory/sid
     if parent.is_symlink() or parent.parent.resolve(strict=True)!=parent.parent:
         raise ProjectFault('Unexpected native capability storage.',503)

@@ -54,7 +54,7 @@ class Worker:
         self.turn_requested = False
         self.uncertain_effect = False
         self.items = {}; self.lease = None
-        self.generated_started=set()
+        self.generated_started=set();self.stop_task=None
         self.sandbox = Sandbox(self)
         from skill_resources import SkillResources
         self.skill_resources = SkillResources(self)
@@ -114,22 +114,22 @@ class Worker:
                 item(self.store, self.session_id, self.run_id, value)
             elif kind == 'imageGeneration':
                 if self.config.get('nativeImageGeneration') is not True:
-                    self.error='Native image generation was reported while disabled.';self.outcome='failed';await self.stop();return
+                    self.error='Native image generation was reported while disabled.';self.outcome='failed';self.defer_stop();return
                 from generated_images import presentation
                 self.generated_started.add(ident)
                 if len(self.generated_started)>8:
-                    self.error='The run reached its eight-image limit; generation was stopped.';self.uncertain_effect=True;await self.stop();return
+                    self.error='The run reached its eight-image limit; generation was stopped.';self.uncertain_effect=True;self.defer_stop();return
                 try:value=presentation(self,native,method=='item/completed')
                 except Exception as error:
                     self.error=str(error) if isinstance(error,__import__('store').ProjectFault) else 'Image storage could not be confirmed. Native history was preserved; do not regenerate.'
-                    self.uncertain_effect=True;await self.stop();return
+                    self.uncertain_effect=True;self.defer_stop();return
                 self.items[ident]=value;item(self.store,self.session_id,self.run_id,value)
                 if value['status']=='failed':
-                    self.error=value['output'];await self.stop();return
+                    self.error=value['output'];self.defer_stop();return
             elif kind == 'webSearch':
                 if self.config.get('webSearchEnabled') is not True:
                     self.error = 'Web search was reported although it is disabled for this run.'
-                    self.outcome = 'failed'; await self.stop()
+                    self.outcome = 'failed'; self.defer_stop()
                     return
                 from web_search import presentation
                 value = presentation(native, self.run_id, completed=method == 'item/completed')
@@ -138,7 +138,7 @@ class Worker:
                 event(self.store, self.session_id, self.run_id, 'notice', {'text': 'Conversation context compacted.'})
             elif kind not in ('userMessage', 'reasoning', 'plan'):
                 self.error = 'An unsupported native tool or item was reported; the run was stopped.'
-                self.outcome = 'failed'; await self.stop()
+                self.outcome = 'failed'; self.defer_stop()
         elif method == 'item/agentMessage/delta':
             ident = params['itemId']; value = self.items.setdefault(ident, {'id': ident, 'runId': self.run_id, 'type': 'assistant', 'text': '', 'status': 'running'})
             value['text'] += params['delta']
@@ -180,7 +180,7 @@ class Worker:
         self.uncertain_effect = True; self.stopping = True; self.outcome = 'unknown'
         self.error = 'A tool result is unconfirmed. Inspect possible partial changes before sending a follow-up.'
         transition(self.store, self.run_id, 'stopping', self.error)
-        asyncio.create_task(self.stop())
+        self.defer_stop()
 
     async def tool(self, params):
         async def output(result, image_data=None):
@@ -263,23 +263,39 @@ class Worker:
         self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
         return await output(result, image_data)
 
+    def defer_stop(self):
+        # A notification runs on the RPC reader. Keep it free to receive the
+        # replies needed by Goal pause/interrupt; close new tool admission now.
+        self.stopping=True
+        if self.stop_task is None:self.stop_task=asyncio.create_task(self._stop())
+
     async def stop(self):
-        self.stopping = True
-        if self.goal_worker:
-            user_stop = get_run(self.store,self.run_id)['state']=='stopping' and not self.uncertain_effect
-            await self.goal_worker.pause(origin='user' if user_stop else 'automatic')
-        if 'run_remote_command' in tools_for(self.config['engine']['profile']):
-            from remote_tools import RemoteTools
-            await RemoteTools(self).stop_owned()
-        if 'run_project' in tools_for(self.config['engine']['profile']): await self.development.stop_owned()
-        if self.client and self.turn_id:
-            try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
-            except Exception: pass
-        if not self.done.is_set():
-            if self.outcome not in ('completed', 'failed'): self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
-            self.done.set()
+        self.defer_stop()
+        if asyncio.current_task() is not self.stop_task:await asyncio.shield(self.stop_task)
+
+    async def _stop(self):
+        try:
+            self.stopping = True
+            if self.goal_worker:
+                user_stop = get_run(self.store,self.run_id)['state']=='stopping' and not self.uncertain_effect
+                await self.goal_worker.pause(origin='user' if user_stop else 'automatic')
+            if 'run_remote_command' in tools_for(self.config['engine']['profile']):
+                from remote_tools import RemoteTools
+                await RemoteTools(self).stop_owned()
+            if 'run_project' in tools_for(self.config['engine']['profile']): await self.development.stop_owned()
+            if self.client and self.turn_id:
+                try: await self.client.request('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id}, timeout=5)
+                except Exception: pass
+        except Exception:
+            self.uncertain_effect=True
+            self.error=self.error or 'The original stop outcome could not be confirmed.'
+        finally:
+            if not self.done.is_set():
+                if self.outcome not in ('completed','failed'):self.outcome='unknown' if self.uncertain_effect else 'interrupted'
+                self.done.set()
 
     async def cleanup(self):
+        if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
         if self.goal_worker: await self.goal_worker.close()
         if 'run_remote_command' in tools_for(self.config['engine']['profile']):
             from remote_tools import RemoteTools
@@ -398,7 +414,10 @@ class Worker:
             self.error = self.error or 'The agent service could not confirm this run. Existing data was preserved.'
         finally:
             if self.goal_worker:
-                if self.outcome not in ('completed',): await self.goal_worker.pause()
+                if self.outcome not in ('completed',):
+                    try:await self.goal_worker.pause()
+                    except Exception:
+                        self.uncertain_effect=True;self.outcome='unknown';self.error=self.error or 'The original Goal pause could not be confirmed.'
                 from goal_store import Goals
                 goals = Goals(self.store); rid = self.config['goalExecution']['requestId']
                 if goals.command(self.session_id, rid)['state'] == 'pending':
@@ -407,6 +426,10 @@ class Worker:
             if self.goal_worker:
                 from goal_worker import end_turns
                 end_turns(self.store,self.run_id)
+            try:
+                from image_recovery import reconcile
+                reconcile(self.store,self.session_id,self.run_id,finalizing=True)
+            except Exception:pass  # Retain original unknown evidence; no inference/import retry.
             if self.lease: self.lease.close()
             reconcile_items(self.store, self.run_id, self.outcome)
             transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)
@@ -440,6 +463,10 @@ def finalize(manifest):
         store.row(row['session_id'])
         if manifest.get('sessionId', row['session_id']) != row['session_id']: raise ValueError('Run session changed.')
         if row['busy']:
+            try:
+                from image_recovery import reconcile
+                reconcile(store,row['session_id'],row['id'],finalizing=True)
+            except Exception:pass
             stopped = row['state'] == 'stopping'
             state = 'interrupted' if stopped else ('failed' if row['state'] == 'queued' else 'unknown')
             reconcile_items(store, row['id'], state)

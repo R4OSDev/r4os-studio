@@ -15,7 +15,18 @@ def main():
     store=SessionStore(sys.argv[1],sys.argv[2],ident,kind)
     try:
         attachments=Attachments(store,request['sessionId']);op=request['operation']
-        if op=='list':result=attachments.listing()
+        if op in ('generated_list','generated_access'):
+            from generated_images import GeneratedImages
+            images=GeneratedImages(store,request['sessionId'])
+            if op=='generated_list':
+                recovery=None
+                try:
+                    from image_recovery import reconcile
+                    reconcile(store,request['sessionId'])
+                except Exception:recovery='Some original outputs remain unconfirmed. Existing files and history were preserved; no generation or import was repeated.'
+                result={'images':images.list(),**({'recoveryReason':recovery} if recovery else {})}
+            else:result={'path':str(images.path(request['imageId'])),'image':images.get(request['imageId'])}
+        elif op=='list':result=attachments.listing()
         elif op=='upload':result=attachments.upload(request['input'],sys.stdin.buffer)
         elif op=='receipt':result=attachments.receipt(request['requestId'])
         elif op=='remove':result=attachments.remove(request['attachmentId'])

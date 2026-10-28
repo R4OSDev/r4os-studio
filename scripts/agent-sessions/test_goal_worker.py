@@ -68,6 +68,24 @@ class GoalWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Goals(w.store).snapshot(self.sid)['phase'],'unknown')
         self.assertTrue(any(params.get('origin')=='automatic' for method,params in native.calls if method=='thread/goal/set'))
 
+    async def test_image_limit_releases_rpc_reader_before_goal_pause_reply(self):
+        w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
+        w.config['nativeImageGeneration']=True
+        await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'own-image-turn'}})
+        original=native.request;reply=asyncio.Event()
+        async def waiting(method,params,**kwargs):
+            if method=='thread/goal/get':await reply.wait()
+            return await original(method,params,**kwargs)
+        try:
+            with patch.object(native,'request',side_effect=waiting):
+                await asyncio.wait_for(w.notify('item/completed',{'threadId':w.thread_id,'item':{'id':'limited-image','type':'imageGeneration','status':'failed','failure':{'type':'usageLimitExceeded'}}}),0.2)
+                self.assertTrue(w.stopping);reply.set();await asyncio.wait_for(w.stop_task,1)
+            self.assertEqual(native.goal['status'],'paused');self.assertTrue(w.done.is_set())
+            self.assertFalse(any(method=='turn/start' for method,_ in native.calls))
+            self.assertEqual(len([i for i in w.store.history(self.sid)['items'] if i.get('id')=='limited-image']),1)
+        finally:
+            reply.set();await w.goal_worker.close();w.store.close()
+
     async def test_missing_native_turn_end_is_unknown_without_rewriting_prior_completed_turn(self):
         w,native=await self.goal_worker();await w.goal_worker.before_resume();await w.goal_worker.activate()
         await w.notify('turn/started',{'threadId':w.thread_id,'turn':{'id':'finished'}})

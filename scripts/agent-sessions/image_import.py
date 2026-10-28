@@ -18,7 +18,7 @@ from store import ProjectFault
 def validate(args):
     if not isinstance(args,dict) or set(args)-{'imageId','path','format','expectedTargetHash','options'} or not {'imageId','path','format'}<=set(args):raise ProjectFault('Invalid image import.',400)
     path=args['path'];fmt=args['format'];options=args.get('options',{})
-    if (not isinstance(path,str) or len(path.encode())>240 or not re.fullmatch(r'Assets/(?:[A-Za-z0-9_-][A-Za-z0-9_. -]{0,100}/)*[A-Za-z0-9_-][A-Za-z0-9_. -]{0,100}',path)
+    if (not isinstance(path,str) or len(path.encode())>240 or not re.fullmatch(r'(?i:Assets)/(?:[A-Za-z0-9_-][A-Za-z0-9_. -]{0,100}/)*[A-Za-z0-9_-][A-Za-z0-9_. -]{0,100}',path)
             or any(part in ('.','..') or part.endswith(('.', ' ')) for part in path.split('/'))):raise ProjectFault('Choose a relative regular asset path under Assets/.',400)
     extensions={'original':'.png','png':'.png','ico':'.ico','rgba32':'.rgba'}
     if fmt not in extensions or not path.lower().endswith(extensions[fmt]):raise ProjectFault('Use .png for original/PNG, .ico for bitmap ICO, or .rgba for raw RGBA32.',400)
@@ -112,6 +112,21 @@ def publish(worker,path,prepared,expected,metadata,journal):
     finally:os.close(root);os.close(parent);os.close(stage)
 
 
+def canonical_target(workspace,path):
+    root=os.open(workspace,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);current=os.dup(root);names=path.split('/');result=[]
+    try:
+        for index,name in enumerate(names):
+            entries=os.listdir(current)
+            if len(entries)>10000:raise ProjectFault('The asset directory exceeds its entry bound.',413)
+            matches=[entry for entry in entries if entry.casefold()==name.casefold()]
+            if len(matches)>1:raise ProjectFault('Resolve existing asset names that differ only by case before importing. No folder was merged.',409)
+            if not matches:return '/'.join(result+names[index:])
+            actual=matches[0];result.append(actual)
+            if index<len(names)-1:
+                child=os.open(actual,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=current);os.close(current);current=child
+        return '/'.join(result)
+    finally:os.close(current);os.close(root)
+
 async def import_image(worker,args,call_id):
     path,fmt,options,expected=validate(args);check_worker(worker)
     images=GeneratedImages(worker.store,worker.session_id);source=images.path(args['imageId']);original=images.get(args['imageId'])
@@ -133,6 +148,7 @@ async def import_image(worker,args,call_id):
         async with worker.sandbox.lock:
             if any(not process.finished.is_set() for process in worker.terminals.processes.values()):raise ProjectFault('Finish active terminal processes before importing an image.',409)
             check_worker(worker)
+            path=canonical_target(worker.store.workspace,path)
             stage=directory(base/token)
             try:
                 meta,prepared=await prepare(source,stage,fmt,options);check_worker(worker)

@@ -19,7 +19,7 @@ def compose(config):
         'Preserve original image bytes. A failed, limited, declined or unconfirmed image request must not be regenerated automatically; reconcile its original item/output. Reuse confirmed outputs on rebuilds and Goal continuation. '
         'If the authorized Goal requires unavailable images, report the concrete blocker and block/pause that Goal through its available native controls instead of starting a retry loop. Do not switch accounts/models or add API keys. ')
     if permissions.get('studio.list_generated_images'):
-        text+='After generation use studio_list_generated_images for confirmed session-bound Studio image IDs and hashes. '
+        text+='After generation use studio_list_generated_images for confirmed session-bound Studio image IDs and hashes. For a requested inline image use its exact returned presentation.markdown reference; never render private host/native paths or invent image URLs. '
     else:text+='The image listing permission is disabled; do not claim to have listed Studio image IDs. '
     if config.get('owner',{}).get('type')=='project':
         if permissions.get('studio.import_generated_image') and permissions.get('studio.write_file'):

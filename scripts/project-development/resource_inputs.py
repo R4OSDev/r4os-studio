@@ -22,6 +22,6 @@ def collect(entry,receipt):
         if not value:raise DevelopmentFault('Declared resource '+path+' is missing or excluded from the captured source. Include its real project file before building.')
         bound.append({**declaration,'bytes':value['bytes'],'sha256':value['sha256']})
     selected={value['path'] for value in bound}
-    unregistered=[value['path'] for value in receipt['files'] if value['path'].startswith('Assets/') and value['path'] not in selected]
+    unregistered=[value['path'] for value in receipt['files'] if value['path'].split('/')[0].casefold()=='assets' and value['path'] not in selected]
     return {'schema':1,'available':True,'stage':'Registered','sourceSha256':receipt['sha256'],'manifestSha256':receipt['manifestSha256'],'entries':bound,
         'unregisteredAssets':unregistered[:64],'unregisteredCount':len(unregistered),'consumerVerified':False,'embeddedVerified':False,'guestVerified':False}

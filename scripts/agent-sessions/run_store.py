@@ -113,6 +113,14 @@ def admit(store, session_id, data, provider_dir, image_capability=None):
         snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
         snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
         snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
+        from generated_images import GeneratedImages
+        generated_history=bool(GeneratedImages(store,session_id).rows())
+        if snapshot['nativeImageGeneration'] or generated_history:
+            from session_store import provider_models
+            selected_model=next((v for v in provider_models(provider_dir,session['providerId']) if v['id']==session['model']),None)
+            if not selected_model or selected_model.get('imageInputs')!='supported':
+                raise ProjectFault('This conversation has generated-image context or requests image generation. Select an image-capable model; its history was preserved.',409)
+            snapshot['imageInputModalities']=selected_model['inputModalities']
         snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
         snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
         if data.get('skillSelection') == 1:
