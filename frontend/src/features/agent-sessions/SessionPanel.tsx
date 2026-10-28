@@ -16,6 +16,7 @@ import { AttachmentButton, AttachmentCards } from './AttachmentComposer';
 import { useMessageComposer } from './useMessageComposer';
 import { useMessageInbox } from './useMessageInbox';
 import { MessageQueue } from './MessageQueue';
+import { useTranscriptFollow } from './useTranscriptFollow';
 
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
 function merge(previous: SessionItem[], value: SessionItem) {
@@ -26,12 +27,13 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   projectId: string; sessionId: string; token: string; changed: () => void; refreshAuth: () => Promise<void>;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
 }) {
-  const { request: projectRequest, base: apiBase } = useSessionApi();
+  const { request: projectRequest, base: apiBase, scope } = useSessionApi();
   const base = sessionPath(projectId, sessionId);
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
   const [connection, setConnection] = useState('Connecting'), [stopping, setStopping] = useState(false);
-  const log = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
+  const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
+  const projectSession = scope === 'project', transcript = useTranscriptFollow(log, transcriptContent, items, projectSession);
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
   const [statistics, setStatistics] = useState(false);
@@ -45,8 +47,9 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const acceptAttachments = attachments.accepted;
   const accepted = useCallback((ids: string[], acceptedRun?: AgentRun) => {
     acceptAttachments(ids); if (acceptedRun) setSession(old => old ? { ...old, latestRun: acceptedRun } : old);
-    follow.current = true; changed();
-  }, [acceptAttachments, changed]);
+    if (scope !== 'project') follow.current = true;
+    changed();
+  }, [acceptAttachments, changed, scope]);
   const composer = useMessageComposer(projectId, sessionId, session, token, refreshAuth, accepted);
   const { text, pending, sending } = composer;
   const inbox = useMessageInbox(projectId, sessionId, token, refreshAuth);
@@ -105,8 +108,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
   }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes]);
   useEffect(() => {
-    if (follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
-  }, [items]);
+    if (!projectSession && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
+  }, [items, projectSession, log]);
   const run = session?.latestRun;
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
   const active = busyRun(run?.state) || nativeActive;
@@ -147,16 +150,23 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
-    <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" onScroll={(e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
+    <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={projectSession ? 0 : undefined}
+      onWheel={projectSession ? transcript.onWheel : undefined}
+      onScroll={projectSession ? transcript.onScroll : (e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
+      <div ref={transcriptContent}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
       <SessionTranscript items={items} projectId={projectId} sessionId={sessionId} token={token} />
+      </div>
     </div>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}
     {composer.error && <p className="agent-error" role="status">{composer.error}</p>}
     <MessageQueue control={inbox} />
-    <form className={'agent-composer' + (dragging ? ' dragging' : '')} onSubmit={(e) => { e.preventDefault(); void send(); }}
+    <form className={'agent-composer' + (projectSession && transcript.following ? ' agent-following' : '') + (dragging ? ' dragging' : '')}
+      data-following={projectSession ? transcript.following : undefined}
+      title={projectSession ? transcript.following ? 'Following latest messages. Scroll up to pause.' : 'Following paused. Scroll to the bottom to resume.' : undefined}
+      onSubmit={(e) => { e.preventDefault(); void send(); }}
       onDragEnter={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); dragDepth.current++; setDragging(true); } }}
       onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = sending || pending ? 'none' : 'copy'; } }}
       onDragLeave={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } } }}

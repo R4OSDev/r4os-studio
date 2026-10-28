@@ -35,6 +35,10 @@
 .agent-tool-list .agent-tool-status { flex-shrink:0; }
 .agent-tool-list .development-card,.agent-tool-list .development-image { margin:12px; }
 .agent-composer { padding:15px 18px; border-top:1px solid #3b2c49; background:#201828; }
+.agent-composer.agent-following { position:relative; border-top-color:#bc91e8; }
+.agent-composer.agent-following::before { content:''; position:absolute; top:-1px; left:0; right:0; height:2px; background:#c498f0; box-shadow:0 0 7px #bc91e866; pointer-events:none; animation:agent-follow-line 2s ease-in-out infinite; }
+@keyframes agent-follow-line { 0%,100% { opacity:.35; } 50% { opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .agent-composer.agent-following::before { animation:none; opacity:1; } }
 .agent-composer textarea { display:block; width:100%; resize:vertical; min-height:70px; max-height:240px; border:1px solid #4e3a5f; border-radius:7px; background:#15101c; padding:12px 14px; color:#eee5fa; font:inherit; font-size:13px; line-height:1.6; }
 .agent-composer textarea:focus { outline:2px solid #a87ed2; outline-offset:1px; }
 .agent-composer textarea:disabled { opacity:.55; }
