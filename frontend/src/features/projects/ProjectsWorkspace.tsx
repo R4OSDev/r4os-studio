@@ -19,11 +19,14 @@ import { UpdateProjectDialog } from '../github-connections/UpdateProjectDialog';
 import { useRoadmap } from '../project-roadmaps/useRoadmap';
 import { RoadmapNavigation } from '../project-roadmaps/RoadmapNavigation';
 import { RoadmapPanel } from '../project-roadmaps/RoadmapPanel';
+import { useBoards } from '../project-boards/useBoards';
+import { BoardNavigation } from '../project-boards/BoardNavigation';
+import { BoardPanel } from '../project-boards/BoardPanel';
 const EditorPanel = lazy(() => import('../project-editor/EditorPanel'));
 const EditorFiles = lazy(() => import('../project-editor/EditorFiles'));
 
 export interface ProjectNavigation {
-  section: 'Sessions' | 'Editor' | 'GitHub' | 'Roadmap' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string; roadmapVersionId?: string;
+  section: 'Sessions' | 'Editor' | 'GitHub' | 'Roadmap' | 'Boards' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string; roadmapVersionId?: string; boardId?: string;
 }
 export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
   selectedId: string | null; select: (id: string | null) => void;
@@ -37,6 +40,8 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   const [newProject, setNewProject] = useState(false);
   const [newSession, setNewSession] = useState(false);
   const [newRoadmapVersion, setNewRoadmapVersion] = useState(false);
+  const [newBoard, setNewBoard] = useState(false);
+  const boards = useBoards(selected && current.section === 'Boards' && opening.ready ? selected.id : null, current.boardId);
   const roadmap = useRoadmap(selected && current.section === 'Roadmap' && opening.ready ? selected.id : null, current.roadmapVersionId);
   const sessions = useSessions(selected?.id ?? null);
   const chooseSession = (id: string) => {
@@ -47,9 +52,9 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   const [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [epoch, setEpoch] = useState(0);
   const leave = useCallback(() => {
     const allowed = !saving && !opening.deciding && (!dirty || window.confirm('Discard unsaved changes?'));
-    if (allowed) setNewRoadmapVersion(false);
+    if (allowed) { setNewRoadmapVersion(false); setNewBoard(false); }
     return allowed;
-  }, [dirty, saving, opening.deciding, setNewRoadmapVersion]);
+  }, [dirty, saving, opening.deciding, setNewRoadmapVersion, setNewBoard]);
   useEffect(() => { setLeaveGuard(leave); return () => setLeaveGuard(() => true); }, [leave, setLeaveGuard]);
 
   return <>
@@ -73,13 +78,16 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav>
       {selected ? <nav className="nav-column" aria-label="Project sections">
         <div className="column-heading" aria-hidden="true" />
-        <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Roadmap', 'Settings'] as const).map((section) =>
+        <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Roadmap', 'Boards', 'Settings'] as const).map((section) =>
           <button key={section} type="button" disabled={saving || selected.deleting || !opening.ready} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
-            }}><Icon name={section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
+            }}><Icon name={section === 'Boards' ? 'board' : section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
-      {selected && current.section === 'Roadmap' ? <RoadmapNavigation model={roadmap} selected={current.roadmapVersionId} disabled={saving || !opening.ready}
+      {selected && current.section === 'Boards' ? <BoardNavigation model={boards} disabled={saving || !opening.ready} choose={id => {
+        if (leave()) { setDirty(false); navigate(selected.id, { ...current, boardId: id }); }
+      }} create={() => { if (leave()) { setDirty(false); setNewBoard(true); } }} />
+        : selected && current.section === 'Roadmap' ? <RoadmapNavigation model={roadmap} selected={current.roadmapVersionId} disabled={saving || !opening.ready}
         choose={(id) => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); } }}
         create={() => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewRoadmapVersion(true); } }} />
         : selected && current.section === 'Editor' ? <Suspense fallback={<div className="nav-column" />}><EditorFiles key={selected.id} id={selected.id} token={api.token} /></Suspense> : selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
@@ -98,13 +106,16 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         </div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
     </aside>
-    <main className={`main-area ${current.section === 'Editor' ? 'editor-main' : ''}`} aria-label="Project content">
+    <main className={`main-area ${current.section === 'Editor' ? 'editor-main' : current.section === 'Boards' ? 'boards-main' : ''}`} aria-label="Project content">
       {selected && !opening.ready && !selected.deleting && <p className="session-empty" role="status">Checking project GitHub status…</p>}
       {opening.notice && <p className="project-message" role="status">{opening.notice}</p>}
       {selected && (opening.ready || selected.deleting) && <>
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
         {current.section === 'GitHub' && <ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
+        {current.section === 'Boards' && <BoardPanel key={selected.id + ':' + (current.boardId ?? 'auto')} id={selected.id} token={api.token} model={boards} creating={newBoard}
+          closeCreate={() => { setNewBoard(false); setDirty(false); }} created={id => { setNewBoard(false); setDirty(false); navigate(selected.id, { ...current, boardId: id }); }}
+          dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Roadmap' && <RoadmapPanel key={selected.id + ':' + (current.roadmapVersionId ?? 'overview') + ':' + epoch} id={selected.id} token={api.token} model={roadmap}
           selectedVersionId={current.roadmapVersionId} creating={newRoadmapVersion} closeCreate={() => setNewRoadmapVersion(false)}
           created={(id) => { setNewRoadmapVersion(false); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); }}

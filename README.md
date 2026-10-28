@@ -3026,3 +3026,16 @@ compatibility and bounded capacity preserve existing data on uncertainty.
 No agent broker operations, tools or prompt hooks are added. Actual namespace
 checks keep private Boards files and browser credentials out of native/terminal
 views. Legacy projects require the separated Workspace layout first.
+
+### Boards navigation and management (0.6.36)
+
+Projects → Boards now shows +New Board above the project list. Create,
+rename/description and Move Board use UUIDs, revisions and original receipts.
+Project-specific selection/deep links survive reload; stale replies cannot
+replace another project's view. Studio-styled columns have their own scroll
+area down to320px. Save/Cancel/Escape and dirty/conflict handling preserve
+drafts. Reviewing a conflict keeps edited fields and adopts new values for
+untouched fields. Mutations are saved in sessionStorage before POST; recovery
+reads the original receipt, with explicit same-body retry only. Controlled real
+HTTP/browser checks cover lost replies, reload, concurrent edits and120-character
+names without model, compiler or VM use. Card/column editing follows0.6.37.

@@ -19,6 +19,7 @@ import { editorRegistry } from '../features/project-editor/registry';
 import { useConnections } from '../features/github-connections/useConnections';
 import { ConnectionPanel } from '../features/github-connections/ConnectionPanel';
 import { parseRoadmapRoute, roadmapHash } from '../features/project-roadmaps/location';
+import { parseBoardRoute, boardHash } from '../features/project-boards/location';
 import { useRemoteHosts } from '../features/remote-hosts/useRemoteHosts';
 import { HostPanel } from '../features/remote-hosts/HostPanel';
 import { parseRemoteHostRoute, remoteHostHash } from '../features/remote-hosts/location';
@@ -28,6 +29,7 @@ const tabs: Tab[] = ['System', 'Projects', 'Tools'];
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const projectRoute = /^#projects\/([a-f0-9-]{36})$/.exec(window.location.hash);
 const roadmapRoute = parseRoadmapRoute(window.location.hash);
+const boardRoute = parseBoardRoute(window.location.hash);
 const remoteHostRoute = parseRemoteHostRoute(window.location.hash);
 const skillRoute = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(window.location.hash);
 type Selection = { group: number; item: number; view: number };
@@ -37,7 +39,7 @@ export function App() {
     const warn = (event: BeforeUnloadEvent) => { if (editorRegistry.hasUnsaved() || editorRegistry.hasWorking()) event.preventDefault(); };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || roadmapRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
+  const [tab, setTab] = useState<Tab>(sessionRoute || projectRoute || roadmapRoute || boardRoute || window.location.hash === '#projects' ? 'Projects' : skillRoute || window.location.hash === '#tools' ? 'Tools' : 'System');
   const [skillId, setSkillId] = useState<string | null>(skillRoute?.[1] ?? null);
   const [skillSessions, setSkillSessions] = useState<Record<string, string | undefined>>(skillRoute ? { [skillRoute[1]]: skillRoute[2] } : {});
   const navigateSkill = useCallback((id: string, session?: string) => setSkillSessions((previous) => ({ ...previous, [id]: session })), []);
@@ -47,14 +49,15 @@ export function App() {
   const setToolsLeaveGuard = useCallback((guard: () => boolean) => { toolsLeaveGuard.current = guard; }, []);
   const [vmId, setVmId] = useState<string | null>(null);
   const [remoteHostId, setRemoteHostId] = useState<string | null>(remoteHostRoute?.id ?? null);
-  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? roadmapRoute?.projectId ?? null);
-  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(roadmapRoute
+  const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? roadmapRoute?.projectId ?? boardRoute?.projectId ?? null);
+  const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(boardRoute
+    ? { [boardRoute.projectId]: { section: 'Boards', settingsView: 'General', boardId: boardRoute.boardId } } : roadmapRoute
     ? { [roadmapRoute.projectId]: { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmapRoute.versionId } }
     : sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
   const selectProject = useCallback((id: string | null) => {
     setProjectId(id);
     const selected = id ? projectNavigation[id] : undefined;
-    window.history.replaceState(null, '', id ? selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId) : '#projects/' + id : '#projects');
+    window.history.replaceState(null, '', id ? selected?.section === 'Boards' ? boardHash(id, selected.boardId) : selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId) : '#projects/' + id : '#projects');
   }, [projectNavigation]);
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const settingsLeaveGuard = useRef<() => boolean>(() => true);
@@ -62,8 +65,8 @@ export function App() {
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => {
     setProjectNavigation((previous) => ({ ...previous, [id]: value }));
-    const hash = value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
-    if ((value.section === 'Roadmap' || parseRoadmapRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
+    const hash = value.section === 'Boards' ? boardHash(id, value.boardId) : value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
+    if ((value.section === 'Roadmap' || value.section === 'Boards' || parseRoadmapRoute(window.location.hash) || parseBoardRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
   }, []);
   const [selected, setSelected] = useState<Selection>({
     group: remoteHostRoute ? 2 : window.location.hash === '#updates' ? 3 : 0, item: window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: remoteHostRoute?.view === 'Settings' ? 1 : 0,
@@ -75,19 +78,21 @@ export function App() {
       const project = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(hash);
       const projectEntry = /^#projects\/([a-f0-9-]{36})$/.exec(hash);
       const roadmap = parseRoadmapRoute(hash);
+      const board = parseBoardRoute(hash);
       const remoteHost = parseRemoteHostRoute(hash);
       const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
-      if (!project && !projectEntry && !roadmap && !remoteHost && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
+      if (!project && !projectEntry && !roadmap && !board && !remoteHost && !skill && !['', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates'].includes(hash)) return;
       if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
         window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
       }
       acceptedHash.current = hash;
       if (remoteHost) { setRemoteHostId(remoteHost.id); setSelected({ group: 2, item: 0, view: remoteHost.view === 'Settings' ? 1 : 0 }); setTab('System'); }
+      else if (board) { setProjectId(board.projectId); navigateProject(board.projectId, { section: 'Boards', settingsView: 'General', boardId: board.boardId }); setTab('Projects'); }
       else if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId }); setTab('Projects'); }
       else if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
       else if (projectEntry) {
         setProjectId(projectEntry[1]); setTab('Projects');
-        setProjectNavigation((previous) => previous[projectEntry[1]]?.section === 'Roadmap'
+        setProjectNavigation((previous) => ['Roadmap', 'Boards'].includes(previous[projectEntry[1]]?.section ?? '')
           ? { ...previous, [projectEntry[1]]: { section: 'Sessions', settingsView: 'General' } } : previous);
       }
       else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
@@ -163,8 +168,9 @@ export function App() {
     if (tab === 'Tools' && value !== tab && !toolsLeaveGuard.current()) return false;
     if (value === tab) return true;
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
+    const board = projectId && projectNavigation[projectId]?.section === 'Boards' ? boardHash(projectId, projectNavigation[projectId].boardId) : null;
     const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId) : null;
-    window.history.pushState(null, '', value === 'Projects' ? (roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
+    window.history.pushState(null, '', value === 'Projects' ? (board ?? roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 
