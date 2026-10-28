@@ -519,6 +519,8 @@ class Host:
         from stats_store import Source
         with closing(connect(Path(self.config['projects']))) as db:
             registered=[('project',r['id']) for r in db.execute("SELECT id FROM projects WHERE state='ready' ORDER BY id")]+owners(self.config['projects'])
+        from stats_lifecycle import flush_pending
+        flush_pending(self.config['projects'])
         if not registered:return
         kind,ident=registered[self.stats_cursor%len(registered)];self.stats_cursor+=1
         root=skills_root(self.config['projects']) if kind=='skill' else Path(self.config['projects'])
@@ -526,9 +528,10 @@ class Host:
         store=self.store(ident,kind)
         try:
             sessions=store.db.execute('SELECT id FROM sessions ORDER BY id').fetchall()
-            if not sessions:return
+            if not sessions:
+                Source(store).flush(include_acknowledged=True);return
             key=(kind,ident);index=self.stats_sessions.get(key,0);self.stats_sessions[key]=index+1
-            Usage(store,sessions[index%len(sessions)]['id']).scan();Source(store).flush()
+            Usage(store,sessions[index%len(sessions)]['id']).scan();Source(store).flush(include_acknowledged=True)
         finally:store.close()
 
     async def connection(self, reader, writer):

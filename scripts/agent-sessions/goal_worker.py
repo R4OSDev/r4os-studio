@@ -49,7 +49,7 @@ class GoalWorker:
     def measure(self):
         if self.armed and self.native and self.native['status']=='active' and self.activation:
             self.clock.start(self.activation['requestId'])
-        if self.idle.is_set() and self.native and self.native['status']!='active':self.clock.end()
+        if self.idle.is_set() and self.native and self.native['status']!='active':self.clock.end(unknown=self.worker.uncertain_effect)
 
     async def before_resume(self):
         w=self.worker

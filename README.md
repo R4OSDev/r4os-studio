@@ -3620,3 +3620,5 @@ limits remain in Docs/Project-Boards.md and local0.6.41 acceptance records.
 0.7.13 adds System → Statistics with one navigation column and project → Statistics with two. Both display reported token totals/subsets, one longest Goal duration, coverage and update time. Stable deep links, visible-only refresh, reauthentication and unknown/unavailable states preserve existing navigation.
 
 0.7.14 adds the Session statistics overlay beside Session settings and a Goal runtime in the first control row. The overlay contains only session token usage and preserves draft/focus/active Stop. The timer displays server-confirmed execution checkpoints, extrapolates only within their freshness window, freezes uncertain/end states and keeps hours above24.
+
+0.7.15 completes statistics lifetime and restore handling. Bounded rotating reconciliation repairs an older aggregate from original source receipts without double credit. Project deletion retains undelivered numeric receipts outside the deleted UUID before removing it; Global and project lifetime values survive deletion. The existing Projects backup source includes these data; no Skill backup source is added.

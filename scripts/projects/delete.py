@@ -140,6 +140,9 @@ def finish(db, projects, journal):
             target = projects / '.studio' / group / value
             if (target / 'worker.json').exists() and document(target / 'worker.json').get('projectId') != ident:
                 raise ProjectFault('A host record now belongs to another project. It was preserved.', 409)
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'agent-sessions'))
+    from stats_lifecycle import preserve_pending
+    preserve_pending(projects, projects / ident / 'Sessions/Sessions.sqlite')
     remove(projects / ident)
     for run in journal['runs']:
         remove(projects / '.studio/agents' / run)

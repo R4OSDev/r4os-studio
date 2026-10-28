@@ -67,7 +67,7 @@ class Statistics:
             row=self.db.execute('SELECT payload FROM receipts WHERE key=?',(value['key'],)).fetchone()
             old=json.loads(row[0]) if row else None
             if old:
-                if old==value:return False
+                if all(old[k]==value[k] for k in ('kind','key','project','session','values')):return False
                 if value['kind']!='goal' or any(old[k]!=value[k] for k in ('kind','key','project','session')):
                     self.db.execute('INSERT OR IGNORE INTO conflicts VALUES (?)',(value['key'],));self.db.commit()
                     raise ProjectFault('Conflicting statistics receipt was preserved for reconciliation.',409)
@@ -107,6 +107,8 @@ class Source:
     def schema(self):
         with self.store.db:
             self.store.db.execute('CREATE TABLE IF NOT EXISTS statistic_receipts(key TEXT PRIMARY KEY,payload TEXT NOT NULL,acknowledged INTEGER NOT NULL DEFAULT 0)')
+            self.store.db.execute("CREATE INDEX IF NOT EXISTS statistic_session ON statistic_receipts(json_extract(payload,'$.session'))")
+            self.store.db.execute('CREATE TABLE IF NOT EXISTS statistic_reconcile(id INTEGER PRIMARY KEY,cursor INTEGER NOT NULL)')
     def put(self,sid,kind,identity,values):
         self.schema();self.store.row(sid)
         owner={'type':self.store.owner_type,'id':self.store.owner_id}
@@ -117,18 +119,28 @@ class Source:
             if old==value:return value
             if kind!='goal':raise ProjectFault('Conflicting source statistics receipt was preserved.',409)
             if values['durationMs']<old['values']['durationMs']:return old
-        elif self.store.db.execute('SELECT COUNT(*) FROM statistic_receipts').fetchone()[0]>=MAX_SOURCE:
+        elif self.store.db.execute("SELECT COUNT(*) FROM statistic_receipts WHERE json_extract(payload,'$.session')=?",(value['session'],)).fetchone()[0]>=MAX_SOURCE:
             raise ProjectFault('The private statistics receipt limit was reached; coverage is incomplete.',503)
         with self.store.db:self.store.db.execute('INSERT OR REPLACE INTO statistic_receipts VALUES (?,?,0)',(value['key'],encode(value)))
         return value
     def flush(self,limit=128,include_acknowledged=False):
         if not self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='statistic_receipts'").fetchone():return 0
-        target=Statistics(self.store.projects,True);count=0
+        self.schema();target=Statistics(self.store.projects,True);count=0
         try:
-            for row in self.store.db.execute('SELECT key,payload FROM statistic_receipts '+('' if include_acknowledged else 'WHERE acknowledged=0 ')+'ORDER BY rowid LIMIT ?',(limit,)).fetchall():
+            rows=list(self.store.db.execute('SELECT rowid,key,payload FROM statistic_receipts WHERE acknowledged=0 ORDER BY rowid LIMIT ?',(limit,)))
+            cursor=None
+            if include_acknowledged and len(rows)<limit:
+                saved=self.store.db.execute('SELECT cursor FROM statistic_reconcile WHERE id=1').fetchone()
+                after=saved[0] if saved else 0
+                archived=list(self.store.db.execute('SELECT rowid,key,payload FROM statistic_receipts WHERE acknowledged=1 AND rowid>? ORDER BY rowid LIMIT ?',(after,limit-len(rows))))
+                if not archived:archived=list(self.store.db.execute('SELECT rowid,key,payload FROM statistic_receipts WHERE acknowledged=1 ORDER BY rowid LIMIT ?',(limit-len(rows),)))
+                if archived:cursor=archived[-1]['rowid'];rows+=archived
+            for row in rows:
                 target.apply(json.loads(row['payload']))
                 with self.store.db:self.store.db.execute('UPDATE statistic_receipts SET acknowledged=1 WHERE key=? AND payload=?',(row['key'],row['payload']))
                 count+=1
+            if cursor is not None:
+                with self.store.db:self.store.db.execute('INSERT OR REPLACE INTO statistic_reconcile VALUES (1,?)',(cursor,))
             return count
         finally:target.close()
 
@@ -136,6 +148,8 @@ class Source:
 def read(projects,key='global'):
     db=None
     try:
-        db=Statistics(projects);return db.read(key)
+        db=Statistics(projects);result=db.read(key)
+        if any((Path(projects)/'.studio/statistics/Pending').glob('*.json')):result['coverage'].update(delayed=True,hasGaps=True)
+        return result
     finally:
         if db:db.close()
