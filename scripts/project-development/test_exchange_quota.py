@@ -8,7 +8,8 @@ from exchange_policy import EXCHANGE_LIMITS
 class ExchangeQuotaTests(unittest.TestCase):
     def test_larger_worker_required_before_guest_writes(self):
         for worker in ({'buildTreeVersion': 1}, {'buildTreeVersion': 1,
-                'limits': {'files': 128, 'bytes': 96 * 1024 * 1024, 'directories': 128, 'depth': 6}}):
+                'limits': {'files': 128, 'bytes': 96 * 1024 * 1024, 'directories': 128, 'depth': 6}},
+                {'buildTreeVersion': 1, 'limits': {**EXCHANGE_LIMITS, 'depth': 6}}):
             with self.assertRaises(DevelopmentFault) as result:
                 require_tree({'exchangeWorker': worker})
             self.assertEqual(result.exception.reason_code, 'exchange_worker_upgrade_required')

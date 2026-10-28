@@ -66,6 +66,7 @@ async function extract(directory: string, target: string, deadline = Date.now() 
     for (const line of lines) {
       const isDir = line.endsWith('/'), name = line.slice(3, isDir ? -1 : undefined);
       if (name === (parent ? parent + '/.' : '.') || name === (parent ? parent + '/..' : '..')) continue;
+      if (name.split('/').length > exchangeLimits.depth) throw new VmError(`Guest Exchange path "${name}" exceeds ${exchangeLimits.depth} levels. The image was preserved.`);
       if (!line.startsWith('::/') || !validSharePath(name, isDir) || dirname(name) !== (parent || '.'))
         throw new VmError('Unsupported guest Exchange path. Preserve exchange.img and recover the files before restarting.');
       if (names.has(name.toLowerCase())) throw new VmError('Guest Exchange paths conflict ignoring case.');

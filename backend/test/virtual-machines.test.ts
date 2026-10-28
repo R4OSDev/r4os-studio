@@ -11,7 +11,7 @@ const directory = join(testRoot, 'R4OS'); await mkdir(directory);
 process.env.STUDIO_R4OS_DIR = directory;
 process.env.STUDIO_VM_NETWORK_CAPABILITY = join(directory, 'network-capability.json');
 const { vmRoutes } = await import('../src/modules/virtual-machines/routes.js');
-const { createShareImage, hashShareFile } = await import('../src/modules/virtual-machines/share.js');
+const { createShareImage, hashShareFile, boundShare } = await import('../src/modules/virtual-machines/share.js');
 const { exchangeImageBytes, exchangeLimits } = await import('../src/modules/virtual-machines/exchange-policy.js');
 const { prepareExchangeIdentity } = await import('../src/modules/virtual-machines/exchange-identity.js');
 const { prepareShare, finishShare, shareState } = await import('../src/modules/virtual-machines/share-sync.js');
@@ -175,5 +175,28 @@ await test('larger exchange preserves pending legacy guest edits and hashes a fu
   const hash = createHash('sha256'), chunk = Buffer.alloc(1024 * 1024);
   for (let size = 0; size < exchangeLimits.bytes; size += chunk.length) hash.update(chunk);
   assert.equal(await hashShareFile(share, { name: 'LARGE.BIN', size: exchangeLimits.bytes, kind: 'file' }, Date.now() + 30_000), hash.digest('hex'));
+});
+await test('nested save generations round-trip without deletion and paths remain bounded', async () => {
+  const path = join(directory, randomUUID()), share = join(path, 'Exchange/Share');
+  await mkdir(share, { recursive: true }); await prepareShare(path);
+  const image = join(path, 'Disks/exchange.img') + '@@1048576';
+  const components = ['Build', 'PBF05AE8', 'D2E83DF5', 'WA7A7A7A', 'W7A7A7A7', 'WA7A7A7A', 'W7A7A7A7', 'WA7A7'];
+  for (let size = 1; size <= components.length; size++)
+    await exec('/usr/bin/mmd', ['-i', image, '::/' + components.slice(0, size).join('/')]);
+  const relative = components.join('/') + '/G0000001.R4W', source = join(path, 'generation');
+  await writeFile(source, 'preserve nested world generation');
+  await exec('/usr/bin/mcopy', ['-i', image, source, '::/' + relative]);
+  // This is the actual nine-level layout that the old six-level exporter refused.
+  await finishShare(path);
+  assert.equal(await readFile(join(share, relative), 'utf8'), 'preserve nested world generation');
+  await prepareShare(path); await createShareImage(path);
+  assert.equal((await exec('/usr/bin/mtype', ['-i', image, '::/' + relative])).stdout, 'preserve nested world generation');
+  await finishShare(path);
+  const names = ['Build', ...Array.from({ length: exchangeLimits.depth - 1 }, (_, i) => 'W' + i)];
+  const entries = names.slice(0, -1).map((_, i) => ({ name: names.slice(0, i + 1).join('/'), kind: 'directory' as const, size: 0 }));
+  boundShare([...entries, { name: names.join('/'), kind: 'file', size: 0 }]);
+  assert.throws(() => boundShare([...entries, { name: names.join('/') + '/TOO.DEEP', kind: 'file', size: 0 }]), /exceeds 16 levels/);
+  assert.throws(() => boundShare([{ name: 'A.TXT', kind: 'file', size: 0 }, { name: 'a.txt', kind: 'file', size: 0 }]), /unique ignoring case/);
+  assert.equal(await readFile(join(share, relative), 'utf8'), 'preserve nested world generation');
 });
 await rm(testRoot, { recursive: true, force: true });

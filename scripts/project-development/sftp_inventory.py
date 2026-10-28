@@ -83,7 +83,11 @@ async def inventory(ssh, exchange):
                     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}', name) or name.endswith('.'):
                         raise DevelopmentFault('Exchange contains unsupported filenames. Preserve and resolve them before deploying.')
                     relative = parent + '/' + name if parent else name
-                    if relative.count('/') >= EXCHANGE_LIMITS['depth'] or relative.lower() in seen: raise DevelopmentFault('Exchange paths exceed the supported depth or collide.')
+                    depth = relative.count('/') + 1
+                    if depth > EXCHANGE_LIMITS['depth']:
+                        raise DevelopmentFault(f'Exchange path "{relative}" has {depth} levels; this worker supports {EXCHANGE_LIMITS["depth"]}. Existing files were preserved.', reason_code='exchange_depth_exceeded')
+                    if relative.lower() in seen:
+                        raise DevelopmentFault(f'Exchange path "{relative}" collides with another entry ignoring case. Existing files were preserved.', reason_code='exchange_path_collision')
                     seen.add(relative.lower()); result.append({'path': relative, 'directory': directory, 'bytes': size})
                     if directory:
                         if relative.split('/')[0].lower() != 'build': raise DevelopmentFault('Exchange contains a folder outside Build. No upload was started.')

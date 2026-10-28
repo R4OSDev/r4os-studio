@@ -1,3 +1,33 @@
+## Nested Exchange paths and live Goal controls (0.6.56)
+
+Exchange now supports **16 path levels** beneath its root, including the Build,
+project and deployment components. A valid world-save layout reached nine levels
+and caused the previous six-level inventory to reject subsequent application
+starts. The offline exporter and guest inventory use the same shared bound;
+errors now distinguish excessive depth from case collisions and identify the
+offending path. The 1 GiB/4096-file/1024-folder quotas remain. No saved generations
+or diagnostic folders are deleted or flattened.
+
+The running VM's immutable exporter must advertise the new depth. Stop/start it
+with this release before further deployments. If an older exporter refuses an
+existing deep tree on stop, keep its image and use **Retry exchange sync** with
+the new web release while stopped, then start the VM. Do not edit release pins
+or the live image. Normal conflict and recovery rules still apply.
+
+Goal Pause/Stop/Save also now validate their live worker through the session
+module's process identity helper. The coordinator previously imported that
+helper from a development module absent from its own Python search path, so the
+Goal command failed before reaching the worker and the run continued. Ordinary
+Run Stop remained available. Worker PID, UID and process-generation checks,
+original request receipts and the native thread remain intact; no inference is
+started by the correction.
+
+Four targeted cases passed: the original nine-level save tree through real FAT
+import/export, the remaining depth/collision boundaries, old-exporter admission,
+and live Goal control in an isolated coordinator plus its Stop integration.
+Production build/TypeScript and strict lint passed. No provider inference or
+user project execution was started for validation.
+
 ## Larger VM Exchange capacity (0.6.55)
 
 Each VM now allows **1 GiB of payload, 4096 files and 1024 folders**, including
@@ -2991,7 +3021,7 @@ Unter **System → Virtual Machines** steht **+ New VM** in Components; darunter
 - Die direkte QEMU-Option `fat:32:` erzeugte im Test einen ungültigen FAT32-Aufbau und wurde verworfen. Der implementierte Generator verwendet `mkfs.fat`/`mcopy`, einen MBR und eine FAT32-Partition. Der Host-Ordner ist kein live synchronisiertes Dateisystem.
 - `Exchange/state.json` speichert SHA-256-Basisstände und den Syncstatus. Gleichzeitige abweichende Änderungen derselben Datei blockieren einen neuen Start; beide Fassungen bleiben unter `Exchange/Conflicts/<session>/Guest/` und `Host/` mit `conflicts.json` erhalten. Gewünschte Gastfassung nach `Share/` übernehmen (bei Gastlöschung dort entfernen), dann **Retry exchange sync**. Eine andere Hostfassung separat sichern und nach erfolgreichem Abgleich erneut einsetzen.
 - Abgleichfehler lassen das Image unverändert erhalten und werden in Exchange angezeigt. Unterordner außerhalb von Build, ungültige Namen und überschrittene Dateigrenzen verhindern den Export; Image separat wiederherstellen, keine automatische FAT-Reparatur. Force stop kann ungespeicherte Daten verlieren oder FAT beschädigen.
-- Exchange erlaubt ASCII-Dateien im Stamm und Unterordner unter Build, ohne Symlinks: 4096 Dateien, insgesamt 1 GiB Nutzdaten, 1024 Ordner und sechs Pfadebenen. Browser-Upload maximal 8 MiB je Datei. Upload/Remove/Settings werden im laufenden Betrieb gesperrt. Alte Austauschpartitionen werden beim nächsten vollständigen Stop/Start nach erfolgreichem Gastabgleich erhaltend auf 2 GiB vergrößert.
+- Exchange erlaubt ASCII-Dateien im Stamm und Unterordner unter Build, ohne Symlinks: 4096 Dateien, insgesamt 1 GiB Nutzdaten, 1024 Ordner und 16 Pfadebenen. Browser-Upload maximal 8 MiB je Datei. Upload/Remove/Settings werden im laufenden Betrieb gesperrt. Alte Austauschpartitionen werden beim nächsten vollständigen Stop/Start nach erfolgreichem Gastabgleich erhaltend auf 2 GiB vergrößert.
 - Console überträgt ab 0.1.15 das Gastbild laufend mit noVNC. Fit/Actual size, Fullscreen, Screenshot, View only, Reconnect und Sondertasten sind implementiert. Klick/Capture mouse fängt die relative Maus für Klicks und Ziehen; Escape gibt sie frei und beendet Vollbild. Native Tastaturereignisse unterstützen gehaltene Tasten; US-Gastbelegung. Onscreen-Kombinationen werden gehalten gesendet. Sehr kurze synthetische Modifier-Taps in Sofort-Textmakros waren im Gasttest nicht zuverlässig; eine Paste-Funktion ist nicht implementiert. Pointer Lock benötigt einen Desktopbrowser; Touch, Scrollrad, Gast-Clipboard und Audio sind noch nicht angebunden. Logs zeigt begrenzte serielle Gast-/QEMU-Ausgaben. Gastnetzwerke sind standardmäßig deaktiviert und je VM als privates NAT aktivierbar; VNC und QMP verwenden ausschließlich lokale Unix-Sockets. Display und Maus benötigen getrennte, CSRF-geschützt erzeugte 20-Sekunden-Einmaltickets, Browser-Sitzung und passenden Origin. Tickets sind auf VM, Sitzung und Kanal gebunden und werden im WebSocket-Unterprotokoll statt in URLs übertragen. Zwei Displays und ein Mauscontroller je VM; Backpressure, Rate-/Nutzdatenlimits und Heartbeats begrenzen Verbindungen. Maustasten werden auch bei Transportverlust gelöst.
 
 Datenstruktur:
@@ -3209,7 +3239,7 @@ Research/R4OS/Agent-Sessions/Completion-Audit.json in the development workspace.
 
 New offline Exchange imports reserve `STXCHG.JSN` for a journaled VM/volume identity. Exchange reset renews the generation; image/system reset keeps it. Guest target discovery uses exact marker bytes across fixed SFTP drive candidates, never a hardcoded F: or volume serial. The immutable VM worker pinned at boot determines recursive Exchange support. Existing deployments remain historical records. Native headless desktop launch still needs a public R4OS launch/initialization contract; SSH alone does not provide it. See `shared/exchange-host.json` and the development contracts. No guest runtime validation was performed for this change.
 
-Exchange sync schema 2 stores files and empty directories under `Build`, with 4096 files/1 GiB, 1024 directories and six path levels across the whole disk (since 0.6.55). Metadata and interrupted uploads count toward those limits. All traversals are bounded; extraction has an OS file-size limit. Conflicts preserve both host and guest trees. Publication exchanges two complete directories atomically with a durable inode journal, so recovery never repeats a completed exchange. Existing schema 1 baselines and legacy 257 MiB images remain readable. Older workers must preserve/block the enlarged image; stop/start a VM with the new worker before using the larger quota. Never change its pinned worker or edit `exchange.img` live. The browser displays the last offline host copy and permits stopped-VM uploads and individual file/empty-folder removal.
+Exchange sync schema 2 stores files and empty directories under `Build`, with 4096 files/1 GiB, 1024 directories (since 0.6.55) and 16 path levels across the whole disk (since 0.6.56). Metadata and interrupted uploads count toward those limits. All traversals are bounded; extraction has an OS file-size limit. Conflicts preserve both host and guest trees. Publication exchanges two complete directories atomically with a durable inode journal, so recovery never repeats a completed exchange. Existing schema 1 baselines and legacy 257 MiB images remain readable. Older workers must preserve/block unsupported images or trees; stop/start a VM with the new worker before using the larger quota. Never change its pinned worker or edit `exchange.img` live. The browser displays the last offline host copy and permits stopped-VM uploads and individual file/empty-folder removal.
 
 New deployment format `exchange-build-v1` uses a verified guest drive and `Build/P<7hex>/D<7hex>`. OWNER and DEPLOY receipts bind full project/deployment UUIDs and Exchange generation. PACKAGE is published last after full readback; deploy does not start the application. A private SFTP v3 metadata channel inventories all files, empty folders and stale transfer stages before reserving quota. The 1 GiB payload budget remains below the 2 GiB FAT capacity; an additional largest-file stage, receipt overhead and registered output allowance are reserved. Transfer reads have OS file-size limits. Capacity/ownership/type conflicts preserve everything. A running VM pinned to an older exporter needs an ordinary explicit Stop/Start, never a worker-pin rewrite. Deploy requires an already started VM and cannot bypass the separate VM-start permission. Old C: records remain historical and are never moved or deleted.
 

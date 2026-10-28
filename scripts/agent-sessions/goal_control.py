@@ -86,7 +86,9 @@ async def live_control(store,sid,rid):
     try:
         pid,uid,_=struct.unpack('3i',writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
         worker=json.loads(run['worker'] or '{}')
-        from lease import birth
+        # The coordinator does not import the development worker's modules.
+        # Use the local process identity helper in a clean host interpreter too.
+        from attachment_store import birth
         if uid != __import__('os').getuid() or pid!=worker.get('pid') or birth(pid)!=worker.get('birth'):
             raise ProjectFault('The original Goal worker identity changed.',403)
         writer.write((json.dumps({'requestId':rid,'runId':run['id'],'sessionId':sid})+'\n').encode());await writer.drain()

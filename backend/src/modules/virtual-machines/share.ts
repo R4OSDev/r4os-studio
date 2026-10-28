@@ -20,6 +20,7 @@ export function boundShare(entries: ShareEntry[]) {
   const names = new Map(entries.map((e) => [e.name.toLowerCase(), e]));
   if (names.size !== entries.length) throw new VmError('Exchange paths must be unique ignoring case.');
   for (const entry of entries) {
+    if (entry.name.split('/').length > exchangeLimits.depth) throw new VmError(`Exchange path "${entry.name}" exceeds ${exchangeLimits.depth} levels. Existing files were preserved.`);
     if (!validSharePath(entry.name, entry.kind === 'directory') || !Number.isSafeInteger(entry.size) || entry.size < 0) throw new VmError('Unsupported Exchange path or entry.');
     const parts = entry.name.split('/'); parts.pop();
     if (parts.length && names.get(parts.join('/').toLowerCase())?.kind !== 'directory') throw new VmError('An Exchange parent changed between file and folder. Preserve the image and resolve the host/guest conflict.');
@@ -37,6 +38,7 @@ export async function shareFiles(directory: string, deadline = Date.now() + exch
     for (const child of children) {
       const name = path ? path + '/' + child.name : child.name, stat = await lstat(join(directory, name));
       const kind = stat.isDirectory() ? 'directory' : 'file';
+      if (name.split('/').length > exchangeLimits.depth) throw new VmError(`Exchange path "${name}" exceeds ${exchangeLimits.depth} levels. Existing files were preserved.`);
       if ((!stat.isDirectory() && !stat.isFile()) || stat.isSymbolicLink() || stat.isFile() && stat.nlink !== 1 || !validSharePath(name, kind === 'directory'))
         throw new VmError('Exchange accepts plain ASCII files and the Build folder only; links and special files are rejected.');
       result.push({ name, size: kind === 'directory' ? 0 : stat.size, kind });
