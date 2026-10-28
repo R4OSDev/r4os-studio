@@ -6,6 +6,8 @@ import { useBoardChange } from './useBoardChange';
 import { BoardColumnView } from './BoardColumnView';
 import { ColumnForm, RemoveColumn } from './ColumnForm';
 import { CardEditor } from './CardEditor';
+import { MoveEntryDialog, type MovingEntry } from './MoveEntryDialog';
+import { useBoardDrag } from './useBoardDrag';
 import { projectRequestId } from '../projects/api';
 import './styles.css';
 
@@ -16,6 +18,7 @@ export function BoardPanel({ id, token, model, creating, closeCreate, created, d
   const [editing, setEditing] = useState<BoardSummary | null>(null), [moving, setMoving] = useState<BoardSummary | null>(null);
   const [columnEditor, setColumnEditor] = useState<BoardColumn | 'new' | null>(null), [removingColumn, setRemovingColumn] = useState<BoardColumn | null>(null);
   const [cardEditor, setCardEditor] = useState<string | null>(null), [formDirty, setFormDirty] = useState(false);
+  const [movingEntry, setMovingEntry] = useState<MovingEntry | null>(null), [focusEntry, setFocusEntry] = useState<{ entry: MovingEntry; revision: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({}), [notice, setNotice] = useState('');
   const [focusColumn, setFocusColumn] = useState<{ id: string; revision: number } | null>(null);
   const dirty = formDirty || Object.values(drafts).some(value => !!value);
@@ -32,8 +35,20 @@ export function BoardPanel({ id, token, model, creating, closeCreate, created, d
     });
     return () => cancelAnimationFrame(frame);
   }, [focusColumn, model.loading, model.snapshot]);
+  useEffect(() => {
+    if (!focusEntry || model.loading || !model.snapshot || model.snapshot.board.revision < focusEntry.revision) return;
+    const frame = requestAnimationFrame(() => {
+      const { entry } = focusEntry;
+      document.querySelector<HTMLElement>(entry.kind === 'card' ? `[data-card-id="${entry.id}"] .board-card-open` : `[data-column-id="${entry.id}"] .board-entry-actions button`)?.focus();
+      setFocusEntry(null);
+    }); return () => cancelAnimationFrame(frame);
+  }, [focusEntry, model.loading, model.snapshot]);
   const control = useBoardChange(id, token, (receipt, change) => {
-    setEditing(null); setMoving(null); setColumnEditor(null); setRemovingColumn(null); setCardEditor(null); setFormDirty(false); model.reload();
+    setEditing(null); setMoving(null); setColumnEditor(null); setRemovingColumn(null); setCardEditor(null); setMovingEntry(null); setFormDirty(false); model.reload();
+    if (change.kind === 'mutate' && (change.body.action === 'move_card' || change.body.action === 'move_column')) {
+      const entry: MovingEntry = receipt.cardId ? { kind: 'card', id: receipt.cardId } : { kind: 'column', id: receipt.columnId! };
+      setFocusEntry({ entry, revision: receipt.revision ?? 0 });
+    }
     if (change.kind === 'mutate' && change.body.action === 'create_card' && change.body.input.columnId) {
       const columnId = change.body.input.columnId;
       setDrafts(old => ({ ...old, [columnId]: '' }));
@@ -47,10 +62,11 @@ export function BoardPanel({ id, token, model, creating, closeCreate, created, d
       const columnId = receipt.columnId;
       setDrafts(old => { const next = { ...old }; delete next[columnId]; return next; });
     }
-    setNotice(receipt.deleted ? receipt.cardId ? 'Card deleted.' : `Column removed. ${receipt.movedCards ?? 0} cards preserved.` : 'Board change saved.');
+    setNotice(change.kind === 'mutate' && change.body.action.startsWith('move_') ? `${receipt.cardId ? 'Card' : 'Column'} moved.` : receipt.deleted ? receipt.cardId ? 'Card deleted.' : `Column removed. ${receipt.movedCards ?? 0} cards preserved.` : 'Board change saved.');
     if (change.kind === 'create' && receipt.boardId) created(receipt.boardId);
   }, busyChanged, model.reload);
   const data = model.snapshot, locked = control.busy || !!control.pending;
+  const drag = useBoardDrag(data, !locked && !model.error && !model.loading && !movingEntry, body => void control.perform({ kind: 'mutate', boardId: data!.board.id, body }));
   return <section className="project-boards" aria-label="Project boards">
     <header className="board-toolbar"><div><h2>{data?.board.name ?? 'Boards'}</h2>{data?.board.description && <p className="board-description">{data.board.description}</p>}</div>
       <div className="board-actions">{data && <><button type="button" disabled={locked || !!model.error} onClick={() => setEditing(data.board)}>Edit Board</button>
@@ -60,10 +76,11 @@ export function BoardPanel({ id, token, model, creating, closeCreate, created, d
     {model.loading && <p className="project-message" role="status">Loading boards…</p>}
     {(model.error || control.error) && <p className="project-error" role="alert">{model.error || control.error}</p>}
     {notice && <p className="project-message" role="status">{notice}</p>}
+    {control.pending?.kind === 'mutate' && control.pending.body.action.startsWith('move_') && <p className="project-message" role="status">Moving… Waiting for the original saved result.</p>}
     {control.pending && !creating && !editing && !columnEditor && !cardEditor && <div className="board-recovery"><p>The original Board change is unconfirmed.</p><button type="button" disabled={control.busy} onClick={() => void control.check()}>Check original change</button>
       <button type="button" disabled={control.busy} onClick={() => void control.retry()}>Retry original change</button></div>}
     {!model.loading && !data && !model.error && <p className="board-empty">No boards yet. Use New Board to organize this project’s work.</p>}
-    {data && <div className="board-canvas" aria-label="Board columns" tabIndex={0}>{data.columns.map(column => <BoardColumnView column={column} key={column.id}
+    {data && <div className="board-canvas" aria-label="Board columns" tabIndex={0} onDragOver={drag.canvasOver} onDrop={drag.canvasDrop}>{data.columns.map(column => <BoardColumnView column={column} key={column.id} drag={drag} move={setMovingEntry}
       cards={data.cards.filter(card => card.columnId === column.id)} title={drafts[column.id] ?? ''} titleChanged={value => setDrafts(old => ({ ...old, [column.id]: value }))}
       locked={locked || !!model.error || model.loading} minimum={data.columns.length < 2} edit={() => setColumnEditor(column)} remove={() => setRemovingColumn(column)} open={setCardEditor}
       add={() => void control.perform({ kind: 'mutate', boardId: data.board.id, body: { requestId: projectRequestId(), expectedRevision: data.board.revision, action: 'create_card', input: { columnId: column.id, title: drafts[column.id] } } })} />)}</div>}
@@ -73,5 +90,6 @@ export function BoardPanel({ id, token, model, creating, closeCreate, created, d
     {columnEditor && data && <ColumnForm initial={columnEditor === 'new' ? undefined : columnEditor} data={data} control={control} close={() => setColumnEditor(null)} dirtyChanged={setFormDirty} />}
     {removingColumn && data && <RemoveColumn column={removingColumn} data={data} draftTitle={drafts[removingColumn.id]} control={control} close={() => setRemovingColumn(null)} />}
     {cardEditor && data && <CardEditor key={cardEditor} projectId={id} boardId={data.board.id} cardId={cardEditor} boardRevision={data.board.revision} control={control} close={() => setCardEditor(null)} dirtyChanged={setFormDirty} />}
+    {movingEntry && data && <MoveEntryDialog key={movingEntry.id} entry={movingEntry} data={data} control={control} close={() => setMovingEntry(null)} dirtyChanged={setFormDirty} />}
   </section>;
 }

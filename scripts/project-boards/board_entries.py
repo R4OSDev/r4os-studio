@@ -4,7 +4,7 @@ from board_model import column,card_row
 from board_validation import fields,identity,integer,text,MAX_COLUMNS,MAX_CARDS
 from store import ProjectFault
 
-ACTIONS=('create_column','update_column','delete_column','create_card','update_card','delete_card')
+ACTIONS=('create_column','update_column','delete_column','create_card','update_card','delete_card','move_card','move_column')
 
 def normalize(db,table,parent_key,parent):
     for position,row in enumerate(db.execute('SELECT id,position FROM '+table+' WHERE '+parent_key+'=? ORDER BY position,id',(parent,)).fetchall()):
@@ -57,6 +57,9 @@ def apply(db,bid,action,data,stamp):
             db.execute('DELETE FROM cards WHERE id=?',(row['id'],));normalize(db,'cards','column_id',row['column_id'])
             result['deleted']=True;reordered=True
         result['cardId']=row['id']
+    elif action in ('move_card','move_column'):
+        from board_moves import apply as move
+        result,reordered=move(db,bid,action,data,stamp)
     else:raise ProjectFault('Unsupported Board entry action.',400)
     db.execute('UPDATE boards SET revision=revision+1,order_revision=order_revision+?,updated_at=? WHERE id=?',(int(reordered),stamp,bid))
     return result

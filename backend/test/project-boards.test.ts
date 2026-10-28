@@ -79,6 +79,13 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal(moved.statusCode, 200, moved.body); assert.equal(moved.json().movedCards, 1);
     const afterMove = await app.inject({ url: base + '/' + bid + '/cards/' + cardId + '?clientLevel=2', headers });
     assert.equal(afterMove.json().card.columnId, snapshot.json().columns[1].id);
+    const moveSnapshot = (await app.inject({ url: base + '/' + bid + '?clientLevel=2', headers })).json();
+    const moveCard = afterMove.json().card;
+    const exactMove = { requestId: randomUUID(), expectedRevision: moveSnapshot.board.revision, expectedOrderRevision: moveSnapshot.board.orderRevision, action: 'move_card', input: { cardId, expectedCardRevision: moveCard.revision, sourceColumnId: moveCard.columnId, targetColumnId: moveSnapshot.columns[1].id, position: 0 } };
+    const movedCard = await app.inject({ method: 'POST', url: mutationUrl, headers, payload: exactMove });
+    assert.equal(movedCard.statusCode, 200, movedCard.body);
+    assert.deepEqual((await app.inject({ method: 'POST', url: mutationUrl, headers, payload: exactMove })).json(), movedCard.json());
+    assert.equal((await app.inject({ method: 'POST', url: mutationUrl, headers, payload: { ...exactMove, requestId: randomUUID(), expectedRevision: movedCard.json().revision, expectedOrderRevision: 999 } })).statusCode, 409);
     const database = join(directory, id, 'Boards/Boards.sqlite');
     await writeFile(database, 'Owned unknown data; must never be reinitialized');
     const bytes = await readFile(database);

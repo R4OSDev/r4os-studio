@@ -21,18 +21,21 @@ function strict(value: unknown, allowed: string[]) {
     throw new ProjectError('Invalid Board order.', 400);
 }
 function strictEntry(value: BoardMutation) {
-  strict(value, ['requestId', 'expectedRevision', 'action', 'input']);
+  strict(value, ['requestId', 'expectedRevision', 'expectedOrderRevision', 'action', 'input']);
+  if (Object.hasOwn(value, 'expectedOrderRevision') && !Number.isSafeInteger(value.expectedOrderRevision)) throw new ProjectError('Invalid Board order revision.', 400);
   const allowed = {
     create_column: ['title'], update_column: ['columnId', 'expectedColumnRevision', 'title'], delete_column: ['columnId', 'expectedColumnRevision', 'confirm', 'targetColumnId'],
     create_card: ['columnId', 'title', 'description'], update_card: ['cardId', 'expectedCardRevision', 'title', 'description'], delete_card: ['cardId', 'expectedCardRevision', 'confirm'],
+    move_card: ['cardId', 'expectedCardRevision', 'sourceColumnId', 'targetColumnId', 'position'], move_column: ['columnId', 'expectedColumnRevision', 'position'],
   };
   if (!Object.hasOwn(allowed, value.action) || !value.input || typeof value.input !== 'object' || Array.isArray(value.input)
     || Object.keys(value.input).some(key => !allowed[value.action].includes(key))) throw new ProjectError('Unexpected Board entry fields.', 400);
   const input = value.input;
-  for (const key of ['title', 'description', 'cardId', 'columnId', 'targetColumnId'] as const)
+  for (const key of ['title', 'description', 'cardId', 'columnId', 'sourceColumnId', 'targetColumnId'] as const)
     if (Object.hasOwn(input, key) && typeof input[key] !== 'string') throw new ProjectError('Invalid Board entry text or identity.', 400);
   for (const key of ['expectedCardRevision', 'expectedColumnRevision'] as const)
     if (Object.hasOwn(input, key) && !Number.isSafeInteger(input[key])) throw new ProjectError('Invalid Board entry revision.', 400);
+  if (Object.hasOwn(input, 'position') && !Number.isSafeInteger(input.position)) throw new ProjectError('Invalid Board entry position.', 400);
 }
 
 export function boardRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions) {
@@ -72,9 +75,9 @@ export function boardRoutes(app: FastifyInstance, directory: string, sessions: P
     bodyLimit: 131072, preValidation: async request => strictEntry(request.body),
     schema: { params: parameterSchema(['id', 'boardId']), querystring, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'expectedRevision', 'action', 'input'], properties: {
-        requestId: uuid, expectedRevision: revision, action: { enum: ['create_column', 'update_column', 'delete_column', 'create_card', 'update_card', 'delete_card'] },
+        requestId: uuid, expectedRevision: revision, expectedOrderRevision: { ...revision, minimum: 1 }, action: { enum: ['create_column', 'update_column', 'delete_column', 'create_card', 'update_card', 'delete_card', 'move_card', 'move_column'] },
         input: { type: 'object', additionalProperties: false, properties: {
-          columnId: uuid, targetColumnId: uuid, cardId: uuid, expectedColumnRevision: { ...revision, minimum: 1 }, expectedCardRevision: { ...revision, minimum: 1 },
+          columnId: uuid, sourceColumnId: uuid, targetColumnId: uuid, cardId: uuid, expectedColumnRevision: { ...revision, minimum: 1 }, expectedCardRevision: { ...revision, minimum: 1 }, position: { type: 'integer', minimum: 0, maximum: 1000 },
           title: { type: 'string', maxLength: 240 }, description: { type: 'string', maxLength: 16000 }, confirm: { const: true },
         } },
       } } },

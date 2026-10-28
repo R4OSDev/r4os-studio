@@ -3051,3 +3051,19 @@ quick drafts and original receipts remain safe. Feature level2 and a declared
 browser reader level protect older adapters/UI from misreading card data.
 Thirteen targeted unprivileged cases, authenticated HTTP and desktop/320px
 browser checks pass, without model, compiler, VM or source changes.
+
+### Board moves (0.6.38)
+
+Cards and columns have mouse drag grips with insertion markers and bounded
+horizontal edge scrolling. Move dialogs offer the same exact destination and
+position with keyboard and touch; touch scrolling starts no drag. Cancel/Escape
+and foreign drops do not mutate data. No optimistic reorder precedes the saved
+receipt. Focus and status announce a confirmed move.
+
+One entity move freezes Board, order and entity revisions and the original card
+source. SQLite updates source/target positions and the receipt atomically. The
+server uses the full stored inventory, including archived cards, never a filtered
+replacement list. IDs, notes and metadata survive. Lost responses read the
+original receipt before any explicit same-request retry; conflicting order needs
+Review current order. Search filters follow0.6.39 and will use Move for unambiguous
+positions. No agent, workspace, model, build or VM operation is introduced.

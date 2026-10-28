@@ -10,7 +10,7 @@ def encode(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,sepa
 def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def mutate(db,project_id,operation,data,ident=None):
-    fields(data,('requestId','expectedRevision'),('action','input') if operation=='mutate' else ('name','description','ids'))
+    fields(data,('requestId','expectedRevision'),('action','input','expectedOrderRevision') if operation=='mutate' else ('name','description','ids'))
     if 'name' in data:text(data['name'])
     if 'description' in data:text(data['description'],8000,True,True)
     rid=identity(data.get('requestId'));integer(data.get('expectedRevision'),0)
@@ -46,8 +46,11 @@ def mutate(db,project_id,operation,data,ident=None):
             ids=order(data['ids'],[r[0] for r in db.execute('SELECT id FROM boards')])
             for position,key in enumerate(ids):db.execute('UPDATE boards SET position=? WHERE id=?',(position,key))
         elif operation=='mutate':
-            fields(data,('requestId','expectedRevision','action','input'));row=board(db,ident)
+            fields(data,('requestId','expectedRevision','action','input'),('expectedOrderRevision',));row=board(db,ident)
             if row['revision']!=data['expectedRevision']:raise ProjectFault('This Board changed. Your draft was preserved; reload before saving.',409)
+            if data['action'] in ('move_card','move_column'):
+                if row['order_revision']!=integer(data.get('expectedOrderRevision')):raise ProjectFault('The Board order changed. Review the current order before moving.',409)
+            elif 'expectedOrderRevision' in data:raise ProjectFault('This Board action does not accept an order revision.',400)
             from board_entries import apply
             extra=apply(db,ident,data['action'],data['input'],stamp)
         else:raise ProjectFault('Unsupported Board mutation.',400)
