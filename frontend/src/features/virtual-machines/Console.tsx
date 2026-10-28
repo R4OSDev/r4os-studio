@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type RFB from '@novnc/novnc';
-import type { VirtualMachine } from '../../../../shared/virtual-machines.js';
+import type { VirtualMachine, VmConsoleMode, VmConsoleTicket } from '../../../../shared/virtual-machines.js';
 import type { VmApi } from './useVms';
 import { vmRequest } from './api';
 import { usePointer } from './usePointer';
@@ -17,7 +17,9 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
   const container = useRef<HTMLDivElement>(null), display = useRef<HTMLDivElement>(null);
   const client = useRef<RFB | null>(null);
   const [status, setStatus] = useState('Connecting'), [error, setError] = useState('');
-  const [attempt, setAttempt] = useState(0), [fit, setFit] = useState(true), [viewOnly, setViewOnly] = useState(false);
+  const [attempt, setAttempt] = useState(0), [fit, setFit] = useState(true), [mode, setMode] = useState<VmConsoleMode>('spectator');
+  const requestedMode = useRef<VmConsoleMode>('interactive');
+  const viewOnly = mode === 'spectator';
   const [fullscreen, setFullscreen] = useState(false), [focused, setFocused] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const running = ['running', 'paused'].includes(vm.state);
@@ -32,6 +34,7 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
     if (!running || !api.csrfToken || !display.current) return;
     const target = display.current;
     let cancelled = false, rfb: RFB | null = null;
+    let channel: WebSocket | null = null;
     const observer = new MutationObserver(() => {
       const canvas = target.querySelector('canvas');
       if (canvas) setSize((old) => old.width === canvas.width && old.height === canvas.height ? old : { width: canvas.width, height: canvas.height });
@@ -42,16 +45,29 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
       const { default: RemoteFrameBuffer } = await import('@novnc/novnc');
       if (cancelled) return;
       setStatus('Connecting'); setError(''); setSize({ width: 0, height: 0 });
-      const { ticket } = await vmRequest<{ ticket: string }>(`/${vm.id}/console-ticket`, api.csrfToken, 'POST');
+      const { ticket, mode: grantedMode } = await vmRequest<VmConsoleTicket>(`/${vm.id}/console-ticket`, api.csrfToken, 'POST', { mode: requestedMode.current });
       if (cancelled) return;
+      setMode(grantedMode);
       const url = new URL(`/api/vms/${vm.id}/console`, window.location.href);
       url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      rfb = new RemoteFrameBuffer(target, url.href, { shared: true, wsProtocols: ['binary', `studio-ticket.${ticket}`] });
+      channel = new WebSocket(url.href, ['binary', `studio-ticket.${ticket}`]);
+      channel.addEventListener('close', (event) => {
+        if (!cancelled && event.code === 4001) {
+          // A takeover also fences already-issued interactive tickets. Rejoin
+          // read-only; returning to control always needs an explicit request.
+          requestedMode.current = 'spectator'; setMode('spectator');
+          setAttempt((value) => value + 1);
+        }
+      });
+      rfb = new RemoteFrameBuffer(target, channel, { shared: true });
       client.current = rfb;
-      rfb.scaleViewport = preferences.current.fit; rfb.viewOnly = preferences.current.viewOnly;
+      rfb.scaleViewport = preferences.current.fit; rfb.viewOnly = grantedMode === 'spectator';
       rfb.resizeSession = false; rfb.clipViewport = false; rfb.focusOnClick = true;
       rfb.background = '#100c16'; rfb.qualityLevel = 9; rfb.compressionLevel = 2;
-      rfb.addEventListener('connect', () => { if (!cancelled) { setStatus('Connected'); setError(''); } });
+      rfb.addEventListener('connect', () => { if (!cancelled) {
+        requestedMode.current = grantedMode;
+        setStatus('Connected'); setError('');
+      } });
       rfb.addEventListener('disconnect', () => {
         if (!cancelled) { setStatus('Disconnected'); setFocused(false); setError('The display connection closed. Reconnect to continue.'); }
       });
@@ -60,7 +76,7 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
     void connect().catch((cause: unknown) => {
       if (!cancelled) { setStatus('Disconnected'); setError(cause instanceof Error ? cause.message : 'The display is unavailable.'); }
     });
-    return () => { cancelled = true; observer.disconnect(); rfb?.disconnect(); if (client.current === rfb) client.current = null; };
+    return () => { cancelled = true; observer.disconnect(); rfb?.disconnect(); channel?.close(); if (client.current === rfb) client.current = null; };
   }, [vm.id, running, api.csrfToken, attempt]);
 
   useEffect(() => {
@@ -101,13 +117,17 @@ export function VmConsole({ vm, api }: { vm: VirtualMachine; api: VmApi }) {
       <div className="vm-console-tools">
         <button className="button-secondary" aria-pressed={fit} onClick={() => setFit(true)}>Fit to window</button>
         <button className="button-secondary" aria-pressed={!fit} onClick={() => setFit(false)}>Actual size</button>
-        <button className="button-secondary" aria-pressed={viewOnly} onClick={() => setViewOnly(!viewOnly)}>View only</button>
+        <button className="button-secondary" aria-pressed={viewOnly} disabled={!connected} onClick={() => {
+          requestedMode.current = viewOnly ? 'interactive' : 'spectator';
+          setAttempt((value) => value + 1);
+        }}>{viewOnly ? 'Request control' : 'View only'}</button>
         <button className="button-secondary" disabled={!connected || viewOnly} onClick={() => pointer.captured ? pointer.release() : pointer.capture()}>{pointer.captured ? 'Release mouse' : 'Capture mouse'}</button>
         <button className="button-secondary" disabled={!connected} onClick={screenshot}>Screenshot</button>
         <button className="button-secondary" disabled={!running} onClick={() => setAttempt((value) => value + 1)}>Reconnect</button>
         <button className="button-secondary" disabled={!document.fullscreenEnabled || (!running && !fullscreen)} onClick={() => void toggleFullscreen()}>{fullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button>
       </div>
     </div>
+    {running && viewOnly && <p className="vm-console-spectator" role="status"><strong>Spectator mode</strong> · Keyboard, mouse and clipboard are blocked by the server. You can watch during development work and request control when the VM is available.</p>}
     {(error || pointer.error) && <p className="vm-alert" role="status">{error || pointer.error}</p>}
     <div className={`vm-console-stage ${!running ? 'powered-off' : ''}`}>
       <div className="vm-console-display" ref={display} role="application" aria-label={`${vm.name} remote display`}

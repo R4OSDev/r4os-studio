@@ -14,6 +14,7 @@ process.env.STUDIO_VM_RUNTIME_DIR = runtime;
 const { PointerControllers } = await import('../src/modules/virtual-machines/pointer.js');
 const { ConsoleTickets, ConsoleBridge } = await import('../src/modules/virtual-machines/console.js');
 const id = 'a1a1a1a1-1111-4111-8111-111111111111';
+await mkdir(join(runtime, id));
 
 await test('console grants bind VM and browser session, expire and cannot be replayed', () => {
   const tickets = new ConsoleTickets();
@@ -27,10 +28,34 @@ await test('console grants bind VM and browser session, expire and cannot be rep
   const expired = tickets.issue(id, 'browser-A'), original = Date.now;
   try { Date.now = () => original() + 20_001; assert.throws(() => tickets.consume(id, 'browser-A', `studio-ticket.${expired}`), /Reload the console/); }
   finally { Date.now = original; }
+  const spectator = tickets.issue(id, 'browser-A', 'display', 'spectator');
+  assert.equal(tickets.consume(id, 'browser-A', `studio-ticket.${spectator}`), 'spectator');
+});
+await test('development takeover closes controls with a reconnect signal and preserves spectator frames', async () => {
+  const upstream = createServer((socket) => {
+    socket.on('error', () => {});
+    socket.write(Buffer.from('RFB 003.008\n'));
+    socket.on('data', () => socket.write(Buffer.from([1, 1])));
+  });
+  upstream.listen(join(runtime, id, 'vnc.sock')); await once(upstream, 'listening');
+  const bridge = new ConsoleBridge(), app = Fastify(); await app.register(websocket);
+  app.addHook('preClose', async () => bridge.close());
+  app.get('/control', { websocket: true }, (socket) => bridge.attach(id, socket));
+  app.get('/view', { websocket: true }, (socket) => bridge.attach(id, socket, 'spectator'));
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address(); assert(address && typeof address !== 'string');
+  const base = `ws://127.0.0.1:${address.port}`;
+  const control = new WebSocket(base + '/control'), viewer = new WebSocket(base + '/view');
+  try {
+    await Promise.all([once(control, 'message'), once(viewer, 'message')]);
+    const closed = once(control, 'close'); bridge.closeControls(id);
+    assert.equal((await closed)[0], 4001); assert.equal(viewer.readyState, WebSocket.OPEN);
+    const update = once(viewer, 'message'); viewer.send(Buffer.from('RFB 003.008\n'));
+    assert.deepEqual((await update)[0], Buffer.from([1, 1]));
+  } finally { control.terminate(); viewer.terminate(); bridge.close(); await app.close(); await new Promise<void>((resolve) => upstream.close(() => resolve())); }
 });
 
 await test('console bridge transports binary RFB through a private Unix socket, limits clients and closes on shutdown', async () => {
-  await mkdir(join(runtime, id));
   const upstream = createServer((socket) => {
     socket.write(Buffer.from('RFB 003.008\n'));
     socket.on('data', (chunk) => socket.write(chunk));

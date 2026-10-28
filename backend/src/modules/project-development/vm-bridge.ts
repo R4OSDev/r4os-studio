@@ -70,6 +70,9 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
             const boot = JSON.parse(await readFile(join(projectsDirectory(), '.studio/development/Boots', id + '.json'), 'utf8'));
             if (!boot.connected || boot.bootId !== scope.bootId || boot.vmRevision !== scope.vmRevision) throw new VmError('The guest boot binding changed.');
           }
+          // Observation survives admission. Close controls before any private
+          // development operation, and drain/release held relative mouse input.
+          consoles.closeControls(id); await pointers.closeVm(id);
           let result: unknown;
           if (request.operation === 'info') {
             const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=InvocationID', '--value'], { timeout: 5000 });
@@ -85,7 +88,6 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
             const data = await manager.screen(id, limits.screenshotBytes);
             result = { base64: data.toString('base64') };
           } else {
-            consoles.closeVm(id); await pointers.closeVm(id);
             if (request.operation === 'start') result = { vm: await manager.action(id, 'start') };
             else {
               if (!config.networkEnabled) throw new VmError('Enable Network explicitly in VM settings before using development access.');

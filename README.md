@@ -1,3 +1,31 @@
+## Watch a VM during development (0.6.52)
+
+The VM console opens in **Spectator mode** when a development operation holds
+the VM reservation. Existing controls reconnect automatically as spectators
+before the private development bridge admits guest work. Already connected
+spectators remain connected. Fit/actual size, fullscreen, screenshots and
+reconnect remain available; **Request control** checks admission again.
+Control never returns automatically after a reservation ends.
+
+The single-use display ticket binds the server-selected mode to the VM,
+browser session and channel. A spectator's RFB connection forwards only
+display negotiation and framebuffer requests. The proxy validates the private
+QEMU RFB 3.8/None handshake, forces shared initialization, strips control
+capabilities and rejects keyboard, pointer, clipboard, resizing, power and
+unknown client messages, including fragmented/coalesced input. Manual
+**View only** uses the same server enforcement. Interactive grants are checked
+again at WebSocket admission, so a ticket issued before a reservation cannot
+reclaim control. Existing pointer, lifecycle, settings and exchange leases,
+origin/CSRF protections and two-display-per-VM/32-total limits remain in force.
+No VM restart, host maintenance or data migration is required.
+
+Focused protocol/HTTP/lease tests, build, TypeScript and lint passed. A browser
+fixture with a real R4OS QEMU guest and actual development lease verified
+takeover with held input, two live spectators, stale grants, control denial,
+screenshots/fullscreen, reconnect/reload and 1440/320px layouts. Direct binary
+input probes reached no guest input path. Only an owned guest was used;
+no provider inference or user-project run was started.
+
 ## Roadmap tool contract correction (0.6.51)
 
 New project sessions use the additive `studio-tools-v12` profile with operation-,

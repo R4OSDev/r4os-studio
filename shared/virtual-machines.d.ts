@@ -18,6 +18,9 @@ export interface VmInput { name: string; cpus: number; memoryMiB: number; imageI
 
 export interface VmPointerInput { dx: number; dy: number; buttons: number }
 
+export type VmConsoleMode = 'interactive' | 'spectator';
+export interface VmConsoleTicket { ticket: string; mode: VmConsoleMode }
+
 export interface VmReleaseChange {
   confirm: true; expectedRevision: string; expectedImageId: string; expectedImageSha256: string;
   imageId: string; imageSha256: string;
