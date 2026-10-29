@@ -1,3 +1,10 @@
+## Composer hint (0.8.6)
+
+The named Queue/Send now keyboard hint is removed from the shared session
+composer without an empty paragraph. Existing Enter/Ctrl+Enter/Shift+Enter
+handlers, the separate idle hint and functional attachment/recovery messages
+are preserved. This is a browser presentation change only.
+
 ## Total Goal runtime per session (0.8.5)
 
 Project and Skill Manager **Session statistics** show **Total Goal runtime**.
