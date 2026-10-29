@@ -1,3 +1,22 @@
+## Project environment qualification (0.8.3)
+
+Agent runtime guidance includes the current project revision, language, role and
+SDK/Contract/compiler pins. Original deployment pins and authenticated guest
+evidence remain authoritative for older artifacts. The qualification in
+[R4OS-Environment.md](R4OS-Environment.md) distinguishes C facade/raw enums and
+window flags, observed Exchange naming limits, native capture/output retention,
+host Rust builds and guest compiler/HTTP/TCP capabilities.
+Session settings also recognize v14 in all inherited Build/VM/Updates/GitHub
+capability hints, preserving the behavior of earlier profiles.
+
+Own-window resize/minimize/restore remain unavailable pending a qualified native
+contract. Legacy WINSVC record mutations are registry mirroring; their receipt
+does not prove a Desktop window action. The newer generation-bound WindowMode
+contract covers decorated/fullscreen mode, not these three operations. No global
+input fallback, new tool/permission, guest helper change or pin update is added.
+Roadmap0.8.3 completes source qualification and guidance only; mutating integration
+and positive native action acceptance remain open.
+
 ## Bounded own-client GUI gestures (0.8.2)
 
 New project sessions use additive tool profile `studio-tools-v14`. Existing
