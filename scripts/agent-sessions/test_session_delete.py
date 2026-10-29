@@ -52,6 +52,8 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                 (path/'GeneratedImages').mkdir();(path/'GeneratedImages/image.png').write_bytes(b'private fixture image')
                 foreign=self.root/('outside-'+sid);foreign.write_text('preserve outside');(path/'foreign-link').symlink_to(foreign)
                 Source(store).put(sid,'tokens',{'response':sid},{'total':7})
+                from goal_total import mark_new
+                with store.db:mark_new(store,sid)
                 from usage_stats import Usage
                 from attachment_store import Attachments
                 from environment_notes import Notes
@@ -83,6 +85,7 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('private original history','\n'.join(store.db.iterdump()));self.assertNotIn('create response','\n'.join(store.db.iterdump()))
                 for private in ('private attachment metadata','private note metadata','private image metadata','own-turn'):
                     self.assertNotIn(private,'\n'.join(store.db.iterdump()))
+                self.assertIsNone(store.db.execute('SELECT 1 FROM goal_time_coverage WHERE session_id=?',(sid,)).fetchone())
                 self.assertEqual(workspace.read_bytes(),source_before);self.assertEqual(foreign.read_text(),'preserve outside')
             self.assertEqual(await delete(host,kind,owner,sid,data),final)
             self.assertEqual(read(self.projects)['tokens']['total'], '7' if kind=='project' else '14')

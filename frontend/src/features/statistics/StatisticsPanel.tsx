@@ -2,13 +2,18 @@ import {useCallback,useEffect,useState} from 'react';
 import type {StatisticsSnapshot} from '../../../../shared/statistics';
 import {ProjectRequestError,studioRequest} from '../projects/api';
 import './styles.css';
-export function duration(ms: number | null | undefined) {
+export function duration(ms: number | string | null | undefined) {
+ if (typeof ms === 'string') {
+  try { if (!/^\d+$/.test(ms)) return 'Not reported'; const seconds=BigInt(ms)/1000n;
+   return [seconds/3600n,(seconds/60n)%60n,seconds%60n].map(n=>n.toString().padStart(2,'0')).join(':');
+  } catch { return 'Not reported'; }
+ }
  if (ms == null || !Number.isFinite(ms) || ms < 0) return 'Not reported';
  const seconds=Math.floor(ms/1000);
  return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>n.toString().padStart(2,'0')).join(':');
 }
 export function useStatistics(url: string,reauth?:()=>Promise<void>) {
- const [state,setState]=useState<{url:string;value:StatisticsSnapshot|null;error:string}>({url,value:null,error:''});
+ const [state,setState]=useState<{url:string;value:StatisticsSnapshot|null;error:string;receivedAt:number}>({url,value:null,error:'',receivedAt:0});
  const [revision,setRevision]=useState(0);
  const refresh=useCallback(()=>setRevision(n=>n+1),[]);
  useEffect(()=>{
@@ -19,15 +24,15 @@ export function useStatistics(url: string,reauth?:()=>Promise<void>) {
     let value:StatisticsSnapshot;
     try{value=await studioRequest<StatisticsSnapshot>('',url,'','GET',undefined,controller.signal);}
     catch(error){if((error as ProjectRequestError).status!==403 || !reauth)throw error;await reauth();value=await studioRequest<StatisticsSnapshot>('',url,'','GET',undefined,controller.signal);}
-    if(!controller.signal.aborted)setState({url,value,error:''});
-   }catch(error){if(!controller.signal.aborted)setState(previous=>({url,value:previous.url===url?previous.value:null,error:(error as Error).message}));}
+    if(!controller.signal.aborted)setState({url,value,error:'',receivedAt:performance.now()});
+   }catch(error){if(!controller.signal.aborted)setState(previous=>({url,value:previous.url===url?previous.value:null,error:(error as Error).message,receivedAt:previous.url===url?previous.receivedAt:0}));}
    finally{loading=false;}
   }
   void load();const timer=window.setInterval(()=>void load(),5000);
   const visible=()=>{if(!document.hidden)void load();};window.addEventListener('focus',visible);window.addEventListener('online',visible);document.addEventListener('visibilitychange',visible);
   return()=>{controller.abort();window.clearInterval(timer);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);document.removeEventListener('visibilitychange',visible);};
  },[url,reauth,revision]);
- return {value:state.url===url?state.value:null,error:state.url===url?state.error:'',refresh};
+ return {value:state.url===url?state.value:null,error:state.url===url?state.error:'',receivedAt:state.url===url?state.receivedAt:0,refresh};
 }
 function tokens(value:string|null|undefined){try{return value==null?'Not reported':new Intl.NumberFormat('en-US').format(BigInt(value));}catch{return 'Not reported';}}
 function date(value:string|null){return value && !Number.isNaN(Date.parse(value))?new Date(value).toLocaleString('en-GB'):'Not reported';}

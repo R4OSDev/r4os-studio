@@ -215,7 +215,8 @@ class Host:
                 store=self.store(ident,kind)
                 try:
                     sid=identity(request['sessionId']);store.row(sid)
-                    return read(self.config['projects'],'session:'+scope({'type':kind,'id':ident},sid))
+                    from goal_total import snapshot as goal_total
+                    return read(self.config['projects'],'session:'+scope({'type':kind,'id':ident},sid)) | {'totalGoalRuntime':goal_total(store,sid)}
                 finally:store.close()
             raise ProjectFault('Invalid statistics scope.',400)
         if op == 'cancel_provider':

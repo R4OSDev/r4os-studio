@@ -267,6 +267,8 @@ PRAGMA user_version=1;
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))
+            from goal_total import mark_new
+            mark_new(self, ident)
             value = self.get(ident)
             self.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', (key, 'create', payload_hash, ident, encode(value)))
             self.db.commit()

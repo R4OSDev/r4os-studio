@@ -1,3 +1,40 @@
+## Total Goal runtime per session (0.8.5)
+
+Project and Skill Manager **Session statistics** show **Total Goal runtime**.
+This is the sum of recorded Play executions for exactly that owner/session,
+including fresh current progress once. Pause/Stop, another Goal, reload and
+multiple tabs preserve the sum. Queued/startup time, ordinary run prefixes and
+confirmed pauses do not count. The current Play clock and existing global/project
+longest-run records retain their meaning.
+
+The session statistics response adds `totalGoalRuntime`: exact decimal-string
+`durationMs`, a separately bound optional `live` clock and independent time
+coverage. A read-only projection qualifies the private `goal_clocks`, original
+activation/run bindings and canonical execution-keyed numeric receipts. Each
+execution contributes only its greatest retained cumulative measurement across
+local receipts, lifetime reconciliation and the pending outbox. Unmatched keys,
+missing clocks/activations, partial restore and unknown segments remain visible;
+neither native `timeUsedSeconds` nor UTC differences reconstruct elapsed time.
+
+Live progress needs the exact current run, PID/birth, service UID, host boot and
+fresh monotonic checkpoint. Stale/lost bindings freeze the confirmed base.
+The browser interpolates only within that freshness window, and freezes on read
+failure. BigInt formatting preserves sums and hours beyond24h. Token coverage
+and time coverage are displayed separately.
+
+New session creation records an additive `goal_time_coverage` marker in its
+original transaction, allowing a confirmed zero before the first Goal. Original
+threadless sessions and session-specific activation records provide qualified
+legacy cases; a table belonging to another session is never evidence of zero.
+No user history is migrated or remeasured. Missing legacy evidence is reported
+as unavailable or partial. Session deletion removes the private marker/source;
+confirmed numeric lifetime data remain under the existing deletion contract.
+
+The browser only displays data; the unprivileged coordinator reads existing
+measurements. Opening, polling and refreshing statistics cannot Play, stop,
+launch a model or change a VM. Deterministic clock/source/restore/deletion,
+owner-scoped HTTP and browser1440/320 checks use isolated fixtures only.
+
 ## Delete one session (0.8.4)
 
 Project and Skill Manager Session settings include **Delete session** at the

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import type {GoalClockSnapshot} from '../../../../shared/statistics';
+import type {GoalClockSnapshot,GoalTotalSnapshot} from '../../../../shared/statistics';
 import {busyRun,sessionPath,useSessionApi} from '../agent-sessions/api';
 import type {AgentRun} from '../../../../shared/agent-sessions';
 import {StatisticsContent,useStatistics,duration} from './StatisticsPanel';
@@ -14,9 +14,29 @@ export function SessionStatistics({ownerId,sessionId,reauth,close,run,stop}:{own
   <div className="statistics-panel"><p>Reported token usage for this session.</p>
    {result.error && <p className="project-dialog-error" role="alert">Statistics unavailable: {result.error}</p>}
    {result.value?<StatisticsContent value={result.value} session/>:!result.error && <p role="status">Loading statistics…</p>}
+   {result.value && <TotalGoalRuntime value={result.value.totalGoalRuntime} receivedAt={result.receivedAt} failed={!!result.error} />}
   </div>
   <footer className="project-actions">{busyRun(run?.state) && <button type="button" disabled={run?.state==='stopping'} onClick={()=>void stop()}>Stop current run</button>}<button type="button" onClick={result.refresh}>Refresh</button><button type="button" ref={button} onClick={close}>Close</button></footer>
  </dialog>,document.body);
+}
+function TotalGoalRuntime({value,receivedAt,failed}:{value?:GoalTotalSnapshot;receivedAt:number;failed:boolean}) {
+ const [tick,setTick]=useState(0);
+ useEffect(()=>{
+  if(!value?.live || failed)return;
+  const timer=window.setInterval(()=>{if(!document.hidden)setTick(performance.now());},250);
+  return()=>window.clearInterval(timer);
+ },[value,failed]);
+ const live=value?.live,age=live?live.ageMs+Math.max(0,tick-receivedAt):0;
+ const fresh=!!live && !failed && age<=live.staleAfterMs;
+ let elapsed=value?.durationMs;
+ if(elapsed!=null && fresh)try{elapsed=(BigInt(elapsed)+BigInt(Math.floor(age))).toString();}catch{elapsed=null;}
+ const incomplete=failed || (!!live && !fresh) || value?.coverage.state==='partial';
+ const unavailable=!value || value.durationMs==null;
+ return <section className="statistics-goal-total" aria-label="Total Goal runtime">
+  <dl className="statistics-grid"><div><dt>Total Goal runtime</dt><dd role="timer" aria-live="off">{duration(elapsed)}</dd></div></dl>
+  <p className="statistics-coverage" role="status">{unavailable?'Goal time is not fully reported for this session.':incomplete?'Partial Goal time coverage. Only confirmed time is retained; unavailable live time is frozen.':fresh?'Recorded Goal time including the current execution.':'Recorded Goal time across all Play executions.'}</p>
+  {value && <p className="statistics-help">{value.coverage.measuredExecutions} measured {value.coverage.measuredExecutions===1?'execution':'executions'}{value.coverage.missingExecutions?` · ${value.coverage.missingExecutions} without a measurement`:''}. Paused and queued time is excluded.</p>}
+ </section>;
 }
 export function GoalRuntime({ownerId,sessionId,reauth}:{ownerId:string;sessionId:string;reauth:()=>Promise<void>}) {
  const {request}=useSessionApi(),url=sessionPath(ownerId,sessionId)+'/goal/clock';

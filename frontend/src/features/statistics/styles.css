@@ -25,3 +25,4 @@
 .agent-goal:has(.agent-goal-clock) .agent-goal-top { gap:5px; }
 .agent-goal:has(.agent-goal-clock) .agent-goal-state { flex:0 1 auto; }
 @media(max-width:520px) { .statistics-dialog .statistics-grid { grid-template-columns:minmax(0,1fr); } .agent-header-actions { gap:7px; } }
+.statistics-goal-total { margin-top:20px; padding-top:16px; border-top:1px solid #493653; }
