@@ -1,3 +1,11 @@
+## Tool-call block width (0.8.7)
+
+Shared project/skill transcript tool-call blocks are centered at80% width when
+space permits. A34rem minimum capped at the available width keeps narrow chats
+readable. Inner calls retain their full block width and existing expansion,
+copy, status, scroll, job and image behavior. Other messages and the composer
+retain their width. This is one outer CSS rule; no data or tool contract changes.
+
 ## Composer hint (0.8.6)
 
 The named Queue/Send now keyboard hint is removed from the shared session
