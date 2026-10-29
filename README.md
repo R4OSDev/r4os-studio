@@ -1,6 +1,39 @@
 ## New Project recovery after a deleted GitHub setup (0.7.25)
 
 
+## Native history without an image file limit (0.7.27)
+
+Native Codex history includes screenshots and grows across turns. The former
+image-generation `prlimit --fsize=67108864:67108864` also limited that history:
+a long conversation could terminate its native process at exactly 64 MiB and
+leave a partial JSONL record. Native Codex now raises only its own file-size soft
+limit to the inherited hard limit; the image-specific history-size rejection and
+64 MiB process wrapper are removed. Native tool declarations, thread identity,
+project pins and image-generation choices are unchanged.
+
+New host installations use `LimitFSIZE=268435456:infinity` for run units. Existing
+hosts can apply only the additive override with
+`python3 scripts/agent-sessions/install-native-history-support.py` as root from
+App/. It reloads unit definitions without restarting services, agent workers or
+VMs. New native processes then have no fixed per-file history limit. On an older
+host without maintenance, its existing hard limit still applies. Every project
+file/terminal sandbox separately enforces the previous 256 MiB hard file limit;
+image dimensions, byte/count/storage checks and converter limits remain in place.
+Already running workers retain their original release and resource settings.
+
+Recovery must back up the stopped session before any change. Do not truncate,
+reset or invent native history, mark an interrupted turn successful, or replay a
+Tool call. For the affected Minecraft Main session the final screenshot already
+had a completed native event and matching SQLite projection. Its complete output
+matched all 21,694 retained bytes of the partial record; appending only its missing
+4,614-byte suffix preserved every original history byte and image SHA-256. Goal
+status is reconciled separately; continuing inference requires deliberate Play.
+
+No tests, browser fixtures or model inference were run for this fix, as requested.
+Production build/TypeScript and lint provide static validation. Private backups,
+original receipt comparisons and recovery evidence remain outside this repository.
+
+
 ## Concurrent agent runs and preserved admission errors (0.7.26)
 
 New host installations allow 16 concurrent agent runs. Existing installations retain
@@ -506,8 +539,8 @@ be reconciled without regeneration. Corrupt, foreign or changed outputs fail.
 
 Only image-aware workers/history reads accept up to24 MiB inbound RPC frames;
 outgoing RPC remains1 MiB. Images are limited to16 MiB,16384 per axis/40M pixels,
-eight per run,128/256 MiB per session and1 GiB per owner. Native files have a64 MiB
-process file bound; unknown native output is counted and retained for review.
+eight per run,128/256 MiB per session and1 GiB per owner. Native history has no image-specific process file bound since0.7.27;
+unknown native output is counted and retained for review.
 Studio events carry safe metadata, never native Base64/savedPath/raw failures.
 A native failure stops the run, including Goal continuation, without paid retry.
 Stop interrupts the original native turn. list_generated_images returns confirmed

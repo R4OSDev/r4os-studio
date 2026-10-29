@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import resource
 import stat
 
 CODEX_VERSION = '0.163.0'
@@ -213,6 +214,11 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         if selected_profile not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
         generated_root=directory(generated_root)
         directory(provider_home/'generated_images')
+    # A native conversation grows across many turns and includes image inputs.
+    # Exempt only Codex from the worker's soft per-file limit. Older hosts keep
+    # their inherited hard bound until explicit history-support maintenance.
+    hard_limit = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
+    native_limit = 'unlimited' if hard_limit == resource.RLIM_INFINITY else str(hard_limit)
     args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
              '--bind', str(provider_home), '/codex', '--bind', str(state), '/session',
              '--bind', str(state / 'native'), '/codex/sessions',
@@ -221,13 +227,11 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
              '--dir', '/workspace', '--dir', '/bin', '--ro-bind', str(binary), '/bin/codex',
              '--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/session/home',
              '--setenv', 'CODEX_HOME', '/codex', '--setenv', 'PATH', '/usr/bin:/bin',
-             '--setenv', 'LANG', 'C.UTF-8', '/bin/codex', 'app-server', '--listen', 'stdio://']
+             '--setenv', 'LANG', 'C.UTF-8', '/usr/bin/prlimit',
+             '--fsize=' + native_limit + ':' + native_limit, '--', '/bin/codex', 'app-server', '--listen', 'stdio://']
     if generated_root is not None:
         if not image_generation_enabled:raise ValueError('An output mount requires enabled native image generation.')
         position=args.index('--chdir');args[position:position]=['--bind',str(generated_root),'/codex/generated_images']
-        # Bound individual native files (including unconfirmed output/history) without truncating existing data.
-        if any(p.stat().st_size>64*1024*1024 for p in (state/'native').rglob('*') if p.is_file()):raise ValueError('The native history exceeds this image runtime file bound; preserve and review it.')
-        args=['/usr/bin/prlimit','--fsize=67108864:67108864','--',*args]
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
     if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):

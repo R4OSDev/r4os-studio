@@ -80,7 +80,9 @@ class Sandbox:
                  '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig',
                  '--setenv', 'CARGO_HOME', '/cache/cargo', '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1',
                  '--setenv', 'POWERSHELL_TELEMETRY_OPTOUT', '1']
-        return args + command
+        # Keep the existing tool file bound even when native history is allowed
+        # to grow. Tools cannot raise this separate hard bound from their shell.
+        return ['/usr/bin/prlimit', '--fsize=268435456:268435456', '--', *args, *command]
 
     async def file(self, name, arguments):
         import json
