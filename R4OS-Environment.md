@@ -1,3 +1,14 @@
+## Host-only tests and cc (0.8.9)
+
+Tool terminals expose the existing validated public host `cc` driver with one
+read-only private alternative and `/host-tools/cc` in PATH. No whole host `/etc`
+or alternatives directory is mounted. Invalid/missing/foreign alternatives
+produce `Host C linker unavailable` and exit127; ordinary non-compiler tools
+continue to work. This does not change native R4X compiler or linker selection.
+Use the project's bound Rust for a host-only `rustc --test`; do not rewrite test
+scripts, Cargo.lock, project pins or global defaults as a linker workaround.
+GCC14.2.0 is the checked driver on this host, not a required global version.
+
 # Project environment qualification (0.8.3)
 
 Host compilation, native guest facilities and Studio test adapters are separate

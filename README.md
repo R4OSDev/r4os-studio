@@ -1,3 +1,26 @@
+## Host test C linker (0.8.9)
+
+The tool/terminal sandbox resolves the existing host `cc` through a bounded
+symlink chain to an executable under the public `/usr` tree. Only that validated
+file is mounted read-only at private `/etc/alternatives/cc`; the rest of the host
+alternatives and private `/etc` stay absent. A private `/host-tools/cc` PATH alias
+makes the standard command available without pinning a GCC version. No host
+alternative is repaired or changed and no compiler is downloaded. PATH omits
+empty entries, including skill/non-Rust environments.
+
+Missing, cyclic, non-executable or foreign alternatives use a small read-only
+private diagnostic command that exits127. Other terminal and file tools remain
+available. The worker's project-environment guidance states host-linker
+availability. Host-only `rustc --test` remains separate from native R4X SDK builds;
+keep project manifests, test scripts, Cargo.lock, compiler/SDK/Contract pins and
+global defaults intact. A selected explicit public driver may be used for a
+host-only diagnostic; it does not repair a missing native build capability.
+
+Three isolated resolver cases and the real unprivileged sandbox verify the
+standard/absolute cc paths, pinned Rust1.99.0 host test/link/exit0, non-Rust PATH,
+unavailable diagnostic and unchanged256MiB hard file, read-only, credential and
+network boundaries. No user project build, guest/agent run or model inference.
+
 ## Project folder activity (0.8.8)
 
 The existing folder icon in the project list shows the chosen violet Energy

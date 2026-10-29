@@ -61,6 +61,8 @@ class Sandbox:
         # remain absent from the namespace.
         for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
             if Path(path).exists(): args += ['--ro-bind', path, path]
+        from host_linker import bindings as host_linker_bindings
+        args += host_linker_bindings()
         for name, path in self.context['paths'].items():
             args += ['--ro-bind', str(path), '/' + name]
         if self.context.get('rust'):
@@ -72,9 +74,10 @@ class Sandbox:
         rust_bin = ''
         if self.context.get('rust'):
             rust_bin = '/rust/' + str(self.context['rust']['compiler'].parent)
+        tool_path = ':'.join(path for path in ('/pwsh', '/zig', rust_bin, '/host-tools', '/usr/bin', '/bin') if path)
         args += ['--dir', '/runner', '--ro-bind', str(Path(__file__).parent / 'file_worker.py'), '/runner/file_worker.py',
                  '--ro-bind', str(self.binary), '/runner/codex', '--chdir', workdir, '--clearenv',
-                 '--setenv', 'HOME', '/cache/home', '--setenv', 'PATH', '/pwsh:/zig:' + rust_bin + ':/usr/bin:/bin',
+                 '--setenv', 'HOME', '/cache/home', '--setenv', 'PATH', tool_path,
                  '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'SDK_ROOT', '/sdk', '--setenv', 'CONTRACT_ROOT', '/contract',
                  '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_TOOLCHAIN', 'studio-pinned',
                  '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig',

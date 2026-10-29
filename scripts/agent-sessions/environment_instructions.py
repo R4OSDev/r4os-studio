@@ -3,9 +3,10 @@ import json
 
 
 def compose(project):
+    from host_linker import qualify
     pins = project.get('pins', {})
     context = {'projectRevision': project.get('revision'), 'language': project.get('language'),
-               'role': project.get('template')}
+               'role': project.get('template'), 'hostCLinker': qualify()}
     for name in ('sdk', 'contract', 'zig', 'rust'):
         value = pins.get(name)
         if isinstance(value, dict):
@@ -26,5 +27,8 @@ def compose(project):
         'and Contract0.64.45/db155842d346a8aae0aadea73288105140c95af6, native compilers and HTTP POST/SSE streaming, '
         'TCP deadlines/PeerClosed semantics must be qualified in the actual language API. A Studio model provider cannot add guest networking APIs. '
         'Missing glyphs need localization to application/font/rendering; do not silently substitute text or claim a Studio encoding defect. '
+        'For host-only Rust tests, cc in the tool terminal resolves to the qualified existing public host driver; '
+        'an unavailable driver produces a specific Host C linker diagnostic. This is separate from pinned native R4X build/link tooling; '
+        'do not change project pins, test scripts or global compiler defaults to repair a host linker. '
         'The detailed pinned qualification is documented in the Studio installation as R4OS-Environment.md; '
         'that Studio documentation is separate from the app workspace.')
