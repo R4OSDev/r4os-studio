@@ -1,3 +1,19 @@
+## Provider failure qualification (0.8.10, partial)
+
+Project/skill workers now safely describe typed HTTP502/503/504 provider
+failures, authentication/limits and stream failures, including a failed turn's
+final error. Provider text/URLs/request identifiers stay private. A transient
+candidate is diagnostic only; it does not authorize replay.
+
+The five60-second automatic continuation attempts, durable countdown and
+Goal/Queue/Stop/clock integration remain open. Native HTTP/stream retries stay
+zero for the private image-capable provider to avoid uncertain image POST replay.
+No Run is resumed, no new user message is inserted and no timer is enabled by
+this release. `Provider-Retries.md` records the pinned native source/API findings,
+continuation contract and remaining qualification. Source/AST checks and
+Build/TypeScript/Lint only; no new tests/fixtures, user runs, VM actions or model
+inference, as required by this roadmap entry.
+
 ## Host test C linker (0.8.9)
 
 The tool/terminal sandbox resolves the existing host `cc` through a bounded

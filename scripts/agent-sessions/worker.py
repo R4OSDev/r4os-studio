@@ -4,7 +4,6 @@ import asyncio
 import fcntl
 import json
 import os
-import re
 from pathlib import Path
 import signal
 import sys
@@ -75,6 +74,9 @@ class Worker:
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
+        if method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed' and not self.error:
+            from provider_errors import describe
+            if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'])['text']
         self.usage_stats.notify(method,params)
         if self.message_worker: self.message_worker.observe(method, params)
         if self.goal_worker and await self.goal_worker.notify(method, params): return
@@ -93,16 +95,11 @@ class Worker:
             self.error = self.error or 'The agent process stopped before its result was confirmed.'
             self.done.set()
         elif method == 'error':
-            code = params.get('error', {}).get('codexErrorInfo')
-            message = {'usageLimitExceeded': 'This provider has reached its usage limit.',
-                       'rateLimitExceeded': 'The model service is rate limited. Try again later.',
-                       'unauthorized': 'The provider needs to sign in again.',
-                       'contextWindowExceeded': 'The conversation exceeds the model context limit.'}.get(code if isinstance(code, str) else '', 'The model service reported an error.')
-            raw_message = str(params.get('error', {}).get('message', ''))
-            if re.search(r'\b401\b|\bunauthorized\b', raw_message, re.I): message = 'The provider needs to sign in again.'
-            elif re.search(r'\b429\b|usage limit|quota exceeded', raw_message, re.I): message = 'This provider has reached its usage limit.'
-            event(self.store, self.session_id, self.run_id, 'notice', {'text': message, 'retrying': bool(params.get('willRetry'))})
-            if not params.get('willRetry'): self.error = message
+            from provider_errors import describe
+            description = describe(params.get('error')); retrying = params.get('willRetry') is True
+            event(self.store, self.session_id, self.run_id, 'notice', {'text': description['text'], 'retrying': retrying,
+                'providerError': {key: value for key, value in description.items() if key != 'text'}})
+            if not retrying: self.error = description['text']
         elif method in ('item/started', 'item/completed'):
             native = params['item']; kind = native.get('type'); ident = native.get('id')
             if kind == 'agentMessage':
