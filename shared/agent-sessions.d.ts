@@ -56,6 +56,9 @@ export interface SessionItem {
   webSearch?: { action: 'search' | 'openPage' | 'findInPage' | 'other'; queries?: string[]; url?: string; pattern?: string; sources?: { title: string; url: string }[]; truncated?: boolean };
 }
 export interface SessionHistory { items: SessionItem[]; before: number | null; cursor: number }
+export interface SessionDeletionPreview { sessionId: string; name: string; revision: number; scopeHash: string; allowed: boolean; blockers: string[] }
+export interface SessionDeletionInput { requestId: string; revision: number; scopeHash: string; confirmName: string }
+export interface SessionDeletionReceipt { requestId: string; sessionId: string; state: 'deleting' | 'unknown' | 'deleted'; phase: string; reason?: string; creationRequestIds?: string[] }
 export interface AgentEvent { seq: number; kind: string; runId: string | null; payload: unknown }
 export interface RemoteReceiptSummary {
   id?: string; requestId?: string; hostId?: string; hostName?: string; operation?: string;

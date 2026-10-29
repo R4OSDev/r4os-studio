@@ -210,3 +210,10 @@
 .agent-storage-dialog>p{margin:16px 20px;font-size:13px;line-height:1.5}.agent-storage-dialog>.agent-storage-files{margin:16px 20px}.agent-storage-files li{border-bottom-color:#3b2c4b}
 
 .agent-generated-card{display:grid;gap:8px;padding:12px;max-width:640px;border-top:1px solid var(--border);color:var(--text);font-size:.8rem;min-width:0}.agent-generated-card p{padding:0;overflow-wrap:anywhere}.agent-generated-card code{overflow-wrap:anywhere}.agent-generated-preview{display:flex;flex-direction:column;gap:8px;max-width:100%;min-width:0}.agent-generated-preview .agent-image-preview{max-width:100%;min-width:0}.agent-generated-preview img{display:block;max-width:100%;max-height:300px;object-fit:contain;margin:auto}.agent-generated-preview button:focus-visible,.agent-generated-preview a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.project-actions .session-delete-open { margin-right:auto; }
+.project-actions .session-delete-action { color:#d9c1ef; background:#302239; border-color:#76528c; }
+.session-delete-action:hover { background:#483052; }
+.session-delete-content { padding:18px 24px; font-size:12px; line-height:1.65; overflow-wrap:anywhere; }
+.session-delete-content label { display:flex; flex-direction:column; gap:7px; }
+.session-delete-content input { min-width:0; width:100%; padding:9px 10px; border:1px solid #6b4c80; border-radius:5px; background:#17121e; color:#ece2f5; font:inherit; }
+.session-delete-dialog { width:min(560px,calc(100vw - 38px)); }

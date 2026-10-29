@@ -3,7 +3,9 @@ import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
-import { useSessionApi, sessionPath, busyRun } from './api';
+import { useSessionApi, sessionPath, busyRun, ProjectRequestError } from './api';
+import { DeleteSessionDialog } from './DeleteSessionDialog';
+import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
 import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
@@ -23,9 +25,10 @@ function merge(previous: SessionItem[], value: SessionItem) {
   return previous.some((p) => itemKey(p) === itemKey(value)) ? previous.map((p) => itemKey(p) === itemKey(value) ? value : p) : [...previous, value];
 }
 
-export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth, dirtyChanged, busyChanged }: {
+export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth, dirtyChanged, busyChanged, removed }: {
   projectId: string; sessionId: string; token: string; changed: () => void; refreshAuth: () => Promise<void>;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
+  removed: () => void;
 }) {
   const { request: projectRequest, base: apiBase, scope } = useSessionApi();
   const base = sessionPath(projectId, sessionId);
@@ -36,6 +39,21 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const projectSession = scope === 'project', transcript = useTranscriptFollow(log, transcriptContent, items, projectSession);
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [deleting, setDeleting] = useState(() => !!pendingDeletion(scope, projectId, sessionId));
+  const removedRef = useRef(removed), retired = useRef(false);
+  useEffect(() => { removedRef.current = removed; }, [removed]);
+  const deleted = useCallback(() => {
+    if (retired.current) return;
+    retired.current = true;
+    try { clearDeletedSession(scope, projectId, sessionId); } catch { /* Confirmed deletion still clears the selection. */ }
+    setDeleting(false); setSettings(false); dirtyChanged(false); busyChanged(false); changed(); removedRef.current();
+  }, [scope, projectId, sessionId, dirtyChanged, busyChanged, changed]);
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('studio-session-lifetimes');
+    channel.onmessage = event => { const value = event.data; if (value?.deleted === true && value.scope === scope && value.owner === projectId && value.sid === sessionId) deleted(); };
+    return () => channel.close();
+  }, [scope, projectId, sessionId, deleted]);
   const [statistics, setStatistics] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth);
@@ -102,11 +120,15 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const retry = () => {
       if (controller.signal.aborted) return;
       window.clearTimeout(timer); setConnection('Reconnecting');
-      timer = window.setTimeout(() => { void refreshAuth().then(async () => { if (!loaded) { await load(controller.signal); loaded = true; } connect(); }).catch(retry); }, Math.min(1000 * 2 ** attempt++, 10000));
+      timer = window.setTimeout(() => { void refreshAuth().then(async () => {
+        // A closed SSE can also mean another browser tab deleted this session.
+        try { await projectRequest(base); } catch (failure) { if ((failure as ProjectRequestError).status === 410) { deleted(); return; } throw failure; }
+        if (!loaded) { await load(controller.signal); loaded = true; } connect();
+      }).catch(retry); }, Math.min(1000 * 2 ** attempt++, 10000));
     };
-    void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: Error) => { if (!controller.signal.aborted) { setError(e.message); retry(); } });
+    void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest]);
   useEffect(() => {
     if (!projectSession && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items, projectSession, log]);
@@ -115,7 +137,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const active = busyRun(run?.state) || nativeActive;
   const waiting = inbox.inbox?.messages.some(value => value.mode === 'queue' && ['queued','dispatching'].includes(value.state)) ?? false;
   const queueMode = active || waiting;
-  const blocked = choiceSaving || settings || goalEditor || goal.changing || goal.goal?.phase === 'unknown';
+  const blocked = choiceSaving || settings || deleting || goalEditor || goal.changing || goal.goal?.phase === 'unknown';
   const empty = !text.trim() && !attachments.hasFiles;
   const direct = !!run?.messageSupport && !!run.threadId && !!run.turnId && !attachments.hasFiles;
   async function send(now = false) {
@@ -213,6 +235,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     {goalEditor && <GoalEditor control={goal} run={run} stopRun={stop} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
     {showNotes && session && <EnvironmentNotes key={notes.key} session={session} notes={notes} token={token} reauth={refreshAuth} close={() => setShowNotes(false)} run={run} stop={stop} />}
     {statistics && <SessionStatistics ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setStatistics(false)} run={run} stop={stop} />}
-    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
+    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} deleteSession={() => setDeleting(true)} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
+    {deleting && <DeleteSessionDialog projectId={projectId} sessionId={sessionId} token={token} reauth={refreshAuth} close={() => setDeleting(false)} deleted={deleted} />}
   </section>;
 }

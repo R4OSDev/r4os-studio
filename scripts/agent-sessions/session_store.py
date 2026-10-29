@@ -126,6 +126,7 @@ class SessionStore:
         from project_use import acquire
         self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
         self.selected_profile = NOTES_SKILL_PROFILE if kind == 'skill' else PROFILE
+        self.session_uses = {}
         self.project_use = acquire(projects, project_id) if kind == 'project' else None
         try: self.open(projects, r4os, project_id)
         except BaseException:
@@ -184,9 +185,18 @@ PRAGMA user_version=1;
 
     def close(self):
         self.db.close()
+        for use in self.session_uses.values():
+            if use is not None: use.close()
         if self.project_use: self.project_use.close()
 
     def row(self, session_id):
+        from session_lifetime import acquire, state
+        session_id = identity(session_id)
+        if session_id not in self.session_uses:
+            self.session_uses[session_id] = acquire(self.projects, self.owner_type, self.owner_id, session_id)
+        retired = state(self.db, session_id)
+        if retired:
+            raise ProjectFault('This session was deleted.' if retired[0] == 'deleted' else 'Session cleanup is in progress. Read the original deletion receipt.', 410 if retired[0] == 'deleted' else 409)
         row = self.db.execute('SELECT * FROM sessions WHERE id=? AND project_id=?',
                               (identity(session_id), self.project_id)).fetchone()
         if row is None: raise ProjectFault('Session not found.', 404)
@@ -221,7 +231,8 @@ PRAGMA user_version=1;
                 'latestRun': self.run_present(latest) if latest else None}
 
     def list(self):
-        return [self.present(r) for r in self.db.execute('SELECT * FROM sessions WHERE project_id=? ORDER BY updated_at DESC,id', (self.owner_id,))]
+        from session_lifetime import state
+        return [self.present(r) for r in self.db.execute('SELECT * FROM sessions WHERE project_id=? ORDER BY updated_at DESC,id', (self.owner_id,)) if not state(self.db, r['id'])]
 
     def get(self, session_id): return self.present(self.row(session_id))
 
@@ -232,6 +243,10 @@ PRAGMA user_version=1;
         key = identity(data['requestId']); payload_hash = hashlib.sha256(encode(data).encode()).hexdigest()
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='retired_session_requests'").fetchone():
+                retired = self.db.execute('SELECT payload_hash FROM retired_session_requests WHERE request_id=?', (key,)).fetchone()
+                if retired:
+                    raise ProjectFault('This session creation request was retired after deletion.' if retired[0] == payload_hash else 'This request ID belongs to another original submission.', 410 if retired[0] == payload_hash else 409)
             old = self.db.execute('SELECT * FROM requests WHERE request_id=?', (key,)).fetchone()
             if old:
                 if old['kind'] != 'create' or old['payload_hash'] != payload_hash:

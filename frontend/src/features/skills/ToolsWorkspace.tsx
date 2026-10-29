@@ -11,6 +11,7 @@ import '../agent-sessions/styles.css';
 import '../projects/styles.css';
 import { SessionScope, busyRun } from '../agent-sessions/api';
 import { useSessions } from '../agent-sessions/useSessions';
+import { pendingDeletion } from '../agent-sessions/sessionDeletionStorage';
 import { NewSessionDialog } from '../agent-sessions/NewSessionDialog';
 import { SessionPanel } from '../agent-sessions/SessionPanel';
 const SkillEditor = lazy(() => import('./SkillEditor'));
@@ -76,7 +77,7 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
       </nav> : <div className="nav-column" aria-hidden="true" />}
     </aside>
     <main className="main-area skill-main" aria-label="Tools content" tabIndex={-1}>
-      {active && sessionId ? sessions.loading ? <p className="skill-empty">Loading session…</p> : sessions.sessions.some((session) => session.id === sessionId) ? <SessionPanel key={'skill:' + active.id + ':' + sessionId} projectId={active.id} sessionId={sessionId} token={api.token} changed={changed} refreshAuth={api.reload} dirtyChanged={setSessionDirty} busyChanged={setSessionBusy} /> : <p className="skill-empty">The selected session is unavailable. Select a session or View Skill.</p> : active ? <Suspense fallback={<p className="skill-empty">Loading skill…</p>}><SkillEditor key={active.id} id={active.id} token={api.token}
+      {active && sessionId ? sessions.loading ? <p className="skill-empty">Loading session…</p> : (sessions.sessions.some((session) => session.id === sessionId) || !!pendingDeletion('skill', active.id, sessionId)) ? <SessionPanel key={'skill:' + active.id + ':' + sessionId} projectId={active.id} sessionId={sessionId} token={api.token} changed={changed} refreshAuth={api.reload} dirtyChanged={setSessionDirty} busyChanged={setSessionBusy} removed={() => { navigate(active.id); window.history.replaceState(null, '', '#tools/skills/' + active.id); }} /> : <p className="skill-empty">The selected session is unavailable. Select a session or View Skill.</p> : active ? <Suspense fallback={<p className="skill-empty">Loading skill…</p>}><SkillEditor key={active.id} id={active.id} token={api.token}
         deleteSkill={()=>setDeletionId(active.id)} remembered={api.remember} setLeaveGuard={setChildGuard} refreshAuth={api.reload} /></Suspense>
         : <p className="skill-empty">{selectedId && api.token ? 'The selected skill is unavailable. Select another skill or create one.' : 'Select a skill or create one.'}</p>}
     </main>

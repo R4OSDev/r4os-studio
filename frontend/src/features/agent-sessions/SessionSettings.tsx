@@ -7,10 +7,11 @@ import { useSessionApi, sessionPath, busyRun, toolLabels, updateToolIds, remoteT
 const tools = Object.keys(toolLabels) as AgentToolId[];
 const sections = ['General', 'Tools', 'Skills'] as const;
 const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
-export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged }: {
+export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged, deleteSession }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
   reloaded?: (session: AgentSession) => void;
+  deleteSession?: () => void;
 }) {
   const { request: projectRequest, scope } = useSessionApi();
   const [draft, setDraft] = useState(session), [options, setOptions] = useState<SessionOptions | null>(null);
@@ -122,7 +123,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       </fieldset>
       {busyRun(draft.latestRun?.state) && <p className="project-dialog-error">Stop the current run before saving settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
-      <footer className="project-actions">{error && <button type="button" disabled={saving || reloading} onClick={() => void reload()}>Reload saved</button>}<button type="button" disabled={saving || reloading} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={saving || reloading || busyRun(draft.latestRun?.state)}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
+      <footer className="project-actions">{deleteSession && <button type="button" className="session-delete-action session-delete-open" disabled={saving || reloading} onClick={deleteSession}>Delete session</button>}{error && <button type="button" disabled={saving || reloading} onClick={() => void reload()}>Reload saved</button>}<button type="button" disabled={saving || reloading} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={saving || reloading || busyRun(draft.latestRun?.state)}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
     </form>
   </dialog>;
 }

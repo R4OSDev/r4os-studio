@@ -1,3 +1,40 @@
+## Delete one session (0.8.4)
+
+Project and Skill Manager Session settings include **Delete session** at the
+lower left of every tab. A separate dialog requires the saved session name;
+Cancel preserves settings and composer drafts. The server checks the session
+revision and private scope again at admission. Active runs, executable queues,
+pending/active/unknown Goals, uploads and unconfirmed tool/guest/remote/Git
+effects prevent deletion. Confirmed original guest-end recovery is recognized.
+Nothing is stopped automatically.
+
+The unprivileged agent coordinator owns the deletion journal and cleanup. A
+cross-process session lifetime gate covers admitted session use; other sessions
+keep their own independent gates. An accepted request retires the selected
+session, atomically detaches its private directory and removes its settings,
+native/Studio history, runs/tool receipts, Goals, messages, attachments,
+generated images, notes and worker scratch data. Linked/replaced or unconfirmed
+targets are preserved with an explicit original-request recovery state.
+Confirmed numeric statistics are reconciled first and remain in the lifetime
+store. Project development artifacts/job receipts and project/skill sources,
+shared components, provider credentials and VMs remain.
+
+Read the original `/api/projects|skills/:owner/sessions/:session/deletion/:request`
+receipt after a lost response. The browser keeps that request ID over reload;
+only an explicit **Retry same request** resubmits it. Coordinator restart resumes
+accepted cleanup without replaying any agent/tool/model operation. Minimal
+text-free tombstones retain session/request identities and hashes; retired
+creation requests return410 instead of recreating the session. Empty lifetime
+lock files remain to prevent old open descriptors from bypassing the gate.
+
+Confirmed deletion clears only matching browser caches and the selected route;
+other tabs receive a session-scoped notification, with410 readback as fallback.
+No new session is created. This is a browser-only action and is not an agent tool.
+CSRF/owner/revision/scope, both owner types, crash recovery, numeric retention
+and browser1440/320 checks use isolated fixtures without user-session deletion
+or model inference. Existing hosts adopt the compatible coordinator normally;
+no new privileged maintenance or bootstrap is required.
+
 ## Project environment qualification (0.8.3)
 
 Agent runtime guidance includes the current project revision, language, role and

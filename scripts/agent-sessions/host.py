@@ -40,6 +40,7 @@ class Host:
         self.inboxes=set()
         self.message_tasks={}
         self.skill_delete_tasks={}
+        self.session_delete_tasks={}
         self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -72,6 +73,8 @@ class Host:
         return value
 
     async def recover(self):
+        from session_delete import recover as recover_session_deletions
+        await recover_session_deletions(self)
         # Never restart a queued/model/tool operation on coordinator or host boot.
         manifests = {}
         for path in self.root.glob('*/worker.json'):
@@ -162,7 +165,23 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op in ('session_delete_preview','session_delete','session_delete_receipt'):
+            import session_delete
+            kind,ident=binding(request);sid=identity(request['sessionId'])
+            if op=='session_delete_preview': return await session_delete.preview(self,kind,ident,sid)
+            if op=='session_delete_receipt':
+                store=self.store(ident,kind)
+                try:return session_delete.original(store,sid,request['requestId'])
+                finally:store.close()
+            rid=identity(request['input']['requestId'])
+            if len(self.session_delete_tasks)>=2 and rid not in self.session_delete_tasks:
+                raise ProjectFault('Session cleanup is busy. Read the original request before retrying.',429)
+            result=await session_delete.delete(self,kind,ident,sid,request['input'])
+            if result['state']!='deleted' and rid not in self.session_delete_tasks:
+                task=asyncio.create_task(session_delete.resume(self,kind,ident,sid,rid));self.session_delete_tasks[rid]=task
+                task.add_done_callback(lambda _,rid=rid:self.session_delete_tasks.pop(rid,None))
+            return result
         if op in ('skill_delete_preview','skill_delete','skill_delete_receipt'):
             import skill_delete
             ident=identity(request['ownerId'])
@@ -608,7 +627,7 @@ async def main():
                     await host.refresh()
                     await host.dispatch_queues()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:
