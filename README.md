@@ -1,3 +1,32 @@
+## Desktop execution evidence (0.8.1)
+
+Development job reads now include `executionEvidence`, derived without mutation
+from matching private execution/boot/process-generation receipts. Process end,
+helper cleanup, native exit status and completeness of captured process-console
+bytes are independent findings. Missing or damaged originals remain unconfirmed;
+zero captured bytes alone do not establish a complete empty stream. Existing
+job states, checks, recovery guards and original histories are preserved.
+
+Every received output frame is flushed before its bound observation and byte/hash
+receipt are atomically saved, before another poll advances the guest cursor.
+This preserves available evidence if the observer loses its later response. An
+observation does not attest helper cleanup or authorize replay. New helpers mark
+failed/inconsistent console reads incomplete and distinguish console observations
+from native completion observations; existing deployed helpers remain readable.
+
+Run & Test and the agent runtime explain the unconfirmed native Desktop exit
+retention and application-output routing, including Rust `App.write`, before
+criteria are selected. Configured exit/text criteria remain in place and cannot
+pass on missing evidence. Job cards show lifecycle, cleanup, exit and console
+findings beside the original checks and images. Desktop retains reap ownership.
+SDK/Contract/helper pins and project pins are unchanged.
+
+The native contract only exposes output from an **unconsumed** completion. A
+retention guarantee after Desktop cleanup and full C/Rust application-output
+routing have not been established. Roadmap0.8.1 therefore keeps its native
+integration and positive guest acceptance open; local receipt checks are not a
+replacement for those guest proofs. No production project was launched for QA.
+
 ## New Project recovery after a deleted GitHub setup (0.7.25)
 
 

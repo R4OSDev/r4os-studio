@@ -11,3 +11,6 @@ __pycache__/
 
 # Local runtime data, including provider credentials and all nested directories.
 /Data/
+
+# Temporary scripts, design previews and disposable outputs are never published.
+Temp/

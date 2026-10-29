@@ -47,7 +47,9 @@ class GuestControl:
             try:
                 self.process.stdin.write(message.encode()); await self.process.stdin.drain()
             except (OSError, ConnectionError): raise UnconfirmedGuestEffect('The guest control channel closed without a receipt.') from None
-            return (await self.read())['result']
+            result = (await self.read())['result']
+            if 'state' in result: result['controllerSequence'] = self.sequence
+            return result
 
     async def close(self):
         if self.process:

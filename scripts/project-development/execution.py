@@ -1,10 +1,12 @@
 """Bounded, generation-owned guest executions independent of browser/model turns."""
 import asyncio
 import base64
+import hashlib
+import os
 import uuid
 from contracts import DevelopmentFault, UnconfirmedGuestEffect, LIMITS, digest
 from jobs import folder, now
-from layout import save
+from layout import save, sync
 from lease import VmLease
 from access import Access, SshTransport, guest_version
 from vm_client import vm_call
@@ -20,6 +22,7 @@ class Execution:
         self.stop_requested = False; self.control = None; self.last = None
         self.completion = None; self.completion_future = None
         self.wake = asyncio.Event(); self.saved_observation = None
+        self.intent = None; self.output_observation = None
         self.output_data = b''
         if self.log.exists():
             with self.log.open('rb') as stream: self.output_data = stream.read(LIMITS['outputBytes'] + 1)
@@ -27,6 +30,11 @@ class Execution:
         self.output_limited = False
 
     def output(self, state):
+        if self.intent and self.output_observation:
+            previous = self.output_observation['observation'].get('controllerSequence')
+            sequence = state.get('controllerSequence')
+            if type(previous) is int and type(sequence) is int and sequence <= previous:
+                return False  # Nested capture/poll already consumed a newer frame.
         try: data = base64.b64decode(state.get('outputBase64', ''), validate=True)
         except ValueError: raise UnconfirmedGuestEffect('The guest returned an invalid output frame.') from None
         if len(data) > 24577: raise UnconfirmedGuestEffect('The guest output frame exceeds the limit.')
@@ -34,9 +42,21 @@ class Execution:
         if size + len(data) > LIMITS['outputBytes']: self.output_limited = True
         if self.output_limited: state['outputIncomplete'] = True
         fresh = data[:max(0, LIMITS['outputBytes'] - size)]
-        if fresh:
-            with self.log.open('ab') as stream: stream.write(fresh)
+        observed = bool(self.intent and state.get('instanceId', 0) > 0)
+        existed = self.log.exists()
+        if fresh or observed and not existed:
+            with self.log.open('ab') as stream:
+                stream.write(fresh); stream.flush(); os.fsync(stream.fileno())
+            if not existed: sync(self.log.parent)
             self.output_data += fresh
+        if observed:
+            # Persist the consumed frame before any subsequent poll can advance
+            # the guest cursor. This attests observed bytes, never native retention.
+            observation = {**self.intent, 'observation': {k: v for k, v in state.items() if k != 'outputBase64'},
+                'outputReceipt': {'bytes': len(self.output_data), 'sha256': hashlib.sha256(self.output_data).hexdigest()}}
+            if observation != self.output_observation:
+                save(self.work / 'output-observation.json', observation)
+                self.output_observation = observation
         return bool(fresh)
 
     async def action(self, message, state, control, lease, process):
@@ -236,6 +256,7 @@ class Execution:
                 intent = {'schema': 1, 'executionId': execution_id, 'jobId': job['id'], 'deploymentId': deployment['id'],
                     'target': target, 'vmInvocationId': invocation_id, 'role': deployment['role'], 'settings': job['settings'], 'state': 'intent', 'createdAt': now()}
                 save(self.work / 'intent.json', intent)
+                self.intent = intent
                 claim(store.projects, vm['id'], {'jobId': job['id'], 'projectId': store.id, 'executionId': execution_id,
                     'target': target, 'deploymentId': deployment['id']})
                 start_sent = False; hello_ready = False
@@ -314,7 +335,6 @@ class Execution:
                             closed = await control.call('finish')
                             if not closed.get('closed') or not closed.get('serviceRemoved', False) or not closed.get('watchdogRemoved'):
                                 raise UnconfirmedGuestEffect('Owned service cleanup was not confirmed.')
-                            import os, hashlib
                             with self.log.open('ab') as output_stream: output_stream.flush(); os.fsync(output_stream.fileno())
                             data = self.log.read_bytes()
                             completed_check = None

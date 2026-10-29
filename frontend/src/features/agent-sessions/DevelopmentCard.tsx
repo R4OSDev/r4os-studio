@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DevelopmentEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
+import type { DevelopmentEvidence, DevelopmentExecutionEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
 import { busyRun, projectRequest, projectRequestId } from './api';
 import { CodeBlock } from './Transcript';
 import { UpdateRecord } from '../projects/UpdateRecord';
@@ -20,6 +20,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
   const [job, setJob] = useState<DevelopmentJob | null>(null), [error, setError] = useState(''), [stopping, setStopping] = useState(false);
   const [open, setOpen] = useState(false), [output, setOutput] = useState(''), [more, setMore] = useState(false), [loading, setLoading] = useState(false);
   const [evidence, setEvidence] = useState<DevelopmentEvidence[]>([]);
+  const [executionEvidence, setExecutionEvidence] = useState<DevelopmentExecutionEvidence | null>(null);
   const cursor = useRef(0), [kind, setKind] = useState('Output'), [truncated, setTruncated] = useState(false);
   const recoveryId = useRef<string | null>(null);
   const completionId = useRef<string | null>(null);
@@ -29,7 +30,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     const refresh = async () => {
       try {
         const page = await projectRequest<DevelopmentJobPage>(path + '?metadataOnly=true', '', 'GET', undefined, controller.signal);
-        if (controller.signal.aborted) return; setJob(page.job); setEvidence(page.evidence); setError('');
+        if (controller.signal.aborted) return; setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setError('');
         if (busyRun(page.job.state)) timer = window.setTimeout(() => void refresh(), 2000);
       } catch (e) { if (!controller.signal.aborted) { setError((e as Error).message); timer = window.setTimeout(() => void refresh(), 4000); } }
     };
@@ -39,7 +40,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     if (loading) return; setLoading(true);
     try {
       const page = await projectRequest<DevelopmentJobPage>(path + '?offset=' + cursor.current);
-      setJob(page.job); setEvidence(page.evidence); setOutput((old) => old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : page.outputKind === 'diagnostic' ? 'Diagnostic output' : 'Build output');
+      setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setOutput((old) => old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : page.outputKind === 'diagnostic' ? 'Diagnostic output' : 'Build output');
       setMore(page.nextOffset > cursor.current || busyRun(page.job.state)); cursor.current = page.nextOffset; setTruncated(page.truncated); setError('');
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }
@@ -57,7 +58,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     setStopping(true); completionId.current ??= projectRequestId();
     try {
       const page = await projectRequest<DevelopmentJobPage>(path + '/complete', token, 'POST', { requestId: completionId.current });
-      setJob(page.job); completionId.current = null; setError('');
+      setJob(page.job); setExecutionEvidence(page.executionEvidence ?? null); completionId.current = null; setError('');
     } catch (e) { setError((e as Error).message); } finally { setStopping(false); }
   }
   return <section className="development-card" aria-label="Development job">
@@ -73,13 +74,18 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     {job?.updateInstallation && <UpdateRecord projectId={projectId} updateId={job.updateInstallation.id} token={token} />}
     {open && job && (job.kind === 'package' || job.kind.startsWith('update_')) && <details><summary>Original package / native receipts</summary><CodeBlock text={JSON.stringify({ plan: job.updatePlan, package: job.updatePackage, preflight: job.updateProbe, transfer: job.updateTransfer, update: job.updateInstallation }, null, 2)} label="Copy original update receipts" language="json" /></details>}
     {job?.checkCompletion && <p>{job.checkCompletion.state === 'completed' ? 'Checks completed · Application closed' : job.checkCompletion.state === 'closing' ? 'Completing checks · Closing application' : 'Check completion failed'}</p>}
+    {executionEvidence && <div className="development-execution-evidence" aria-label="Execution evidence">
+      <p>Process end: {executionEvidence.processEndConfirmed ? 'Confirmed' : 'Unconfirmed'} · Helper cleanup: {executionEvidence.cleanupConfirmed ? 'Confirmed' : 'Unconfirmed'}</p>
+      <p>Exit status: {executionEvidence.exitStatusConfirmed ? executionEvidence.exitCode : 'Unavailable'}{!executionEvidence.exitStatusConfirmed && executionEvidence.exitStatusReason ? ` · ${executionEvidence.exitStatusReason}` : ''}</p>
+      <p>Process console: {executionEvidence.output.state}{executionEvidence.output.bytes !== undefined ? ` · ${executionEvidence.output.bytes.toLocaleString()} bytes retained` : ''}. {executionEvidence.output.reason}</p>
+    </div>}
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
     {job?.readiness && <p>{({ transferred: 'Package verified', ready: 'Application ready', started: 'Process started', completed: 'Application ended', unsupported: 'Start unavailable', unknown: 'Outcome unconfirmed', failed: 'Start failed', interrupted: 'Interrupted' } as Record<string, string>)[job.readiness.state] ?? job.readiness.state}</p>}
     {job?.readiness?.reasonCode === 'desktop_content_unconfirmed' && <p>{job.readiness.reason}</p>}
     {job?.state === 'unknown' && <p>No action was repeated.</p>}
     {job?.vmStart?.ready && <p>SSH ready · R4OS {job.vmStart.guestRelease}{job.vmStart.checkedAt ? ` · ${new Date(job.vmStart.checkedAt).toLocaleString()}` : ''}</p>}
     {job?.state === 'unknown' && !job.guestState?.closeConfirmed && <button type="button" disabled={stopping} onClick={() => void reconcile()}>{stopping ? 'Reconciling…' : 'Reconcile receipts'}</button>}
-    {job?.state === 'unknown' && job.guestState?.closeConfirmed && <p>Process end confirmed. Exit status unavailable.</p>}
+    {job?.state === 'unknown' && job.guestState?.closeConfirmed && !executionEvidence && <p>Process end confirmed. Exit status unavailable.</p>}
     {job?.recovery?.reason && <p>{job.recovery.reason}</p>}
     <button type="button" aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !output) void readOutput(); }}>{open ? 'Hide details' : 'Show details'}</button>
     {open && <>{job?.package && <code>{job.package.guestDirectory}</code>}{job?.process && <p>Process {job.process.instanceId} · Generation {job.process.generation}{job.process.serviceName ? ` · ${job.process.serviceName}` : ''}</p>}<CodeBlock text={output} label="Copy job output" language={kind} />{truncated && <p>Output limit reached.</p>}{(more || !!job && busyRun(job.state)) && <button type="button" disabled={loading} onClick={() => void readOutput()}>{loading ? 'Loading…' : 'Load more output'}</button>}</>}

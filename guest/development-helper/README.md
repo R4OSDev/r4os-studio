@@ -36,6 +36,11 @@ Console output is one combined transcript, with explicit loss indication.
 Native completion supplies exit code/reason and sequence when available. The
 Desktop can consume GUI completions first: exact-generation disappearance then
 confirms closure, while the exit code remains unknown. No success is inferred.
+Since0.8.1, consoleObserved and completionObserved distinguish actual console
+reads from native completion reads. A failed or inconsistent console read marks
+the captured output incomplete. The host saves consumed frames and byte/hash
+observations durably before further polls. These additive fields do not provide
+native completion retention or establish the routing of Rust/C application writes.
 
 Desktop launch is performed once by the host through DESKRUN /JSON /WAIT:10000
 /WAITFRAME and the verified absolute Exchange Build APP.R4X path. The guest

@@ -222,9 +222,12 @@ class Jobs:
                 except UnicodeDecodeError as error:
                     if error.reason == 'unexpected end of data' and error.end == len(data): data = data[:error.start]
         from evidence import list_for
+        from execution_evidence import describe
         return {'job': job, 'output': data.decode('utf-8', errors='replace'), 'nextOffset': offset + len(data),
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
-                'outputKind': 'build' if job['kind'] == 'build' else 'console' if job['kind'] == 'execution' else 'diagnostic', 'evidence': list_for(self, job_id)}
+                'outputKind': 'build' if job['kind'] == 'build' else 'console' if job['kind'] == 'execution' else 'diagnostic',
+                'evidence': list_for(self, job_id),
+                **({'executionEvidence': describe(self, job)} if job['kind'] == 'execution' else {})}
 
     def artifact_metadata(self, artifact_id, recovering=False):
         """Private ownership lookup; callers must verify bytes before using files."""

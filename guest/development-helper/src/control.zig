@@ -56,6 +56,8 @@ const State = struct {
     serviceEndpointReady: bool = false,
     outputBase64: []const u8 = "",
     outputIncomplete: bool = false,
+    consoleObserved: bool = false,
+    completionObserved: bool = false,
     stopReason: ?[]const u8 = null,
     closeConfirmed: bool = false,
     inputAccepted: ?u32 = null,
@@ -364,6 +366,7 @@ const Controller = struct {
             }
             var count: usize = 0;
             if (self.completed) |completion| {
+                self.state.completionObserved = true;
                 if (!self.completion_initialized) {
                     // Completion retains a bounded tail, not an ever-growing
                     // stream. Align its cursor with the last delivered counter.
@@ -400,6 +403,7 @@ const Controller = struct {
                 const got = self.sys.consoleOutput(p.raw, &self.output);
                 if (code == 0 and got >= 0 and self.sys.consoleRevision(p.raw) == revision and
                     @as(u32, @intCast(got)) == @min(info.output_len, self.output.len - 1)) {
+                    self.state.consoleObserved = true;
                     const total = info.stdout_bytes +% info.stderr_bytes;
                     const delta = total -% self.stream_cursor;
                     if (info.clear_count != self.last_clear or delta > @as(u32, @intCast(got))) self.incomplete = true;
@@ -410,6 +414,10 @@ const Controller = struct {
                     self.stream_cursor = total;
                     self.output_cursor = info.output_len + info.output_dropped_bytes;
                     self.last_clear = info.clear_count;
+                } else {
+                    // An unavailable or inconsistent console observation must
+                    // not certify that an empty stream is complete.
+                    self.incomplete = true;
                 }
             }
             if (count != 0) {

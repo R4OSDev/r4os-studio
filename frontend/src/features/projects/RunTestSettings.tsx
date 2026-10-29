@@ -53,6 +53,11 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
         <ProjectField id="run-timeout" label="Time limit (seconds)"><input id="run-timeout" type="number" min={1} max={300} required value={draft.timeoutSeconds} onChange={(e) => patch({ timeoutSeconds: Number(e.target.value) })} /></ProjectField>
       </div>
       <h3>Checks</h3>
+      {options?.evidenceCapabilities && <div className="project-message">
+        <p>Desktop exit status: {options.evidenceCapabilities.exitStatus.state}. {options.evidenceCapabilities.exitStatus.reason}</p>
+        <p>Desktop console output: {options.evidenceCapabilities.consoleOutput.state}. {options.evidenceCapabilities.consoleOutput.reason}</p>
+        <p>Configured checks are kept. Missing exit or text evidence leaves the affected checks inconclusive.</p>
+      </div>}
       <ProjectField id="run-exit" label="Expected exit code"><input id="run-exit" type="number" min={-2147483648} max={2147483647} placeholder="Any" value={draft.expectedExitCode ?? ''} onChange={(e) => patch({ expectedExitCode: e.target.value === '' ? null : Number(e.target.value) })} /></ProjectField>
       <ProjectField id="run-output" label="Expected console output"><textarea id="run-output" rows={3} value={draft.outputContains.join('\n')} onChange={(e) => patch({ outputContains: e.target.value.split('\n').filter(Boolean) })} /></ProjectField>
       {project?.template === 'service' && <ProjectField id="run-service" label="Expected self-test response"><input id="run-service" maxLength={256} value={draft.serviceResponseContains ?? ''} onChange={(e) => patch({ serviceResponseContains: e.target.value || null })} /></ProjectField>}

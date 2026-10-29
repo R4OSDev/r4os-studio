@@ -14,6 +14,10 @@ export interface DevelopmentCapability {
   reason?: string;
 }
 export interface DevelopmentOptions {
+  evidenceCapabilities?: {
+    exitStatus: { state: 'unconfirmed'; reasonCode: string; reason: string };
+    consoleOutput: { state: 'unconfirmed'; reasonCode: string; reason: string };
+  } | null;
   revision: string;
   build: DevelopmentCapability;
   deploy: DevelopmentCapability;
@@ -196,6 +200,7 @@ export interface DevelopmentJob {
   completedAt: string | null;
 }
 export interface DevelopmentJobPage {
+  executionEvidence?: DevelopmentExecutionEvidence | null;
   job: DevelopmentJob;
   output: string;
   nextOffset: number;
@@ -203,6 +208,17 @@ export interface DevelopmentJobPage {
   /** SSH console transport does not imply independently captured stderr. */
   outputKind: 'build' | 'console' | 'diagnostic';
   evidence: DevelopmentEvidence[];
+}
+/** Independent findings read from matching private originals; grants no lifecycle action. */
+export interface DevelopmentExecutionEvidence {
+  version: 1;
+  source?: 'private-guest-close-receipt' | 'private-guest-observation';
+  processEndConfirmed: boolean;
+  cleanupConfirmed: boolean;
+  exitStatusConfirmed: boolean;
+  exitCode: number | null;
+  exitStatusReason?: string;
+  output: { state: 'complete' | 'incomplete' | 'unconfirmed'; reason: string; bytes?: number; sha256?: string };
 }
 export interface DevelopmentSettings {
   revision: number;

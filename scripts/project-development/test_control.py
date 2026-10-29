@@ -31,6 +31,7 @@ class ControlTest(unittest.IsolatedAsyncioTestCase):
     async def test_console_limit_is_explicit_and_invalid_frame_is_not_logged(self):
         with tempfile.TemporaryDirectory() as root:
             worker = Execution.__new__(Execution); worker.log = Path(root) / 'output.log'
+            worker.intent = None
             worker.output_data = b'x' * (LIMITS['outputBytes'] - 1); worker.output_limited = False
             worker.log.write_bytes(worker.output_data)
             state = {'outputBase64': base64.b64encode(b'AB').decode()}; worker.output(state)

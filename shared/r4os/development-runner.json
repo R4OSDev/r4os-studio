@@ -48,6 +48,20 @@
     "root": "Build",
     "startsApplication": false
   },
+  "evidenceCapabilities": {
+    "desktop": {
+      "exitStatus": {
+        "state": "unconfirmed",
+        "reasonCode": "desktop_completion_retention_unconfirmed",
+        "reason": "Desktop owns process cleanup. Generation-bound exit status is captured when available; native completion retention after Desktop cleanup is unconfirmed."
+      },
+      "consoleOutput": {
+        "state": "unconfirmed",
+        "reasonCode": "desktop_console_routing_unconfirmed",
+        "reason": "The controller reads the process console and retained completion tail. Desktop routing of application writes, including Rust App.write, is unconfirmed. Empty captured output does not prove that the app wrote nothing."
+      }
+    }
+  },
   "desktopLaunch": {
     "interface": "DESKRUN",
     "contract": "0.1.1",
