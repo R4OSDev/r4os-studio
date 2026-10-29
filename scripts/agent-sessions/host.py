@@ -16,6 +16,7 @@ from run_store import admit, get_run, transition, events
 from protocol import release_protocol, supported_profiles, validate_release
 from store import ProjectFault
 from owner import binding, owners, skills_root
+from run_limits import max_active_runs
 
 UNIT = 'r4os-studio-agent@{}.service'
 
@@ -31,6 +32,7 @@ async def systemctl(*args):
 class Host:
     def __init__(self, config):
         self.config = config
+        self.max_active_runs = max_active_runs(config)
         self.root = directory(Path(config['projects']) / '.studio/agents')
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
         self.goal_readback_lock = asyncio.Lock()
@@ -160,7 +162,7 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.config.get('maxActiveRuns', 2), 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op in ('skill_delete_preview','skill_delete','skill_delete_receipt'):
             import skill_delete
             ident=identity(request['ownerId'])
@@ -376,8 +378,8 @@ class Host:
                             raise ProjectFault('This worker release cannot apply the saved session skill choices.', 503)
                         if request['input'].get('skillScripts') == 1 and not (target / 'scripts/agent-sessions/skill_scripts.py').is_file():
                             raise ProjectFault('This worker release cannot provide frozen skill script resources.', 503)
-                    if not previous and len(self.active) >= self.config.get('maxActiveRuns', 2):
-                        raise ProjectFault('The host is already running its maximum number of agent runs.')
+                    if not previous and len(self.active) >= self.max_active_runs:
+                        raise ProjectFault(f'The host is already running its maximum number of agent runs ({self.max_active_runs}). No run was started. Retry the same request when a slot is available.', 429)
                     run, fresh = admit(store, session_id, request['input'], self.config['providers'],image_capability)
                     if not fresh: return run
                     return await self.launch_admitted(store, run, kind, project_id, session_id)
@@ -426,9 +428,9 @@ class Host:
 
     async def dispatch_queues(self):
         from message_store import Messages
-        if self.unbound or len(self.active) >= self.config.get('maxActiveRuns', 2): return
+        if self.unbound or len(self.active) >= self.max_active_runs: return
         for kind, ident, sid in tuple(self.inboxes):
-            if len(self.active) >= self.config.get('maxActiveRuns', 2): return
+            if len(self.active) >= self.max_active_runs: return
             store = None
             try:
                 store = self.store(ident, kind)

@@ -6,6 +6,7 @@ from pathlib import Path
 import pwd
 import shutil
 import subprocess
+from run_limits import DEFAULT_MAX_ACTIVE_RUNS, max_active_runs
 
 
 def main():
@@ -15,10 +16,15 @@ def main():
     update = json.loads(Path('/etc/r4os-studio-updates/config.json').read_text())
     user = pwd.getpwnam('r4os-studio'); data = Path(update['dataDirectory']).resolve(strict=True)
     projects, providers, r4os = data / 'Projects', data / 'LLMProvider', data / 'R4OS'
-    cfg = {'schema': 1, 'uid': user.pw_uid, 'projects': str(projects), 'providers': str(providers), 'r4os': str(r4os), 'maxActiveRuns': 2}
+    cfg = {'schema': 1, 'uid': user.pw_uid, 'projects': str(projects), 'providers': str(providers), 'r4os': str(r4os), 'maxActiveRuns': DEFAULT_MAX_ACTIVE_RUNS}
     config_dir = Path('/etc/r4os-studio-agents'); config_dir.mkdir(exist_ok=True)
     file = config_dir / 'config.json'
-    if file.exists() and json.loads(file.read_text()) != cfg: raise SystemExit('Existing agent host configuration differs; preserve and review it.')
+    if file.exists():
+        existing = json.loads(file.read_text())
+        if {k: v for k, v in existing.items() if k != 'maxActiveRuns'} != {k: v for k, v in cfg.items() if k != 'maxActiveRuns'}:
+            raise SystemExit('Existing agent host configuration differs; preserve and review it.')
+        max_active_runs(existing)
+        cfg = existing
     file.write_text(json.dumps(cfg, indent=2) + '\n'); file.chmod(0o644)
     target = Path('/opt/r4os-studio/bin/agent-launch.py')
     shutil.copyfile(Path(__file__).parent / 'launch.py', target); target.chmod(0o755)

@@ -4,7 +4,7 @@ import type { MessageTarget, SessionMessage, SessionMessageInput } from '../../.
 import { ProjectRequestError, projectRequestId, sessionPath, useSessionApi } from './api';
 
 type RunInput = { requestId: string; revision: number; text: string; attachments?: string[] };
-type Pending = { input: RunInput | SessionMessageInput; transport: 'run' | 'message'; draftToken: string };
+type Pending = { input: RunInput | SessionMessageInput; transport: 'run' | 'message'; draftToken: string; submissionError?: string };
 function readPending(key: string): Pending | null {
   try {
     const stored = JSON.parse(sessionStorage.getItem(key) ?? 'null');
@@ -45,15 +45,22 @@ export function useMessageComposer(projectId: string, sessionId: string, session
   }, [acknowledge]);
   const check = useCallback(async (data: Pending, signal?: AbortSignal) => {
     if (data.transport === 'run') {
-      const value = await request<{ run: AgentRun }>(base + '/runs/requests/' + data.input.requestId, '', 'GET', undefined, signal);
-      if (!signal?.aborted) acknowledge(data, value.run);
+      try {
+        const value = await request<{ run: AgentRun }>(base + '/runs/requests/' + data.input.requestId, '', 'GET', undefined, signal);
+        if (!signal?.aborted) acknowledge(data, value.run);
+      } catch (failure) {
+        if ((failure as ProjectRequestError).status === 404) {
+          throw new Error(data.submissionError ?? 'No run receipt is available yet. Your input is preserved. Use Retry same request to submit the original input.', { cause: failure });
+        }
+        throw failure;
+      }
     } else {
       const value = await request<SessionMessage>(base + '/messages/' + data.input.requestId, '', 'GET', undefined, signal);
       if (!signal?.aborted) observe(data, value);
     }
   }, [base, request, acknowledge, observe]);
   useEffect(() => {
-    if (!pending) return;
+    if (!pending || sending) return;
     const controller = new AbortController(); let timer: number | undefined, attempts = 0;
     const poll = async () => {
       try { await check(pending, controller.signal); }
@@ -62,7 +69,7 @@ export function useMessageComposer(projectId: string, sessionId: string, session
     };
     void poll();
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [pending, check]);
+  }, [pending, sending, check]);
   const submit = async (mode: 'run' | 'queue' | 'steer', ids: string[], target?: MessageTarget, retry = false) => {
     if (!session || inFlight.current) return;
     const original = pendingRef.current;
@@ -79,7 +86,15 @@ export function useMessageComposer(projectId: string, sessionId: string, session
         const result = await request<{ message: SessionMessage }>(base + '/messages', token, 'POST', data.input); observe(data, result.message);
       }
     } catch (failure) {
-      if (pendingRef.current?.input.requestId === data.input.requestId) setError((failure as Error).message);
+      if (pendingRef.current?.input.requestId === data.input.requestId) {
+        const message = (failure as Error).message;
+        if (!original || retry) {
+          const saved = { ...data, submissionError: message };
+          pendingRef.current = saved; setPending(saved);
+          try { sessionStorage.setItem(pendingKey, JSON.stringify(saved)); } catch { /* Keep the original input in memory. */ }
+        }
+        setError(message);
+      }
       if ((failure as ProjectRequestError).status === 403) await refreshAuth().catch(() => undefined);
     } finally { inFlight.current = false; setSending(false); }
   };

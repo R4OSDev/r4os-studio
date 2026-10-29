@@ -1,5 +1,30 @@
 ## New Project recovery after a deleted GitHub setup (0.7.25)
 
+
+## Concurrent agent runs and preserved admission errors (0.7.26)
+
+New host installations allow 16 concurrent agent runs. Existing installations retain
+an explicit `maxActiveRuns` in `/etc/r4os-studio-agents/config.json`; ordinary updates
+and rerunning the installer preserve that choice. Change only this positive integer
+for explicit host maintenance, then restart the independent
+`r4os-studio-agents.service` coordinator to load it. Existing run units keep their
+original worker release and process; do not restart them or VMs for this change.
+Admission and queued dispatch share the same limit. One run per workspace and
+individual worker resource limits still apply. This concurrency limit does not
+limit session duration or the lifetime number of runs.
+
+Capacity exhaustion returns HTTP 429 with the configured limit before admitting a
+run. The composer preserves the original submission error alongside its immutable
+request and draft, including across reload. Status polling starts after submission
+has returned; a missing receipt cannot overwrite the capacity error. Older pending
+requests with no receipt explain how to use **Retry same request**. Recovery reads
+never automatically submit a message or start inference; explicit retry keeps the
+original request ID and input. Newer draft edits and attachment selections remain
+preserved.
+
+No tests, browser fixtures or agent inference were run for this hotfix, as requested.
+Production build/TypeScript and lint provide static validation.
+
 New Project now reads the status of a retained original creation request when
 the dialog opens. A confirmed deleted project releases only that browser request
 and its cached account, then resets the form to a blank local project. A late
@@ -2712,7 +2737,7 @@ Projects → Sessions lists New Session and saved sessions. The main pane provid
 chat/history, live file/terminal results, Send/Stop and Session settings. Nine
 independent tool switches default on. Each explicit run maps to one native Codex
 turn, with durable request identity and a frozen settings/pin snapshot. One run
-uses a project's shared workspace at a time; at most two runs execute per host.
+uses a project's shared workspace at a time; the configured host limit defaults to 16 concurrent runs.
 Editor and general build/deploy endpoints remain planned.
 
 The unchanged official Codex 0.163.0 binary is bound to SHA-256
@@ -3205,7 +3230,7 @@ Projects store session metadata and replayable events in `Sessions/Sessions.sqli
 with native Codex conversation state in `Sessions/<session-id>/Codex/`. Project
 sources live in `Workspace/`. The browser/API never receives provider credentials.
 Run admission is idempotent by request UUID and freezes settings and project pins;
-one run may use a project at a time, with two active runs per host. Native Codex
+one run may use a project at a time, with a default of 16 active runs per host (existing explicit host settings are preserved). Native Codex
 0.163.0 is qualified by binary hash; unsupported binaries fail closed.
 
 The host requires Linux/systemd, Bubblewrap and the existing `r4os-studio` user.
