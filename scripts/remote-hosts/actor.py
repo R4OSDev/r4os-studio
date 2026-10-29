@@ -10,7 +10,7 @@ import stat
 from catalog import CatalogFault, fields, identity
 
 PROFILE = 'studio-tools-v9'  # Activated with the complete declarations in 0.6.19.
-PROFILES = ('studio-tools-v9','studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13')
+PROFILES = ('studio-tools-v9','studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14')
 TOOLS = ('get_remote_host', 'run_remote_command', 'remote_files', 'read_remote_job', 'stop_remote_job')
 
 

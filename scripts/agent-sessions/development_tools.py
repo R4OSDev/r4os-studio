@@ -113,8 +113,12 @@ class DevelopmentTools:
                 return {'success': True, 'output': encode({**metadata, 'presentation': presentation}), 'development': {'jobId': value['jobId']}, 'image': metadata,
                     **({'_transientImage': data} if data.get('authorizedForAgentOutput') is True else {})}
             if name == 'send_vm_input':
+                if value.get('observeAfterStep') is not None and not self.image_capable():
+                    raise DevelopmentFault('An intermediate gesture image requires an image-capable model.', 409)
                 data = await self.request('input', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
-                return {'success': True, 'output': encode(data), 'development': {'jobId': value['jobId']}}
+                observation = data.pop('observation', None)
+                return {'success': data.get('complete', True), 'output': encode(data), 'development': {'jobId': value['jobId']},
+                    **({'image': observation['metadata'], '_transientImage': observation} if observation else {})}
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),

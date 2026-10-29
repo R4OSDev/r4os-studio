@@ -46,6 +46,8 @@ fn removeBootstrap(sys: r4os.r4sys.Context, name: [*:0]const u8, path: [*:0]cons
 
 pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 {
     const sys = app.system();
+    var relay_handle: abi.ProgramProcessHandle = .{};
+    if (sys.programOpenHandle(@intCast(app.raw.instance_id), &relay_handle) != 0) return 81;
     const slash = std.mem.lastIndexOfScalar(u8, module_path, '\\') orelse return 81;
     const parent = module_path[0..slash];
     var request: [256:0]u8 = .{0} ** 256;
@@ -110,6 +112,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         .desktopAdoptionVersion = @as(u32, 1),
         .guiFrameBindingVersion = @as(u32, 1),
         .guiInputVersion = @as(u32, 2),
+        .gestureVersion = @as(u32, 1),
         .watchdogVersion = @as(u32, 1), .bootstrapRemoved = true, .watchdogInstanceId = daemon.instance_id,
         .watchdogGeneration = daemon_generation[0..daemon_generation_len],
         .receiptFile = std.mem.sliceTo(&response, 0), .modulePath = module_path });
@@ -134,7 +137,13 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         const req = parsed.value;
         if (req.version != 1 or !std.mem.eql(u8, req.instance, instance) or req.sequence != sequence + 1) return 90;
         sequence = req.sequence; heartbeat = current;
-        if (sys.fileWrite(&request, line[0..length]) < 0) return 91;
+        // The relay supplies its own native identity, never caller-provided
+        // identity fields. The watchdog can abort gestures when SSH ends.
+        var bound = req;
+        bound.relayInstanceId = relay_handle.instance_id;
+        bound.relayGeneration = relay_handle.generation;
+        const bound_request = std.json.Stringify.valueAlloc(allocator.allocator(), bound, .{}) catch return 91;
+        if (bound_request.len > 4096 or sys.fileWrite(&request, bound_request) < 0) return 91;
         length = 0;
         var received = false;
         for (0..500) |_| {

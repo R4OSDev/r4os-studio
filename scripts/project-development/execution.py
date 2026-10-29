@@ -106,11 +106,13 @@ class Execution:
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']
-            if not isinstance(value, dict) or value.get('kind') not in ('text', 'guiText', 'key', 'click'):
+            if not isinstance(value, dict) or value.get('kind') not in ('text', 'guiText', 'key', 'click', 'gesture'):
                 raise DevelopmentFault('Choose a bounded console or GUI input.', 400)
             kind = value['kind']; gui_text = kind == 'guiText' or kind == 'text' and 'frameId' in value
             console_text = kind == 'text' and not gui_text
             allowed = {'kind', 'text'} if console_text else ({'kind', 'text', 'frameId'} if gui_text else ({'kind', 'key', 'frameId'} if kind == 'key' else {'kind', 'x', 'y', 'frameId'}))
+            if kind == 'gesture':
+                allowed = {'kind', 'frameId', 'steps'} | ({'observeAfterStep'} if 'observeAfterStep' in value else set())
             if kind == 'key' and 'repeat' in value: allowed.add('repeat')
             if set(value) != allowed: raise DevelopmentFault('Unexpected VM input fields.', 400)
             if state['state'] != 'running': raise DevelopmentFault('The owned guest process has ended.')
@@ -143,6 +145,11 @@ class Execution:
                     if frame.get('guestRevision') != state.get('guiRevision'):
                         raise DevelopmentFault('This older guest helper requires unchanged content for input. Deploy again with the current helper to control animations.')
                     request['expectedRevision'] = state['guiRevision']
+                if kind == 'gesture':
+                    from gestures import execute
+                    state, result = await execute(self, message, request, state, control, lease, process, authorization)
+                    finish(self.store, message['requestId'], result)
+                    return state, result
                 from gui_input import key as gui_key, text as gui_string, LEGACY_KEYS
                 repeat = value.get('repeat', 1)
                 if type(repeat) is not int or not 1 <= repeat <= 16:
@@ -268,6 +275,8 @@ class Execution:
                         raise DevelopmentFault('The guest controller does not confirm its declared window binding capability.')
                     if deployment.get('helperCapabilities', {}).get('guiInputVersion') == 2 and hello['result'].get('guiInputVersion') != 2:
                         raise DevelopmentFault('The guest controller does not confirm its declared extended input capability.')
+                    if deployment.get('helperCapabilities', {}).get('gestureVersion') == 1 and hello['result'].get('gestureVersion') != 1:
+                        raise DevelopmentFault('The guest controller does not confirm its declared gesture capability.')
                     guard(store, job, lease, allow_stopping=True)
                     if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                         closed = await control.call('finish')

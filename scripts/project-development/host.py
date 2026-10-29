@@ -440,6 +440,9 @@ class Host:
                 recorded = previous(store, job['id'], message)
                 if recorded is not None:
                     if recorded.get('error'): raise DevelopmentFault(recorded['error'], recorded.get('code', 409))
+                    if op == 'input' and recorded.get('observationId'):
+                        if owner is not None: authorize(store, owner, 'evidence', peer_pid, job)
+                        return {**recorded, 'observation': read(store, job['id'], recorded['observationId'])}
                     return read(store, job['id'], recorded['evidenceId']) if op == 'capture' else (store.page(job['id']) if op == 'complete_check' else recorded)
                 if op == 'complete_check' and job.get('checkCompletion'):
                     raise UnconfirmedGuestEffect('This check completion already has an original receipt or pending close. Inspect the saved job without another close.')
@@ -456,6 +459,9 @@ class Host:
                     # evidence fetch after capture. Older agents ignore the hint.
                     authorize(store, owner, op, peer_pid, job)
                     result = {**result, 'authorizedForAgentOutput': True}
+                if op == 'input' and result.get('observationId'):
+                    if owner is not None: authorize(store, owner, 'evidence', peer_pid, job)
+                    result = {**result, 'observation': read(store, job['id'], result['observationId'])}
                 return result
             async with self.lock:
                 await self.refresh()

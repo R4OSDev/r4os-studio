@@ -1,3 +1,45 @@
+## Bounded own-client GUI gestures (0.8.2)
+
+New project sessions use additive tool profile `studio-tools-v14`. Existing
+18 project/skill profiles retain their exact tool declarations and native threads.
+`studio_send_vm_input` adds `kind=gesture`, a recent focused `frameId` and
+1–32 `steps`: `phase=down|move|up`, client `x/y`, and monotonic
+`atMilliseconds=0..2000`. Down/up explicitly select `button=left|right`;
+every press must be released inside the same call. Moves without a press are
+hover; timed down/up pairs form a double click. Deploy again to obtain a
+`gestureVersion:1` helper. Old helpers/profiles fail before input.
+
+The independent guest watchdog advances the bounded plan, validates the exact
+process/window/focus/geometry and records its accepted prefix and actual enqueue
+times. Stop, changed scope, deadline or disappearance of the exact native SSH
+relay aborts remaining steps and enqueues release only for its own pressed
+button. The relay supplies its own generation identity; callers cannot select
+that identity. Failed release remains unconfirmed. No button hold spans tool
+calls, and no global physical input or outside-client pointer capture is added.
+
+Results include `gestureId`, `accepted/expected/complete`,
+`queuedAtMilliseconds`, `abortedReason`, `releaseQueued` and
+`consumptionConfirmed:false`. A receipt attests enqueue, not one-to-one delivery
+or app consumption: the guest may coalesce intermediate moves. Partial/lost
+results are never replayed automatically; original action receipts remain readable.
+Optional 1-based `observeAfterStep` records one intermediate image and additionally
+requires Capture VM permission and an image-capable model. It captures an
+observed interval, not a guaranteed exact scheduled phase. Image bytes stay
+transient; immutable job-bound image references and hashes are retained.
+
+Nine isolated guest cases on Full0.87.14/Kernel0.1.384 qualify hover, drag,
+right click, double click, the32-step boundary, wrong window/geometry, Stop,
+focus loss and relay loss. Images and app-written logs distinguish actual app
+effects from enqueue receipts. All testing uses a separate disposable VM;
+no user project, VM, SDK/Contract pin or model inference is needed.
+
+Existing hosts explicitly prepare only the updater compatibility ceiling with
+`python3 scripts/agent-sessions/install-gesture-support.py` as root from App/,
+then install the immutable release through Studio Updates. This preserves the
+existing bootstrap, configuration, old rollback profiles, running workers and
+VMs. No downloaded privileged installer is run. Outside-client capture remains
+an independent native R4OS contract/qualification question.
+
 ## Desktop execution evidence (0.8.1)
 
 Development job reads now include `executionEvidence`, derived without mutation

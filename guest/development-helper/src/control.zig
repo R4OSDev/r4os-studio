@@ -2,6 +2,7 @@
 const std = @import("std");
 const r4os = @import("r4os");
 const abi = r4os.abi;
+const gesture = @import("gesture.zig");
 pub const Request = struct {
     version: u32 = 1,
     instance: []const u8,
@@ -26,6 +27,11 @@ pub const Request = struct {
     expectedWindowId: i32 = -1,
     expectedWindowWidth: i32 = 0,
     expectedWindowHeight: i32 = 0,
+    gestureVersion: u32 = 0,
+    gestureId: []const u8 = "",
+    steps: []const gesture.Step = &.{},
+    relayInstanceId: u32 = 0,
+    relayGeneration: u64 = 0,
 };
 
 pub fn emit(sys: r4os.r4sys.Context, instance: []const u8, sequence: u32, success: bool, result: anytype) void {
@@ -58,6 +64,12 @@ const State = struct {
     outputIncomplete: bool = false,
     consoleObserved: bool = false,
     completionObserved: bool = false,
+    gestureAccepted: ?u32 = null,
+    gestureTimesMilliseconds: []const u32 = &.{},
+    gestureAborted: ?[]const u8 = null,
+    gestureReleaseQueued: bool = true,
+    gestureActive: bool = false,
+    gestureId: []const u8 = "",
     stopReason: ?[]const u8 = null,
     closeConfirmed: bool = false,
     inputAccepted: ?u32 = null,
@@ -74,6 +86,7 @@ const Controller = struct {
     service: [32:0]u8 = .{0} ** 32,
     process: ?r4os.app_resources.ProcessHandle = null,
     desktop_broker: ?r4os.app_resources.ProcessHandle = null,
+    relay: ?abi.ProgramProcessHandle = null,
     started: bool = false,
     service_owned: bool = false,
     console_role: bool = false,
@@ -94,6 +107,16 @@ const Controller = struct {
     service_response: [512]u8 = undefined,
     service_encoded: [684]u8 = undefined,
     mouse_pending: bool = false,
+    mouse_window: i32 = -1,
+    mouse_x: i32 = 0,
+    mouse_y: i32 = 0,
+    mouse_buttons: u32 = 0,
+    gesture_times: [32]u32 = undefined,
+    gesture_steps: [32]gesture.Step = undefined,
+    gesture_count: usize = 0,
+    gesture_born: u64 = 0,
+    gesture_id: [36]u8 = undefined,
+    gesture_binding: struct { id: i32 = -1, width: i32 = 0, height: i32 = 0 } = .{},
     state: State = .{},
 
     fn clock(self: *Controller) u64 { return self.sys.monotonicNanoseconds() orelse 0; }
@@ -227,8 +250,106 @@ const Controller = struct {
         // A partial enqueue is an explicit receipt, never permission to replay.
         return true;
     }
+    fn releaseMouse(self: *Controller) void {
+        if (!self.mouse_pending) return;
+        if (self.process) |p| {
+            switch (p.status()) {
+                .value => |info| {
+                    if (info.state != @intFromEnum(abi.ProgramInstanceState.done)) {
+                        var event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.mouse_up),
+                            .window_id = self.mouse_window, .x = self.mouse_x, .y = self.mouse_y,
+                            .buttons = 0, .tick = self.sys.ticks() };
+                        if (self.desk.guiPushEvent(p.raw, &event) < 0) return;
+                    }
+                },
+                .failure => |code| {
+                    if (code != abi.program_handle_error_not_found and code != abi.program_handle_error_stale) return;
+                }, // Only confirmed disappearance permits release without enqueue.
+                .missing => {},
+            }
+        }
+        self.mouse_pending = false;
+        self.mouse_buttons = 0;
+        self.state.gestureReleaseQueued = true;
+    }
+    fn abortGesture(self: *Controller, reason: []const u8) void {
+        if (self.state.gestureActive) self.state.gestureAborted = reason;
+        self.state.gestureActive = false;
+        self.releaseMouse();
+    }
+    fn beginGesture(self: *Controller, req: Request) bool {
+        if (req.gestureVersion != 1 or req.frameBindingVersion != 1 or self.state.gestureActive or
+            self.mouse_pending or req.gestureId.len != 36 or std.mem.eql(u8, req.gestureId, self.state.gestureId) or
+            !gesture.valid(req.steps, self.state.windowWidth, self.state.windowHeight)) return false;
+        for (req.gestureId) |c| if (!(std.ascii.isHex(c) or c == '-')) return false;
+        const current = self.clock();
+        if (current == 0 or current >= self.deadline_ns) return false;
+        @memcpy(&self.gesture_id, req.gestureId);
+        @memcpy(self.gesture_steps[0..req.steps.len], req.steps);
+        self.gesture_count = req.steps.len;
+        self.gesture_born = current;
+        self.gesture_binding = .{ .id = self.state.windowId, .width = self.state.windowWidth, .height = self.state.windowHeight };
+        self.state.gestureId = &self.gesture_id;
+        self.state.gestureAccepted = 0;
+        self.state.inputAccepted = 0;
+        self.state.gestureTimesMilliseconds = &.{};
+        self.state.gestureAborted = null;
+        self.state.gestureReleaseQueued = true;
+        self.state.gestureActive = true;
+        return true;
+    }
+    fn tickGesture(self: *Controller) void {
+        if (!self.state.gestureActive) { self.releaseMouse(); return; }
+        while (self.state.gestureActive) {
+            if (self.relay) |relay| {
+                var relay_info: abi.ProgramInstanceInfo = .{};
+                const status = self.sys.programHandleStatus(&relay, &relay_info);
+                if (status != 0 or relay_info.state == @intFromEnum(abi.ProgramInstanceState.done)) {
+                    self.abortGesture("transport_lost"); return;
+                }
+            } else { self.abortGesture("transport_unconfirmed"); return; }
+            const current = self.clock();
+            if (current == 0 or current < self.gesture_born or current - self.gesture_born > 2_000_000_000 or
+                current >= self.deadline_ns or self.stopped != null or self.sys.programShouldClose()) {
+                self.abortGesture("time_or_control_limit"); return;
+            }
+            switch (self.process.?.status()) { .value => {}, else => { self.abortGesture("process_ended"); return; } }
+            self.windowState();
+            if (!self.state.windowVisible or !self.state.windowFocused or self.state.windowId != self.gesture_binding.id or
+                self.state.windowWidth != self.gesture_binding.width or self.state.windowHeight != self.gesture_binding.height) {
+                self.abortGesture("window_changed"); return;
+            }
+            const index: usize = self.state.gestureAccepted orelse 0;
+            const step = self.gesture_steps[index];
+            const dispatch_time = self.clock();
+            if (dispatch_time < self.gesture_born or dispatch_time - self.gesture_born > 2_000_000_000) {
+                self.abortGesture("time_or_control_limit"); return;
+            }
+            if (dispatch_time - self.gesture_born < @as(u64, step.atMilliseconds) * 1_000_000) return;
+            const buttons = switch (step.phase) {
+                .down => gesture.buttonMask(step), .up => @as(u32, 0),
+                .move => self.mouse_buttons,
+            };
+            var event = abi.GuiEvent{ .kind = @intFromEnum(switch (step.phase) {
+                    .down => abi.GuiEventKind.mouse_down, .move => abi.GuiEventKind.mouse_move, .up => abi.GuiEventKind.mouse_up }),
+                .window_id = self.gesture_binding.id, .x = step.x, .y = step.y, .buttons = buttons, .tick = self.sys.ticks() };
+            if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) { self.abortGesture("queue_rejected"); return; }
+            self.mouse_x = step.x; self.mouse_y = step.y; self.mouse_window = self.gesture_binding.id;
+            self.mouse_buttons = buttons;
+            if (step.phase == .down) self.mouse_pending = true;
+            if (step.phase == .up) self.mouse_pending = false;
+            self.state.gestureReleaseQueued = !self.mouse_pending;
+            const elapsed = dispatch_time - self.gesture_born;
+            self.gesture_times[index] = @intCast(@min(elapsed / 1_000_000, 2000));
+            self.state.gestureAccepted = @intCast(index + 1);
+            self.state.inputAccepted = self.state.gestureAccepted;
+            self.state.gestureTimesMilliseconds = self.gesture_times[0 .. index + 1];
+            if (index + 1 == self.gesture_count) { self.state.gestureActive = false; self.releaseMouse(); }
+        }
+    }
     fn input(self: *Controller, req: Request) bool {
         if (self.process == null or self.completed != null or self.state.closeConfirmed or self.stopped != null or
+            self.state.gestureActive or self.mouse_pending or
             !std.mem.eql(u8, req.generation, self.state.generation) or req.input.len > 1024) return false;
         switch (self.process.?.status()) { .value => {}, else => return false }
         if (self.console_role) {
@@ -245,6 +366,7 @@ const Controller = struct {
         }
         if (self.service_owned) return false;
         if (!self.boundWindow(req)) return false;
+        if (std.mem.eql(u8, req.inputKind, "gesture")) return self.beginGesture(req);
         if (std.mem.eql(u8, req.inputKind, "key") or std.mem.eql(u8, req.inputKind, "guiText")) return self.guiEvents(req);
         var event = abi.GuiEvent{ .window_id = self.state.windowId, .tick = self.sys.ticks() };
         if (!std.mem.eql(u8, req.inputKind, "click") or req.x < 0 or req.y < 0 or
@@ -252,9 +374,13 @@ const Controller = struct {
         event.kind = @intFromEnum(abi.GuiEventKind.mouse_down); event.x = req.x; event.y = req.y; event.buttons = 1;
         if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) return false;
         self.mouse_pending = true;
+        self.mouse_buttons = 1;
+        self.state.gestureReleaseQueued = false;
+        self.mouse_window = self.state.windowId; self.mouse_x = req.x; self.mouse_y = req.y;
         event.kind = @intFromEnum(abi.GuiEventKind.mouse_up); event.buttons = 0;
         if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) { self.state.inputAccepted = 1; return true; }
-        self.mouse_pending = false; self.state.inputAccepted = 2; return true;
+        self.mouse_pending = false; self.mouse_buttons = 0; self.state.gestureReleaseQueued = true;
+        self.state.inputAccepted = 2; return true;
     }
     fn serviceCheck(self: *Controller) void {
         self.state.serviceCheckPassed = false; self.state.serviceResponseBase64 = "";
@@ -272,6 +398,7 @@ const Controller = struct {
     }
 
     fn stop(self: *Controller, reason: []const u8) void {
+        self.abortGesture(reason);
         if (self.stopped != null or self.completed != null) return;
         self.stopped = reason;
         self.state.stopReason = reason;
@@ -279,13 +406,7 @@ const Controller = struct {
         if (self.process) |*p| { _ = p.requestClose(); }
     }
     fn cleanup(self: *Controller) void {
-        if (self.mouse_pending and self.process != null) {
-            switch (self.process.?.status()) { .value => {
-                var event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.mouse_up), .window_id = self.state.windowId, .buttons = 0, .tick = self.sys.ticks() };
-                _ = self.desk.guiPushEvent(self.process.?.raw, &event);
-            }, else => {} }
-            self.mouse_pending = false;
-        }
+        self.abortGesture("cleanup");
         if (self.process) |*p| {
             if (p.valid() and self.completed == null) {
                 _ = p.requestClose();
@@ -337,12 +458,7 @@ const Controller = struct {
     }
     fn observe(self: *Controller) State {
         self.state.outputBase64 = "";
-        if (self.mouse_pending and self.process != null) {
-            switch (self.process.?.status()) { .value => {
-                var release_event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.mouse_up), .window_id = self.state.windowId, .buttons = 0, .tick = self.sys.ticks() };
-                if (self.desk.guiPushEvent(self.process.?.raw, &release_event) >= 0) self.mouse_pending = false;
-            }, else => { self.mouse_pending = false; } }
-        }
+        self.tickGesture();
         if (self.state.closeConfirmed) return self.state;
         if (self.process) |*p| {
             if (self.completed == null) {
@@ -486,6 +602,7 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
                 if (controller.process) |*p| { _ = p.kill(); }
             }
         }
+        controller.tickGesture();
         var line: [4096]u8 = undefined;
         const length = @import("transport.zig").readFile(sys, &request, &line);
         if (length <= 0) { sys.sleepTicks(1); continue; }
@@ -496,6 +613,15 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         if (req.version != 1 or !std.mem.eql(u8, req.instance, instance)) return 76;
         if (req.sequence == sequence) { sys.sleepTicks(1); continue; }
         if (req.sequence != sequence + 1) return 76;
+        if (req.relayInstanceId == 0 or req.relayGeneration == 0) return 76;
+        if (controller.relay) |relay| {
+            if (relay.instance_id != req.relayInstanceId or relay.generation != req.relayGeneration) return 76;
+        } else {
+            const relay = abi.ProgramProcessHandle{ .instance_id = req.relayInstanceId, .generation = req.relayGeneration };
+            var relay_info: abi.ProgramInstanceInfo = .{};
+            if (sys.programHandleStatus(&relay, &relay_info) != 0) return 76;
+            controller.relay = relay;
+        }
         sequence = req.sequence; heartbeat = current;
         if (std.mem.eql(u8, req.operation, "start")) {
             if (!controller.start(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The owned role could not be started." }); return 77; }
@@ -507,6 +633,12 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
             if (!controller.input(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "Input was not accepted for this owned console." }); continue; }
         } else if (std.mem.eql(u8, req.operation, "stop")) {
             controller.stop("user_stop");
+        } else if (std.mem.eql(u8, req.operation, "cancel_gesture")) {
+            if (!std.mem.eql(u8, req.generation, controller.state.generation) or
+                !std.mem.eql(u8, req.gestureId, controller.state.gestureId)) {
+                _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "Gesture cancellation has a different owner." }); continue;
+            }
+            controller.abortGesture("cancelled");
         } else if (std.mem.eql(u8, req.operation, "finish")) {
             if (controller.started and !controller.state.closeConfirmed) return 78;
             controller.cleanup(); controller.service_owned = !controller.service_removed;

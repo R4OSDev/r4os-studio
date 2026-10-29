@@ -50,6 +50,12 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
             'version': 1, 'mode': 'observed-interval', 'startedAt': started_at, 'completedAt': now(),
             'elapsedMilliseconds': elapsed, 'revisionBefore': state.get('guiRevision'),
             'revisionAfter': after.get('guiRevision'), 'contentChanged': state.get('guiRevision') != after.get('guiRevision')})
+        if state.get('gestureActive') and state.get('gestureId') == after.get('gestureId'):
+            native['gestureObservation'] = {'id': state['gestureId'],
+                'acceptedBefore': state.get('gestureAccepted'), 'acceptedAfter': after.get('gestureAccepted'),
+                'activeBefore': True, 'activeAfter': after.get('gestureActive'),
+                'releaseQueuedBefore': state.get('gestureReleaseQueued'), 'releaseQueuedAfter': after.get('gestureReleaseQueued'),
+                'consumptionConfirmed': False}
         native['process'] = {**(job.get('process') or {}), **{k: after[k] for k in ('instanceId', 'generation', 'windowId')}}
     value = publish(store, job, 'screenshot', data, width=width, height=height,
         observer=observer, scope='assigned-vm-screen', source='qmp-png', guestRevision=(state or {}).get('guiRevision'),

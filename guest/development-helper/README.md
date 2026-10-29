@@ -1,5 +1,14 @@
 # Studio guest execution adapter
 
+0.8.2 adds `gestureVersion:1`. A complete plan has at most32 client-relative
+down/move/up steps over2000ms, balanced left/right press/release and an exact
+focused window/geometry binding. The independent watchdog advances it even
+without host polls. It records the accepted prefix and monotonic enqueue times,
+aborts on scope/deadline/Stop/relay loss and queues own-button release. The SSH
+relay injects its own generation-safe identity; caller-supplied values are replaced.
+No held state crosses a gesture call and no physical/outside-client capture is
+claimed. Intermediate screenshots are observed intervals, not consumption proof.
+
 The pinned SDK builds two private modules from these sources: STHELP.R4X
 (console transport / independent watchdog) and STWATCH.R4X (short-lived manual
 bootstrap service). No OS workspace,

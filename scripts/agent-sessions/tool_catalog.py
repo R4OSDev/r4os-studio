@@ -1,5 +1,5 @@
 """Stable Studio dynamic tool declarations; authorization is checked for every call."""
-from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, tools_for
+from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, tools_for
 from copy import deepcopy
 
 
@@ -89,7 +89,7 @@ def specifications(profile=PROFILE):
     # dispatcher BEFORE execution, even if the model retains their declarations.
     result = []
     for name in tools_for(profile):
-        definition = ROADMAP_CONTRACT_DEFS[name] if profile in (CONTRACT_PROFILE,NOTES_PROFILE) and name in ROADMAP_CONTRACT_DEFS else DEFS[name]
+        definition = ROADMAP_CONTRACT_DEFS[name] if profile in (CONTRACT_PROFILE,NOTES_PROFILE,GESTURE_PROFILE) and name in ROADMAP_CONTRACT_DEFS else DEFS[name]
         description, schema = definition[0], deepcopy(definition[1])
         if profile in (GUI_PROFILE, ROADMAP_PROFILE,*REMOTE_PROFILES) and name == 'send_vm_input':
             description = ('Queue bounded events only for this session\'s owned process. kind=text is console input; '
@@ -103,6 +103,25 @@ def specifications(profile=PROFILE):
             schema['properties']['kind']['enum'] = ['text', 'guiText', 'key', 'click']
             schema['properties']['key'] = {'type': 'string', 'minLength': 1, 'maxLength': 32}
             schema['properties']['repeat'] = {'type': 'integer', 'minimum': 1, 'maximum': 16}
+        if profile == GESTURE_PROFILE and name == 'send_vm_input':
+            description += (' kind=gesture queues one own-client plan: 1..32 down/move/up steps, '
+                'monotonic atMilliseconds=0..2000, explicit left/right button on down/up; '
+                'release within the same call. Use timed down/up pairs for double click. '
+                'Requires a newly deployed gesture-v1 helper and a recent focused frame. '
+                'Optional observeAfterStep (1-based) captures one intermediate image and additionally '
+                'requires Capture VM and image capability. Leave time before the next phase; '
+                'the image records an observed interval, not guaranteed application consumption. '
+                'Inspect gestureId, accepted prefix, queuedAtMilliseconds, abortedReason and releaseQueued. '
+                'No holding across calls, outside-client capture or automatic replay of partial/lost results.')
+            schema['properties']['kind']['enum'].append('gesture')
+            schema['properties']['steps'] = {'type': 'array', 'minItems': 1, 'maxItems': 32, 'items': obj({
+                'phase': {'type': 'string', 'enum': ['down', 'move', 'up']},
+                'button': {'type': 'string', 'enum': ['left', 'right']},
+                'x': {'type': 'integer', 'minimum': 0, 'maximum': 1279},
+                'y': {'type': 'integer', 'minimum': 0, 'maximum': 1023},
+                'atMilliseconds': {'type': 'integer', 'minimum': 0, 'maximum': 2000},
+            }, ['phase', 'x', 'y', 'atMilliseconds'])}
+            schema['properties']['observeAfterStep'] = {'type': 'integer', 'minimum': 1, 'maximum': 32}
         if profile in SKILL_PROFILES:
             description = description.replace('project', 'selected skill')
             if 'root' in schema['properties']:
@@ -175,7 +194,7 @@ def validate_arguments(name, value, profile=PROFILE):
                 if not isinstance(spec, dict): raise ValueError('Unknown tool argument.')
                 validate(spec, entry, path + '.' + key)
     validate(root, value)
-    if (profile in (CONTRACT_PROFILE,NOTES_PROFILE) and name == 'update_roadmap'
+    if (profile in (CONTRACT_PROFILE,NOTES_PROFILE,GESTURE_PROFILE) and name == 'update_roadmap'
             and value.get('operation') == 'mutate' and value.get('action') == 'create'):
         kind = value['target']['kind']
         required = 'title' if kind in ('version', 'subversion') else 'description'

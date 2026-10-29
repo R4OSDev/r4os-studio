@@ -118,6 +118,11 @@ export interface DesktopLaunchReceipt {
   statusErrorlevel?: number;
 }
 export interface DevelopmentEvidence {
+  gestureObservation?: {
+    id: string; acceptedBefore: number; acceptedAfter: number;
+    activeBefore: true; activeAfter: boolean;
+    releaseQueuedBefore: boolean; releaseQueuedAfter: boolean; consumptionConfirmed: false;
+  };
   id: string;
   kind: 'console' | 'diagnostic' | 'screenshot' | 'file';
   name?: string;
