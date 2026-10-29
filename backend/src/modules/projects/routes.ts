@@ -13,6 +13,8 @@ import { gitHost } from '../project-github/client.js';
 import type { GitHubJob } from '../../../../shared/project-github.js';
 import { roadmapRoutes } from '../project-roadmaps/routes.js';
 import { boardRoutes } from '../project-boards/routes.js';
+import { agentHost } from '../agent-sessions/host.js';
+import type { ProjectActivity } from '../../../../shared/projects.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -114,6 +116,10 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   app.get('/vms', async (request, reply) => {
     sessions.session(request, reply);
     return projectStore(directory, { operation: 'vms' });
+  });
+  app.get('/session-activity', async (request, reply) => {
+    sessions.session(request, reply);
+    return agentHost<ProjectActivity>({ operation: 'project_activity' });
   });
   app.get<{ Params: { requestId: string } }>('/creation-requests/:requestId', {
     schema: { params: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: identity } } },

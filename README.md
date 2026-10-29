@@ -1,3 +1,26 @@
+## Project folder activity (0.8.8)
+
+The existing folder icon in the project list shows the chosen violet Energy
+pulse while at least one project session is confirmed to be executing. Its
+shape,17px/13px size and position stay fixed; no extra status icon is added.
+Reduced motion uses a static highlight. The button exposes “Session running”.
+
+The browser reads one protected `/api/projects/session-activity` aggregate every
+five seconds while visible, and refreshes on focus, reconnect and run/Goal events.
+Read failures clear the highlight; monotone expiry limits any sample to ten
+seconds, including its request time. An older coordinator does not prevent normal
+project navigation. No session or VM is started or stopped by this display.
+
+The unprivileged agent coordinator reads registered ready-project IDs, only its
+bound active-run records and indexed current run/Goal state through read-only
+SQLite connections. One bounded systemd query verifies worker PID, birth, UID
+and release. Queue/history/unknown flags, VMs and development jobs do not qualify.
+Starting/running workers and stopping workers until actual exit qualify; an idle
+paused/stopped Goal does not. No transcript scan, native RPC, recovery or data
+migration occurs. Five isolated Python state cases, one protected HTTP case,
+browser lifecycle/layout cases and Build/TypeScript/Lint cover this feature;
+no provider inference or user session/VM action is used.
+
 ## Tool-call block width (0.8.7)
 
 Shared project/skill transcript tool-call blocks are centered at80% width when

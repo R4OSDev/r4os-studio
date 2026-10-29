@@ -2,6 +2,7 @@ import { StatisticsPanel } from '../statistics/StatisticsPanel';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import { useProjects } from './useProjects';
+import { useProjectActivity } from './useProjectActivity';
 import { NewProjectDialog } from './NewProjectDialog';
 import { RunTestSettings } from './RunTestSettings';
 import { ProjectSettings } from './ProjectSettings';
@@ -35,6 +36,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   setLeaveGuard: (guard: () => boolean) => void;
 }) {
   const api = useProjects();
+  const activity = useProjectActivity(Boolean(api.token));
   const selected = api.projects.find((project) => project.id === selectedId);
   const opening = useProjectOpening(selected && !selected.deleting ? selected.id : null, api.token);
   const current: ProjectNavigation = selected?.deleting ? { section: 'Settings', settingsView: 'General' } : navigation[selectedId ?? ''] ?? { section: 'Sessions', settingsView: 'General' };
@@ -72,8 +74,10 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
                 : api.projects.map((project) => <button type="button" key={project.id} disabled={saving}
                   className={`nav-item ${selectedId === project.id ? 'selected' : ''}`}
                   aria-current={selectedId === project.id ? 'true' : undefined}
+                  aria-label={activity.has(project.id) && !project.deleting ? `${project.name}, Session running` : undefined}
+                  title={activity.has(project.id) && !project.deleting ? 'Session running' : undefined}
                   onClick={() => { if (project.id !== selectedId && leave()) select(project.id); }}>
-                  <Icon name="folder" /><span>{project.name}{project.deleting ? ' · Deleting…' : ''}</span>
+                  <Icon name="folder" energyPulse={activity.has(project.id) && !project.deleting} /><span>{project.name}{project.deleting ? ' · Deleting…' : ''}</span>
                 </button>)}
         </div>
       </nav>

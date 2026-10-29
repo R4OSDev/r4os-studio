@@ -92,6 +92,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const receive = (event: AgentEvent) => {
       if (event.seq <= last.current) return;
       last.current = event.seq;
+      if (projectSession && ['run', 'goal', 'nativeTurn'].includes(event.kind)) window.dispatchEvent(new Event('studio-project-activity'));
       if (event.kind === 'item') { const item = event.payload as SessionItem; setItems((old) => merge(old, item)); if (item.tool === 'studio.save_skill' && item.status === 'completed') changed(); }
       if (event.kind === 'itemStatus') {
         const p = event.payload as { itemId: string; status: string; error: string };
@@ -113,7 +114,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const connect = () => {
       if (controller.signal.aborted) return;
       source = new EventSource(`${apiBase}${base}/events?after=${last.current}`);
-      source.onopen = () => { if (!controller.signal.aborted) { setConnection('Connected'); attempt = 0; } };
+      source.onopen = () => { if (!controller.signal.aborted) { setConnection('Connected'); attempt = 0; if (projectSession) window.dispatchEvent(new Event('studio-project-activity')); } };
       source.onmessage = (e) => { try { receive(JSON.parse(e.data)); } catch { source?.close(); retry(); } };
       source.onerror = () => { source?.close(); retry(); };
     };
@@ -128,7 +129,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession]);
   useEffect(() => {
     if (!projectSession && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items, projectSession, log]);

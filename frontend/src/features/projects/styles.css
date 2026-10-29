@@ -89,3 +89,15 @@
 .update-packages p, .update-packages li { overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
 .update-packages code, .development-card code { overflow-wrap: anywhere; word-break: break-word; }
 .update-packages button:disabled, .update-record button:disabled { opacity: .45; }
+.icon.project-folder-active { color: #bf9aff; overflow: visible; }
+.project-folder-fill { fill: currentColor; stroke: none; animation: project-folder-fill 2.8s ease-in-out infinite; }
+.project-folder-light { color: #eee1ff; animation: project-folder-light 2.8s ease-in-out infinite; }
+@keyframes project-folder-fill { 0%, 100% { opacity: .035; } 50% { opacity: .19; } }
+@keyframes project-folder-light {
+  0%, 100% { opacity: .12; filter: drop-shadow(0 0 .15px #bb84ff); }
+  50% { opacity: .94; filter: drop-shadow(0 0 1.6px #bb84ff); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-folder-fill { animation: none; opacity: .12; }
+  .project-folder-light { animation: none; opacity: .5; filter: none; }
+}

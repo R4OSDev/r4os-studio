@@ -10,6 +10,13 @@ export interface ProjectsResponse {
   csrfToken: string;
 }
 
+export interface ProjectActivity {
+  schema: 1;
+  activeProjectIds: string[];
+  checkedAt: string;
+  validForMs: number;
+}
+
 export type ProjectLanguage = 'Rust' | 'Zig' | 'C';
 export type ProjectTemplate = 'terminal' | 'desktop' | 'service' | 'driver' | 'protocol' | 'library' | 'subsystem';
 export interface ProjectPins {

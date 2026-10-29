@@ -21,6 +21,8 @@ const paths: Record<IconName, React.ReactNode> = {
   terminal: <path d="m5 6 6 6-6 6m9 0h6" />,
 };
 
-export function Icon({ name, className = '' }: { name: IconName; className?: string }) {
-  return <svg className={`icon ${className}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+export function Icon({ name, className = '', energyPulse = false }: { name: IconName; className?: string; energyPulse?: boolean }) {
+  return <svg className={`icon ${className} ${name === 'folder' && energyPulse ? 'project-folder-active' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}
+    {name === 'folder' && energyPulse && <g><g className="project-folder-fill">{paths.folder}</g><g className="project-folder-light">{paths.folder}</g></g>}
+  </svg>;
 }
