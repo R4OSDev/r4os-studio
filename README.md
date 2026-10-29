@@ -1,3 +1,26 @@
+## API connection and credential foundation (0.8.11)
+
+Protected `/api/providers/api-connections` CRUD manages separate OpenRouter,
+OpenAI-compatible and explicit local API records with canonical endpoint,
+Responses/Chat Completions protocol, auth and distinct config/credential revisions.
+Only keyConfigured is returned. Atomic private config/secret SQLite stores under
+LLMProvider/ApiProviders use service ownership,0700/0600, DELETE journals/FULL,
+protected paths and logical secret removal. Original request receipts and retired
+IDs preserve safe recovery; origin changes require key replacement/removal.
+
+Existing subscription providers/homes/threads are unchanged. Revision/lease
+contracts preserve running original bindings; disconnect closes admission before
+confirmed provider-worker cancellation. Unknown leases retain credentials.
+Endpoint/network-scope validation rejects unsafe forms/targets; future transport
+must pin checked DNS addresses, verify TLS and reject redirects. There is no HTTP
+proxy or remote model request in this foundation. API connections explicitly say
+runtime not-qualified and are not yet offered to native sessions. Actual transport
+qualification stays open for0.8.12/13; settings/models/UI follow later entries.
+
+Six isolated cases as r4os-studio plus one new/fourteen existing HTTP provider
+cases pass. No real key, provider inference, production provider mutation or user
+session/VM action. See API-Providers.md for operations, boundaries and open checks.
+
 ## Provider failure qualification (0.8.10, partial)
 
 Project/skill workers now safely describe typed HTTP502/503/504 provider

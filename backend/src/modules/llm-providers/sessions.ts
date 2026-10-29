@@ -13,10 +13,11 @@ export class ProviderSessions {
   validateRequest(request: FastifyRequest, reply: FastifyReply) {
     reply.header('Cache-Control', 'no-store');
     if (!this.allowedHosts.has(request.hostname)) throw new ProviderError('This host is not allowed to access provider settings.', 403);
+    if (request.headers['sec-fetch-site'] === 'cross-site') throw new ProviderError('Cross-origin provider requests are not allowed.', 403);
     if (request.headers.origin) {
       let origin: URL;
       try { origin = new URL(request.headers.origin); } catch { throw new ProviderError('Invalid request origin.', 403); }
-      if (origin.host !== request.headers.host) throw new ProviderError('Cross-origin provider requests are not allowed.', 403);
+      if (origin.origin !== new URL(`${request.protocol}://${request.headers.host}`).origin) throw new ProviderError('Cross-origin provider requests are not allowed.', 403);
     }
   }
 

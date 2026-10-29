@@ -3,12 +3,14 @@ import { ProviderManager } from './service.js';
 import type { ProviderOptions } from './service.js';
 import { ProviderSessions } from './sessions.js';
 import type { ResetRequest } from '../../../../shared/llm-providers.js';
+import { apiProviderRoutes } from './api-routes.js';
 
 export async function providerRoutes(app: FastifyInstance, options: ProviderOptions) {
   const manager = new ProviderManager(options);
   app.addHook('onClose', () => manager.close());
   const sessions = new ProviderSessions();
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
+  apiProviderRoutes(app, sessions);
 
   app.get('/', async (request, reply) => {
     const current = sessions.get(request, reply, true);

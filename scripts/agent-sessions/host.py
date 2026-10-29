@@ -168,7 +168,20 @@ class Host:
         if op == 'project_activity':
             from project_activity import snapshot
             return await snapshot(self)
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'api_provider':
+            from api_provider_store import ApiProviders
+            store=ApiProviders(self.config['providers']);action=request.get('action')
+            if action=='list':return await asyncio.to_thread(store.listing)
+            if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
+            if action=='receipt':return await asyncio.to_thread(store.receipt,request.get('id'),request.get('requestId'))
+            if action not in ('create','update','disconnect','delete'):raise ProjectFault('Invalid API provider operation.',400)
+            ident=None if action=='create' else identity(request.get('id'))
+            result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'))
+            if action in ('disconnect','delete') and result['state']=='pending':
+                await self.handle({'operation':'cancel_provider','providerId':ident})
+                result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
+            return result
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op in ('session_delete_preview','session_delete','session_delete_receipt'):
             import session_delete
             kind,ident=binding(request);sid=identity(request['sessionId'])
