@@ -39,4 +39,24 @@ errors; no replacement image or new VM capture is requested.
 Session cleanup removes its own reference/scan/gap tables. Original development
 jobs/PNG lifetime and statistics are unchanged. Showing saved images needs no
 running VM and proves neither current guest readiness nor visual acceptance.
-The overlay and bounded live browser behavior follow in 0.8.27–0.8.28.
+## Gallery overlay (0.8.27)
+
+An image icon immediately left of Session statistics opens the modal gallery
+without changing the composer draft or model selection. The latest registered
+image appears above a horizontal, paged strip of older captures. Images retain
+their full aspect ratio. Arrow buttons, touch/trackpad and keyboard navigation
+reach older pages without mounting the whole collection.
+
+Latest follows the newest confirmed metadata when it is read. Selecting an
+older image holds that original selection; refreshed metadata can report a new
+capture without replacing it. Latest resumes following, and reopening starts
+with the latest image. Background metadata for the same page does not reset
+its scroll position. Automatic observation and further image resource limits
+follow in 0.8.28.
+
+The dialog uses the common Studio design and native modal focus behavior,
+Close/Escape and return focus. Stop current run stays reachable. Loading,
+empty/unavailable, missing-image and expired-auth states are separate. All
+browser images reuse registered protected evidence; no gallery action captures
+a VM image or causes inference. Stored captures are labelled with their saved
+time and dimensions, not as current guest state.

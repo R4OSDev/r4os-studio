@@ -1,6 +1,7 @@
 import { EnvironmentNotes } from './EnvironmentNotes';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionClaudeLimits } from './SessionClaudeLimits';
+import {ScreenshotGallery} from './ScreenshotGallery';
 import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -58,6 +59,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     return () => channel.close();
   }, [scope, projectId, sessionId, deleted]);
   const [statistics, setStatistics] = useState(false);
+  const [gallery,setGallery]=useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth);
   const observeNotes = notes.observe;
@@ -183,6 +185,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal) : run?.state ?? 'Ready') : connection}</span>
+        <button type="button" className="agent-settings-button" aria-label="Screenshot gallery" title="Screenshot gallery" aria-haspopup="dialog" aria-expanded={gallery} disabled={!session} onClick={()=>setGallery(true)}><Icon name="image"/></button>
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
@@ -250,6 +253,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     {goalEditor && <GoalEditor control={goal} run={run} stopRun={stop} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
     {showNotes && session && <EnvironmentNotes key={notes.key} session={session} notes={notes} token={token} reauth={refreshAuth} close={() => setShowNotes(false)} run={run} stop={stop} />}
     {statistics && <SessionStatistics ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setStatistics(false)} run={run} stop={stop} />}
+    {gallery&&<ScreenshotGallery key={base} ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setGallery(false)} run={run} stop={stop}/>}
     {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} deleteSession={() => setDeleting(true)} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
     {deleting && <DeleteSessionDialog projectId={projectId} sessionId={sessionId} token={token} reauth={refreshAuth} close={() => setDeleting(false)} deleted={deleted} />}
   </section>;

@@ -1,3 +1,11 @@
+## Screenshot gallery overlay (0.8.27)
+
+The session header now opens a gallery beside Statistics: a large latest image,
+horizontal older-image strip, paging and explicit Latest/held selection.
+Close/Escape/focus, run Stop and distinct loading/empty/missing/auth states work
+on narrow screens. The composer draft stays intact. Details:
+[Screenshot-Gallery.md](Screenshot-Gallery.md). Automatic observation follows next.
+
 ## Session screenshot catalog (0.8.26)
 
 Protected session reads can now page through registered agent VM captures across

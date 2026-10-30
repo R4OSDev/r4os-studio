@@ -36,9 +36,10 @@ function releaseImage(endpoint: string, resource: Resource) {
 }
 
 type ImageState = { endpoint: string; url?: string; failed?: boolean };
-function useImage(endpoint: string) {
+export function useStoredImage(endpoint: string | null) {
   const [state, setState] = useState<ImageState | null>(null);
   useEffect(() => {
+    if(!endpoint)return;
     let active = true;
     const resource = acquireImage(endpoint);
     void resource.promise.then((url) => { if (active) setState({ endpoint, url }); },
@@ -70,7 +71,7 @@ export function ReplyImage({ projectId, sessionId, jobId, evidenceId, alt }: {
   projectId: string; sessionId: string; jobId: string; evidenceId: string; alt: string;
 }) {
   const endpoint = `/api/projects/${projectId}/sessions/${sessionId}/images/${jobId}/${evidenceId}`;
-  const image = useImage(endpoint), [open, setOpen] = useState(false), [failed, setFailed] = useState<string | null>(null);
+  const image = useStoredImage(endpoint), [open, setOpen] = useState(false), [failed, setFailed] = useState<string | null>(null);
   const label = alt.trim().slice(0, 512) || 'VM screenshot', filename = `screenshot-${evidenceId}.png`;
   if (image?.failed || failed === endpoint) return <span className="agent-image-unavailable" role="status">Screenshot unavailable.</span>;
   if (!image?.url) return <span className="agent-image-loading" role="status">Loading screenshot…</span>;
