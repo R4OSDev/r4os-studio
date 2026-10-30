@@ -145,13 +145,19 @@ class Jobs:
                 settings = validate(settings)
                 if artifact['role'] == 'service' and len(settings['arguments'].encode()) > 95:
                     raise DevelopmentFault('Service arguments are limited to 95 UTF-8 bytes.', 400)
+            launch_budget = None
+            if deployment and deployment.get('role') == 'desktop':
+                from deskrun import command,launch_budget as calculate,DEFAULT_WAIT_MS
+                wait_ms = min(DEFAULT_WAIT_MS,settings['timeoutSeconds']*1000)
+                launch_budget = calculate(deployment,settings['arguments'],wait_ms)
+                command(deployment,settings['arguments'],wait_ms)  # Reject before admitting any new job.
             job = {'id': str(uuid.uuid4()), 'projectId': self.id, 'kind': kind, 'state': 'queued',
                 'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': deployment['id'] if deployment else None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
                 'phase': 'queued', 'check': None, 'createdAt': now(), 'completedAt': None,
                 'source': None, 'projectRevision': self.project['revision'],
                 'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
-                'settings': settings}
+                'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))
             self.db.commit(); return job, True
@@ -207,6 +213,15 @@ class Jobs:
                 job['package'] = {'format': deployment.get('format', 'legacy-c'), 'guestDirectory': directory,
                     'relativeDirectory': directory[3:].replace(chr(92), '/')}
             except (DevelopmentFault, KeyError, ValueError): pass
+        if job.get('kind') == 'deploy' and job.get('state') == 'completed' and job.get('deploymentId'):
+            try:
+                from desktop_budget import for_deployment
+                deployment = self.deployment_metadata(job['deploymentId'])
+                if deployment.get('role') == 'desktop':
+                    layout=for_deployment(self,deployment)
+                    job['desktopLaunchBudget'] = layout['saved'] if layout['available'] else layout
+            except (DevelopmentFault,KeyError,ValueError):
+                job['desktopLaunchBudget'] = {'available':False,'reason':'This saved deployment has no qualified Desktop argument budget.'}
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
         if type(offset) != int or offset < 0 or offset > LIMITS['outputBytes']:
             raise DevelopmentFault('Invalid development output offset.', 400)

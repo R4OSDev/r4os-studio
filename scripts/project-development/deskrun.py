@@ -68,7 +68,7 @@ def receipt(output):
     return {**value, 'process_generation': str(value['process_generation']), 'content': str(value['content'])}
 
 
-def command(deployment, arguments, wait_ms):
+def command_text(deployment, arguments, wait_ms):
     path = deployment['guestDirectory'] + chr(92) + 'APP.R4X'
     # This is a fixed verified package path, never a caller-selected shell path.
     if not re.fullmatch(r'[A-Z]:\\Build\\P[A-F0-9]{7}\\D[A-F0-9]{7}\\APP\.R4X', path, re.IGNORECASE):
@@ -79,11 +79,28 @@ def command(deployment, arguments, wait_ms):
     # on an optional flag. Short execution deadlines still get an explicit wait.
     wait = '' if wait_ms == DEFAULT_WAIT_MS else f' /WAIT:{wait_ms}'
     text = f'DESKRUN /JSON{wait} /WAITFRAME "{path}"' + (' ' + arguments if arguments else '')
-    size = len(text.encode())
-    if size > SSH_EXEC_BYTES:
-        raise NotSubmitted(f'Desktop launch requires {size} UTF-8 command bytes; R4OS SSHD allows {SSH_EXEC_BYTES} after its Terminal wrapper. Shorten the application arguments. No application was started.',
-            400, reason_code='desktop_arguments_too_long')
     return text
+
+
+def launch_budget(deployment, arguments, wait_ms):
+    text = command_text(deployment, arguments, wait_ms)
+    fixed = len(command_text(deployment, '', wait_ms).encode())
+    try: used = len(text.encode()); argument_bytes = len(arguments.encode())
+    except UnicodeError: raise NotSubmitted('Desktop arguments must contain valid UTF-8 text. No application was started.',400) from None
+    capacity = SSH_EXEC_BYTES - fixed - 1
+    return {'available': True, 'commandBytes': used, 'limitBytes': SSH_EXEC_BYTES,
+        'wrapperBytes': len(SSH_EXEC_PREFIX.encode()), 'fixedBytes': fixed, 'argumentBytes': argument_bytes,
+        'argumentCapacityBytes': capacity, 'remainingArgumentBytes': capacity - argument_bytes,
+        'remainingCommandBytes': SSH_EXEC_BYTES - used, 'overByBytes': max(0,used - SSH_EXEC_BYTES),
+        'waitMilliseconds': wait_ms, 'withinLimit': used <= SSH_EXEC_BYTES}
+
+
+def command(deployment, arguments, wait_ms):
+    value = launch_budget(deployment, arguments, wait_ms)
+    if not value['withinLimit']:
+        raise NotSubmitted(f"Desktop launch requires {value['commandBytes']} UTF-8 command bytes; R4OS SSHD allows {SSH_EXEC_BYTES} after its Terminal wrapper. Shorten the application arguments. No application was started.",
+            400, reason_code='desktop_arguments_too_long')
+    return command_text(deployment, arguments, wait_ms)
 
 
 async def exchange(ssh, text, timeout):

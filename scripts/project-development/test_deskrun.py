@@ -54,3 +54,37 @@ class UnconfirmedTest(unittest.IsolatedAsyncioTestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+class BudgetTest(unittest.TestCase):
+    def test_same_canonical_bytes_at_unicode_and_wait_boundaries(self):
+        from deskrun import launch_budget
+        for wait in (99,999,1000,4999,5000):
+            baseline=launch_budget(DEPLOYMENT,'',wait);capacity=baseline['argumentCapacityBytes']
+            arguments='ä🙂'+'x'*(capacity-len('ä🙂'.encode()))
+            value=launch_budget(DEPLOYMENT,arguments,wait)
+            self.assertEqual(value['commandBytes'],112);self.assertEqual(value['wrapperBytes'],15)
+            self.assertEqual(value['remainingArgumentBytes'],0);self.assertTrue(value['withinLimit'])
+            self.assertEqual(len(command(DEPLOYMENT,arguments,wait).encode()),value['commandBytes'])
+            self.assertEqual(launch_budget(DEPLOYMENT,arguments+'ä',wait)['overByBytes'],2)
+            with self.assertRaises(NotSubmitted) as failure:command(DEPLOYMENT,arguments+'ä',wait)
+            self.assertNotIn(arguments,str(failure.exception));self.assertTrue(failure.exception.launch_not_submitted)
+        self.assertGreater(launch_budget(DEPLOYMENT,'',999)['fixedBytes'],launch_budget(DEPLOYMENT,'',99)['fixedBytes'])
+    def test_missing_or_changed_binding_has_no_safe_guessed_capacity(self):
+        import copy,json,uuid
+        from desktop_budget import selected
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);vm={'id':str(uuid.uuid4()),'revision':'r','imageId':'image','imageSha256':'a'*64}
+            project={'revision':2,'vmId':vm['id'],'pins':{}}
+            target={'vmId':vm['id'],'vmRevision':'r','imageId':'image','imageSha256':'a'*64,'bootId':'own-boot'}
+            deployment={**DEPLOYMENT,'id':'deployment','projectId':'project','jobId':'deploy-job','role':'desktop','pins':{},'target':target}
+            store=SimpleNamespace(project=project,id='project',projects=root,get=lambda _:{'state':'completed','projectRevision':2},settings=lambda:{'revision':1,'arguments':'ä','timeoutSeconds':5})
+            self.assertFalse(selected(store,deployment,vm)['available'])
+            path=root/'.studio/development/Boots'/ (vm['id']+'.json');path.parent.mkdir(parents=True)
+            from lease import birth
+            import os
+            path.write_text(json.dumps({'schema':1,'connected':True,'bootId':'own-boot','vmId':vm['id'],'vmRevision':vm['revision'],'imageId':vm['imageId'],'imageSha256':vm['imageSha256'],'pid':os.getpid(),'birth':birth(os.getpid())}))
+            value=selected(store,deployment,vm);self.assertTrue(value['available']);self.assertEqual(value['saved']['argumentBytes'],2)
+            for key in ('bootId','vmRevision','imageSha256'):
+                changed=copy.deepcopy(deployment);changed['target'][key]='foreign'
+                self.assertEqual(selected(store,changed,vm)['available'],False)

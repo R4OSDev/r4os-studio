@@ -122,9 +122,11 @@ class Host:
             deploy = {'available': True}
         from profiles import runner
         evidence_capabilities = runner().get('evidenceCapabilities', {}).get(project['template'])
+        from desktop_budget import options as desktop_budget
+        launch_budget = desktop_budget(store,vm)
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image,
-                    'evidenceCapabilities': evidence_capabilities}),
-            'evidenceCapabilities': evidence_capabilities,
+                    'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget}),
+            'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget,
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),

@@ -16,5 +16,11 @@ def compose(config):
         'For desktop_content_unconfirmed, a fully bound own visible/focused window can yield a diagnosticOnly, '
         'contentUnconfirmed screenshot. It grants no input frame reference, visual pass or completion readiness. '
         'Process/window proof and DESKRUN content proof remain separate; original STATUS polling is already bounded '
-        'by native retention, so do not retry launches or poll forever.'
+        'by native retention, so do not retry launches or poll forever. '
+        'DESKTOP ARGUMENT BUDGET: Deployment receipts/options expose desktopLaunchBudget. The native SSHD '
+        'Terminal command limit is 112 UTF-8 bytes after its 15-byte wrapper, including DESKRUN flags, quotes, '
+        'path, spaces and optional short WAIT. Use the native 5000ms default. Inspect the bound budget before '
+        'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
+        'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
+        'app/SDK contract; host Rust builds do not imply a native guest compiler.'
     )

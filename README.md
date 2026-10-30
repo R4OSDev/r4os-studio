@@ -1,3 +1,9 @@
+## Bound Desktop argument budgets (0.8.42)
+
+Run & Test and deployment receipts expose the canonical DESKRUN UTF-8 budget.
+Oversize starts are rejected before admitting a new job, with no argument
+shortening or retry. Details: [Desktop-Launch-Budget.md](Desktop-Launch-Budget.md).
+
 ## Diagnostic own-window screenshots (0.8.41)
 
 Fully bound visible/focused Desktop windows can be captured for diagnosis while

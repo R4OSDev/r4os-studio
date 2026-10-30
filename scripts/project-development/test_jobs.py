@@ -118,5 +118,20 @@ class JobsTest(unittest.TestCase):
             self.assertEqual(result['vmId'], vm_id)
         finally: db.close()
 
+    def test_desktop_budget_rejects_before_admission_and_returns_bound_numbers(self):
+        from unittest.mock import patch
+        from deskrun import NotSubmitted
+        vm=str(uuid.uuid4());self.store.project.update(vmId=vm,template='desktop')
+        artifact={'id':str(uuid.uuid4()),'role':'desktop','pins':{}}
+        deployment={'id':str(uuid.uuid4()),'artifactId':artifact['id'],'role':'desktop','pins':{},'target':{'vmId':vm},'guestDirectory':r'F:\Build\P123ABCD\D123ABCD'}
+        body={**self.input(),'deploymentId':deployment['id'],'overrides':{'arguments':'x'*90}}
+        with patch.object(self.store,'deployment_metadata',return_value=deployment),patch.object(self.store,'artifact',return_value=artifact):
+            with self.assertRaises(NotSubmitted) as failure:self.store.admit('execution',body)
+            self.assertEqual(failure.exception.reason_code,'desktop_arguments_too_long')
+            self.assertEqual(self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0],0)
+            body['overrides']['arguments']='ä';job,fresh=self.store.admit('execution',body)
+            self.assertTrue(fresh);self.assertEqual(job['desktopLaunchBudget']['argumentBytes'],2)
+            self.assertTrue(job['desktopLaunchBudget']['withinLimit']);self.assertEqual(self.store.admit('execution',body)[0],job)
+
 
 if __name__ == '__main__': unittest.main()

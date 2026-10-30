@@ -13,7 +13,13 @@ export interface DevelopmentCapability {
   available: boolean;
   reason?: string;
 }
+export type DesktopLaunchBudget = {available:false;reason:string} | {available:true;commandBytes:number;limitBytes:number;wrapperBytes:number;fixedBytes:number;
+  argumentBytes:number;argumentCapacityBytes:number;remainingArgumentBytes:number;remainingCommandBytes:number;overByBytes:number;waitMilliseconds:number;withinLimit:boolean};
+export type DesktopArgumentLayout = {available:false;reason:string} | {available:true;
+  binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
+  limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  desktopLaunchBudget?: DesktopArgumentLayout | null;
   evidenceCapabilities?: {
     exitStatus: { state: 'unconfirmed'; reasonCode: string; reason: string };
     consoleOutput: { state: 'unconfirmed'; reasonCode: string; reason: string };
@@ -166,6 +172,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  desktopLaunchBudget?: DesktopLaunchBudget;
   outputFiles?: { name: string; state?: 'missing' | 'unstable' | 'unconfirmed' | 'observed-stable'; id?: string;
     sha256?: string; bytes?: number; createdAt?: string; containsExpectedText?: boolean; error?: string }[];
   liveFileObservation?: { schema: 1; mode: 'observed-interval'; checkedAt: string; refreshAfterMs: number;

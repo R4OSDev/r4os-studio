@@ -36,9 +36,16 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
     try {
       const result = await projectRequest<DevelopmentSettings>(base + '/settings', token, 'PATCH', draft);
       setDraft(result); setSaved(result); setNotice('Saved.');
+      try { setOptions(await projectRequest<DevelopmentOptions>(base+'/options')); } catch { setOptions(null); }
     } catch (e) { setError((e as Error).message); setConflict((e as ProjectRequestError).status === 409); }
     finally { setBusy(false); }
   }
+  const layout=options?.desktopLaunchBudget;
+  const boundLayout=layout?.available&&project&&saved&&layout.binding.projectRevision===project.revision&&layout.binding.settingsRevision===saved.revision&&layout.binding.vmId===project.vmId ? layout : null;
+  const fixed=boundLayout&&draft ? (draft.timeoutSeconds>=5 ? boundLayout.defaultWaitFixedBytes : boundLayout.shortWaitFixedBytes[String(draft.timeoutSeconds)]) : undefined;
+  const argumentBytes=draft ? new TextEncoder().encode(draft.arguments).length : 0;
+  const used=fixed===undefined ? null : fixed+(argumentBytes ? 1+argumentBytes : 0);
+  const capacity=boundLayout&&fixed!==undefined ? boundLayout.limitBytes-fixed-1 : null;
   const files = draft?.outputFiles ?? [];
   const filePatch = (index: number, value: Partial<DevelopmentSettings['outputFiles'][number]>) => patch({ outputFiles: files.map((f, i) => i === index ? { ...f, ...value } : f) });
   return <><form className="project-settings run-test-settings" aria-label="Run and test settings" onSubmit={(e) => void submit(e)}>
@@ -47,7 +54,10 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
     {options && !options.execute.available && <p className="project-message">{options.execute.reason}</p>}
     {!draft && !error && <p role="status">Loading settings…</p>}
     {draft && <fieldset className="project-fields" disabled={busy}>
-      <ProjectField id="run-arguments" label={project?.template === 'desktop' ? 'Arguments (Desktop launch: 127 UTF-8 bytes total)' : 'Arguments (UTF-8: 127 bytes, services 95)'}><input id="run-arguments" maxLength={project?.template === 'service' ? 95 : 1024} value={draft.arguments} onChange={(e) => patch({ arguments: e.target.value })} /></ProjectField>
+      <ProjectField id="run-arguments" label={project?.template === 'desktop' ? 'Arguments (Desktop UTF-8 command budget)' : 'Arguments (UTF-8: 127 bytes, services 95)'}><input id="run-arguments" maxLength={project?.template === 'service' ? 95 : 1024} value={draft.arguments} onChange={(e) => patch({ arguments: e.target.value })} /></ProjectField>
+      {project?.template==='desktop' && <p className="project-message" role="status">{boundLayout&&used!==null&&capacity!==null
+        ? <>Desktop command: {used} / {boundLayout.limitBytes} UTF-8 bytes · Fixed: {fixed} · Arguments: {argumentBytes} / {capacity} · Remaining argument bytes: {capacity-argumentBytes}.{used>boundLayout.limitBytes ? ` Exceeds the limit by ${used-boundLayout.limitBytes} bytes. No application will be started.` : ''} SSHD wrapper: {boundLayout.wrapperBytes} additional bytes.</>
+        : layout&&!layout.available ? layout.reason : 'A verified current Desktop deployment is required for its argument budget.'}</p>}
       <div className="project-form-row">
         <ProjectField id="run-cwd" label="Working directory"><input id="run-cwd" value={project?.template === 'desktop' ? 'Native Desktop directory' : 'Deployment directory'} readOnly /></ProjectField>
         <ProjectField id="run-timeout" label="Time limit (seconds)"><input id="run-timeout" type="number" min={1} max={300} required value={draft.timeoutSeconds} onChange={(e) => patch({ timeoutSeconds: Number(e.target.value) })} /></ProjectField>
