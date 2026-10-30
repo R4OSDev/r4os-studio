@@ -76,6 +76,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     if 'liveGoalPreparation' in data:
         from profile import CODEX_VERSION, CODEX_SHA256
         snapshot['nativeGoalPreparation'] = data['liveGoalPreparation']==1 and session['engine'].get('version')==CODEX_VERSION and session['engine'].get('sha256')==CODEX_SHA256
+        if not goal_mode and session['engine'].get('kind')=='claude-code':
+            snapshot['claudeGoalPreparation']=data['liveGoalPreparation']==1
     if 'attachments' in data:snapshot['attachments']=attachments
     accepted=attachments+history(store,session_id)
     if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)

@@ -53,6 +53,9 @@ def snapshot(goals,sid):
 
 def target(store,sid,run):
     config=json.loads(run['config']);meta=json.loads(run['worker'] or '{}');spec=config.get('claudeGoalExecution')
+    if not spec:
+        from claude_live_store import active_spec
+        spec=active_spec(store,run['id'])
     try:current_birth=birth(meta['pid']) if type(meta.get('pid')) is int and meta['pid']>0 else None
     except OSError:current_birth=None
     if (not spec or config['engine'].get('kind')!='claude-code' or run['session_id']!=sid
@@ -70,11 +73,12 @@ def target(store,sid,run):
 def accept(goals,sid,data):
     store=goals.store
     if (not isinstance(data,dict) or not {'requestId','revision','action'}<=set(data)
-            or set(data)-{'requestId','revision','action','objective','sessionRevision'}
+            or set(data)-{'requestId','revision','action','objective','sessionRevision','targetRunId'}
             or type(data['revision']) is not int or not 0<=data['revision']<=MAX_SAFE_INTEGER
             or data['action'] not in ('save','play','pause','stop') or (('objective' in data)!=(data['action']=='save'))
             or 'sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1)):
-        raise ProjectFault('Invalid Studio Claude Goal command. Live activation requires its separately qualified adapter.',400)
+        raise ProjectFault('Invalid Studio Claude Goal command.',400)
+    if 'targetRunId' in data:identity(data['targetRunId'])
     key=identity(data['requestId']);hashed=digest({'sessionId':sid,**data})
     if data['action']=='save':
         try:objective(data['objective'],allow_empty=True)
@@ -92,12 +96,19 @@ def accept(goals,sid,data):
         if current['phase']=='unknown' and action not in ('pause','stop'):raise ProjectFault('Pause or Stop the original unconfirmed Goal before changing it.',409)
         if db.execute('SELECT COUNT(*) FROM goal_commands WHERE session_id=?',(sid,)).fetchone()[0]>=4096:
             raise ProjectFault('This session reached its Goal command history limit.',409)
-        busy=db.execute('SELECT * FROM runs WHERE busy=1').fetchone();bound=None
+        busy=db.execute('SELECT * FROM runs WHERE busy=1').fetchone();bound=None;live=None
         if busy:
             if busy['session_id']!=sid:raise ProjectFault('Another session is using this workspace.',409)
-            if action not in ('pause','stop'):raise ProjectFault('Wait for this run to end before saving or starting a Claude Goal. Your draft was preserved.',409)
-            if action=='pause' and busy['state']=='stopping':raise ProjectFault('This original Goal is already stopping. Read its original result.',409)
-            bound=target(store,sid,busy)
+            if data.get('targetRunId') is not None and data['targetRunId']!=busy['id']:raise ProjectFault('This command belongs to another original Claude response.',409)
+            if action in ('save','play'):
+                if data.get('targetRunId')!=busy['id'] or data.get('sessionRevision')!=store.row(sid)['revision']:
+                    raise ProjectFault('Live Claude control needs its exact original run and session revision.',409)
+                from claude_live_store import target as live_target
+                live=live_target(store,sid,busy)
+            else:
+                if action=='pause' and busy['state']=='stopping':raise ProjectFault('This original Goal is already stopping. Read its original result.',409)
+                bound=target(store,sid,busy)
+        elif data.get('targetRunId'):raise ProjectFault('The original Claude response ended. Read this request before a separate Play.',409)
         if action=='save' and saved and saved['status']=='active':raise ProjectFault('Pause the active Goal before changing its text.',409)
         if action=='play':
             if not saved:raise ProjectFault('Save a Goal before pressing Play.',409)
@@ -106,9 +117,9 @@ def accept(goals,sid,data):
             from message_store import pending_queue
             if pending_queue(store,sid):raise ProjectFault('Continue or remove the saved message queue before pressing Play.',409)
             from claude_history import ClaudeHistory
-            if ClaudeHistory(store,sid).get()['phase'] not in ('allocated','ready'):
+            if not live and ClaudeHistory(store,sid).get()['phase'] not in ('allocated','ready'):
                 raise ProjectFault('The original native Claude history is unconfirmed. No Goal was started.',409)
-        payload={**data,'_goal':saved,'_previousPhase':current['phase'],**({'_claudeTarget':bound} if bound else {})}
+        payload={**data,'_goal':saved,'_previousPhase':current['phase'],**({'_claudeTarget':bound} if bound else {}),**({'_claudeLiveTarget':live} if live else {})}
         db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',(key,sid,hashed,encode(payload),'pending','accepted',now()))
         db.execute('''INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',?,NULL,NULL)
             ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,phase='pending',request_id=excluded.request_id,reason=NULL''',(sid,key))
@@ -136,13 +147,7 @@ def idle(goals,sid,rid):
         if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone():raise ProjectFault('The owning Claude Goal worker must confirm this command.',409)
         current=snapshot(goals,sid);value=current['goal'];phase='idle';reason=None
         if data['action']=='save':
-            text=objective(data['objective'],allow_empty=True)
-            if not text:value=None
-            elif not value or value['objective']!=text:
-                stamp=int(time.time());value={'source':'studio-claude','goalId':str(uuid.uuid4()),'nativeSessionId':store.get(sid)['engine']['claude']['nativeSessionId'],
-                    'threadId':None,'objective':text,'status':'paused','tokensUsed':None,'timeUsedSeconds':0,
-                    'createdAt':stamp,'updatedAt':stamp,'limits':limits()}
-            else:value={**value,'status':'paused','updatedAt':int(time.time())}
+            value=saved_value(store,sid,value,data['objective'])
         else:
             from claude_history import ClaudeHistory
             if ClaudeHistory(store,sid).get()['phase'] not in ('allocated','ready'):
@@ -152,6 +157,16 @@ def idle(goals,sid,rid):
             write(goals,sid,value,phase=phase,reason=reason)
             return goals.finish(sid,rid,phase=phase,reason=reason)
     finally:lock.close()
+
+
+def saved_value(store,sid,value,text):
+    text=objective(text,allow_empty=True)
+    if not text:return None
+    if value and value['objective']==text:return {**value,'status':'paused','updatedAt':int(time.time())}
+    stamp=int(time.time())
+    return {'source':'studio-claude','goalId':str(uuid.uuid4()),'nativeSessionId':store.get(sid)['engine']['claude']['nativeSessionId'],
+        'threadId':None,'objective':text,'status':'paused','tokensUsed':None,'timeUsedSeconds':0,
+        'createdAt':stamp,'updatedAt':stamp,'limits':limits()}
 
 
 def pending_controls(worker):

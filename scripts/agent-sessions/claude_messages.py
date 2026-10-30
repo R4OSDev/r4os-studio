@@ -140,6 +140,7 @@ def acknowledge(worker, frame):
 
 
 def finalize(worker):
+    if getattr(worker,'claude_goal',None) and worker.claude_goal.live and worker.claude_goal.begun:return
     is_queue=queued(worker)
     original=bool(worker.config.get('claudeInput')) and not getattr(worker,'claude_goal',None)
     if not (is_queue or original) or worker.input_receipt.is_set() or not worker.sent: return
@@ -151,7 +152,8 @@ def finalize(worker):
 def acknowledge_original(w,frame):
     """Only the actual native echo can acknowledge a new public text input."""
     expected=w.config.get('claudeInput')
-    if not expected or getattr(w,'claude_goal',None):return False
+    goal=getattr(w,'claude_goal',None)
+    if not expected or goal and not (goal.live and not goal.begun):return False
     native=frame.get('native',{});reported=frame.get('identity',{})
     if native.get('type')!='user' or native.get('isReplay') is not True:return False
     if (expected.get('requestId')!=w.row['request_id'] or reported.get('nativeType')!='user'

@@ -40,7 +40,8 @@ def prepare(worker,history,prepared,broker):
     tools=[{'name':t['name'][7:],'description':t['description'],'inputSchema':t['inputSchema']}
         for t in specifications(config['engine']['profile'])]
     goal=getattr(worker,'claude_goal',None)
-    if goal:
+    live=config.get('claudeGoalPreparation') is True
+    if goal or live:
         from claude_goal import REPORT_TOOL
         tools.append(REPORT_TOOL)
     write_new(root/'tools.json',{'schema':1,'binding':binding,'tools':tools})
@@ -55,12 +56,15 @@ def prepare(worker,history,prepared,broker):
     prompt+='\n\nSTUDIO CLAUDE TOOL CONTRACT: Use only mcp__studio__ tools. Native file, shell, web, agent, memory, scheduler, plugin and computer tools are unavailable. Studio owns tool permissions and original receipts; never repeat an unconfirmed effect. The host alone owns native authentication, limits and resume.'
     if goal:
         prompt+='\n\nBOUNDED STUDIO GOAL: The next human input is the original saved objective activated by Play. Work only within its existing authority and tool permissions. Before ending each step call mcp__studio__report_goal with continue, complete or blocked and a concise reason. A report grants no new scope. The host may continue the same objective for at most eight steps and 900 active seconds per Play; never create your own scheduler or autonomous loop.'
+    elif live:
+        prompt+='\n\nSTUDIO GOAL PREPARATION: Only the first input in this query is an ordinary request; do not call report_goal for that input. A later host input headed STUDIO GOAL ACTIVATION with its Play execution ID identifies the explicitly activated saved Studio GOAL after the ordinary response. During that GOAL and its host-authorized continuation inputs, call mcp__studio__report_goal with continue, complete or blocked once before ending each step. That reserved status facet is available during an activated GOAL even when every project tool is disabled; it grants no project permissions. The host independently enforces activation, input receipts and at most eight steps and 900 active seconds per Play. Keep the original scope and permissions; never create a scheduler or autonomous loop.'
     from claude_inputs import prepared_input
     native_input=prepared_input(worker.store,worker.session_id,worker.run_id,config)
     if native_input:write_new(root/'input.json',native_input,12582912+4096)
     write_new(root/'runtime.json',{'schema':1,'binding':binding,'mode':prepared['mode'],'historyConfirmed':prepared['historyConfirmed'],
         **({'inputContract':{key:native_input[key] for key in ('profileId','requestId','textSha256','contentSha256')}} if native_input else {}),
-        'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal or config.get('claudeInput')),
+        'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal or live or config.get('claudeInput')),
+        **({'liveGoalPreparation':True} if live else {}),
         **({'goal':{key:config['claudeGoalExecution'][key] for key in ('executionId','maxSteps','maxActiveSeconds')}} if goal else {}),
         'effort':config.get('claudeModel',{}).get('effort',''),
         'resolvedModel':config.get('claudeModel',{}).get('resolvedModel'),

@@ -8,26 +8,31 @@ from run_store import event, item
 
 
 class ClaudeGoalRuntime:
-    def __init__(self, worker):
+    def __init__(self, worker, spec=None):
         self.w = worker; self.journal = None; self.clock = GoalClock(worker); self.deadline_task = None
         self.no_input = False;self.started=False
-        self.control=None
+        self.control=None;self.spec=spec;self.live=bool(spec and spec.get('liveTarget'));self.begun=not self.live
 
     def start(self):
-        self.journal = GoalJournal(self.w); self.journal.start()
+        self.journal = GoalJournal(self.w,spec=self.spec); self.journal.start()
         self.started=True
 
     def admitted(self, value):
-        if value.get('allowed') is True: self.journal.admitted(value)
+        if self.begun and value.get('allowed') is True: self.journal.admitted(value)
 
     def submitted(self, frame):
+        if not self.begun:return
         self.journal.submitted(frame.get('inputRequestId'))
 
     def acknowledge(self, frame):
+        if not self.begun:return
         if not self.journal.acknowledge(frame): return
         if self.w.input_receipt.is_set():return
         self.w.input_receipt.set()
         self.clock.start(self.journal.spec['executionId'])
+        if self.live and len(self.journal.read()['steps'])==1:
+            item(self.w.store,self.w.session_id,self.w.run_id,{'id':'user-'+self.journal.spec['requestId'],
+                'runId':self.w.run_id,'type':'user','text':self.journal.spec['objective'],'status':'completed'})
         from claude_goal_store import project
         project(self.w,self.journal.read())
         if not self.deadline_task: self.deadline_task = asyncio.create_task(self.deadline())
@@ -53,6 +58,8 @@ class ClaudeGoalRuntime:
         return {'content': [{'type': 'text', 'text': __import__('session_store').encode(result)}], 'isError': not result['success']}
 
     async def result(self, native):
+        if self.live and not self.begun:
+            self.control.source_result(native);return True
         if self.control:await self.control.drain()
         continuing=self.journal.result(native)
         from claude_goal_store import project
@@ -75,6 +82,7 @@ class ClaudeGoalRuntime:
         return True
 
     def unconfirmed(self, frame):
+        if self.live and not self.begun:return
         current = self.journal.read()['steps'][-1]
         self.no_input = frame.get('inputRequestId') == current['inputId'] and frame.get('inputSubmitted') is False
 
@@ -93,8 +101,22 @@ class ClaudeGoalRuntime:
             if self.started:
                 if self.control:await self.control.close()
                 receipt=self.w.native_receipt or {}
-                no_input=self.no_input or (receipt.get('promptSubmitted') is False and receipt.get('inputSubmitted') is False
-                    and not self.w.sent and not self.w.store.db.execute('SELECT 1 FROM tools WHERE run_id=?',(self.w.run_id,)).fetchone())
+                if self.live:
+                    value=self.journal.read();source=value['liveSource'];native=receipt.get('liveGoal') or {}
+                    # Ordinary promptSubmitted must never count as a Goal input.
+                    # Require a positive original result and explicit native proof.
+                    source_bound=(source['result'] and source['inputConfirmed']
+                        and receipt.get('resultId')==source['result']['id']
+                        and receipt.get('nativeSessionId')==self.journal.binding['nativeSessionId']
+                        and receipt.get('studioRequestId')==self.journal.binding['requestId'])
+                    no_input=bool(source_bound and (
+                        native.get('executionId')==self.journal.spec['executionId']
+                        and native.get('sourceInputRequestId')==self.journal.binding['requestId']
+                        and native.get('sourceResultId')==source['result']['id'] and native.get('inputSubmitted') is False
+                        or source['armRefused'] and not source['armed'] and not source['beginSent'] and not native))
+                else:
+                    no_input=self.no_input or (receipt.get('promptSubmitted') is False and receipt.get('inputSubmitted') is False
+                        and not self.w.sent and not self.w.store.db.execute('SELECT 1 FROM tools WHERE run_id=?',(self.w.run_id,)).fetchone())
                 value = self.journal.finish(confirmed, no_input)
                 self.clock.end(unknown=value['state'] == 'unknown')
                 from claude_goal_store import project

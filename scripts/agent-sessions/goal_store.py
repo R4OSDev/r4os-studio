@@ -171,7 +171,7 @@ class Goals:
         except Exception:pass  # Statistics cannot change Goal recovery.
         for command in self.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
             data=json.loads(command['payload'])
-            if (data.get('target') or data.get('_claudeTarget') or {}).get('runId')==run_id:
+            if (data.get('target') or data.get('_claudeTarget') or data.get('_claudeLiveTarget') or {}).get('runId')==run_id:
                 self.finish(command['session_id'],command['request_id'],'failed' if command['stage'] in ('accepted','worker_received') else 'unknown',
                     'The original live Goal worker ended. No mutation or inference was repeated.')
         run=self.store.db.execute('SELECT session_id,config,state FROM runs WHERE id=?',(run_id,)).fetchone()

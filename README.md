@@ -1,9 +1,12 @@
-## Private Claude live Goal boundary (0.8.56)
+## Live Claude Studio GOAL (0.8.57)
 
-The native adapter can now retain a completed ordinary result and begin a
-separately authorized bounded Goal in the same query, with a new input ID and
-fresh admission. Arming alone submits nothing. Public Save/Play wiring and its
-durable activation remain open in0.8.23. Details: [Claude-Live-Goal.md](Claude-Live-Goal.md).
+Compatible new Claude workers accept Save/Play during an ordinary response.
+Play waits for that response, then starts the saved bounded Goal in the same
+query with a separate native input and fresh subscription admission. Its clock
+excludes the original response. Queue priority, original-worker Pause/Stop and
+passive recovery preserve original effects and request identities. The actual
+connected Pro path and controlled native refusal were checked in owned sessions.
+Details and remaining lifecycle scope: [Claude-Live-Goal.md](Claude-Live-Goal.md).
 
 ## Claude document and image inputs (0.8.55)
 

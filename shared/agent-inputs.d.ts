@@ -21,6 +21,7 @@ export interface GoalLiveTarget { runId: string; threadId: string; turnId: strin
 export interface GoalCommand {
   requestId: string; revision: number; action: GoalAction; objective?: string; sessionRevision?: number;
   target?: GoalLiveTarget;
+  targetRunId?: string;
 }
 export interface SessionGoal {
   owner: SessionOwner; sessionId: string; threadId: string | null;

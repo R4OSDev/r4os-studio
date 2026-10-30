@@ -7,6 +7,10 @@ from store import ProjectFault
 
 
 def intent_time(worker):
+    runtime=getattr(worker,'claude_goal',None)
+    if runtime and runtime.live and runtime.begun:
+        from goal_store import Goals
+        return Goals(worker.store).command(worker.session_id,runtime.journal.spec['requestId'])['created_at']
     if exists(worker.store):
         row=worker.store.db.execute('SELECT created_at FROM session_messages WHERE session_id=? AND request_id=?',
             (worker.session_id,worker.row['request_id'])).fetchone()

@@ -21,6 +21,16 @@ MAX_ACTIVE_SECONDS = 900
 CONTINUE_TEXT = ('Continue the original saved Studio GOAL within its unchanged scope and permissions. '
                  'Inspect original receipts before acting; never repeat an unconfirmed effect. '
                  'Before ending this step, call mcp__studio__report_goal with continue, complete or blocked and a concise reason.')
+LIVE_GOAL_PREFIX = ('The host has completed the previous ordinary response and explicitly activated this saved Studio GOAL. '
+    'This input is the original accepted Play, not another ordinary request. Work only within the saved objective and existing permissions. '
+    'Before ending this step, call mcp__studio__report_goal with continue, complete or blocked and a concise reason. '
+    'The report facet records status only; it grants no project tool permissions.\n\nSaved objective:\n')
+
+
+def live_text(spec):
+    return 'STUDIO GOAL ACTIVATION\nPlay execution: '+spec['executionId']+'\n'+LIVE_GOAL_PREFIX+spec['objective']
+
+
 REPORT_TOOL = {'name': 'report_goal', 'description':
     'Report progress on the original bounded Studio GOAL. This reports a status; it grants no new scope or permissions. '
     'Use complete only after the original objective and required checks are satisfied. Use blocked when user input or an external change is required. '
@@ -47,10 +57,16 @@ def freeze(store, sid, command):
             or data.get('sessionRevision') != store.row(sid)['revision'] or data.get('target')):
         raise ProjectFault('This bounded Claude execution has no original accepted Studio Play.', 409)
     text = objective(saved.get('objective'))
-    return {'schema': 1, 'source': 'studio-claude', 'executionId': identity(command['request_id']),
+    value={'schema': 1, 'source': 'studio-claude', 'executionId': identity(command['request_id']),
         'requestId': command['request_id'], 'objective': text, 'objectiveSha256': text_hash(text),
         'commandFingerprint': command['fingerprint'], 'nativeSessionId': runtime['nativeSessionId'],
         'maxSteps': MAX_STEPS, 'maxActiveSeconds': MAX_ACTIVE_SECONDS}
+    if data.get('_claudeLiveTarget'):
+        from claude_live_store import target
+        run=get_run(store,data['_claudeLiveTarget']['runId'])
+        if target(store,sid,run)!=data['_claudeLiveTarget']:raise ProjectFault('The original live Claude target changed.',409)
+        value['liveTarget']=data['_claudeLiveTarget']
+    return value
 
 
 def lost(store, run_id):
@@ -64,8 +80,8 @@ def lost(store, run_id):
 
 
 class GoalJournal:
-    def __init__(self, worker, monotonic=time.monotonic_ns):
-        self.w = worker; self.spec = worker.config['claudeGoalExecution']; self.monotonic = monotonic
+    def __init__(self, worker, monotonic=time.monotonic_ns, spec=None):
+        self.w = worker; self.spec = spec if spec is not None else worker.config['claudeGoalExecution']; self.monotonic = monotonic
         self.binding = {'owner': {'type': worker.store.owner_type, 'id': worker.store.owner_id},
             'sessionId': worker.session_id, 'runId': worker.run_id, 'requestId': worker.row['request_id'],
             'configSha256': digest(worker.config), 'worker': worker.credential_worker,
@@ -74,7 +90,8 @@ class GoalJournal:
     def start(self):
         from goal_store import Goals
         original = Goals(self.w.store).command(self.w.session_id, self.spec['requestId'])
-        if freeze(self.w.store, self.w.session_id, original) != self.spec or self.binding['requestId'] != self.spec['requestId']:
+        if (freeze(self.w.store, self.w.session_id, original) != self.spec
+            or (self.spec.get('liveTarget')!=self.binding if self.spec.get('liveTarget') else self.binding['requestId']!=self.spec['requestId'])):
             raise ProjectFault('The original Claude Play contract changed. It was not restarted.', 409)
         db = self.w.store.db
         with db:
@@ -86,7 +103,8 @@ class GoalJournal:
             record = {'schema': 1, 'source': 'studio-claude', 'binding': self.binding, 'contract': self.spec,
                 'state': 'admitting', 'steps': [], 'startedNs': None, 'bootId': boot(), 'createdAt': now(), 'updatedAt': now(), 'reason': None}
             record['controlOpen']=True
-            record['steps'].append(self.new_step(1, self.spec['requestId'], 'human', self.spec['objective']))
+            if self.spec.get('liveTarget'):record['liveSource']={'armed':False,'armRefused':False,'result':None,'inputConfirmed':False,'beginSent':False}
+            record['steps'].append(self.new_step(1, self.spec['requestId'], 'human', live_text(self.spec) if self.spec.get('liveTarget') else self.spec['objective']))
             db.execute('INSERT INTO claude_goal_executions VALUES (?,?,?,?)',
                 (self.spec['executionId'], self.w.session_id, self.w.run_id, encode(record)))
 
@@ -105,7 +123,10 @@ class GoalJournal:
                 or digest(json.loads(run['config'])) != self.binding['configSha256']
                 or json.loads(run['worker'] or '{}') != self.binding['worker']
                 or value['bootId'] != boot() or self.w.store.get(self.w.session_id)['engine']['claude'] != self.w.config['engine']['claude']
-                or not command or command['state'] not in ('pending','confirmed') or command['fingerprint'] != self.spec['commandFingerprint']):
+                or not command or (command['state'] not in ('pending','confirmed')
+                    and not (value.get('controlOpen') is False and value['state'] in ('complete','blocked','budgetLimited','paused','unknown')
+                        and command['state'] in ('failed','unknown')))
+                or command['fingerprint'] != self.spec['commandFingerprint']):
             raise ProjectFault('The original Claude Play binding changed. Its ledger was preserved.', 409)
         if live and (not run['busy'] or self.binding['worker']['pid'] != os.getpid()
                 or birth(os.getpid()) != self.binding['worker']['birth']):
@@ -122,6 +143,10 @@ class GoalJournal:
         if value['state'] != 'admitting' or step['state'] != 'admitting' or step['admissionId'] is not None or self.w.stopping:
             raise ProjectFault('This original Claude GOAL step cannot acquire another input admission.', 409)
         if pending_controls(self.w):raise ProjectFault('Pause or Stop closed admission for the next original Goal step.',409)
+        from message_store import pending_queue
+        if pending_queue(self.w.store,self.w.session_id,authorized=True):
+            self.stop('Queued messages take priority before the next Goal input.')
+            raise ProjectFault('Queued messages take priority before the next Goal input.',409)
         step['admissionId'] = identity(admission['admissionId'])
         with self.w.store.db: self.save(value)
 
@@ -136,7 +161,7 @@ class GoalJournal:
         reported = frame.get('identity', {}); native = frame.get('native', {})
         if reported.get('nativeType') not in ('user', 'assistant', 'stream_event', 'result') or not reported.get('nativeInputRequestIds'): return False
         value = self.read(); step = value['steps'][-1]
-        if (reported.get('studioRequestId') != self.spec['requestId'] or reported.get('studioGoalStepId') != step['inputId']
+        if (reported.get('studioRequestId') != self.binding['requestId'] or reported.get('studioGoalStepId') != step['inputId']
                 or reported.get('nativeInputRequestIds') != [step['inputId']]
                 or reported.get('nativeSessionId') != self.binding['nativeSessionId']
                 or native.get('session_id') != self.binding['nativeSessionId'] or native.get('type') != reported.get('nativeType')

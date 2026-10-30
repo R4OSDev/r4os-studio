@@ -37,13 +37,15 @@ export function goalRoutes(app: FastifyInstance, security: ProjectSessions, owne
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'action'], properties: {
       requestId: identity, revision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
       sessionRevision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+      targetRunId: identity,
       target: { type: 'object', additionalProperties: false, required: ['runId','threadId','turnId'], properties: { runId: identity, threadId: { type: 'string', minLength: 1, maxLength: 256 }, turnId: { type: 'string', minLength: 1, maxLength: 256 } } },
       action: { type: 'string', enum: ['save', 'play', 'pause', 'stop'] }, objective: { type: 'string', maxLength: 16000 },
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
-    const support = await agentHost<{ environmentNotesSettings?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeImageInputs?: number; documentInputs?: number; imageGenerationSettings?: number }>({ operation: 'capabilities' });
+    const support = await agentHost<{ claudeLiveGoals?: number; environmentNotesSettings?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeImageInputs?: number; documentInputs?: number; imageGenerationSettings?: number }>({ operation: 'capabilities' });
     if (request.body.target && support.liveGoalControl !== 1) throw new ProjectError('This coordinator cannot control a live Goal yet. Your draft was preserved.', 503);
+    if (request.body.targetRunId && support.claudeLiveGoals !== 1) throw new ProjectError('This coordinator cannot control a live Claude Goal yet. Your draft was preserved.', 503);
     if (support.nativeGoals !== 1) throw new ProjectError('The agent coordinator must adopt Goal support first.', 503);
     if (request.body.action === 'play' && (support.environmentNotesSettings !== 1 || support.imageGenerationSettings !== 1 || support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
       throw new ProjectError('Wait for current runs to finish before starting a Goal.', 503);

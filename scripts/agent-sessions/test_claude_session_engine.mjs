@@ -66,7 +66,9 @@ await test('live Goal arms without input and begins after the original result in
     const sourceResult = randomUUID(); f.feed.emit({ type: 'result', uuid: sourceResult, session_id: f.frozen.nativeSessionId, subtype: 'success', is_error: false }); await tick();
     assert.equal(f.engine.state, 'between'); assert.equal(f.sent.length, 1); assert.equal(f.engine.goalStartedAt, null);
     await f.engine.beginGoal(contract.executionId); await tick();
-    assert.equal(admissions, 2); assert.equal(f.sent.length, 2); assert.equal(f.sent[1].message.content, contract.objective);
+    assert.equal(admissions, 2); assert.equal(f.sent.length, 2);
+    assert.ok(f.sent[1].message.content.startsWith('STUDIO GOAL ACTIVATION\nPlay execution: ' + contract.executionId + '\n'));
+    assert.ok(f.sent[1].message.content.endsWith('Saved objective:\n' + contract.objective));
     assert.equal(f.sent[1].uuid, contract.executionId); assert.equal(f.sent[1].origin.kind, 'human');
     assert.equal(f.sent[1].session_id, f.sent[0].session_id); assert.equal(f.engine.binding.requestId, f.frozen.requestId);
     assert.equal(f.engine.stepCount, 1); assert.equal(f.engine.modelObserved, false); assert.equal(f.engine.goalStartedAt, null);

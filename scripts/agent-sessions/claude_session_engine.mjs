@@ -12,6 +12,13 @@ const bounded = (value, max) => Buffer.byteLength(JSON.stringify(value)) <= max;
 export const GOAL_CONTINUE_TEXT = 'Continue the original saved Studio GOAL within its unchanged scope and permissions. '
   + 'Inspect original receipts before acting; never repeat an unconfirmed effect. '
   + 'Before ending this step, call mcp__studio__report_goal with continue, complete or blocked and a concise reason.';
+export function liveGoalText(contract) {
+  return 'STUDIO GOAL ACTIVATION\nPlay execution: ' + contract.executionId + '\n'
+    + 'The host has completed the previous ordinary response and explicitly activated this saved Studio GOAL. '
+    + 'This input is the original accepted Play, not another ordinary request. Work only within the saved objective and existing permissions. '
+    + 'Before ending this step, call mcp__studio__report_goal with continue, complete or blocked and a concise reason. '
+    + 'The report facet records status only; it grants no project tool permissions.\n\nSaved objective:\n' + contract.objective;
+}
 async function deadline(work, ms = 15000) {
   let timer;
   try { return await Promise.race([work, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('The original Claude operation timed out.')), ms); })]); }
@@ -207,7 +214,7 @@ export class ClaudeSessionEngine {
     this.inputId = executionId; this.inputIds.add(executionId); this.inputOrigin = 'human';
     this.inputSubmitted = false; this.inputAccepted = false; this.state = 'admitting';
     this.stepCount = 0; this.goalStartedAt = null;
-    await this.submit(activation.contract.objective, 'admitting');
+    await this.submit(liveGoalText(activation.contract), 'admitting');
     this.liveGoalInputSubmitted = true; activation.state = 'started';
   }
 

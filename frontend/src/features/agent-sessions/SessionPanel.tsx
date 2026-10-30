@@ -199,7 +199,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
-      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal) : run?.state ?? 'Ready') : connection}</span>
+      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal, run) : run?.state ?? 'Ready') : connection}</span>
         <button type="button" className="agent-settings-button" aria-label="Screenshot gallery" title="Screenshot gallery" aria-haspopup="dialog" aria-expanded={gallery} disabled={!session} onClick={()=>setGallery(true)}><Icon name="image"/></button>
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>

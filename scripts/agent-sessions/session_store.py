@@ -418,16 +418,27 @@ PRAGMA user_version=1;
         from provider_retry import snapshot as retry_snapshot
         retry = retry_snapshot(self, r)
         support = r['state']=='running' and bool(thread and r['turn_id']) and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True
-        activation=None
+        activation=None;config=json.loads(r['config']);live_spec=None;live_support=False
+        if config['engine'].get('kind')=='claude-code':
+            from claude_live_store import supported
+            live_support=supported(self,r)
+            from claude_goal import exists as claude_executions
+            if claude_executions(self):
+                saved=self.db.execute('SELECT e.payload,c.state FROM claude_goal_executions e JOIN goal_commands c ON c.request_id=e.execution_id WHERE e.run_id=? ORDER BY e.rowid DESC LIMIT 1',(r['id'],)).fetchone()
+                if saved:
+                    record=json.loads(saved['payload'])
+                    if record['contract'].get('liveTarget'):
+                        activation={'requestId':record['contract']['requestId'],'state':saved['state']}
+                        if record['startedNs'] is not None:live_spec=record['contract']
         if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_activations'").fetchone():
             saved=self.db.execute('SELECT a.request_id,c.state FROM goal_activations a JOIN goal_commands c USING(request_id) WHERE a.run_id=? ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1',(r['id'],)).fetchone()
             if saved: activation={'requestId':saved['request_id'],'state':saved['state']}
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
                 **({'providerRetry': retry} if retry else {}),
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
-                'goalControlSupport':r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
+                'goalControlSupport':live_support or r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
                 **({'goalActivation':activation} if activation else {}),
-                **({'mode':'goal'} if json.loads(r['config']).get('goalExecution') or json.loads(r['config']).get('claudeGoalExecution') else {}),
+                **({'mode':'goal'} if config.get('goalExecution') or config.get('claudeGoalExecution') or live_spec else {}),
                 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}
 

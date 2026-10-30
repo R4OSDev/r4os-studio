@@ -54,7 +54,7 @@ class Host:
         return state in ('active', 'activating', 'deactivating', 'reloading')
 
     async def goal_worker_matches(self, meta, row):
-        if not any(json.loads(row['config']).get(key) for key in ('goalExecution','claudeGoalExecution','nativeGoalPreparation')):return True
+        if not any(json.loads(row['config']).get(key) for key in ('goalExecution','claudeGoalExecution','nativeGoalPreparation','claudeGoalPreparation')):return True
         try:
             pid=int(await systemctl('show',UNIT.format(row['id']),'--property=MainPID','--value'))
             if pid<=0 or (Path('/proc')/str(pid)).stat().st_uid!=self.config['uid']:return False
@@ -124,6 +124,8 @@ class Host:
                 from goal_store import Goals
                 live_plays={(json.loads(r['config']).get('goalExecution') or json.loads(r['config']).get('claudeGoalExecution') or {}).get('requestId')
                     for r in store.db.execute('SELECT * FROM runs WHERE busy=1') if r['id'] in self.active}
+                from claude_live_store import live_plays as live_claude_plays
+                for run_id in self.active:live_plays.update(live_claude_plays(store,run_id))
                 if __import__('goal_store').exists(store):
                     for command in store.db.execute("SELECT * FROM goal_commands WHERE state='pending'"):
                         target=json.loads(command['payload']).get('_claudeTarget')
@@ -202,7 +204,7 @@ class Host:
                 await self.handle({'operation':'cancel_provider','providerId':ident})
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
             return result
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
@@ -646,6 +648,8 @@ class Host:
         from claude_goal_store import idle
         from goal_control import live_control
         goals=Goals(store);data=json.loads(goals.command(sid,rid)['payload'])
+        if data.get('_claudeLiveTarget'):
+            await live_control(store,sid,rid);return
         if data['action']=='play':
             session=store.get(sid);goals.stage(sid,rid,'admitting_worker')
             try:
@@ -683,7 +687,7 @@ class Host:
                 if row['busy']: transition(store, run_id, 'interrupted', 'Run stopped.')
             self.active.pop(run_id, None)
             self.unbound.discard(run_id)
-            if json.loads(row['config']).get('claudeGoalExecution'):
+            if json.loads(row['config']).get('claudeGoalExecution') or json.loads(row['config']).get('claudeGoalPreparation'):
                 from claude_goal import lost as lost_claude
                 from goal_clock import lost as lost_claude_clock
                 lost_claude(store,run_id);lost_claude_clock(store,run_id)

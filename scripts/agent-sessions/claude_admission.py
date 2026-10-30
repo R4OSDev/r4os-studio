@@ -41,7 +41,9 @@ async def admit(worker,binding,account,usage):
     native=await native_status(providers,provider['id'])
     if not await worker.current(binding):return {'allowed':False,'reason':'Stop or a changed binding closed native admission.'}
     provider=ClaudeProviders(providers).get(binding['providerId'])
-    sample=usage_sample(usage,provider,worker.row['request_id'])
+    runtime=getattr(worker,'claude_goal',None)
+    request_id=(runtime.journal.read()['steps'][-1]['inputId'] if runtime and runtime.live and runtime.begun else worker.row['request_id'])
+    sample=usage_sample(usage,provider,request_id)
     # Aliases are provenance from the authenticated native catalog; they are
     # not inferred from a display name or used to reroute a denied model.
     catalog=AuthStore(providers).latest_catalog(provider['id'])
@@ -66,7 +68,7 @@ async def admit(worker,binding,account,usage):
     if result['allowed'] and held:
         if not explicit_resume(worker,held,sample['accountIdentity']):
             return {'allowed':False,'reason':'This subscription is held. Continue the queue or send again explicitly after a fresh limit check.'}
-        if saved['hold']:quota.release(provider['id'],saved['hold'],worker.row['request_id'])
+        if saved['hold']:quota.release(provider['id'],saved['hold'],request_id)
         worker.quota_authorized_through=held['id']
     # Keep only numeric/source quota observations in the private session log.
     # These observations never themselves clear a hold or resume a queue.
@@ -79,17 +81,17 @@ def explicit_resume(worker,hold,account):
     """An old queued input and a timer are not new human authorization."""
     db=worker.store.db
     if worker.config.get('goalExecution'):return False
-    if worker.config.get('claudeGoalExecution'):
-        runtime=getattr(worker,'claude_goal',None)
+    runtime=getattr(worker,'claude_goal',None)
+    if worker.config.get('claudeGoalExecution') or runtime and runtime.live and runtime.begun:
         if not runtime or not runtime.started:return False
         journal=runtime.journal.read();steps=journal['steps']
         from goal_store import Goals
-        command=Goals(worker.store).command(worker.session_id,worker.row['request_id'])
+        command=Goals(worker.store).command(worker.session_id,runtime.journal.spec['requestId'])
         payload=json.loads(command['payload'])
-        return (worker.row['created_at']>hold['createdAt'] and command['created_at']>hold['createdAt']
+        return ((runtime.live or worker.row['created_at']>hold['createdAt']) and command['created_at']>hold['createdAt']
             and command['state']=='pending' and payload['action']=='play'
             and len(steps)==1 and steps[0]['origin']=='human' and steps[0]['state']=='admitting'
-            and steps[0]['inputId']==worker.row['request_id'] and not steps[0]['submitted']
+            and steps[0]['inputId']==runtime.journal.spec['requestId'] and not steps[0]['submitted']
             and steps[0]['inputReceipt'] is None)
     queued=(db.execute("SELECT mode FROM session_messages WHERE request_id=?",(worker.row['request_id'],)).fetchone()
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_messages'").fetchone() else None)

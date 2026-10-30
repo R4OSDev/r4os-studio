@@ -36,6 +36,7 @@ class ClaudeWorker(Worker):
         from claude_messages import queued
         self.queued_input=queued(self);self.input_receipt=asyncio.Event()
         self.claude_goal=None
+        self.live_control=None
         if self.config.get('claudeGoalExecution'):
             from claude_goal_worker import ClaudeGoalRuntime
             self.claude_goal=ClaudeGoalRuntime(self)
@@ -43,8 +44,10 @@ class ClaudeWorker(Worker):
     async def admit_native(self,binding,account,usage):
         from claude_admission import admit
         result=await admit(self,binding,account,usage)
+        if self.claude_goal:
+            try:self.claude_goal.admitted(result)
+            except ProjectFault as error:result={'allowed':False,'reasonCode':'goal_control','reason':str(error)}
         if result.get('allowed') is not True:self.admission_denial=result
-        if self.claude_goal:self.claude_goal.admitted(result)
         return result
 
     async def current(self,binding):
@@ -83,7 +86,9 @@ class ClaudeWorker(Worker):
             except asyncio.TimeoutError:
                 admission_error={'success':False,'error':'inputUnconfirmed',
                     'output':'The original Claude input ID is not confirmed. No Studio tool was executed.'}
-        if name=='studio_report_goal' and self.claude_goal:
+        if name=='studio_report_goal':
+            if not self.claude_goal or not self.claude_goal.begun:
+                return await self.mcp_output({'success':False,'error':'unavailable','output':'No original Studio GOAL input is active. This ordinary request grants no GOAL authority.'})
             return await self.claude_goal.report(arguments,call_id,admission_error)
         async def output(result,image_data=None):
             # A resumed native call can reuse an original receipt from an older
@@ -122,7 +127,7 @@ class ClaudeWorker(Worker):
         native=frame['native'];kind=native['type'];identity=frame['identity']
         if identity.get('nativeSessionId') not in (None,self.config['engine']['claude']['nativeSessionId']):raise ValueError('Native session changed.')
         from claude_messages import acknowledge
-        acknowledge(self,frame)
+        if not (self.claude_goal and self.claude_goal.live and self.claude_goal.begun):acknowledge(self,frame)
         if self.claude_goal:self.claude_goal.acknowledge(frame)
         self.input_usage.notify(native)
         if kind=='stream_event':
@@ -189,6 +194,7 @@ class ClaudeWorker(Worker):
             from claude_usage_receipts import record as usage_receipt
             usage_receipt(self,native)
             if self.claude_goal and await self.claude_goal.result(native):return
+            if self.live_control:self.live_control.close_intent()
             if self.stopping:
                 if self.outcome not in ('completed','failed'):self.outcome='unknown' if self.uncertain_effect else 'interrupted'
             else:
@@ -208,14 +214,24 @@ class ClaudeWorker(Worker):
                 elif kind=='ready':self.initialized=True;self.ready.set()
                 elif kind=='submitted':
                     if value.get('requestId')!=self.row['request_id']:raise ValueError('Original native request changed.')
-                    if self.claude_goal:
+                    if self.claude_goal and self.claude_goal.begun:
                         self.claude_goal.submitted(value);self.native_result=None
                     self.sent=True;transition(self.store,self.run_id,'running')
+                    if self.live_control and not self.claude_goal:
+                        from claude_live_store import open_source
+                        open_source(self)
+                elif kind in ('goal_armed','goal_arm_refused'):
+                    if not self.live_control:raise ValueError('Unexpected native live Goal receipt.')
+                    self.live_control.native_arm(value)
                 elif kind=='unconfirmed':
                     if self.claude_goal:self.claude_goal.unconfirmed(value)
                     self.sent=self.sent or value.get('promptSubmitted') is True
                     self.error=(self.admission_denial or {}).get('reason') or value['message']
-                    self.outcome='unknown' if self.sent else ('interrupted' if self.stopping else 'failed');self.done.set();self.ready.set()
+                    source=(self.claude_goal.journal.read().get('liveSource') if self.claude_goal and self.claude_goal.live else None)
+                    known_no_goal=(source and self.claude_goal.no_input and source['result'] and source['inputConfirmed']
+                        and self.native_result and self.native_result.get('uuid')==source['result']['id'])
+                    self.outcome=('interrupted' if self.stopping else 'failed') if known_no_goal or not self.sent else 'unknown'
+                    self.done.set();self.ready.set()
                 elif kind=='closed':
                     if value.get('nativeSessionId')!=self.config['engine']['claude']['nativeSessionId']:raise ValueError('Native closure session changed.')
                     if value.get('studioRequestId')!=self.row['request_id']:raise ValueError('Original native closure request changed.')
@@ -285,11 +301,14 @@ class ClaudeWorker(Worker):
                 self.claude_goal.start()
                 from claude_goal_control import ClaudeGoalControl
                 self.claude_goal.control=ClaudeGoalControl(self.claude_goal);await self.claude_goal.control.start()
+            elif self.config.get('claudeGoalPreparation') is True:
+                from claude_live_control import ClaudeLiveGoalControl
+                self.live_control=ClaudeLiveGoalControl(self);await self.live_control.start()
             prepared=history.prepare(self.run_id);frozen=prepared['runtime']
             binding={'providerId':self.config['providerId'],'studioSessionId':self.session_id,'nativeSessionId':frozen['nativeSessionId'],
                 'runId':self.run_id,'requestId':self.row['request_id'],'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
                 'model':self.config['model'],'toolProfile':self.config['engine']['profile']}
-            tool_names=tools_for(self.config['engine']['profile'])+(('report_goal',) if self.claude_goal else ())
+            tool_names=tools_for(self.config['engine']['profile'])+(('report_goal',) if self.claude_goal or self.live_control else ())
             self.broker=ClaudeToolBroker(self.socket_root,binding,tool_names,self.current,self.effect,
                 admit=self.admit_native)
             await self.broker.start()
@@ -336,6 +355,7 @@ class ClaudeWorker(Worker):
             if self.claude_goal:
                 try:await self.claude_goal.finish(confirmed and history.get()['phase'] in ('ready','allocated'))
                 except Exception:self.outcome='unknown';self.error=self.error or 'The original bounded Claude GOAL ledger could not confirm its closure.'
+            if self.live_control:await self.live_control.close()
             self.input_usage.finish()
             await self.cleanup()
             if self.lease:self.lease.close()
