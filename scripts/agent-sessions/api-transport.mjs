@@ -3,15 +3,22 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
+import { chatRequest, ChatStream, ChatFault } from './api_chat.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
+const MODEL_REQUEST_DEADLINE = 900000;
 const ERROR_CODES = new Map([
+  ['provider_error', 'The configured model service could not complete this request.'],
   ['context_length_exceeded', 'The maximum model context length was exceeded.'],
   ['usage_limit_exceeded', 'The model usage limit was reached.'],
   ['insufficient_quota', 'The model provider quota was reached.'],
   ['rate_limit_exceeded', 'The model service is rate limited.'],
   ['invalid_api_key', 'The model provider credential was rejected.'],
   ['model_not_found', 'The configured model is unavailable.'],
+  ['chat_semantics_unavailable', 'The Chat Completions adapter cannot preserve this operation.'],
+  ['chat_invalid_tool_arguments', 'The model sent invalid or incomplete tool arguments.'],
+  ['chat_protocol_error', 'The model response does not match the qualified Chat Completions protocol.'],
+  ['chat_stream_incomplete', 'The model response stream ended before completing.'],
 ]);
 const sockets = new Set(), upstreams = new Set();
 let server, stopped = false;
@@ -37,12 +44,12 @@ const configuration = await new Promise((resolve, reject) => {
   process.stdin.on('data', read);
 }).catch(() => { process.stdout.write('{"error":"API transport bootstrap unavailable"}\n'); process.exit(1); });
 
-const { binding, addresses, key, relayToken } = configuration;
+const { binding, addresses, key, relayToken, chatPolicy } = configuration;
 let target;
 try {
   target = new URL(binding.baseUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash
-    || (binding.kind !== 'local' && target.protocol !== 'https:') || binding.protocol !== 'responses'
+    || (binding.kind !== 'local' && target.protocol !== 'https:') || !['responses', 'chat-completions'].includes(binding.protocol)
     || !Array.isArray(addresses) || !addresses.length || addresses.length > 64 || addresses.some(value => !net.isIP(value))
     || typeof relayToken !== 'string' || !/^[a-f0-9]{64}$/.test(relayToken)
     || typeof binding.model !== 'string' || !binding.model || binding.model.length > 256
@@ -76,13 +83,17 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
   request.on('error', () => response.destroy());
   request.on('end', () => {
     if (response.destroyed || response.writableEnded || stopped) return;
-    const body = Buffer.concat(chunks); let value;
+    let body = Buffer.concat(chunks), value, chat;
     try {
       value = JSON.parse(body.toString('utf8'));
       if (value.model !== binding.model || value.stream !== true || value.store !== false || !Array.isArray(value.input)
         || (value.previous_response_id !== undefined && value.previous_response_id !== null && value.previous_response_id !== '')
         || value.conversation || !Array.isArray(value.tools) || value.tools.some(tool => tool.type !== 'function')) throw Error();
-    } catch { fail(response, 400); return; }
+      if (binding.protocol === 'chat-completions') {
+        chat = chatRequest(value, chatPolicy); body = Buffer.from(JSON.stringify(chat));
+        if (body.length > MAX_REQUEST) throw new ChatFault('chat_semantics_unavailable');
+      }
+    } catch (error) { fail(response, 400, error instanceof ChatFault ? error.code : 'provider_error'); return; }
     const transport = target.protocol === 'https:' ? https : http;
     const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'Accept-Encoding': 'identity',
       'Content-Length': String(body.length), 'User-Agent': 'R4OS-Studio-Model-Transport', Connection: 'close' };
@@ -93,7 +104,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
     // scope before bootstrap. This lookup never queries DNS again, and TLS
     // continues to verify the original hostname/SNI against the system CAs.
     const upstream = transport.request({ protocol: target.protocol, hostname: originalHost, port: target.port || undefined,
-      path: target.pathname.replace(/\/$/, '') + '/responses', method: 'POST', headers, agent: false,
+      path: target.pathname.replace(/\/$/, '') + (chat ? '/chat/completions' : '/responses'), method: 'POST', headers, agent: false,
       maxHeaderSize: 16384, autoSelectFamily: false, family: net.isIP(address),
       lookup: (host, options, callback) => {
         if (host !== originalHost) { callback(Error('Target mismatch')); return; }
@@ -120,18 +131,40 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         incoming.destroy(); fail(response, 502); return;
       }
       response.writeHead(status, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'close' });
-      let received = 0;
+      let received = 0, emitted = 0, failed = false;
+      const emit = event => {
+        const encoded = 'event: ' + event.type + '\ndata: ' + JSON.stringify(event) + '\n\n';
+        emitted += Buffer.byteLength(encoded);
+        if (emitted > MAX_RESPONSE) throw new ChatFault('chat_protocol_error');
+        if (!response.write(encoded)) incoming.pause();
+      };
+      const parser = chat ? new ChatStream(chat, emit) : null;
+      const broken = error => {
+        if (failed || response.destroyed || response.writableEnded) return;
+        failed = true;
+        const code = error instanceof ChatFault && ERROR_CODES.has(error.code) ? error.code : 'chat_stream_incomplete';
+        const envelope = { error: { code, message: ERROR_CODES.get(code) } };
+        response.end('event: response.failed\ndata: ' + JSON.stringify({ type: 'response.failed',
+          response: { id: parser.id, error: { code, message: JSON.stringify(envelope) } } }) + '\n\n');
+        incoming.destroy();
+      };
       incoming.on('data', chunk => {
         received += chunk.length;
         if (received > MAX_RESPONSE || stopped) { incoming.destroy(); response.destroy(); return; }
-        if (!response.write(chunk)) incoming.pause();
+        if (parser) { try { parser.push(chunk); } catch (error) { broken(error); } }
+        else if (!response.write(chunk)) incoming.pause();
       });
       response.on('drain', () => incoming.resume());
-      incoming.on('end', () => response.end());
-      incoming.on('error', () => response.destroy());
-      incoming.on('aborted', () => response.destroy());
+      incoming.on('end', () => {
+        if (parser && !failed) { try { parser.push(new Uint8Array(), true); } catch (error) { broken(error); return; } }
+        if (!failed) response.end();
+      });
+      incoming.on('error', () => parser ? broken(new ChatFault('chat_stream_incomplete')) : response.destroy());
+      incoming.on('aborted', () => parser ? broken(new ChatFault('chat_stream_incomplete')) : response.destroy());
     });
     upstreams.add(upstream); upstream.on('close', () => upstreams.delete(upstream));
+    const deadline = setTimeout(() => { upstream.destroy(); fail(response, 504); }, MODEL_REQUEST_DEADLINE);
+    upstream.once('close', () => clearTimeout(deadline));
     upstream.on('error', () => fail(response, 502));
     const connectTimer = setTimeout(() => { upstream.destroy(); fail(response, 504); }, 10000);
     upstream.on('socket', socket => {

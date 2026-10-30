@@ -1,3 +1,26 @@
+## Native Chat Completions adapter (0.8.13)
+
+Qualified Chat-Completions-only API models now use the same native0.163.0 agent,
+original context, rights and Studio tool ledger through a bounded private wire
+adapter. Instructions/text/function calls/results retain their original data and
+IDs. SSE/UTF fragments and parallel arguments are collected safely; complete
+validated calls are released only after an acknowledged stream finish. Restart,
+native compaction, incomplete output, quota, Stop and deadline preserve original
+receipts without another model/tool loop or automatic replay.
+
+An explicit revision-bound internal model policy qualifies text/function stream,
+context and plain/standard-effort reasoning before admission. Unsupported images,
+opaque reasoning, hosted web/image/Fast/Goal semantics remain unavailable.
+Provider/model discovery and UI follow later roadmap entries. Native private
+telemetry stays local; transport IDs and reported provider IDs are separate.
+Reported usage is mapped without inventing missing counters. A900s absolute
+request deadline supplements checked-IP/TLS/redirect/header/body/stream limits.
+
+Four grouped protocol cases, eleven store/capability cases, ten original-binary
+offline worker cases and a Responses restart compatibility probe pass, plus
+build/TypeScript/lint. No production provider/key, model inference, user session,
+VM or pins changed. See [API-Chat-Completions.md](API-Chat-Completions.md).
+
 ## Native API Responses transport (0.8.12)
 
 New API-bound project/skill sessions can use the unchanged Codex0.163.0 runtime
@@ -3058,7 +3081,7 @@ Projects store their immutable UUID and SDK/Contract/compiler pins in
 `Sessions/<session-uuid>/Codex/`. Opening or creating a session starts no inference.
 
 Projects → Sessions lists New Session and saved sessions. The main pane provides
-chat/history, live file/terminal results, Send/Stop and Session settings. Nine
+chat/history, live file/terminal results, Send/Stop and Session settings. Ten
 independent tool switches default on. Each explicit run maps to one native Codex
 turn, with durable request identity and a frozen settings/pin snapshot. One run
 uses a project's shared workspace at a time; the configured host limit defaults to 16 concurrent runs.

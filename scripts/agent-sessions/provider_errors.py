@@ -16,6 +16,12 @@ MESSAGES = {
     'misalignmentPolicyViolation': 'The model service blocked this request.',
     'tooManyDenials': 'The model run stopped after repeated denials.',
     'sandboxError': 'The native agent environment reported an error.',
+    'apiProtocolUnsupported': 'The selected API protocol cannot preserve this operation.',
+    'apiInvalidToolArguments': 'The model sent invalid or incomplete tool arguments.',
+    'apiProtocolError': 'The model response does not match the qualified Chat Completions protocol.',
+    'apiStreamIncomplete': 'The model response stream ended before completing.',
+    'apiOutputLimit': 'The model reached its output limit before completion.',
+    'apiContentFilter': 'The model service blocked this response.',
 }
 CONNECTIONS = {'httpConnectionFailed', 'responseStreamConnectionFailed',
                'responseStreamDisconnected', 'responseTooManyFailedAttempts'}
@@ -30,18 +36,26 @@ def describe(error,api=False):
         if candidate in CONNECTIONS and isinstance(info[candidate], dict):
             code = candidate; value = info[candidate].get('httpStatusCode')
             if type(value) is int and 100 <= value <= 599: status = value
-    if api and code=='unknown' and info=='other':
+    if api and (code=='unknown' and info=='other' or code=='responseStreamDisconnected'):
         # Codex0.163.0 retains HTTP400 Responses error JSON as Other rather
         # than its typed SSE classification. Decode only bounded, known codes
         # from the private relay's sanitized envelope; never render its text.
         raw=error.get('message')
         try:
+            if isinstance(raw,str) and len(raw)<=4096:
+                for prefix in ('stream disconnected before completion: ','stream error: '):
+                    if raw.startswith(prefix):raw=raw[len(prefix):]
+                terminal={'Incomplete response returned, reason: max_output_tokens':'apiOutputLimit',
+                    'Incomplete response returned, reason: studio_chat_content_filter':'apiContentFilter'}
+                code=terminal.get(raw,code)
             value=json.loads(raw) if isinstance(raw,str) and len(raw)<=4096 else None
             detail=value.get('error') if isinstance(value,dict) and set(value)=={'error'} else None
             candidate=detail.get('code') if isinstance(detail,dict) else None
             code={'context_length_exceeded':'contextWindowExceeded','usage_limit_exceeded':'usageLimitExceeded',
                 'insufficient_quota':'usageLimitExceeded','rate_limit_exceeded':'rateLimitExceeded',
-                'invalid_api_key':'unauthorized','model_not_found':'badRequest'}.get(candidate,'unknown') if isinstance(candidate,str) else 'unknown'
+                'invalid_api_key':'unauthorized','model_not_found':'badRequest',
+                'chat_semantics_unavailable':'apiProtocolUnsupported','chat_invalid_tool_arguments':'apiInvalidToolArguments',
+                'chat_protocol_error':'apiProtocolError','chat_stream_incomplete':'apiStreamIncomplete'}.get(candidate,code) if isinstance(candidate,str) else code
         except (ValueError,TypeError):pass
     transient = code in ('httpConnectionFailed', 'responseStreamConnectionFailed') and status in (502, 503, 504)
     message = MESSAGES.get(code, 'The model service reported an error.')

@@ -46,13 +46,25 @@ def future_run_id(store,sid,request_id):
         {'owner':{'type':store.owner_type,'id':store.owner_id},'session':identity(sid),'request':identity(request_id)})))
 
 
+def chat_policy(model,effort):
+    policy=model.get('studio_chat')
+    if (not isinstance(policy,dict) or set(policy)!={'schema','systemRole','reasoning','functionTools','streaming'}
+            or type(policy['schema']) is not int or policy['schema']!=1 or policy['systemRole'] not in ('system','developer')
+            or policy['reasoning'] not in ('none','effort') or policy['functionTools'] is not True or policy['streaming'] is not True
+            or model.get('supports_reasoning_summary_parameter') is not False or model.get('default_reasoning_summary') not in (None,'none')
+            or model.get('support_verbosity') is not False or model.get('default_verbosity') is not None
+            or type(model.get('context_window')) is not int or model['context_window']<=0
+            or policy['reasoning']=='none' and effort!='none'):
+        raise ProjectFault('This Chat Completions model lacks qualified text/function streaming, context or reasoning semantics. Select a qualified model; no request was started.',409)
+    return copy.deepcopy(policy)
+
+
 def freeze(store,sid,data,providers,snapshot):
     session=store.get(sid);selected=session['engine'].get('api')
     if not selected:return
     provider=connection(providers,snapshot['providerId'])
     if provider is None:raise ProjectFault('The original API connection is unavailable.',409)
     if not provider['enabled']:raise ProjectFault('This API connection is disconnected.',409)
-    if provider['protocol']!='responses':raise ProjectFault('This API protocol requires its qualified Chat Completions adapter.',409)
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
             or selected['protocol']!=provider['protocol']):
         raise ProjectFault('The API connection identity changed. Create a new session; the existing conversation was preserved.',409)
@@ -61,6 +73,8 @@ def freeze(store,sid,data,providers,snapshot):
         raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model. Review its explicit session settings.',409)
     models=catalog(providers,provider);model=next((m for m in models if m['slug']==snapshot['model']),None)
     if model is None:raise ProjectFault('The selected API model has no current qualified catalog entry.',409)
+    if provider['protocol']=='chat-completions':snapshot['apiChat']=chat_policy(model,snapshot['effort'])
+    model.pop('studio_chat',None)
     snapshot['apiProvider']={key:provider[key] for key in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
     snapshot['apiModels']={'models':[model]};snapshot['apiRunId']=future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation']=False

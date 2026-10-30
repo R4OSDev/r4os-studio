@@ -14,15 +14,17 @@ from store import ProjectFault
 
 
 class ApiRuntime:
-    def __init__(self,binding,model,credential,runtime):
+    def __init__(self,binding,model,credential,runtime,chat=None):
         self.binding=dict(binding);self.model=model;self.credential=credential
+        self.chat=chat
         self.runtime=Path(runtime).absolute();self.child=None;self.port=None;self.key_file=None;self.key_inode=None
         identity(self.binding['id'])
         self.provider='studio_api_'+self.binding['id'].replace('-','_')
         self.token=secrets.token_hex(32)
 
     async def start(self):
-        if self.binding['protocol']!='responses':raise ProjectFault('This API protocol needs its qualified Chat Completions adapter.',409)
+        if self.binding['protocol'] not in ('responses','chat-completions') or self.binding['protocol']=='chat-completions' and not isinstance(self.chat,dict):
+            raise ProjectFault('The selected API protocol has no qualified transport binding.',409)
         checked=endpoint(self.binding['baseUrl'],self.binding['kind'])
         from urllib.parse import urlsplit
         parsed=urlsplit(checked['baseUrl']);host=parsed.hostname;port=parsed.port or (443 if parsed.scheme=='https' else 80)
@@ -45,7 +47,7 @@ class ApiRuntime:
             self.child=await asyncio.create_subprocess_exec('/usr/bin/node',str(Path(__file__).with_name('api-transport.mjs')),
                 stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,limit=65536)
             data={'binding':{key:self.binding[key] for key in ('baseUrl','protocol','auth','kind')}|{'model':self.model},
-                'addresses':addresses,'key':self.credential,'relayToken':self.token}
+                'addresses':addresses,'key':self.credential,'relayToken':self.token,'chatPolicy':self.chat}
             self.child.stdin.write(json.dumps(data,separators=(',',':')).encode()+b'\n');await self.child.stdin.drain()
             ready=json.loads(await asyncio.wait_for(self.child.stdout.readline(),5))
             if set(ready)!={'port'} or type(ready['port']) is not int or not 1<=ready['port']<=65535:raise ValueError()

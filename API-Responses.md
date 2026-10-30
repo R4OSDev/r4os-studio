@@ -128,4 +128,5 @@ Primary provider references:
 [OpenRouter Responses](https://openrouter.ai/docs/api_reference/responses/overview),
 [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility).
 Capability/entitlement qualification of a real account/model is not inferred
-from these protocol fixtures. Chat Completions translation remains0.8.13.
+from these protocol fixtures. Chat Completions translation is added in0.8.13; see
+[API-Chat-Completions.md](API-Chat-Completions.md).

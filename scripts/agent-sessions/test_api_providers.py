@@ -156,6 +156,44 @@ class Providers(unittest.TestCase):
                 self.assertNotIn(self.secret,encode(result))
         finally:fixture.tearDown()
 
+    def test_chat_capability_gate_rejects_required_unrepresentable_semantics(self):
+        import copy
+        from api_models import chat_policy
+        model={'studio_chat':{'schema':1,'systemRole':'system','reasoning':'none','functionTools':True,'streaming':True},
+            'supports_reasoning_summary_parameter':False,'default_reasoning_summary':'none','support_verbosity':False,
+            'default_verbosity':None,'context_window':4096}
+        self.assertEqual(chat_policy(model,'none'),model['studio_chat'])
+        for field,value in [('context_window',None),('support_verbosity',True),('supports_reasoning_summary_parameter',True),('studio_chat',None)]:
+            candidate=copy.deepcopy(model);candidate[field]=value
+            with self.subTest(field=field),self.assertRaises(ProjectFault):chat_policy(candidate,'none')
+        for field,value in [('streaming',False),('functionTools',False),('systemRole','assistant'),('reasoning','opaque-replay')]:
+            candidate=copy.deepcopy(model);candidate['studio_chat'][field]=value
+            with self.subTest(field=field),self.assertRaises(ProjectFault):chat_policy(candidate,'none')
+        with self.assertRaises(ProjectFault):chat_policy(model,'low')
+        model['studio_chat']['reasoning']='effort';self.assertEqual(chat_policy(model,'low')['reasoning'],'effort')
+
+    def test_unqualified_chat_model_never_admits_a_run_or_credential_reservation(self):
+        from unittest.mock import patch
+        from test_runs import Runs
+        from profile import PROFILE,CODEX_VERSION,CODEX_SHA256
+        from session_store import encode
+        from run_store import admit
+        fixture=Runs();fixture.setUp()
+        try:
+            fixture.providers.chmod(0o700);apis=ApiProviders(fixture.providers)
+            provider=apis.mutate('create',None,{**self.input,'protocol':'chat-completions'})['provider'];ident=provider['id']
+            models=apis.root/'Models';models.mkdir(mode=0o700)
+            catalog=models/(ident+'.json');catalog.write_text(encode({'schema':1,'providerId':ident,'configRevision':1,
+                'models':[{'slug':'fixture','visibility':'list','use_responses_lite':False,'input_modalities':['text'],
+                    'supported_reasoning_levels':[{'effort':'none'}]}]}));catalog.chmod(0o600)
+            with fixture.open() as store,patch('session_store.engine',return_value={'profile':PROFILE,'version':CODEX_VERSION,'sha256':CODEX_SHA256,'available':True}):
+                session=store.create({'requestId':request(),'name':'Unqualified own model','providerId':ident,'model':'fixture','effort':'none'},fixture.providers)
+                with self.assertRaisesRegex(ProjectFault,'qualified text/function streaming'):
+                    admit(store,session['id'],{'requestId':request(),'revision':1,'text':'Own input remains unsent.'},fixture.providers)
+                self.assertEqual(store.db.execute('SELECT COUNT(*) FROM runs').fetchone()[0],0)
+                with apis.connect() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM leases').fetchone()[0],0)
+        finally:fixture.tearDown()
+
     def test_endpoint_and_key_boundaries_before_transport(self):
         self.assertEqual(endpoint('http://localhost:11434/v1/','local')['baseUrl'],'http://127.0.0.1:11434/v1')
         self.assertEqual(endpoint('https://[::1]:8443/v1','local')['baseUrl'],'https://[::1]:8443/v1')

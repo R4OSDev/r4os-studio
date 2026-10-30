@@ -380,7 +380,7 @@ class Worker:
                 state.mkdir(mode=0o700,parents=True,exist_ok=True);private(state,directory=True)
                 provider_home=state/'ApiHome';provider_home.mkdir(mode=0o700,exist_ok=True);private(provider_home,directory=True)
                 self.api_runtime=ApiRuntime(self.config['apiProvider'],self.config['model'],credential,
-                    self.store.directory/self.session_id/'ApiTransport'/self.run_id)
+                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'))
                 credential=None
                 await self.api_runtime.start()
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'

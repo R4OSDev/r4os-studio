@@ -11,8 +11,8 @@ and credential revision. Public responses expose `keyConfigured`, never a key.
 revision-bound internal model catalogs; see [API-Responses.md](API-Responses.md).
 API records still report `runtime: "not-qualified"`: configuration is not a
 verified remote account/model entitlement. Model discovery and settings UI are
-later roadmap entries; no real provider was probed. Chat Completions translation
-remains0.8.13. Existing subscription sessions are not converted.
+later roadmap entries; no real provider was probed. Chat Completions translation is qualified in0.8.13 through
+[API-Chat-Completions.md](API-Chat-Completions.md). Existing subscription sessions are not converted.
 
 ## Browser and host responsibilities
 
@@ -99,7 +99,7 @@ lookup between check and connect. Only fixed model API operations may use the
 bound API prefix. Request, JSON/SSE/tool-argument and time bounds must be enforced
 by the qualified transport. The actual Responses relay now enforces and checks
 these boundaries in0.8.12, including verified TLS and fixed-IP sockets; Chat
-Completions translation remains a separate0.8.13 qualification.
+Completions translation is separately qualified in0.8.13 with the same boundary.
 
 ## Checks
 
