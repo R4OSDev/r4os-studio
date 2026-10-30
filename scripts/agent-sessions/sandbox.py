@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
-from profile import regular, digest, directory, CODEX_SHA256
+from profile import regular, digest, directory, CODEX_SHA256,CODEX_VERSION
 
 
 class Sandbox:
@@ -22,7 +22,10 @@ class Sandbox:
                 from sdk import profile
                 context = await asyncio.to_thread(profile, Path(self.worker.manifest['r4os']),
                                   self.worker.store.projects, self.worker.config['projectPins'])
-            binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / self.worker.config['engine']['version'] / 'codex'
+            # The official patch parser is a separate pinned tool, independent
+            # of the Claude model engine and its native2.x version.
+            patch_version=CODEX_VERSION if self.worker.config['engine'].get('kind')=='claude-code' else self.worker.config['engine']['version']
+            binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / patch_version / 'codex'
             if digest(regular(binary)) != CODEX_SHA256: raise ValueError('Unqualified patch engine.')
             self.binary = binary
             from skill_scripts import bindings

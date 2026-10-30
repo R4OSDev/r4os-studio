@@ -108,3 +108,8 @@ def valid_account(value,status):
         and value['plan'] in ('pro','max') and value['authMethod']=='claude.ai' and value['apiProvider']=='firstParty'
         and all(value[k] is None or isinstance(value[k],str) and len(value[k])<=320 and all(ord(c)>=32 for c in value[k])
             for k in ('email','orgId','orgName')) and isinstance(value['checkedAt'],str))
+
+
+def account_identity(value):
+    if not valid_account(value,'connected'):return None
+    return hashlib.sha256(encode({'email':value['email'],'orgId':value['orgId']}).encode()).hexdigest()

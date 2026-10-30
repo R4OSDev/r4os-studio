@@ -48,6 +48,9 @@ class AuthStore(ClaudeProviders):
                 return json.loads(row['data']),False
             value=self.current(db,ident)
             if value['revision']!=data['revision']:raise ProjectFault('The Claude provider changed. Reload before continuing.',409)
+            if (db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='claude_run_leases'").fetchone()
+                and db.execute("SELECT 1 FROM claude_run_leases WHERE provider_id=? AND state!='released' LIMIT 1",(ident,)).fetchone()):
+                raise ProjectFault('Original Claude worker/queue credential leases are still active or unconfirmed. No authentication change was started.',409)
             for row in db.execute('SELECT data FROM auth_requests WHERE provider_id=?',(ident,)):
                 state=json.loads(row[0])['state']
                 if state in ACTIVE or state=='unconfirmed' and data['action']!='status':

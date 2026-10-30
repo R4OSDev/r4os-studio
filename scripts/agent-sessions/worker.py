@@ -201,7 +201,15 @@ class Worker:
         if (not name.startswith('studio_') or name[7:] not in tools_for(self.config['engine'].get('profile', PROFILE)) or params.get('namespace') is not None
             or params.get('threadId') != self.thread_id or params.get('turnId') != self.turn_id):
             return await output({'success': False, 'error': 'invalidCall', 'output': 'This call does not belong to the active Studio run.'})
-        call_id = params['callId']; arguments = params['arguments']
+        return await self.bound_tool(name,params['arguments'],params['callId'])
+
+    async def bound_tool(self,name,arguments,call_id,output=None):
+        """Common Studio receipts/effects after an engine proves its own binding."""
+        if output is None:
+            async def output(result,image_data=None):return await self.development.native_output(result,image_data)
+        if (not isinstance(name,str) or not name.startswith('studio_') or name[7:] not in tools_for(self.config['engine'].get('profile',PROFILE))
+            or not isinstance(call_id,str) or not 1<=len(call_id.encode())<=256 or any(ord(c)<=32 or ord(c)==127 for c in call_id)):
+            return await output({'success':False,'error':'invalidCall','output':'This tool is outside the original Studio run binding.'})
         if not isinstance(arguments, dict) or len(encode(arguments).encode()) > 131072:
             return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
         try: validate_arguments(name[7:], arguments, self.config['engine'].get('profile', PROFILE))
@@ -594,4 +602,12 @@ if __name__ == '__main__':
     if path.resolve(strict=True) != path: raise SystemExit('Invalid worker manifest.')
     manifest = json.loads(path.read_text())
     if len(sys.argv) > 2 and sys.argv[2] == '--finalize': finalize(manifest)
-    else: asyncio.run(Worker(manifest).run())
+    else:
+        kind,ident=binding(manifest)
+        selected=SessionStore(manifest['projects'],manifest['r4os'],ident,kind)
+        try:engine_kind=json.loads(get_run(selected,manifest['runId'])['config'])['engine'].get('kind')
+        finally:selected.close()
+        if engine_kind=='claude-code':
+            from claude_worker import ClaudeWorker
+            asyncio.run(ClaudeWorker(manifest).run())
+        else:asyncio.run(Worker(manifest).run())

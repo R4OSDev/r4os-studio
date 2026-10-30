@@ -1,3 +1,13 @@
+## Native Claude sessions and Studio tools (0.8.20)
+
+Persistent native project/skill workers now reuse the existing Studio tool
+permissions and durable receipts through one private fixed MCP channel.
+Original UUID/history/account/runtime bindings protect resume, compaction and
+Stop; native builtin tools remain excluded. Isolated actual SDK/CLI protocol
+checks cover text, tools, PNGs, large results and repeated-call deduplication.
+Public model use still awaits the quota/overage and model/lifecycle stages.
+Details: [Claude-Sessions.md](Claude-Sessions.md).
+
 ## Native Claude subscription sign-in (0.8.19, partial acceptance)
 
 System → LLM Providers now offers a named Claude Pro/Max provider with native

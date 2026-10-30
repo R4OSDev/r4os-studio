@@ -288,14 +288,19 @@ PRAGMA user_version=1;
             settings['webSearchEnabled'] = True
             settings['imageGenerationEnabled']=True
             settings['environmentNotesEnabled']=True
-            api=next((v for v in providers(provider_dir) if v['id']==settings['providerId'] and v.get('type')=='api'),None)
-            if api:
+            selected=next((v for v in providers(provider_dir) if v['id']==settings['providerId']),None)
+            api=selected if selected and selected.get('type')=='api' else None
+            claude=selected if selected and selected.get('type')=='claude-subscription' else None
+            if api or claude:
                 settings['webSearchEnabled']=False;settings['imageGenerationEnabled']=False
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
             settings['permissions'] = {'studio.' + v: default_enabled(v) for v in permission_tools(self.selected_profile)}
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)
+            if claude:
+                from claude_selection import engine as claude_engine
+                selected_engine=claude_engine(provider_dir,self.selected_profile)
             if api:selected_engine['api']={'providerId':api['id'],'baseUrl':api['baseUrl'],'protocol':api['protocol'],
                 'server':api.get('server','custom')}
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
@@ -303,6 +308,9 @@ PRAGMA user_version=1;
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))
             from goal_total import mark_new
             mark_new(self, ident)
+            if claude:
+                from claude_history import ClaudeHistory
+                ClaudeHistory(self,ident).create(claude)
             value = self.get(ident)
             self.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', (key, 'create', payload_hash, ident, encode(value)))
             self.db.commit()
@@ -327,6 +335,9 @@ PRAGMA user_version=1;
             previous = self.get(session_id)
             if data.get('providerId',previous['providerId'])!=previous['providerId']:
                 new_api=any(v['id']==data['providerId'] and v.get('type')=='api' for v in providers(provider_dir))
+                new_claude=any(v['id']==data['providerId'] and v.get('type')=='claude-subscription' for v in providers(provider_dir))
+                if previous['engine'].get('kind')=='claude-code' or new_claude:
+                    raise ProjectFault('Changing the native Claude provider requires a new session. This conversation was preserved.',409)
                 if previous['engine'].get('api') or new_api:
                     raise ProjectFault('Changing API connection requires a new session. This conversation was preserved.',409)
             if previous['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before saving.')

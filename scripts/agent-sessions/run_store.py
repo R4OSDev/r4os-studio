@@ -115,6 +115,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
     from api_models import freeze as freeze_api
     freeze_api(store,session_id,data,provider_dir,snapshot)
+    from claude_selection import freeze as freeze_claude
+    freeze_claude(store,session_id,data,provider_dir,snapshot)
     return snapshot, attachments, request_hash
 
 
@@ -164,7 +166,7 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         if frozen is not None:
             if snapshot != frozen: raise ProjectFault('The queued selection changed. The queue was held; review its original input.',409)
             snapshot = frozen
-        ident = snapshot.get('apiRunId') or str(uuid.uuid4()); stamp = now()
+        ident = snapshot.get('apiRunId') or snapshot.get('claudeRunId') or str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
         from image_inputs import reference
@@ -190,6 +192,9 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         if snapshot.get('apiProvider'):
             from api_provider_store import ApiProviders
             ApiProviders(provider_dir).reserve(ident,store.owner_type,store.owner_id,session_id,key,snapshot)
+        if snapshot.get('claudeProvider'):
+            from claude_selection import reserve as reserve_claude
+            reserve_claude(store,session_id,ident,key,provider_dir,snapshot)
         store.db.commit()
         return store.run_present(get_run(store, ident)), True
     finally:
