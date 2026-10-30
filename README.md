@@ -1,3 +1,10 @@
+## Stored uploads icon (0.8.39)
+
+Saved files and pending cleanup now expose the existing upload dialog through
+a conditional icon beside Attach files. Confirmed empty sessions have no extra
+row; the paperclip is optically centered. Details:
+[Session-Composer.md](Session-Composer.md).
+
 ## Goal and model layout (0.8.38)
 
 GOAL, centered controls and stacked status/runtime now occupy the first card

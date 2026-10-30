@@ -6,12 +6,13 @@ import { AttachmentStorage } from './AttachmentStorage';
 type Control = ReturnType<typeof useAttachments>;
 const size = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MiB` : bytes >= 1024 ? `${Math.ceil(bytes / 1024)} KiB` : `${bytes} bytes`;
 export function AttachmentButton({ control, disabled }: { control: Control; disabled: boolean }) {
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLInputElement>(null), attach = useRef<HTMLButtonElement>(null);
   return <div className="agent-attachment-picker">
     <input ref={input} type="file" multiple hidden disabled={disabled} aria-label="Attachment files"
       accept="image/png,image/jpeg,image/webp,application/pdf,text/*,.md,.json,.csv,.log,.zig,.rs,.c,.h,.cpp,.hpp,.ts,.tsx,.js,.jsx,.py,.toml,.yaml,.yml,.r4mf,.r4af,.svg"
       onChange={event => { if (event.target.files) control.add(Array.from(event.target.files)); event.target.value = ''; }} />
-    <button type="button" aria-label="Attach files" title="Attach files" disabled={disabled} onClick={() => input.current?.click()}><Icon name="attachment" /></button>
+    <AttachmentStorage control={control} disabled={disabled} fallback={attach} />
+    <button ref={attach} type="button" className="agent-attach-files" aria-label="Attach files" title="Attach files" disabled={disabled} onClick={() => input.current?.click()}><Icon name="attachment" /></button>
   </div>;
 }
 function Card({ item, control, disabled }: { item: AttachmentDraft; control: Control; disabled: boolean }) {
@@ -40,6 +41,7 @@ export function AttachmentCards({ control, disabled }: { control: Control; disab
     {!!control.drafts.length && <ul className="agent-attachment-list" aria-label="Selected attachments">{control.drafts.map(item => <Card key={item.requestId} item={item} control={control} disabled={disabled} />)}</ul>}
     {control.issue && <p className="agent-attachment-message" role="status">{control.issue}</p>}
     {control.error && <p className="agent-attachment-message error" role="alert">{control.error}</p>}
-    <AttachmentStorage control={control} disabled={disabled} />
+    {control.storedError && <p className="agent-attachment-message error" role="alert">Stored uploads could not be checked. {control.storedError}{' '}
+      <button type="button" disabled={disabled} onClick={control.refreshStored}>Retry upload listing</button></p>}
   </>;
 }

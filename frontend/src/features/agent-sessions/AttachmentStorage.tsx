@@ -1,21 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { Icon } from '../../app/Icon';
 import { createPortal } from 'react-dom';
 import type { AttachmentListing } from '../../../../shared/agent-inputs';
 import type { useAttachments } from './useAttachments';
 
-export function AttachmentStorage({ control, disabled }: { control: ReturnType<typeof useAttachments>; disabled: boolean }) {
+export function AttachmentStorage({ control, disabled, fallback }: { control: ReturnType<typeof useAttachments>; disabled: boolean; fallback: RefObject<HTMLButtonElement | null> }) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className="agent-stored-uploads" disabled={disabled} onClick={() => setOpen(true)}>Stored uploads</button>
-    {open && <StorageDialog control={control} close={() => setOpen(false)} />}</>;
+  const present = !!control.storedUploads && (!!control.storedUploads.attachments.length || !!control.storedUploads.cleanupPending?.length);
+  return <>{present && <button type="button" className="agent-stored-uploads" aria-label="Stored uploads" title="Stored uploads" disabled={disabled} onClick={() => setOpen(true)}><Icon name="box" /></button>}
+    {open && <StorageDialog control={control} fallback={fallback} close={() => setOpen(false)} />}</>;
 }
-function StorageDialog({ control, close }: { control: ReturnType<typeof useAttachments>; close: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null), [listing, setListing] = useState<AttachmentListing | null>(null);
+function StorageDialog({ control, close, fallback }: { control: ReturnType<typeof useAttachments>; close: () => void; fallback: RefObject<HTMLButtonElement | null> }) {
+  const dialog = useRef<HTMLDialogElement>(null), [listing, setListing] = useState<AttachmentListing | null>(control.storedUploads);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => {
-    const element = dialog.current!, opener = document.activeElement;
+    const element = dialog.current!, opener = document.activeElement, fallbackTarget = fallback.current;
     element.showModal(); let alive = true;
     void control.listStored().then(value => { if (alive) setListing(value); }).catch((failure: Error) => { if (alive) setError(failure.message); });
-    return () => { alive = false; element.close(); if (opener instanceof HTMLElement && opener.isConnected && !opener.matches(':disabled')) opener.focus(); };
+    return () => { alive = false; element.close(); if (opener instanceof HTMLElement && opener.isConnected && !opener.matches(':disabled')) opener.focus();
+      else if (fallbackTarget?.isConnected && !fallbackTarget.disabled) fallbackTarget.focus(); };
     // The keyed session owns this dialog. Refresh uses the latest control below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
-import type { AttachmentListing, AttachmentReceipt, SessionAttachment } from '../../../../shared/agent-inputs';
+import type { AttachmentReceipt, SessionAttachment } from '../../../../shared/agent-inputs';
+import { useStoredAttachments } from './useStoredAttachments';
 import { ProjectRequestError, projectRequestId, sessionPath, useSessionApi } from './api';
 
 export interface AttachmentDraft {
@@ -22,6 +23,8 @@ function read(key: string): AttachmentDraft[] {
 export function useAttachments(projectId: string, sessionId: string, session: AgentSession | null, token: string, refreshAuth: () => Promise<void>) {
   const { request, base: apiBase, scope } = useSessionApi();
   const base = sessionPath(projectId, sessionId) + '/attachments', key = `studio.attachments.${scope}.${projectId}.${sessionId}`;
+  const stored = useStoredAttachments(key, base, sessionId, !!session, request);
+  const { refreshStored } = stored;
   const [drafts, setDrafts] = useState(() => read(key));
   const current = useRef(drafts), mounted = useRef(true), transports = useRef(new Map<string, XMLHttpRequest>());
   const queue = useRef(Promise.resolve()), [error, setError] = useState(''), [check, setCheck] = useState(0);
@@ -66,8 +69,9 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
       files.delete(key + ':' + original.requestId);
       next = { state: 'error', error: receipt.reason ?? 'This upload is unavailable. Select a new file or remove this draft.', retryable: false };
     }
+    if (receipt.state !== 'pending' && (receipt.state !== 'ready' || current.current.find(item => item.requestId === original.requestId)?.state !== 'ready')) refreshStored();
     store(old => old.map(item => item.requestId === original.requestId ? { ...item, ...next } : item));
-  }, [key, sessionId, store]);
+  }, [key, sessionId, store, refreshStored]);
   useEffect(() => {
     const controller = new AbortController(); let timer: number | undefined, attempt = 0;
     const reconcile = async () => {
@@ -166,6 +170,7 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
     if (item.attachment) {
       try { await request(base + '/' + item.attachment.id, token, 'DELETE'); }
       catch { if (mounted.current) setError('The attachment was removed from this draft. Stored upload cleanup is unconfirmed.'); }
+      finally { if (mounted.current) refreshStored(); }
     }
   }
   const model = options?.providers.find(value => value.id === session?.providerId)?.models.find(value => value.id === session?.model);
@@ -175,14 +180,14 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
       : selected.some(value => value.mode === 'localImage') && model?.imageInputs !== 'supported' ? (model?.imageInputs === 'unsupported' ? 'This model does not support images. Choose another model; your files are preserved.' : 'Image support is unavailable. Reload the model choices before sending images.')
         : selected.some(value => value.mode !== 'localImage' && (value.extractedBytes ?? 0) > 8192)
           && (!session?.permissions['studio.read_attachment'] || !session.permissions['studio.read_file']) ? 'Enable Read attachment and Read file for long documents, or use a new session.' : '';
-  const accepted = useCallback((ids: string[]) => { store(old => old.filter(value => !value.attachment || !ids.includes(value.attachment.id))); }, [store]);
+  const accepted = useCallback((ids: string[]) => { store(old => old.filter(value => !value.attachment || !ids.includes(value.attachment.id))); if (ids.length) refreshStored(); }, [store, refreshStored]);
   return { drafts, selected, issue, error, add, remove, checkStatus,
-    listStored: () => request<AttachmentListing>(base),
+    ...stored,
     removeStored: async (id: string) => {
       setError('');
       const draft = current.current.find(value => value.attachment?.id === id);
       if (draft) { await remove(draft); return; }
-      await request(base + '/' + id, token, 'DELETE');
+      try { await request(base + '/' + id, token, 'DELETE'); } finally { if (mounted.current) refreshStored(); }
     },
     preview: (id: string) => apiBase + base + '/' + id + '/preview',
     accepted,
