@@ -7,7 +7,7 @@ import shutil
 import unittest
 from unittest.mock import patch
 import uuid
-from common import ProjectFault, branch, inventory, locks, save
+from common import ProjectFault, branch, inventory, locks, save, document
 from store import connect
 from operations import Operations, reconcile
 from host import Coordinator
@@ -83,6 +83,33 @@ class GitTests(unittest.TestCase):
         restored = Coordinator(self.config, self.cfg)
         self.assertEqual(restored.request({'operation': 'job', 'projectId': self.identity, 'requestId': data['requestId']})['state'], 'unknown')
         with self.assertRaises(ProjectFault): restored.request({**data, 'requestId': str(uuid.uuid4())})
+
+    def test_background_checks_join_only_original_active_matching_binding(self):
+        from common import storage
+        bound = {'schema': 1, 'revision': 1, 'connectionId': str(uuid.uuid4()), 'userId': 7,
+                 'repository': {'id': 11, 'owner': 'octocat', 'name': 'own-qa'}, 'branch': 'main'}
+        save(storage(self.projects, self.identity) / 'binding.json', bound)
+        host = Coordinator(self.config, self.cfg)
+        data = {'operation': 'submit', 'projectId': self.identity, 'requestId': str(uuid.uuid4()), 'kind': 'check', 'input': {'bindingRevision': 1}}
+        class Process:
+            pid = 1234
+            def poll(self): return None
+        with patch.object(host, 'release', return_value=str(Path(__file__).resolve().parents[2])), patch('host.subprocess.Popen', return_value=Process()) as launch:
+            first = host.request(data)
+            second_id = str(uuid.uuid4())
+            self.assertEqual(host.request({**data, 'requestId': second_id})['id'], first['id'])
+            self.assertEqual(launch.call_count, 1)
+            self.assertFalse((self.jobs / second_id).exists())
+            self.assertEqual(host.request({'operation': 'job', 'projectId': self.identity, 'requestId': first['id']})['id'], first['id'])
+            bound.update(revision=2, branch='changed')
+            save(storage(self.projects, self.identity) / 'binding.json', bound)
+            with self.assertRaises(ProjectFault): host.request({**data, 'requestId': str(uuid.uuid4())})
+            with self.assertRaises(ProjectFault): host.request({**data, 'requestId': str(uuid.uuid4()), 'input': {'bindingRevision': 2}})
+            self.assertEqual(launch.call_count, 1)
+            with self.assertRaises(ProjectFault): Operations(self.config, {**data, 'id': data['requestId']}).execute()
+            original = document(self.jobs / first['id'] / 'job.json'); original['state'] = 'unknown'; save(self.jobs / first['id'] / 'job.json', original)
+            save(storage(self.projects, self.identity) / 'binding.json', {**bound, 'revision': 1, 'branch': 'main'})
+            with self.assertRaises(ProjectFault): host.request({**data, 'requestId': str(uuid.uuid4())})
 
     def test_portable_metadata_retains_pins_without_local_identity_or_private_state(self):
         from git_metadata import create

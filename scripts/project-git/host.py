@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import fcntl
-from common import ProjectFault, document, folder, now, project_id, save, digest, locks
+from common import ProjectFault, document, folder, now, project_id, save, digest, locks, binding
 
 KINDS = ('initialize', 'bind', 'status', 'check', 'diff', 'create_repository', 'import', 'push', 'prepare_pull', 'pull')
 READS = ('status', 'check', 'diff')
@@ -112,6 +112,19 @@ class Coordinator:
                 old = document(path)
                 if old['hash'] != fingerprint: raise ProjectFault('This Git request ID belongs to different input.', 409)
                 return self.public(old)
+            check_binding = None
+            if data['kind'] == 'check':
+                if set(data['input']) - {'bindingRevision'}: raise ProjectFault('Invalid remote check fields.', 400)
+                bound = binding(self.config['projects'], project)
+                expected = data['input'].get('bindingRevision')
+                if 'bindingRevision' in data['input'] and (type(expected) is not int or not bound or expected != bound['revision']):
+                    raise ProjectFault('The repository binding changed. Refresh before checking.', 409)
+                check_binding = digest(bound)
+                if expected is not None:
+                    for process_id in self.processes:
+                        old = document(self.base / process_id / 'job.json')
+                        if old['projectId'] == project and old['kind'] == 'check' and old['state'] in ('queued', 'running') and old.get('checkBinding') == check_binding:
+                            return self.public(old)
             if len(self.processes) >= 2: raise ProjectFault('Two Git jobs are already active. Retry shortly.', 409)
             for process_id in self.processes:
                 if document(self.base / process_id / 'job.json')['projectId'] == project: raise ProjectFault('This project already has an active Git job.', 409)
@@ -126,6 +139,7 @@ class Coordinator:
             job = {'schema': 1, 'id': identity, 'projectId': project, 'kind': data['kind'], 'input': data['input'], 'hash': fingerprint,
                    'releaseRoot': release, 'state': 'queued', 'phase': 'accepted', 'createdAt': now(), 'updatedAt': now()}
             if agent: job['agent'] = data['agent']
+            if check_binding is not None: job['checkBinding'] = check_binding
             save(path, job)
             try:
                 process = subprocess.Popen(['/usr/bin/python3', '-B', release + '/scripts/project-git/worker.py', str(self.config_path), identity] + ([str(lease_fd)] if agent else []),

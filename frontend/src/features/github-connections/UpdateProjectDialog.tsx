@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react';
 import type { GitHubProjectStatus } from '../../../../shared/project-github';
 import { editorRegistry } from '../project-editor/registry';
 
-export function UpdateProjectDialog({ id, name, status, busy, error, update, ignore }: {
-  id: string; name: string; status: GitHubProjectStatus; busy: boolean; error?: string; update: () => void; ignore: () => void;
+export function UpdateProjectDialog({ id, name, status, busy, error, update, ignore,blockedReason }: {
+  id: string; name: string; status: GitHubProjectStatus; busy: boolean; error?: string; update: () => void; ignore: () => void;blockedReason?:string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const reason = status.state !== 'behind' ? 'Histories have diverged. Resolve them before updating.' : status.changes.length ? 'Saved local changes must be committed or preserved before updating.' : editorRegistry.hasUnsavedFor(id) ? 'Save or close this project’s editor drafts before updating.' : '';
+  const reason = blockedReason|| (status.state !== 'behind' ? 'Histories have diverged. Resolve them before updating.' : status.changes.length ? 'Saved local changes must be committed or preserved before updating.' : editorRegistry.hasUnsavedFor(id) ? 'Save or close this project’s editor drafts before updating.' : '');
   useEffect(() => {
     const element = dialog.current!, opener = document.activeElement; element.showModal();
     element.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();

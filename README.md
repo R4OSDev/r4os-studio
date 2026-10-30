@@ -1,3 +1,10 @@
+## Immediate local project navigation (0.8.30)
+
+Project navigation and local content no longer wait for GitHub. A bounded
+background check shares its original job, preserves drafts and offers the
+existing protected Update/Ignore choice for confirmed changes. Warm session
+lists are retained and revalidated. Details: [Project-Opening.md](Project-Opening.md).
+
 ## Smooth live assistant text (0.8.29)
 
 New assistant replies now reveal complete Unicode characters with a short violet

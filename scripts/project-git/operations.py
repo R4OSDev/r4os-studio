@@ -204,6 +204,8 @@ class Operations:
         if kind in ('prepare_pull', 'pull'):
             from pulling import prepare, apply
             return prepare(self, data) if kind == 'prepare_pull' else apply(self, data)
+        if kind == 'check' and 'bindingRevision' in data and (not self.bound or self.bound['revision'] != data['bindingRevision']):
+            raise ProjectFault('The repository binding changed before its remote check.', 409)
         if kind in ('status', 'check'): return self.status(kind == 'check')
         raise ProjectFault('This Git action is not available in this release.', 409)
 

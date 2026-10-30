@@ -24,6 +24,8 @@
 .project-language-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .project-message, .project-error { margin: 0; font-size: 12px; line-height: 1.6; color: #bbaacb; overflow-wrap: anywhere; }
 .project-error, .project-dialog-error { color: #ffb8c6; }
+.project-background-status { margin: 12px 18px; }
+.project-background-status .project-reload { margin: 4px 0 0 8px; padding: 5px 9px; }
 .project-dialog-error, .project-dialog-status { margin: 0; padding: 0 28px 20px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .project-dialog-status { color: #bbaacb; }
 .project-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 18px 28px; border-top: 1px solid #3b2c4b; }

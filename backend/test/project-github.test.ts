@@ -28,6 +28,9 @@ await test('project Git routes keep session/CSRF/host gates and reject arbitrary
     const result = await app.inject({ method: 'POST', url, headers, payload: { kind: 'initialize', requestId, input: {} } });
     assert.equal(result.statusCode, 200); assert.equal(result.json().id, requestId);
     assert.deepEqual(calls.at(-1), { operation: 'submit', projectId: id, kind: 'initialize', requestId, input: {} });
+    const check = await app.inject({ method: 'POST', url, headers, payload: { kind: 'check', requestId, input: { bindingRevision: 3 } } });
+    assert.equal(check.statusCode, 200);
+    assert.deepEqual(calls.at(-1), { operation: 'submit', projectId: id, kind: 'check', requestId, input: { bindingRevision: 3 } });
     assert.equal((await app.inject({ method: 'POST', url, headers: { ...headers, origin: 'http://foreign.test' }, payload: { kind: 'check', requestId, input: {} } })).statusCode, 403);
   } finally { await app.close(); await new Promise<void>((resolve) => server.close(() => resolve()));
     if (previous === undefined) delete process.env.STUDIO_GIT_SOCKET; else process.env.STUDIO_GIT_SOCKET = previous;

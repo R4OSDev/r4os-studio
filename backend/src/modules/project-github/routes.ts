@@ -55,7 +55,7 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     sessions.mutation(request, reply);
     const { kind, input } = request.body;
     const keys = kind === 'bind' ? ['expectedRevision', 'connectionId', 'tokenRevision', 'userId', 'repository', 'branch', 'author']
-      : kind === 'create_repository' ? ['connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private', 'owner'] : kind === 'diff' ? ['path', 'snapshot'] : kind === 'push' ? ['bindingRevision', 'snapshot', 'commitMessage', 'files'] : kind === 'prepare_pull' ? ['bindingRevision', 'snapshot', 'remoteHead'] : kind === 'pull' ? ['preparationId', 'bindingRevision', 'snapshot'] : [];
+      : kind === 'create_repository' ? ['connectionId', 'tokenRevision', 'userId', 'repositoryName', 'private', 'owner'] : kind === 'check' ? ['bindingRevision'] : kind === 'diff' ? ['path', 'snapshot'] : kind === 'push' ? ['bindingRevision', 'snapshot', 'commitMessage', 'files'] : kind === 'prepare_pull' ? ['bindingRevision', 'snapshot', 'remoteHead'] : kind === 'pull' ? ['preparationId', 'bindingRevision', 'snapshot'] : [];
     if (Object.keys(input).some((key) => !keys.includes(key))) throw new ProjectError('Unexpected Git job fields.', 400);
     return gitHost({ operation: 'submit', projectId: request.params.id, ...request.body });
   });
