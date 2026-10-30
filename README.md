@@ -1,3 +1,11 @@
+## Checked roadmap milestone publication (0.8.32)
+
+The runtime roadmap contract now instructs project agents to commit/push each
+finished, checked subversion when Roadmap, a confirmed repository and frozen
+Push permission are present. Original receipts and frozen target checks keep
+publication, no-change and unknown outcomes distinct. Saved prompts and existing
+workers remain intact. Details: [Roadmap-Publication.md](Roadmap-Publication.md).
+
 ## Supported tool defaults and corrected settings (0.8.31)
 
 New compatible sessions default supported tools on, including update commit and
@@ -2061,9 +2069,11 @@ Portable `.r4os-studio/project.json` carries checked app/component pins, never
 host paths, UUIDs, credentials or sessions. Legacy imports require an explicit
 matching local profile. Missing pinned tools must be installed separately;
 repository setup scripts are never run as part of import. Session settings →
-Tools → GitHub enables the separate default-Off push tool in new v6 sessions;
+Tools → GitHub controls the separate push tool introduced in v6 sessions;
 old conversations retain their native histories and require a new session for
-the additive declaration. A commitMessage is mandatory for every agent push.
+the additive declaration. Since 0.8.31, new compatible sessions default Push on
+when the repository is confirmed; existing Off choices stay intact. A
+commitMessage is mandatory for every agent push.
 
 The local daily backup's existing Projects source includes private `.studio/git`
 objects, bindings, pull journals and receipts plus global `.studio/github` jobs.
@@ -2083,7 +2093,8 @@ the production repository and existing user project were checked separately.
 ## Agent GitHub push permission (0.5.9)
 
 New project sessions use additive studio-tools-v6. Session settings → Tools →
-GitHub offers Push project to GitHub, default Off. studio.push_project requires
+GitHub offers Push project to GitHub. Its original default was Off; since 0.8.31
+new compatible sessions default on with a confirmed repository. studio.push_project requires
 commitMessage and optionally a bounded relative saved-file list. Enabled rights
 are frozen for the accepted run. Existing v1–v5 and skill declarations/histories
 are unchanged; older conversations show New session required for this tool.

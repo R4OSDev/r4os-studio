@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
-from common import ProjectFault, folder, project_id, document
+from common import ProjectFault, folder, project_id, document, binding
 
 
 def process(pid):
@@ -42,6 +42,14 @@ class AgentLease:
                 or config.get('permissions', {}).get('studio.push_project') is not True or config.get('revision') != row[4] or row[4] != self.value['revision']
                 or worker.get('pid') != self.value['workerPid'] or worker.get('birth') != self.value['workerBirth'] or process(self.value['workerPid'])[1] != self.value['workerBirth']):
             raise ProjectFault('Agent Git permission, profile or worker binding changed.', 403)
+        if 'githubBinding' in config:
+            if not isinstance(config['githubBinding'], dict):
+                raise ProjectFault('This run has no confirmed repository binding. Keep publication open; connecting a repository does not grant this run a destination.', 409)
+            current = binding(self.projects, self.identity)
+            selected = None if current is None else {**{key: current[key] for key in ('revision', 'connectionId', 'userId', 'branch')},
+                'repository': {key: current['repository'][key] for key in ('id', 'owner', 'name')}}
+            if selected != config['githubBinding']:
+                raise ProjectFault('The repository or branch differs from this run’s frozen binding. Keep publication open and begin a deliberately authorized new run after reconciling the original operation.', 409)
         from project_maintenance import project, pending_git, pending_update
         if config.get('projectPins') != project(self.projects, self.identity)['pins']: raise ProjectFault('The active agent project pins changed.', 409)
         if pending_git(self.projects, self.identity) or pending_update(self.projects, self.identity): raise ProjectFault('Resolve project recovery before an agent push.', 409)

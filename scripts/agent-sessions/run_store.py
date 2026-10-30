@@ -109,6 +109,10 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['skillManagerPrompt'] = skill_prompt_snapshot(store.projects)
     else:
         snapshot['projectPins'] = store.project['pins']
+        # Trusted private metadata only; the terminal/Workspace cannot supply a
+        # destination. Missing context stays explicit and cannot grant Push.
+        from tool_defaults import repository_binding
+        snapshot['githubBinding'] = repository_binding(store)
         from remote_context import snapshot as remote_snapshot
         snapshot.update(remote_snapshot(store, session['engine']['profile'], data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)

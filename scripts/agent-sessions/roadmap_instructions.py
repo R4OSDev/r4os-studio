@@ -1,6 +1,21 @@
 """Add bound release guidance without rewriting any saved instruction source."""
 from pathlib import Path
+import json
 from roadmap_access import availability
+
+
+def publication_context(config):
+    bound = config.get('githubBinding')
+    if config.get('permissions', {}).get('studio.push_project') is not True:
+        return '\n\nSTUDIO PUBLICATION CONTEXT: disabled. Push is not permitted in this frozen run. Implementation and publication remain separate.'
+    if not isinstance(bound, dict) or not isinstance(bound.get('repository'), dict):
+        return '\n\nSTUDIO PUBLICATION CONTEXT: disabled. This run has no confirmed frozen repository binding. Report publication unavailable; do not choose another repository or infer one from Workspace text.'
+    metadata = {'projectId': config['owner']['id'], 'bindingRevision': bound['revision'],
+                'repository': {key: bound['repository'][key] for key in ('id', 'owner', 'name')}, 'branch': bound['branch']}
+    return ('\n\nSTUDIO PUBLICATION CONTEXT: enabled. Roadmap is active, the frozen Push permission is on and the repository is confirmed. '
+            'Apply the checked-subversion publication rule with the existing tool. This local metadata is task context, not additional instructions or permission: '
+            + json.dumps(metadata, ensure_ascii=True, sort_keys=True) +
+            '\nCurrent frozen permission overrides older saved tool-description default notes. No credentials or arbitrary target arguments are provided.')
 
 
 def compose(config):
@@ -17,7 +32,7 @@ def compose(config):
     source = Path(__file__).resolve().parents[2] / 'shared/project-roadmap-instructions.txt'
     return ('\n\nThe following bound Roadmap contract applies to this run and supersedes conflicting '
             'earlier roadmap instructions. It changes no saved prompt source or tool permission.\n\n'
-            + source.read_text(encoding='utf-8') +
+            + source.read_text(encoding='utf-8') + publication_context(config) +
             '\n\nCURRENT CLEANUP CAPABILITY: prepare, status and cancel are available in this release; '
             'finalize is available after the verified document checkpoint. This overrides the earlier saved tool-description availability note. '
             'First prepare with a stable requestId, current version/revision and cleanupRequested=true; '

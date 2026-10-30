@@ -60,6 +60,13 @@ class AgentGitTests(unittest.TestCase):
             try:
                 with self.assertRaises(ProjectFault): AgentLease(self.config, self.identity, agent, wrong.fileno(), helper.pid).verify()
             finally: wrong.close()
+            config['githubBinding'] = {**{key: bound[key] for key in ('revision', 'connectionId', 'userId', 'branch')},
+                                      'repository': {key: repo[key] for key in ('id', 'owner', 'name')}}
+            with closing(sqlite3.connect(db_path)) as db: db.execute('UPDATE runs SET config=?', (json.dumps(config),)); db.commit()
+            AgentLease(self.config, self.identity, agent, received, helper.pid).verify()
+            save(action.base / 'binding.json', {**bound, 'revision': 2, 'branch': 'other'})
+            with self.assertRaises(ProjectFault): AgentLease(self.config, self.identity, agent, received, helper.pid).verify()
+            save(action.base / 'binding.json', bound)
             worker_code = '''import sys
 sys.path.insert(0,sys.argv.pop(1))
 import worker
