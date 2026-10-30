@@ -1,3 +1,10 @@
+## Direct roadmap export (0.8.36)
+
+The main-version download icon starts the existing immutable saved-version
+download directly. Original-request and confirmed-snapshot recovery stay
+internal; success adds no details panel or extra link. Details:
+[Roadmap-View.md](Roadmap-View.md).
+
 ## Main roadmap card and navigation (0.8.35)
 
 The header now combines project name and Roadmap. A separate main-version card

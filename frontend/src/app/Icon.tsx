@@ -1,6 +1,7 @@
-type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal' | 'play' | 'pause' | 'restart' | 'power' | 'stop' | 'attachment' | 'board' | 'statistics' | 'note' | 'image';
+type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal' | 'play' | 'pause' | 'restart' | 'power' | 'stop' | 'attachment' | 'board' | 'statistics' | 'note' | 'image' | 'download';
 
 const paths: Record<IconName, React.ReactNode> = {
+  download: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></>,
   image:<><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></>,
   note: <><path d="M14 3H5v18h14V8Z" /><path d="M14 3v5h5M8 12h8M8 16h5" /></>,
   statistics: <><path d="M4 20h16M6 16v-5M12 16V5M18 16V8" /></>,

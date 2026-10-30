@@ -10,8 +10,7 @@ keep their existing contracts.
 The selected main version has its own card, separate from Subversions. Its upper
 area splits equally: the saved number/title and task/acceptance progress on the
 left; saved status/Current and export space above number/title/status fields on
-the right. The export slot immediately precedes saved status; its existing text
-button/download details remain until 0.8.36. Below this grid, Vision and Version
+the right. The export slot immediately precedes saved status; it now contains the direct download icon from 0.8.36. Below this grid, Vision and Version
 notes span the whole card and start closed. The layout stacks when the available
 card area is narrow. Subversions follow the card; Cleanup history stays last.
 
@@ -47,4 +46,28 @@ Evidence: `Research/R4OS/Roadmap-Implementation/0.8.35/` in the development
 workspace. The temporary preview deliberately rejects the usual background Git
 check POST; this preview-only notice is not an application remote-check failure.
 
-Direct export and the Subversions presentation follow in 0.8.36 and 0.8.37.
+The Subversions presentation follows in 0.8.37.
+
+## Direct export (0.8.36)
+
+A compact download icon sits immediately before saved status. Its English name
+and tooltip describe preparation, resuming an original request or downloading
+an already confirmed snapshot again. Dirty/busy guards, keyboard focus and
+reduced motion remain available. Successful preparation immediately hands the
+existing protected content URL to the browser; no result link or Export details
+appears. Download initiation does not claim a completed file save.
+
+Session storage retains the original request and confirmed metadata for each
+project/version. Requests from the old button remain recoverable. Temporary or
+unknown failures retry the same input/ID; a confirmed snapshot is reused for the
+same saved revision. A synchronous latch coalesces double clicks. An unmounted
+selection cannot initiate a late download or replace a newer retained request.
+The backend API, immutable UTF-8 snapshot, filename and SHA/byte validation are
+unchanged; cleanup-history archive links keep their separate behavior.
+
+Qualification used the actual control with an isolated real backend and native
+browser downloads at 1440/320 px. Download bytes/SHA/filename and full Unicode
+hierarchy matched server metadata. Dirty/double-click, historical selection, a
+reply lost after server preparation, same-ID recovery and selection changes
+were checked. The existing project-roadmap API/export test, build/TypeScript
+and lint passed. No user roadmap, session or VM was changed.
