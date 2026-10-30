@@ -210,14 +210,19 @@ class Host:
             if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
             if action=='creation_receipt':return await asyncio.to_thread(store.receipt,request.get('requestId'))
             if action=='create':return await asyncio.to_thread(store.create,request.get('input'))
-            if action=='auth_start':
+            if action in ('auth_start','auth_remove'):
                 ident=identity(request.get('id'))
+                data=request.get('input')
+                if action=='auth_remove':
+                    if not isinstance(data,dict) or set(data)!={'requestId','revision','confirmName'}:raise ProjectFault('Invalid Claude removal request.',400)
+                    data={**data,'action':'remove'}
+                elif isinstance(data,dict) and data.get('action')=='remove':raise ProjectFault('Use the confirmed Claude removal request.',400)
                 async with self.lock:
                     await self.refresh()
                     if self.claude_probe_lock.locked():raise ProjectFault('A native Claude metadata probe is still active.',429)
                     if self.unbound or any(meta['providerId']==ident for meta in self.active.values()):
                         raise ProjectFault('Reconcile or finish original bound workers before changing Claude authentication. No worker was stopped.',409)
-                    return await self.claude_auth.start(ident,request.get('input'),request.get('owner'))
+                    return await self.claude_auth.start(ident,data,request.get('owner'))
             if action=='auth_receipt':return self.claude_auth.view(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
             if action=='limits':return await asyncio.to_thread(self.claude_auth.store.latest_limits,identity(request.get('id')))
             if action=='catalog':return await asyncio.to_thread(self.claude_auth.store.latest_catalog,identity(request.get('id')))

@@ -1,3 +1,14 @@
+## Claude provider removal and auth recovery (0.8.54)
+
+Disconnect a Claude subscription before using **Remove provider**, then type its
+exact display name. Removal checks native status, invokes native logout and
+confirms the resulting status in that provider's private home. Active or
+unconfirmed worker leases block changes. Conversations and original receipts
+stay on the host; old creation/auth requests cannot recreate the connection.
+Lost replies are recovered by reading the original request. Cancelled or expired
+authentication requires an explicit status check before another auth change.
+Details: [Claude-Authentication.md](Claude-Authentication.md).
+
 ## Claude account holds and model errors (0.8.53)
 
 Native subscription rejection or extra-usage events stop further admitted work,

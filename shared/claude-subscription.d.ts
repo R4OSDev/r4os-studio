@@ -11,18 +11,21 @@ export interface ClaudeSubscriptionProvider {
 }
 export interface ClaudeProviderCreate { requestId: string; name: string }
 export interface ClaudeProviderMutation {
-  requestId: string; state: 'complete'; provider: ClaudeSubscriptionProvider;
+  requestId: string; state: 'complete' | 'deleted'; provider: ClaudeSubscriptionProvider;
 }
+export interface ClaudeProviderRemove { requestId: string; revision: number; confirmName: string }
 export type ClaudeAuthAction = 'connect' | 'status' | 'disconnect' | 'limits' | 'catalog';
 export interface ClaudeAuthRequest { requestId: string; revision: number; action: ClaudeAuthAction }
 export interface ClaudeAuthOperation {
-  requestId: string; providerId: string; action: ClaudeAuthAction; revision: number;
-  state: 'pending' | 'waiting' | 'complete' | 'failed' | 'cancelled' | 'expired' | 'unconfirmed' | 'reconciled';
+  requestId: string; providerId: string; action: ClaudeAuthAction | 'remove'; revision: number;
+  state: 'pending' | 'waiting' | 'complete' | 'failed' | 'cancelled' | 'expired' | 'unconfirmed' | 'reconciled' | 'removed';
   message: string | null; createdAt: string; updatedAt: string; provider: ClaudeSubscriptionProvider;
   /** Present only in the initiating live browser session, never persisted. */
   authorizationUrl?: string; expiresInSeconds?: number;
   limits?: ClaudeSubscriptionLimits;
   catalog?: ClaudeModelCatalog | null;
+  /** A later explicit native status check; cancelled/expired outcomes are retained. */
+  reconciledBy?: string;
 }
 export interface ClaudeModelCatalog {
   schema: 1; source: string; receivedAt: string; providerId: string; providerRevision: number;

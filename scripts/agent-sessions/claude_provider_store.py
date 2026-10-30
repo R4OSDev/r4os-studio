@@ -50,7 +50,9 @@ class ClaudeProviders:
 
     def current(self,db,ident):
         row=db.execute('SELECT data FROM providers WHERE id=?',(identity(ident),)).fetchone() if db else None
-        if not row:raise ProjectFault('Claude provider not found.',404)
+        if not row:
+            if self.removed(db,ident):raise ProjectFault('This Claude provider was removed. Existing conversations were preserved.',410)
+            raise ProjectFault('Claude provider not found.',404)
         value=json.loads(row[0])
         if (not isinstance(value,dict) or set(value)!={'id','type','name','revision','profileRevision','runtimeProfileId',
                 'status','enabled','auth','createdAt','updatedAt','account'}
@@ -64,6 +66,14 @@ class ClaudeProviders:
             raise ProjectFault('The original Claude provider identity is unavailable. Existing data was preserved.',503)
         return value
 
+    def removed(self,db,ident):
+        if db is None or not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='removed_providers'").fetchone():return False
+        return bool(db.execute('SELECT 1 FROM removed_providers WHERE id=?',(identity(ident),)).fetchone())
+
+    def creation_result(self,db,result):
+        # The original creation receipt never recreates a retired identity.
+        return {**result,'state':'deleted'} if self.removed(db,result['provider']['id']) else result
+
     def listing(self):
         with self.connect() as db:return [] if db is None else [self.current(db,row[0]) for row in db.execute('SELECT id FROM providers ORDER BY id')]
 
@@ -74,7 +84,7 @@ class ClaudeProviders:
         with self.connect() as db:
             row=db.execute('SELECT result FROM requests WHERE id=?',(identity(rid),)).fetchone() if db else None
             if not row:raise ProjectFault('Original Claude provider request not found.',404)
-            return json.loads(row[0])
+            return self.creation_result(db,json.loads(row[0]))
 
     def create(self,data):
         if not isinstance(data,dict) or set(data)!={'requestId','name'}:
@@ -84,13 +94,13 @@ class ClaudeProviders:
             original=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone() if db else None
             if original:
                 if original['fingerprint']!=fingerprint:raise ProjectFault('This original Claude request has different input.',409)
-                return json.loads(original['result'])
+                return self.creation_result(db,json.loads(original['result']))
         runtime=installed(self.parent)
         with self.connect(write=True) as db:
             original=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone()
             if original:
                 if original['fingerprint']!=fingerprint:raise ProjectFault('This original Claude request has different input.',409)
-                return json.loads(original['result'])
+                return self.creation_result(db,json.loads(original['result']))
             ident=str(uuid.uuid4());stamp=now()
             value={'id':ident,'type':'claude-subscription','name':display,'revision':1,'profileRevision':1,
                 'runtimeProfileId':runtime['id'],'status':'not-connected','enabled':False,

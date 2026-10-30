@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { agentHost } from '../agent-sessions/host.js';
 import type { ProviderSessions } from './sessions.js';
 import { ProviderError } from './errors.js';
-import type { ClaudeProviderCreate, ClaudeProviderMutation, ClaudeSubscriptionProvider, ClaudeAuthRequest, ClaudeAuthOperation, ClaudeRuntimeStatus } from '../../../../shared/claude-subscription.js';
+import type { ClaudeProviderCreate, ClaudeProviderMutation, ClaudeProviderRemove, ClaudeSubscriptionProvider, ClaudeAuthRequest, ClaudeAuthOperation, ClaudeRuntimeStatus } from '../../../../shared/claude-subscription.js';
 
 const uuid = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const params = { type: 'object', additionalProperties: false, required: ['id'], properties: { id: uuid } };
@@ -43,6 +43,16 @@ export function claudeProviderRoutes(app: FastifyInstance, sessions: ProviderSes
   app.get<{ Params: { id: string } }>(base + '/:id', { schema: { params } }, async (request, reply) => {
     sessions.get(request, reply);
     return { provider: await agentHost<ClaudeSubscriptionProvider>({ operation: 'claude_provider', action: 'get', id: request.params.id }) };
+  });
+  app.delete<{ Params: { id: string }; Body: ClaudeProviderRemove }>(base + '/:id', {
+    bodyLimit: 1024, preValidation: async request => fields(request.body, ['requestId', 'revision', 'confirmName']),
+    schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'confirmName'], properties: {
+      requestId: uuid, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+      confirmName: { type: 'string', minLength: 1, maxLength: 80 },
+    } } },
+  }, async (request, reply) => {
+    const owner = sessions.mutation(request, reply);
+    return agentHost<ClaudeAuthOperation>({ operation: 'claude_provider', action: 'auth_remove', id: request.params.id, owner, input: request.body });
   });
   app.get<{ Params: { id: string } }>(base + '/:id/limits', { schema: { params } }, async (request, reply) => {
     sessions.get(request, reply);

@@ -52,6 +52,19 @@ await test('Claude native auth requires same-origin browser/CSRF and binds every
     assert.equal((await app.inject({ method: 'POST', url: original + '/code', headers, payload: { code } })).statusCode, 200);
     assert.equal(calls.at(-1)?.owner, owner); assert.equal(calls.at(-1)?.code, code);
     assert.equal((await app.inject({ method: 'POST', url: original + '/cancel', headers, payload: {} })).statusCode, 200);
+    const removal = { requestId: randomUUID(), revision: 1, confirmName: 'Own Claude' };
+    assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + id, headers: { cookie: headers.cookie }, payload: removal })).statusCode, 403);
+    for (const extra of [{ origin: 'http://foreign.invalid' }, { host: 'foreign.invalid' }, { 'sec-fetch-site': 'cross-site' }]) {
+      assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + id, headers: { ...headers, ...extra }, payload: removal })).statusCode, 403);
+    }
+    const beforeInvalidRemoval = calls.length;
+    for (const payload of [{ ...removal, confirmName: undefined }, { ...removal, revision: '1' }, { ...removal, action: 'remove' }]) {
+      assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + id, headers, payload })).statusCode, 400);
+    }
+    assert.equal(calls.length, beforeInvalidRemoval);
+    assert.equal((await app.inject({ method: 'DELETE', url: base + '/' + id, headers, payload: removal })).statusCode, 200);
+    assert.equal(calls.at(-1)?.action, 'auth_remove'); assert.equal(calls.at(-1)?.owner, owner);
+    assert.deepEqual(calls.at(-1)?.input, removal);
     const before = calls.length;
     for (const [url, payload] of [[base, { requestId, name: 'Own', token: 'forbidden' }],
       [base + '/' + id + '/auth', { ...input, revision: '1' }], [base + '/' + id + '/auth', { ...input, action: 'console' }],

@@ -1,4 +1,4 @@
-# Native Claude subscription authentication (0.8.19)
+# Native Claude subscription authentication (0.8.54)
 
 System → LLM Providers → New Provider offers **Claude · Pro / Max subscription**.
 Add a name, then Connect Claude. Open the short-lived native sign-in link,
@@ -14,8 +14,31 @@ API key/helper, bearer-token, cloud, console or unknown-plan authentication
 cannot qualify. Status is timestamped native evidence, not a perpetual account
 or entitlement guarantee. Every future model admission must recheck its bound
 native account and billing source. Subscription credentials alone do not stop
-extra usage; model access remains disabled until session/tool and limit/overage
-qualification in0.8.20–0.8.23.
+extra usage; text model access requires a fresh qualified native catalog and
+per-send subscription/usage admission with extra usage disabled. The real
+Pro-account text/tool/resume qualification is documented in0.8.52.
+
+## Removing a connection
+
+Disconnect first, then choose **Remove provider** and type its exact display
+name. The DELETE request binds the original request UUID, provider revision,
+name and browser owner. If its private auth home exists, the pinned native CLI
+must independently confirm no active sign-in, complete logout, and confirm that
+status again. These local removal checks run without network access. An unused
+provider with no native home is retired without creating one or invoking a CLI.
+
+The catalog identity is retired atomically with its terminal `removed` receipt.
+It disappears from the provider list; GET and old auth receipts return410.
+The initiating browser can still read its exact removal result. Old creation
+receipts report `deleted`, clear the original form, and never recreate a home or
+connection. Reading a lost result never repeats native logout. A stale browser
+reading an old auth receipt reloads the list without signing in again.
+
+Native logout alone owns credential removal; Studio never manually deletes
+credential files. Private preferences, revisions, audit receipts and existing
+conversations remain on the host. Their old provider/native-session identities
+are not rebound. Pending queued text remains saved and is held at dispatch
+without creating a run when its provider was removed. No user worker is stopped.
 
 ## Host and browser boundaries
 
@@ -51,17 +74,24 @@ logout, retry, model start or account switching occurs on page load.
 
 ## Concurrency and original outcomes
 
-One auth operation per provider, at most two per coordinator, serializes native
-refresh/logout/sign-in. Revision checks and durable original receipts prevent
+One auth operation per provider, at most two per coordinator, serializes Studio
+logout/sign-in operations. Native refresh remains the CLI's responsibility.
+Revision checks and durable original receipts prevent
 request replay. A lost response is recovered through Read original request,
 which reads the original result instead of starting another login. Cancellation
 kills and confirms the owned process before recording cancellation; credentials
 are preserved for an explicit subsequent native status check. Deadlines and
-interrupted operations require that check before another sign-in. Startup never
+interrupted operations require that check before another sign-in, logout or
+removal. Cancelled/expired receipts keep their original outcome and record the
+later explicit status request separately. Original results remain readable even
+when the two new-operation slots are busy, without inserting a phantom request.
+Startup never
 restarts authentication. Active/unbound bound workers prevent auth changes;
-they are not stopped. Queue/worker credential leases and their final acceptance
-remain part of the session/lifecycle integration in0.8.20/0.8.23. No provider
-removal endpoint is offered at this authentication-only stage.
+they are not stopped. Reserved/active/unknown credential leases also block auth
+changes. An accepted auth marker prevents acquiring a new credential lease;
+provider retirement rechecks outstanding leases in its final transaction.
+Queued intents acquire no worker lease and retain their frozen account,
+revision and native UUID; dispatch rejects a changed or removed provider.
 
 The coordinator does not switch its release while an auth job or SDK probe is
 active. The SDK probe now has a dedicated0700 `ClaudeControl` directory under
@@ -78,8 +108,21 @@ cancellation, logout and status. No account code, token or model prompt was
 submitted. Actual React components are checked at1440/320 pixels using controlled
 HTTP fixtures, separately from protected backend HTTP cases.
 
-An actual human Pro/Max login, native refresh/expiry/revocation and final bound
-worker/queue acceptance remain open. Synthetic account metadata is not proof
-of a real subscription. Existing user subscriptions, native sessions, histories,
-project pins and VMs remain unchanged. See [Claude-Subscription.md](Claude-Subscription.md)
+The user connected a real Pro account and completed the minimal text/tool/resume
+acceptance in0.8.52. In0.8.54, targeted store/HTTP/queue cases and the unchanged
+pinned CLI additionally cover removal, exact-name confirmation, missing replies,
+retired creation recovery, deadlines/status reconciliation and credential-lease
+interlocks. Real React views are checked at1440/320 pixels with owned replies.
+Two additional runs of the unchanged SDK/CLI in a closed namespace use owned
+synthetic credentials, including an expired credential, and return401 from an
+owned endpoint. Production admission and the original native input/result path
+remain unchanged: concrete authentication failure, zero Studio tool effects,
+same native UUID and readable terminal history. No Studio re-login or new run
+is started. The CLI itself attempts native refresh and once repeats the same
+model request after401 even with general retries disabled. This behavior is
+distinct from Studio retry authorization. Real token revocation, successful
+server-side refresh and billing are not inferred from these owned cases; the
+user's real account is not revoked, refreshed or disconnected by this check.
+Existing user subscriptions, native sessions, histories, project pins and VMs
+remain unchanged. See [Claude-Subscription.md](Claude-Subscription.md)
 for the immutable runtime foundation and [README.md](README.md) for rollout.

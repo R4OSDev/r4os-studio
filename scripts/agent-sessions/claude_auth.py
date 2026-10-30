@@ -91,9 +91,8 @@ class ClaudeAuth:
 
     async def start(self,ident,data,owner):
         ident=identity(ident)
-        if len(self.jobs)>=2:raise ProjectFault('The native Claude authentication capacity is busy.',429)
         # Original receipts are read before verifying runtime or creating auth homes.
-        result,fresh=self.store.begin(ident,data,owner)
+        result,fresh=self.store.begin(ident,data,owner,allow_new=len(self.jobs)<2)
         if fresh:
             job={'requestId':result['requestId'],'owner':owner,'cancel':False,'child':None,'url':None,'state':None,'submitted':False,'expires':time.monotonic()+300}
             self.jobs[ident]=job;job['task']=asyncio.create_task(self.run(ident,job,result))
@@ -156,6 +155,21 @@ class ClaudeAuth:
         rid=result['requestId'];state='failed';message='The native Claude authentication request failed. Existing credentials were preserved.'
         status=None;account=None;usage=None;models=None
         try:
+            if result['action']=='remove':
+                root=self.store.root/ident
+                if root.exists() or root.is_symlink():
+                    runtime=await asyncio.to_thread(installed,self.store.parent);root=auth_home(self.store,ident)
+                    raw,code=await self.execute(job,command(runtime,root,'status',network=False))
+                    if status_result(raw,code)[0]!='not-connected':
+                        message='Native sign-in is still present. Check status and disconnect before removing this provider.'
+                        return
+                    _,code=await self.execute(job,command(runtime,root,'disconnect',network=False))
+                    if code!=0:raise ValueError()
+                    raw,code=await self.execute(job,command(runtime,root,'status',network=False))
+                    if status_result(raw,code)[0]!='not-connected':raise ValueError()
+                    auth_home(self.store,ident)
+                self.store.finish_removed(ident,rid)
+                return
             runtime=await asyncio.to_thread(installed,self.store.parent);root=auth_home(self.store,ident)
             action=result['action']
             if action not in ('status','limits','catalog'):
@@ -194,11 +208,14 @@ class ClaudeAuth:
         except asyncio.CancelledError:
             state='cancelled';message='Native sign-in cancelled. Explicitly check status before using this provider.';status='reauthentication-required';account=None
             if result['action'] in ('limits','catalog'):status=None;message='Native metadata check cancelled. No model prompt was submitted.'
+            if result['action']=='remove':status=None;message='Removal cancelled. Check native status before a separate removal request.'
         except asyncio.TimeoutError:
             state='expired';message='The native authentication deadline elapsed. Explicitly check status before trying again.';status='reauthentication-required';account=None
             if result['action'] in ('limits','catalog'):status=None;message='The native metadata check deadline elapsed. No model prompt was submitted.'
+            if result['action']=='remove':status=None;message='The original removal deadline elapsed. Check native status before trying again.'
         except (OSError,ValueError,TypeError,ProjectFault):
             status='reauthentication-required';account=None
+            if result['action']=='remove':status=None;message='Native logout could not be confirmed. The provider was preserved; explicitly check status.'
         finally:
             try:
                 await self.kill(job)

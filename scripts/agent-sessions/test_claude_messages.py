@@ -191,3 +191,32 @@ class ClaudeMessages(unittest.TestCase):
             value=Messages(store).snapshot(self.sid)
             self.assertTrue(value['held']);self.assertEqual(value['messages'][0]['text'],data['text'])
             self.assertEqual(store.db.execute('SELECT count(*) FROM runs').fetchone()[0],0)
+
+    def test_removed_provider_holds_original_queue_and_preserves_native_identity(self):
+        from claude_auth import ClaudeAuth
+        data=self.message_input()
+        with self.open() as store:
+            Messages(store).accept(self.sid,data,self.providers)
+            original=ClaudeHistory(store,self.sid).get()
+            frozen=Messages(store).row(self.sid,data['requestId'])['frozen']
+        auth=ClaudeAuth(self.providers);provider=self.provider_value;request=str(uuid.uuid4())
+        auth.store.begin(provider['id'],{'requestId':request,'revision':provider['revision'],'action':'disconnect'},'a'*64)
+        provider=auth.store.finish(provider['id'],request,'complete',status='not-connected')['provider']
+        async def remove():
+            operation=await auth.start(provider['id'],{'requestId':str(uuid.uuid4()),'revision':provider['revision'],
+                'action':'remove','confirmName':provider['name']},'a'*64)
+            async with asyncio.timeout(2):
+                while auth.busy:await asyncio.sleep(.005)
+            self.assertEqual(auth.view(provider['id'],operation['requestId'],'a'*64)['state'],'removed')
+        asyncio.run(remove())
+        host=Host({'projects':str(self.projects),'r4os':str(self.r4os),'providers':str(self.providers),'uid':os.getuid(),'maxActiveRuns':2})
+        host.inboxes.add(('project',self.pid,self.sid));launched=[]
+        async def launch(*args):launched.append(args)
+        host.launch_admitted=launch
+        asyncio.run(host.dispatch_queues());self.assertEqual(launched,[])
+        with self.open() as store:
+            value=Messages(store).snapshot(self.sid)
+            self.assertTrue(value['held']);self.assertEqual(value['messages'][0]['text'],data['text'])
+            self.assertEqual(Messages(store).row(self.sid,data['requestId'])['frozen'],frozen)
+            self.assertEqual(ClaudeHistory(store,self.sid).get(),original)
+            self.assertEqual(store.db.execute('SELECT count(*) FROM runs').fetchone()[0],0)
