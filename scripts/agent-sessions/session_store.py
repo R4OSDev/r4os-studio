@@ -437,6 +437,12 @@ def operation(projects, r4os, provider_dir, request):
         if op == 'list': return store.list()
         if op == 'create': return store.create(request['input'], provider_dir)
         if op == 'get': return store.get(request['sessionId'])
+        if op=='screenshots':
+            from screenshot_gallery import page
+            return page(store,request['sessionId'],request.get('cursor'),request.get('limit',32))
+        if op=='screenshot':
+            from screenshot_gallery import member
+            return member(store,request['sessionId'],request['jobId'],request['evidenceId'])
         if op == 'update': return store.update(request['sessionId'], request['input'], provider_dir)
         if op == 'history':
             try:

@@ -71,6 +71,16 @@ export interface SessionItem {
   webSearch?: { action: 'search' | 'openPage' | 'findInPage' | 'other'; queries?: string[]; url?: string; pattern?: string; sources?: { title: string; url: string }[]; truncated?: boolean };
 }
 export interface SessionHistory { items: SessionItem[]; before: number | null; cursor: number }
+export interface SessionScreenshot {
+  id:string;projectId:string;sessionId:string;jobId:string;runId:string;toolCallId:string;requestId:string;tool:string;
+  publication:number;vmId:string|null;bootId:string|null;createdAt:string|null;
+  width:number;height:number;bytes:number;sha256:string;source:'agent-vm-capture';reference:string;
+}
+export interface ScreenshotPage {
+  schema:1;owner:SessionOwner;sessionId:string;available:boolean;reason:string|null;
+  items:SessionScreenshot[];nextCursor:string|null;revision:number;watermark:number;
+  coverage:{complete:boolean;unqualified:number};
+}
 export interface SessionDeletionPreview { sessionId: string; name: string; revision: number; scopeHash: string; allowed: boolean; blockers: string[] }
 export interface SessionDeletionInput { requestId: string; revision: number; scopeHash: string; confirmName: string }
 export interface SessionDeletionReceipt { requestId: string; sessionId: string; state: 'deleting' | 'unknown' | 'deleted'; phase: string; reason?: string; creationRequestIds?: string[] }

@@ -102,7 +102,8 @@ class Execution:
                 state = await control.call('stop')
                 return state, {'pendingCompletion': True}
             if operation == 'capture':
-                result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None, control=control, consume=self.output)
+                result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None, control=control, consume=self.output,
+                    origin={'requestId':message['requestId'],'operation':'capture'} if authorization else None)
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']

@@ -1,3 +1,11 @@
+## Session screenshot catalog (0.8.26)
+
+Protected session reads can now page through registered agent VM captures across
+all runs/jobs. The bounded reference index preserves original PNGs, verifies
+tool provenance and reports incomplete/unclear legacy coverage. Image reads
+check exact membership and original bytes; listing never captures again.
+Details: [Screenshot-Gallery.md](Screenshot-Gallery.md). The overlay follows next.
+
 ## Session context speedometer (0.8.25)
 
 Model now has a compact violet context meter beside it. It pulses above 50%,

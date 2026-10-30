@@ -10,6 +10,7 @@ import type { DevelopmentJobPage } from '../../../../shared/project-development.
 import { agentHost } from './host.js';
 import { attachmentRoutes } from './attachment-routes.js';
 import { generatedRoutes } from './generated-routes.js';
+import {screenshotRoutes} from './screenshot-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -26,6 +27,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   sessionDeletionRoutes(app, security, ownerType);
   attachmentRoutes(app, directory, security, ownerType, providers);
   generatedRoutes(app, directory, security, ownerType);
+  screenshotRoutes(app,directory,security,providers,ownerType);
   const route = '/:id/sessions';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
   if (ownerType === 'project') app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {

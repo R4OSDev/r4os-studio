@@ -78,7 +78,8 @@ async def execute(execution, message, request, state, control, lease, process, a
                 if authorization: authorize(store, message['owner'], 'capture', message['peerPid'], job)
                 image = await capture(store, job, lease, state,
                     observer={**message['owner'], 'model': authorization['model']} if authorization else None,
-                    control=control, consume=execution.output)
+                    control=control, consume=execution.output,
+                    origin={'requestId':message['requestId'],'operation':'input'} if authorization else None)
                 image_id = image['metadata']['id']
             except DevelopmentFault as error:
                 if getattr(error, 'uncertain', False): raise

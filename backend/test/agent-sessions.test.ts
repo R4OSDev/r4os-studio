@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
+import {createServer} from 'node:net';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -109,6 +110,47 @@ with sqlite3.connect(sys.argv[1]) as db:
     const imageRevision=disabledImages.json().session.revision;
     for (const value of ['true', 1, null]) assert.equal((await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: imageRevision, imageGenerationEnabled: value } })).statusCode, 400);
     const db = join(directory, ids[0], 'Sessions/Sessions.sqlite');
+    const runId=randomUUID(),jobId=randomUUID(),evidenceId=randomUUID();
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7wAAAABJRU5ErkJggg==','base64');
+    const image={id:evidenceId,jobId,projectId:ids[0],kind:'screenshot',source:'qmp-png',scope:'assigned-vm-screen',
+      observer:{sessionId:session.id,agentRunId:runId,model:'fixture-model'},width:1,height:1,bytes:png.length,sha256:createHash('sha256').update(png).digest('hex'),createdAt:'2026-10-30T06:00:00Z',bootId:null};
+    await mkdir(join(directory,ids[0],'Development'),{recursive:true});
+    await promisify(execFile)('/usr/bin/python3',['-B','-c',`
+import sqlite3,sys,json,uuid
+image=json.loads(sys.argv[2]);run=image['observer']['agentRunId'];sid=image['observer']['sessionId'];job=image['jobId']
+with sqlite3.connect(sys.argv[1]+'/Sessions/Sessions.sqlite') as db:
+ db.execute("INSERT INTO runs VALUES (?,?,?,'owned','completed',0,'{}',NULL,NULL,NULL,'now','now')",(run,sid,str(uuid.uuid4())))
+ db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,?)',(run,'owned-capture','studio_capture_vm','own','completed',json.dumps({'jobId':job}),json.dumps({'success':True,'image':image})))
+with sqlite3.connect(sys.argv[1]+'/Development/Development.sqlite') as db:
+ db.execute('CREATE TABLE jobs(id TEXT PRIMARY KEY,payload TEXT NOT NULL)');db.execute('INSERT INTO jobs VALUES (?,?)',(job,json.dumps({'projectId':image['projectId'],'sessionId':sid})))
+ db.execute('CREATE TABLE evidence(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,payload TEXT NOT NULL)');db.execute('INSERT INTO evidence VALUES (?,?,?)',(image['id'],job,json.dumps(image)))
+`,join(directory,ids[0]),JSON.stringify(image)]);
+    const gallery=url+'/screenshots',socket=join(root,'gallery.sock'),originalSocket=process.env.STUDIO_DEVELOPMENT_SOCKET;
+    let corrupt=false,missing=false,foreignObserver=false;const imageCalls:Record<string,unknown>[]=[];
+    const host=createServer(client=>{let raw='';client.on('data',chunk=>{raw+=String(chunk);if(!raw.includes('\n'))return;imageCalls.push(JSON.parse(raw));
+      client.end(JSON.stringify(missing?{error:'Original screenshot missing',code:404}:{result:{metadata:foreignObserver?{...image,observer:{...image.observer,sessionId:randomUUID()}}:image,base64:corrupt?Buffer.from('changed').toString('base64'):png.toString('base64')}})+'\n');});});
+    await new Promise<void>(resolve=>host.listen(socket,resolve));process.env.STUDIO_DEVELOPMENT_SOCKET=socket;
+    try {
+      assert.equal((await app.inject(gallery)).statusCode,403);
+      assert.equal((await app.inject({url:gallery,headers:{...headers,origin:'http://foreign.test'}})).statusCode,403);
+      const list=await app.inject({url:gallery,headers});assert.equal(list.statusCode,200,list.body);
+      assert.equal(list.json().items[0].id,evidenceId);assert.equal(list.json().coverage.complete,true);
+      assert.equal((await app.inject({url:gallery+'?cursor=forged',headers})).statusCode,409);
+      const pngUrl=gallery+'/'+jobId+'/'+evidenceId;
+      assert.equal((await app.inject(pngUrl)).statusCode,403);
+      assert.equal((await app.inject({url:gallery+'/'+jobId+'/'+randomUUID(),headers})).statusCode,404);
+      assert.equal(imageCalls.length,0);
+      const actual=await app.inject({url:pngUrl,headers});assert.equal(actual.statusCode,200,actual.body);
+      assert.equal(actual.headers['content-type'],'image/png');assert.equal(actual.headers['cache-control'],'private, no-store');assert.deepEqual(actual.rawPayload,png);
+      assert.deepEqual(imageCalls.at(-1),{operation:'evidence',projectId:ids[0],id:jobId,evidenceId,presentationSessionId:session.id});
+      foreignObserver=true;assert.equal((await app.inject({url:pngUrl,headers})).statusCode,409);foreignObserver=false;
+      corrupt=true;assert.equal((await app.inject({url:pngUrl,headers})).statusCode,409);
+      missing=true;assert.equal((await app.inject({url:pngUrl,headers})).statusCode,404);
+      assert.equal((await app.inject({url:`/api/projects/${ids[1]}/sessions/${session.id}/screenshots`,headers})).statusCode,404);
+    } finally {
+      if(originalSocket===undefined)delete process.env.STUDIO_DEVELOPMENT_SOCKET;else process.env.STUDIO_DEVELOPMENT_SOCKET=originalSocket;
+      await new Promise<void>(resolve=>host.close(()=>resolve()));
+    }
     await writeFile(db, 'preserve corrupt data');
     assert.equal((await app.inject({ url: base, headers })).statusCode, 503);
     assert.equal(await readFile(db, 'utf8'), 'preserve corrupt data');

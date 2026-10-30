@@ -8,7 +8,7 @@ from jobs import now
 import time
 
 
-async def capture(store, job, lease=None, state=None, observer=None, control=None, consume=None):
+async def capture(store, job, lease=None, state=None, observer=None, control=None, consume=None, origin=None):
     target = job.get('target')
     if not target or target['vmId'] != store.project['vmId'] or job['projectRevision'] != store.project['revision']:
         raise DevelopmentFault('This job has no current project VM target. Use a current deployment or execution.')
@@ -17,7 +17,7 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
             'vmRevision': target['vmRevision'], 'imageId': target['imageId'], 'imageSha256': target['imageSha256'],
             'bootId': target['bootId'], 'jobId': job['id']}
         with VmLease(store.projects, target['vmId'], scope) as held:
-            return await capture(store, job, held, state, observer, control, consume)
+            return await capture(store, job, held, state, observer, control, consume, origin)
     desktop = bool(job.get('deploymentId') and store.deployment_metadata(job['deploymentId'])['role'] == 'desktop')
     native = {}
     started_at = now(); started = time.monotonic()
@@ -58,7 +58,7 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
                 'consumptionConfirmed': False}
         native['process'] = {**(job.get('process') or {}), **{k: after[k] for k in ('instanceId', 'generation', 'windowId')}}
     value = publish(store, job, 'screenshot', data, width=width, height=height,
-        observer=observer, scope='assigned-vm-screen', source='qmp-png', guestRevision=(state or {}).get('guiRevision'),
+        observer=observer, captureOrigin=origin, vmId=target['vmId'], scope='assigned-vm-screen', source='qmp-png', guestRevision=(state or {}).get('guiRevision'),
         windowVisible=bool((state or {}).get('windowVisible')), windowFocused=bool((state or {}).get('windowFocused')), **native)
     # Publication has fsynced these exact immutable bytes and their receipt.
     return response(value, data)

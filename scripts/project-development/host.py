@@ -449,7 +449,8 @@ class Host:
                 if job['kind'] == 'execution' and job['state'] == 'running':
                     result = await call(job['id'], message)
                 elif op == 'capture' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown'):
-                    admit(store, job['id'], message); result = await capture(store, job, observer={**owner, 'model': authorization['model']} if owner else None)
+                    admit(store, job['id'], message); result = await capture(store, job, observer={**owner, 'model': authorization['model']} if owner else None,
+                        origin={'requestId':message['requestId'],'operation':'capture'} if owner else None)
                     finish(store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 else: raise DevelopmentFault('This job has no active guest input target.')
                 if result.get('error'): raise DevelopmentFault(result['error'], result.get('code', 409))
