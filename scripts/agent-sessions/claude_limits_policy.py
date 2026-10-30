@@ -43,7 +43,7 @@ def usage_sample(value,provider,request_id,received_at=None):
     sample={'schema':1,'source':SOURCE,'receivedAt':received_at,'providerId':provider['id'],
         'providerRevision':provider['revision'],'accountIdentity':account_identity(provider.get('account')),
         'requestId':request_id,'plan':None,'coverage':'unavailable','windows':[],
-        'extraUsageEnabled':None,'message':'Native subscription usage is unavailable.'}
+        'extraUsageEnabled':None,'serverMetersReported':False,'message':'Native subscription usage is unavailable.'}
     if (not isinstance(value,dict) or value.get('subscription_type') not in ('pro','max')
         or value.get('rate_limits_available') is not True or not sample['accountIdentity']
         or provider.get('status')!='connected' or value['subscription_type']!=provider['account']['plan']):return sample
@@ -55,6 +55,7 @@ def usage_sample(value,provider,request_id,received_at=None):
         rows=limits.get('limits')
         if rows is not None:
             if not isinstance(rows,list) or len(rows)>64:raise ValueError()
+            sample['serverMetersReported']=True
             for index,row in enumerate(rows):
                 if (not isinstance(row,dict) or not all(isinstance(row.get(k),str) and 0<len(row[k])<=120 and not any(ord(c)<32 for c in row[k]) for k in ('kind','group','severity'))
                     or type(row.get('is_active')) is not bool or not number(row.get('percent'))):raise ValueError()
@@ -79,7 +80,7 @@ def usage_sample(value,provider,request_id,received_at=None):
         extra=limits.get('extra_usage')
         if isinstance(extra,dict) and type(extra.get('is_enabled')) is bool:sample['extraUsageEnabled']=extra['is_enabled']
     except (ValueError,TypeError,OverflowError):
-        sample.update(coverage='unavailable',windows=[],extraUsageEnabled=None,message='The pinned native usage schema could not be confirmed.')
+        sample.update(coverage='unavailable',windows=[],extraUsageEnabled=None,serverMetersReported=False,message='The pinned native usage schema could not be confirmed.')
         return sample
     complete=all(any(w['id']==key and w['usedPercent'] is not None for w in sample['windows']) for key in ('five_hour','seven_day'))
     sample['coverage']='available' if complete else 'partial'
@@ -112,7 +113,7 @@ def admission(sample,provider,native_auth,sdk_account,binding,started_at,model_s
     from claude_provider_store import valid_account
     from claude_auth import status_result
     reason='The original native subscription/limit proof is unavailable.'
-    deny=lambda message:{'allowed':False,'reason':message}
+    deny=lambda message,code='proof_unavailable':{'allowed':False,'reason':message,'reasonCode':code}
     if not number(started_at,10**12) or not 0<=time.time()-started_at<=20:return deny('The native limit observation is stale. Check subscription limits again.')
     if not isinstance(native_auth,dict) or set(native_auth)!={'output','returncode'}:return deny(reason)
     try:status,account,_=status_result(native_auth['output'],native_auth['returncode'])
@@ -125,13 +126,14 @@ def admission(sample,provider,native_auth,sdk_account,binding,started_at,model_s
     if (sdk_account.get('apiProvider')!='firstParty' or sdk_account.get('apiKeySource') not in (None,'none')
         or sdk_account.get('tokenSource') not in (None,'claude.ai') or plan!=account['plan']
         or sdk_account.get('email')!=account['email']):return deny(reason)
-    if sample.get('extraUsageEnabled') is not False:return deny('Paid extra usage is enabled or unconfirmed. Disable it in your Claude account before using this subscription.')
+    if sample.get('extraUsageEnabled') is not False:return deny('Paid extra usage is enabled or unconfirmed. Disable it in your Claude account before using this subscription.','overage_unconfirmed')
+    if sample.get('serverMetersReported') is not True:return deny('Fresh native server meters could not be confirmed. No model prompt was submitted.')
     if sample.get('coverage')!='available':return deny('Native subscription windows are incomplete. No model prompt was submitted.')
     for row in sample['windows']:
         relevant=(row['scope']=='account' or row['scope']==model_scope or row['scope'] in ('oauth-apps','native-model-label','native-meter')
             or model_scope not in ('opus','sonnet') and row['scope'] in ('opus','sonnet'))
         if relevant and row['usedPercent'] is not None and row['usedPercent']>=100:
-            return deny('The reported '+row['label']+' subscription window is exhausted. Check its reset time and resume explicitly.')
+            return deny('The reported '+row['label']+' subscription window is exhausted. Check its reset time and resume explicitly.','subscription_limit')
     import uuid
     return {'allowed':True,'extraUsageDisabled':True,'authMethod':'claude.ai','apiProvider':'firstParty',
         'subscriptionType':plan,'providerId':provider['id'],'nativeSessionId':binding['nativeSessionId'],

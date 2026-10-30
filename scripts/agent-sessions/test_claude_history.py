@@ -34,8 +34,15 @@ class NativeHistory(unittest.TestCase):
             original_id=created['runtime']['nativeSessionId']
             self.assertEqual(history.create(provider)['runtime']['nativeSessionId'],original_id)
             run,_=admit(store,fixture.sid,fixture.data,fixture.providers)
-            self.assertEqual(history.prepare(run['id'])['mode'],'new')
+            opening=history.prepare(run['id']);self.assertEqual(opening['mode'],'new')
             with self.assertRaises(ProjectFault):history.prepare(run['id'])
+            closed={'nativeSessionId':original_id,'studioRequestId':fixture.data['requestId'],
+                'promptSubmitted':False,'resultId':None,'originalStreamConfirmed':True}
+            self.assertFalse(history.unstarted(run['id'],opening,{**closed,'promptSubmitted':True}))
+            self.assertFalse(history.unstarted(run['id'],opening,{**closed,'studioRequestId':str(uuid.uuid4())}))
+            self.assertTrue(history.unstarted(run['id'],opening,closed))
+            self.assertEqual(history.get()['phase'],'allocated')
+            self.assertEqual(history.prepare(run['id'])['mode'],'new')
             root=history.paths()['history'];folder=root/'-inference';folder.mkdir(mode=0o700)
             path=folder/(original_id+'.jsonl')
             native_record={'type':'user','sessionId':original_id,'uuid':str(uuid.uuid4()),'message':{'role':'user','content':'Own storage fixture'}}

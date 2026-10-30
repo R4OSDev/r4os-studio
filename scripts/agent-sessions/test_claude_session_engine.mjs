@@ -16,7 +16,7 @@ class Feed {
     }
   }
 }
-function fixture(changes = {}) {
+function fixture(changes = {}, engineOptions = {}) {
   const frozen = { providerId: randomUUID(), studioSessionId: randomUUID(), nativeSessionId: randomUUID(), runId: randomUUID(),
     requestId: randomUUID(), ownerId: randomUUID(), ownerType: 'project', toolProfile: 'studio-tools-v14', model: 'owned-model' };
   const feed = new Feed(), sent = [], received = [], grants = [];
@@ -27,15 +27,28 @@ function fixture(changes = {}) {
     return Object.assign(feed, { initializationResult: async () => ({ claude_code_version: '2.1.312', hooks_applied: true }),
       mcpServerStatus: async () => [{ name: 'studio', status: 'connected', source: 'dynamic', tools: [{ name: 'read_file' }] }],
       accountInfo: async () => ({ tokenSource: 'claude.ai', apiProvider: 'firstParty', subscriptionType: 'pro' }),
-      interrupt: async () => { interrupts++; } });
+      interrupt: async () => { interrupts++; if (sent.length) feed.emit({ type: 'result', subtype: 'error_during_execution',
+        uuid: randomUUID(), session_id: frozen.nativeSessionId, is_error: true }); } });
   } };
   const host = { authorize: async value => { grants.push(value); return true; }, receive: async value => received.push(value),
     admit: async () => ({ allowed: false }), closeAdmission: async () => {}, ...changes };
   const engine = new ClaudeSessionEngine(sdk, { mode: 'new', cwd: '/inference', home: '/home/studio', config: '/config',
-    executable: '/pinned/claude', tools: ['read_file'], systemPrompt: 'Owned Studio instructions.' }, frozen, host);
+    executable: '/pinned/claude', tools: ['read_file'], systemPrompt: 'Owned Studio instructions.', ...engineOptions }, frozen, host);
   return { frozen, feed, sent, received, grants, engine, options, interrupts: () => interrupts };
 }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+await test('canonical native model and selected effort cannot silently change', async () => {
+  const f = fixture({ admit: async ({ binding }) => admission(binding) }, { resolvedModel: 'owned-model', effort: 'high' });
+  try {
+    await f.engine.initialize(); await f.engine.send('Own explicit input'); await tick();
+    assert.equal(f.options.effort, 'high'); assert.equal(f.options.env.CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP, '1');
+    const tool = { hook_event_name: 'PreToolUse', session_id: f.frozen.nativeSessionId, tool_name: 'mcp__studio__read_file',
+      tool_use_id: 'own-model-bound-tool', tool_input: { path: 'own.c' }, mcp_server: { name: 'studio', source: 'dynamic' } };
+    assert.equal((await f.engine.beforeTool(tool)).hookSpecificOutput.permissionDecision, 'deny');
+    f.feed.emit({ type: 'stream_event', session_id: f.frozen.nativeSessionId, event: { type: 'message_start', message: { id: 'own-provider-message', model: 'unrequested-model' } } });
+    await tick(); assert.equal(f.engine.state, 'unconfirmed'); assert.equal(f.grants.length, 0);
+  } finally { await f.engine.close(); }
+});
 await test('display projection excludes raw thinking, signatures, images and private provider errors', () => {
   const native = { type: 'assistant', uuid: randomUUID(), session_id: randomUUID(), message: { id: 'owned-message',
     content: [{ type: 'thinking', thinking: 'private reasoning', signature: 'private signature' },

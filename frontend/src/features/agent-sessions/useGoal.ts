@@ -26,7 +26,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
   const [checkAgain, setCheckAgain] = useState(false), [refresh, setRefresh] = useState(0);
   const generation = useRef(0), inflight = useRef(false);
-  const apiSession = !!session?.engine.api;
+  const apiSession = !!session?.engine.api || session?.engine.kind === 'claude-code';
   useEffect(() => { const current = ++generation.current; return () => { generation.current = current + 1; }; }, [base]);
   const observe = useCallback((value: SessionGoal) => {
     if (value.sessionId !== sessionId || value.owner.id !== projectId || value.owner.type !== scope)

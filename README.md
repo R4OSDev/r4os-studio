@@ -1,3 +1,12 @@
+## Native Claude lifecycle guards (0.8.23, partial implementation)
+
+Original Stop/results and explicit resume, fresh native subscription/extra-usage
+admission, verified-account holds, canonical model/effort binding and private
+deduplicated usage snapshots are implemented. Public model execution, GOAL,
+queue and complete usage/lifetime accounting remain unavailable pending their
+qualification. Synthetic native protocol checks do not replace real account
+acceptance. Details: [Claude-Lifecycle.md](Claude-Lifecycle.md).
+
 ## Native Claude model metadata (0.8.22, partial implementation)
 
 The provider can now read/cache native model identifiers, resolved aliases and

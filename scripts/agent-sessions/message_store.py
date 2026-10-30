@@ -111,6 +111,8 @@ class Messages:
                     raise ProjectFault('This request ID belongs to a different message.', 409)
                 return self.present(previous), False
             session = self.store.get(sid)
+            if session['engine'].get('kind')=='claude-code':
+                raise ProjectFault('Queue and direct-message handoff are not qualified for this native Claude runtime. Your input was preserved; wait for the current run and send explicitly.',409)
             if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.', 409)
             if data['mode'] == 'steer':
                 run = self.store.db.execute('SELECT * FROM runs WHERE id=? AND session_id=? AND busy=1', (target['runId'], sid)).fetchone()

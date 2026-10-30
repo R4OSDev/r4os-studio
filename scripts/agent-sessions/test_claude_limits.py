@@ -14,7 +14,7 @@ class NativeLimits(unittest.TestCase):
             'orgId':'own-org','orgName':'Own fixture','plan':'pro','authMethod':'claude.ai','apiProvider':'firstParty','checkedAt':'own receipt'}}
         self.data={'subscription_type':'pro','rate_limits_available':True,'rate_limits':{
             'five_hour':{'utilization':25,'resets_at':'2026-10-30T15:00:00Z'},
-            'seven_day':{'utilization':50,'resets_at':None},'extra_usage':{'is_enabled':False}},
+            'seven_day':{'utilization':50,'resets_at':None},'extra_usage':{'is_enabled':False},'limits':[]},
             'behaviors':{'private_unrelated_history':'must never persist'},'session':{'total_cost_usd':123456}}
         self.auth={'returncode':0,'output':json.dumps({'loggedIn':True,'authMethod':'claude.ai','apiProvider':'firstParty',
             'configDirectory':'/config','subscriptionType':'pro','email':'own@example.test','orgId':'own-org','orgName':'Own fixture'})}

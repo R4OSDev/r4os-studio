@@ -40,6 +40,7 @@ export function sessionEnvironment(options) {
     CLAUDE_CODE_DISABLE_CRON: '1', CLAUDE_CODE_DISABLE_ARTIFACT: '1', CLAUDE_CODE_DISABLE_ADVISOR_TOOL: '1',
     CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1',
     CLAUDE_CODE_DISABLE_FAST_MODE: '1', CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: '1',
+    CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP: '1',
     CLAUDE_CODE_DISABLE_FILE_MENTIONS: '1', CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: '1' };
 }
 
@@ -69,12 +70,16 @@ export class ClaudeSessionEngine {
     if (!Array.isArray(options.tools) || tools.size !== options.tools.length || tools.size > 128
       || [...tools].some(name => !/^[a-z][a-z0-9_]{0,79}$/.test(name))) throw Error('Invalid frozen Studio tools.');
     this.tools = tools;
+    this.expectedModel = options.resolvedModel ?? null; this.modelObserved = false;
+    if (this.expectedModel !== null && this.expectedModel !== this.binding.model) throw Error('The frozen native model identifier changed.');
+    if (options.effort !== undefined && options.effort !== '' && !['low','medium','high','xhigh','max'].includes(options.effort)) throw Error('Invalid frozen native effort.');
     this.enveloped = new Set(options.envelopedTools ?? []);
     if ([...this.enveloped].some(name => !this.tools.has(name))) throw Error('Invalid frozen Studio argument envelope.');
     this.query = sdk.query({ prompt: this.inputs.stream(), options: {
       cwd: options.cwd, pathToClaudeCodeExecutable: options.executable, env: sessionEnvironment(options),
       ...(options.mode === 'new' ? { sessionId: this.binding.nativeSessionId, title: 'Studio session' } : { resume: this.binding.nativeSessionId }),
       persistSession: true, model: this.binding.model, systemPrompt: { type: 'custom', prompt: options.systemPrompt, snapshot: true },
+      ...(options.effort ? { effort: options.effort } : {}),
       tools: [], disallowedTools: [...sdk.BUILTIN_TOOL_NAMES], settingSources: [], skills: [], plugins: [], agents: {},
       settings: { precomputeCompactionEnabled: false },
       strictMcpConfig: true, permissionMode: 'default', enableFileCheckpointing: false, includePartialMessages: true,
@@ -98,7 +103,7 @@ export class ClaudeSessionEngine {
     const args = tool && this.enveloped.has(tool) ? wireInput && Object.keys(wireInput).length === 1
       && Object.hasOwn(wireInput, 'request') ? wireInput.request : null : wireInput;
     let allowed = false;
-    if (this.state === 'active' && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
+    if (this.state === 'active' && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
       && tool && this.tools.has(tool) && opaque(input.tool_use_id) && !input.agent_id
       && input.mcp_server?.name === 'studio' && input.mcp_server.source === 'dynamic'
       && args && typeof args === 'object' && !Array.isArray(args) && bounded(args, 131072)) {
@@ -166,6 +171,11 @@ export class ClaudeSessionEngine {
     try {
       for await (const message of this.query) {
         if (!message || typeof message !== 'object' || !bounded(message, 16 * 1024 * 1024)) throw Error('Native Claude frame exceeds its bound.');
+        const reportedModel = message.message?.model ?? message.event?.message?.model;
+        if (this.expectedModel && reportedModel != null) {
+          if (reportedModel !== this.expectedModel) throw Error('The native model response differs from the frozen selection. No replacement model was accepted.');
+          this.modelObserved = true;
+        }
         // Image tool results can be large; identity checks never duplicate
         // those bytes into Studio events or call-receipt metadata.
         const parts = Array.isArray(message.message?.content) ? message.message.content : [];
@@ -195,7 +205,16 @@ export class ClaudeSessionEngine {
     if (this.state === 'closed' || this.state === 'stopping') return;
     this.state = 'stopping'; this.grants.clear();
     await this.host.closeAdmission(this.binding);
-    try { await deadline(this.query.interrupt(), 5000); } finally { this.inputs.close(); this.query.close(); }
+    try { await deadline(this.query.interrupt(), 5000); } finally {
+      this.inputs.close();
+      // A native interrupt acknowledgement is not its original terminal
+      // result. Drain that result before closing; otherwise a clean Stop can
+      // unnecessarily leave an unresumable, unconfirmed transcript.
+      if (this.sent && !this.result && !this.error) {
+        try { await deadline(this.pump, 6000); } catch { /* Missing result stays protected. */ }
+      }
+      this.query.close();
+    }
   }
 
   async close() {

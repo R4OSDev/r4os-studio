@@ -126,3 +126,29 @@ class ClaudeHistory:
         saved=self.get()
         if saved['activeRunId']==identity(run_id):
             with self.store.db:self.save({**saved,'phase':'unknown','activeRunId':None})
+
+    def unstarted(self,run_id,prepared,receipt):
+        """Revoke only a positively closed opening with zero submitted input.
+
+        Unchanged original bytes and no tool intents are mandatory. This does
+        not recover an interrupted model execution or create a new native ID.
+        """
+        run_id=identity(run_id);saved=self.get()
+        from run_store import get_run
+        request_id=get_run(self.store,run_id)['request_id']
+        valid=(saved['activeRunId']==run_id and saved['phase']=='opening' and isinstance(prepared,dict)
+            and prepared.get('mode') in ('new','resume') and isinstance(receipt,dict)
+            and prepared.get('runtime')==saved['runtime']
+            and (prepared['mode']=='new' and not saved['inventory'] and saved['lastReceipt'] is None
+                or prepared['mode']=='resume' and prepared.get('historyConfirmed') is True and bool(saved['inventory']) and bool(saved['lastReceipt']))
+            and receipt.get('nativeSessionId')==saved['runtime']['nativeSessionId']
+            and receipt.get('studioRequestId')==request_id
+            and receipt.get('promptSubmitted') is False and receipt.get('resultId') is None
+            and receipt.get('originalStreamConfirmed') is True)
+        if not valid:return False
+        pending=self.store.db.execute('SELECT 1 FROM tools WHERE run_id=? LIMIT 1',(run_id,)).fetchone()
+        try:unchanged=inventory(self.paths()['history'])==saved['inventory']
+        except (OSError,ProjectFault):return False
+        if pending or not unchanged:return False
+        with self.store.db:self.save({**saved,'phase':'allocated' if prepared['mode']=='new' else 'ready','activeRunId':None})
+        return True

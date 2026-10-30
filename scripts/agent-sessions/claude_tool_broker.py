@@ -38,12 +38,12 @@ class ClaudeToolBroker:
             return failure('This call does not belong to the original active Studio run.')
         operation=value.get('operation')
         if operation=='admit':
-            if (set(value)!={'operation','binding','capability','account'} or not isinstance(value.get('capability'),str)
+            if (set(value) not in ({'operation','binding','capability','account'},{'operation','binding','capability','account','usage'}) or not isinstance(value.get('capability'),str)
                 or not hmac.compare_digest(value['capability'],self.capability) or not isinstance(value.get('account'),dict)
                 or not await self.current(self.binding)):
                 return {'allowed':False}
             if self.admit is None:return {'allowed':False,'reason':'Native subscription limit admission is not yet qualified.'}
-            return await self.admit(self.binding,value['account'])
+            return await self.admit(self.binding,value['account'],value.get('usage'))
         fields={'operation','binding','tool','nativeToolUseId','arguments'}
         if operation=='authorize':fields.add('capability')
         if (set(value)!=fields or operation not in ('authorize','call') or not identifier(value.get('nativeToolUseId'))

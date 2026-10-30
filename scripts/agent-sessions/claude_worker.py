@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import time
 
 from worker import Worker,reconcile_items
 from claude_history import ClaudeHistory
@@ -27,6 +28,14 @@ class ClaudeWorker(Worker):
         self.active_provider=None;self.blocks={};self.snapshots=set();self.block_sequence=0
         self.socket_root=Path('/run/r4os-studio-agents')/('claude-'+self.run_id)
         self.credential_lease=None;self.credential_worker=None
+        self.admission_started_at=None
+        self.admission_denial=None
+
+    async def admit_native(self,binding,account,usage):
+        from claude_admission import admit
+        result=await admit(self,binding,account,usage)
+        if result.get('allowed') is not True:self.admission_denial=result
+        return result
 
     async def current(self,binding):
         row=get_run(self.store,self.run_id)
@@ -135,10 +144,16 @@ class ClaudeWorker(Worker):
                     'usedPercent':None,'resetsAt':None,'overageEnabled':None,'usingOverage':False}
             observation.update(studioSessionId=self.session_id,providerId=self.config['providerId'],runId=self.run_id)
             observation['accountIdentity']=self.config.get('claudeProvider',{}).get('accountIdentity')
+            from claude_quota_store import QuotaStore
+            if observation['accountIdentity']:QuotaStore(self.manifest['providers']).record(self.config['providerId'],observation=observation)
             event(self.store,self.session_id,self.run_id,'claudeQuota',observation)
         elif kind=='result':
             self.native_result=native
-            if not self.stopping:
+            from claude_usage_receipts import record as usage_receipt
+            usage_receipt(self,native)
+            if self.stopping:
+                if self.outcome not in ('completed','failed'):self.outcome='unknown' if self.uncertain_effect else 'interrupted'
+            else:
                 self.outcome='completed' if native.get('subtype')=='success' and not native.get('is_error') else 'failed'
                 if self.outcome=='failed':self.error='The original native Claude execution ended with an error.'
             self.done.set()
@@ -158,9 +173,11 @@ class ClaudeWorker(Worker):
                     self.sent=True;transition(self.store,self.run_id,'running')
                 elif kind=='unconfirmed':
                     self.sent=self.sent or value.get('promptSubmitted') is True
-                    self.error=value['message'];self.outcome='unknown' if self.sent else 'failed';self.done.set();self.ready.set()
+                    self.error=(self.admission_denial or {}).get('reason') or value['message']
+                    self.outcome='unknown' if self.sent else ('interrupted' if self.stopping else 'failed');self.done.set();self.ready.set()
                 elif kind=='closed':
                     if value.get('nativeSessionId')!=self.config['engine']['claude']['nativeSessionId']:raise ValueError('Native closure session changed.')
+                    if value.get('studioRequestId')!=self.row['request_id']:raise ValueError('Original native closure request changed.')
                     self.native_receipt=value;self.closed.set()
             if not self.closed.is_set():raise ValueError('Original native worker closed without its final receipt.')
         except Exception:
@@ -218,7 +235,8 @@ class ClaudeWorker(Worker):
             binding={'providerId':self.config['providerId'],'studioSessionId':self.session_id,'nativeSessionId':frozen['nativeSessionId'],
                 'runId':self.run_id,'requestId':self.row['request_id'],'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
                 'model':self.config['model'],'toolProfile':self.config['engine']['profile']}
-            self.broker=ClaudeToolBroker(self.socket_root,binding,tools_for(self.config['engine']['profile']),self.current,self.effect)
+            self.broker=ClaudeToolBroker(self.socket_root,binding,tools_for(self.config['engine']['profile']),self.current,self.effect,
+                admit=self.admit_native)
             await self.broker.start()
             from claude_namespace import prepare
             args=prepare(self,history,prepared,self.broker)
@@ -229,6 +247,7 @@ class ClaudeWorker(Worker):
             await self.command('initialize')
             await asyncio.wait_for(self.ready.wait(),20)
             if self.done.is_set() or self.stopping:raise ProjectFault('The original native Claude startup was not confirmed.',409)
+            self.admission_started_at=time.time()
             await self.command('send',text=request_text(self.store,self.run_id))
             await self.done.wait()
         except Exception as error:
@@ -240,7 +259,9 @@ class ClaudeWorker(Worker):
                 from claude_run_leases import ClaudeRunLeases
                 ClaudeRunLeases(self.manifest['providers']).finish_lease(self.credential_lease,self.credential_worker,confirmed or self.native is None)
             if prepared:
-                if confirmed and self.native_result and self.native_result.get('uuid')==self.native_receipt.get('resultId') and not self.uncertain_effect:
+                if confirmed and not self.sent and not self.uncertain_effect and history.unstarted(self.run_id,prepared,self.native_receipt):
+                    pass  # No input, no effects and byte-identical history; original UUID remains usable.
+                elif confirmed and self.native_result and self.native_result.get('uuid')==self.native_receipt.get('resultId') and not self.uncertain_effect:
                     receipt={'nativeSessionId':prepared['runtime']['nativeSessionId'],'nativeResultId':self.native_receipt['resultId'],
                         'studioRequestId':self.row['request_id'],'subtype':self.native_receipt['subtype'],'nativeClosed':True,
                         'historyReadable':self.native_receipt['historyReadable']}

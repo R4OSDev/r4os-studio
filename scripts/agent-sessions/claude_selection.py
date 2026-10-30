@@ -32,6 +32,13 @@ def freeze(store,sid,data,providers,snapshot):
         raise ProjectFault('This native Claude input/lifecycle capability has not been qualified.',409)
     snapshot['claudeProvider']={'providerId':provider['id'],'providerRevision':provider['revision'],
         'runtimeProfileId':provider['runtimeProfileId'],'accountIdentity':history['accountIdentity']}
+    from claude_auth_store import AuthStore
+    catalog=AuthStore(providers).latest_catalog(provider['id'])
+    model=next((m for m in catalog['models'] if m['id']==snapshot['model']),None) if catalog else None
+    if model:
+        snapshot['claudeModel']={'id':model['id'],'resolvedModel':model['resolvedModel'],'efforts':model['efforts'],
+            'effort':snapshot['effort'],'imageInput':model['imageInputs'],'contextWindow':model['contextWindow'],
+            'catalogRequestId':catalog['requestId'],'runtimeProfileId':catalog['runtimeProfileId']}
     snapshot['claudeRunId']=str(uuid.uuid5(uuid.NAMESPACE_URL,'r4os-studio-claude-run:'+encode(
         {'owner':{'type':store.owner_type,'id':store.owner_id},'session':identity(sid),'request':identity(data['requestId'])})))
 

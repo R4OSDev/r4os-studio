@@ -43,6 +43,8 @@ def prepare(worker,history,prepared,broker):
     from instructions import compose
     prompt=compose(config)+'\n\nSTUDIO CLAUDE TOOL CONTRACT: Use only mcp__studio__ tools. Native file, shell, web, agent, memory, scheduler, plugin and computer tools are unavailable. Studio owns tool permissions and original receipts; never repeat an unconfirmed effect. The host alone owns native authentication, limits and resume.'
     write_new(root/'runtime.json',{'schema':1,'binding':binding,'mode':prepared['mode'],'historyConfirmed':prepared['historyConfirmed'],
+        'effort':config.get('claudeModel',{}).get('effort',''),
+        'resolvedModel':config.get('claudeModel',{}).get('resolvedModel'),
         'tools':[t['name'] for t in tools],'envelopedTools':[t['name'] for t in tools if t['inputSchema'].get('oneOf') or t['inputSchema'].get('anyOf')],
         'systemPrompt':prompt,'capability':broker.capability})
     source=Path(__file__).resolve().parent

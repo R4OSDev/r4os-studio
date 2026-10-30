@@ -64,7 +64,14 @@ async function main() {
   const engine = new ClaudeSessionEngine(sdk, { ...config, cwd: '/inference', home: '/home/studio', config: '/config',
     executable: '/runtime/native/claude' }, config.binding, {
     authorize: value => admissionClosed ? false : broker({ ...value, operation: 'authorize', capability: config.capability }),
-    admit: ({ binding, account }) => admissionClosed ? { allowed: false } : broker({ operation: 'admit', binding, account, capability: config.capability }),
+    admit: async ({ binding, query }) => {
+      if (admissionClosed) return { allowed: false };
+      const reported = await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+      const account = await query.accountInfo();
+      if (admissionClosed) return { allowed: false };
+      return broker({ operation: 'admit', binding, account, usage: { subscription_type: reported?.subscription_type,
+        rate_limits_available: reported?.rate_limits_available, rate_limits: reported?.rate_limits }, capability: config.capability });
+    },
     closeAdmission: async () => { admissionClosed = true; },
     receive: async value => { const native = publicFrame(value.native); if (native) emit({ event: 'native', identity: value.identity, native }); },
   });
@@ -100,7 +107,7 @@ async function main() {
       const info = await sdk.getSessionInfo(config.binding.nativeSessionId, { dir: '/inference' });
       historyReadable = info?.sessionId === config.binding.nativeSessionId;
     }
-    emit({ event: 'closed', nativeSessionId: config.binding.nativeSessionId, promptSubmitted: engine.sent,
+    emit({ event: 'closed', nativeSessionId: config.binding.nativeSessionId, studioRequestId: config.binding.requestId, promptSubmitted: engine.sent,
       resultId: engine.result?.uuid ?? null, subtype: engine.result?.subtype ?? null, historyReadable,
       originalStreamConfirmed: !engine.error });
   }
