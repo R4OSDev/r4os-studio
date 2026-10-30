@@ -94,6 +94,12 @@ complete/blocked reports, human controls, queues and unknown tools win. Folder
 activity excludes waiting and submission admission; stopping stays visible until
 its original process ends.
 
+A transport failure after a positive retry-input receipt remains Unknown. The
+earlier failed result can close only an attempt proved not to have submitted a
+new input; it must never become the result of an acknowledged continuation.
+Both a lost echo and a transport failure after the echo were exercised with the
+actual native runtime, retaining protected history and the same clock's prefix.
+
 ### Pinned Claude stream and error facts
 
 The unchanged runtime is Claude Code2.1.312 / Agent SDK0.3.312. The CLI exports
@@ -114,8 +120,10 @@ information. Absence of that event does not prove no internal resend.
 
 General retry/watchdog/nonstreaming/model-fallback settings stay unchanged.
 In particular, a separate one-time first-party dispatch-header fallback can
-resubmit after503 even with the general retry budget at zero. It must be
-accounted for separately. General jitter/backoff or overloaded-only delay knobs
+resubmit after503 even with the general retry budget at zero. This is bounded
+per failing native request chain: the exhaustion case had six failing chains
+(original plus five continuations) and six such resends. It must be accounted
+for separately. General jitter/backoff or overloaded-only delay knobs
 are not substituted for the shared fixed60-second/five-attempt contract.
 
 The exact empty string passes the whitespace guard but becomes `(no content)`.
@@ -136,8 +144,22 @@ recovery clears only its own stale provider error; other errors remain intact.
 
 ### Still required before enabling
 
-Counter exhaustion/progress reset, Stop/Queue and admission/result-loss races,
-restore and shared-account cases still require qualification. Actual native
+The native exhaustion case confirmed exactly five additional inputs, all five
+actual60-second deadlines and no sixth claim. Model messages/tool results stayed
+unchanged; the original logical step and Play clock survived more than300seconds
+of waiting. A separate read-tool progress case reset the attempt counter while
+keeping monotone claim ordinals and the same Play. Stop and a newly queued
+message both cancelled waiting before another admission. Fresh exhausted quota
+denied the next input with a positive original no-input closure and retained hold.
+The queue case verifies preemption and saved bytes, not subsequent queue dispatch.
+
+Native Codex0.163.0 also passed API GOAL retries for project/Responses and
+skill/Chat Completions: one original effect, fresh original API lease, status-only
+automatic Goal activation after60seconds, unchanged Play/Run/thread/frozen bytes,
+one Play clock without retry waiting, confirmed completion and released lease.
+
+Further final-result-loss/control races, recovery/account-staleness coverage and
+the capture-producer/old-queue integration remain before activation. Actual native
 ordinary continuation, active GOAL retry, Live-Play after a retry and Pause during
 waiting passed four targeted cases with the unmodified native runtime. GOAL
 waited60.45seconds while its single Play clock recorded1.38seconds of work;

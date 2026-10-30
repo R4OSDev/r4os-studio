@@ -311,7 +311,7 @@ class ClaudeRetry:
             raise
         except Exception:
             if not self.w.done.is_set():
-                if self.state == 'submitting': self.unknown()
+                if self.state in ('submitting', 'continuing'): self.unknown()
                 else: await self.finish_failed('The original retry admission could not be retained.')
 
     async def submit(self, claim):
@@ -400,6 +400,8 @@ class ClaudeRetry:
             self.w.done.set()
 
     async def settle_failed_result(self):
+        if self.receipt:
+            raise ProjectFault('A confirmed continuation input cannot be closed with its earlier failed result.', 409)
         runtime = self.goal()
         if runtime:
             existing = runtime.journal.read()['steps'][-1]['nativeResult']
