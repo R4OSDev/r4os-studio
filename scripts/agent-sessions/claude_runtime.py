@@ -12,6 +12,23 @@ def profile():
     return json.loads((Path(__file__).resolve().parents[2]/'shared/claude-subscription-profile.json').read_text())
 
 
+def text_profile():
+    """Studio adapter qualification, separate from the immutable SDK install."""
+    try:
+        value=json.loads((Path(__file__).resolve().parents[2]/'shared/claude-text-profile.json').read_text())
+        runtime=profile()
+        if (value.get('schema')!=1 or value.get('id')!='studio-claude-text-0.3.312-v1'
+            or value.get('runtimeProfileId')!=runtime['id'] or value.get('nativeVersion')!=runtime['native']['version']
+            or value.get('nativeSha256')!=runtime['native']['files']['claude']['sha256']
+            or value.get('sdkVersion')!=runtime['sdk']['version'] or value.get('sdkArchiveSha256')!=runtime['sdk']['archiveSha256']
+            or any(value.get(k) is not True for k in ('textInput','nativeInputReceiptRequired','fixedModelRequired',
+                'freshSubscriptionAdmissionRequired','paidExtraUsageMustBeDisabled'))
+            or value.get('imageInput') is not False or value.get('fastMode') is not False):raise ValueError()
+        return value
+    except (OSError,ValueError,KeyError,TypeError):
+        raise ProjectFault('The qualified Claude text adapter is unavailable. Existing conversations were preserved.',503) from None
+
+
 def verify(path,expected=None):
     expected=expected or profile();path=Path(path).absolute()
     try:

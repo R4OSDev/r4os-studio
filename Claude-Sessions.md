@@ -63,7 +63,8 @@ original result and PNG delivery. A repeated tool ID across two workers causes
 one fixture effect. These are protocol checks, not a real subscription login,
 billing proof, R4OS project build or guest test.
 
-Model admission remains closed by default. The worker cannot send a model
+For fresh text catalogs,0.8.52 replaces the global catalog gate with the
+qualified Studio text adapter; old metadata stays unavailable. The worker cannot send a model
 prompt without the separate positive native account and disabled-overage
 admission proof. Quota/overage policy (0.8.21), public model eligibility (0.8.22)
 and final Goal/queue/recovery/deletion/account acceptance (0.8.23 and open

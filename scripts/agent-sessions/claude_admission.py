@@ -8,7 +8,7 @@ import time
 from claude_auth import auth_home,command
 from claude_auth_store import AuthStore
 from claude_limits_policy import usage_sample,admission
-from claude_runtime import installed
+from claude_runtime import installed,text_profile
 from store import ProjectFault
 
 
@@ -48,7 +48,9 @@ async def admit(worker,binding,account,usage):
     model=next((m for m in catalog['models'] if m['id']==binding['model']),None) if catalog else None
     if not model or model['resolvedModel']!=binding['model']:
         return {'allowed':False,'reason':'The original native model catalog binding is unavailable.'}
-    if catalog.get('sessionModelsQualified') is not True or model.get('available') is not True:
+    if (catalog.get('sessionModelsQualified') is not True or model.get('available') is not True
+        or catalog.get('sessionProfileId')!=text_profile()['id']
+        or worker.config.get('claudeSessionProfileId')!=catalog.get('sessionProfileId')):
         return {'allowed':False,'reason':'The original native model execution profile is not qualified.'}
     frozen=worker.config.get('claudeModel')
     if (not frozen or frozen.get('id')!=model['id'] or frozen.get('resolvedModel')!=model['resolvedModel']

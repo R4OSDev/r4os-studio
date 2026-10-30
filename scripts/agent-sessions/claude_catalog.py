@@ -2,12 +2,11 @@
 import re
 
 from claude_provider_store import account_identity
-from claude_runtime import profile
+from claude_runtime import profile,text_profile
 from session_store import now
 from store import ProjectFault
 
 EFFORTS=('low','medium','high','xhigh','max')
-SESSION_MODELS_QUALIFIED=False
 
 
 def identifier(value):
@@ -20,6 +19,7 @@ def display(value,maximum):
 
 def normalize(rows,provider,request_id):
     if not isinstance(rows,list) or not 1<=len(rows)<=256:raise ProjectFault('The native model catalog is unavailable.',503)
+    adapter=text_profile();qualified=provider.get('status')=='connected' and bool(account_identity(provider.get('account')))
     models={}
     for row in rows:
         if (not isinstance(row,dict) or not identifier(row.get('value')) or not display(row.get('displayName'),200)
@@ -37,7 +37,8 @@ def normalize(rows,provider,request_id):
             'defaultEffort':'','supportsEffort':row.get('supportsEffort'),
             'adaptiveThinking':row.get('supportsAdaptiveThinking'),'fastModeAdvertised':row.get('supportsFastMode'),
             'fastModeAvailable':False,'contextWindow':None,'imageInputs':'unknown','inputModalities':['text'],
-            'available':False,'unavailableReasons':['Native subscription model admission and lifecycle qualification are pending.'],
+            'available':qualified and canonical is not None,
+            'unavailableReasons':[] if qualified else ['Connect and check the native Claude subscription before selecting this model.'],
             'source':'native-supportedModels','entitlement':'not-verified-by-model-advertisement'}
         if canonical is None:fact['unavailableReasons'].append('The native client did not resolve this model to a fixed wire identifier.')
         if key in models:
@@ -49,5 +50,5 @@ def normalize(rows,provider,request_id):
         else:models[key]=fact
     return {'schema':1,'source':'claude-code-2.1.312/sdk-0.3.312/supportedModels','receivedAt':now(),
         'providerId':provider['id'],'providerRevision':provider['revision'],'accountIdentity':account_identity(provider.get('account')),
-        'runtimeProfileId':profile()['id'],'requestId':request_id,'models':list(models.values()),
-        'sessionModelsQualified':SESSION_MODELS_QUALIFIED}
+        'runtimeProfileId':profile()['id'],'sessionProfileId':adapter['id'],'requestId':request_id,'models':list(models.values()),
+        'sessionModelsQualified':qualified}

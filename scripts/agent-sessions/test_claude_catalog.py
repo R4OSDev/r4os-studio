@@ -26,7 +26,7 @@ class NativeCatalog(unittest.TestCase):
         self.assertEqual(model['entitlement'],'not-verified-by-model-advertisement')
         with self.assertRaises(ProjectFault):normalize([{**native,'supportedEffortLevels':['unlimited']}],provider,str(uuid.uuid4()))
 
-    def test_authenticated_cache_is_original_account_bound_and_cannot_enable_execution(self):
+    def test_authenticated_text_catalog_is_account_bound_and_does_not_grant_send_admission(self):
         f=fixtures.Runs('test_concurrent_retry_snapshot_stop_and_replay');f.setUp();self.addCleanup(f.tearDown)
         f.providers.chmod(0o700);auth=AuthStore(f.providers)
         with patch('claude_provider_store.installed',return_value={'id':profile()['id']}):
@@ -44,10 +44,17 @@ class NativeCatalog(unittest.TestCase):
         from session_store import providers,provider_models
         self.assertTrue(any(p['id']==provider['id'] for p in providers(f.providers)))
         selected=provider_models(f.providers,provider['id']);self.assertEqual(selected[0]['id'],'claude-own')
-        self.assertFalse(selected[0]['available'])
-        with f.open() as store,self.assertRaises(ProjectFault):
-            store.create({'requestId':str(uuid.uuid4()),'name':'Cannot bypass unavailable model','providerId':provider['id'],
-                'model':'claude-own','effort':''},f.providers)
+        self.assertTrue(selected[0]['available']);self.assertFalse(auth.get(provider['id'])['enabled'])
+        self.assertTrue(catalog['sessionModelsQualified']);self.assertTrue(catalog['sessionProfileId'])
+        # Older metadata without this Studio adapter qualification never becomes
+        # eligible merely because the application was updated.
+        with auth.auth_db(write=True) as db:
+            original=db.execute('SELECT data FROM auth_requests WHERE id=?',(catalog['requestId'],)).fetchone()[0]
+            old=json.loads(original);del old['catalog']['sessionProfileId']
+            db.execute('UPDATE auth_requests SET data=? WHERE id=?',(json.dumps(old),catalog['requestId']))
+        self.assertFalse(provider_models(f.providers,provider['id'])[0]['available'])
+        with auth.auth_db(write=True) as db:db.execute('UPDATE auth_requests SET data=? WHERE id=?',(original,catalog['requestId']))
         connect('status',org='different-org')
+        self.assertFalse(auth.get(provider['id'])['enabled'])
         self.assertIsNone(auth.latest_catalog(provider['id']))
         self.assertEqual(provider_models(f.providers,provider['id']),[])

@@ -20,12 +20,14 @@ class NativeSelection(unittest.TestCase):
         with patch('claude_provider_store.installed',return_value={'id':runtime['id']}):
             provider=AuthStore(f.providers).create({'requestId':str(uuid.uuid4()),'name':'Own selection fixture'})['provider']
         auth=AuthStore(f.providers);rid=str(uuid.uuid4())
-        auth.begin(provider['id'],{'requestId':rid,'revision':1,'action':'status'},'a'*64)
+        auth.begin(provider['id'],{'requestId':rid,'revision':1,'action':'catalog'},'a'*64)
         status,account,_=status_result(json.dumps({'loggedIn':True,'authMethod':'claude.ai','apiProvider':'firstParty',
             'configDirectory':'/config','subscriptionType':'pro','email':'own@example.test','orgId':'own-org','orgName':'Own fixture'}),0)
-        provider=auth.finish(provider['id'],rid,'complete',status=status,account=account)['provider']
-        # Only this fixture exposes a synthetic eligible model. Production
-        # eligibility stays closed until its separate quota/catalog stages.
+        provider=auth.finish(provider['id'],rid,'complete',status=status,account=account,
+            models=[{'value':'sonnet','resolvedModel':'sonnet','displayName':'Own fixture','description':'Owned native model facts',
+                'supportsEffort':True,'supportedEffortLevels':['low']}])['provider']
+        # Native model facts enable selection, never replace fresh per-send
+        # subscription admission. This fixture starts no native model process.
         with f.open() as store, patch('session_store.providers',return_value=[provider]), \
             patch('session_store.provider_models',return_value=[{'id':'sonnet','efforts':['low']}]), \
             patch('claude_selection.installed',return_value={'version':runtime['native']['version'],'sha256':runtime['native']['files']['claude']['sha256']}):

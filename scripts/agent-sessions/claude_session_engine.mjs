@@ -92,7 +92,7 @@ export class ClaudeSessionEngine {
       ...(this.requireInputReceipt ? { extraArgs: { 'replay-user-messages': null } } : {}),
       ...(options.effort ? { effort: options.effort } : {}),
       tools: [], disallowedTools: [...sdk.BUILTIN_TOOL_NAMES], settingSources: [], skills: [], plugins: [], agents: {},
-      settings: { precomputeCompactionEnabled: false },
+      settings: { precomputeCompactionEnabled: false, fallbackModel: [], availableModels: [this.binding.model] },
       strictMcpConfig: true, permissionMode: 'default', enableFileCheckpointing: false, includePartialMessages: true,
       mcpServers: { studio: { type: 'stdio', command: '/usr/bin/python3', args: ['/bridge/mcp.py'], alwaysLoad: true, timeout: 1200000 } },
       hooks: { PreToolUse: [{ hooks: [input => this.beforeTool(input)] }] },

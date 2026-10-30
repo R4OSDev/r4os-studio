@@ -1,4 +1,4 @@
-import { availableModels, providerAllowed, providerLabel } from './modelChoices';
+import { availableModels, effortLabel, providerAllowed, providerLabel } from './modelChoices';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentSession, SessionOptions, NativeImageCapability } from '../../../../shared/agent-sessions';
@@ -80,6 +80,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       <fieldset className="project-fields" disabled={saving || reloading} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
         {tab === 'General' ? <>
           {session.engine.api && <p className="agent-terminal-hint">This conversation keeps its API connection and protocol. Create a new session to change providers. Hosted web/image generation, image input, Fast Mode and native Goal are unavailable through this adapter.</p>}
+          {session.engine.kind === 'claude-code' && <p className="agent-terminal-hint">This conversation keeps its native Claude account and history. Choose another provider in a new session. Text input and Studio tools use fresh subscription checks; image attachments and Fast Mode are unavailable.</p>}
           {model?.available === false && <p className="project-dialog-error">{model.unavailableReasons?.join(' ')}</p>}
           <ProjectField id="settings-session-name" label="Name"><input id="settings-session-name" required maxLength={120} value={draft.name} onChange={(e) => patch({ name: e.target.value })} /></ProjectField>
           <ProjectField id="settings-session-provider" label="Provider"><select id="settings-session-provider" value={draft.providerId} onChange={(e) => {
@@ -89,7 +90,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           <ProjectField id="settings-session-model" label="Model"><select id="settings-session-model" value={draft.model} onChange={(e) => {
             const next = provider?.models.find((m) => m.id === e.target.value); patch({ model: e.target.value, effort: next?.efforts.includes(draft.effort) ? draft.effort : next?.defaultEffort ?? '', fastMode: draft.fastMode && !!next?.fastModeAvailable });
           }}>{!model && <option value={draft.model}>{draft.model}</option>}{provider?.models.map((m) => <option key={m.id} value={m.id} disabled={m.available === false}>{m.name}{m.available === false ? ' · unavailable' : ''}</option>)}</select></ProjectField>
-          <ProjectField id="settings-session-effort" label="Reasoning"><select id="settings-session-effort" value={draft.effort} onChange={(e) => patch({ effort: e.target.value })}>{!model?.efforts.includes(draft.effort) && <option value={draft.effort}>{draft.effort}</option>}{model?.efforts.map((effort) => <option key={effort}>{effort}</option>)}</select></ProjectField>
+          <ProjectField id="settings-session-effort" label="Reasoning"><select id="settings-session-effort" value={draft.effort} onChange={(e) => patch({ effort: e.target.value })}>{!model?.efforts.includes(draft.effort) && <option value={draft.effort}>{effortLabel(draft.effort, provider)}</option>}{model?.efforts.map((effort) => <option key={effort} value={effort}>{effortLabel(effort, provider)}</option>)}</select></ProjectField>
           <ProjectField id="settings-session-fast" label="Fast Mode"><select id="settings-session-fast" value={draft.fastMode ? 'on' : 'off'} onChange={(e) => patch({ fastMode: e.target.value === 'on' })}><option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option></select></ProjectField>
         </> : tab === 'Skills' ? <div className="agent-skill-choices">
           <p>Global skills are enabled by default. Saved choices apply from the next run.</p>

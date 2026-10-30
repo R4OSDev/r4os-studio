@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
 import { useSessionApi, ProjectRequestError, sessionPath } from './api';
 
-import { availableModels, providerAllowed, providerLabel } from './modelChoices';
+import { availableModels, effortLabel, providerAllowed, providerLabel } from './modelChoices';
 import {ContextIndicator} from './ContextIndicator';
 
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
@@ -77,8 +77,8 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
       </label><ContextIndicator context={session.context}/></div>
       <label><span>Reasoning</span>
         <select aria-label="Reasoning" value={choice.effort} disabled={controlsDisabled||!model} onChange={(event) => void change({ effort: event.target.value })}>
-          {!model?.efforts.includes(choice.effort) && <option value={choice.effort}>{choice.effort}</option>}
-          {model?.efforts.map((value) => <option key={value} value={value}>{value}</option>)}
+          {!model?.efforts.includes(choice.effort) && <option value={choice.effort}>{effortLabel(choice.effort, account)}</option>}
+          {model?.efforts.map((value) => <option key={value} value={value}>{effortLabel(value, account)}</option>)}
         </select>
       </label>
       <label><span>Fast Mode</span>

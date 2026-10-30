@@ -29,21 +29,23 @@ class ClaudeMessages(unittest.TestCase):
 
     def setUp(self):
         fixtures.Runs.setUp(self); self.addCleanup(fixtures.Runs.tearDown, self)
-        self.providers.chmod(0o700); runtime = profile()
+        self.providers.chmod(0o700); runtime = profile(); model_id=getattr(self,'native_model','sonnet')
         with patch('claude_provider_store.installed', return_value={'id': runtime['id']}):
             self.provider_value = AuthStore(self.providers).create({'requestId': str(uuid.uuid4()), 'name': 'Own queued account'})['provider']
         auth = AuthStore(self.providers); request = str(uuid.uuid4()); provider = self.provider_value
-        auth.begin(provider['id'], {'requestId': request, 'revision': provider['revision'], 'action': 'status'}, 'a'*64)
+        auth.begin(provider['id'], {'requestId': request, 'revision': provider['revision'], 'action': 'catalog'}, 'a'*64)
         status, account, _ = status_result(json.dumps({'loggedIn': True, 'authMethod': 'claude.ai', 'apiProvider': 'firstParty',
             'configDirectory': '/config', 'subscriptionType': 'pro', 'email': 'own@example.test', 'orgId': 'own-org', 'orgName': 'Own fixture'}), 0)
-        self.provider_value = auth.finish(provider['id'], request, 'complete', status=status, account=account)['provider']
+        self.provider_value = auth.finish(provider['id'], request, 'complete', status=status, account=account,
+            models=[{'value':'sonnet','resolvedModel':model_id,'displayName':'Own fixture','description':'Owned native model facts',
+                'supportsEffort':True,'supportedEffortLevels':['low']}])['provider']
         self.patches = ExitStack(); self.addCleanup(self.patches.close)
         self.patches.enter_context(patch('session_store.providers', return_value=[self.provider_value]))
-        self.patches.enter_context(patch('session_store.provider_models', return_value=[{'id': 'sonnet', 'efforts': ['low']}]))
+        self.patches.enter_context(patch('session_store.provider_models', return_value=[{'id': model_id, 'efforts': ['low']}]))
         self.patches.enter_context(patch('claude_selection.installed', return_value={'version': runtime['native']['version'], 'sha256': runtime['native']['files']['claude']['sha256']}))
         with self.open() as store:
             session = store.create({'requestId': str(uuid.uuid4()), 'name': 'Own native queue',
-                'providerId': provider['id'], 'model': 'sonnet', 'effort': 'low'}, self.providers)
+                'providerId': provider['id'], 'model': model_id, 'effort': 'low'}, self.providers)
             self.sid = session['id']; self.native = session['engine']['claude']['nativeSessionId']
 
     def message_input(self):

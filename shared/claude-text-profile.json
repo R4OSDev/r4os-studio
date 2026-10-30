@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "studio-claude-text-0.3.312-v1",
+  "runtimeProfileId": "claude-code-sdk-0.3.312-v1",
+  "nativeVersion": "2.1.312",
+  "nativeSha256": "4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d",
+  "sdkVersion": "0.3.312",
+  "sdkArchiveSha256": "98a6c27b00b273fa0598b80540aa152d9fb58b6a1ac885b5993381e98469926d",
+  "textInput": true,
+  "nativeInputReceiptRequired": true,
+  "fixedModelRequired": true,
+  "freshSubscriptionAdmissionRequired": true,
+  "paidExtraUsageMustBeDisabled": true,
+  "imageInput": false,
+  "fastMode": false
+}

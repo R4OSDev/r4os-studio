@@ -49,7 +49,7 @@ def prepare(worker,history,prepared,broker):
     if goal:
         prompt+='\n\nBOUNDED STUDIO GOAL: The next human input is the original saved objective activated by Play. Work only within its existing authority and tool permissions. Before ending each step call mcp__studio__report_goal with continue, complete or blocked and a concise reason. A report grants no new scope. The host may continue the same objective for at most eight steps and 900 active seconds per Play; never create your own scheduler or autonomous loop.'
     write_new(root/'runtime.json',{'schema':1,'binding':binding,'mode':prepared['mode'],'historyConfirmed':prepared['historyConfirmed'],
-        'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal),
+        'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal or config.get('claudeInput')),
         **({'goal':{key:config['claudeGoalExecution'][key] for key in ('executionId','maxSteps','maxActiveSeconds')}} if goal else {}),
         'effort':config.get('claudeModel',{}).get('effort',''),
         'resolvedModel':config.get('claudeModel',{}).get('resolvedModel'),

@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 
-from claude_provider_store import ClaudeProviders,valid_account
+from claude_provider_store import ClaudeProviders,valid_account,account_identity
 from session_store import identity,encode,now
 from store import ProjectFault
 
@@ -74,8 +74,6 @@ class AuthStore(ClaudeProviders):
                     raise ProjectFault('The original Claude authentication binding changed. Read status before continuing.',409)
                 value={**value,'revision':value['revision']+1,'updatedAt':now(),'status':status,
                     'auth':{'kind':'native-plan','state':status},'account':account}
-                db.execute('UPDATE providers SET data=? WHERE id=?',(encode(value),ident))
-                db.execute('INSERT INTO revisions VALUES (?,?,?)',(ident,value['revision'],encode(value)))
             result.update(state=state,message=message,updatedAt=now(),provider=value)
             if result['action'] in ('limits','catalog') and state=='complete':
                 from claude_limits_policy import usage_sample
@@ -84,6 +82,9 @@ class AuthStore(ClaudeProviders):
                 from claude_catalog import normalize
                 try:result['catalog']=normalize(models,value,rid)
                 except ProjectFault:result['catalog']=None;result['message']='The native model catalog is unavailable. Existing selections were preserved.'
+            if status is not None:
+                db.execute('UPDATE providers SET data=? WHERE id=?',(encode(value),ident))
+                db.execute('INSERT INTO revisions VALUES (?,?,?)',(ident,value['revision'],encode(value)))
             db.execute('UPDATE auth_requests SET data=? WHERE id=?',(encode(result),rid))
             if result['action'] in ('status','limits','catalog') and state=='complete':
                 for old in db.execute('SELECT id,data FROM auth_requests WHERE provider_id=?',(ident,)).fetchall():
@@ -112,8 +113,11 @@ class AuthStore(ClaudeProviders):
         with self.auth_db() as db:
             if db is None:return None
             for row in db.execute('SELECT data FROM auth_requests WHERE provider_id=? ORDER BY rowid DESC',(ident,)):
-                catalog=json.loads(row[0]).get('catalog')
-                if catalog and catalog['accountIdentity']==account:return catalog
+                result=json.loads(row[0]);catalog=result.get('catalog')
+                if (result.get('action')=='catalog' and result.get('state')=='complete'
+                    and account_identity(result.get('provider',{}).get('account'))==account):
+                    return catalog if (catalog and catalog.get('accountIdentity')==account
+                        and catalog.get('runtimeProfileId')==provider['runtimeProfileId']) else None
             return None
 
     def recover(self):

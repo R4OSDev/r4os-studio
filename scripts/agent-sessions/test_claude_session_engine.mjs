@@ -45,6 +45,7 @@ await test('canonical native model and selected effort cannot silently change', 
   try {
     await f.engine.initialize(); await f.engine.send('Own explicit input'); await tick();
     assert.equal(f.options.effort, 'high'); assert.equal(f.options.env.CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP, '1');
+    assert.deepEqual(f.options.settings.fallbackModel, []); assert.deepEqual(f.options.settings.availableModels, ['owned-model']);
     const tool = { hook_event_name: 'PreToolUse', session_id: f.frozen.nativeSessionId, tool_name: 'mcp__studio__read_file',
       tool_use_id: 'own-model-bound-tool', tool_input: { path: 'own.c' }, mcp_server: { name: 'studio', source: 'dynamic' } };
     assert.equal((await f.engine.beforeTool(tool)).hookSpecificOutput.permissionDecision, 'deny');

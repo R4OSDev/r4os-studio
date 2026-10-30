@@ -1,3 +1,15 @@
+## Claude text session selection (0.8.52)
+
+Connected Claude subscriptions can use fixed native model IDs in new project
+and skill sessions after a fresh model-catalog read. Native default reasoning
+is a valid selection, and Claude creation checks its own runtime independently
+of Codex. Each send still requires fresh native subscription/usage admission
+with paid extra usage disabled. New original text inputs require a matching
+native receipt before Studio tool effects. Image/context capabilities remain
+unknown; unqualified attachments and extras are refused. Existing provider
+records and the installed SDK profile remain compatible and unchanged.
+Details: [Claude-Models.md](Claude-Models.md).
+
 ## Provider dialogs on HTTP LAN origins (0.8.51)
 
 Claude provider creation and authentication, and API provider mutations, now

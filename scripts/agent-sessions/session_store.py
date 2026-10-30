@@ -73,12 +73,14 @@ def provider_models(directory, provider_id):
     try:native=next((v for v in ClaudeProviders(directory).listing() if v['id']==provider_id),None) if not source.exists() else None
     except ProjectFault:native=None
     if native:
+        from claude_runtime import text_profile
         try:catalog=AuthStore(directory).latest_catalog(provider_id)
         except ProjectFault:return []
         if not catalog:return []
+        qualified=catalog.get('sessionModelsQualified') is True and catalog.get('sessionProfileId')==text_profile()['id']
         return [{'id':m['id'],'name':m['name'],'imageInputs':m['imageInputs'],'inputModalities':m['inputModalities'],
-            'efforts':m['efforts'],'defaultEffort':m['defaultEffort'],'fastModeAvailable':False,'available':False,
-            'unavailableReasons':m['unavailableReasons'],'contextWindow':None,
+            'efforts':m['efforts'],'defaultEffort':m['defaultEffort'],'fastModeAvailable':False,'available':qualified and m['available'],
+            'unavailableReasons':m['unavailableReasons'] if qualified else ['Read the native model catalog in this Claude provider to qualify text sessions.'],'contextWindow':None,
             'source':{'kind':'metadata','recordedAt':catalog['receivedAt']}} for m in catalog['models']]
     try:
         # Existing subscription homes remain authoritative for their UUID.
@@ -123,8 +125,14 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
                     'available':m['available'] and not catalog['stale'],
                     'unavailableReasons':['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
                     'contextWindow':m['contextWindow'],'source':m['source']} for m in catalog['models']]
-        if v.get('type')=='claude-subscription':reason='Claude subscription model execution is not available in this Studio version yet.'
-        values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,**({'unavailableReason':reason} if reason else {})})
+        provider_engine=None
+        if v.get('type')=='claude-subscription':
+            if not any(m.get('available') for m in models):reason='Read the native model catalog in this Claude provider before creating a text session.'
+            from claude_selection import engine as claude_engine
+            try:provider_engine=claude_engine(provider_dir,selected_profile)
+            except ProjectFault as error:provider_engine={'profile':selected_profile,'available':False,'reason':str(error)};reason=str(error)
+        values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,
+            **({'engine':provider_engine} if provider_engine else {}),**({'unavailableReason':reason} if reason else {})})
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
             'nativeTools': [{'id': 'web_search', 'defaultEnabled': True},{'id':'image_generation','defaultEnabled':True}],
             'engine': engine(r4os, selected_profile)}
@@ -156,7 +164,7 @@ def validate_settings(data, provider_dir):
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)
     if candidate.get('type')=='claude-subscription' and model.get('available') is False:
-        raise ProjectFault('Claude subscription model execution is not available in this Studio version yet.',409)
+        raise ProjectFault('The original Claude model is unavailable. Read its native model catalog in System settings.',409)
     if type(data.get('fastMode', False)) is not bool:
         raise ProjectFault('Invalid Fast Mode setting.', 400)
     if type(data.get('webSearchEnabled', True)) is not bool:

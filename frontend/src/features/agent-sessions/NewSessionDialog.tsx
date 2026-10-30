@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentSession, SessionCreate, SessionOptions } from '../../../../shared/agent-sessions';
-import { availableModels, providerLabel } from './modelChoices';
+import { availableModels, effortLabel, providerLabel } from './modelChoices';
 import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, projectRequestId, ProjectRequestError, sessionPath } from './api';
 
@@ -35,6 +35,7 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
     return () => controller.abort();
   }, [projectId, pending, projectRequest]);
   const provider = options?.providers.find((p) => p.id === providerId), chosen = provider?.models.find((m) => m.id === model);
+  const selectedEngine = provider?.engine ?? options?.engine;
   async function submit(event: FormEvent) {
     event.preventDefault(); if (busy) return;
     const data = pending ?? { requestId: projectRequestId(), name: name.trim(), providerId, model, effort, fastMode };
@@ -60,15 +61,16 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
         <div className="project-form-row">
           <ProjectField id="session-model" label="Model"><select id="session-model" required value={model} onChange={(e) => { const next = provider?.models.find((m) => m.id === e.target.value); setModel(e.target.value); setEffort(next?.defaultEffort ?? ''); setFast((fast) => fast && !!next?.fastModeAvailable); }}>
             <option value="" disabled>Select model</option>{provider?.models.map((m) => <option key={m.id} value={m.id} disabled={m.available === false}>{m.name}{m.available === false ? ' · unavailable' : ''}</option>)}</select></ProjectField>
-          <ProjectField id="session-effort" label="Reasoning"><select id="session-effort" required value={effort} onChange={(e) => setEffort(e.target.value)}><option value="" disabled>Select effort</option>{chosen?.efforts.map((v) => <option key={v} value={v}>{v}</option>)}</select></ProjectField>
+          <ProjectField id="session-effort" label="Reasoning"><select id="session-effort" required={!chosen?.efforts.includes('')} value={effort} onChange={(e) => setEffort(e.target.value)}>{!chosen?.efforts.includes('') && <option value="" disabled>Select effort</option>}{chosen?.efforts.map((v) => <option key={v} value={v}>{effortLabel(v, provider)}</option>)}</select></ProjectField>
         </div>
         <ProjectField id="session-fast-mode" label="Fast Mode"><select id="session-fast-mode" value={fastMode ? 'on' : 'off'} onChange={(e) => setFast(e.target.value === 'on')}><option value="off">Off</option><option value="on" disabled={!chosen?.fastModeAvailable}>On</option></select></ProjectField>
       </fieldset>
       {!options && !error && <p className="project-dialog-status" role="status">Loading…</p>}
-      {options && !options.engine.available && <p className="project-dialog-error" role="alert">{options.engine.reason}</p>}
+      {provider?.type === 'claude-subscription' && <p className="field-help">Claude subscription · Text input and Studio tools. Each send checks the native account and included usage. Image attachments and Fast Mode are unavailable.</p>}
+      {selectedEngine && !selectedEngine.available && <p className="project-dialog-error" role="alert">{selectedEngine.reason}</p>}
       {options && !options.providers.some((p) => availableModels(p).length) && <p className="project-dialog-error">Connect a provider and configure an available model in System settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
-      <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!options?.engine.available || !chosen || chosen.available === false))}>{busy ? 'Creating…' : pending ? 'Retry create' : 'Create session'}</button></footer>
+      <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!selectedEngine?.available || !chosen || chosen.available === false))}>{busy ? 'Creating…' : pending ? 'Retry create' : 'Create session'}</button></footer>
     </form>
   </dialog>;
 }

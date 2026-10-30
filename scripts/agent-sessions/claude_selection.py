@@ -3,12 +3,13 @@
 Public model eligibility is supplied separately by the qualified catalog. This
 module grants neither model access nor subscription/overage admission.
 """
+import hashlib
 import uuid
 
 from claude_history import ClaudeHistory
 from claude_provider_store import ClaudeProviders,account_identity
 from claude_run_leases import ClaudeRunLeases
-from claude_runtime import installed
+from claude_runtime import installed,text_profile
 from session_store import encode,identity
 from store import ProjectFault
 
@@ -41,10 +42,16 @@ def freeze(store,sid,data,providers,snapshot,queue_context=None):
     from claude_auth_store import AuthStore
     catalog=AuthStore(providers).latest_catalog(provider['id'])
     model=next((m for m in catalog['models'] if m['id']==snapshot['model']),None) if catalog else None
-    if model:
-        snapshot['claudeModel']={'id':model['id'],'resolvedModel':model['resolvedModel'],'efforts':model['efforts'],
-            'effort':snapshot['effort'],'imageInput':model['imageInputs'],'contextWindow':model['contextWindow'],
-            'catalogRequestId':catalog['requestId'],'runtimeProfileId':catalog['runtimeProfileId']}
+    if (not model or catalog.get('sessionModelsQualified') is not True
+        or catalog.get('sessionProfileId')!=text_profile()['id'] or model.get('available') is not True
+        or model.get('resolvedModel')!=snapshot['model'] or snapshot['effort'] not in model['efforts']):
+        raise ProjectFault('The original Claude model/effort catalog is unavailable. No prompt was submitted.',409)
+    snapshot['claudeModel']={'id':model['id'],'resolvedModel':model['resolvedModel'],'efforts':model['efforts'],
+        'effort':snapshot['effort'],'imageInput':model['imageInputs'],'contextWindow':model['contextWindow'],
+        'catalogRequestId':catalog['requestId'],'runtimeProfileId':catalog['runtimeProfileId']}
+    snapshot['claudeSessionProfileId']=catalog['sessionProfileId']
+    if data.get('mode')!='goal':
+        snapshot['claudeInput']={'requestId':identity(data['requestId']),'textSha256':hashlib.sha256(data['text'].encode()).hexdigest()}
     snapshot['claudeRunId']=str(uuid.uuid5(uuid.NAMESPACE_URL,'r4os-studio-claude-run:'+encode(
         {'owner':{'type':store.owner_type,'id':store.owner_id},'session':identity(sid),'request':identity(data['requestId'])})))
 

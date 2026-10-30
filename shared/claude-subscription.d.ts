@@ -26,11 +26,11 @@ export interface ClaudeAuthOperation {
 }
 export interface ClaudeModelCatalog {
   schema: 1; source: string; receivedAt: string; providerId: string; providerRevision: number;
-  accountIdentity: string | null; runtimeProfileId: string; requestId: string; sessionModelsQualified: false;
+  accountIdentity: string | null; runtimeProfileId: string; sessionProfileId?: string; requestId: string; sessionModelsQualified: boolean;
   models: { id: string; nativeValue: string; resolvedModel: string | null; name: string; description: string;
     aliases: string[]; efforts: string[]; defaultEffort: string; supportsEffort: boolean | null;
     adaptiveThinking: boolean | null; fastModeAdvertised: boolean | null; fastModeAvailable: false;
-    contextWindow: null; imageInputs: 'unknown'; inputModalities: ['text']; available: false;
+    contextWindow: null; imageInputs: 'unknown'; inputModalities: ['text']; available: boolean;
     unavailableReasons: string[]; source: 'native-supportedModels'; entitlement: 'not-verified-by-model-advertisement' }[];
 }
 export interface ClaudeSubscriptionLimits {

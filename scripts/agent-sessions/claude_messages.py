@@ -76,7 +76,7 @@ def queued(worker):
 
 def acknowledge(worker, frame):
     w = worker
-    if not queued(w): return False
+    if not queued(w): return acknowledge_original(w,frame)
     reported = frame.get('identity', {}); ids = reported.get('nativeInputRequestIds', [])
     if reported.get('nativeType') not in ('assistant','stream_event','result','user'):
         return False  # Initialization/status tags do not acknowledge input.
@@ -135,7 +135,51 @@ def acknowledge(worker, frame):
 
 
 def finalize(worker):
-    if not queued(worker) or worker.input_receipt.is_set() or not worker.sent: return
+    is_queue=queued(worker)
+    original=bool(worker.config.get('claudeInput')) and not getattr(worker,'claude_goal',None)
+    if not (is_queue or original) or worker.input_receipt.is_set() or not worker.sent: return
     worker.uncertain_effect = True; worker.outcome = 'unknown'
-    worker.error = worker.error or 'Native Claude did not confirm the original queued input ID. Inspect the retained request; it was not submitted again.'
-    Messages(worker.store).finish(worker.session_id, worker.row['request_id'], 'unknown', worker.error)
+    worker.error = worker.error or 'Native Claude did not confirm the original input ID. Inspect the retained request; it was not submitted again.'
+    if is_queue:Messages(worker.store).finish(worker.session_id, worker.row['request_id'], 'unknown', worker.error)
+
+
+def acknowledge_original(w,frame):
+    """Only the actual native echo can acknowledge a new public text input."""
+    expected=w.config.get('claudeInput')
+    if not expected or getattr(w,'claude_goal',None):return False
+    native=frame.get('native',{});reported=frame.get('identity',{})
+    if native.get('type')!='user' or native.get('isReplay') is not True:return False
+    if (expected.get('requestId')!=w.row['request_id'] or reported.get('nativeType')!='user'
+        or reported.get('nativeInputRequestIds')!=[w.row['request_id']]
+        or reported.get('nativeInputReceiptKind')!='stdinEcho'
+        or reported.get('nativeInputTextSha256')!=expected.get('textSha256')
+        or reported.get('nativeSessionId')!=w.config['engine']['claude']['nativeSessionId']
+        or native.get('session_id')!=reported['nativeSessionId'] or not reported.get('nativeMessageId')):
+        raise ProjectFault('The native Claude echo differs from the original text request. It was not repeated.',409)
+    run=get_run(w.store,w.run_id);history=ClaudeHistory(w.store,w.session_id).get()
+    meta=json.loads(run['worker'] or '{}')
+    if (not run['busy'] or run['state'] not in ('starting','running','stopping')
+        or json.loads(run['config'])!=w.config or history['phase'] not in ('opening','active')
+        or history['activeRunId']!=w.run_id or history['runtime']!=w.config['engine']['claude']
+        or hashlib.sha256(request_text(w.store,w.run_id).encode()).hexdigest()!=expected['textSha256']
+        or any(meta.get(k)!=w.credential_worker[k] for k in ('release','pid','birth'))):
+        raise ProjectFault('The original Claude input/worker binding changed. Its evidence was preserved.',409)
+    binding={'owner':{'type':w.store.owner_type,'id':w.store.owner_id},'sessionId':w.session_id,
+        'runId':w.run_id,'requestId':w.row['request_id'],'inputSha256':expected['textSha256'],
+        'configSha256':digest(w.config),'nativeSessionId':reported['nativeSessionId'],
+        'nativeInputRequestIds':reported['nativeInputRequestIds'],'worker':w.credential_worker}
+    with w.store.db:
+        w.store.db.execute('''CREATE TABLE IF NOT EXISTS claude_input_receipts(
+            request_id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id),run_id TEXT NOT NULL,
+            payload TEXT NOT NULL,created_at TEXT NOT NULL)''')
+        previous=w.store.db.execute('SELECT payload FROM claude_input_receipts WHERE request_id=?',(w.row['request_id'],)).fetchone()
+        if previous:
+            if json.loads(previous[0])['binding']!=binding:raise ProjectFault('The original Claude input receipt conflicts.',409)
+        else:
+            payload={'schema':1,'kind':'original-text','binding':binding,'nativeMessageId':reported['nativeMessageId'],
+                'providerMessageId':reported.get('providerMessageId'),'nativeTurnId':None,'nativeType':'user',
+                'nativeInputReceiptKind':'stdinEcho','nativeInputTextSha256':expected['textSha256']}
+            w.store.db.execute('INSERT INTO claude_input_receipts VALUES (?,?,?,?,?)',
+                (w.row['request_id'],w.session_id,w.run_id,encode(payload),now()))
+    w.sent=True;w.input_receipt.set()
+    return True

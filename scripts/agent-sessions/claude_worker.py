@@ -69,7 +69,7 @@ class ClaudeWorker(Worker):
 
     async def effect(self,name,arguments,call_id):
         admission_error=None
-        if (self.queued_input or self.claude_goal) and not self.input_receipt.is_set():
+        if (self.queued_input or self.claude_goal or self.config.get('claudeInput')) and not self.input_receipt.is_set():
             try:await asyncio.wait_for(self.input_receipt.wait(),2)
             except asyncio.TimeoutError:
                 admission_error={'success':False,'error':'inputUnconfirmed',
