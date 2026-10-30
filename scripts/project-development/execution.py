@@ -355,7 +355,9 @@ class Execution:
                         readiness = {'state': 'ready' if state.get('serviceEndpointReady') or native_ready else 'started', 'process': process, 'checkedAt': now()}
                         if launcher and not native_ready and launcher.settled() and state['state'] == 'running':
                             readiness.update(state='unknown', reasonCode='desktop_content_unconfirmed',
-                                reason='The process is confirmed; Desktop content remains unconfirmed. Inspect this original job without repeating the launch.')
+                                reason='The process is confirmed; Desktop content remains unconfirmed. Inspect this original job without repeating the launch.',
+                                desktopEvidence={'processConfirmed': True, 'windowVisible': bool(state.get('windowVisible')), 'windowFocused': bool(state.get('windowFocused')),
+                                    'contentConfirmed': False, 'statusPollingBounded': True, 'statusRetentionExpired': launcher.status_expired})
                         current = store.get(job['id'])
                         observed = {'process': process, 'readiness': readiness, 'outputBytes': len(self.output_data),
                             'phase': 'completing_checks' if self.completion else ('desktop_content' if native_ready else ('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running'))),

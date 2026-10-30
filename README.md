@@ -1,3 +1,10 @@
+## Diagnostic own-window screenshots (0.8.41)
+
+Fully bound visible/focused Desktop windows can be captured for diagnosis while
+native content readiness remains unknown. These marked frames cannot authorize
+GUI input, visual checks or completion. Details:
+[Diagnostic-Window-Captures.md](Diagnostic-Window-Captures.md).
+
 ## Live output-file criteria (0.8.40)
 
 New workers expose bounded, generation-bound observations of registered output

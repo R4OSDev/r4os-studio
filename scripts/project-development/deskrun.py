@@ -132,6 +132,25 @@ def frame_ready(job, state):
         and value.get('window', 0) > 0 and value['window'] - 1 == state.get('windowId')
         and state.get('state') == 'running' and bool(state.get('windowVisible')) and not state.get('closeConfirmed'))
 
+def diagnostic_window(job, state):
+    """Own visible/focused window proof, explicitly without a content-ready claim."""
+    value = job.get('desktopLaunch') or {}; process = job.get('process') or {}
+    try:
+        request_key(value['request'])
+        return (job.get('kind') == 'execution' and job.get('state') == 'running'
+            and (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed'
+            and value.get('phase') == 'window' and value.get('errorlevel') == 9 and value.get('content') == '0'
+            and type(value.get('process_id')) is int and value['process_id'] > 0
+            and value['process_id'] == process.get('instanceId') == state.get('instanceId')
+            and value.get('process_generation') == process.get('generation') == state.get('generation')
+            and type(value.get('window')) is int and value['window'] > 0
+            and value['window'] - 1 == process.get('windowId') == state.get('windowId')
+            and state.get('state') == 'running' and not state.get('closeConfirmed') and not state.get('stopReason')
+            and state.get('windowVisible') is True and state.get('windowFocused') is True
+            and all(type(state.get(k)) is int and 0 < state[k] <= limit for k, limit in (('windowWidth',1280),('windowHeight',1024)))
+            and type(state.get('guiRevision')) is int and state['guiRevision'] > 0)
+    except (KeyError, TypeError, ValueError): return False
+
 
 class DesktopLaunch:
     def __init__(self, execution, ssh, deployment, lease):

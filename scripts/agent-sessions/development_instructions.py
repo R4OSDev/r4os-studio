@@ -12,5 +12,9 @@ def compose(config):
         'preflight before authorizing its explicit close, then verifies checks and owned cleanup again afterward. '
         'It never closes on a failed preflight. Only request this effect intentionally for the still-running own '
         'generation with the required run/completion/stop permissions. After a natural process end, inspect the '
-        'original final receipts and cleanup; do not repeat completion or relaunch for missing native output/exit evidence.'
+        'original final receipts and cleanup; do not repeat completion or relaunch for missing native output/exit evidence. '
+        'For desktop_content_unconfirmed, a fully bound own visible/focused window can yield a diagnosticOnly, '
+        'contentUnconfirmed screenshot. It grants no input frame reference, visual pass or completion readiness. '
+        'Process/window proof and DESKRUN content proof remain separate; original STATUS polling is already bounded '
+        'by native retention, so do not retry launches or poll forever.'
     )

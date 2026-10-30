@@ -111,7 +111,8 @@ def project(store,source,rows,sid):
         entry={'id':row['id'],'projectId':store.owner_id,'sessionId':sid,'jobId':row['job_id'],'publication':row['publication'],
             **match,'vmId':vm,'bootId':value.get('bootId'),'createdAt':value.get('createdAt'),
             'width':value['width'],'height':value['height'],'bytes':value['bytes'],'sha256':value['sha256'],
-            'source':'agent-vm-capture','reference':'studio-image:'+row['job_id']+'/'+row['id']}
+            'source':'agent-vm-capture','reference':'studio-image:'+row['job_id']+'/'+row['id'],
+            **({'diagnosticOnly':True,'contentUnconfirmed':True} if value.get('diagnosticOnly') is True else {})}
         yield row,entry,False
 
 

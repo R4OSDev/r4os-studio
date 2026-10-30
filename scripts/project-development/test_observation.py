@@ -142,3 +142,62 @@ class LiveFileTest(unittest.IsolatedAsyncioTestCase):
             if field=='path':d['guestDirectory']=r'F:\Build\P123ABCD\D9999999'
             if field=='ended':s['state']='completed'
             with self.assertRaises(DevelopmentFault):owned(j,d,s)
+
+class DiagnosticCaptureTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import sqlite3
+        from types import SimpleNamespace
+        self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name);self.db=sqlite3.connect(':memory:');self.addCleanup(self.db.close)
+        target={'vmId':str(uuid.uuid4()),'vmRevision':'vm-revision','imageId':'image','imageSha256':'a'*64,'bootId':str(uuid.uuid4())}
+        self.state={'state':'running','instanceId':147,'generation':'147','windowId':1,'windowWidth':656,'windowHeight':498,'windowVisible':True,'windowFocused':True,'guiRevision':5,'closeConfirmed':False}
+        self.job={'id':str(uuid.uuid4()),'projectId':str(uuid.uuid4()),'projectRevision':1,'kind':'execution','state':'running',
+            'target':target,'process':{key:self.state[key] for key in ('instanceId','generation','windowId')},'deploymentId':str(uuid.uuid4()),
+            'readiness':{'reasonCode':'desktop_content_unconfirmed'},'desktopLaunch':{'request':'1:1:2:2','phase':'window','errorlevel':9,'content':'0','process_id':147,'process_generation':'147','window':2},
+            'settingsRevision':1,'settings':CriteriaTest().settings(visualCriteria='Expected window')}
+        self.store=SimpleNamespace(project={'vmId':target['vmId'],'revision':1},id=self.job['projectId'],projects=self.root,
+            db=self.db,evidence=lambda _:self.root,get=lambda _:self.job,deployment_metadata=lambda _:{'role':'desktop'})
+        self.lease=SimpleNamespace(id='lease',token='private')
+        self.reservation={'vmId':target['vmId'],'scope':{'projectId':self.store.id,'projectRevision':1,'jobId':self.job['id'],
+            **{key:target[key] for key in ('vmRevision','imageId','imageSha256','bootId')}}}
+        self.png={'base64':base64.b64encode(b'\x89PNG\r\n\x1a\n'+struct.pack('>I',13)+b'IHDR'+struct.pack('>II',800,600)+b'\x08\x02\0\0\0'+b'\0'*4).decode()}
+    async def capture(self,after=None):
+        from unittest.mock import patch,AsyncMock
+        from types import SimpleNamespace
+        from observation import capture
+        with patch('observation.inspect',return_value=self.reservation),patch('observation.vm_call',AsyncMock(return_value=self.png)):
+            return await capture(self.store,self.job,self.lease,self.state,control=SimpleNamespace(call=AsyncMock(return_value=after or dict(self.state))))
+    async def test_diagnostic_capture_is_marked_and_cannot_authorize_input_or_completion(self):
+        from frame_binding import current
+        from completion import validate as preflight
+        from assessment import record
+        value=await self.capture();image=value['metadata']
+        self.assertTrue(image['diagnosticOnly']);self.assertTrue(image['contentUnconfirmed']);self.assertFalse(image['inputReference'])
+        self.assertFalse(current(image,self.job,self.state,focused=True))
+        self.job['visualAssessment']={'evidenceId':image['id'],'imageSha256':image['sha256'],'state':'passed'}
+        with self.assertRaises(DevelopmentFault):preflight(self.store,self.job,self.state,b'',[])
+        with self.assertRaises(DevelopmentFault):record(self.store,self.job['id'],{'requestId':str(uuid.uuid4()),'evidenceId':image['id'],'settingsRevision':1,'state':'passed','notes':'Diagnostic frame'})
+        self.job['desktopLaunch'].update(phase='content',content='1',errorlevel=0)
+        regular=(await self.capture())['metadata'];self.assertNotIn('diagnosticOnly',regular);self.assertTrue(current(regular,self.job,self.state,focused=True))
+    async def test_foreign_boot_owner_missing_proof_and_geometry_change_are_rejected(self):
+        import copy
+        original=copy.deepcopy(self.job);reservation=copy.deepcopy(self.reservation)
+        for change in ('boot','owner','identity','geometry','focus'):
+            self.job.clear();self.job.update(copy.deepcopy(original));self.reservation=copy.deepcopy(reservation);after=dict(self.state)
+            if change=='boot':self.reservation['scope']['bootId']='foreign'
+            if change=='owner':self.job['projectRevision']=2
+            if change=='identity':self.job['desktopLaunch']['process_generation']='1'
+            if change=='geometry':after['windowWidth']+=1
+            if change=='focus':after['windowFocused']=False
+            with self.assertRaises(DevelopmentFault):await self.capture(after)
+    async def test_existing_status_retention_limit_stops_without_new_launch(self):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from deskrun import DesktopLaunch
+        owner=SimpleNamespace(store=self.store,job=self.job)
+        launch=DesktopLaunch(owner,None,None,None);launch.value=self.job['desktopLaunch'];launch.key='1:1:2:2';launch.process=(147,'147')
+        launch.status_expired=True;launch.status_deadline=asyncio.get_running_loop().time()+45;launch.next_status=0;launch.query=AsyncMock()
+        await launch.refresh();launch.query.assert_not_awaited()
+        launch.status_expired=False;launch.status_deadline=asyncio.get_running_loop().time()-1
+        await launch.refresh();launch.query.assert_not_awaited();self.assertTrue(launch.settled())

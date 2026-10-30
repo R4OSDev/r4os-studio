@@ -8,6 +8,14 @@ from jobs import now
 import time
 
 
+def bound_lease(store,job,lease):
+    value=inspect(store.projects,lease.id,lease.token);scope=value.get('scope') or {};target=job['target']
+    expected={'projectId':store.id,'projectRevision':job['projectRevision'],'jobId':job['id'],
+        **{key:target[key] for key in ('vmRevision','imageId','imageSha256','bootId')}}
+    if value.get('vmId')!=target['vmId'] or any(scope.get(key)!=item for key,item in expected.items()):
+        raise DevelopmentFault('The screenshot reservation no longer matches the original job/boot binding.')
+
+
 async def capture(store, job, lease=None, state=None, observer=None, control=None, consume=None, origin=None):
     target = job.get('target')
     if not target or target['vmId'] != store.project['vmId'] or job['projectRevision'] != store.project['revision']:
@@ -19,16 +27,18 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
         with VmLease(store.projects, target['vmId'], scope) as held:
             return await capture(store, job, held, state, observer, control, consume, origin)
     desktop = bool(job.get('deploymentId') and store.deployment_metadata(job['deploymentId'])['role'] == 'desktop')
-    native = {}
+    native = {}; diagnostic = False
     started_at = now(); started = time.monotonic()
     if desktop:
-        from deskrun import frame_ready
-        if (control is None or state is None or not frame_ready(job, state)
+        from deskrun import frame_ready, diagnostic_window
+        diagnostic = bool(state and not frame_ready(job,state) and diagnostic_window(job,state))
+        if (control is None or state is None or not (frame_ready(job, state) or diagnostic)
             or any(type(state.get(k)) is not int or state[k] <= 0 for k in ('windowWidth', 'windowHeight'))):
-            raise DevelopmentFault('Desktop content is not confirmed for this live process and window. Capture is unavailable until the original launch is ready.')
+            raise DevelopmentFault('Desktop capture needs native content readiness or a confirmed own visible, focused process/window generation with bounded geometry. The missing identity was not guessed.', reason_code='desktop_diagnostic_identity_unavailable')
         native = {'desktopRequest': job['desktopLaunch']['request'], 'desktopContent': job['desktopLaunch']['content'],
                   'desktopWindow': job['desktopLaunch']['window'], 'windowId': state['windowId']}
-    inspect(store.projects, lease.id, lease.token)
+        if diagnostic: native.update(diagnosticOnly=True, contentUnconfirmed=True, inputReference=False, completionReference=False)
+    bound_lease(store,job,lease)
     try: captured = await vm_call(lease, 'capture_running')
     except DevelopmentFault as error:
         # A rollback may leave this worker connected to an older web bridge.
@@ -37,11 +47,12 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
         if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM is not running.')
         captured = await vm_call(lease, 'capture')
     data, width, height = png(captured)
-    inspect(store.projects, lease.id, lease.token)
+    bound_lease(store,job,lease)
     if desktop:
         after = await control.call('poll')
         if consume: consume(after)
-        if not frame_ready(job, after) or window(after) != window(state):
+        qualified = diagnostic_window(job, after) if diagnostic else frame_ready(job, after)
+        if not qualified or window(after) != window(state):
             raise DevelopmentFault('The Desktop process, window geometry or focus changed during capture. Capture the current window again.')
         elapsed = int((time.monotonic() - started) * 1000)
         if elapsed > 30000:

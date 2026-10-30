@@ -70,7 +70,7 @@ export function ScreenshotGallery({ownerId,sessionId,reauth,close,run,stop}:{own
     {visible&&!gallery.page!.coverage.complete&&<p className="gallery-status" role="status">Reading older saved screenshots…</p>}
     {!!gallery.page?.coverage.unqualified&&<p className="gallery-status" role="status">{gallery.page.coverage.unqualified} saved {gallery.page.coverage.unqualified===1?'capture could':'captures could'} not be linked to an original agent call.</p>}
     <div className="gallery-large">{visible&&entry?<GalleryImage key={entry.id} entry={entry} paused={!shown}/>:gallery.page?.available&&!gallery.busy&&!gallery.authLost?<p>No screenshots yet.</p>:null}</div>
-    {visible&&entry&&<p className="gallery-caption">Saved {date(entry.createdAt)} · {entry.width} × {entry.height}</p>}
+    {visible&&entry&&<p className="gallery-caption">{entry.diagnosticOnly && 'Diagnostic only · Desktop content unconfirmed · '}Saved {date(entry.createdAt)} · {entry.width} × {entry.height}</p>}
     {visible&&<div className="gallery-filmstrip"><button type="button" className="gallery-scroll" aria-label="Scroll to newer screenshots" disabled={gallery.busy||edges.start&&!gallery.hasNewer} onClick={()=>scroll(-1)}>‹</button>
       <div ref={strip} className="gallery-thumbnails" role="group" aria-label="Saved screenshots" onKeyDown={event=>{
         if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;

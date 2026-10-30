@@ -11,6 +11,8 @@ def record(store, job_id, value, actor='user', actor_id=None):
     identity(value['requestId'])
     from actions import admit, finish
     job = store.get(job_id); image = read(store, job_id, value['evidenceId'])['metadata']
+    if image.get('diagnosticOnly') or image.get('contentUnconfirmed'):
+        raise DevelopmentFault('A diagnostic image with unconfirmed Desktop content cannot satisfy visual criteria. Capture a regular ready frame first.')
     if image['kind'] != 'screenshot' or value['settingsRevision'] != job['settingsRevision'] or not job['settings'].get('visualCriteria'):
         raise DevelopmentFault('This image has no matching configured visual criteria.')
     if value['state'] not in ('passed', 'failed', 'inconclusive') or not isinstance(value['notes'], str) or not 0 < len(value['notes'].encode()) <= 1024 or '\x00' in value['notes']:

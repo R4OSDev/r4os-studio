@@ -14,7 +14,7 @@ export function DevelopmentImage({ projectId, value }: { projectId: string; valu
   const image = value as DevelopmentEvidence & { jobId?: string };
   if (image.kind !== 'screenshot' || !uuid.test(image.id) || !image.jobId || !uuid.test(image.jobId)) return null;
   const path = `/api/projects/${projectId}/development/jobs/${image.jobId}/evidence/${image.id}`;
-  return <figure className="development-image"><a href={path} target="_blank" rel="noopener noreferrer"><img src={path} loading="lazy" alt="Assigned VM screenshot" width={image.width} height={image.height} /></a><figcaption>{new Date(image.createdAt).toLocaleString()} · {image.width} × {image.height}</figcaption></figure>;
+  return <figure className="development-image"><a href={path} target="_blank" rel="noopener noreferrer"><img src={path} loading="lazy" alt="Assigned VM screenshot" width={image.width} height={image.height} /></a><figcaption>{image.diagnosticOnly ? 'Diagnostic only · Desktop content unconfirmed · ' : ''}{new Date(image.createdAt).toLocaleString()} · {image.width} × {image.height}</figcaption></figure>;
 }
 export function DevelopmentCard({ projectId, jobId, token }: { projectId: string; jobId: string; token: string }) {
   const [job, setJob] = useState<DevelopmentJob | null>(null), [error, setError] = useState(''), [stopping, setStopping] = useState(false);
@@ -81,7 +81,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     </div>}
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
     {job?.readiness && <p>{({ transferred: 'Package verified', ready: 'Application ready', started: 'Process started', completed: 'Application ended', unsupported: 'Start unavailable', unknown: 'Outcome unconfirmed', failed: 'Start failed', interrupted: 'Interrupted' } as Record<string, string>)[job.readiness.state] ?? job.readiness.state}</p>}
-    {job?.readiness?.reasonCode === 'desktop_content_unconfirmed' && <p>{job.readiness.reason}</p>}
+    {job?.readiness?.reasonCode === 'desktop_content_unconfirmed' && <><p>{job.readiness.reason}</p>{job.readiness.desktopEvidence && <p>Process confirmed · Window {job.readiness.desktopEvidence.windowVisible ? 'visible' : 'unconfirmed'} / {job.readiness.desktopEvidence.windowFocused ? 'focused' : 'unfocused'} · Content unconfirmed. Original STATUS reconciliation is bounded{job.readiness.desktopEvidence.statusRetentionExpired ? '; native retention expired' : ''}.</p>}</>}
     {job?.liveFileObservation && <details className="development-live-files"><summary>Registered output files · {job.outputFiles?.filter(file=>file.state==='observed-stable').length ?? 0} observed stable</summary>
       <p>Observed {new Date(job.liveFileObservation.checkedAt).toLocaleString()}. File criteria do not confirm process completion.</p>
       <ul>{job.outputFiles?.map(file=><li key={file.name}><strong>{file.name}</strong> · {file.state ?? 'Recorded'}{file.error ? ` · ${file.error}` : file.sha256 ? <> · SHA-256 <code>{file.sha256}</code></> : ''}</li>)}</ul>

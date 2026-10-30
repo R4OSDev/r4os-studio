@@ -61,6 +61,7 @@ export interface DevelopmentExchangeTarget {
   drive: string; bootId: string; accessRevision: number;
 }
 export interface DevelopmentReadiness {
+  desktopEvidence?: { processConfirmed: true; windowVisible: boolean; windowFocused: boolean; contentConfirmed: false; statusPollingBounded: true; statusRetentionExpired: boolean };
   state: 'transferred' | 'ready' | 'started' | 'completed' | 'unsupported' | 'unknown' | 'failed' | 'interrupted';
   reasonCode?: string; reason?: string; checkedAt: string;
   process?: GuestProcessIdentity;
@@ -118,6 +119,7 @@ export interface DesktopLaunchReceipt {
   statusErrorlevel?: number;
 }
 export interface DevelopmentEvidence {
+  diagnosticOnly?: true; contentUnconfirmed?: true; inputReference?: false; completionReference?: false;
   gestureObservation?: {
     id: string; acceptedBefore: number; acceptedAfter: number;
     activeBefore: true; activeAfter: boolean;
