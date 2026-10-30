@@ -1,10 +1,18 @@
+## Live screenshot gallery (0.8.28)
+
+The open gallery now follows new saved captures automatically. Historical
+selection and scroll position stay fixed; hidden/closed views stop reads and
+release image resources. Only visible/nearby previews load, with three image
+requests at most. Authentication, scope changes and missing-image retries
+preserve the original evidence. Details: [Screenshot-Gallery.md](Screenshot-Gallery.md).
+
 ## Screenshot gallery overlay (0.8.27)
 
 The session header now opens a gallery beside Statistics: a large latest image,
 horizontal older-image strip, paging and explicit Latest/held selection.
 Close/Escape/focus, run Stop and distinct loading/empty/missing/auth states work
 on narrow screens. The composer draft stays intact. Details:
-[Screenshot-Gallery.md](Screenshot-Gallery.md). Automatic observation follows next.
+[Screenshot-Gallery.md](Screenshot-Gallery.md). Automatic observation is implemented in 0.8.28.
 
 ## Session screenshot catalog (0.8.26)
 

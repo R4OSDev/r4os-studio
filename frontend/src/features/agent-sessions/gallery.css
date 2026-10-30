@@ -11,6 +11,8 @@
 .gallery-thumbnails { display:flex; align-items:stretch; gap:8px; flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; padding:3px; scroll-snap-type:x proximity; scrollbar-width:thin; }
 .gallery-thumbnail { display:flex; flex-direction:column; justify-content:center; align-items:center; gap:4px; flex:0 0 116px; min-width:0; height:94px; padding:5px; border:1px solid #46334f; border-radius:7px; color:#aa96bd; background:#17101f; cursor:pointer; scroll-snap-align:start; }
 .gallery-thumbnail img { width:104px; height:62px; object-fit:contain; display:block; background:#0f0c14; }
+.gallery-thumbnail-media { display:grid; place-items:center; flex:0 0 62px; width:104px; height:62px; overflow:hidden; color:#ad98bf; }
+.gallery-image-retry { display:block; margin:10px auto 0; padding:7px 12px; border:1px solid #795393; border-radius:6px; color:#dac1ee; background:#392449; font-size:11px; }
 .gallery-thumbnail>span { max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:9px; }
 .gallery-thumbnail.selected { border-color:#c799e9; background:#392449; box-shadow:inset 0 0 0 1px #c799e966; }
 .gallery-scroll { flex:0 0 27px; padding:0; border:1px solid #563b68; border-radius:7px; color:#d6a8f6; background:#2b1c36; font-size:31px; cursor:pointer; }
@@ -19,3 +21,4 @@
 .screenshot-gallery .project-actions { flex-shrink:0; gap:8px; }
 .screenshot-gallery button:focus-visible { outline:2px solid #c79aed; outline-offset:2px; }
 @media(max-width:440px) { .screenshot-gallery .project-dialog-header { padding:13px; } .gallery-toolbar { padding:10px 12px; gap:8px; } .gallery-large { margin:0 10px; } .gallery-filmstrip { padding-right:8px; padding-left:8px; gap:4px; } .gallery-scroll { flex-basis:22px; } .gallery-thumbnail { flex-basis:98px; } .gallery-thumbnail img { width:86px; } }
+@media(max-width:440px) { .gallery-thumbnail-media { width:86px; } }

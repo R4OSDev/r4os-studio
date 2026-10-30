@@ -10,21 +10,34 @@ export function replyImageReference(value: string) {
 
 type Resource = { controller: AbortController; users: number; promise: Promise<string>; url?: string };
 const images = new Map<string, Resource>();
+const pendingImages:(()=>Promise<void>)[]=[];
+let activeImages=0;
+function loadImages() {
+  while(activeImages<3&&pendingImages.length) {
+    const task=pendingImages.shift()!;activeImages++;
+    void task().finally(()=>{activeImages--;loadImages();});
+  }
+}
 
 function acquireImage(endpoint: string): Resource {
   const existing = images.get(endpoint);
   if (existing) { existing.users++; return existing; }
   const controller = new AbortController();
   const resource: Resource = { controller, users: 1, promise: Promise.resolve('') };
-  resource.promise = fetch(endpoint, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
-    headers: { Accept: 'image/png' } }).then(async (response) => {
-    if (!response.ok || response.headers.get('content-type')?.split(';')[0] !== 'image/png') throw new Error('Screenshot unavailable.');
-    const blob = await response.blob();
-    if (controller.signal.aborted || blob.size < 1 || blob.size > 393216) throw new Error('Screenshot unavailable.');
-    resource.url = URL.createObjectURL(blob);
-    return resource.url;
+  resource.promise = new Promise<string>((resolve,reject)=>{
+    pendingImages.push(async()=>{
+      try {
+        if(controller.signal.aborted)throw new DOMException('Screenshot read cancelled.','AbortError');
+        const response=await fetch(endpoint,{credentials:'same-origin',cache:'no-store',signal:controller.signal,headers:{Accept:'image/png'}});
+        if(!response.ok||response.headers.get('content-type')?.split(';')[0]!=='image/png')throw Error('Screenshot unavailable.');
+        const blob=await response.blob();
+        if(controller.signal.aborted||blob.size<1||blob.size>393216)throw Error('Screenshot unavailable.');
+        resource.url=URL.createObjectURL(blob);resolve(resource.url);
+      }catch(error){reject(error);}
+    });
   });
   images.set(endpoint, resource);
+  loadImages();
   return resource;
 }
 
@@ -35,18 +48,20 @@ function releaseImage(endpoint: string, resource: Resource) {
   if (images.get(endpoint) === resource) images.delete(endpoint);
 }
 
-type ImageState = { endpoint: string; url?: string; failed?: boolean };
+type ImageState = { endpoint: string; resource:Resource; url?: string; failed?: boolean };
 export function useStoredImage(endpoint: string | null) {
   const [state, setState] = useState<ImageState | null>(null);
   useEffect(() => {
     if(!endpoint)return;
     let active = true;
     const resource = acquireImage(endpoint);
-    void resource.promise.then((url) => { if (active) setState({ endpoint, url }); },
-      () => { if (active) setState({ endpoint, failed: true }); });
+    void resource.promise.then((url) => { if (active) setState({ endpoint,resource, url }); },
+      () => { if (active) setState({ endpoint,resource, failed: true }); });
     return () => { active = false; releaseImage(endpoint, resource); };
   }, [endpoint]);
-  return state?.endpoint === endpoint ? state : null;
+  // A resumed view must never briefly render a revoked URL from an earlier
+  // subscription to this endpoint. Other active users can still share it.
+  return endpoint&&state?.endpoint===endpoint&&images.get(endpoint)===state.resource?state:null;
 }
 
 export function ImageDialog({ url, alt, filename, close }: { url: string; alt: string; filename: string; close: () => void }) {

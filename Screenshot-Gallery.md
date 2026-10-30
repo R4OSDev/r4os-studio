@@ -51,8 +51,8 @@ Latest follows the newest confirmed metadata when it is read. Selecting an
 older image holds that original selection; refreshed metadata can report a new
 capture without replacing it. Latest resumes following, and reopening starts
 with the latest image. Background metadata for the same page does not reset
-its scroll position. Automatic observation and further image resource limits
-follow in 0.8.28.
+its scroll position. Automatic observation and image resource limits are
+implemented in 0.8.28.
 
 The dialog uses the common Studio design and native modal focus behavior,
 Close/Escape and return focus. Stop current run stays reachable. Loading,
@@ -60,3 +60,39 @@ empty/unavailable, missing-image and expired-auth states are separate. All
 browser images reuse registered protected evidence; no gallery action captures
 a VM image or causes inference. Stored captures are labelled with their saved
 time and dimensions, not as current guest state.
+
+## Live observation and resource bounds (0.8.28)
+
+An open visible gallery reads saved metadata every two seconds, with one
+request at a time. Incomplete backfill uses the same bounded read at shorter
+intervals. Focus, online and visibility restoration reconcile by reads. Closing
+or changing owner/session aborts outstanding work; hidden tabs stop polling
+and release image subscriptions. Original PNGs, agent tools and VM state do
+not change.
+
+Latest follows new confirmed publications automatically. A historical
+selection freezes its page and large image. A new-latest card and notice offer
+the newer capture while the existing strip anchor stays on the same evidence.
+Older pages retain their original signed snapshot cursor; bursts beyond 32
+captures remain reachable. There are at most 32 page buttons and one additional
+new-latest card, rather than an ever-growing DOM list.
+
+Only visible/nearby thumbnails and the selected large image subscribe to PNGs.
+The shared protected-image loader allows at most three concurrent requests.
+Identical endpoints share one resource; the last subscriber aborts queued/
+active reads and revokes its object URL. A resumed subscription cannot render
+an old revoked URL. Missing images offer an explicit read-only Retry image,
+which never captures a replacement.
+
+Scope/order/duplicate checks reject foreign or malformed metadata. Aborted
+responses cannot overwrite a newer selection. Expired authentication and
+retired sessions hide images and stop polling until a new confirmed read;
+cached images stay hidden during a pending authentication retry. Cursor expiry
+restarts pagination by reading. Temporary connection failures use bounded
+backoff and focus/online recovery without model activity.
+
+The actual session UI was checked at 1440/320px with owned stored-image
+fixtures: automatic Latest, held selection/anchor, bursts and older pages,
+bounded concurrent/visible images, hidden/close cancellation and URL release,
+foreign/duplicate/late responses, expired authentication, retired session,
+missing-image retry and scope changes. No real inference or VM capture.

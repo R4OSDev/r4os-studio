@@ -43,6 +43,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const projectSession = scope === 'project', transcript = useTranscriptFollow(log, transcriptContent, items, projectSession);
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [gallery,setGallery]=useState(false);
   const [deleting, setDeleting] = useState(() => !!pendingDeletion(scope, projectId, sessionId));
   const removedRef = useRef(removed), retired = useRef(false);
   useEffect(() => { removedRef.current = removed; }, [removed]);
@@ -50,7 +51,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     if (retired.current) return;
     retired.current = true;
     try { clearDeletedSession(scope, projectId, sessionId); } catch { /* Confirmed deletion still clears the selection. */ }
-    setDeleting(false); setSettings(false); dirtyChanged(false); busyChanged(false); changed(); removedRef.current();
+    setDeleting(false); setSettings(false); setGallery(false); dirtyChanged(false); busyChanged(false); changed(); removedRef.current();
   }, [scope, projectId, sessionId, dirtyChanged, busyChanged, changed]);
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
@@ -59,7 +60,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     return () => channel.close();
   }, [scope, projectId, sessionId, deleted]);
   const [statistics, setStatistics] = useState(false);
-  const [gallery,setGallery]=useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth);
   const observeNotes = notes.observe;
