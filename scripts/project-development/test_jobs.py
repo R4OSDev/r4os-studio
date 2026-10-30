@@ -133,5 +133,27 @@ class JobsTest(unittest.TestCase):
             self.assertTrue(fresh);self.assertEqual(job['desktopLaunchBudget']['argumentBytes'],2)
             self.assertTrue(job['desktopLaunchBudget']['withinLimit']);self.assertEqual(self.store.admit('execution',body)[0],job)
 
+    def test_output_pages_retain_unicode_and_distinguish_more_from_capture_limit(self):
+        job,_=self.store.admit('build',self.input())
+        raw=b'x'*65535+'é🙂'.encode()+b'z'*(119419-65535-len('é🙂'.encode()))
+        path=self.store.evidence(job['id'])/'output.log';path.write_bytes(raw)
+        meta=self.store.page(job['id'],metadata_only=True)
+        self.assertEqual(meta['totalBytes'],119419);self.assertEqual(meta['pageBytes'],0)
+        self.assertEqual(meta['nextOffset'],0);self.assertTrue(meta['hasMore']);self.assertFalse(meta['truncated']);self.assertIsNone(meta['captureTruncated'])
+        first=self.store.page(job['id']);second=self.store.page(job['id'],first['nextOffset'])
+        self.assertEqual(first['nextOffset'],65535);self.assertTrue(first['hasMore']);self.assertFalse(second['hasMore'])
+        self.assertEqual((first['output']+second['output']).encode(),raw)
+        with self.assertRaises(DevelopmentFault):self.store.page(job['id'],65536)
+        self.assertEqual(path.read_bytes(),raw)
+
+    def test_actual_build_capture_overflow_is_separate_from_page_completeness(self):
+        from builder import Builder
+        from contracts import LIMITS
+        job,_=self.store.admit('build',self.input());path=self.store.evidence(job['id'])/'output.log'
+        path.write_bytes(b'x'*(LIMITS['outputBytes']-1));builder=Builder(self.store,job)
+        builder.append(b'AB');result=self.store.page(job['id'])
+        self.assertEqual(path.stat().st_size,LIMITS['outputBytes']);self.assertTrue(result['captureTruncated'])
+        self.assertTrue(result['captureLimitReached']);self.assertTrue(result['hasMore'])
+
 
 if __name__ == '__main__': unittest.main()

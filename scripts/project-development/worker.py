@@ -63,6 +63,8 @@ async def main():
             error=text, exitCode=getattr(error, 'exit_code', None))
     finally:
         await builder.stop()
+        if job['state'] in ('queued','starting'):
+            store.update(job['id'],captureTruncated=getattr(builder,'capture_truncated',getattr(builder,'output_limited',None)))
         try:
             from scratch import retire
             retire(store, store.get(job['id']))

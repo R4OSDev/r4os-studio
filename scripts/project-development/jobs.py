@@ -227,18 +227,43 @@ class Jobs:
             raise DevelopmentFault('Invalid development output offset.', 400)
         path = self.root / 'Evidence' / job_id / 'output.log'
         if type(metadata_only) is not bool: raise DevelopmentFault('Invalid metadata page mode.', 400)
-        data = b''
+        data = b''; size = path.stat().st_size if path.exists() else 0
         if path.exists() or path.is_symlink():
             if path.is_symlink() or path.resolve() != path: raise DevelopmentFault('Invalid development evidence.', 503)
         if path.exists() and not metadata_only:
-            with path.open('rb') as stream: stream.seek(offset); data = stream.read(LIMITS['pageBytes'])
+            with path.open('rb') as stream:
+                stream.seek(offset); first=stream.read(1)
+                if first and 0x80<=first[0]<=0xbf:
+                    start=max(0,offset-3);stream.seek(start);near=stream.read(offset-start+4)
+                    for index in range(offset-start):
+                        lead=near[index];width=2 if 0xc2<=lead<=0xdf else 3 if 0xe0<=lead<=0xef else 4 if 0xf0<=lead<=0xf4 else 0
+                        if width and index<offset-start<index+width:
+                            try:near[index:index+width].decode('utf-8')
+                            except UnicodeDecodeError:continue
+                            raise DevelopmentFault('The output offset is inside a UTF-8 character. Continue from nextOffset.',400)
+                stream.seek(offset); data=stream.read(min(LIMITS['pageBytes'],max(0,size-offset)))
             if len(data) == LIMITS['pageBytes']:
                 try: data.decode('utf-8')
                 except UnicodeDecodeError as error:
                     if error.reason == 'unexpected end of data' and error.end == len(data): data = data[:error.start]
+        raw_output={}; encoding='utf-8'
+        try: text=data.decode('utf-8')
+        except UnicodeDecodeError:
+            import base64
+            text=data.decode('utf-8',errors='replace');encoding='replacement';raw_output={'rawOutputBase64':base64.b64encode(data).decode()}
+        artifact_summary={}
+        if job.get('artifactId'):
+            try:
+                artifact=self.artifact_metadata(job['artifactId'])
+                artifact_summary={'artifactSummary':{**{k:artifact[k] for k in ('id','packageSha256','sourceSha256','manifestSha256','buildProof') if k in artifact},
+                    'fileCount':len(artifact.get('files',[])),'totalFileBytes':sum(f.get('bytes',0) for f in artifact.get('files',[])),
+                    'source':'saved-artifact-receipt','currentBytesVerified':False}}
+            except DevelopmentFault:artifact_summary={'artifactUnavailable':'Original artifact receipt unavailable.'}
         from evidence import list_for
         from execution_evidence import describe
-        return {'job': job, 'output': data.decode('utf-8', errors='replace'), 'nextOffset': offset + len(data),
+        return {'job': job,**artifact_summary, 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
+                'totalBytes':size,'hasMore':offset+len(data)<size,'captureLimitReached':size>=LIMITS['outputBytes'],
+                'captureTruncated':job.get('captureTruncated'),'nextOffset': offset + len(data),
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
                 'outputKind': 'build' if job['kind'] == 'build' else 'console' if job['kind'] == 'execution' else 'diagnostic',
                 'evidence': list_for(self, job_id),

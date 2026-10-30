@@ -41,7 +41,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     try {
       const page = await projectRequest<DevelopmentJobPage>(path + '?offset=' + cursor.current);
       setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setOutput((old) => old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : page.outputKind === 'diagnostic' ? 'Diagnostic output' : 'Build output');
-      setMore(page.nextOffset > cursor.current || busyRun(page.job.state)); cursor.current = page.nextOffset; setTruncated(page.truncated); setError('');
+      setMore(page.hasMore ?? (page.nextOffset > cursor.current || busyRun(page.job.state))); cursor.current = page.nextOffset; setTruncated(page.truncated); setError('');
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }
   async function stop() {

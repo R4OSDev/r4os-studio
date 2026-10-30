@@ -8,6 +8,13 @@ import asyncio
 class DevelopmentTools:
     def __init__(self, worker): self.worker = worker
 
+    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') == 'studio-tools-v15'
+
+    def present(self,job,page=None):
+        if not self.compact(): return page or {'job':job}
+        from development_projection import summary
+        return summary(job,page)
+
     async def request(self, operation, **fields):
         from vm_worker import broker_call
         from contracts import DevelopmentFault, UnconfirmedGuestEffect
@@ -77,9 +84,15 @@ class DevelopmentTools:
                 return self.result(job)
             if name == 'read_development_job':
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
-                page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0))
-                page=await self.with_artifact(page['job'],page)
-                return self.result(page['job'], page)
+                mode=value.get('view','summary') if self.compact() else 'legacy'
+                if value.get('cursor') and mode not in ('details','inventory'): raise DevelopmentFault('A detail cursor requires its original details/inventory view.',400)
+                page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0), **({'metadataOnly':True} if mode!='output' and self.compact() else {}))
+                if not self.compact() or mode=='inventory':page=await self.with_artifact(page['job'],page)
+                result=self.result(page['job'],page)
+                if mode in ('details','inventory','output'):
+                    from development_projection import view
+                    result['output']=encode(view(page,mode,value.get('cursor'),value.get('offset',0)))
+                return result
             if name == 'complete_development_job':
                 page = await self.request('complete_check', id=value['jobId'], input={'requestId': request_id})
                 return self.result(page['job'], page)
@@ -93,7 +106,7 @@ class DevelopmentTools:
                 confirmed = (receipt.get('version') == 1 and receipt.get('jobId') == value['jobId']
                     and receipt.get('confirmed') is True and receipt.get('outcome') in ('stopped', 'already-ended', 'not-started'))
                 return {'success': confirmed, **({} if confirmed else {'error': 'unknown'}),
-                    'output': encode({'job': stopped, 'stop': receipt}), 'developmentStop': receipt,
+                    'output': encode(self.present(stopped,{'job': stopped, 'stop': receipt})), 'developmentStop': receipt,
                     'development': {'jobId': stopped['id'], 'kind': stopped['kind'], 'state': stopped['state']}}
             if name == 'capture_vm':
                 if not self.image_capable(): raise DevelopmentFault('This model has no confirmed native image capability. Choose an image-capable model.', 409)
@@ -186,12 +199,20 @@ class DevelopmentTools:
 
     async def with_artifact(self,job,page):
         from contracts import DevelopmentFault
+        if self.compact() and job.get('kind') in ('deploy','execution') and job.get('artifactId'):
+            try:
+                artifact=await self.request('artifact',id=job['artifactId'])
+                if artifact.get('id')!=job['artifactId'] or artifact.get('projectId')!=self.worker.manifest['projectId']:
+                    raise DevelopmentFault('This artifact differs from the original job binding.',409)
+                return {**(page or {'job':job}),'artifact':artifact}
+            except DevelopmentFault:
+                return {**(page or {'job':job}),'artifactUnavailable':'The original artifact inventory could not be verified. Job status and receipts were retained.'}
         if job.get('kind')=='build' and job['state']=='completed' and job.get('artifactId'):
             artifact=await self.request('artifact',id=job['artifactId'])
             if (artifact.get('id')!=job['artifactId'] or artifact.get('buildId')!=job['id']
                     or artifact.get('projectId')!=self.worker.manifest['projectId']):
                 raise DevelopmentFault('The artifact readback differs from this original project build.',409)
-            page={**(page or {'job':job}),'artifact':{key:artifact[key] for key in ('id','entry','files','resourceInputs','resourceInventory') if key in artifact}}
+            page={**(page or {'job':job}),'artifact':{key:artifact[key] for key in (('id','entry','files','resourceInputs','resourceInventory','pins','packageSha256','sourceSha256','manifestSha256','buildProof','kind','role','createdAt') if self.compact() else ('id','entry','files','resourceInputs','resourceInventory')) if key in artifact}}
         return page
 
     def original_build(self, job_id):
@@ -221,16 +242,16 @@ class DevelopmentTools:
         closure = self.closed_without_exit_status(job)
         if closure:
             return {'success': False, 'error': 'exit_status_unavailable', 'reasonCode': 'guest_exit_status_unavailable',
-                    'output': encode({**(page or {'job': job}), 'executionReceipt': closure,
+                    'output': encode({**self.present(job,page), 'executionReceipt': closure,
                         'notice': 'The owned process has ended and its cleanup is confirmed. Its exit status is unavailable; '
                             'the execution remains unknown, not successful. Inspect the saved checks and evidence before continuing. '
                             'Do not repeat the launch merely because its exit code is missing.'}),
                     'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
         failure = job['state'] in ('failed', 'interrupted', 'unknown')
         if job['state'] == 'running' and (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed':
-            return {'success': False, 'error': 'readiness_unknown', 'output': encode(page or {'job': job}),
+            return {'success': False, 'error': 'readiness_unknown', 'output': encode(self.present(job,page)),
                     'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
-        return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(page or {'job': job}), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
+        return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(self.present(job,page)), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
 
     def closed_without_exit_status(self, job):
         """Attest closure from private originals without changing any job or receipt."""

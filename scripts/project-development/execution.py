@@ -361,7 +361,7 @@ class Execution:
                                 desktopEvidence={'processConfirmed': True, 'windowVisible': bool(state.get('windowVisible')), 'windowFocused': bool(state.get('windowFocused')),
                                     'contentConfirmed': False, 'statusPollingBounded': True, 'statusRetentionExpired': launcher.status_expired})
                         current = store.get(job['id'])
-                        observed = {'process': process, 'readiness': readiness, 'outputBytes': len(self.output_data),
+                        observed = {'process': process, 'readiness': readiness, 'outputBytes': len(self.output_data),'captureTruncated':self.output_limited,
                             'phase': 'completing_checks' if self.completion else ('desktop_content' if native_ready else ('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running'))),
                             'guestState': {k: v for k, v in state.items() if k != 'outputBase64'}}
                         if state['state'] != 'completed':

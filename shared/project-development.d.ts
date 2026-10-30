@@ -219,6 +219,8 @@ export interface DevelopmentJob {
   completedAt: string | null;
 }
 export interface DevelopmentJobPage {
+  startOffset?:number;pageBytes?:number;totalBytes?:number;hasMore?:boolean;
+  captureLimitReached?:boolean;captureTruncated?:boolean|null;outputEncoding?:'utf-8'|'replacement';rawOutputBase64?:string;
   executionEvidence?: DevelopmentExecutionEvidence | null;
   job: DevelopmentJob;
   output: string;

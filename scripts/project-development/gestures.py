@@ -40,7 +40,7 @@ async def execute(execution, message, request, state, control, lease, process, a
     from observation import capture
     from authorization import authorize
     store = execution.store; job = store.get(execution.job['id']); value = message['input']
-    if authorization and authorization['engine']['profile'] != 'studio-tools-v14':
+    if authorization and authorization['engine']['profile'] not in ('studio-tools-v14','studio-tools-v15'):
         raise DevelopmentFault('This conversation retains its original input schema. A new gesture-capable session is required.')
     deployment = store.deployment(job['deploymentId'])
     if deployment.get('helperCapabilities', {}).get('gestureVersion') != 1 or request.get('frameBindingVersion') != 1:

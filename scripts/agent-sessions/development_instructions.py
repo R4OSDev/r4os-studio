@@ -2,6 +2,14 @@
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill' or not rights.get('studio.read_development_job'): return ''
+    compact = config.get('engine',{}).get('profile') == 'studio-tools-v15'
+    presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
+        'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
+        'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '
+        'Read view=output from its byte offset; continue nextOffset while hasMore, using totalBytes/pageBytes. '
+        'truncated/captureLimitReached means the capture limit, not page completeness. captureTruncated=null is unknown for old workers. '
+        'Presentation omissions do not delete logs/pins/inventories. Unknown exit status, failed checks and unconfirmed cleanup remain distinct. '
+        'Original receipts may be read repeatedly without starting another build/deploy/run/close.') if compact else ''
     return (
         '\n\nSTUDIO LIVE FILE CHECKS: New execution workers periodically read only the original registered outputFiles '
         'inside their deployment. read_development_job shows the most recent observed-stable, missing or unstable '
@@ -23,4 +31,4 @@ def compose(config):
         'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
         'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
         'app/SDK contract; host Rust builds do not imply a native guest compiler.'
-    )
+    ) + presentation

@@ -1,3 +1,10 @@
+## Compact development receipts (0.8.43)
+
+New project sessions use v15 compact development results with explicit complete
+detail/inventory/output reads. Paging, capture limits and presentation omissions
+are distinct; existing profiles retain their declarations and full responses.
+Details: [Compact-Development-Results.md](Compact-Development-Results.md).
+
 ## Bound Desktop argument budgets (0.8.42)
 
 Run & Test and deployment receipts expose the canonical DESKRUN UTF-8 budget.

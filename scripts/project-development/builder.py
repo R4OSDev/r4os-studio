@@ -23,10 +23,13 @@ class Builder:
         self.root = folder(store.root / 'Work' / job['id'])
         self.log = store.evidence(job['id']) / 'output.log'
         self.written = self.log.stat().st_size if self.log.exists() else 0
+        self.capture_truncated = job.get('captureTruncated') if self.log.exists() else False
 
     def append(self, data):
         # All subprocess paths are virtual. Preparation errors never disclose
         # host paths or component metadata to the model/browser.
+        if len(data)>max(0,LIMITS['outputBytes']-self.written) and self.capture_truncated is not True:
+            self.capture_truncated=True;self.store.observe(self.job['id'],captureTruncated=True)
         data = data[:max(0, LIMITS['outputBytes'] - self.written)]
         if not data: return
         with self.log.open('ab') as stream: stream.write(data); stream.flush()
