@@ -1,3 +1,9 @@
+## Violet Goal STOP (0.8.44)
+
+Pressed GOAL STOP now uses the shared violet control styling in project and
+skill sessions. Control behavior is unchanged. Details:
+[Session-Composer.md](Session-Composer.md).
+
 ## Compact development receipts (0.8.43)
 
 New project sessions use v15 compact development results with explicit complete

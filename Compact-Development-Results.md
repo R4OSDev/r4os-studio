@@ -43,3 +43,11 @@ old/new profile declaration checks, Python AST and build/TypeScript/lint. The
 representative large Unicode/pin/resource record is summarized without deleting
 its detail pages. No model inference or user development job was run. Evidence:
 Research/R4OS/Roadmap-Implementation/0.8.43/.
+
+After the first v15 installation, a coordinator that still runs an older
+protocol may need explicit idle adoption: run the installed
+`python3 -B /opt/r4os-studio/current/scripts/agent-sessions/install-skill-support.py --adopt`.
+The existing helper refuses active worker units or admitted busy runs before
+restarting the coordinator. It preserves independent worker/VM units and all
+session histories; no conversation profile is migrated. The normal v15
+readback must confirm the coordinator version before finishing installation.

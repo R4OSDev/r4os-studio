@@ -42,3 +42,19 @@ new listing/focus logic: empty inventory, confirmed upload, sent and cleanup-onl
 files, last deletion/focus, stale owner responses and failed read/retry. The UI
 was inspected at 1440/320 px. The existing binary attachment API/receipt checks,
 build/TypeScript and lint passed. No user uploads were created or deleted.
+
+## Violet Goal STOP (0.8.44)
+
+The local red override for pressed STOP is removed. The shared Goal component
+now uses the same violet pressed style as Play/Pause, including disabled pressed
+state and the existing visible violet focus ring. Normal and hover styles remain
+consistent. aria-pressed, labels, eligibility, Stop/Pause/Run handlers and original
+requests are unchanged. Project and Skill sessions use this exact common
+component/style without scope-specific color rules.
+
+Qualification used the actual read-only Main-session frontend at 1440/320 px
+with DOM-only pressed/focus/disabled/hover inspection. Stopped colors match
+#49315f / #f0e0ff / #b58bdc. No session was started/stopped or created for a color
+check; the two current skills have no existing sessions. Shared-source inspection
+confirms the same result for their Goal component. No new tests or fixtures were
+added. Build/TypeScript and lint passed.
