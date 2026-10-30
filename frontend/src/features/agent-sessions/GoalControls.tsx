@@ -34,6 +34,9 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
   const group = useRef<HTMLDivElement>(null), textButton = useRef<HTMLButtonElement>(null);
   const state = control.goal, status = state?.goal?.status;
   const running = busyRun(run?.state);
+  const retryingGoal = running && !!state?.goal
+    && (run?.mode === 'goal' || run?.goalActivation?.state === 'confirmed')
+    && (run?.providerRetry?.state === 'waiting' || run?.providerRetry?.state === 'submitting');
   const liveReady = control.liveExecution && run?.goalControlSupport;
   const active = (running && !liveReady) || (status === 'active' && state?.phase !== 'unknown');
   const ready = !disabled && control.available && !control.changing && !editor;
@@ -48,8 +51,8 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
         <button type="button" aria-label="Play goal" title={running ? (liveReady ? control.claude ? 'Start this Goal after the current Claude response' : 'Activate this Goal in the current run' : control.claude ? 'Wait for a ready compatible Claude worker' : 'Wait for a ready compatible worker') : control.claude ? 'Start this Studio Goal: up to 8 steps or 15 active minutes' : 'Start or resume this Goal'} aria-pressed={!!(confirmed && status === 'active')}
           disabled={!ready || inputBusy || active || state?.phase !== 'idle' || !control.execution}
           onClick={() => state?.goal ? void control.perform('play') : openEditor()}><Icon name="play" /></button>
-        <button type="button" aria-label="Pause goal" title={control.claude ? 'Pause after the current admitted step' : 'Pause after the current turn'} aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
-          disabled={!ready || ((!state?.goal || status !== 'active') && state?.phase !== 'unknown')} onClick={() => void control.perform('pause')}><Icon name="pause" /></button>
+        <button type="button" aria-label="Pause goal" title={retryingGoal ? 'Cancel automatic continuation and pause this Goal' : control.claude ? 'Pause after the current admitted step' : 'Pause after the current turn'} aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
+          disabled={!ready || ((!state?.goal || status !== 'active') && state?.phase !== 'unknown' && !retryingGoal)} onClick={() => void control.perform('pause')}><Icon name="pause" /></button>
         <button type="button" aria-label="Stop goal" title="Pause the Goal and interrupt its run" aria-pressed={!!stopped}
           disabled={disabled || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
           onClick={() => { if (canStopRun) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>

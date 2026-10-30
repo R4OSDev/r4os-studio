@@ -1,320 +1,159 @@
-# Provider continuations (0.8.10, supplemented in0.8.45)
+# Provider continuations (0.8.61)
 
-## Unreleased controller candidates
+New compatible project and skill runs can recover from qualified temporary
+provider failures in their original worker. This completes the ordinary-answer,
+GOAL and Live-Goal integration for the pinned Codex/API and Claude runtimes.
+The controller waits **60 seconds** after a confirmed failure and allows at
+most **five additional attempts** without actual model progress. Authentication,
+quota, policy, exhausted budgets and uncertain effects never qualify.
 
-The current source adds original-worker Codex/API GOAL recovery and native
-Claude subscription retry controllers. These paths are **disabled and not
-runtime-qualified**. Active Codex/API GOAL recovery requires a frozen numeric
-`goalRetryProtocol: 1`; Claude requires `claudeRetryProtocol: 1`. No capture
-producer currently sets either field. Existing runs/queues are not upgraded.
-Released ordinary Codex/API retries and normal GOAL execution remain available.
-No0.8.61 release/tag/installation follows from static checks alone.
-Targeted checks use owned synthetic accounts/endpoints in a closed
-network namespace; they make no real model or subscription calls.
+## Capture and compatibility
 
-### Codex/API GOAL candidate
+`retry_protocol.py` freezes numeric `goalRetryProtocol: 1` for the qualified
+Codex0.163.0 runtime and private zero-retry provider or API adapter. It freezes
+`claudeRetryProtocol: 1` only for the qualified Claude subscription session profile,
+CLI2.1.312 and Agent SDK0.3.312 pins. Capabilities are captured before any API or
+subscription credential lease is reserved. A protocol flag alone cannot authorize
+inference; the living controller still checks every original receipt and gate.
 
-The shared60-second/five-attempt controller additionally binds the confirmed
-original Play or Live-Play, unchanged human control sequence, original native
-active-to-blocked notification and complete **current** failed rollout section.
-Pinned0.163.0 logs function calls before execution. Strict header/owner/file/EOF,
-context/model/ordinal/final HTTP and call/result checks exclude Goal writes,
-unknown calls, incomplete effects, compaction, replacement and later activity.
-The same original file/section proof is checked again before claiming submission;
-a public blocked notification or empty scan cannot authorize reactivation.
+Previously saved runs and queues are never upgraded. A stored queue without a
+flag keeps its absence and byte-identical configuration, including its existing
+API lease hash. Unsupported saved values or incompatible runtime bindings hold
+the queue before admission. No migration, timer restoration or automatic Play
+follows from an update. Already running workers keep their immutable release.
 
-Status-only `thread/goal/set(active, origin: automatic)` supplies no new user
-text, objective or budget. A matching new native turn receipt is mandatory,
-including when it precedes the mutation response. Missing or contradictory
-submission remains unknown and is never submitted again. Pause/Stop cancels the
-original timer; the evaluator holds that original worker throughout waiting and
-rechecks its gate after asynchronous readback. The same monotone Play-clock row
-resumes without waiting-time accrual. Clock failure marks a coverage gap and
-cannot grant execution. Historical503 prefixes prove shape only, not live
-admission. The additional frozen protocol gate stays off until qualification.
+## Shared admission and controls
 
-### Claude original-query controller candidate
+The per-Run `provider_retries` ledger retains owner, session, original request and
+input/config hashes, worker/native process identities and births, host boot,
+release, native thread/session, confirmed tool receipts and original Play.
+Each submission is claimed before native input. Fresh native account/API lease
+or Claude subscription admission is checked again, along with current settings,
+permissions, project pins, pending input, Goal controls and budgets. No new
+worker or replacement thread can take over the timer.
 
-The controller binds owner/session/Run, original request/configuration, worker
-and wrapper PID/birth/release/boot, exact native session/runtime, credential
-lease/account, current history, settings and project pins. All Studio tool
-results must be confirmed and unchanged. Original Play/contract digests and the
-logical step are retained separately from each physical input UUID. The existing
-`provider_retries` row stores the current counter, deadline, claim, admission and
-receipt; append-only `claudeRetryReceipt` events retain the attempt audit without
-technical chat notices or prompt/credential content. Browser/host recovery only
-observes these records; a replacement worker cannot restore their timer.
+Stop, Pause and queued user input take priority. The shared English session UI
+shows a sanitized provider error, attempt/countdown, exhausted state or unknown
+outcome. Pause remains reachable when a native Goal is temporarily Blocked during
+retry waiting, including a Goal activated inside an ordinary response. Closing
+that held Goal requires its original confirmed Play and current Run/turn binding;
+it cannot authorize another Play or change its text. Run Stop remains accessible.
 
-A qualified typed final502/503/504 structural boundary can hold only the living
-original SDK query and suspend tools. The Node proof is explicitly
-runtime-unqualified; the disabled frozen protocol is not inferred from a status
-number or absent response. The original native failure/input, complete tool
-receipt hash, controls and limits are checked before60-second waiting, before
-claiming and after fresh subscription admission. Claims and the final admission
-are committed under an immediate SQLite writer transaction. Goal controls are
-also serialized with the original control lock. Waiting polls metadata only;
-large tool results are not hashed repeatedly at heartbeat frequency.
+Model text or a confirmed native tool request resets the failure sequence.
+Heartbeats and retry metadata do not. Waiting is excluded from the same monotone
+Play clock and Claude active-time budget, and from project-folder activity.
+Original usage and coverage gaps remain intact. Exhaustion holds the concrete
+failure until an explicit human Send/Play starts a new request. Reload, multiple
+tabs, coordinator recovery and host restart never restore an inference timer.
 
-Every physical attempt needs a fresh first-party account/model/usage admission
-with extra usage disabled and its exact claim returned to Node. It supplies an
-empty block array in the same persistent query, not a repeated prompt, upload,
-old tool output, string placeholder, fork or truncating resume. The exact native
-empty-array echo must match the claimed UUID/session/Run/logical step. The host
-confirms its committed receipt before either broker or SDK hooks reopen tools.
-Live control becomes available only after that broker confirmation is committed;
-an early live command must not invalidate the handshake that precedes it.
-The native hook waits boundedly for both that confirmation and the actual fixed
-model frame. A faster hook cannot substitute the echo for model identity or
-deny an otherwise valid call while the stream reader finishes the handshake.
-Submission/status/metadata alone never confirms input. At most five attempts
-are allowed without actual model text/tool progress; status events do not reset
-that count. The original human/logical-step receipt remains confirmed throughout.
+## Codex and API
 
-Goal physical-attempt pointers, admissions and echoes stay inside the same
-logical step, with earlier attempt receipts retained in the audit. The original
-accepted Play, report, bounds and successful tool receipts are not replaced.
-`GoalClock.resume` reuses the same execution row after the new echo. The separate
-Python authoritative time ledger and Node monotone guard exclude retry waiting;
-statistics cannot grant more execution. A successful physical result records its
-actual input ID, so later refused Goal inputs still retain the correct predecessor.
-For live activation during an ordinary recovered response, the target additionally
-binds its committed physical echo and claim digest. Root Run/request identity stays
-unchanged. Native arm, source result and later no-input closure must all identify
-that actual source input; waiting or unconfirmed retry admission cannot arm a Goal.
-Legacy targets without this private protocol retain the original source identity.
+Only typed final HTTP502/503/504 `httpConnectionFailed` failures qualify. Partial
+streams, missing status, internal retries, unresolved images/tools and unknown
+outcomes are excluded. Ordinary responses use `turn/start` with `input: []` in the
+same original process/thread, without a user message ID or repeated prompt.
 
-Pause/Stop cancels the timer, including during fresh admission. An idle failed
-query closes without interrupting an already completed input. Claimed but
-unconfirmed starts are held, not repeated. A matching final closure can prove
-no new input only with the exact claim, original source result/input, readable
-history and confirmed stream closure. Other missing/foreign/conflicting receipts
-retain Unknown and the clock's known prefix. Storage/audit failure still ends
-the worker and cannot leave a model-resubmission task running. Quota/auth/policy,
-complete/blocked reports, human controls, queues and unknown tools win. Folder
-activity excludes waiting and submission admission; stopping stays visible until
-its original process ends.
+A Goal additionally needs its confirmed original Play/Live-Play, unchanged human
+control sequence, original active-to-blocked notification and complete current
+failed native rollout section. The exact pinned binary logs function calls before
+execution. Header/owner/file/EOF/context/model/ordinal/call-result checks exclude
+model-issued Goal writes, compaction, incomplete effects and later activity.
+A public Blocked notification or nearby503 is insufficient. Before submission,
+the same original section and idle blocked Goal are read and checked again.
 
-A transport failure after a positive retry-input receipt remains Unknown. The
-earlier failed result can close only an attempt proved not to have submitted a
-new input; it must never become the result of an acknowledged continuation.
-Both a lost echo and a transport failure after the echo were exercised with the
-actual native runtime, retaining protected history and the same clock's prefix.
+Goal continuation uses status-only `thread/goal/set(active, origin: automatic)`
+with no new objective, budget, user text or tool output. A matching new native
+turn receipt is mandatory, including when it precedes the RPC response. The same
+Play-clock row resumes. Lost or contradictory start evidence remains Unknown;
+no speculative resubmission follows. Observational clock failure cannot grant
+execution.
 
-### Pinned Claude stream and error facts
-
-The unchanged runtime is Claude Code2.1.312 / Agent SDK0.3.312. The CLI exports
-internal `abandonedBlocks` as the undeclared SDK wire field `abandoned_blocks`;
-the SDK passes through that original record. A synthetic `message_stop` alone
-cannot prove completion. Missing terminal deltas, abandoned frames, unpaired
-tools, compaction/internal-retry notices and contradictory identities exclude
-structural holds. Incomplete response endings publish no completed input/output
-usage counters and retain a coverage gap. Historical totals are not repaired.
-
-Terminal `success`/`is_error: true` can expose a numeric `api_error_status` and
-finite `api_error` kind. Projection preserves only typed safe facts and the
-presence of a server code, never raw errors, headers, URLs or the code itself.
-Auth/quota/policy/context/model refusals take priority. Missing HTTP status
-cannot authorize retry, while known safe server/overload descriptions remain.
-Public `system/api_retry` has no per-input UUID and remains unqualified diagnostic
-information. Absence of that event does not prove no internal resend.
-
-General retry/watchdog/nonstreaming/model-fallback settings stay unchanged.
-In particular, a separate one-time first-party dispatch-header fallback can
-resubmit after503 even with the general retry budget at zero. This is bounded
-per failing native request chain: the exhaustion case had six failing chains
-(original plus five continuations) and six such resends. It must be accounted
-for separately. General jitter/backoff or overloaded-only delay knobs
-are not substituted for the shared fixed60-second/five-attempt contract.
-
-The exact empty string passes the whitespace guard but becomes `(no content)`.
-An empty array instead remains empty and is skipped by model-message
-normalization, as are synthetic API-error rows. This is source evidence, not an
-actual retained-query/model-wire/tool-preservation qualification. The private
-transport refuses a changed echo instead of replaying original input.
-
-The native qualification exposed an important difference: setting `isSynthetic`
-on that input makes the CLI create a metadata row, suppresses the replay echo and
-changes the request context. The continuation therefore keeps its explicit
-`auto-continuation` origin and empty array without that flag. The actual pinned
-SDK/CLI then emits the matching empty-array replay receipt. The observed ordinary
-retry waited60.56seconds, retained byte-identical model-message input and the
-original tool result, and executed the owned file effect exactly once. It used
-one original query/Run and fresh production subscription admission. A successful
-recovery clears only its own stale provider error; other errors remain intact.
-
-### Still required before enabling
-
-The native exhaustion case confirmed exactly five additional inputs, all five
-actual60-second deadlines and no sixth claim. Model messages/tool results stayed
-unchanged; the original logical step and Play clock survived more than300seconds
-of waiting. A separate read-tool progress case reset the attempt counter while
-keeping monotone claim ordinals and the same Play. Stop and a newly queued
-message both cancelled waiting before another admission. Fresh exhausted quota
-denied the next input with a positive original no-input closure and retained hold.
-The queue case verifies preemption and saved bytes, not subsequent queue dispatch.
-
-Native Codex0.163.0 also passed API GOAL retries for project/Responses and
-skill/Chat Completions: one original effect, fresh original API lease, status-only
-automatic Goal activation after60seconds, unchanged Play/Run/thread/frozen bytes,
-one Play clock without retry waiting, confirmed completion and released lease.
-
-Further final-result-loss/control races, recovery/account-staleness coverage and
-the capture-producer/old-queue integration remain before activation. Actual native
-ordinary continuation, active GOAL retry, Live-Play after a retry and Pause during
-waiting passed four targeted cases with the unmodified native runtime. GOAL
-waited60.45seconds while its single Play clock recorded1.38seconds of work;
-Live-Play retained the physical source input and one Play clock. Pause admitted
-zero retry inputs and retained readable history. These cases do not qualify the
-remaining failure/race scenarios or the complete shared controller acceptance.
-Both frozen
-protocol producers remain off. The full0.8.10/17/23 acceptances stay open;
-static checks and source inspection do not complete them.
-
-## Released ordinary-answer controller
-
-New compatible project/skill workers can continue ordinary answers after a
-confirmed final HTTP502/503/504 `httpConnectionFailed` turn. They wait60seconds
-and admit at most five additional attempts per failure sequence. A continuation
-uses the original native process/thread and `turn/start` with `input: []`, no
-user-message ID, tool output or repeated prompt. Model text or a native tool
-request confirms progress; only that progress resets the failure sequence.
-
-The durable per-Run ledger freezes owner, session, original request/input/config
-hashes, worker/native PID and birth, host boot, release, thread, failed turn and
-all confirmed tool receipts. It records the counter and monotone deadline before
-waiting, then claims each submission before RPC. Browser reloads and coordinator
-reconnects can observe this ledger; they cannot create a timer or start inference.
-Worker/host loss never resumes it. A lost start without an original native
-receipt becomes unknown; it is not submitted again.
-
-Before each attempt, the worker serializes with direct-message and Goal-control
-locks, checks the exact frozen session/config/engine, project pins, original
-processes, current account or API lease, native idle state and unchanged tool
-receipts. Stop, queued/pending/unknown input, pending Goal controls, changed
-rights/bindings, unresolved images/tools, native internal retries and partial
-stream errors exclude continuation. Tool admission is closed while waiting or
-claiming a continuation. Repeated old turn boundaries cannot end the new turn.
-The pinned native `systemError` status is also idle when no turn or input request
-is running; the exact qualified final HTTP failure remains mandatory.
-
-Project/skill views share a safe error, attempt and monotone countdown display.
-Stop remains available, direct send is unavailable at the idle retry boundary,
-and retry waiting does not animate the project folder as execution. No native
-usage or cumulative token event is converted into a new spending receipt.
-
-The supplement also fixes API context admission: `contextProtocol` is frozen
-before reserving the API lease. A worker does not append this field to an older
-API snapshot after reservation. Its original hash remains intact; missing legacy
-context coverage stays unknown. No historical lease, run or queue snapshot is
-rewritten to make a changed configuration appear original.
-
-### Pinned Codex GOAL boundary reviewed in0.8.59
-
-The installed Codex0.163.0 source at
-[`83086188ae0614bd882818ff1aa23f3194962012`](https://github.com/openai/codex/tree/83086188ae0614bd882818ff1aa23f3194962012)
-confirms a final turn error can set an active Goal to Blocked before publishing
-the terminal error. The public `thread/goal/updated` notification includes an
-optional `turnId`, but omits the private event ID and specific transition cause.
-A model-issued Goal update can carry the same turn ID. Turn correlation and a
-nearby transport error therefore do not independently prove that only the
-transport failure caused the block. A status-only `thread/goal/set` can preserve
-usage but can also start work immediately; it does not supply that missing
-cause or a conditional original-failure permit. No automatic reactivation was
-added. Model/human blocks and Stop/Pause remain authoritative. This is a source
-finding, not a provider-retry runtime qualification; no retry fixtures or
-inference were added for0.8.10.
-
-**Still open:** active GOAL/Live-Play recovery and its pause/clock/budget/queue
-integration, plus positive integrated runtime acceptance. This controller does
-not take over GOAL execution. Tasks2/3 remain partial and task4/acceptance remain
-open. No new tests/browser fixtures, artificial retries, paid inference or user
-session/VM actions were performed for this supplement. Source/import/AST checks,
-Build/TypeScript/Lint and installation readback do not claim those runtime cases.
-
-## Earlier diagnosis (0.8.10)
-
-Implemented: safe typed provider error descriptions in project/skill workers,
-including final failed-turn errors and native error notifications. The UI can
-show `Model service unavailable (HTTP503).` instead of a generic provider error.
-Only known enum names and valid numeric HTTP status codes are retained. Raw
-provider messages, URLs, request identifiers and additional details are not
-forwarded. The previous narrow authentication/quota fallback stays sanitized.
-A transient candidate is a diagnostic classification, never retry permission.
-
-The original0.8.10 release implemented diagnosis only. The ordinary-answer
-controller described above is additive in0.8.45; existing workers retain their
-original immutable release. Successful recovery has not been asserted from an
-unobserved runtime case. The remaining roadmap items stay open.
-
-## Qualified sources
-
-The installed unmodified Codex0.163.0 binary is pinned at SHA256
+Native Codex0.163.0 is unchanged at SHA256
 `399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215`.
-Its source checkout is commit `83086188ae0614bd882818ff1aa23f3194962012`.
-Relevant files under codex-rs:
+Its corresponding primary source is commit
+`83086188ae0614bd882818ff1aa23f3194962012`. The private OpenAI provider keeps
+HTTP/stream retries at zero, also when image generation is off. Old built-in
+provider threads retain their original retry behavior and are not switched to
+obtain another policy. API adapters preserve their original provider/credential
+revision, native thread and lease; no key rotation or alternate provider fallback
+is introduced.
 
-- app-server-protocol/src/protocol/v2/shared.rs and notification.rs:
-  typed connection errors with optional HTTP status, finality via willRetry.
-- app-server-protocol/src/protocol/common.rs and v2/turn.rs:
-  public turn/start/steer/interrupt methods and their inputs.
-- app-server/src/request_processors/turn_processor.rs and
-  core/src/session/turn_input.rs: an idle turn/start with empty input can start
-  sampling without adding user content; it remains a new native turn. Active
-  empty steering is rejected. There is no public original-attempt retry/CAS RPC.
-- model-provider-info/src/lib.rs and core/src/responses_retry.rs:
-  native retry counts,200ms HTTP base delay, stream backoff/server advice,
-  transport fallback and cancellation. They do not expose the Studio contract's
-  uniform60-second delay or durable per-Run attempt ledger.
+## Claude subscription
 
-Current official references describe the public
-[app-server lifecycle](https://learn.chatgpt.com/docs/app-server) and configurable
-[HTTP/stream retry counts](https://learn.chatgpt.com/docs/config-file/config-reference).
-Current documentation is not substituted for the pinned binary's behavior.
+The controller holds the original living SDK query after a typed final
+502/503/504 structural boundary. It binds the native failure/input, model/runtime,
+credential lease, history, Play/contract, logical step, confirmed tool receipts
+and current controls. Claims and final admission use an immediate SQLite writer
+transaction. Large tool results are not rehashed at heartbeat frequency.
+Append-only `claudeRetryReceipt` events retain attempt metadata without raw
+errors, prompts, headers, credentials or technical chat notices.
 
-Studio's private `studio_openai_images` provider deliberately keeps HTTP and
-stream retries at zero, including when image generation is disabled. An image
-POST with an unconfirmed outcome must not be replayed. Old built-in-provider
-threads have different native retry behavior; provider identity is not changed
-to obtain a different policy. No Codex source/binary/profile/pin was modified.
+Each physical attempt requires fresh first-party account/model/usage admission,
+with extra usage disabled. The same persistent query receives an empty block
+array with explicit `auto-continuation` origin. It receives no original prompt,
+upload, old tool output, string placeholder, fork or truncating resume. The
+native UUID/session/logical-step echo must match the committed claim; the host
+confirms it before tools reopen. Native hooks wait boundedly for both that
+confirmation and the actual fixed model frame. The echo alone cannot establish
+model identity. Live-Goal preparation additionally waits for broker confirmation.
 
-## Continuation contract to implement
+Physical inputs remain inside the same logical Goal step. The accepted Play,
+report, budget and prior receipts survive; `GoalClock.resume` reuses the same
+execution. The separate Python ledger and native monotone guard exclude held
+retry waiting. They cannot create more execution authority. Later refusals retain
+the actual predecessor input ID and original result.
 
-1. Consider only a typed HTTP502/503/504 failure at the pre-response connection
-   boundary and a confirmed final failed native turn. The0.8.45 controller uses
-   only the HTTP connection class; stream connection classes stay diagnostic.
-   Missing status, a partial
-   or disconnected response stream and unknown request/tool effects do not prove
-   safe continuation. Authentication, account/quota, context/budget/storage,
-   policy blocks, complete/blocked Goals and human Stop/Pause are excluded.
-2. Wait60seconds after each final failure and allow at most five additional
-   attempts in one failure sequence. Only confirmed model progress resets the
-   count. Native retries, transport fallback and Studio retries must not multiply.
-3. Persist original owner/session/Run, worker PID/birth/release/host boot,
-   thread/failed turn, frozen configuration, original Play and tool-receipt
-   binding. Reconcile those exact records before each attempt. No replacement
-   thread, new user text, replayed original prompt or replayed acknowledged tool.
-4. A qualified idle continuation must preserve the existing context. Empty-input
-   turn/start alone is not sufficient admission: the controller must serialize
-   Stop/Pause/Queue, current thread state, Goal changes and the original receipts.
-   A lost continuation response becomes unknown and is never submitted again.
-5. Web/coordinator reconnect may observe a living original worker chain only.
-   Worker/host loss never triggers new inference. Reconnect, tabs and settings
-   cannot reset the counter or create a second timer/Run.
-6. Retry waiting is waiting time. Exclude it from active Goal clock accrual and
-   project-folder activity; preserve native usage, budgets and the original
-   execution identity. Do not infer elapsed time or model progress from heartbeats.
-7. The UI must show a safe concrete error, next attempt1/5–5/5 and remaining
-   wait while keeping Stop reachable. Exhaustion holds the original failure;
-   a later explicit Send/Play is a new human request.
+Pause/Stop cancels waiting, including during fresh admission. An already failed
+idle input closes without interrupting a completed input. Exact original closure,
+claim and readable history may prove that no new input was submitted. Otherwise
+lost echoes, transport/result loss or conflicting receipts retain Unknown and the
+clock's known prefix. A result from the previous failed input can never close an
+acknowledged continuation. Storage/audit failure ends the worker and cancels its
+resubmission task. Recovery observes records only; it never recreates a query.
 
-## Remaining qualification
+### Pinned stream behavior
 
-The idle continuation's actual request/result loss, tool receipt preservation,
-native Goal pause/resume, clock and Queue/Stop races require an integrated
-controller qualification. Source inspection does not prove those runtime cases.
-Roadmap0.8.10 explicitly excludes new tests/browser fixtures/inference without a
-later separate instruction. The original0.8.10 release added diagnosis and the
-contract. The0.8.45 supplement implements the narrowly qualified ordinary-answer
-path described above; it does not claim GOAL recovery or positive end-to-end
-qualification. No tests, fixtures, inference or user session/VM actions were
-performed.
+CLI2.1.312 / Agent SDK0.3.312 export internal `abandonedBlocks` as SDK wire field
+`abandoned_blocks`. A synthetic `message_stop` alone proves no completion.
+Abandoned frames, unpaired tools, compaction/internal-retry notices, missing
+terminal deltas and conflicting identities exclude structural retry holds.
+Incomplete endings retain usage coverage gaps instead of fabricated totals.
+
+A terminal error may provide numeric `api_error_status` and finite `api_error`
+kind. Only safe typed facts are projected; raw messages, headers, URLs and codes
+are not rendered. Auth/quota/policy/context/model refusals win. Public
+`system/api_retry` has no per-input UUID and is diagnostic only.
+
+The native general retry budget remains zero. A separate dispatch-header
+fallback can resend once per failing native request chain after503. The native
+exhaustion proof observed six such resends for the original failure plus five
+Studio continuations. These are bounded and counted separately; no native
+backoff setting is substituted for Studio's fixed60-second delay.
+
+An empty string becomes `(no content)` and cannot serve this protocol. An empty
+array remains empty during model-message normalization. `isSynthetic` would
+create a metadata row, suppress the native echo and change the context, so it is
+omitted. The actual pinned runtime confirmed an identical retained model-message
+wire and tool result, one original effect and one query/Run across continuation.
+
+## Verification and practical limits
+
+Targeted checks use the unmodified pinned native runtimes with owned synthetic
+accounts and endpoints in closed network namespaces. They exercise successful
+ordinary/Goal continuations, Live-Play, five actual60-second waits, progress reset,
+Pause/Stop/Queue priority, exhausted quota, lost echo/transport/final result,
+permission/lease changes, model-issued blocks and passive repeated recovery.
+Capture/queue admission checks cover all three provider engines, old missing
+flags, numeric1 and invalid values without changing reserved lease hashes.
+Actual SessionPanel browser cases cover project/skill views at1440/320 pixels,
+countdown/reload, bound Pause, Stop, exhaustion and Unknown.
+
+Existing focused account/quota and active-time/recovery checks supplement these
+cases. No broad suite or intentional real-account quota exhaustion is needed.
+The earlier minimal authorized real Claude subscription proof remains the
+account-integration evidence; these failure cases make no paid model calls.
+A controlled queue-preemption case proves saved-byte retention, while earlier
+qualified lifecycle cases cover subsequent dispatch. An unconfirmed effect,
+unsupported protocol, unavailable provider capability or lost original worker
+continues to hold rather than replay. Native R4OS desktop-retention/window
+limitations remain separate roadmap dependencies.

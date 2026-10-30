@@ -199,8 +199,8 @@ class ProviderRetry:
             self.failed_turn = turn['id']; self.failure = failure
             self.goal_mode = bool(w.config.get('goalExecution') or self.goal.active_execution())
             if self.goal_mode and (type(w.config.get('goalRetryProtocol')) is not int or w.config['goalRetryProtocol'] != 1):
-                # New original-Goal recovery remains disabled until its native
-                # runtime qualification. Ordinary released retries are intact.
+                # Older frozen runs retain their original Goal behavior.
+                # Only qualified new captures offer this additional protocol.
                 self.goal_mode = False
                 return False
             if self.goal_mode:

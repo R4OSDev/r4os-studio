@@ -128,6 +128,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     freeze_api(store,session_id,data,provider_dir,snapshot)
     from claude_selection import freeze as freeze_claude
     freeze_claude(store,session_id,data,provider_dir,snapshot,queue_context=queued_claude)
+    from retry_protocol import freeze as freeze_retry
+    freeze_retry(snapshot)
     return snapshot, attachments, request_hash
 
 
@@ -175,6 +177,10 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
             if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
         snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None)
         if frozen is not None:
+            # Adding a capability to new captures must not upgrade old queued
+            # inputs or change their already reserved API lease hash.
+            from retry_protocol import freeze as freeze_retry
+            freeze_retry(snapshot,original=frozen)
             if snapshot != frozen: raise ProjectFault('The queued selection changed. The queue was held; review its original input.',409)
             snapshot = frozen
         ident = snapshot.get('apiRunId') or snapshot.get('claudeRunId') or str(uuid.uuid4()); stamp = now()

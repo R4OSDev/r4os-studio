@@ -268,7 +268,9 @@ class ClaudeWorker(Worker):
                     self.native_receipt=value;self.closed.set()
             if not self.closed.is_set():raise ValueError('Original native worker closed without its final receipt.')
         except Exception:
-            self.error=self.error or 'The original native Claude stream is unconfirmed. It was not replayed.';self.outcome='unknown';self.done.set()
+            detail='The original native Claude stream is unconfirmed. It was not replayed.'
+            self.error=(self.error+' ' if self.error else '')+detail
+            self.outcome='unknown';self.done.set()
         finally:self.ready.set();self.transport_ready.set()
 
     async def _stop(self):

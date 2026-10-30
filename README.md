@@ -1,3 +1,13 @@
+## Provider recovery (0.8.61)
+
+Compatible new Codex/API and Claude subscription runs can continue qualified
+502/503/504 failures in the original worker after60seconds, up to five additional
+attempts. Original tools, Goal/Live-Play and active-time accounting are retained.
+Pause/Stop, queued input, changed rights, limits and unknown outcomes take
+priority. Old runs and queued configurations remain unchanged; reload/recovery
+never starts inference. Details and verification limits:
+[Provider-Retries.md](Provider-Retries.md).
+
 ## GOAL for API providers (0.8.60)
 
 API sessions now support native GOAL Save/Play, live activation, Pause/Stop and

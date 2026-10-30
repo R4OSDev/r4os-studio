@@ -126,9 +126,12 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   async function perform(action: GoalAction, objective?: string, revision?: number) {
     if (!goal || !available || pending || posting || checking || !session) return false;
     const run = session.latestRun;
-    if (busyRun(run?.state) && run?.mode !== 'goal' && (!liveExecution || !run?.goalControlSupport)) { setError('This run cannot accept live Goal control yet. Wait for a ready compatible run; your draft is preserved.'); return false; }
-    const target = busyRun(run?.state) && run?.goalControlSupport && run.threadId && run.turnId ? { runId: run.id, threadId: run.threadId, turnId: run.turnId } : undefined;
-    const targetRunId = claudeSession && busyRun(run?.state) && run?.goalControlSupport ? run.id : undefined;
+    const retryControl = (action === 'pause' || action === 'stop') && busyRun(run?.state) && !!goal.goal
+      && (run?.mode === 'goal' || run?.goalActivation?.state === 'confirmed')
+      && (run?.providerRetry?.state === 'waiting' || run?.providerRetry?.state === 'submitting');
+    if (busyRun(run?.state) && run?.mode !== 'goal' && (!liveExecution || !run?.goalControlSupport) && !retryControl) { setError('This run cannot accept live Goal control yet. Wait for a ready compatible run; your draft is preserved.'); return false; }
+    const target = busyRun(run?.state) && (run?.goalControlSupport || retryControl) && run.threadId && run.turnId ? { runId: run.id, threadId: run.threadId, turnId: run.turnId } : undefined;
+    const targetRunId = claudeSession && busyRun(run?.state) && (run?.goalControlSupport || retryControl) ? run.id : undefined;
     return submit({ requestId: projectRequestId(), revision: revision ?? goal.revision, action,
       ...(action === 'save' ? { objective: objective ?? '' } : {}), ...(action === 'play' || target || targetRunId ? { sessionRevision: session.revision } : {}), ...(target ? { target } : {}), ...(targetRunId ? { targetRunId } : {}) });
   }

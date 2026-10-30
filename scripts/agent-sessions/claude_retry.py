@@ -1,6 +1,6 @@
 """Living original-query retry authority. A persisted row never starts a worker.
 
-The frozen protocol has no capture producer until native runtime qualification.
+The qualified frozen protocol is captured before credential-lease admission.
 No original prompt, upload or acknowledged tool result is submitted here.
 """
 import asyncio
