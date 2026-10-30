@@ -1,3 +1,19 @@
+## Native Claude Subscription foundation (0.8.18)
+
+A distinct Claude-plan identity and immutable engine binding now prepare the
+native Claude Code2.1.312 / Agent SDK0.3.312 adapter. Fixed official archives,
+individual file hashes/integrity and original licenses are pinned; explicit
+unprivileged setup publishes a private immutable runtime without npm/plugins,
+latest updates, account login or model inference.
+
+Coordinator metadata probes run with empty private filesystem/config/input,
+no network and no tools. Native/session/message/tool IDs remain distinct,
+unknown/error states never create a replacement conversation. Actual SDK,
+adapter and restricted-service probes plus focused store/stream tests qualify
+this foundation. Authentication, model turns, Studio tools, quota/overage,
+model UI and Goal remain staged for19–23; existing OpenAI/API sessions retain
+their original records and histories. Details: [Claude-Subscription.md](Claude-Subscription.md).
+
 ## API lifecycle and authoritative usage (0.8.17, partial)
 
 API statistics now join original native response receipts to explicit provider

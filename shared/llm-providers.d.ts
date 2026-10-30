@@ -1,3 +1,9 @@
+import type { ApiProvider } from './api-providers.js';
+import type { ClaudeSubscriptionProvider } from './claude-subscription.js';
+
+/** Additive identity union; existing subscription HTTP records keep Provider. */
+export type LlmProviderIdentity = Provider | ApiProvider | ClaudeSubscriptionProvider;
+
 export interface Provider {
   id: string;
   name: string;

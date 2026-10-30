@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "id": "claude-code-sdk-0.3.312-v1",
+  "engine": "claude-code",
+  "adapterProfile": "studio-claude-sdk-v1",
+  "sdk": {
+    "name": "@anthropic-ai/claude-agent-sdk",
+    "version": "0.3.312",
+    "archiveUrl": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.3.312.tgz",
+    "archiveSha256": "98a6c27b00b273fa0598b80540aa152d9fb58b6a1ac885b5993381e98469926d",
+    "archiveIntegrity": "sha512-Ilj5Agx3ak/Z0UPZNLS7+CTnYMa+Ijf8+FKelh9MKGRwHVYyfvmJgL0fsmooI78SdkZwqjI5a4CwOAsJurdjJA==",
+    "files": {
+      "browser-sdk.d.ts": {
+        "sha256": "11d56012694f09574a1a08510c1286a80ee9db86f784b59cafa58fffc9b42552",
+        "bytes": 9892
+      },
+      "sdk.d.ts": {
+        "sha256": "bfc77ff5a6702fcc15ed9b290e6ab8ca1166501516b76e12113697dd9984d998",
+        "bytes": 565350
+      },
+      "sdk.mjs": {
+        "sha256": "f5d668db39e357267e512a3792ebd828f6a42a23e7f8377921a924a513861181",
+        "bytes": 1325932
+      },
+      "LICENSE.md": {
+        "sha256": "8ce94b9478bb9868f9641f818e06cd722fbe55d4c22e2d2ed11971b20146173a",
+        "bytes": 147
+      },
+      "package.json": {
+        "sha256": "967c7f90067ebb0ba584cd32f41873b85ab9cb1ca7491013e562cf8a33f2c649",
+        "bytes": 2597
+      },
+      "core-jhgm58v5.mjs": {
+        "sha256": "7855e5cbcc040da5eb20c7ad208cd04bcd5c5d19363f55e97011ae9cdbf7da23",
+        "bytes": 190170
+      },
+      "browser-sdk.js": {
+        "sha256": "f42b487fb480cf8bff8c89bd62fe5a6abb56d4272f1ea1ff309b6a5beb83c72f",
+        "bytes": 897247
+      },
+      "extractFromBunfs.d.ts": {
+        "sha256": "eedc9d6a3adb2e0f12984ddf3d2cc3a72f56906b4a4069660bd08fd36c3d2984",
+        "bytes": 63
+      },
+      "sdk-tools.d.ts": {
+        "sha256": "6c6504ca52d118892d8ff617476b6254467cc50cde2e2c8c1400a12c40efe75f",
+        "bytes": 172553
+      },
+      "core-qw4t51gr.mjs": {
+        "sha256": "cd0ba1465a04b950970c4d7fe956b24105936777f4a951eaf7f2226d1464f488",
+        "bytes": 8900
+      },
+      "agentSdkTypes.d.ts": {
+        "sha256": "1005d810b1bec12c856632bb7d54087af7c516251a4b557eb05ae8d474fc5a93",
+        "bytes": 25
+      },
+      "core.d.ts": {
+        "sha256": "5442d8799c5b81206d392fe1adfd268591cbffb1ba7467344e2670676b2b8ed8",
+        "bytes": 448
+      },
+      "manifest.zst.json": {
+        "sha256": "a164f7e6198b2d41773254c6c36982345f31d2e3aebdafea8840470c889f9f0a",
+        "bytes": 2326
+      },
+      "core-azmey26z.mjs": {
+        "sha256": "49fbaa9f5d447f475c57e4bfedabd54670a1be76a614764045ef4cbff5aafdd9",
+        "bytes": 546756
+      },
+      "extractFromBunfs.js": {
+        "sha256": "9c590c0ad3f74bf47aad914a84215d2746795b302088ed731c42f6068f0960db",
+        "bytes": 10648
+      },
+      "bridge.mjs": {
+        "sha256": "92d3ebfd2592d39717c1a2b617e820ed65c23f53f5ee1491a27d28eb6e767f7d",
+        "bytes": 1025731
+      },
+      "core-x7q9bdvq.mjs": {
+        "sha256": "76e3f54508cdbf28ee2fa4ecb03e57c10a900cf2b3c077022bd86ec47c19b57e",
+        "bytes": 1442
+      },
+      "manifest.json": {
+        "sha256": "f9bc2d099665e498cbc4123f81f2220852c3a75ee118c0081ef83f42f165aec9",
+        "bytes": 2016
+      },
+      "bridge.d.ts": {
+        "sha256": "24f6d78b3d02ca068e66121976d5b0f67379bf3348664a3ca97281592916b4c3",
+        "bytes": 18665
+      },
+      "README.md": {
+        "sha256": "d125329cd02e55f96e88b319b77b6769752274eaf9018ca34308b228570761bd",
+        "bytes": 4411
+      },
+      "core.mjs": {
+        "sha256": "ea521c6de70160039cff3d6cf618bf6b867dfbe88ccf3c5af13671674506de21",
+        "bytes": 114323
+      }
+    }
+  },
+  "native": {
+    "name": "@anthropic-ai/claude-agent-sdk-linux-x64",
+    "packageVersion": "0.3.312",
+    "version": "2.1.312",
+    "archiveUrl": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-linux-x64/-/claude-agent-sdk-linux-x64-0.3.312.tgz",
+    "archiveSha256": "5399c84c98bc4f04771815ef1a7b918ea02ef6e1faa28a2ba9de3ae2f7e6f405",
+    "archiveIntegrity": "sha512-UOsqza2uo5gqlX2OU72LhkQvIaNJKUQMJIi1poX2NtYqaWACqNo/TZPWfOBzxhyWmX8BLWaOlcuZGPLgcCJOTg==",
+    "files": {
+      "claude": {
+        "sha256": "4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d",
+        "bytes": 293592432,
+        "executable": true
+      },
+      "package.json": {
+        "sha256": "43ad4f33297c8872a43346ee13788d384ad2fc869b9c3529dd312986085e8d34",
+        "bytes": 282,
+        "executable": false
+      },
+      "LICENSE.md": {
+        "sha256": "8ce94b9478bb9868f9641f818e06cd722fbe55d4c22e2d2ed11971b20146173a",
+        "bytes": 147,
+        "executable": false
+      },
+      "README.md": {
+        "sha256": "310346d4c8006eef72f488dcc348bd2803a83a93111de5211954c8cae1f9d0fe",
+        "bytes": 160,
+        "executable": false
+      }
+    }
+  },
+  "platform": {
+    "system": "linux",
+    "architecture": "x86_64",
+    "libc": "glibc",
+    "nodeMinimum": "18.14.0"
+  },
+  "qualified": {
+    "offlineInitialization": true,
+    "modelMetadataControl": true,
+    "accountMetadataControl": true,
+    "idleInterrupt": true,
+    "authenticatedSubscription": false,
+    "modelTurns": false,
+    "studioTools": false,
+    "goals": false,
+    "overageProtection": false
+  },
+  "licenseFiles": [
+    "sdk/LICENSE.md",
+    "sdk/README.md",
+    "native/LICENSE.md",
+    "native/README.md"
+  ]
+}

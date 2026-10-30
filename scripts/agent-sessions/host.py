@@ -42,6 +42,7 @@ class Host:
         self.skill_delete_tasks={}
         self.session_delete_tasks={}
         self.catalog_lock=asyncio.Lock();self.catalog_tasks={}
+        self.claude_probe_lock=asyncio.Lock()
         self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -195,7 +196,24 @@ class Host:
                 await self.handle({'operation':'cancel_provider','providerId':ident})
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
             return result
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'claude_provider':
+            from claude_provider_store import ClaudeProviders
+            store=ClaudeProviders(self.config['providers']);action=request.get('action')
+            if action=='list':return await asyncio.to_thread(store.listing)
+            if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
+            if action=='creation_receipt':return await asyncio.to_thread(store.receipt,request.get('requestId'))
+            if action=='create':return await asyncio.to_thread(store.create,request.get('input'))
+            if action=='runtime':
+                from claude_runtime import installed
+                runtime=await asyncio.to_thread(installed,self.config['providers'])
+                return {key:runtime[key] for key in ('id','version','sdkVersion','sha256','sdkArchiveSha256','qualified')}
+            if action=='probe':
+                if self.claude_probe_lock.locked():raise ProjectFault('A Claude metadata probe is already active.',429)
+                from claude_probe import probe
+                async with self.claude_probe_lock:
+                    return await probe(self.config['providers'],self.root,request.get('requestId'))
+            raise ProjectFault('Unsupported Claude provider operation.',400)
         if op in ('session_delete_preview','session_delete','session_delete_receipt'):
             import session_delete
             kind,ident=binding(request);sid=identity(request['sessionId'])
