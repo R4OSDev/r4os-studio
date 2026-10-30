@@ -45,6 +45,7 @@ await test('canonical native model and selected effort cannot silently change', 
   try {
     await f.engine.initialize(); await f.engine.send('Own explicit input'); await tick();
     assert.equal(f.options.effort, 'high'); assert.equal(f.options.env.CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP, '1');
+    assert.equal(f.options.env.CLAUDE_CODE_MAX_RETRIES, '0'); assert.equal(f.options.env.CLAUDE_CODE_RETRY_WATCHDOG, '0');
     assert.deepEqual(f.options.settings.fallbackModel, []); assert.deepEqual(f.options.settings.availableModels, ['owned-model']);
     const tool = { hook_event_name: 'PreToolUse', session_id: f.frozen.nativeSessionId, tool_name: 'mcp__studio__read_file',
       tool_use_id: 'own-model-bound-tool', tool_input: { path: 'own.c' }, mcp_server: { name: 'studio', source: 'dynamic' } };
@@ -77,6 +78,37 @@ await test('display projection excludes raw thinking, signatures, images and pri
 function admission(binding) { return { allowed: true, extraUsageDisabled: true, providerId: binding.providerId,
   nativeSessionId: binding.nativeSessionId, model: binding.model, admissionId: randomUUID(), expiresAt: Date.now() + 10000,
   authMethod: 'claude.ai', apiProvider: 'firstParty', subscriptionType: 'pro' }; }
+
+await test('native model refusal keeps its safe error and drains the original failed result', async () => {
+  let closed = 0;
+  const f = fixture({ admit: async ({ binding }) => admission(binding), closeAdmission: async () => { closed++; } },
+    { resolvedModel: 'owned-model' });
+  try {
+    await f.engine.initialize(); await f.engine.send('Own original input'); await tick();
+    const failure = { type: 'assistant', uuid: randomUUID(), session_id: f.frozen.nativeSessionId, error: 'model_not_found',
+      message: { id: 'owned-model-error', model: '<synthetic>', content: [{ type: 'text', text: 'private provider response' },
+        { type: 'tool_use', id: 'unbound-error-tool', name: 'mcp__studio__read_file', input: { path: 'private' } }] } };
+    const projected = publicFrame(failure);
+    assert.equal(projected.error, 'model_not_found'); assert.match(projected.error_message, /no replacement/);
+    assert.deepEqual(projected.message.content, []); assert.equal(JSON.stringify(projected).includes('private'), false);
+    f.feed.emit(failure); await tick();
+    assert.equal(f.engine.nativeFailure, true); assert.equal(f.engine.modelObserved, false); assert.equal(closed, 1);
+    f.feed.emit({ type: 'result', subtype: 'error_during_execution', is_error: true, uuid: randomUUID(), session_id: f.frozen.nativeSessionId });
+    await tick(); assert.equal(f.engine.error, null); assert.equal(f.engine.result.is_error, true);
+    assert.equal(f.grants.length, 0); assert.equal(f.sent.length, 1);
+  } finally { await f.engine.close(); }
+});
+
+await test('a late Stop preserves an already confirmed original result', async () => {
+  const f = fixture({ admit: async ({ binding }) => admission(binding) });
+  try {
+    await f.engine.initialize(); await f.engine.send('Own original input'); await tick();
+    const result = { type: 'result', subtype: 'success', is_error: false, uuid: randomUUID(), session_id: f.frozen.nativeSessionId };
+    f.feed.emit(result); await tick();
+    await f.engine.interrupt(); assert.equal(f.interrupts(), 0); assert.equal(f.engine.result, result);
+    assert.equal(f.engine.error, null);
+  } finally { await f.engine.close(); }
+});
 
 await test('idle initialization submits no model message and cannot bypass the subscription/overage gate', async () => {
   const f = fixture();

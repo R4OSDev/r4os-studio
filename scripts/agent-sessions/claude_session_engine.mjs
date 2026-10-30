@@ -43,6 +43,10 @@ export function sessionEnvironment(options) {
     CLAUDE_CODE_DISABLE_CRON: '1', CLAUDE_CODE_DISABLE_ARTIFACT: '1', CLAUDE_CODE_DISABLE_ADVISOR_TOOL: '1',
     CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1',
     CLAUDE_CODE_DISABLE_FAST_MODE: '1', CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: '1',
+    CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_RETRY_WATCHDOG: '0',
+    CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES: '0', CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
+    CLAUDE_CODE_NO_MODEL_FALLBACK: '1', CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK: '1',
+    CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: '1', CLAUDE_CODE_DISABLE_REFUSAL_RETRY: '1',
     CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP: '1',
     CLAUDE_CODE_DISABLE_FILE_MENTIONS: '1', CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: '1' };
 }
@@ -81,6 +85,7 @@ export class ClaudeSessionEngine {
       || [...tools].some(name => !/^[a-z][a-z0-9_]{0,79}$/.test(name))) throw Error('Invalid frozen Studio tools.');
     this.tools = tools;
     this.expectedModel = options.resolvedModel ?? null; this.modelObserved = false;
+    this.nativeFailure = false;
     if (this.expectedModel !== null && this.expectedModel !== this.binding.model) throw Error('The frozen native model identifier changed.');
     if (options.effort !== undefined && options.effort !== '' && !['low','medium','high','xhigh','max'].includes(options.effort)) throw Error('Invalid frozen native effort.');
     this.enveloped = new Set(options.envelopedTools ?? []);
@@ -98,7 +103,7 @@ export class ClaudeSessionEngine {
       hooks: { PreToolUse: [{ hooks: [input => this.beforeTool(input)] }] },
       canUseTool: async (name, input, details) => {
         const grant = this.grants.get(details.toolUseID), tool = mcpTool(name);
-        if (this.state === 'active' && (!this.requireInputReceipt || this.inputAccepted) && tool && this.tools.has(tool) && details.mcpServer?.name === 'studio'
+        if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted) && tool && this.tools.has(tool) && details.mcpServer?.name === 'studio'
           && details.mcpServer.source === 'dynamic' && !details.agentID && grant?.tool === tool && grant.hash === fingerprint(input)) {
           return { behavior: 'allow', updatedInput: input };
         }
@@ -114,7 +119,7 @@ export class ClaudeSessionEngine {
     const args = tool && this.enveloped.has(tool) ? wireInput && Object.keys(wireInput).length === 1
       && Object.hasOwn(wireInput, 'request') ? wireInput.request : null : wireInput;
     let allowed = false;
-    if (this.state === 'active' && (!this.requireInputReceipt || this.inputAccepted) && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
+    if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted) && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
       && tool && this.tools.has(tool) && opaque(input.tool_use_id) && !input.agent_id
       && input.mcp_server?.name === 'studio' && input.mcp_server.source === 'dynamic'
       && args && typeof args === 'object' && !Array.isArray(args) && bounded(args, 131072)) {
@@ -199,8 +204,12 @@ export class ClaudeSessionEngine {
     try {
       for await (const message of this.query) {
         if (!message || typeof message !== 'object' || !bounded(message, 16 * 1024 * 1024)) throw Error('Native Claude frame exceeds its bound.');
+        const failedAssistant = message.type === 'assistant' && message.error != null;
+        if (failedAssistant) {
+          this.nativeFailure = true; this.grants.clear(); await this.host.closeAdmission(this.binding);
+        }
         const reportedModel = message.message?.model ?? message.event?.message?.model;
-        if (this.expectedModel && reportedModel != null) {
+        if (this.expectedModel && reportedModel != null && !failedAssistant) {
           if (reportedModel !== this.expectedModel) throw Error('The native model response differs from the frozen selection. No replacement model was accepted.');
           this.modelObserved = true;
         }
@@ -239,6 +248,7 @@ export class ClaudeSessionEngine {
         const between = message.type === 'result' && this.goal && this.state === 'active'
           && message.subtype === 'success' && !message.is_error;
         if (message.type === 'result') {
+          if (this.nativeFailure && !message.is_error) throw Error('A native error was followed by an unconfirmed successful result. No replay was accepted.');
           this.result = message; this.state = between ? 'between' : 'completed'; this.grants.clear();
         }
         await this.host.receive({ binding: this.binding, identity, native: message });
@@ -256,6 +266,10 @@ export class ClaudeSessionEngine {
 
   async interrupt() {
     if (this.state === 'closed' || this.state === 'stopping') return;
+    if (this.state === 'completed') {
+      this.grants.clear(); await this.host.closeAdmission(this.binding);
+      this.inputs.close(); this.query.close(); return;
+    }
     this.state = 'stopping'; this.grants.clear();
     await this.host.closeAdmission(this.binding);
     try { await deadline(this.query.interrupt(), 5000); } finally {

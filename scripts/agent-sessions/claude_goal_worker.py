@@ -82,7 +82,7 @@ class ClaudeGoalRuntime:
         if self.started:
             value = self.journal.read()
             # A qualified time-limit cause survives the subsequent Stop path.
-            if value['state'] != 'stopping': self.journal.stop()
+            if value['state'] not in ('stopping','closing'): self.journal.stop()
             from claude_goal_store import stopping
             stopping(self.w)
 

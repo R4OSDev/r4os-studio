@@ -5,15 +5,32 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { ClaudeSessionEngine } from './claude_session_engine.mjs';
 
+const nativeErrors = {
+  authentication_failed: 'Claude sign-in is no longer valid. Check this provider before continuing.',
+  oauth_org_not_allowed: 'This Claude organization does not allow the selected subscription session.',
+  account_on_hold: 'Claude reports that this account is on hold. Check the provider before continuing.',
+  verification_required: 'Claude requires account verification before this session can continue.',
+  billing_error: 'Claude rejected the billing or subscription state. No API billing fallback was used.',
+  rate_limit: 'Claude limited this request. Check subscription limits before continuing; the limit scope may be unknown.',
+  overloaded: 'Claude reports temporary overload. This request was not replayed.',
+  invalid_request: 'Claude rejected this request. Check the selected model and session settings.',
+  model_not_found: 'The selected Claude model is unavailable for this account. Choose an available model; no replacement was used.',
+  server_error: 'Claude reported a server error. This request was not replayed.',
+  max_output_tokens: 'Claude reached the response output limit. Inspect its retained result before continuing.',
+  cloud_credential_error: 'Claude reported an unexpected cloud credential state. Check this native subscription provider.',
+};
+
 export function publicFrame(native) {
   const base = { type: native.type, subtype: native.subtype, uuid: native.uuid, session_id: native.session_id, parent_tool_use_id: native.parent_tool_use_id };
   if (native.type === 'user' && native.isReplay === true) return { ...base, isReplay: true };
-  if (native.type === 'assistant') return { ...base, ...(native.error == null ? {} : { error: 'nativeError' }), message: { id: native.message?.id, model: native.message?.model,
+  const failure = native.error == null ? null : Object.hasOwn(nativeErrors, native.error) ? native.error : 'nativeError';
+  if (native.type === 'assistant') return { ...base, ...(failure === null ? {} : { error: failure,
+    error_message: nativeErrors[failure] ?? 'Claude could not complete this request. Check the provider and retained session result.' }), message: { id: native.message?.id, model: native.message?.model,
     usage: native.message?.usage && typeof native.message.usage === 'object'
       ? Object.fromEntries(['input_tokens','cache_creation_input_tokens','cache_read_input_tokens'].map(key => {
         const value = native.message.usage[key]; return [key, Number.isSafeInteger(value) && value >= 0 ? value : null];
       })) : null,
-    content: (native.message?.content ?? []).filter(v => ['text', 'tool_use'].includes(v.type)).map(v => v.type === 'text'
+    content: (failure === null ? native.message?.content ?? [] : []).filter(v => ['text', 'tool_use'].includes(v.type)).map(v => v.type === 'text'
       ? { type: 'text', text: v.text } : { type: 'tool_use', id: v.id, name: v.name, input: v.input }) } };
   if (native.type === 'stream_event') {
     const e = native.event, event = { type: e?.type, index: e?.index };

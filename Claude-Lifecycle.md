@@ -4,8 +4,9 @@ The bounded Studio GOAL engine and provider-specific controls are described in
 [Claude-Goal.md](Claude-Goal.md). It preserves the original Play and native
 session, with fresh admission per step. Save/Play/Pause/Stop and queue priority
 are isolated-protocol qualified in0.8.49. Live activation inside an ordinary
-running response remains open. Actual account acceptance is deferred by the
-user; the public model catalog gate remains closed.
+running response remains open. Public text selection and minimal real Pro
+account/tool/resume/deletion acceptance were qualified in0.8.52. Account holds,
+safe typed errors and original-result preservation are extended in0.8.53.
 
 Stop closes tool admission before requesting the native interrupt. Studio drains
 the original terminal result before closing the query. A confirmed result and
@@ -51,7 +52,8 @@ orchestration and explicit original receipts/budgets. Live activation and direct
 steering remain open. Text queues and native input acknowledgements are integrated
 in0.8.47; see [Claude-Queue.md](Claude-Queue.md). No Codex
 GOAL RPC, automatic retry, restore inference or automatic Play is substituted.
-Public Claude model execution remains disabled by the existing catalog gate.
+Public execution requires a fresh qualified text catalog and current native
+subscription admission. Original quotas/errors never cause a model/account switch.
 
 Focused tests and the actual unchanged pinned SDK/CLI in closed filesystem and
 network namespaces cover admission, extra usage/unknown/exhausted refusal,

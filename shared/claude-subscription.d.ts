@@ -45,6 +45,10 @@ export interface ClaudeRateObservation {
   scope: string | null; usedPercent: number | null; resetsAt: string | null;
   overageEnabled: boolean | null; usingOverage: boolean;
 }
+export interface ClaudeQuotaHold {
+  id: string; createdAt: string; reasonCode: 'subscription_limit' | 'overage_unconfirmed'; reason: string;
+  providerId: string; sourceRequestId: string | null;
+}
 export interface ClaudeRuntimeStatus {
   id: string; version: string; sdkVersion: string; sha256: string; sdkArchiveSha256: string;
   qualified: Record<string, boolean>;

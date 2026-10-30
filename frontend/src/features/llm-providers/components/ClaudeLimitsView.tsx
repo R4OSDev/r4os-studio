@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ClaudeSubscriptionLimits, ClaudeRateObservation } from '../../../../../shared/claude-subscription';
+import type { ClaudeSubscriptionLimits, ClaudeRateObservation, ClaudeQuotaHold } from '../../../../../shared/claude-subscription';
 
 function percent(value: number | null) { return value === null ? 'Unknown' : `${Math.round(value * 10) / 10}%`; }
 function countdown(reset: string, clock: number) {
@@ -10,7 +10,7 @@ function countdown(reset: string, clock: number) {
 }
 
 /** Native quota percentages and their receipt time; no token-based estimates. */
-export function ClaudeLimitsView({ sample, compact = false, revision, observation }: { sample: ClaudeSubscriptionLimits | null; compact?: boolean; revision?: number; observation?: ClaudeRateObservation | null }) {
+export function ClaudeLimitsView({ sample, compact = false, revision, observation, hold }: { sample: ClaudeSubscriptionLimits | null; compact?: boolean; revision?: number; observation?: ClaudeRateObservation | null; hold?: ClaudeQuotaHold | null }) {
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const tick = () => setClock(Date.now());
@@ -20,7 +20,7 @@ export function ClaudeLimitsView({ sample, compact = false, revision, observatio
   const currentClock = clock;
   const age = sample ? currentClock - Date.parse(sample.receivedAt) : NaN;
   const fresh = Number.isFinite(age) && age >= 0 && age <= 60000 && (revision === undefined || revision === sample?.providerRevision);
-  const state = !sample || sample.coverage === 'unavailable' ? 'Unavailable' : !fresh ? 'Stale' : sample.coverage === 'partial' ? 'Partial' : 'Reported';
+  const state = hold ? 'Held' : !sample || sample.coverage === 'unavailable' ? 'Unavailable' : !fresh ? 'Stale' : sample.coverage === 'partial' ? 'Partial' : 'Reported';
   const formatter = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'long' });
   const nativeMeters = sample?.windows.filter(row => row.id.startsWith('native-meter-')) ?? [];
   const renderWindow = (row: ClaudeSubscriptionLimits['windows'][number]) => <div className="claude-limit-row" key={row.id}>
@@ -30,6 +30,7 @@ export function ClaudeLimitsView({ sample, compact = false, revision, observatio
   </div>;
   const content = <>
     <p className="claude-limits-heading">{sample?.plan?.toUpperCase() || 'Claude subscription'} · {state}</p>
+    {hold && <p className="provider-alert" role="status">Work is held for this Claude account. {hold.reason} Check subscription limits and continue explicitly. Refreshing limits or reaching a reset time does not resume work.</p>}
     {observation && <p>Native quota event: {observation.status.replaceAll('_', ' ')} · {observation.scope || 'Scope unknown'} · {percent(observation.usedPercent)} used.
       {' '}Received {formatter.format(new Date(observation.receivedAt))}.{observation.resetsAt && <> Reset {formatter.format(new Date(observation.resetsAt))} · {formatter.resolvedOptions().timeZone} · {countdown(observation.resetsAt, currentClock)}.</>}</p>}
     {!sample && <p>Subscription limits have not been checked.</p>}

@@ -30,6 +30,7 @@ class ClaudeWorker(Worker):
         self.credential_lease=None;self.credential_worker=None
         self.admission_started_at=None
         self.admission_denial=None
+        self.quota_blocked=None;self.quota_guard_task=None;self.quota_authorized_through=None
         from claude_input_usage import InputUsage
         self.input_usage=InputUsage(self)
         from claude_messages import queued
@@ -49,9 +50,17 @@ class ClaudeWorker(Worker):
     async def current(self,binding):
         row=get_run(self.store,self.run_id)
         from claude_run_leases import ClaudeRunLeases
-        return (not self.stopping and bool(row['busy']) and row['state']!='stopping' and binding==self.broker.binding
+        valid=(not self.stopping and bool(row['busy']) and row['state']!='stopping' and binding==self.broker.binding
             and self.credential_lease is not None and ClaudeRunLeases(self.manifest['providers']).current_lease(self.credential_lease,self.credential_worker)
             and self.store.get(self.session_id)['engine'].get('claude')==self.config['engine'].get('claude'))
+        if valid and self.sent:
+            from claude_quota_store import QuotaStore
+            saved=QuotaStore(self.manifest['providers']).read(self.config['providerId'])
+            from claude_quota_guard import block,effective_hold
+            hold=effective_hold(self,saved)
+            if hold:
+                block(self,hold);return False
+        return valid
 
     async def mcp_output(self,result,image_data=None):
         content=[{'type':'text','text':encode(result)}]
@@ -131,6 +140,10 @@ class ClaudeWorker(Worker):
                     (self.session_id,self.run_id,value['id'],encode(value)))
                 event(self.store,self.session_id,self.run_id,'delta',{'itemId':value['id'],'text':delta})
         elif kind=='assistant':
+            if native.get('error'):
+                self.error=native.get('error_message') or 'Claude could not complete this original request.'
+                if self.broker:self.broker.stop_admission()
+                return  # Never render raw native error text or synthetic tool blocks.
             if native.get('uuid') in self.snapshots:return
             self.snapshots.add(native.get('uuid'));message=native.get('message') or {};provider=message.get('id')
             if not isinstance(provider,str):raise ValueError('Unbound native provider message.')
@@ -166,8 +179,11 @@ class ClaudeWorker(Worker):
             observation.update(studioSessionId=self.session_id,providerId=self.config['providerId'],runId=self.run_id)
             observation['accountIdentity']=self.config.get('claudeProvider',{}).get('accountIdentity')
             from claude_quota_store import QuotaStore
-            if observation['accountIdentity']:QuotaStore(self.manifest['providers']).record(self.config['providerId'],observation=observation)
+            saved=QuotaStore(self.manifest['providers']).record(self.config['providerId'],observation=observation) if observation['accountIdentity'] else None
             event(self.store,self.session_id,self.run_id,'claudeQuota',observation)
+            if saved and saved['hold']:
+                from claude_quota_guard import block
+                block(self,saved['hold'])
         elif kind=='result':
             self.native_result=native
             from claude_usage_receipts import record as usage_receipt
@@ -177,7 +193,7 @@ class ClaudeWorker(Worker):
                 if self.outcome not in ('completed','failed'):self.outcome='unknown' if self.uncertain_effect else 'interrupted'
             else:
                 self.outcome='completed' if native.get('subtype')=='success' and not native.get('is_error') else 'failed'
-                if self.outcome=='failed':self.error='The original native Claude execution ended with an error.'
+                if self.outcome=='failed':self.error=self.error or 'The original native Claude execution ended with an error.'
             self.done.set()
 
     async def read_native(self):
@@ -206,7 +222,7 @@ class ClaudeWorker(Worker):
                     self.native_receipt=value;self.closed.set()
             if not self.closed.is_set():raise ValueError('Original native worker closed without its final receipt.')
         except Exception:
-            self.error='The original native Claude stream is unconfirmed. It was not replayed.';self.outcome='unknown';self.done.set()
+            self.error=self.error or 'The original native Claude stream is unconfirmed. It was not replayed.';self.outcome='unknown';self.done.set()
         finally:self.ready.set();self.transport_ready.set()
 
     async def _stop(self):
@@ -282,6 +298,8 @@ class ClaudeWorker(Worker):
             await self.command('initialize')
             await asyncio.wait_for(self.ready.wait(),20)
             if self.done.is_set() or self.stopping:raise ProjectFault('The original native Claude startup was not confirmed.',409)
+            from claude_quota_guard import watch
+            self.quota_guard_task=asyncio.create_task(watch(self))
             self.admission_started_at=time.time()
             await self.command('send',text=self.config['claudeGoalExecution']['objective'] if self.claude_goal else request_text(self.store,self.run_id))
             await self.done.wait()
@@ -289,6 +307,8 @@ class ClaudeWorker(Worker):
             self.error=self.error or (str(error) if isinstance(error,ProjectFault) else 'The native Claude run could not confirm its original result.')
             self.outcome='unknown' if self.sent else ('interrupted' if self.stopping else 'failed')
         finally:
+            if self.quota_guard_task:
+                self.quota_guard_task.cancel();await asyncio.gather(self.quota_guard_task,return_exceptions=True)
             confirmed=await self.finish_native()
             from claude_messages import finalize as finish_input
             finish_input(self)

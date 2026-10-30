@@ -54,6 +54,7 @@ class QuotaStore(AuthStore):
             row=db.execute('SELECT data FROM claude_quota_accounts WHERE account_id=?',(key,)).fetchone()
             saved=json.loads(row[0]) if row else None
             if not saved or saved['hold']!=expected_hold:raise ProjectFault('The original native quota hold changed. It was not resumed.',409)
+            saved['lastReleasedHold']=saved['hold']
             saved['hold']=None;saved['lastExplicitResume']={'requestId':request_id,'providerId':provider_id,'at':now()}
             db.execute('UPDATE claude_quota_accounts SET data=? WHERE account_id=?',(encode(saved),key))
             return saved

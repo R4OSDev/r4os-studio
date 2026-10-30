@@ -1,3 +1,15 @@
+## Claude account holds and model errors (0.8.53)
+
+Native subscription rejection or extra-usage events stop further admitted work,
+hold the account's queues and preserve original tool/result evidence. Active
+workers also observe shared account holds. Fresh metadata and reset clocks
+never resume work; a new explicit send, queue continuation or initial Play must
+pass fresh admission. The session quota view exposes the hold and original
+quota sources. Typed native model/auth errors use fixed safe text, and a late
+Stop preserves an already completed result. Native automatic retry/fallback
+paths are disabled where supported; the pinned CLI retains its documented
+same-model streaming-404 negotiation. Details: [Claude-Limits.md](Claude-Limits.md).
+
 ## Claude text session selection (0.8.52)
 
 Connected Claude subscriptions can use fixed native model IDs in new project

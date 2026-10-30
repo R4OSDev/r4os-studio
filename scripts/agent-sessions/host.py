@@ -248,7 +248,14 @@ class Host:
                 latest=store.db.execute("SELECT payload FROM events WHERE session_id=? AND kind='claudeQuota' ORDER BY seq DESC LIMIT 1",(session['id'],)).fetchone()
                 observed=json.loads(latest[0]) if latest else None
                 if observed and observed.get('accountIdentity')!=original['accountIdentity']:observed=None
-                return {'limits':self.claude_auth.store.latest_limits(session['providerId']),'observation':observed,'providerRevision':provider['revision']}
+                from claude_quota_store import QuotaStore
+                quota=QuotaStore(self.config['providers']).read(provider['id'])
+                limits=self.claude_auth.store.latest_limits(session['providerId'])
+                sample=quota.get('sample') if quota else None
+                if (sample and sample.get('providerId')==provider['id'] and sample.get('providerRevision')==provider['revision']
+                    and sample.get('accountIdentity')==original['accountIdentity']
+                    and (not limits or sample['receivedAt']>limits['receivedAt'])):limits=sample
+                return {'limits':limits,'observation':observed,'hold':quota['hold'] if quota else None,'providerRevision':provider['revision']}
             finally:store.close()
         if op in ('session_delete_preview','session_delete','session_delete_receipt'):
             import session_delete

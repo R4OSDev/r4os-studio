@@ -61,10 +61,13 @@ async def admit(worker,binding,account,usage):
     result=admission(sample,provider,native,account,binding,started,model_scope=scope)
     from claude_quota_store import QuotaStore
     quota=QuotaStore(providers);saved=quota.record(provider['id'],sample=sample,denial=result)
-    if result['allowed'] and saved['hold']:
-        if not explicit_resume(worker,saved['hold'],sample['accountIdentity']):
+    from claude_quota_guard import effective_hold
+    held=effective_hold(worker,saved)
+    if result['allowed'] and held:
+        if not explicit_resume(worker,held,sample['accountIdentity']):
             return {'allowed':False,'reason':'This subscription is held. Continue the queue or send again explicitly after a fresh limit check.'}
-        quota.release(provider['id'],saved['hold'],worker.row['request_id'])
+        if saved['hold']:quota.release(provider['id'],saved['hold'],worker.row['request_id'])
+        worker.quota_authorized_through=held['id']
     # Keep only numeric/source quota observations in the private session log.
     # These observations never themselves clear a hold or resume a queue.
     from run_store import event
@@ -75,8 +78,19 @@ async def admit(worker,binding,account,usage):
 def explicit_resume(worker,hold,account):
     """An old queued input and a timer are not new human authorization."""
     db=worker.store.db
-    if worker.config.get('goalExecution') or worker.config.get('claudeGoalExecution'):
-        return False  # A bounded automatic step can never release an account hold.
+    if worker.config.get('goalExecution'):return False
+    if worker.config.get('claudeGoalExecution'):
+        runtime=getattr(worker,'claude_goal',None)
+        if not runtime or not runtime.started:return False
+        journal=runtime.journal.read();steps=journal['steps']
+        from goal_store import Goals
+        command=Goals(worker.store).command(worker.session_id,worker.row['request_id'])
+        payload=json.loads(command['payload'])
+        return (worker.row['created_at']>hold['createdAt'] and command['created_at']>hold['createdAt']
+            and command['state']=='pending' and payload['action']=='play'
+            and len(steps)==1 and steps[0]['origin']=='human' and steps[0]['state']=='admitting'
+            and steps[0]['inputId']==worker.row['request_id'] and not steps[0]['submitted']
+            and steps[0]['inputReceipt'] is None)
     queued=(db.execute("SELECT mode FROM session_messages WHERE request_id=?",(worker.row['request_id'],)).fetchone()
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_messages'").fetchone() else None)
     if not queued:return worker.row['created_at']>hold['createdAt']
