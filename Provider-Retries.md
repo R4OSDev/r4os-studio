@@ -8,9 +8,9 @@ runtime-qualified**. Active Codex/API GOAL recovery requires a frozen numeric
 `goalRetryProtocol: 1`; Claude requires `claudeRetryProtocol: 1`. No capture
 producer currently sets either field. Existing runs/queues are not upgraded.
 Released ordinary Codex/API retries and normal GOAL execution remain available.
-No0.8.61 release/tag/installation is authorized by static checks alone. The
-separate requested exception for targeted retry tests is still unanswered;
-no new runtime fixture, SDK/CLI execution or inference was performed.
+No0.8.61 release/tag/installation follows from static checks alone.
+Targeted checks use owned synthetic accounts/endpoints in a closed
+network namespace; they make no real model or subscription calls.
 
 ### Codex/API GOAL candidate
 
@@ -61,6 +61,11 @@ empty block array in the same persistent query, not a repeated prompt, upload,
 old tool output, string placeholder, fork or truncating resume. The exact native
 empty-array echo must match the claimed UUID/session/Run/logical step. The host
 confirms its committed receipt before either broker or SDK hooks reopen tools.
+Live control becomes available only after that broker confirmation is committed;
+an early live command must not invalidate the handshake that precedes it.
+The native hook waits boundedly for both that confirmation and the actual fixed
+model frame. A faster hook cannot substitute the echo for model identity or
+deny an otherwise valid call while the stream reader finishes the handshake.
 Submission/status/metadata alone never confirms input. At most five attempts
 are allowed without actual model text/tool progress; status events do not reset
 that count. The original human/logical-step receipt remains confirmed throughout.
@@ -119,12 +124,27 @@ normalization, as are synthetic API-error rows. This is source evidence, not an
 actual retained-query/model-wire/tool-preservation qualification. The private
 transport refuses a changed echo instead of replaying original input.
 
+The native qualification exposed an important difference: setting `isSynthetic`
+on that input makes the CLI create a metadata row, suppresses the replay echo and
+changes the request context. The continuation therefore keeps its explicit
+`auto-continuation` origin and empty array without that flag. The actual pinned
+SDK/CLI then emits the matching empty-array replay receipt. The observed ordinary
+retry waited60.56seconds, retained byte-identical model-message input and the
+original tool result, and executed the owned file effect exactly once. It used
+one original query/Run and fresh production subscription admission. A successful
+recovery clears only its own stale provider error; other errors remain intact.
+
 ### Still required before enabling
 
-Actual retained-query continuation, wire/context equality, counters/exhaustion,
-Pause/Stop/Queue races, original Play/statistical clocks, admission/result loss,
-restore, ordinary-response Live-Play after a physical retry and shared-account
-cases remain unqualified. Both frozen
+Counter exhaustion/progress reset, Stop/Queue and admission/result-loss races,
+restore and shared-account cases still require qualification. Actual native
+ordinary continuation, active GOAL retry, Live-Play after a retry and Pause during
+waiting passed four targeted cases with the unmodified native runtime. GOAL
+waited60.45seconds while its single Play clock recorded1.38seconds of work;
+Live-Play retained the physical source input and one Play clock. Pause admitted
+zero retry inputs and retained readable history. These cases do not qualify the
+remaining failure/race scenarios or the complete shared controller acceptance.
+Both frozen
 protocol producers remain off. The full0.8.10/17/23 acceptances stay open;
 static checks and source inspection do not complete them.
 

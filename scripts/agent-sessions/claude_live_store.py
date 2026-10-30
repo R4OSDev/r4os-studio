@@ -57,7 +57,7 @@ def retry_source(store,run,expected,config):
         (run['id'],run['session_id'])).fetchone()
     if not row:return None
     value=json.loads(row['payload']);bound=value['binding'];claim=value.get('claim');receipt=value.get('inputReceipt')
-    if (row['state']!='continuing' or not isinstance(claim,dict) or not isinstance(receipt,dict)
+    if (row['state']!='continuing' or value.get('brokerConfirmed') is not True or not isinstance(claim,dict) or not isinstance(receipt,dict)
         or any(bound.get(key)!=expected[key] for key in ('owner','sessionId','runId','requestId','configSha256','nativeSessionId'))
         or any(bound.get(key)!=expected['worker'][key] for key in ('pid','birth','release'))
         or not bound.get('nativeBirth') or birth(bound['nativePid'])!=bound['nativeBirth']

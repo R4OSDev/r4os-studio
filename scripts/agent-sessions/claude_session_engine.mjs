@@ -206,8 +206,13 @@ export class ClaudeSessionEngine {
   }
 
   async beforeTool(input) {
-    if (this.state === 'active' && this.retryClaim && !this.retryEchoConfirmed) {
-      try { await deadline(this.retryEchoReady, 2000); } catch { /* Admission stays closed. */ }
+    if (this.state === 'active' && this.retryClaim) {
+      // The receipt handshake can hold the stream reader while an SDK hook
+      // arrives. Wait for the actual model frame too, never infer its identity
+      // from the input echo or deny a valid call just because it won that race.
+      try { await deadline(Promise.all([this.retryEchoReady,
+        this.expectedModel ? this.modelReady : Promise.resolve()]), 2000); }
+      catch { /* Admission stays closed without both original proofs. */ }
     }
     const tool = mcpTool(input?.tool_name);
     const wireInput = input?.tool_input;
@@ -365,11 +370,14 @@ export class ClaudeSessionEngine {
     if (retry) this.retryAttempts++; else this.stepCount++;
     this.rawBoundary = new RetryBoundary(this.inputId); this.assistantError = null; this.nativeFailure = false;
     this.modelObserved = false;
+    this.modelReady = new Promise(resolve => { this.confirmModelReady = resolve; });
     this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
     this.inputContentSha256 = input?.contentSha256 ?? null;
     this.inputs.push({ type: 'user', message: { role: 'user', content: retry ? [] : input?.content ?? text }, parent_tool_use_id: null,
-      uuid: this.inputId, session_id: this.binding.nativeSessionId, origin: { kind: this.inputOrigin }, client_composed: true,
-      ...(retry ? { isSynthetic: true } : {}) });
+      // Native isSynthetic maps to an isMeta row, which suppresses its replay
+      // acknowledgement. The empty automatic input needs that actual receipt;
+      // origin still identifies it as a continuation, never another human send.
+      uuid: this.inputId, session_id: this.binding.nativeSessionId, origin: { kind: this.inputOrigin }, client_composed: true });
   }
 
   async read() {
@@ -386,6 +394,7 @@ export class ClaudeSessionEngine {
         if (this.expectedModel && reportedModel != null && !failedAssistant) {
           if (reportedModel !== this.expectedModel) throw Error('The native model response differs from the frozen selection. No replacement model was accepted.');
           this.modelObserved = true;
+          this.confirmModelReady?.();
         }
         // Image tool results can be large; identity checks never duplicate
         // those bytes into Studio events or call-receipt metadata.

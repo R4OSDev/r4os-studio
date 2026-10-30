@@ -51,6 +51,7 @@ class ClaudeRetry:
         self.closed = False; self.uncertain_start = False; self.results = set()
         self.original_goal = None; self.goal_execution = None
         self.native_process = None
+        self.broker_confirmed = False
 
     @property
     def holding(self):
@@ -150,7 +151,8 @@ class ClaudeRetry:
             'error': self.failure['text'], 'httpStatusCode': self.failure['httpStatusCode'],
             'engine': 'claude-code', 'ordinal': self.ordinal, 'claim': self.claim,
             'failedResultId': self.failed['uuid'], 'failedInputId': self.failed_input, 'stepInputId': self.logical_step,
-            'admissionId': self.admission_id, 'inputReceipt': self.receipt, 'uncertainStart': self.uncertain_start}
+            'admissionId': self.admission_id, 'inputReceipt': self.receipt, 'uncertainStart': self.uncertain_start,
+            'brokerConfirmed': self.broker_confirmed}
         if self.goal_execution:
             value['goal'] = {'executionId': self.goal_execution, 'contractSha256': self.original_goal}
         db.execute('''CREATE TABLE IF NOT EXISTS provider_retries(
@@ -231,6 +233,9 @@ class ClaudeRetry:
         if not native.get('is_error'):
             if self.state == 'continuing':
                 with self.w.store.db: self.write('completed', {'kind': 'result', 'resultId': identifier, 'inputId': self.claim['inputRequestId']})
+                if (not self.w.stopping and not self.w.uncertain_effect and not self.w.quota_blocked
+                        and not self.w.admission_denial and self.w.error == self.failure['text']):
+                    self.w.error = None
             return False
         boundary = reported.get('nativeRetryBoundary')
         failure = describe(native.get('providerError'), self.w.native_error_code, self.w.native_retry_observed)
@@ -265,7 +270,7 @@ class ClaudeRetry:
         self.ordinal += 1
         self.claim = {'ordinal': self.ordinal, 'holdId': str(uuid.uuid4()), 'stepInputId': self.logical_step,
                       'failedResultId': identifier, 'inputRequestId': str(uuid.uuid4())}
-        self.receipt = None; self.admission_id = None; self.echo = asyncio.Event()
+        self.receipt = None; self.admission_id = None; self.echo = asyncio.Event(); self.broker_confirmed = False
         self.deadline = time.monotonic_ns() + DELAY_NS
         if runtime:
             runtime.journal.begin_retry_wait(native, self.budget_claim())
@@ -353,6 +358,9 @@ class ClaudeRetry:
             if self.state != 'continuing' or not self.receipt or not await self.w.current(self.w.broker.binding):
                 return {'allowed': False}
             self.gate()
+            with self.w.store.db:
+                self.broker_confirmed = True
+                self.write('continuing', {'kind': 'brokerReady', 'inputId': self.claim['inputRequestId']})
             return {'allowed': True}
         except (asyncio.TimeoutError, ProjectFault):
             return {'allowed': False}
