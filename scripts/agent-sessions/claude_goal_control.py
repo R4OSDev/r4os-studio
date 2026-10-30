@@ -45,6 +45,9 @@ class ClaudeGoalControl:
             self.runtime.journal.stop('The user '+('stopped' if data['action']=='stop' else 'paused')+' this original bounded Goal.',commit=False)
             value={**current['goal'],'status':'paused','updatedAt':int(time.time())}
             write(self.goals,w.session_id,value,'pausing',w.run_id)
+            if data['action']=='pause':
+                from message_store import Messages
+                Messages(w.store).hold(w.session_id,'The user paused this Goal. Continue the saved queue explicitly.')
             result=self.goals.finish(w.session_id,rid,phase='pausing')
         if data['action']=='stop':
             if w.broker:w.broker.stop_admission()

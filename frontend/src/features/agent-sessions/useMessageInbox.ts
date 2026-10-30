@@ -7,6 +7,7 @@ export function useMessageInbox(projectId: string, sessionId: string, token: str
   const { request, scope } = useSessionApi(), base = sessionPath(projectId, sessionId) + '/messages';
   const key = `studio.${scope}.queue-control.${sessionId}`;
   const [inbox, setInbox] = useState<SessionInbox | null>(null), [available, setAvailable] = useState(false);
+  const [boundWaiting, setBoundWaiting] = useState(false);
   const [error, setError] = useState(''), [posting, setPosting] = useState(false);
   const [pending, setPending] = useState<Control | null>(() => { try { return JSON.parse(sessionStorage.getItem(key) ?? 'null'); } catch { return null; } });
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -22,9 +23,10 @@ export function useMessageInbox(projectId: string, sessionId: string, token: str
     const controller = new AbortController(); let timer: number | undefined;
     const poll = async () => {
       try {
-        const support = await request<{ messageQueue?: number }>('/agent-capabilities', '', 'GET', undefined, controller.signal);
+        const support = await request<{ messageQueue?: number; claudeBoundMessages?: number }>('/agent-capabilities', '', 'GET', undefined, controller.signal);
         if (controller.signal.aborted) return;
         setAvailable(support.messageQueue === 1);
+        setBoundWaiting(support.messageQueue === 1 && support.claudeBoundMessages === 1);
         if (support.messageQueue === 1) await refresh(controller.signal);
       } catch { /* The main session connection handles authentication recovery. */ }
       if (!controller.signal.aborted) timer = window.setTimeout(() => { void poll(); }, 1500);
@@ -45,5 +47,5 @@ export function useMessageInbox(projectId: string, sessionId: string, token: str
       setError((failure as Error).message); await refreshAuth().catch(() => undefined); await refresh().catch(() => undefined);
     } finally { setPosting(false); }
   };
-  return { inbox, available, error, posting, pending, refresh, perform };
+  return { inbox, available, boundWaiting, error, posting, pending, refresh, perform };
 }

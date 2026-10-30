@@ -1,3 +1,12 @@
+## Claude follow-ups after the current response (0.8.58)
+
+Claude sessions show **After response** for Ctrl+Enter while a compatible response
+runs. The saved input keeps that exact response/session target, waits for its
+confirmed end and then resumes the same native conversation with fresh admission.
+Reload reads its original receipt. Stop and explicit Goal Pause hold the queue;
+Continue is a separate human action. Unknown outcomes retain their protection.
+Details and remaining retry/lifecycle scope: [Claude-Queue.md](Claude-Queue.md).
+
 ## Live Claude Studio GOAL (0.8.57)
 
 Compatible new Claude workers accept Save/Play during an ordinary response.

@@ -60,12 +60,20 @@ def validate_queue(store, sid, frozen):
             or saved['runtime'] != config['engine']['claude'] or saved['phase'] not in ('allocated', 'ready')):
         raise ProjectFault('The original Claude queue/history binding changed. Remove and submit the saved input explicitly.', 409)
     source = value['source']
+    if 'afterRun' in frozen:
+        from claude_waiting import bind,saved_message
+        saved_message(store,sid,frozen)
+        bind(frozen['afterRun'],value)
     if source is not None:
         run = get_run(store, source['runId']); worker = json.loads(run['worker'] or '{}')
         if (run['session_id'] != sid or run['busy'] or run['state'] == 'unknown'
                 or run['request_id'] != source['requestId'] or digest(json.loads(run['config'])) != source['configSha256']
                 or {key: worker.get(key) for key in ('release', 'pid', 'birth')} != source['worker']):
             raise ProjectFault('The preceding original Claude run is unconfirmed or changed. The queue was held.', 409)
+        if 'afterRun' in frozen and run['state']!='completed':
+            from claude_waiting import resumed_after_source
+            if not resumed_after_source(store,sid,frozen,run):
+                raise ProjectFault('The original after-response target did not complete naturally. Continue the saved queue explicitly after its confirmed end.',409)
 
 
 def queued(worker):

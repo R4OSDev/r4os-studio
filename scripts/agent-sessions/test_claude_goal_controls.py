@@ -87,6 +87,21 @@ class ClaudeGoalControls(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(Messages(w.store).snapshot(self.sid)['held'])
         self.assertEqual(len(runtime.journal.read()['steps']),1)
 
+    async def test_explicit_pause_holds_a_bound_followup_instead_of_dispatching_it(self):
+        from claude_waiting import public_target
+        from run_store import get_run
+        w,runtime=await self.active();target=public_target(w.store,get_run(w.store,w.run_id))
+        self.assertIsNotNone(target)
+        message=self.f.message_input()|{'afterRun':target}
+        Messages(w.store).accept(self.sid,message,self.f.providers)
+        data,_=self.command(w.store,'pause')
+        await live_control(w.store,self.sid,data['requestId'])
+        self.assertTrue(Messages(w.store).snapshot(self.sid)['held'])
+        self.assertFalse(await runtime.result(self.base.native_result()));await runtime.finish(True)
+        self.assertEqual(Messages(w.store).receipt(self.sid,message['requestId'])['state'],'queued')
+        self.assertEqual(Messages(w.store).receipt(self.sid,message['requestId'])['afterRun'],target)
+        w.command.assert_not_awaited()
+
     async def test_original_stop_is_applied_once_when_coordinator_delivery_is_lost(self):
         w,runtime=await self.active();data,_=self.command(w.store,'stop')
         goals=Goals(w.store);goals.recover({w.row['request_id'],data['requestId']})

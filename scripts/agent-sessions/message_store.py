@@ -60,6 +60,7 @@ class Messages:
         return {'requestId': row['request_id'], 'sessionId': row['session_id'], 'sequence': row['seq'],
                 'mode': row['mode'], 'state': row['state'], 'text': data['text'],
                 'attachments': frozen.get('attachments', []), 'target': data.get('target'),
+                **({'afterRun':data['afterRun']} if 'afterRun' in data else {}),
                 'runId': row['run_id'], 'error': row['error'], 'createdAt': row['created_at'], 'updatedAt': row['updated_at']}
 
     def receipt(self, sid, request_id): return self.present(self.row(sid, request_id))
@@ -86,7 +87,7 @@ class Messages:
     @guarded
     def accept(self, sid, data, provider_dir, capabilities=None, image_capability=None):
         if (not isinstance(data, dict) or not {'requestId', 'revision', 'mode', 'text'} <= set(data)
-                or set(data) - {'requestId', 'revision', 'mode', 'text', 'attachments', 'target'}
+                or set(data) - {'requestId', 'revision', 'mode', 'text', 'attachments', 'target', 'afterRun'}
                 or data['mode'] not in ('queue', 'steer') or type(data['revision']) is not int or data['revision'] < 1):
             raise ProjectFault('Invalid message fields.', 400)
         key = identity(data['requestId'])
@@ -101,6 +102,10 @@ class Messages:
                 raise ProjectFault('A direct message needs its original run, thread and turn.', 400)
             identity(target['runId'])
         elif target is not None: raise ProjectFault('Queued messages cannot specify a live target.', 400)
+        if 'afterRun' in data:
+            from claude_waiting import validate
+            validate(data['afterRun'])
+            if data['mode']!='queue':raise ProjectFault('An after-response message waits in its original queue.',400)
         hashed = hashlib.sha256(encode({'sessionId': sid, **data}).encode()).hexdigest()
         self.store.db.execute('BEGIN IMMEDIATE')
         try:
@@ -112,6 +117,7 @@ class Messages:
                 return self.present(previous), False
             session = self.store.get(sid)
             claude=session['engine'].get('kind')=='claude-code'
+            if 'afterRun' in data and not claude:raise ProjectFault('This after-response target belongs to a Claude session.',400)
             if claude and data['mode']=='steer':
                 raise ProjectFault('Direct Claude messages are not qualified. Queue this input to continue on the same native session after the original run ends.',409)
             if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.', 409)
@@ -133,16 +139,20 @@ class Messages:
                 raise ProjectFault('The session message queue is full. Your input was preserved.', 429)
             total = self.store.db.execute('SELECT COALESCE(SUM(length(CAST(input AS BLOB))+length(CAST(frozen AS BLOB))),0) FROM session_messages WHERE session_id=?', (sid,)).fetchone()[0]
             from run_store import capture_input
-            run_input = {k: v for k, v in data.items() if k not in ('mode', 'target')}
+            run_input = {k: v for k, v in data.items() if k not in ('mode', 'target', 'afterRun')}
             run_input.update(capabilities or {})
             queue_context=None
             if claude:
                 from claude_messages import context
                 queue_context=context(self.store,sid,provider_dir)
+                if 'afterRun' in data:
+                    from claude_waiting import bind
+                    bind(data['afterRun'],queue_context)
             if data['mode'] == 'steer': config, attachments = json.loads(run['config']), []
             else: config, attachments, _ = capture_input(self.store, sid, run_input, provider_dir, image_capability,queued_claude=queue_context)
             frozen = {'config': config, 'runInput': run_input, 'attachments': attachments}
             if queue_context is not None: frozen['claudeQueue']=queue_context
+            if 'afterRun' in data:frozen['afterRun']=data['afterRun']
             frozen_raw = encode(frozen)
             charge = len(raw.encode()) + len(frozen_raw.encode())
             if size + charge > MAX_BYTES: raise ProjectFault('The frozen message queue reached its storage limit. Your input was preserved.', 429)
@@ -209,6 +219,8 @@ class Messages:
                 self.store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?', (sid,))
             else:
                 if 'messageId' in data: raise ProjectFault('Resume does not select another message.', 400)
+                from claude_waiting import record_resume
+                record_resume(self.store,sid,data,hashed)
                 self.store.db.execute('UPDATE session_inboxes SET held=0,reason=NULL,revision=revision+1 WHERE session_id=?', (sid,))
             result = self.snapshot(sid)
             self.store.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', (key, 'message_control', hashed, sid, encode(result)))

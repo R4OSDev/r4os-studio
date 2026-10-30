@@ -11,7 +11,8 @@ export function MessageQueue({ control }: { control: ReturnType<typeof useMessag
     </div>
     {inbox?.held && <p role="status">{inbox.reason ?? 'Queue held. Continue explicitly.'}</p>}
     <ol>{inbox?.messages.map(value => <li key={value.requestId}>
-      <details><summary>{value.mode === 'steer' ? 'Direct' : '#' + value.sequence} · {value.state} · {value.text.slice(0, 100) || 'Attachments'}</summary>
+      <details><summary>{value.afterRun ? 'After response · #' + value.sequence : value.mode === 'steer' ? 'Direct' : '#' + value.sequence} · {value.state} · {value.text.slice(0, 100) || 'Attachments'}</summary>
+        {value.afterRun && <p>Waiting for the original response · {value.afterRun.runId.slice(0, 8)}</p>}
         <p>{value.text}</p>{value.attachments.length > 0 && <p>{value.attachments.length} attached files</p>}{value.error && <p>{value.error}</p>}</details>
       {value.mode === 'queue' && value.state === 'queued' && <button type="button" aria-label={'Remove queued message ' + value.sequence} disabled={posting || !!pending} onClick={() => void control.perform('cancel', value.requestId)}>Remove</button>}
     </li>)}</ol>

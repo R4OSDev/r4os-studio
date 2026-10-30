@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentRun, AgentSession } from '../../../../shared/agent-sessions';
-import type { MessageTarget, SessionMessage, SessionMessageInput } from '../../../../shared/agent-messages';
+import type { AfterResponseTarget, MessageTarget, SessionMessage, SessionMessageInput } from '../../../../shared/agent-messages';
 import { ProjectRequestError, projectRequestId, sessionPath, useSessionApi } from './api';
 
 type RunInput = { requestId: string; revision: number; text: string; attachments?: string[] };
@@ -70,12 +70,12 @@ export function useMessageComposer(projectId: string, sessionId: string, session
     void poll();
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [pending, sending, check]);
-  const submit = async (mode: 'run' | 'queue' | 'steer', ids: string[], target?: MessageTarget, retry = false) => {
+  const submit = async (mode: 'run' | 'queue' | 'steer', ids: string[], target?: MessageTarget, retry = false, afterRun?: AfterResponseTarget) => {
     if (!session || inFlight.current) return;
     const original = pendingRef.current;
     const data: Pending = original ?? { transport: mode === 'run' ? 'run' : 'message', draftToken: draftToken.current,
       input: { requestId: projectRequestId(), revision: session.revision, text: textRef.current,
-        ...(ids.length ? { attachments: ids } : {}), ...(mode === 'run' ? {} : { mode, ...(target ? { target } : {}) }) } };
+        ...(ids.length ? { attachments: ids } : {}), ...(mode === 'run' ? {} : { mode, ...(target ? { target } : {}), ...(afterRun ? { afterRun } : {}) }) } };
     try { sessionStorage.setItem(pendingKey, JSON.stringify(data)); } catch { setError('Enable session storage before sending.'); return; }
     pendingRef.current = data; setPending(data); inFlight.current = true; setSending(true); setError('');
     try {

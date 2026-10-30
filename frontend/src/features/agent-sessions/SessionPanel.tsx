@@ -167,16 +167,18 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const active = busyRun(run?.state) || nativeActive;
   const waiting = inbox.inbox?.messages.some(value => value.mode === 'queue' && ['queued','dispatching'].includes(value.state)) ?? false;
   const queueMode = active || waiting;
-  const blocked = choiceSaving || settings || deleting || goalEditor || goal.changing || goal.goal?.phase === 'unknown';
+  const blocked = choiceSaving || settings || deleting || goalEditor || (goal.changing && !goal.claude) || goal.goal?.phase === 'unknown';
   const empty = !text.trim() && !attachments.hasFiles;
   const direct = !!run?.messageSupport && !!run.threadId && !!run.turnId && !attachments.hasFiles;
+  const afterResponse = inbox.boundWaiting && session?.engine.kind === 'claude-code' && run?.messageWaitTarget;
   async function send(now = false) {
     if (!session || sending || (!pending && (blocked || empty || !!attachments.issue))) return;
-    if (now && active && !direct) { setError('The original native turn cannot accept this full input. Use Queue message or wait for its next turn.'); return; }
+    if (now && active && !direct && !afterResponse) { setError('The original native turn cannot accept this full input. Use Queue message or wait for its next turn.'); return; }
     if (!pending && queueMode && !inbox.available) { setError('The coordinator cannot queue messages yet. Your draft was preserved.'); return; }
     setError('');
-    await composer.submit(now && active ? 'steer' : queueMode ? 'queue' : 'run', attachments.selected.map(value => value.id),
-      now && run?.threadId && run.turnId ? { runId:run.id,threadId:run.threadId,turnId:run.turnId } : undefined);
+    await composer.submit(now && active && direct ? 'steer' : queueMode ? 'queue' : 'run', attachments.selected.map(value => value.id),
+      now && run?.threadId && run.turnId ? { runId:run.id,threadId:run.threadId,turnId:run.turnId } : undefined,
+      false,now && active && afterResponse ? afterResponse : undefined);
     void inbox.refresh().catch(() => undefined);
   }
   async function stop() {
@@ -248,11 +250,11 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
           busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
         <div className="agent-compose-actions">{busyRun(run?.state) && (run?.mode !== 'goal' || !goal.available || !!goal.error) && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
-          {active && <button type="button" title={attachments.hasFiles ? 'Queue the complete input with its attachments' : 'Ctrl+Enter: append to the original active turn'} disabled={sending || !!pending || blocked || empty || !direct} onClick={() => void send(true)}>Send now</button>}
+          {active && <button type="button" title={afterResponse ? 'Ctrl+Enter: wait for this response, then continue the same Claude conversation' : attachments.hasFiles ? 'Queue the complete input with its attachments' : 'Ctrl+Enter: append to the original active turn'} disabled={sending || !!pending || blocked || empty || !!attachments.issue || (!direct && !afterResponse)} onClick={() => void send(true)}>{afterResponse ? 'After response' : 'Send now'}</button>}
           <button className="agent-send" disabled={sending || !session || (!pending && (blocked || empty || !!attachments.issue || queueMode && !inbox.available))}>{sending ? 'Sending…' : pending ? 'Check original request' : queueMode ? 'Queue message' : 'Send'}</button></div>
       </div>
       {!queueMode && <p className="agent-keyboard-hint">Enter: send · Shift+Enter: new line</p>}
-      {active && attachments.hasFiles && <p className="agent-keyboard-hint">Queue the complete input with its attachments. Direct delivery supports text only.</p>}
+      {active && attachments.hasFiles && <p className="agent-keyboard-hint">{afterResponse ? 'The complete input and its attachments will wait for this response.' : 'Queue the complete input with its attachments. Direct delivery supports text only.'}</p>}
       {pending && <div className="agent-pending-message" aria-label="Preserved original message">
         <details><summary>Original request · {composer.receipt?.state ?? 'checking'}</summary><p>{pending.input.text}</p></details>
         {composer.receipt?.state === 'unknown' && <p>Acceptance is unconfirmed. Check the original request before submitting another copy.</p>}

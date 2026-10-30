@@ -418,8 +418,10 @@ PRAGMA user_version=1;
         from provider_retry import snapshot as retry_snapshot
         retry = retry_snapshot(self, r)
         support = r['state']=='running' and bool(thread and r['turn_id']) and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True
-        activation=None;config=json.loads(r['config']);live_spec=None;live_support=False
+        activation=None;config=json.loads(r['config']);live_spec=None;live_support=False;wait_target=None
         if config['engine'].get('kind')=='claude-code':
+            from claude_waiting import public_target
+            wait_target=public_target(self,r)
             from claude_live_store import supported
             live_support=supported(self,r)
             from claude_goal import exists as claude_executions
@@ -436,6 +438,7 @@ PRAGMA user_version=1;
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
                 **({'providerRetry': retry} if retry else {}),
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
+                **({'messageWaitTarget':wait_target} if wait_target else {}),
                 'goalControlSupport':live_support or r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
                 **({'goalActivation':activation} if activation else {}),
                 **({'mode':'goal'} if config.get('goalExecution') or config.get('claudeGoalExecution') or live_spec else {}),

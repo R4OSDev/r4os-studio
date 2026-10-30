@@ -27,6 +27,7 @@ export function messageRoutes(app: FastifyInstance, security: ProjectSessions, o
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'mode', 'text'], properties: {
       requestId: identity, revision: integer, mode: { type: 'string', enum: ['queue', 'steer'] }, text: { type: 'string', maxLength: 65536 },
       attachments: { type: 'array', maxItems: 8, uniqueItems: true, items: identity },
+      afterRun: { type: 'object', additionalProperties: false, required: ['runId', 'nativeSessionId'], properties: { runId: identity, nativeSessionId: identity } },
       target: { type: 'object', additionalProperties: false, required: ['runId', 'threadId', 'turnId'], properties: {
         runId: identity, threadId: { type: 'string', minLength: 1, maxLength: 256 }, turnId: { type: 'string', minLength: 1, maxLength: 256 },
       } },
