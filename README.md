@@ -1,10 +1,17 @@
+## Session context speedometer (0.8.25)
+
+Model now has a compact violet context meter beside it. It pulses above 50%,
+respects Reduced Motion and provides measured token/source details on hover,
+focus or touch, including while model selection is disabled. Unknown data
+stays explicit. Details: [Session-Context.md](Session-Context.md).
+
 ## Session context data (0.8.24)
 
 Protected session reads/events now retain the last native context measurement,
 effective window, actual model/source and freshness. Cumulative consumption is
 kept separate. Compaction/selection changes and older/unqualified workers show
 explicit pending/stale/unavailable states. Details: [Session-Context.md](Session-Context.md).
-The visual indicator follows in 0.8.25.
+The visual indicator is implemented in 0.8.25.
 
 ## Native Claude lifecycle guards (0.8.23, partial implementation)
 

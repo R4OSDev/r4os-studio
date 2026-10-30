@@ -3,6 +3,7 @@ import type { AgentSession, SessionOptions } from '../../../../shared/agent-sess
 import { useSessionApi, ProjectRequestError, sessionPath } from './api';
 
 import { availableModels, providerAllowed, providerLabel } from './modelChoices';
+import {ContextIndicator} from './ContextIndicator';
 
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
 
@@ -25,6 +26,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
   const choice = pending ?? session;
   const account = options?.providers.find((value) => value.id === choice.providerId);
   const model = account?.models.find((value) => value.id === choice.model);
+  const controlsDisabled=disabled||!!pending||!options;
   async function change(values: Partial<Choice>) {
     if (disabled || inflight.current) return;
     const control = document.activeElement;
@@ -49,9 +51,9 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
   }
 
   return <div className="agent-composer-settings">
-    <fieldset className="agent-model-controls" aria-label="Run settings" aria-busy={!!pending} disabled={disabled || !!pending || !options}>
+    <fieldset className="agent-model-controls" aria-label="Run settings" aria-busy={!!pending}>
       <label className="agent-account-choice"><span>Account</span>
-        <select aria-label="Account" value={choice.providerId} onChange={(event) => {
+        <select aria-label="Account" value={choice.providerId} disabled={controlsDisabled} onChange={(event) => {
           const nextAccount = options?.providers.find((value) => value.id === event.target.value);
           const nextModel = availableModels(nextAccount).find((value) => value.id === choice.model) ?? availableModels(nextAccount)[0];
           void change({ providerId: event.target.value, model: nextModel?.id ?? '',
@@ -62,8 +64,8 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
           {options?.providers.map((value) => <option key={value.id} value={value.id} disabled={!availableModels(value).length || !providerAllowed(session, value)}>{providerLabel(value)}</option>)}
         </select>
       </label>
-      <label className="agent-model-choice"><span>Model</span>
-        <select aria-label="Model" value={choice.model} disabled={!account?.models.length} onChange={(event) => {
+      <div className="agent-model-context"><label className="agent-model-choice"><span>Model</span>
+        <select aria-label="Model" value={choice.model} disabled={controlsDisabled||!account?.models.length} onChange={(event) => {
           const nextModel = account?.models.find((value) => value.id === event.target.value);
           void change({ model: event.target.value,
             effort: nextModel?.efforts.includes(choice.effort) ? choice.effort : nextModel?.defaultEffort ?? '',
@@ -72,15 +74,15 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
           {!model && <option value={choice.model}>{choice.model}</option>}
           {account?.models.map((value) => <option key={value.id} value={value.id} disabled={value.available === false}>{value.name}{value.available === false ? ' · unavailable' : ''}</option>)}
         </select>
-      </label>
+      </label><ContextIndicator context={session.context}/></div>
       <label><span>Reasoning</span>
-        <select aria-label="Reasoning" value={choice.effort} disabled={!model} onChange={(event) => void change({ effort: event.target.value })}>
+        <select aria-label="Reasoning" value={choice.effort} disabled={controlsDisabled||!model} onChange={(event) => void change({ effort: event.target.value })}>
           {!model?.efforts.includes(choice.effort) && <option value={choice.effort}>{choice.effort}</option>}
           {model?.efforts.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
       </label>
       <label><span>Fast Mode</span>
-        <select aria-label="Fast Mode" value={choice.fastMode ? 'on' : 'off'} disabled={!model} onChange={(event) => void change({ fastMode: event.target.value === 'on' })}>
+        <select aria-label="Fast Mode" value={choice.fastMode ? 'on' : 'off'} disabled={controlsDisabled||!model} onChange={(event) => void change({ fastMode: event.target.value === 'on' })}>
           <option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option>
         </select>
       </label>

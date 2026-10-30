@@ -34,4 +34,16 @@ at zero and overflow is explicit. API/local/Claude context bases are currently
 unqualified and remain unavailable. No quota, price, lifetime-statistics or
 GOAL-time contract changes. Session deletion removes only its own snapshot.
 
-The speedometer and accessible detail tooltip follow separately in 0.8.25.
+## Speedometer and details (0.8.25)
+
+A compact violet speedometer sits immediately right of Model. It uses the
+unrounded measured ratio for its pulse: exactly 50% is quiet; any valid value
+above 50% pulses. Reduced Motion keeps a static highlight. Pending, stale and
+unavailable show a dash, no numeric meter value and no current warning pulse.
+
+Hover, keyboard focus or touch opens a viewport-constrained tooltip with exact
+used/effective/remaining tokens, more precise percentages, measured model,
+receipt time and source. Escape or an outside touch dismisses it; moving the
+pointer over the tooltip keeps it readable. It remains focusable while model
+selection is disabled. Model and indicator wrap together on narrow screens.
+The meter neither compacts context nor changes execution or budgets.
