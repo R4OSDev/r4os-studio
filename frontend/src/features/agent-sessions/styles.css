@@ -59,7 +59,7 @@
 .agent-compose-actions button:disabled { opacity:.45; cursor:default; }
 .agent-composer-footer { display:flex; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-top:12px; }
 .agent-composer-settings { flex:1 1 auto; min-width:0; max-width:100%; }
-.agent-model-controls { display:flex; justify-content:flex-start; flex-wrap:wrap; gap:9px; min-width:0; margin:0; padding:0; border:0; }
+.agent-model-controls { display:flex; justify-content:flex-start; align-items:flex-end; flex-wrap:wrap; gap:9px; min-width:0; margin:0; padding:8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
 .agent-model-controls label { display:flex; flex-direction:column; gap:5px; min-width:0; max-width:100%; }
 .agent-model-controls label>span { color:#ac9bbb; font-size:10px; }
 .agent-model-controls select { width:100%; max-width:220px; min-width:80px; height:32px; padding:5px 9px; border:1px solid #4e3a5f; border-radius:6px; background:#211829; color:#ddd0e9; font:inherit; font-size:11px; text-overflow:ellipsis; }
@@ -70,8 +70,8 @@
 .agent-composer { container-type:inline-size; }
 .agent-composer-footer .agent-composer-settings { flex:2 1 420px; }
 .agent-composer-footer .agent-account-choice,.agent-composer-footer .agent-model-choice { flex-basis:120px; }
-.agent-goal { flex:1 1 220px; min-width:0; max-width:320px; padding:4px 8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
-.agent-goal-top { display:flex; align-items:center; gap:7px; min-width:0; }
+.agent-goal { flex:1 1 300px; min-width:min(100%,260px); max-width:380px; padding:8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
+.agent-goal-top { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:6px; min-width:0; }
 .agent-goal-buttons { display:flex; flex:none; gap:3px; }
 .agent-goal-buttons button { display:grid; place-items:center; width:30px; height:26px; padding:4px; border:1px solid #4e3a5f; border-radius:4px; background:#2c2036; color:#cbb7dc; }
 .agent-goal-buttons .icon { width:16px; height:16px; }
@@ -79,9 +79,10 @@
 .agent-goal-buttons button:last-child[aria-pressed=true] { color:#f3bac7; border-color:#b0788d; background:#462c3a; }
 .agent-goal-buttons button:disabled { opacity:.4; cursor:default; }
 .agent-goal-buttons button:disabled[aria-pressed=true] { opacity:1; }
-.agent-goal-state { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#bba7cc; text-align:right; font-size:10px; }
-.agent-goal-caption { flex:none; font-size:10px; font-weight:650; letter-spacing:.7px; color:#dac5ed; }
-.agent-goal-text { display:block; width:100%; height:24px; margin-top:2px; padding:3px 4px; border:0; border-radius:3px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:transparent; color:#e1d3ed; font:inherit; font-size:12px; }
+.agent-goal-state-stack { display:grid; gap:2px; min-width:0; font-size:11px; line-height:1.25; text-align:right; }
+.agent-goal-state { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#bba7cc; font:inherit; }
+.agent-goal-caption { font-size:18px; line-height:26px; font-weight:600; letter-spacing:.7px; color:#dac5ed; }
+.agent-goal-text { display:block; width:100%; height:24px; margin-top:2px; padding:3px 4px; border:0; border-radius:3px; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:transparent; color:#e1d3ed; font:inherit; font-size:12px; }
 .agent-goal-text:hover:not(:disabled) { background:#33233f; }
 .agent-goal-text:disabled { cursor:default; }
 .agent-goal button:focus-visible,.agent-goal:focus-visible { outline:2px solid #b98ce2; outline-offset:2px; }

@@ -19,10 +19,7 @@
 .statistics-dialog { width: min(760px,calc(100vw - 28px)); max-width:760px; }
 .statistics-dialog .statistics-panel { padding:10px 20px 20px; }
 .statistics-dialog .statistics-grid { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
-.agent-goal-clock { flex:1; text-align:center; white-space:nowrap; font-size:11px; color:#dac5ed; font-variant-numeric:tabular-nums; }
+.agent-goal-clock { display:block; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; text-align:right; white-space:nowrap; font:inherit; color:#dac5ed; font-variant-numeric:tabular-nums; }
 .agent-goal-clock.uncertain { color:#e0ba86; }
-.agent-goal:has(.agent-goal-clock) { flex-basis:300px; min-width:min(100%,270px); max-width:380px; }
-.agent-goal:has(.agent-goal-clock) .agent-goal-top { gap:5px; }
-.agent-goal:has(.agent-goal-clock) .agent-goal-state { flex:0 1 auto; }
 @media(max-width:520px) { .statistics-dialog .statistics-grid { grid-template-columns:minmax(0,1fr); } .agent-header-actions { gap:7px; } }
 .statistics-goal-total { margin-top:20px; padding-top:16px; border-top:1px solid #493653; }

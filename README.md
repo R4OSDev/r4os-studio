@@ -1,3 +1,10 @@
+## Goal and model layout (0.8.38)
+
+GOAL, centered controls and stacked status/runtime now occupy the first card
+row, with the centered objective below. Model choices have a matching frame.
+Existing Goal/clock/model behavior is retained. Details:
+[Session-Composer.md](Session-Composer.md).
+
 ## Subversion roadmap cards (0.8.37)
 
 Collapsible cards now put saved status and task/acceptance progress in their

@@ -41,6 +41,7 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
   useEffect(() => { if (ready && document.activeElement === group.current) textButton.current?.focus(); }, [ready]);
   return <div className="agent-goal" role="group" aria-label="Goal controls" aria-busy={control.changing} ref={group} tabIndex={-1}>
     <div className="agent-goal-top">
+      <span className="agent-goal-caption">GOAL</span>
       <div className="agent-goal-buttons">
         <button type="button" aria-label="Play goal" title={running ? (liveReady ? 'Activate this Goal in the current run' : 'Wait for a ready compatible worker') : 'Start or resume this Goal'} aria-pressed={!!(confirmed && status === 'active')}
           disabled={!ready || inputBusy || active || state?.phase !== 'idle' || !control.execution}
@@ -51,11 +52,9 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
           disabled={disabled || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
           onClick={() => { if (canStopRun) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>
       </div>
-      {runtime}
-      <span className="agent-goal-state" role="status" title={state?.phase === 'pausing' ? 'Pausing after current turn' : goalLabel(control)}>{goalLabel(control)}</span>
-      <span className="agent-goal-caption">GOAL</span>
+      <div className="agent-goal-state-stack"><span className="agent-goal-state" role="status" title={state?.phase === 'pausing' ? 'Pausing after current turn' : goalLabel(control)}>{goalLabel(control)}</span>{runtime}</div>
     </div>
-    <button type="button" className="agent-goal-text" aria-label="Edit goal" title={state?.goal?.objective ?? 'Set a goal'} ref={textButton}
+    <button type="button" className="agent-goal-text" aria-label={`Edit goal: ${state?.goal?.objective ?? 'Set a goal'}`} aria-haspopup="dialog" title={state?.goal?.objective ?? 'Set a goal'} ref={textButton}
       disabled={disabled || inputBusy || !control.available || control.changing} onClick={openEditor}>{state?.goal?.objective ?? 'Set a goal'}</button>
   </div>;
 }
