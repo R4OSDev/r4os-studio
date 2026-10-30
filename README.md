@@ -1,3 +1,16 @@
+## Preferred roadmap order (0.8.33)
+
+The versioned runtime contract now includes the user's approved wording:
+
+> Prefer working through roadmap subversions in order, starting with the earliest open subversion. Whenever practical, finish its implementation and required checks before moving on. If a blocker or dependency makes this impractical, you may continue with independent work in a later subversion. Briefly document the reason, keep unfinished items open, and return to them when progress becomes possible. Explicit user priorities take precedence.
+
+New compatible project runs with Roadmap on, including resume, receive this
+guidance through the existing composition. It adds no ordering lock, status
+change, confirmation or tool permission; the conditional publication rule from
+0.8.32 remains in force. Saved prompts, native threads and running workers stay
+intact. Source/composition and static checks qualify this text-only change; no
+new tests, browser fixtures or model inference were used.
+
 ## Checked roadmap milestone publication (0.8.32)
 
 The runtime roadmap contract now instructs project agents to commit/push each
