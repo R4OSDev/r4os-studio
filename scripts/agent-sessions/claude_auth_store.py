@@ -35,7 +35,7 @@ class AuthStore(ClaudeProviders):
 
     def begin(self,ident,data,owner):
         ident=identity(ident);owner=browser_owner(owner)
-        if not isinstance(data,dict) or set(data)!={'requestId','revision','action'} or data['action'] not in ('connect','status','disconnect','limits'):
+        if not isinstance(data,dict) or set(data)!={'requestId','revision','action'} or data['action'] not in ('connect','status','disconnect','limits','catalog'):
             raise ProjectFault('Invalid native Claude authentication request.',400)
         rid=identity(data['requestId'])
         if type(data['revision']) is not int or not 1<=data['revision']<=9007199254740991:
@@ -53,7 +53,7 @@ class AuthStore(ClaudeProviders):
                 raise ProjectFault('Original Claude worker/queue credential leases are still active or unconfirmed. No authentication change was started.',409)
             for row in db.execute('SELECT data FROM auth_requests WHERE provider_id=?',(ident,)):
                 state=json.loads(row[0])['state']
-                if state in ACTIVE or state=='unconfirmed' and data['action'] not in ('status','limits'):
+                if state in ACTIVE or state=='unconfirmed' and data['action'] not in ('status','limits','catalog'):
                     raise ProjectFault('Read the original Claude request, then explicitly check status before signing in again.',409)
             if db.execute('SELECT count(*) FROM auth_requests').fetchone()[0]>=10000:
                 raise ProjectFault('The private Claude authentication receipt limit was reached.',409)
@@ -62,7 +62,7 @@ class AuthStore(ClaudeProviders):
             db.execute('INSERT INTO auth_requests VALUES (?,?,?,?,?)',(rid,ident,owner,fingerprint,encode(result)))
             return result,True
 
-    def finish(self,ident,rid,state,message=None,status=None,account=None,usage=None):
+    def finish(self,ident,rid,state,message=None,status=None,account=None,usage=None,models=None):
         with self.auth_db(write=True) as db:
             row=db.execute('SELECT * FROM auth_requests WHERE id=? AND provider_id=?',(rid,ident)).fetchone()
             if not row:raise ProjectFault('The original Claude authentication receipt is unavailable.',503)
@@ -77,11 +77,15 @@ class AuthStore(ClaudeProviders):
                 db.execute('UPDATE providers SET data=? WHERE id=?',(encode(value),ident))
                 db.execute('INSERT INTO revisions VALUES (?,?,?)',(ident,value['revision'],encode(value)))
             result.update(state=state,message=message,updatedAt=now(),provider=value)
-            if result['action']=='limits' and state=='complete':
+            if result['action'] in ('limits','catalog') and state=='complete':
                 from claude_limits_policy import usage_sample
                 result['limits']=usage_sample(usage,value,rid)
+            if result['action']=='catalog' and state=='complete':
+                from claude_catalog import normalize
+                try:result['catalog']=normalize(models,value,rid)
+                except ProjectFault:result['catalog']=None;result['message']='The native model catalog is unavailable. Existing selections were preserved.'
             db.execute('UPDATE auth_requests SET data=? WHERE id=?',(encode(result),rid))
-            if result['action'] in ('status','limits') and state=='complete':
+            if result['action'] in ('status','limits','catalog') and state=='complete':
                 for old in db.execute('SELECT id,data FROM auth_requests WHERE provider_id=?',(ident,)).fetchall():
                     data=json.loads(old['data'])
                     if data['state']=='unconfirmed':
@@ -99,6 +103,17 @@ class AuthStore(ClaudeProviders):
             for row in rows:
                 sample=json.loads(row[0]).get('limits')
                 if sample and sample['accountIdentity']==account:return sample
+            return None
+
+    def latest_catalog(self,ident):
+        from claude_provider_store import account_identity
+        provider=self.get(ident);account=account_identity(provider['account'])
+        if not account:return None
+        with self.auth_db() as db:
+            if db is None:return None
+            for row in db.execute('SELECT data FROM auth_requests WHERE provider_id=? ORDER BY rowid DESC',(ident,)):
+                catalog=json.loads(row[0]).get('catalog')
+                if catalog and catalog['accountIdentity']==account:return catalog
             return None
 
     def recover(self):

@@ -6,7 +6,8 @@ from api_provider_store import private
 from session_store import identity
 
 
-def limits_command(runtime,root,request_id):
+def limits_command(runtime,root,request_id,catalog=False):
+    if type(catalog) is not bool:raise ValueError('Invalid fixed metadata mode.')
     private(root/'Config/projects',directory=True,create=True)
     args=command(runtime,root,'status');args=args[:args.index('--')]
     blocked=args.index('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
@@ -19,4 +20,4 @@ def limits_command(runtime,root,request_id):
         '--ro-bind',str(source/'claude_engine.mjs'),'/runtime/claude_engine.mjs',
         '--ro-bind',str(source/'claude_limits_probe.mjs'),'/runtime/claude_limits_probe.mjs',
         '--','/usr/bin/node','/runtime/claude_limits_probe.mjs',identity(request_id)]
-    return args
+    return args+(['catalog'] if catalog else [])

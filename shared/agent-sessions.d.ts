@@ -40,7 +40,7 @@ export interface SessionUpdate {
 export interface SessionOptions {
   skills?: { id: string; name: string; description: string; available: boolean; reason?: string }[];
   development?: import('./project-development.js').DevelopmentOptions;
-  providers: { id: string; name: string; type?: 'openai' | 'api'; unavailableReason?: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean; imageInputs?: 'supported' | 'unsupported' | 'unknown'; inputModalities?: ('text' | 'image' | 'audio')[] | null; available?: boolean; unavailableReasons?: string[]; contextWindow?: number | null; source?: { kind: 'manual' | 'metadata'; recordedAt: string; url?: string } | null }[] }[];
+  providers: { id: string; name: string; type?: 'openai' | 'api' | 'claude-subscription'; unavailableReason?: string; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean; imageInputs?: 'supported' | 'unsupported' | 'unknown'; inputModalities?: ('text' | 'image' | 'audio')[] | null; available?: boolean; unavailableReasons?: string[]; contextWindow?: number | null; source?: { kind: 'manual' | 'metadata'; recordedAt: string; url?: string } | null }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean }[];
   nativeTools?: { id: 'web_search' | 'image_generation'; defaultEnabled: boolean }[];
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };

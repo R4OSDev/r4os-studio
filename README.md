@@ -1,3 +1,12 @@
+## Native Claude model metadata (0.8.22, partial implementation)
+
+The provider can now read/cache native model identifiers, resolved aliases and
+effort choices with the original account-bound metadata receipt. Context/image
+facts stay unknown; Fast Mode and model execution remain unavailable pending
+qualification. Existing engine/provider boundaries stay fixed and unqualified
+screenshot delivery produces an explicit notice. Details:
+[Claude-Models.md](Claude-Models.md).
+
 ## Native Claude subscription observations (0.8.21, partial acceptance)
 
 Provider and compact session views now show native quota windows, remaining

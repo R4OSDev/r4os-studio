@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { ClaudeSubscriptionProvider, ClaudeProviderMutation, ClaudeRuntimeStatus, ClaudeAuthOperation, ClaudeAuthAction } from '../../../../../shared/claude-subscription';
 import type { ProviderApi } from '../useProviders';
-import type { ClaudeSubscriptionLimits } from '../../../../../shared/claude-subscription';
+import type { ClaudeSubscriptionLimits, ClaudeModelCatalog } from '../../../../../shared/claude-subscription';
 import { ClaudeLimitsView } from './ClaudeLimitsView';
 
 const base = '/claude-subscriptions';
@@ -67,10 +67,17 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
   const generation = useRef(0);
   const runtime = useRuntime(api), request = api.request, reload = api.reload;
   const [limits, setLimits] = useState<ClaudeSubscriptionLimits | null>(null);
+  const [catalog, setCatalog] = useState<ClaudeModelCatalog | null>(null);
   useEffect(() => {
     let active = true;
     void request<{ limits: ClaudeSubscriptionLimits | null }>(`${base}/${provider.id}/limits`)
       .then(value => { if (active) setLimits(value.limits); }).catch(() => { if (active) setLimits(null); });
+    return () => { active = false; };
+  }, [provider.id, provider.revision, request]);
+  useEffect(() => {
+    let active = true;
+    void request<{ catalog: ClaudeModelCatalog | null }>(`${base}/${provider.id}/catalog`)
+      .then(value => { if (active) setCatalog(value.catalog); }).catch(() => { if (active) setCatalog(null); });
     return () => { active = false; };
   }, [provider.id, provider.revision, request]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -78,6 +85,7 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
     if (!mounted.current) return;
     setOperation(value); setObserved(value.provider); setError('');
     if (value.limits) setLimits(value.limits);
+    if ('catalog' in value) setCatalog(value.catalog ?? null);
     if (!['pending', 'waiting'].includes(value.state)) { setCode(''); void reload(); }
   }, [reload]);
   const read = useCallback(async () => {
@@ -112,6 +120,12 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
     <div className="provider-card-heading"><div><h2>{provider.name}</h2><p>Claude subscription</p></div><span className={`provider-status ${provider.status === 'connected' ? 'connected' : ''}`}>{labels[provider.status]}</span></div>
     <Runtime {...runtime} />
     <ClaudeLimitsView sample={limits} revision={provider.revision} />
+    <section className="claude-models" aria-label="Native Claude model catalog"><h3>Native model catalog</h3>
+      <p className="field-help">{catalog ? `Native client metadata received ${new Date(catalog.receivedAt).toLocaleString()}.` : 'No native model catalog has been read for this account.'} Model execution is pending. A listed model is not a subscription entitlement or billing guarantee.</p>
+      {catalog?.models.map(model => <article key={model.id} className="claude-model-row"><strong>{model.name}</strong><code>{model.id}</code><p>{model.description}</p>
+        <p>Effort: {model.efforts.map(value => value || 'Native default').join(' · ')}. Context window: Unknown. Image input: Unknown. Fast Mode: Unavailable.</p>
+        <p>{model.unavailableReasons.join(' ')}</p></article>)}
+    </section>
     {provider.account && <dl className="claude-account"><div><dt>Account</dt><dd>{provider.account.email}</dd></div><div><dt>Plan</dt><dd>{provider.account.plan.toUpperCase()}</dd></div><div><dt>Organization</dt><dd>{provider.account.orgName || provider.account.orgId}</dd></div><div><dt>Native status checked</dt><dd>{new Date(provider.account.checkedAt).toLocaleString()}</dd></div></dl>}
     <p className="field-help">Model access will be available after the native session, tool and subscription limit checks are complete.</p>
     {error && <p role="alert" className="provider-alert">{error}</p>}
@@ -126,6 +140,7 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
       <button type="button" className="button-primary" disabled={busy || running || !runtime.runtime} onClick={() => void act('connect')}>{provider.status === 'not-connected' ? 'Connect Claude' : 'Reconnect'}</button>
       <button type="button" className="button-secondary" disabled={busy || running || !runtime.runtime} onClick={() => void act('status')}>Check provider status</button>
       <button type="button" className="button-secondary" disabled={busy || running || provider.status !== 'connected' || !runtime.runtime} onClick={() => void act('limits')}>Check subscription limits</button>
+      <button type="button" className="button-secondary" disabled={busy || running || provider.status !== 'connected' || !runtime.runtime} onClick={() => void act('catalog')}>Read native model catalog</button>
       {running && <button type="button" className="button-secondary" disabled={busy} onClick={() => void control('cancel')}>Cancel sign-in</button>}
       {pending && <button type="button" className="button-secondary" disabled={busy} onClick={() => void read()}>Read original request</button>}
       {provider.status !== 'not-connected' && <button type="button" className="button-secondary" disabled={busy || running} onClick={() => setConfirmDisconnect(true)}>Disconnect</button>}

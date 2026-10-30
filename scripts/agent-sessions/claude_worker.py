@@ -37,6 +37,8 @@ class ClaudeWorker(Worker):
 
     async def mcp_output(self,result,image_data=None):
         content=[{'type':'text','text':encode(result)}]
+        if result.get('image') and self.config.get('claudeModel',{}).get('imageInput')!='supported':
+            content.append({'type':'text','text':'The original screenshot was captured and retained, but image delivery is unavailable for this model. This result does not confirm visual inspection.'})
         if result.get('image') and self.config.get('claudeModel',{}).get('imageInput')=='supported':
             image=result['image']
             if not self.config['permissions'].get('studio.capture_vm'):

@@ -48,11 +48,15 @@ export function claudeProviderRoutes(app: FastifyInstance, sessions: ProviderSes
     sessions.get(request, reply);
     return { limits: await agentHost({ operation: 'claude_provider', action: 'limits', id: request.params.id }) };
   });
+  app.get<{ Params: { id: string } }>(base + '/:id/catalog', { schema: { params } }, async (request, reply) => {
+    sessions.get(request, reply);
+    return { catalog: await agentHost({ operation: 'claude_provider', action: 'catalog', id: request.params.id }) };
+  });
   app.post<{ Params: { id: string }; Body: ClaudeAuthRequest }>(base + '/:id/auth', {
     bodyLimit: 1024, preValidation: async request => fields(request.body, ['requestId', 'revision', 'action']),
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision', 'action'], properties: {
       requestId: uuid, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-      action: { type: 'string', enum: ['connect', 'status', 'disconnect', 'limits'] },
+      action: { type: 'string', enum: ['connect', 'status', 'disconnect', 'limits', 'catalog'] },
     } } },
   }, async (request, reply) => {
     const owner = sessions.mutation(request, reply);

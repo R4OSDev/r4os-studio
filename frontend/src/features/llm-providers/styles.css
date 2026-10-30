@@ -129,3 +129,9 @@ button:disabled { cursor: default; opacity: .55; }
 .claude-limit-row progress::-moz-progress-bar { background:var(--accent); }
 .claude-limits.compact { margin:0 22px 10px; padding:9px 12px; flex-shrink:0; max-height:35vh; overflow:auto; }
 .claude-limits summary { color:#cdb4e5; cursor:pointer; }
+.claude-models { margin:18px 0; min-width:0; }
+.claude-models h3 { color:#e5dfee; font-size:13px; font-weight:550; }
+.claude-model-row { border:1px solid var(--line); border-radius:7px; padding:12px; margin:10px 0; color:#b0a2c0; font-size:11px; line-height:1.7; overflow-wrap:anywhere; }
+.claude-model-row strong { color:#ddcdef; }
+.claude-model-row code { display:block; color:var(--accent); font-size:10px; margin-top:4px; }
+.claude-model-row p { margin:7px 0; }

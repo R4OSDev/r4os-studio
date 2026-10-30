@@ -57,12 +57,29 @@ def providers(directory):
         legacy={v.get('id') for v in values}
         result += [v for v in ApiProviders(directory).listing() if v['enabled'] and v['id'] not in legacy]
     except ProjectFault:pass
+    from claude_provider_store import ClaudeProviders
+    try:
+        known={v.get('id') for v in values+result}
+        result += [v for v in ClaudeProviders(directory).listing() if v['status']=='connected' and v['id'] not in known]
+    except ProjectFault:pass
     return result
 
 
 def provider_models(directory, provider_id):
     identity(provider_id)
     source = Path(directory) / provider_id / 'models_cache.json'
+    from claude_auth_store import AuthStore
+    from claude_provider_store import ClaudeProviders
+    try:native=next((v for v in ClaudeProviders(directory).listing() if v['id']==provider_id),None) if not source.exists() else None
+    except ProjectFault:native=None
+    if native:
+        try:catalog=AuthStore(directory).latest_catalog(provider_id)
+        except ProjectFault:return []
+        if not catalog:return []
+        return [{'id':m['id'],'name':m['name'],'imageInputs':m['imageInputs'],'inputModalities':m['inputModalities'],
+            'efforts':m['efforts'],'defaultEffort':m['defaultEffort'],'fastModeAvailable':False,'available':False,
+            'unavailableReasons':m['unavailableReasons'],'contextWindow':None,
+            'source':{'kind':'metadata','recordedAt':catalog['receivedAt']}} for m in catalog['models']]
     try:
         # Existing subscription homes remain authoritative for their UUID.
         if source.exists():
@@ -106,6 +123,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
                     'available':m['available'] and not catalog['stale'],
                     'unavailableReasons':['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
                     'contextWindow':m['contextWindow'],'source':m['source']} for m in catalog['models']]
+        if v.get('type')=='claude-subscription':reason='Claude subscription model execution is not available in this Studio version yet.'
         values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,**({'unavailableReason':reason} if reason else {})})
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
             'nativeTools': [{'id': 'web_search', 'defaultEnabled': True},{'id':'image_generation','defaultEnabled':True}],
@@ -132,9 +150,13 @@ def validate_settings(data, provider_dir):
     if candidate is None: raise ProjectFault('Connect the selected provider before saving these settings.', 409)
     if candidate.get('type')=='api' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
         raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model.',409)
+    if candidate.get('type')=='claude-subscription' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
+        raise ProjectFault('Hosted web/image generation and Fast Mode are unavailable for this native Claude adapter.',409)
     model = next((m for m in provider_models(provider_dir, data['providerId']) if m['id'] == data['model']), None)
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)
+    if candidate.get('type')=='claude-subscription' and model.get('available') is False:
+        raise ProjectFault('Claude subscription model execution is not available in this Studio version yet.',409)
     if type(data.get('fastMode', False)) is not bool:
         raise ProjectFault('Invalid Fast Mode setting.', 400)
     if type(data.get('webSearchEnabled', True)) is not bool:

@@ -154,19 +154,20 @@ class ClaudeAuth:
 
     async def run(self,ident,job,result):
         rid=result['requestId'];state='failed';message='The native Claude authentication request failed. Existing credentials were preserved.'
-        status=None;account=None;usage=None
+        status=None;account=None;usage=None;models=None
         try:
             runtime=await asyncio.to_thread(installed,self.store.parent);root=auth_home(self.store,ident)
             action=result['action']
-            if action not in ('status','limits'):
+            if action not in ('status','limits','catalog'):
                 _,code=await self.execute(job,command(runtime,root,action),action=='connect')
                 if code!=0:raise ValueError()
             raw,code=await self.execute(job,command(runtime,root,'status'))
             status,account,message=status_result(raw,code)
-            if action=='limits' and status=='connected':
+            if action in ('limits','catalog') and status=='connected':
                 from claude_limits_command import limits_command
                 try:
-                    output,usage_code=await self.execute(job,limits_command(runtime,root,rid))
+                    args=limits_command(runtime,root,rid,catalog=True) if action=='catalog' else limits_command(runtime,root,rid)
+                    output,usage_code=await self.execute(job,args)
                     report=json.loads(output)
                     if (usage_code!=0 or report.get('schema')!=1 or report.get('requestId')!=rid
                         or report.get('nativeVersion')!=runtime['version'] or report.get('sdkVersion')!=runtime['sdkVersion']
@@ -177,11 +178,12 @@ class ClaudeAuth:
                         or sdk_account.get('tokenSource') not in (None,'claude.ai')
                         or {'Claude Pro':'pro','Claude Max':'max','pro':'pro','max':'max'}.get(sdk_account.get('subscriptionType'))!=account['plan']):raise ValueError()
                     usage=report.get('usage')
+                    models=report.get('models') if action=='catalog' else None
                     after,after_code=await self.execute(job,command(runtime,root,'status'))
                     after_status,after_account,_=status_result(after,after_code)
                     from claude_provider_store import account_identity
-                    if after_status!='connected' or account_identity(after_account)!=account_identity(account):
-                        usage=None;status=after_status;account=after_account
+                    if after_status!='connected' or account_identity(after_account)!=account_identity(account) or after_account['plan']!=account['plan']:
+                        usage=None;models=None;status=after_status;account=after_account
                     message='Native subscription limits checked. Missing windows and unconfirmed extra usage remain unavailable.'
                 except (ValueError,TypeError,asyncio.TimeoutError,OSError):
                     await self.kill(job)
@@ -191,16 +193,16 @@ class ClaudeAuth:
             state='complete'
         except asyncio.CancelledError:
             state='cancelled';message='Native sign-in cancelled. Explicitly check status before using this provider.';status='reauthentication-required';account=None
-            if result['action']=='limits':status=None;message='Native usage check cancelled. No model prompt was submitted.'
+            if result['action'] in ('limits','catalog'):status=None;message='Native metadata check cancelled. No model prompt was submitted.'
         except asyncio.TimeoutError:
             state='expired';message='The native authentication deadline elapsed. Explicitly check status before trying again.';status='reauthentication-required';account=None
-            if result['action']=='limits':status=None;message='The native usage check deadline elapsed. No model prompt was submitted.'
+            if result['action'] in ('limits','catalog'):status=None;message='The native metadata check deadline elapsed. No model prompt was submitted.'
         except (OSError,ValueError,TypeError,ProjectFault):
             status='reauthentication-required';account=None
         finally:
             try:
                 await self.kill(job)
-                self.store.finish(ident,rid,state,message,status,account,usage)
+                self.store.finish(ident,rid,state,message,status,account,usage,models)
             finally:
                 job['url']=None;job['state']=None;self.jobs.pop(ident,None)
 

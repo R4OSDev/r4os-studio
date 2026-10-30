@@ -217,6 +217,7 @@ class Host:
                     return await self.claude_auth.start(ident,request.get('input'),request.get('owner'))
             if action=='auth_receipt':return self.claude_auth.view(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
             if action=='limits':return await asyncio.to_thread(self.claude_auth.store.latest_limits,identity(request.get('id')))
+            if action=='catalog':return await asyncio.to_thread(self.claude_auth.store.latest_catalog,identity(request.get('id')))
             if action=='auth_code':return await self.claude_auth.submit(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'),request.get('code'))
             if action=='auth_cancel':return await self.claude_auth.cancel(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
             if action=='runtime':

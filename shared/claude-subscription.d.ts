@@ -13,7 +13,7 @@ export interface ClaudeProviderCreate { requestId: string; name: string }
 export interface ClaudeProviderMutation {
   requestId: string; state: 'complete'; provider: ClaudeSubscriptionProvider;
 }
-export type ClaudeAuthAction = 'connect' | 'status' | 'disconnect' | 'limits';
+export type ClaudeAuthAction = 'connect' | 'status' | 'disconnect' | 'limits' | 'catalog';
 export interface ClaudeAuthRequest { requestId: string; revision: number; action: ClaudeAuthAction }
 export interface ClaudeAuthOperation {
   requestId: string; providerId: string; action: ClaudeAuthAction; revision: number;
@@ -22,6 +22,16 @@ export interface ClaudeAuthOperation {
   /** Present only in the initiating live browser session, never persisted. */
   authorizationUrl?: string; expiresInSeconds?: number;
   limits?: ClaudeSubscriptionLimits;
+  catalog?: ClaudeModelCatalog | null;
+}
+export interface ClaudeModelCatalog {
+  schema: 1; source: string; receivedAt: string; providerId: string; providerRevision: number;
+  accountIdentity: string | null; runtimeProfileId: string; requestId: string; sessionModelsQualified: false;
+  models: { id: string; nativeValue: string; resolvedModel: string | null; name: string; description: string;
+    aliases: string[]; efforts: string[]; defaultEffort: string; supportsEffort: boolean | null;
+    adaptiveThinking: boolean | null; fastModeAdvertised: boolean | null; fastModeAvailable: false;
+    contextWindow: null; imageInputs: 'unknown'; inputModalities: ['text']; available: false;
+    unavailableReasons: string[]; source: 'native-supportedModels'; entitlement: 'not-verified-by-model-advertisement' }[];
 }
 export interface ClaudeSubscriptionLimits {
   schema: 1; source: string; receivedAt: string; providerId: string; providerRevision: number;

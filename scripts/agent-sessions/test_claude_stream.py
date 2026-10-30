@@ -47,3 +47,8 @@ class NativeStream(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(get_run(worker.store,run['id'])['state'],'failed')
         with self.assertRaises(ValueError):
             await worker.observe({'identity':{'nativeSessionId':str(uuid.uuid4())},'native':{'type':'result'}})
+        original={'success':True,'output':'Original screenshot captured.','image':{'id':'own-image'}}
+        result=await worker.mcp_output(original)
+        self.assertEqual(json.loads(result['content'][0]['text']),original)
+        self.assertIn('does not confirm visual inspection',result['content'][1]['text'])
+        self.assertFalse(result['isError'])
