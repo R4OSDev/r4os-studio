@@ -84,7 +84,7 @@ export interface ScreenshotPage {
 export interface SessionDeletionPreview { sessionId: string; name: string; revision: number; scopeHash: string; allowed: boolean; blockers: string[] }
 export interface SessionDeletionInput { requestId: string; revision: number; scopeHash: string; confirmName: string }
 export interface SessionDeletionReceipt { requestId: string; sessionId: string; state: 'deleting' | 'unknown' | 'deleted'; phase: string; reason?: string; creationRequestIds?: string[] }
-export interface AgentEvent { seq: number; kind: string; runId: string | null; payload: unknown }
+export interface AgentEvent { seq: number; kind: string; runId: string | null; payload: unknown; delivery?: 'live'|'replay' }
 export interface RemoteReceiptSummary {
   id?: string; requestId?: string; hostId?: string; hostName?: string; operation?: string;
   state?: string; phase?: string; deadlineAt?: string; code?: number; stopRequested?: boolean;

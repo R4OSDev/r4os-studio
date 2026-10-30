@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { SessionItem } from '../../../../shared/agent-sessions';
 import { toolLabels, useSessionApi } from './api';
 import { DevelopmentCard, DevelopmentImage, developmentRef } from './DevelopmentCard';
@@ -9,6 +9,7 @@ import { roadmapLabels, RoadmapReceipt } from './RoadmapReceipt';
 import { RemoteReceipt } from './RemoteReceipt';
 import { AttachmentHistory } from './AttachmentHistory';
 import { GeneratedCard } from './GeneratedImage';
+import './streaming.css';
 
 type ToolEntry = { item: SessionItem; jobId?: string };
 type TranscriptEntry = { kind: 'tools'; key: string; runId: string; tools: ToolEntry[] }
@@ -76,7 +77,7 @@ function ToolCallBlock({ tools, projectId, sessionId, token }: { tools: ToolEntr
   </section>;
 }
 
-export function SessionTranscript({ items, projectId, sessionId, token }: { items: SessionItem[]; projectId: string; sessionId: string; token: string }) {
+export const SessionTranscript=memo(function SessionTranscript({ items, projectId, sessionId, token,liveText }: { items: SessionItem[]; projectId: string; sessionId: string; token: string;liveText?:{runId:string;itemId:string}|null }) {
   const entries: TranscriptEntry[] = [], jobs = new Set<string>();
   for (const item of items) {
     const key = itemKey(item);
@@ -91,9 +92,9 @@ export function SessionTranscript({ items, projectId, sessionId, token }: { item
   }
   return entries.map((entry) => entry.kind === 'tools'
     ? <ToolCallBlock key={entry.key} tools={entry.tools} projectId={projectId} sessionId={sessionId} token={token} />
-    : <article key={entry.key} className={`agent-message ${entry.item.type}`}>
+    : <article key={entry.key} data-message-id={entry.item.id} data-run-id={entry.item.runId} className={`agent-message ${entry.item.type}`}>
       {entry.item.type !== 'notice' && <div className="agent-message-role">{entry.item.type === 'user' ? 'You' : 'Agent'}</div>}
-      <MessageText text={entry.item.text || (entry.item.type === 'user' && Array.isArray(entry.item.attachments) ? `${entry.item.attachments.length} attachment${entry.item.attachments.length === 1 ? '' : 's'}` : '')} markdown={entry.item.type === 'assistant'} projectId={projectId} sessionId={sessionId} />
+      <MessageText text={entry.item.text || (entry.item.type === 'user' && Array.isArray(entry.item.attachments) ? `${entry.item.attachments.length} attachment${entry.item.attachments.length === 1 ? '' : 's'}` : '')} markdown={entry.item.type === 'assistant'} projectId={projectId} sessionId={sessionId} live={entry.item.status==='running'&&liveText?.runId===entry.item.runId&&liveText?.itemId===entry.item.id}/>
       {entry.item.type === 'user' && Array.isArray(entry.item.attachments) && <AttachmentHistory files={entry.item.attachments} projectId={projectId} sessionId={sessionId} />}
     </article>);
-}
+});

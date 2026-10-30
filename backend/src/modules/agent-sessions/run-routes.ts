@@ -67,13 +67,15 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
     const close = () => { closed = true; clearTimeout(timer); streams.delete(close); response.end(); };
     streams.add(close);
     response.on('close', () => { closed = true; clearTimeout(timer); streams.delete(close); });
+    let caughtUp=false;
     const send = (result: EventResponse) => {
       for (const event of result.events) {
         if (event.seq <= after) continue;
-        const frame = `id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`;
+        const frame = `id: ${event.seq}\ndata: ${JSON.stringify({...event,delivery:caughtUp?'live':'replay'})}\n\n`;
         after = event.seq;
         if (!response.write(frame) || response.writableLength > 512 * 1024) { close(); break; }
       }
+      if(!result.events.length)caughtUp=true;
     };
     send(initial);
     let heartbeats = 0;

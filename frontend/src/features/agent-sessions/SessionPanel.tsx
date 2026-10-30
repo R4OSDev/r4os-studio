@@ -44,6 +44,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
   const [gallery,setGallery]=useState(false);
+  const [liveText,setLiveText]=useState<{runId:string;itemId:string}|null>(null);
+  const assistantIds=useRef(new Set<string>());
   const [deleting, setDeleting] = useState(() => !!pendingDeletion(scope, projectId, sessionId));
   const removedRef = useRef(removed), retired = useRef(false);
   useEffect(() => { removedRef.current = removed; }, [removed]);
@@ -51,7 +53,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     if (retired.current) return;
     retired.current = true;
     try { clearDeletedSession(scope, projectId, sessionId); } catch { /* Confirmed deletion still clears the selection. */ }
-    setDeleting(false); setSettings(false); setGallery(false); dirtyChanged(false); busyChanged(false); changed(); removedRef.current();
+    setDeleting(false); setSettings(false); setGallery(false); setLiveText(null); dirtyChanged(false); busyChanged(false); changed(); removedRef.current();
   }, [scope, projectId, sessionId, dirtyChanged, busyChanged, changed]);
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
@@ -90,15 +92,24 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const h = await projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal);
     const r = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal);
     if (signal.aborted) return;
-    last.current = h.cursor; setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
+    last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
   }, [base, projectRequest]);
   useEffect(() => {
     const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false;
     const receive = (event: AgentEvent) => {
       if (event.seq <= last.current) return;
       last.current = event.seq;
+      const live=event.delivery==='live'&&!document.hidden;
+      if(!live)setLiveText(null);
       if (projectSession && ['run', 'goal', 'nativeTurn'].includes(event.kind)) window.dispatchEvent(new Event('studio-project-activity'));
-      if (event.kind === 'item') { const item = event.payload as SessionItem; setItems((old) => merge(old, item)); if (item.tool === 'studio.save_skill' && item.status === 'completed') changed(); }
+      if (event.kind === 'item') {
+        const item=event.payload as SessionItem,key=itemKey(item);
+        if(item.type==='assistant')assistantIds.current.add(key);else assistantIds.current.delete(key);
+        if(live&&item.type==='assistant'&&item.status==='running')setLiveText({runId:item.runId,itemId:item.id});
+        else if(item.type==='tool'||item.type==='terminal')setLiveText(null);
+        else setLiveText(old=>old?.runId===item.runId&&old.itemId===item.id?null:old);
+        setItems(old=>merge(old,item));if(item.tool==='studio.save_skill'&&item.status==='completed')changed();
+      }
       if (event.kind === 'itemStatus') {
         const p = event.payload as { itemId: string; status: string; error: string };
         setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, status: p.status, error: p.error } : i));
@@ -106,6 +117,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       if (event.kind === 'delta') {
         const p = event.payload as { itemId: string; text: string; field?: string };
         const field = p.field === 'output' ? 'output' : 'text';
+        if(live&&field==='text'&&event.runId&&assistantIds.current.has(event.runId+':'+p.itemId))setLiveText({runId:event.runId,itemId:p.itemId});
         setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, [field]: String(i[field] ?? '') + p.text } : i));
       }
       if (event.kind === 'run') {
@@ -130,8 +142,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       if (controller.signal.aborted) return;
       source = new EventSource(`${apiBase}${base}/events?after=${last.current}`);
       source.onopen = () => { if (!controller.signal.aborted) { setConnection('Connected'); attempt = 0; if (projectSession) window.dispatchEvent(new Event('studio-project-activity')); } };
-      source.onmessage = (e) => { try { receive(JSON.parse(e.data)); } catch { source?.close(); retry(); } };
-      source.onerror = () => { source?.close(); retry(); };
+      source.onmessage = (e) => { if(controller.signal.aborted)return;try { receive(JSON.parse(e.data)); } catch { setLiveText(null);source?.close(); retry(); } };
+      source.onerror = () => { setLiveText(null);source?.close(); retry(); };
     };
     const retry = () => {
       if (controller.signal.aborted) return;
@@ -145,6 +157,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
   }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope]);
+  useEffect(()=>{const hidden=()=>{if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[]);
   useEffect(() => {
     if (!projectSession && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items, projectSession, log]);
@@ -178,6 +191,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const element = log.current, height = element?.scrollHeight ?? 0;
     try {
       const h = await projectRequest<SessionHistory>(base + `/history?before=${before}`);
+      for(const value of h.items)if(value.type==='assistant')assistantIds.current.add(itemKey(value));
       setItems((old) => [...h.items.filter((i) => !old.some((p) => itemKey(p) === itemKey(i))), ...old]); setBefore(h.before);
       requestAnimationFrame(() => { if (element) element.scrollTop += element.scrollHeight - height; });
     } catch (e) { setError((e as Error).message); } finally { setOlder(false); }
@@ -196,7 +210,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <div ref={transcriptContent}>
       {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
-      <SessionTranscript items={items} projectId={projectId} sessionId={sessionId} token={token} />
+      <SessionTranscript items={items} projectId={projectId} sessionId={sessionId} token={token} liveText={active&&run?.id===liveText?.runId?liveText:null}/>
       </div>
     </div>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}

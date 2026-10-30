@@ -1,3 +1,11 @@
+## Smooth live assistant text (0.8.29)
+
+New assistant replies now reveal complete Unicode characters with a short violet
+writing edge. Canonical input remains immediate; history/replay, completion,
+Reduced Motion and large bursts display directly. Markdown, selection, code
+copy, images and manual scrolling retain their existing behavior. Details:
+[Session-Text-Streaming.md](Session-Text-Streaming.md).
+
 ## Live screenshot gallery (0.8.28)
 
 The open gallery now follows new saved captures automatically. Historical

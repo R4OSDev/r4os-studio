@@ -41,3 +41,36 @@ await test('a paused event reader stays bounded and replays the next event witho
     await rm(root, { recursive: true, force: true });
   }
 });
+
+await test('stream delivery distinguishes replay from fresh events only after a drained backlog',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'studio-live-events-')),socket=join(root,'host.sock');
+  const previous=process.env.STUDIO_AGENTS_SOCKET;process.env.STUDIO_AGENTS_SOCKET=socket;
+  const project=randomUUID(),session=randomUUID(),records=[{seq:1,runId:null,kind:'notice',payload:{text:'Owned earlier event'}}];
+  let drained=false;const operations:string[]=[];
+  const server=createServer(client=>{let raw='';client.on('data',part=>{raw+=String(part);if(!raw.includes('\n'))return;const input=JSON.parse(raw);operations.push(input.operation);
+    const events=records.filter(event=>event.seq>input.after);if(!events.length)drained=true;
+    client.end(JSON.stringify({result:{session:{},events}})+'\n');});});
+  await new Promise<void>(resolve=>server.listen(socket,resolve));
+  const app=createApp({projectDirectory:join(root,'Projects'),providers:{directory:join(root,'Providers')}}),controller=new AbortController();
+  try {
+    const auth=await app.inject('/api/projects'),cookie=String(auth.headers['set-cookie']).split(';')[0];
+    await app.listen({host:'127.0.0.1',port:0});const address=app.server.address();assert(address&&typeof address!=='string');
+    const response=await fetch(`http://127.0.0.1:${address.port}/api/projects/${project}/sessions/${session}/events`,{headers:{cookie},signal:controller.signal});
+    assert.equal(response.status,200);const reader=response.body!.getReader(),decoder=new TextDecoder();let buffer='';
+    const next=async()=>{
+      while(!buffer.includes('\n\n')){const value=await reader.read();assert(!value.done);buffer+=decoder.decode(value.value,{stream:true});}
+      const end=buffer.indexOf('\n\n'),frame=buffer.slice(0,end);buffer=buffer.slice(end+2);
+      return JSON.parse(frame.split('\n').find(v=>v.startsWith('data: '))!.slice(6));
+    };
+    assert.equal((await next()).delivery,'replay');
+    for(let i=0;i<40&&!drained;i++)await new Promise(resolve=>setTimeout(resolve,25));assert(drained);
+    records.push({seq:2,runId:null,kind:'notice',payload:{text:'Owned new live event'}});
+    const live=await next();assert.equal(live.seq,2);assert.equal(live.delivery,'live');
+    controller.abort();await reader.cancel().catch(()=>undefined);
+    assert(operations.every(op=>op==='events'));
+  }finally{
+    controller.abort();await app.close();await new Promise<void>(resolve=>server.close(()=>resolve()));
+    if(previous===undefined)delete process.env.STUDIO_AGENTS_SOCKET;else process.env.STUDIO_AGENTS_SOCKET=previous;
+    await rm(root,{recursive:true,force:true});
+  }
+});
