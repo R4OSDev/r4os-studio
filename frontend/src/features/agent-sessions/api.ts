@@ -1,16 +1,15 @@
 import { createContext, useContext, useMemo } from 'react';
 import { studioRequest } from '../projects/api';
+import type {AgentToolId} from '../../../../shared/agent-sessions';
 export function sessionPath(projectId: string, sessionId?: string) {
   return `/${encodeURIComponent(projectId)}/sessions${sessionId ? '/' + encodeURIComponent(sessionId) : ''}`;
 }
 export { projectRequest, projectRequestId, ProjectRequestError } from '../projects/api';
 export const busyRun = (state?: string) => ['queued', 'starting', 'running', 'stopping'].includes(state ?? '');
-export const toolLabels: Record<string, string> = {
+export const permissionToolLabels: Record<AgentToolId, string> = {
   'studio.exec_command': 'Run command', 'studio.write_stdin': 'Process input', 'studio.terminate_process': 'Terminate process',
   'studio.list_directory': 'List directory', 'studio.read_file': 'Read file', 'studio.search': 'Search',
-  'studio.read_environment_notes': 'Read environment notes', 'studio.record_environment_note': 'Record environment note',
   'studio.read_attachment': 'Read attachment',
-  'image_gen.imagegen': 'Generate image',
   'studio.list_generated_images': 'List generated images', 'studio.import_generated_image': 'Import generated image',
   'studio.write_file': 'Write file', 'studio.apply_patch': 'Apply patch', 'studio.create_directory': 'Create directory',
   'studio.build_project': 'Build project', 'studio.deploy_project': 'Deploy project', 'studio.run_project': 'Run project',
@@ -29,6 +28,12 @@ export const toolLabels: Record<string, string> = {
   'studio.rollback_update': 'Roll back last update', 'studio.cleanup_update_transport': 'Clean own update transport',
   'studio.validate_skill': 'Validate skill', 'studio.save_skill': 'Save skill',
 };
+export const permissionToolIds=Object.keys(permissionToolLabels) as AgentToolId[];
+// Transcript labels may include native tools and grouped feature operations.
+// They are deliberately separate from independently saved permission keys.
+export const toolLabels:Record<string,string>={...permissionToolLabels,
+  'studio.read_environment_notes':'Read environment notes','studio.record_environment_note':'Record environment note',
+  'image_gen.imagegen':'Generate image'};
 
 export const SessionScope = createContext<'project' | 'skill'>('project');
 export function useSessionApi() {

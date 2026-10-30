@@ -318,7 +318,8 @@ PRAGMA user_version=1;
             if api or claude:
                 settings['webSearchEnabled']=False;settings['imageGenerationEnabled']=False
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
-            settings['permissions'] = {'studio.' + v: default_enabled(v) for v in permission_tools(self.selected_profile)}
+            from tool_defaults import permissions as creation_permissions
+            settings['permissions'] = creation_permissions(self)
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)
@@ -427,6 +428,11 @@ def operation(projects, r4os, provider_dir, request):
         store = SessionStore(projects, r4os, ident, kind)
         try:
             result = options(provider_dir, r4os, store.selected_profile)
+            from tool_defaults import permissions as creation_permissions
+            defaults = creation_permissions(store)
+            result['tools'] = [{'id': tool, 'defaultEnabled': enabled,
+                                **({'defaultReason': 'Connect and confirm this project’s repository before new sessions default to Push on.'} if tool == 'studio.push_project' and not enabled else {})}
+                               for tool, enabled in defaults.items()]
             from skill_application import options as skill_options
             result['skills'] = skill_options(projects)
             return result

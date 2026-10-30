@@ -1,3 +1,11 @@
+## Supported tool defaults and corrected settings (0.8.31)
+
+New compatible sessions default supported tools on, including update commit and
+rollback; Push additionally needs a confirmed repository binding. Existing saved
+choices and runs stay intact. Environment note and native image operations now
+use their real grouped switches without duplicate disabled Files checkboxes.
+Details: [Session-Tool-Defaults.md](Session-Tool-Defaults.md).
+
 ## Immediate local project navigation (0.8.30)
 
 Project navigation and local content no longer wait for GitHub. A bounded
@@ -3971,7 +3979,7 @@ Cleanup is a separate, revision-checked action after correlated terminal install
 
 
 ### Session-bound update agent tools and bundled knowledge (0.4.19)
-New project sessions use the additive studio-tools-v5 profile with 30 tools, including twelve fixed update tools from planning/package build through native transfer/install, separate commit/proof and explicit recovery/cleanup. The browser presents their individual permissions in Session Settings; commit and rollback default off. Batch resume also requires the frozen commit permission. Skills never grant rights, and Skill Manager sessions retain their eleven author tools. Existing profiles, native conversation histories and rollback protocol shapes remain supported.
+New project sessions originally used the additive studio-tools-v5 profile with 30 tools, including twelve fixed update tools from planning/package build through native transfer/install, separate commit/proof and explicit recovery/cleanup. The browser presents their individual permissions in Session Settings. Since 0.8.31, new compatible sessions default commit and rollback on; saved earlier Off choices remain intact. Batch resume also requires the frozen commit permission. Skills never grant rights, and Skill Manager sessions retain their supported author tools. Existing profiles, native conversation histories and rollback protocol shapes remain supported.
 
 The development broker checks the active peer/run/profile, frozen effect permission and every parent object's project/session provenance. Operator-created records remain operator scope. The harness publishes a durable pending job link, then waits on that original job outside model inference. It retries only read-only observation after coordinator unavailability, never admission or native writes. Unknown requests retain their original request IDs for the session's bounded jobs listing. No free-form VM/command/transport path or credential access is exposed.
 

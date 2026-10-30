@@ -12,7 +12,7 @@ class Declarations(unittest.TestCase):
   self.assertEqual(len(specifications(UPDATE_PROFILE)),30);self.assertEqual(len(specifications(COMPLETION_PROFILE)),18)
   self.assertEqual(specifications(UPDATE_PROFILE)[:18],specifications(COMPLETION_PROFILE))
   self.assertTrue(set(UPDATE_TOOLS).isdisjoint(tools_for(AUTHOR_PROFILE)))
-  self.assertFalse(default_enabled('commit_update'));self.assertFalse(default_enabled('rollback_update'))
+  self.assertTrue(default_enabled('commit_update'));self.assertTrue(default_enabled('rollback_update'))
   self.assertTrue(default_enabled('read_update_package'))
  def test_update_schema_has_no_arbitrary_command_path_or_vm(self):
   for name,body in [('upload_update_package',{'packageArtifactId':str(uuid.uuid4()),'path':'/outside'}),

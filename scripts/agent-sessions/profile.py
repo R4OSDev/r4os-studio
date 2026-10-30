@@ -45,7 +45,7 @@ UPDATE_TOOLS = ('read_update_package', 'plan_update_package', 'build_update_pack
     'abort_update', 'rollback_update', 'cleanup_update_transport')
 DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS
 GIT_TOOLS = ('push_project',)
-def default_enabled(tool): return tool not in ('commit_update','rollback_update','push_project')
+def default_enabled(tool): return tool != 'push_project'  # Push also needs trusted owner/repository context.
 ROADMAP_TOOLS = ('read_roadmap', 'update_roadmap', 'cleanup_roadmap')
 PRE_ROADMAP_TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS + GIT_TOOLS
 PRE_REMOTE_TOOLS = PRE_ROADMAP_TOOLS + ROADMAP_TOOLS
