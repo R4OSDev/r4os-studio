@@ -12,6 +12,7 @@ import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
 import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
+import { ProviderRetryStatus } from './ProviderRetryStatus';
 import { ComposerSettings } from './ComposerSettings';
 import { useGoal } from './useGoal';
 import { GoalControls, GoalEditor, goalLabel } from './GoalControls';
@@ -213,6 +214,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <SessionTranscript items={items} projectId={projectId} sessionId={sessionId} token={token} liveText={active&&run?.id===liveText?.runId?liveText:null}/>
       </div>
     </div>
+    <ProviderRetryStatus key={base} run={run}/>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}
     {composer.error && <p className="agent-error" role="status">{composer.error}</p>}

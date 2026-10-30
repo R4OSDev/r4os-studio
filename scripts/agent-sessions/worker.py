@@ -68,7 +68,7 @@ class Worker:
         self.usage_stats=WorkerUsage(self)
         from session_context import Context
         self.context=Context(self)
-        if self.row['busy']:
+        if self.row['busy'] and 'contextProtocol' not in self.config and not self.config.get('apiProvider'):
             self.config['contextProtocol']=1
             with self.store.db:self.store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(self.config),self.run_id))
         if self.config.get('goalExecution'):
@@ -77,16 +77,22 @@ class Worker:
         elif self.config.get('nativeGoalPreparation') is True:
             from goal_worker import GoalWorker
             self.goal_worker = GoalWorker(self,dormant=True)
+        from provider_retry import ProviderRetry
+        self.provider_retry = ProviderRetry(self)
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
+        if method in ('turn/started', 'turn/completed') and params.get('turn', {}).get('id') in self.provider_retry.held_turns:
+            return  # A duplicate old boundary cannot finish the current continuation.
         if method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed' and not self.error:
             from provider_errors import describe
             if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'],api=bool(self.config.get('apiProvider')))['text']
         self.usage_stats.notify(method,params)
         self.context.notify(method,params)
         if self.message_worker: self.message_worker.observe(method, params)
-        if self.goal_worker and await self.goal_worker.notify(method, params): return
+        retry_hold = self.provider_retry.observe(method, params)
+        if self.goal_worker and await self.goal_worker.notify(method, params, retry_hold=retry_hold): return
+        if retry_hold: return
         if method == 'turn/started':
             self.turn_id = params['turn']['id']
             transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
@@ -204,6 +210,8 @@ class Worker:
         async def output(result, image_data=None):
             return await self.development.native_output(result, image_data)
         name = params.get('tool', '')
+        if self.provider_retry.state in ('waiting', 'submitting'):
+            return await output({'success': False, 'error': 'interrupted', 'output': 'No native tool is admitted while the original continuation is waiting.'})
         if (not name.startswith('studio_') or name[7:] not in tools_for(self.config['engine'].get('profile', PROFILE)) or params.get('namespace') is not None
             or params.get('threadId') != self.thread_id or params.get('turnId') != self.turn_id):
             return await output({'success': False, 'error': 'invalidCall', 'output': 'This call does not belong to the active Studio run.'})
@@ -346,6 +354,7 @@ class Worker:
     async def cleanup(self):
         if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
         self.closing=True
+        await self.provider_retry.close()
         await self.usage_stats.close()
         if self.message_worker: await self.message_worker.close()
         if self.goal_worker: await self.goal_worker.close()
@@ -478,6 +487,7 @@ class Worker:
             message_identity = {'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid()),'profile':profile,'messageProtocol':1 if qualified_messages else 0,'messageTurnActive':False}
             if self.config.get('nativeGoalPreparation') is True: message_identity.update(liveGoalPreparation=1,liveGoalControl=1,liveGoalOpen=True)
             transition(self.store,self.run_id,'starting',worker=message_identity)
+            await self.provider_retry.bind()
             if self.config.get('goalExecution'):
                 await self.goal_worker.activate()
                 await self.done.wait()

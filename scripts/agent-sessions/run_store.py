@@ -68,6 +68,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     modalities=qualify(store,session_id,session,provider_dir,attachments)
     request_hash=fingerprint(session_id,data,attachments)
     snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
+    # This affects the immutable API lease hash, so freeze it before reserve.
+    snapshot['contextProtocol'] = 1
     snapshot['inputContractVersion']=1
     from environment_note_tools import availability
     snapshot['environmentNotesEnabled']=bool(data.get('environmentNotesSettings')==1 and session.get('environmentNotesEnabled',True) and availability(session['engine'].get('profile'))['available'])

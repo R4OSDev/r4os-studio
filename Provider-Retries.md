@@ -1,4 +1,49 @@
-# Provider failure qualification (0.8.10, partial)
+# Provider continuations (0.8.10, supplemented in0.8.45)
+
+New compatible project/skill workers can continue ordinary answers after a
+confirmed final HTTP502/503/504 `httpConnectionFailed` turn. They wait60seconds
+and admit at most five additional attempts per failure sequence. A continuation
+uses the original native process/thread and `turn/start` with `input: []`, no
+user-message ID, tool output or repeated prompt. Model text or a native tool
+request confirms progress; only that progress resets the failure sequence.
+
+The durable per-Run ledger freezes owner, session, original request/input/config
+hashes, worker/native PID and birth, host boot, release, thread, failed turn and
+all confirmed tool receipts. It records the counter and monotone deadline before
+waiting, then claims each submission before RPC. Browser reloads and coordinator
+reconnects can observe this ledger; they cannot create a timer or start inference.
+Worker/host loss never resumes it. A lost start without an original native
+receipt becomes unknown; it is not submitted again.
+
+Before each attempt, the worker serializes with direct-message and Goal-control
+locks, checks the exact frozen session/config/engine, project pins, original
+processes, current account or API lease, native idle state and unchanged tool
+receipts. Stop, queued/pending/unknown input, pending Goal controls, changed
+rights/bindings, unresolved images/tools, native internal retries and partial
+stream errors exclude continuation. Tool admission is closed while waiting or
+claiming a continuation. Repeated old turn boundaries cannot end the new turn.
+The pinned native `systemError` status is also idle when no turn or input request
+is running; the exact qualified final HTTP failure remains mandatory.
+
+Project/skill views share a safe error, attempt and monotone countdown display.
+Stop remains available, direct send is unavailable at the idle retry boundary,
+and retry waiting does not animate the project folder as execution. No native
+usage or cumulative token event is converted into a new spending receipt.
+
+The supplement also fixes API context admission: `contextProtocol` is frozen
+before reserving the API lease. A worker does not append this field to an older
+API snapshot after reservation. Its original hash remains intact; missing legacy
+context coverage stays unknown. No historical lease, run or queue snapshot is
+rewritten to make a changed configuration appear original.
+
+**Still open:** active GOAL/Live-Play recovery and its pause/clock/budget/queue
+integration, plus positive integrated runtime acceptance. This controller does
+not take over GOAL execution. Tasks2/3 remain partial and task4/acceptance remain
+open. No new tests/browser fixtures, artificial retries, paid inference or user
+session/VM actions were performed for this supplement. Source/import/AST checks,
+Build/TypeScript/Lint and installation readback do not claim those runtime cases.
+
+## Earlier diagnosis (0.8.10)
 
 Implemented: safe typed provider error descriptions in project/skill workers,
 including final failed-turn errors and native error notifications. The UI can
@@ -8,10 +53,10 @@ provider messages, URLs, request identifiers and additional details are not
 forwarded. The previous narrow authentication/quota fallback stays sanitized.
 A transient candidate is a diagnostic classification, never retry permission.
 
-**Not implemented or accepted yet:** the five60-second automatic continuation
-attempts, durable waiting/countdown, race/Goal-clock integration and their
-end-to-end acceptance. Existing runs are not resumed. No countdown or successful
-recovery is claimed. The remaining roadmap items stay open.
+The original0.8.10 release implemented diagnosis only. The ordinary-answer
+controller described above is additive in0.8.45; existing workers retain their
+original immutable release. Successful recovery has not been asserted from an
+unobserved runtime case. The remaining roadmap items stay open.
 
 ## Qualified sources
 
@@ -47,7 +92,9 @@ to obtain a different policy. No Codex source/binary/profile/pin was modified.
 ## Continuation contract to implement
 
 1. Consider only a typed HTTP502/503/504 failure at the pre-response connection
-   boundary and a confirmed final failed native turn. Missing status, a partial
+   boundary and a confirmed final failed native turn. The0.8.45 controller uses
+   only the HTTP connection class; stream connection classes stay diagnostic.
+   Missing status, a partial
    or disconnected response stream and unknown request/tool effects do not prove
    safe continuation. Authentication, account/quota, context/budget/storage,
    policy blocks, complete/blocked Goals and human Stop/Pause are excluded.
@@ -78,6 +125,8 @@ The idle continuation's actual request/result loss, tool receipt preservation,
 native Goal pause/resume, clock and Queue/Stop races require an integrated
 controller qualification. Source inspection does not prove those runtime cases.
 Roadmap0.8.10 explicitly excludes new tests/browser fixtures/inference without a
-later separate instruction. This release therefore adds the safe diagnosis and
-qualified contract only; it does not enable automatic inference on an unproven
-path. No tests, fixtures, inference or user session/VM actions were performed.
+later separate instruction. The original0.8.10 release added diagnosis and the
+contract. The0.8.45 supplement implements the narrowly qualified ordinary-answer
+path described above; it does not claim GOAL recovery or positive end-to-end
+qualification. No tests, fixtures, inference or user session/VM actions were
+performed.

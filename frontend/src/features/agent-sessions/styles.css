@@ -220,3 +220,5 @@
 
 .agent-attachment-picker .agent-attach-files>.icon { transform:translateX(2.5px); }
 .agent-attachment-message>button { font:inherit; color:inherit; padding:2px 6px; border:1px solid #604971; border-radius:4px; background:#2d203a; }
+.agent-provider-retry { display:flex; flex-wrap:wrap; gap:5px 16px; margin:8px 18px; padding:10px 12px; border:1px solid #69517f; border-radius:6px; background:#251b31; color:#dfccef; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.agent-provider-retry>span { min-width:0; }

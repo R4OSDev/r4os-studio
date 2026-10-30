@@ -287,6 +287,18 @@ class ApiProviders:
             db.execute("UPDATE leases SET state='active',binding=? WHERE run_id=?",(encode(binding|{'worker':worker}),run_id))
             return credential
 
+    def validate_active(self,run_id,owner_type,owner_id,sid,rid,snapshot,worker):
+        binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot)
+        selected=snapshot['apiProvider']
+        with self.connect() as db:
+            row=db.execute('SELECT * FROM leases WHERE run_id=?',(run_id,)).fetchone() if db else None
+            value=self.current(db,selected['id']) if db else None
+            if (not value or not value['enabled'] or any(value[k]!=v for k,v in selected.items())
+                    or row is None or row['state']!='active' or row['provider_id']!=selected['id']
+                    or row['config_revision']!=selected['revision'] or row['credential_revision']!=selected['credentialRevision']
+                    or json.loads(row['binding'])!=binding|{'worker':worker}):
+                raise ProjectFault('The original API worker lease changed. No continuation was submitted.',409)
+
     def release(self,run_id,owner_type,owner_id,sid,rid,snapshot,worker=None):
         binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot)
         with self.connect(write=True) as db:

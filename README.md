@@ -1,3 +1,14 @@
+## Original-worker provider continuations (0.8.45)
+
+New compatible ordinary-answer workers retain their original thread and empty
+input while retrying confirmed pre-response HTTP502/503/504 failures. Five extra
+attempts,60-second durable waits, current admission/receipt checks and shared
+countdown UI are implemented. Active GOAL recovery and positive integrated
+runtime acceptance remain open; no synthetic retries, inference or user actions
+were run. Details: [Provider-Retries.md](Provider-Retries.md).
+API context metadata is now frozen before lease reservation; workers preserve
+older frozen API snapshots rather than changing their admission hash.
+
 ## Violet Goal STOP (0.8.44)
 
 Pressed GOAL STOP now uses the shared violet control styling in project and

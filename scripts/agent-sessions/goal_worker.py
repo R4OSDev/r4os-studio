@@ -101,6 +101,8 @@ class GoalWorker:
     async def evaluate(self):
         await asyncio.sleep(.05)
         if self.activating or self.lock.locked() or not self.idle.is_set() or self.worker.done.is_set(): return
+        retry = getattr(self.worker, 'provider_retry', None)
+        if self.dormant and retry and retry.state in ('waiting', 'submitting'): return
         if self.dormant:
             if self.last_turn_status and not self.retain_at_boundary():
                 self.worker.outcome={'completed':'completed','interrupted':'interrupted','failed':'failed'}.get(self.last_turn_status,'unknown')
@@ -142,7 +144,7 @@ class GoalWorker:
             return False
         finally: w.store.db.commit()
 
-    async def notify(self, method, params):
+    async def notify(self, method, params, retry_hold=False):
         w=self.worker
         if w.stopping and method in ('thread/goal/updated','thread/goal/cleared'):
             # A queued notification cannot undo a user Stop. Read native state
@@ -187,6 +189,7 @@ class GoalWorker:
                 (w.run_id,turn['id'],turn['status']))
             from run_store import event
             event(w.store,w.session_id,w.run_id,'nativeTurn',{'id':turn['id'],'status':turn['status']})
+            if retry_hold: return True
             if self.dormant: return self.retain_at_boundary()
             from message_store import pending_queue
             if turn['status']=='completed' and not w.stopping and pending_queue(w.store,w.session_id,authorized=True):

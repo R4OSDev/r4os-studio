@@ -407,12 +407,15 @@ PRAGMA user_version=1;
     def run_present(self, r):
         thread = self.row(r['session_id'])['thread_id']
         worker = json.loads(r['worker'] or '{}')
+        from provider_retry import snapshot as retry_snapshot
+        retry = retry_snapshot(self, r)
         support = r['state']=='running' and bool(thread and r['turn_id']) and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True
         activation=None
         if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_activations'").fetchone():
             saved=self.db.execute('SELECT a.request_id,c.state FROM goal_activations a JOIN goal_commands c USING(request_id) WHERE a.run_id=? ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1',(r['id'],)).fetchone()
             if saved: activation={'requestId':saved['request_id'],'state':saved['state']}
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
+                **({'providerRetry': retry} if retry else {}),
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
                 'goalControlSupport':r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
                 **({'goalActivation':activation} if activation else {}),

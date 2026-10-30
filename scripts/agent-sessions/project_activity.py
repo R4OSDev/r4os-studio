@@ -47,6 +47,8 @@ async def units(names):
 def executing(db, row, tables):
     if not row['busy'] or row['state'] not in ('starting', 'running', 'stopping'): return False
     if row['state'] in ('starting', 'stopping'): return True
+    if 'provider_retries' in tables and db.execute(
+            "SELECT 1 FROM provider_retries WHERE run_id=? AND state='waiting'", (row['id'],)).fetchone(): return False
     live = 'goal_activations' in tables and db.execute(
         "SELECT 1 FROM goal_activations WHERE run_id=? AND session_id=? AND state='confirmed' LIMIT 1",
         (row['id'], row['session_id'])).fetchone() is not None
