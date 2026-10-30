@@ -3,9 +3,18 @@ import type { SessionOwner } from './agent-sessions.js';
 /** Native Codex status, distinct from Studio's last confirmed button intent. */
 export type NativeGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete';
 export interface NativeGoal {
+  source?: 'native-codex';
   threadId: string; objective: string; status: NativeGoalStatus;
   tokensUsed: number; timeUsedSeconds: number; createdAt: number; updatedAt: number;
   tokenBudget?: number | null;
+}
+/** Studio orchestration over a native Claude conversation, with no native Goal RPC. */
+export interface StudioClaudeGoal {
+  source: 'studio-claude'; goalId: string; nativeSessionId: string; threadId: null;
+  objective: string; status: NativeGoalStatus; tokensUsed: null; timeUsedSeconds: number;
+  createdAt: number; updatedAt: number;
+  limits: { maxSteps: 8; maxActiveSeconds: 900 };
+  executionId?: string; stepsCompleted?: number;
 }
 export type GoalAction = 'save' | 'play' | 'pause' | 'stop';
 export interface GoalLiveTarget { runId: string; threadId: string; turnId: string }
@@ -15,7 +24,7 @@ export interface GoalCommand {
 }
 export interface SessionGoal {
   owner: SessionOwner; sessionId: string; threadId: string | null;
-  revision: number; goal: NativeGoal | null;
+  revision: number; goal: NativeGoal | StudioClaudeGoal | null;
   lastIntent: GoalAction | null;
   phase: 'idle' | 'pending' | 'pausing' | 'unknown';
   requestId?: string; runId?: string; reason?: string;

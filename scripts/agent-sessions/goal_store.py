@@ -31,6 +31,9 @@ class Goals:
 
     def snapshot(self, sid):
         session = self.store.row(sid)
+        if json.loads(session['engine']).get('kind')=='claude-code':
+            from claude_goal_store import snapshot
+            return snapshot(self,sid)
         row = self.store.db.execute('SELECT * FROM session_goals WHERE session_id=?', (sid,)).fetchone() if exists(self.store) else None
         result = {'owner': {'type': self.store.owner_type, 'id': self.store.owner_id}, 'sessionId': sid,
                   'threadId': session['thread_id'], 'revision': row['revision'] if row else 0,
@@ -57,7 +60,8 @@ class Goals:
     @goal_guard
     def accept(self, sid, data):
         if self.store.get(sid)['engine'].get('kind')=='claude-code':
-            raise ProjectFault('Bounded GOAL orchestration is not qualified for this native Claude runtime. No native Codex Goal command was sent.',409)
+            from claude_goal_store import accept
+            return accept(self,sid,data)
         if self.store.get(sid)['engine'].get('api'):
             raise ProjectFault('Native Goal controls are not qualified for this API model.',409)
         if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target'}
@@ -156,6 +160,8 @@ class Goals:
     def lost_worker(self, run_id):
         from claude_goal import lost as lost_claude
         lost_claude(self.store,run_id)
+        from claude_goal_store import lost as lost_claude_view
+        lost_claude_view(self.store,run_id)
         if not exists(self.store): return
         from goal_worker import end_turns
         end_turns(self.store,run_id)
@@ -164,12 +170,13 @@ class Goals:
             lost(self.store,run_id)
         except Exception:pass  # Statistics cannot change Goal recovery.
         for command in self.store.db.execute("SELECT * FROM goal_commands WHERE state='pending'").fetchall():
-            if json.loads(command['payload']).get('target',{}).get('runId')==run_id:
+            data=json.loads(command['payload'])
+            if (data.get('target') or data.get('_claudeTarget') or {}).get('runId')==run_id:
                 self.finish(command['session_id'],command['request_id'],'failed' if command['stage'] in ('accepted','worker_received') else 'unknown',
                     'The original live Goal worker ended. No mutation or inference was repeated.')
         run=self.store.db.execute('SELECT session_id,config,state FROM runs WHERE id=?',(run_id,)).fetchone()
         if run:
-            request=json.loads(run['config']).get('goalExecution',{}).get('requestId')
+            config=json.loads(run['config']);request=(config.get('goalExecution') or config.get('claudeGoalExecution') or {}).get('requestId')
             if request:
                 command=self.command(run['session_id'],request)
                 if command['state']=='pending':

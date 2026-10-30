@@ -23,18 +23,13 @@ class ClaudeGoal(unittest.TestCase):
         self.tick = 1000000000
 
     def accepted_play(self, store):
-        """Owned synthetic accepted-intent fixture, never a public bypass."""
-        goals = Goals(store); goals.schema(); request = str(uuid.uuid4())
-        saved = {'source': 'studio-claude', 'nativeSessionId': self.native, 'threadId': None,
-            'objective': 'Complete the owned bounded fixture and check it.', 'status': 'paused', 'createdAt': 1,
-            'updatedAt': 1, 'tokensUsed': None, 'timeUsedSeconds': 0}
-        body = {'requestId': request, 'revision': 1, 'action': 'play', 'sessionRevision': 1}
-        payload = body | {'_goal': saved, '_previousPhase': 'idle'}
-        with store.db:
-            store.db.execute('INSERT INTO session_goals VALUES (?,1,?,NULL,\'pending\',?,NULL,NULL)',
-                (self.sid, encode(saved), request))
-            store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
-                (request, self.sid, digest({'sessionId': self.sid, **body}), encode(payload), 'pending', 'accepted', now()))
+        """Owned public Save/Play intent path; no user account or inference."""
+        from claude_goal_store import idle
+        goals=Goals(store);request=str(uuid.uuid4());save=str(uuid.uuid4())
+        goals.accept(self.sid,{'requestId':save,'revision':goals.snapshot(self.sid)['revision'],'action':'save',
+            'objective':'Complete the owned bounded fixture and check it.'})
+        self.assertEqual(idle(goals,self.sid,save)['state'],'confirmed')
+        goals.accept(self.sid,{'requestId':request,'revision':goals.snapshot(self.sid)['revision'],'action':'play','sessionRevision':1})
         return request
 
     def prepare(self):
@@ -75,9 +70,9 @@ class ClaudeGoal(unittest.TestCase):
         worker.config['claudeGoalExecution']['objective'] = 'Another unapproved goal'
         with self.assertRaises(ProjectFault): journal.read()
         worker.config = tampered
-        # Public controls remain gated until their separate integration; source
-        # qualification cannot silently make an actual user Play available.
-        with self.assertRaisesRegex(ProjectFault, 'not qualified'):
+        self.assertIsNone(worker.store.row(self.sid)['thread_id'])
+        self.assertIsNone(Goals(worker.store).snapshot(self.sid)['goal']['tokensUsed'])
+        with self.assertRaises(ProjectFault):
             Goals(worker.store).accept(self.sid, {'requestId': str(uuid.uuid4()), 'revision': 1, 'action': 'play', 'sessionRevision': 1})
 
     def test_native_ack_report_result_and_fresh_admission_are_all_required(self):

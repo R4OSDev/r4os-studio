@@ -10,7 +10,7 @@ from store import ProjectFault
 
 async def readback(store, sid, rpc_factory=CodexRPC):
     if store.get(sid)['engine'].get('kind')=='claude-code':
-        raise ProjectFault('Native Codex Goal readback does not apply to this Claude session. Its original data was preserved.',409)
+        return {'goal':Goals(store).snapshot(sid),'nativeRead':False,'studioRead':True,'superseded':False}
     if store.get(sid)['engine'].get('api'):
         raise ProjectFault('Native Goal readback is not qualified for this API model.',409)
     goals=Goals(store);before=goals.snapshot(sid);thread=before['threadId']

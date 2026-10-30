@@ -20,7 +20,7 @@ export function goalLabel(control: Control) {
   if (!control.available) return 'Unavailable';
   if (control.pending) return ({ save: 'Saving…', play: 'Starting…', pause: 'Pausing…', stop: 'Stopping…' })[control.pending.action];
   if (control.goal?.phase === 'unknown') return 'Unconfirmed';
-  if (control.goal?.phase === 'pausing') return 'Pausing…';
+  if (control.goal?.phase === 'pausing') return control.goal.lastIntent === 'stop' ? 'Stopping…' : 'Pausing…';
   const status = control.goal?.goal?.status;
   if (status === 'paused' && control.goal?.lastIntent === 'stop') return 'Stopped';
   return status ? ({ active: 'Active', paused: 'Paused', blocked: 'Blocked', usageLimited: 'Usage limit', budgetLimited: 'Budget limit', complete: 'Complete' })[status] : 'Ready';
@@ -41,18 +41,18 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
   useEffect(() => { if (ready && document.activeElement === group.current) textButton.current?.focus(); }, [ready]);
   return <div className="agent-goal" role="group" aria-label="Goal controls" aria-busy={control.changing} ref={group} tabIndex={-1}>
     <div className="agent-goal-top">
-      <span className="agent-goal-caption">GOAL</span>
+      <span className="agent-goal-caption" title={control.claude ? 'Studio GOAL: up to 8 steps or 15 active minutes per Play' : undefined}>GOAL</span>
       <div className="agent-goal-buttons">
-        <button type="button" aria-label="Play goal" title={running ? (liveReady ? 'Activate this Goal in the current run' : 'Wait for a ready compatible worker') : 'Start or resume this Goal'} aria-pressed={!!(confirmed && status === 'active')}
+        <button type="button" aria-label="Play goal" title={running ? (liveReady ? 'Activate this Goal in the current run' : control.claude ? 'Wait for this Claude run to end' : 'Wait for a ready compatible worker') : control.claude ? 'Start this Studio Goal: up to 8 steps or 15 active minutes' : 'Start or resume this Goal'} aria-pressed={!!(confirmed && status === 'active')}
           disabled={!ready || inputBusy || active || state?.phase !== 'idle' || !control.execution}
           onClick={() => state?.goal ? void control.perform('play') : openEditor()}><Icon name="play" /></button>
-        <button type="button" aria-label="Pause goal" title="Pause after the current turn" aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
+        <button type="button" aria-label="Pause goal" title={control.claude ? 'Pause after the current admitted step' : 'Pause after the current turn'} aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
           disabled={!ready || ((!state?.goal || status !== 'active') && state?.phase !== 'unknown')} onClick={() => void control.perform('pause')}><Icon name="pause" /></button>
         <button type="button" aria-label="Stop goal" title="Pause the Goal and interrupt its run" aria-pressed={!!stopped}
           disabled={disabled || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
           onClick={() => { if (canStopRun) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>
       </div>
-      <div className="agent-goal-state-stack"><span className="agent-goal-state" role="status" title={state?.phase === 'pausing' ? 'Pausing after current turn' : goalLabel(control)}>{goalLabel(control)}</span>{runtime}</div>
+      <div className="agent-goal-state-stack"><span className="agent-goal-state" role="status" title={state?.reason ?? goalLabel(control)}>{goalLabel(control)}</span>{runtime}</div>
     </div>
     <button type="button" className="agent-goal-text" aria-label={`Edit goal: ${state?.goal?.objective ?? 'Set a goal'}`} aria-haspopup="dialog" title={state?.goal?.objective ?? 'Set a goal'} ref={textButton}
       disabled={disabled || inputBusy || !control.available || control.changing} onClick={openEditor}>{state?.goal?.objective ?? 'Set a goal'}</button>
@@ -63,7 +63,7 @@ export function GoalEditor({ control, run, stopRun, close, dirtyChanged }: {
   control: Control; run?: AgentRun | null; stopRun: () => Promise<void>; close: () => void; dirtyChanged: (value: boolean) => void;
 }) {
   const activeRun = busyRun(run?.state);
-  const activeOrdinaryRun = activeRun && run?.mode !== 'goal' && (!control.liveExecution || !run?.goalControlSupport);
+  const activeOrdinaryRun = activeRun && (control.claude || run?.mode !== 'goal' && (!control.liveExecution || !run?.goalControlSupport));
   const activeGoal = control.goal?.goal?.status === 'active';
   const saved = control.goal?.goal?.objective ?? '';
   const [baseline, setBaseline] = useState({ revision: control.goal?.revision ?? 0, text: saved });
@@ -97,8 +97,10 @@ export function GoalEditor({ control, run, stopRun, close, dirtyChanged }: {
       <textarea id="goal-objective" rows={6} maxLength={16000} value={text} disabled={control.posting} onChange={(event) => {
         setText(event.target.value); try { sessionStorage.setItem(control.draftKey, event.target.value); } catch { /* Submission checks durable storage. */ }
       }} aria-describedby="goal-editor-help goal-editor-count" aria-invalid={invalid} />
-      <div className="agent-goal-editor-help"><p id="goal-editor-help">Save keeps the Goal paused. Play activates it in the current ready run. Queued messages take priority after the current turn.</p><span id="goal-editor-count">{count} / 4000</span></div>
-      {activeOrdinaryRun && <p className="project-dialog-status">This worker is not ready for live Goal control. Your draft is preserved.</p>}
+      <div className="agent-goal-editor-help"><p id="goal-editor-help">{control.claude
+        ? 'Save keeps this Studio Goal paused. Play starts up to 8 steps or 15 active minutes on the same Claude conversation, with fresh subscription admission per step. Queued messages take priority after the current step. Stop closes tool admission immediately.'
+        : 'Save keeps the Goal paused. Play activates it in the current ready run. Queued messages take priority after the current turn.'}</p><span id="goal-editor-count">{count} / 4000</span></div>
+      {activeOrdinaryRun && <p className="project-dialog-status">{control.claude ? 'Wait for this Claude run to end before saving or starting a Goal. Your draft is preserved.' : 'This worker is not ready for live Goal control. Your draft is preserved.'}</p>}
       {activeGoal && <p className="project-dialog-status">Pause the active Goal before changing its text.</p>}
       {control.goal?.phase === 'unknown' && <p className="project-dialog-error">Pause or Stop the unconfirmed Goal before editing it.</p>}
       {invalid && <p className="project-dialog-error" role="alert">Enter valid text with at most 4000 Unicode characters.</p>}

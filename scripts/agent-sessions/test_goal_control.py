@@ -208,4 +208,9 @@ class GoalSkillControls(unittest.IsolatedAsyncioTestCase):
         with self.open(self.ids[1]) as other:
             with self.assertRaises(ProjectFault): Goals(other).snapshot(sid)
             with self.assertRaises(ProjectFault): Goals(other).receipt(sid,rid)
-        self.assertFalse(self.projects.exists());self.assertFalse(any(method.startswith('turn/') for method,_ in native.calls))
+        # Shared session lifetime locks predate this test's original directory
+        # assertion; skills must still create no project catalog or workspace.
+        self.assertFalse((self.projects/'Projects.sqlite').exists())
+        self.assertTrue(all(path.relative_to(self.projects).as_posix().startswith('.studio/agents/.session-lifetimes/')
+            for path in self.projects.rglob('*') if path.is_file()))
+        self.assertFalse(any(method.startswith('turn/') for method,_ in native.calls))

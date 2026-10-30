@@ -26,37 +26,43 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
   const [checkAgain, setCheckAgain] = useState(false), [refresh, setRefresh] = useState(0);
   const generation = useRef(0), inflight = useRef(false);
-  const apiSession = !!session?.engine.api || session?.engine.kind === 'claude-code';
+  const apiSession = !!session?.engine.api, claudeSession = session?.engine.kind === 'claude-code', engineKnown = !!session;
   useEffect(() => { const current = ++generation.current; return () => { generation.current = current + 1; }; }, [base]);
   const observe = useCallback((value: SessionGoal) => {
     if (value.sessionId !== sessionId || value.owner.id !== projectId || value.owner.type !== scope)
       throw new Error('This Goal belongs to another session.');
+    if (engineKnown && value.goal && (claudeSession !== (value.goal.source === 'studio-claude')))
+      throw new Error('The Goal source does not match the original session engine.');
     setGoal((previous) => {
       if (previous && previous.revision > value.revision) return previous;
-      if (previous?.revision === value.revision && previous.goal && value.goal
-        && (previous.goal.updatedAt > value.goal.updatedAt || previous.goal.tokensUsed > value.goal.tokensUsed
+      const samePlay = previous?.goal?.source !== 'studio-claude' || value.goal?.source === 'studio-claude'
+        && previous.goal.goalId === value.goal.goalId && previous.goal.executionId === value.goal.executionId;
+      if (previous?.revision === value.revision && previous.goal && value.goal && samePlay
+        && (previous.goal.updatedAt > value.goal.updatedAt || typeof previous.goal.tokensUsed === 'number' && typeof value.goal.tokensUsed === 'number' && previous.goal.tokensUsed > value.goal.tokensUsed
           || previous.goal.timeUsedSeconds > value.goal.timeUsedSeconds)) return previous;
       return value;
     });
-  }, [projectId, sessionId, scope]);
+  }, [projectId, sessionId, scope, claudeSession, engineKnown]);
   useEffect(() => {
     const controller = new AbortController(), current = generation.current;
     let timer: number | undefined;
     const load = async () => {
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ claudeGoals?: number; claudeGoalExecution?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
-      observe(state.goal); setAvailable(!apiSession && support.nativeGoals === 1 && support.enabled !== false);
-      setExecution(!apiSession && support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1 && support.enabled !== false);
-      setReadback(!apiSession && support.nativeGoalReadback === 1); setLiveExecution(!apiSession && support.liveGoalControl === 1);
-      if (support.nativeGoals === 1 && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
+      const controls = claudeSession ? support.claudeGoals === 1 : support.nativeGoals === 1;
+      const runs = claudeSession ? support.claudeGoalExecution === 1 : support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1;
+      observe(state.goal); setAvailable(!apiSession && controls && support.enabled !== false);
+      setExecution(!apiSession && controls && runs && support.enabled !== false);
+      setReadback(!apiSession && (claudeSession ? controls : support.nativeGoalReadback === 1)); setLiveExecution(!apiSession && !claudeSession && support.liveGoalControl === 1);
+      if (!apiSession && (!controls || !runs))
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [base, request, observe, refresh, apiSession]);
+  }, [base, request, observe, refresh, apiSession, claudeSession]);
 
   const accept = useCallback((receipt: GoalReceipt, data: GoalCommand) => {
     if (receipt.requestId !== data.requestId || receipt.action !== data.action) throw new Error('The Goal receipt does not match the original request.');
@@ -138,7 +144,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
       if (issue.status === 403) await refreshAuth().catch(() => undefined);
     } finally { if (current === generation.current) setChecking(false); }
   }
-  return { goal, available, execution, liveExecution, pending, posting, checking, error, checkAgain, observe, perform,
+  return { goal, available, execution, liveExecution, claude: claudeSession, pending, posting, checking, error, checkAgain, observe, perform,
     changing: checking || posting || !!pending || goal?.phase === 'pending', draftKey: key + '.draft',
     retry: () => pending ? submit(pending) : Promise.resolve(false),
     check };

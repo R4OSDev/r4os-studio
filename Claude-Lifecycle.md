@@ -1,9 +1,11 @@
 # Native Claude lifecycle (0.8.23, partial)
 
-The private bounded Studio GOAL engine is qualified separately in
+The bounded Studio GOAL engine and provider-specific controls are described in
 [Claude-Goal.md](Claude-Goal.md). It preserves the original Play and native
-session, with fresh admission per step. Public Goal controls/live activation
-remain gated pending their separate adapter and actual account acceptance.
+session, with fresh admission per step. Save/Play/Pause/Stop and queue priority
+are isolated-protocol qualified in0.8.49. Live activation inside an ordinary
+running response remains open. Actual account acceptance is deferred by the
+user; the public model catalog gate remains closed.
 
 Stop closes tool admission before requesting the native interrupt. Studio drains
 the original terminal result before closing the query. A confirmed result and
@@ -43,9 +45,9 @@ remains unqualified. Details: [Claude-Input-Usage.md](Claude-Input-Usage.md).
 Session cleanup removes private snapshots through the existing scoped deletion
 mechanism while retaining the numeric lifetime receipts.
 
-The SDK has no qualified native Codex GOAL interface. Claude GOAL and direct
-steering remain unavailable pending bounded orchestration and their original
-receipts/budgets. Text queues and native input acknowledgements are integrated
+The SDK has no qualified native Codex GOAL interface. Studio uses its own bounded
+orchestration and explicit original receipts/budgets. Live activation and direct
+steering remain open. Text queues and native input acknowledgements are integrated
 in0.8.47; see [Claude-Queue.md](Claude-Queue.md). No Codex
 GOAL RPC, automatic retry, restore inference or automatic Play is substituted.
 Public Claude model execution remains disabled by the existing catalog gate.

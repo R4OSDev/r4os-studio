@@ -1,11 +1,41 @@
-# Bounded Studio GOAL engine (0.8.48, private qualification)
+# Bounded Studio GOAL controls (0.8.49, partial qualification)
 
 The Claude worker has a separate Studio orchestration source. It sends no Codex
 Goal RPC and does not treat a Claude `/goal` event or a successful response as
-an equivalent control API. Public Claude Goal buttons and model admission
-remain gated. The user-facing Save/Play/Pause/Stop adapter, live activation,
-queue handoff and real subscription acceptance still need qualification in
-0.8.23. This release qualifies the private execution engine underneath them.
+an equivalent control API. The shared Goal controls now have a provider-specific
+Save/Play/Pause/Stop adapter in project and skill sessions. Public Claude model
+admission remains gated. Activation inside an already running ordinary response
+and real subscription acceptance remain open in0.8.23. The user explicitly
+deferred the real account acceptance; no account connection is needed for these
+owned protocol checks.
+
+## Saved intent and controls
+
+Save and readback only access the owning Studio session. They launch no native
+process or account request. The saved source is `studio-claude`, with a separate
+Goal ID and native Claude session UUID; Codex `threadId` and unknown `tokensUsed`
+remain null. The UI exposes the eight-step/15-active-minute bounds and preserves
+drafts while the original run is busy. Editing or starting another Goal waits
+for that run to close. An existing pending message queue takes priority over
+Play and must first be continued or removed.
+
+Play uses the original accepted request and frozen selection. Its positive
+native input receipt confirms activation. Pause reaches the original worker
+through its private, UID-checked socket, revokes subsequent input admission and
+waits for the current admitted step. Stop also closes tool admission immediately
+and requests the native interrupt. The saved command, original worker
+generation and configuration must still match. Repeated or disconnected
+requests read their original receipt. A later explicit Stop cannot be undone
+by a delayed Pause. The still-running original worker can drain an accepted
+revocation after coordinator delivery is lost; recovery never resends model
+input or creates new Play authority.
+
+An authorized queued message takes priority after the current Goal step and
+confirmed stream/history closure. The common queue then submits the saved
+message on the same native conversation, with fresh admission and its own
+native input receipt. It does not become another automatic Goal step. Stop,
+unknown outcomes, changed bindings and held queues retain their existing
+dispatch protections.
 
 ## Original authority and limits
 
@@ -27,7 +57,7 @@ non-human origin tag in its saved transcript; Studio therefore retains the
 automatic provenance in its own protected step ledger. Missing native origin
 is never relabeled as human. No native turn ID is invented.
 
-The fixed `report_goal` facet exists only during this private bounded execution;
+The fixed `report_goal` facet exists only during this bounded execution;
 existing Studio tool profile declarations stay unchanged. It records continue,
 complete or blocked with a reason. Its immutable receipt does not itself start
 work or prove that the objective is complete. Before continuing, the host also
@@ -55,7 +85,16 @@ namespaces: two steps, two native input echoes, two fresh admission callbacks,
 two native result IDs, one native conversation and one monotonic Play clock.
 A repeated native file-tool ID retains exactly one original effect.
 
+Additional controlled cases use actual Host Save/Play/Pause/Stop commands and
+the unchanged pinned SDK/CLI. They confirm local Save without a model process,
+native-confirmed Play, bound Pause, native Stop and a queued normal response
+after Goal closure on the same UUID. Browser checks use the production hook and
+components against an owned API fixture in both session scopes at1440/320px,
+including reload, disabled controls and explicit bounds. They do not connect a
+real account or exercise a user session.
+
 Synthetic auth and the owned Messages endpoint do not prove a real subscription,
-entitlement, quota or invoice. Ordinary native queue and Stop/resume behavior
-remain separately qualified. The public account/model and GOAL-control gates
-are retained until the remaining integration and account evidence exist.
+entitlement, quota or invoice. Public account/model admission stays gated.
+Live activation, remaining direct/retry/output accounting and overall real
+subscription acceptance remain open rather than being inferred from these
+isolated results.

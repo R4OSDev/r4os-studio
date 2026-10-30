@@ -1,11 +1,23 @@
+## Claude GOAL controls and queue priority (0.8.49, partial)
+
+Project and skill Goal controls now support provider-specific local Save,
+native-confirmed Play, Pause after the admitted step and immediate Stop.
+Queued messages take priority at the step boundary and resume the same native
+conversation after confirmed closure. The UI shows the eight-step/15-active-
+minute bounds; unknown tokens and Codex thread identity remain null. Live
+activation during an ordinary Claude response remains open. Actual account
+acceptance is deferred by the user and public model admission stays gated.
+Details: [Claude-Goal.md](Claude-Goal.md).
+
 ## Bounded Claude GOAL engine (0.8.48, private)
 
 A separate Studio execution ledger qualifies up to eight Claude steps and 900
 active seconds under one original Play. Every continuation needs native input,
 progress and result receipts, confirmed tool outcomes and fresh subscription
 admission. Automatic provenance stays in the Studio ledger; no Codex Goal RPC or
-new human authority is invented. Public Goal controls/model admission and real
-account acceptance remain gated. Details: [Claude-Goal.md](Claude-Goal.md).
+new human authority is invented. The control adapter is extended in0.8.49;
+public model admission and real account acceptance remain open. Details:
+[Claude-Goal.md](Claude-Goal.md).
 
 ## Claude queued follow-ups (0.8.47)
 

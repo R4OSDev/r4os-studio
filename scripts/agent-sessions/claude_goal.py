@@ -1,8 +1,7 @@
 """Private, bounded Studio GOAL authority; never a native Codex Goal projection.
 
 Only an accepted original Play can create a ledger. Reading/recovering it never
-starts a process. Public Claude GOAL controls remain gated until their separate
-session/control integration is qualified.
+starts a process. Public controls project this source separately from Codex.
 """
 import hashlib
 import json
@@ -40,7 +39,7 @@ def exists(store):
 
 
 def freeze(store, sid, command):
-    """Internal capture boundary. The public Goals.accept still rejects Claude."""
+    """Capture only the original accepted provider-specific Studio Play."""
     data = json.loads(command['payload']); saved = data.get('_goal') or {}
     runtime = store.get(sid)['engine'].get('claude') or {}
     if (command['session_id'] != sid or command['state'] != 'pending' or data.get('action') != 'play'
@@ -86,6 +85,7 @@ class GoalJournal:
                 raise ProjectFault('This original Claude Play already has an execution ledger. Inspect it; it was not replayed.', 409)
             record = {'schema': 1, 'source': 'studio-claude', 'binding': self.binding, 'contract': self.spec,
                 'state': 'admitting', 'steps': [], 'startedNs': None, 'bootId': boot(), 'createdAt': now(), 'updatedAt': now(), 'reason': None}
+            record['controlOpen']=True
             record['steps'].append(self.new_step(1, self.spec['requestId'], 'human', self.spec['objective']))
             db.execute('INSERT INTO claude_goal_executions VALUES (?,?,?,?)',
                 (self.spec['executionId'], self.w.session_id, self.w.run_id, encode(record)))
@@ -118,8 +118,10 @@ class GoalJournal:
 
     def admitted(self, admission):
         value = self.read(); step = value['steps'][-1]
+        from claude_goal_store import pending_controls
         if value['state'] != 'admitting' or step['state'] != 'admitting' or step['admissionId'] is not None or self.w.stopping:
             raise ProjectFault('This original Claude GOAL step cannot acquire another input admission.', 409)
+        if pending_controls(self.w):raise ProjectFault('Pause or Stop closed admission for the next original Goal step.',409)
         step['admissionId'] = identity(admission['admissionId'])
         with self.w.store.db: self.save(value)
 
@@ -223,6 +225,9 @@ class GoalJournal:
         value = self.read()
         if self.w.stopping or value['state'] != 'between' or value['steps'][-1]['state'] != 'resultConfirmed':
             raise ProjectFault('The original Claude GOAL continuation is not authorized.', 409)
+        from claude_goal_store import pending_controls
+        if pending_controls(self.w):
+            self.stop('The original accepted Pause or Stop takes priority at this step boundary.');return None
         if len(value['steps']) >= self.spec['maxSteps'] or self.expired(value):
             self.stop('This Play reached its bounded step or active-time limit.', 'budgetLimited'); return None
         request = str(uuid.uuid4()); value['steps'].append(self.new_step(len(value['steps']) + 1, request, 'auto-continuation', CONTINUE_TEXT))
@@ -230,12 +235,14 @@ class GoalJournal:
         with self.w.store.db: self.save(value)
         return request
 
-    def stop(self, reason='The user paused or stopped this bounded GOAL.', status='paused'):
+    def stop(self, reason='The user paused or stopped this bounded GOAL.', status='paused',commit=True):
         if status not in ('paused', 'budgetLimited'): raise ValueError('Invalid bounded GOAL stop status.')
         value = self.read()
         if value['state'] in ('complete', 'blocked', 'budgetLimited', 'paused', 'unknown'): return
-        value.update(state='stopping', terminalStatus=status, reason=reason)
-        with self.w.store.db: self.save(value)
+        value.update(state='closing' if value['steps'][-1]['state']=='resultConfirmed' else 'stopping', terminalStatus=status, reason=reason)
+        if commit:
+            with self.w.store.db:self.save(value)
+        else:self.save(value)
 
     def finish(self, confirmed, no_input=False):
         value = self.read(); step = value['steps'][-1]
@@ -244,7 +251,7 @@ class GoalJournal:
                 and step['inputReceipt'] and value.get('terminalStatus')):
             value['state'] = value['terminalStatus']
         elif confirmed and value['state'] in ('admitting','stopping') and no_input and not step['submitted'] and not step['inputReceipt']:
-            value.update(state='paused' if self.w.stopping else 'blocked', reason='No input was submitted for this original step. Review before pressing Play again.')
+            value.update(state=value.get('terminalStatus','paused' if self.w.stopping else 'blocked'), reason='No input was submitted for this original step. Review before pressing Play again.')
         else:
             value.update(state='unknown', reason='The original bounded GOAL closure is unconfirmed. Nothing will be replayed automatically.')
         with self.w.store.db: self.save(value)
