@@ -4,7 +4,7 @@ import { SessionClaudeLimits } from './SessionClaudeLimits';
 import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
+import type { AgentEvent, AgentRun, AgentSession, SessionContext, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
 import { useSessionApi, sessionPath, busyRun, ProjectRequestError } from './api';
 import { DeleteSessionDialog } from './DeleteSessionDialog';
 import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
@@ -106,7 +106,16 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         const field = p.field === 'output' ? 'output' : 'text';
         setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, [field]: String(i[field] ?? '') + p.text } : i));
       }
-      if (event.kind === 'run') { setSession((s) => s ? { ...s, latestRun: event.payload as AgentRun } : s); changed(); }
+      if (event.kind === 'run') {
+        const run=event.payload as AgentRun;
+        setSession(s => s ? {...s,latestRun:run,...(run.state==='unknown' && s.context ? {context:{...s.context,state:'stale',reason:'The latest native execution is unconfirmed. This is the last measured context.'}} : {})} : s);
+        changed();
+      }
+      if (event.kind === 'context') {
+        const value=event.payload as SessionContext;
+        if (value.schema===1 && value.sessionId===sessionId && value.owner.type===scope && value.owner.id===projectId)
+          setSession(s => s && value.revision>(s.context?.revision ?? 0) ? {...s,context:value} : s);
+      }
       if (event.kind === 'environmentNotes') observeNotes(event.payload as { revision: number; count: number });
       if (event.kind === 'claudeQuota') setClaudeQuota(event.payload as ClaudeRateObservation);
       if (event.kind === 'goal') observeGoal(event.payload as SessionGoal);
@@ -133,7 +142,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope]);
   useEffect(() => {
     if (!projectSession && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [items, projectSession, log]);

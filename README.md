@@ -1,3 +1,11 @@
+## Session context data (0.8.24)
+
+Protected session reads/events now retain the last native context measurement,
+effective window, actual model/source and freshness. Cumulative consumption is
+kept separate. Compaction/selection changes and older/unqualified workers show
+explicit pending/stale/unavailable states. Details: [Session-Context.md](Session-Context.md).
+The visual indicator follows in 0.8.25.
+
 ## Native Claude lifecycle guards (0.8.23, partial implementation)
 
 Original Stop/results and explicit resume, fresh native subscription/extra-usage

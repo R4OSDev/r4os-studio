@@ -15,6 +15,7 @@ export type SessionOwner = { type: 'project'; id: string } | { type: 'skill'; id
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface AgentRun { id: string; sessionId: string; owner?: SessionOwner; mode?: 'goal'; state: RunState; error: string | null; createdAt: string; completedAt: string | null; threadId?: string | null; turnId?: string | null; messageSupport?: boolean; goalControlSupport?: boolean; goalActivation?: { requestId: string; state: 'pending' | 'confirmed' | 'failed' | 'unknown' } }
 export interface AgentSession {
+  context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { kind?: 'claude-code'; profile: string; version: string; sha256: string; available?: boolean;
     api?: { providerId: string; baseUrl: string; protocol: 'responses' | 'chat-completions'; server?: 'custom' | 'ollama' | 'lm-studio' } };
@@ -27,6 +28,18 @@ export interface AgentSession {
   remoteHostAccess?: { available: boolean; assignedId?: string | null; hostName?: string; reason?: string };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
   skillOverrides: Record<string, boolean>;
+}
+export interface SessionContext {
+  schema: 1; revision: number; owner: SessionOwner; sessionId: string;
+  state: 'available' | 'pending' | 'stale' | 'unavailable'; reason: string;
+  engine: 'codex' | 'claude-code'; engineVersion: string; engineSha256: string;
+  providerId: string; requestedModel: string; model: string | null; modelProvider: string | null;
+  threadId: string | null; runId: string | null; turnId: string | null;
+  source: string | null; reportedAt: string | null;
+  usedTokens: number | null; capacityTokens: number | null; remainingTokens: number | null;
+  overflowTokens: number | null; usedRatio: number | null;
+  last: Record<string, number | null> | null;
+  autoCompactThreshold: null; nominalModelCapacity: null;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {

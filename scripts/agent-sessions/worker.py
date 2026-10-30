@@ -66,6 +66,11 @@ class Worker:
         self.message_worker = None
         from usage_stats import WorkerUsage
         self.usage_stats=WorkerUsage(self)
+        from session_context import Context
+        self.context=Context(self)
+        if self.row['busy']:
+            self.config['contextProtocol']=1
+            with self.store.db:self.store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(self.config),self.run_id))
         if self.config.get('goalExecution'):
             from goal_worker import GoalWorker
             self.goal_worker = GoalWorker(self)
@@ -79,6 +84,7 @@ class Worker:
             from provider_errors import describe
             if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'],api=bool(self.config.get('apiProvider')))['text']
         self.usage_stats.notify(method,params)
+        self.context.notify(method,params)
         if self.message_worker: self.message_worker.observe(method, params)
         if self.goal_worker and await self.goal_worker.notify(method, params): return
         if method == 'turn/started':
@@ -450,7 +456,8 @@ class Worker:
             native_provider=image_provider_selection(self.config['engine'].get('profile',PROFILE))
             if self.api_runtime:native_provider=self.api_runtime.selection()
             if self.thread_id:
-                try: await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
+                try:
+                    response=await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
@@ -460,6 +467,7 @@ class Worker:
                 self.thread_id = response['thread']['id']
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
+            self.context.native(response)
             if self.stopping: self.outcome = 'interrupted'; return
             if self.goal_worker: await self.goal_worker.start_control()
             from message_worker import MessageWorker

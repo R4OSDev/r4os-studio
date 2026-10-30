@@ -265,6 +265,8 @@ PRAGMA user_version=1;
             settings.pop('roadmapEnabled', None)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
+        from session_context import read as context_read
+        context=context_read(self,row)
         from environment_note_tools import availability
         settings['environmentNotesAccess'] = availability(engine.get('profile'))
         if self.owner_type == 'project':
@@ -276,7 +278,7 @@ PRAGMA user_version=1;
             raise ProjectFault('This skill session has an incompatible tool profile. Its history was preserved.', 409)
         return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 ('skillId' if self.owner_type == 'skill' else 'projectId'): row['project_id'], 'name': row['name'], **settings,
-                'engine': engine, 'revision': row['revision'],
+                'engine': engine, 'context':context, 'revision': row['revision'],
                 'skillOverrides': skill_preferences.read(self.projects, self.owner_type, self.owner_id, row['id']),
                 'createdAt': row['created_at'], 'updatedAt': row['updated_at'],
                 'latestRun': self.run_present(latest) if latest else None}

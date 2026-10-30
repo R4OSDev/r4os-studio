@@ -62,6 +62,20 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal((await app.inject({ url: base, headers })).json().sessions.length, 1);
     assert.equal((await app.inject({ method: 'POST', url: base, headers, payload: { ...payload, name: 'Different' } })).statusCode, 409);
     const url = base + '/' + session.id;
+    assert.equal(session.context.state, 'unavailable');
+    assert.equal(session.context.sessionId, session.id);
+    const context = { ...session.context, revision: 7, threadId: 'owned-context-thread', runId: randomUUID(), turnId: 'owned-context-turn',
+      source: 'codex-0.163.0/thread/tokenUsage/updated:last', model: 'actual-owned-model', modelProvider: 'openai',
+      state: 'available', reason: 'Owned stored context fixture', reportedAt: '2026-10-30T06:00:00Z', usedTokens: 500, capacityTokens: 1000,
+      usedRatio: 0.5, remainingTokens: 500, overflowTokens: 0 };
+    await promisify(execFile)('/usr/bin/python3', ['-B', '-c', `
+import sqlite3,sys,json
+with sqlite3.connect(sys.argv[1]) as db:
+ db.execute('UPDATE sessions SET thread_id=? WHERE id=?',('owned-context-thread',sys.argv[2]))
+ db.execute('CREATE TABLE session_context(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,payload TEXT NOT NULL)')
+ db.execute('INSERT INTO session_context VALUES (?,?)',(sys.argv[2],sys.argv[3]))
+`, join(directory, ids[0], 'Sessions/Sessions.sqlite'), session.id, JSON.stringify(context)]);
+    assert.deepEqual((await app.inject({ url, headers })).json().session.context, context);
     const changed = { ...session.permissions, 'studio.write_file': false };
     const update = await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 1, permissions: changed, roadmapEnabled: false } });
     assert.equal(update.statusCode, 200, update.body);
@@ -85,6 +99,7 @@ with sqlite3.connect(sys.argv[1]) as db:
       assert.equal(restored.revision, 2);
       assert.equal(restored.roadmapEnabled, false);
       assert.equal(restored.engine.profile, session.engine.profile);
+      assert.deepEqual(restored.context, context);
       await writeFile(join(providers, 'providers.json'), '[]');
       assert.equal((await again.inject({ url, headers: h2 })).statusCode, 200);
     } finally { await again.close(); }
