@@ -52,6 +52,41 @@ class GoalClock:
             self.checkpoint()
             if not self.task or self.task.done():self.task=asyncio.create_task(self.tick())
         except Exception:self.failed=True
+    def resume(self,rid):
+        """Observe an admitted continuation of this same Play; exclude its wait."""
+        try:
+            if self.execution==rid and self.state=='running':return
+            if self.failed or self.execution!=rid or self.state!='ended':
+                raise ValueError('The original Play clock cannot be resumed')
+            current=self.monotonic()
+            with self.w.store.db:
+                changed=self.w.store.db.execute('''UPDATE goal_clocks SET state='running',last_ns=?,checkpoint_at=?
+                    WHERE execution_id=? AND run_id=? AND session_id=? AND state='ended'
+                      AND elapsed_ns=? AND pid=? AND birth=? AND boot_id=?''',
+                    (current,now(),rid,self.w.run_id,self.w.session_id,self.elapsed,
+                     os.getpid(),birth(os.getpid()),boot())).rowcount
+                if changed!=1:raise ValueError('The original Play clock binding changed')
+            self.last=current;self.state='running';self.checkpoint()
+            if not self.task or self.task.done():self.task=asyncio.create_task(self.tick())
+        except Exception:
+            # Timing failure is missing coverage, never execution permission or
+            # an execution failure. Preserve the last confirmed elapsed value.
+            self.mark_unknown(rid)
+    def mark_unknown(self,rid):
+        """Keep the known prefix when a continuation may have started unseen."""
+        self.failed=True
+        if self.execution!=rid:return
+        self.state='unknown'
+        try:
+            with self.w.store.db:
+                changed=self.w.store.db.execute('''UPDATE goal_clocks SET state='unknown'
+                    WHERE execution_id=? AND run_id=? AND session_id=? AND pid=? AND birth=? AND boot_id=?''',
+                    (rid,self.w.run_id,self.w.session_id,os.getpid(),birth(os.getpid()),boot())).rowcount
+            if changed:
+                Source(self.w.store).put(self.w.session_id,'goal',
+                    {'owner':{'type':self.w.store.owner_type,'id':self.w.store.owner_id},'session':self.w.session_id,'play':rid},
+                    {'durationMs':self.elapsed//1000000,'uncertain':True})
+        except Exception:pass
     def checkpoint(self):
         if self.execution is None:return
         try:

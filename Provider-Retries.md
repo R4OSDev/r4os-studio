@@ -1,5 +1,131 @@
 # Provider continuations (0.8.10, supplemented in0.8.45)
 
+## Unreleased controller candidates
+
+The current source adds original-worker Codex/API GOAL recovery and native
+Claude subscription retry controllers. These paths are **disabled and not
+runtime-qualified**. Active Codex/API GOAL recovery requires a frozen numeric
+`goalRetryProtocol: 1`; Claude requires `claudeRetryProtocol: 1`. No capture
+producer currently sets either field. Existing runs/queues are not upgraded.
+Released ordinary Codex/API retries and normal GOAL execution remain available.
+No0.8.61 release/tag/installation is authorized by static checks alone. The
+separate requested exception for targeted retry tests is still unanswered;
+no new runtime fixture, SDK/CLI execution or inference was performed.
+
+### Codex/API GOAL candidate
+
+The shared60-second/five-attempt controller additionally binds the confirmed
+original Play or Live-Play, unchanged human control sequence, original native
+active-to-blocked notification and complete **current** failed rollout section.
+Pinned0.163.0 logs function calls before execution. Strict header/owner/file/EOF,
+context/model/ordinal/final HTTP and call/result checks exclude Goal writes,
+unknown calls, incomplete effects, compaction, replacement and later activity.
+The same original file/section proof is checked again before claiming submission;
+a public blocked notification or empty scan cannot authorize reactivation.
+
+Status-only `thread/goal/set(active, origin: automatic)` supplies no new user
+text, objective or budget. A matching new native turn receipt is mandatory,
+including when it precedes the mutation response. Missing or contradictory
+submission remains unknown and is never submitted again. Pause/Stop cancels the
+original timer; the evaluator holds that original worker throughout waiting and
+rechecks its gate after asynchronous readback. The same monotone Play-clock row
+resumes without waiting-time accrual. Clock failure marks a coverage gap and
+cannot grant execution. Historical503 prefixes prove shape only, not live
+admission. The additional frozen protocol gate stays off until qualification.
+
+### Claude original-query controller candidate
+
+The controller binds owner/session/Run, original request/configuration, worker
+and wrapper PID/birth/release/boot, exact native session/runtime, credential
+lease/account, current history, settings and project pins. All Studio tool
+results must be confirmed and unchanged. Original Play/contract digests and the
+logical step are retained separately from each physical input UUID. The existing
+`provider_retries` row stores the current counter, deadline, claim, admission and
+receipt; append-only `claudeRetryReceipt` events retain the attempt audit without
+technical chat notices or prompt/credential content. Browser/host recovery only
+observes these records; a replacement worker cannot restore their timer.
+
+A qualified typed final502/503/504 structural boundary can hold only the living
+original SDK query and suspend tools. The Node proof is explicitly
+runtime-unqualified; the disabled frozen protocol is not inferred from a status
+number or absent response. The original native failure/input, complete tool
+receipt hash, controls and limits are checked before60-second waiting, before
+claiming and after fresh subscription admission. Claims and the final admission
+are committed under an immediate SQLite writer transaction. Goal controls are
+also serialized with the original control lock. Waiting polls metadata only;
+large tool results are not hashed repeatedly at heartbeat frequency.
+
+Every physical attempt needs a fresh first-party account/model/usage admission
+with extra usage disabled and its exact claim returned to Node. It supplies an
+empty block array in the same persistent query, not a repeated prompt, upload,
+old tool output, string placeholder, fork or truncating resume. The exact native
+empty-array echo must match the claimed UUID/session/Run/logical step. The host
+confirms its committed receipt before either broker or SDK hooks reopen tools.
+Submission/status/metadata alone never confirms input. At most five attempts
+are allowed without actual model text/tool progress; status events do not reset
+that count. The original human/logical-step receipt remains confirmed throughout.
+
+Goal physical-attempt pointers, admissions and echoes stay inside the same
+logical step, with earlier attempt receipts retained in the audit. The original
+accepted Play, report, bounds and successful tool receipts are not replaced.
+`GoalClock.resume` reuses the same execution row after the new echo. The separate
+Python authoritative time ledger and Node monotone guard exclude retry waiting;
+statistics cannot grant more execution. A successful physical result records its
+actual input ID, so later refused Goal inputs still retain the correct predecessor.
+
+Pause/Stop cancels the timer, including during fresh admission. An idle failed
+query closes without interrupting an already completed input. Claimed but
+unconfirmed starts are held, not repeated. A matching final closure can prove
+no new input only with the exact claim, original source result/input, readable
+history and confirmed stream closure. Other missing/foreign/conflicting receipts
+retain Unknown and the clock's known prefix. Storage/audit failure still ends
+the worker and cannot leave a model-resubmission task running. Quota/auth/policy,
+complete/blocked reports, human controls, queues and unknown tools win. Folder
+activity excludes waiting and submission admission; stopping stays visible until
+its original process ends.
+
+### Pinned Claude stream and error facts
+
+The unchanged runtime is Claude Code2.1.312 / Agent SDK0.3.312. The CLI exports
+internal `abandonedBlocks` as the undeclared SDK wire field `abandoned_blocks`;
+the SDK passes through that original record. A synthetic `message_stop` alone
+cannot prove completion. Missing terminal deltas, abandoned frames, unpaired
+tools, compaction/internal-retry notices and contradictory identities exclude
+structural holds. Incomplete response endings publish no completed input/output
+usage counters and retain a coverage gap. Historical totals are not repaired.
+
+Terminal `success`/`is_error: true` can expose a numeric `api_error_status` and
+finite `api_error` kind. Projection preserves only typed safe facts and the
+presence of a server code, never raw errors, headers, URLs or the code itself.
+Auth/quota/policy/context/model refusals take priority. Missing HTTP status
+cannot authorize retry, while known safe server/overload descriptions remain.
+Public `system/api_retry` has no per-input UUID and remains unqualified diagnostic
+information. Absence of that event does not prove no internal resend.
+
+General retry/watchdog/nonstreaming/model-fallback settings stay unchanged.
+In particular, a separate one-time first-party dispatch-header fallback can
+resubmit after503 even with the general retry budget at zero. It must be
+accounted for separately. General jitter/backoff or overloaded-only delay knobs
+are not substituted for the shared fixed60-second/five-attempt contract.
+
+The exact empty string passes the whitespace guard but becomes `(no content)`.
+An empty array instead remains empty and is skipped by model-message
+normalization, as are synthetic API-error rows. This is source evidence, not an
+actual retained-query/model-wire/tool-preservation qualification. The private
+transport refuses a changed echo instead of replaying original input.
+
+### Still required before enabling
+
+Actual retained-query continuation, wire/context equality, counters/exhaustion,
+Pause/Stop/Queue races, original Play/statistical clocks, admission/result loss,
+restore and shared-account cases remain unqualified. Ordinary-response Live-Play
+after an already accepted physical retry needs its source-input binding audited;
+the current live activation uses the original ordinary input ID. Both frozen
+protocol producers remain off. The full0.8.10/17/23 acceptances stay open;
+static checks and source inspection do not complete them.
+
+## Released ordinary-answer controller
+
 New compatible project/skill workers can continue ordinary answers after a
 confirmed final HTTP502/503/504 `httpConnectionFailed` turn. They wait60seconds
 and admit at most five additional attempts per failure sequence. A continuation

@@ -102,14 +102,15 @@ class GoalWorker:
         await asyncio.sleep(.05)
         if self.activating or self.lock.locked() or not self.idle.is_set() or self.worker.done.is_set(): return
         retry = getattr(self.worker, 'provider_retry', None)
-        if self.dormant and retry and retry.state in ('waiting', 'submitting'): return
+        if retry and retry.state in ('waiting', 'submitting'): return
         if self.dormant:
             if self.last_turn_status and not self.retain_at_boundary():
                 self.worker.outcome={'completed':'completed','interrupted':'interrupted','failed':'failed'}.get(self.last_turn_status,'unknown')
                 self.worker.done.set()
             return
         value=await self.read()
-        if not self.idle.is_set(): return
+        if (self.activating or self.lock.locked() or not self.idle.is_set() or self.worker.done.is_set()
+                or retry and retry.state in ('waiting', 'submitting')): return
         if value is None or value['status']!='active':
             w=self.worker
             if self.retain_at_boundary(): return
@@ -246,6 +247,8 @@ class GoalWorker:
                     self.evaluate_later()
                     return
                 if command['action']=='play': raise ProjectFault('This worker cannot accept another Play.',409)
+                if row['state']=='pending':
+                    await w.provider_retry.cancel_for_control()
                 if row['state']=='pending' and row['stage']!='native_paused':
                     self.goals.stage(w.session_id,data['requestId'],'native_pause')
                     confirmed=await self.pause(origin='user')
@@ -284,6 +287,8 @@ class GoalWorker:
         from goal_contract import save_params
         from goal_control import matches
         try:
+            if command['action']!='play':
+                await w.provider_retry.cancel_for_control()
             value=await self.read()
             if command['action']=='play':
                 proof=LiveGoals(w.store).evidence(w.session_id,rid)

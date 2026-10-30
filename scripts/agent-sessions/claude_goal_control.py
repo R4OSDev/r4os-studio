@@ -49,7 +49,8 @@ class ClaudeGoalControl:
                 from message_store import Messages
                 Messages(w.store).hold(w.session_id,'The user paused this Goal. Continue the saved queue explicitly.')
             result=self.goals.finish(w.session_id,rid,phase='pausing')
-        if data['action']=='stop':
+        retry=getattr(w,'claude_retry',None)
+        if data['action']=='stop' or retry and retry.holding:
             if w.broker:w.broker.stop_admission()
             w.defer_stop()
         return result

@@ -336,6 +336,7 @@ class Worker:
     async def _stop(self):
         try:
             self.stopping = True
+            await self.provider_retry.cancel_for_control()
             if self.goal_worker:
                 user_stop = get_run(self.store,self.run_id)['state']=='stopping' and not self.uncertain_effect
                 await self.goal_worker.pause(origin='user' if user_stop else 'automatic')

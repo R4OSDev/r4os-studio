@@ -9,6 +9,74 @@ const opaque = value => typeof value === 'string' && Buffer.byteLength(value) > 
   && !/[\x00-\x20\x7f\ud800-\udfff]/u.test(value);
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const bounded = (value, max) => Buffer.byteLength(JSON.stringify(value)) <= max;
+const terminalReasons = new Set(['end_turn','tool_use','max_tokens','stop_sequence','pause_turn','refusal','model_context_window_exceeded']);
+
+/** Raw original-query structure; this is a hold candidate, never admission. */
+class RetryBoundary {
+  constructor(inputId) {
+    this.inputId = inputId;
+    this.open = null; this.terminal = false; this.invalid = false;
+    this.messages = new Set(); this.pending = new Set(); this.returned = new Set();
+  }
+
+  observe(message, expectedModel) {
+    if (this.invalid) return;
+    if (Object.hasOwn(message, 'abandoned_blocks') || Object.hasOwn(message, 'abandonedBlocks') || message.resume_reason) this.invalid = true;
+    if (message.type === 'system' && ['api_retry','compact_boundary'].includes(message.subtype)) this.invalid = true;
+    if (message.type === 'stream_event') {
+      const event = message.event;
+      if (event?.type === 'message_start') {
+        const id = event.message?.id;
+        if (this.open !== null || !opaque(id) || this.messages.has(id) || this.messages.size >= 1024
+          || expectedModel && event.message?.model !== expectedModel) { this.invalid = true; return; }
+        this.open = id ?? null; this.terminal = false; this.messages.add(id);
+      } else if (event?.type === 'message_delta') {
+        if (this.open === null) this.invalid = true;
+        this.terminal = terminalReasons.has(event.delta?.stop_reason);
+        if (['refusal','model_context_window_exceeded'].includes(event.delta?.stop_reason)) this.invalid = true;
+      } else if (event?.type === 'message_stop') {
+        if (this.open === null || !this.terminal) this.invalid = true;
+        this.open = null; this.terminal = false;
+      } else if (['content_block_start','content_block_delta','content_block_stop'].includes(event?.type)) {
+        if (this.open === null) this.invalid = true;
+        if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') this.call(event.content_block.id);
+      } else this.invalid = true;
+    } else if (message.type === 'assistant' && message.error == null) {
+      if (!this.messages.has(message.message?.id) || !Array.isArray(message.message?.content)) this.invalid = true;
+      for (const part of message.message?.content ?? []) if (part.type === 'tool_use') this.call(part.id);
+    } else if (message.type === 'user') {
+      if (message.isReplay === true && message.uuid === this.inputId) return;
+      if (!Array.isArray(message.message?.content) || message.message.content.some(part => part.type !== 'tool_result')) {
+        this.invalid = true; return;
+      }
+      for (const part of message.message.content) {
+        if (!opaque(part.tool_use_id) || !this.pending.has(part.tool_use_id) && !this.returned.has(part.tool_use_id)
+          || this.returned.size >= 1024) { this.invalid = true; return; }
+        this.pending.delete(part.tool_use_id); this.returned.add(part.tool_use_id);
+      }
+    }
+  }
+
+  call(id) {
+    if (this.invalid) return;
+    if (!opaque(id) || this.pending.size >= 1024) { this.invalid = true; return; }
+    if (!this.returned.has(id)) this.pending.add(id);
+  }
+
+  candidate(message, accepted, assistantError) {
+    return !this.invalid && accepted && this.open === null && this.pending.size === 0
+      && message.type === 'result' && message.subtype === 'success' && message.is_error === true
+      && [502,503,504].includes(message.api_error_status) && message.api_error === undefined
+      && (message.api_error_origin === undefined || message.api_error_origin === 'first_party')
+      && (assistantError == null || ['server_error','overloaded'].includes(assistantError));
+  }
+}
+
+function retryClaim(value) {
+  return value && Object.keys(value).sort().join(',') === 'failedResultId,holdId,inputRequestId,ordinal,stepInputId'
+    && Number.isSafeInteger(value.ordinal) && value.ordinal > 0
+    && ['failedResultId','holdId','inputRequestId','stepInputId'].every(key => uuid(value[key]));
+}
 export const GOAL_CONTINUE_TEXT = 'Continue the original saved Studio GOAL within its unchanged scope and permissions. '
   + 'Inspect original receipts before acting; never repeat an unconfirmed effect. '
   + 'Before ending this step, call mcp__studio__report_goal with continue, complete or blocked and a concise reason.';
@@ -78,6 +146,13 @@ export class ClaudeSessionEngine {
     this.state = 'initializing'; this.sent = false; this.result = null; this.resultInputId = null; this.error = null;
     this.requireInputReceipt = options.requireInputReceipt === true; this.inputAccepted = false;
     this.inputId = this.binding.requestId; this.inputSubmitted = false; this.inputOrigin = 'human';
+    this.stepInputId = this.inputId;
+    this.retryProtocol = options.retryProtocol === 1;
+    this.retryClaim = null; this.retryAttempts = 0; this.retryOrdinal = 0; this.retryBoundary = null;
+    this.retryEchoConfirmed = false; this.retryEchoReady = null; this.confirmRetryEcho = null;
+    this.rawBoundary = new RetryBoundary(this.inputId); this.assistantError = null;
+    this.resultIds = new Set();
+    this.goalStartedNs = null; this.goalExcludedNs = 0n; this.retryWaitStartedNs = null;
     this.frozenInput = options.frozenInput ? preparedContent(options.frozenInput, this.inputId) : null;
     this.stepCount = 0; this.inputIds = new Set([this.inputId]); this.goalStartedAt = null;
     this.goal = options.goal ?? null;
@@ -94,6 +169,8 @@ export class ClaudeSessionEngine {
       || !['new', 'resume'].includes(options.mode) || options.mode === 'resume' && options.historyConfirmed !== true) {
       throw Error('The original Claude session or host boundary is unavailable.');
     }
+    if (options.retryProtocol !== undefined && (!this.retryProtocol || !this.requireInputReceipt
+      || typeof host.suspendAdmission !== 'function')) throw Error('The original Claude retry protocol is unavailable.');
     const tools = new Set(options.tools);
     if (!Array.isArray(options.tools) || tools.size !== options.tools.length || tools.size > 128
       || [...tools].some(name => !/^[a-z][a-z0-9_]{0,79}$/.test(name))) throw Error('Invalid frozen Studio tools.');
@@ -117,7 +194,8 @@ export class ClaudeSessionEngine {
       hooks: { PreToolUse: [{ hooks: [input => this.beforeTool(input)] }] },
       canUseTool: async (name, input, details) => {
         const grant = this.grants.get(details.toolUseID), tool = mcpTool(name);
-        if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted) && tool && this.tools.has(tool) && details.mcpServer?.name === 'studio'
+        if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted)
+          && (!this.retryClaim || this.retryEchoConfirmed) && tool && this.tools.has(tool) && details.mcpServer?.name === 'studio'
           && details.mcpServer.source === 'dynamic' && !details.agentID && grant?.tool === tool && grant.hash === fingerprint(input)) {
           return { behavior: 'allow', updatedInput: input };
         }
@@ -128,12 +206,16 @@ export class ClaudeSessionEngine {
   }
 
   async beforeTool(input) {
+    if (this.state === 'active' && this.retryClaim && !this.retryEchoConfirmed) {
+      try { await deadline(this.retryEchoReady, 2000); } catch { /* Admission stays closed. */ }
+    }
     const tool = mcpTool(input?.tool_name);
     const wireInput = input?.tool_input;
     const args = tool && this.enveloped.has(tool) ? wireInput && Object.keys(wireInput).length === 1
       && Object.hasOwn(wireInput, 'request') ? wireInput.request : null : wireInput;
     let allowed = false;
-    if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted) && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
+    if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted)
+      && (!this.retryClaim || this.retryEchoConfirmed) && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
       && tool && this.tools.has(tool) && (tool !== 'report_goal' || this.goal && this.inputSubmitted && this.inputAccepted)
       && opaque(input.tool_use_id) && !input.agent_id
       && input.mcp_server?.name === 'studio' && input.mcp_server.source === 'dynamic'
@@ -212,8 +294,9 @@ export class ClaudeSessionEngine {
     activation.state = 'admitting';
     this.goal = { executionId, maxSteps: activation.contract.maxSteps, maxActiveSeconds: activation.contract.maxActiveSeconds };
     this.inputId = executionId; this.inputIds.add(executionId); this.inputOrigin = 'human';
+    this.stepInputId = executionId; this.retryClaim = null;
     this.inputSubmitted = false; this.inputAccepted = false; this.state = 'admitting';
-    this.stepCount = 0; this.goalStartedAt = null;
+    this.stepCount = 0; this.goalStartedAt = null; this.goalStartedNs = null; this.goalExcludedNs = 0n;
     await this.submit(liveGoalText(activation.contract), 'admitting');
     this.liveGoalInputSubmitted = true; activation.state = 'started';
   }
@@ -221,19 +304,46 @@ export class ClaudeSessionEngine {
   async continue(inputId) {
     if (!this.goal || this.state !== 'between' || !this.result || this.result.subtype !== 'success' || this.result.is_error
       || !uuid(inputId) || this.inputIds.has(inputId) || this.stepCount >= this.goal.maxSteps
-      || this.goalStartedAt === null || Date.now() - this.goalStartedAt >= this.goal.maxActiveSeconds * 1000) {
+      || this.goalStartedAt === null || (this.retryProtocol
+        ? this.goalActiveNs() >= BigInt(this.goal.maxActiveSeconds) * 1000000000n
+        : Date.now() - this.goalStartedAt >= this.goal.maxActiveSeconds * 1000)) {
       throw Error('The original bounded Studio GOAL cannot continue.');
     }
     this.inputId = inputId; this.inputIds.add(inputId); this.inputOrigin = 'auto-continuation';
+    this.stepInputId = inputId; this.retryClaim = null;
     this.inputSubmitted = false; this.inputAccepted = false; this.state = 'admitting';
     await this.submit(GOAL_CONTINUE_TEXT, 'admitting');
   }
 
-  async submit(text, expectedState, input = null) {
+  goalActiveNs() {
+    const current = process.hrtime.bigint();
+    return this.goalStartedNs === null ? 0n : current - this.goalStartedNs - this.goalExcludedNs
+      - (this.retryWaitStartedNs === null ? 0n : current - this.retryWaitStartedNs);
+  }
+
+  async retry(value) {
+    if (!this.retryProtocol || !retryClaim(value) || this.state !== 'retry_boundary'
+      || this.retryBoundary?.resultId !== value.failedResultId || value.stepInputId !== this.stepInputId
+      || !this.result || !this.rawBoundary.candidate(this.result, this.inputAccepted, this.assistantError)
+      || value.ordinal !== this.retryOrdinal + 1 || this.inputIds.has(value.inputRequestId)
+      || this.retryAttempts >= 5 || this.retryWaitStartedNs === null
+      || process.hrtime.bigint() - this.retryWaitStartedNs < 60000000000n
+      || this.goal && this.goalActiveNs() >= BigInt(this.goal.maxActiveSeconds) * 1000000000n) {
+      throw Error('The original Claude failure has no admitted continuation boundary.');
+    }
+    this.retryClaim = Object.freeze(structuredClone(value)); this.retryOrdinal = value.ordinal;
+    this.retryEchoConfirmed = false;
+    this.retryEchoReady = new Promise(resolve => { this.confirmRetryEcho = resolve; });
+    this.inputId = value.inputRequestId; this.inputIds.add(this.inputId); this.inputOrigin = 'auto-continuation';
+    this.inputSubmitted = false; this.inputAccepted = false; this.state = 'retry_admitting';
+    await this.submit('', 'retry_admitting', null, this.retryClaim);
+  }
+
+  async submit(text, expectedState, input = null, retry = null) {
     // The limit/auth stage owns admission. A real native plan and disabled
     // overage must be proved there; an SDK model list is never authorization.
     const account = await deadline(this.query.accountInfo());
-    const admission = await deadline(this.host.admit({ binding: this.binding, account, query: this.query }));
+    const admission = await deadline(this.host.admit({ binding: this.binding, account, query: this.query, ...(retry ? { retry } : {}) }));
     // SDK accountInfo uses display labels ("Claude Pro") and may omit a token
     // source for a native file login. Auth status/limit admission must provide
     // the positive native method and normalized plan; absence is not proof.
@@ -244,16 +354,22 @@ export class ClaudeSessionEngine {
       || admission.allowed !== true || admission.extraUsageDisabled !== true
       || admission.providerId !== this.binding.providerId || admission.nativeSessionId !== this.binding.nativeSessionId
       || admission.model !== this.binding.model || !uuid(admission.admissionId) || !Number.isFinite(admission.expiresAt)
-      || admission.expiresAt < Date.now() || admission.expiresAt > Date.now() + 30000) {
+      || admission.expiresAt < Date.now() || admission.expiresAt > Date.now() + 30000
+      || retry && (!retryClaim(admission.retry) || Object.keys(retry).some(key => admission.retry[key] !== retry[key])
+        || this.rawBoundary.invalid || this.result?.uuid !== retry.failedResultId
+        || this.resultInputId !== this.retryBoundary?.inputId)) {
       throw Error('The original native subscription/limit admission is unavailable. No model prompt was submitted.');
     }
     this.sent = true; this.state = 'active';
-    this.result = null; this.resultInputId = null; this.inputSubmitted = true; this.stepCount++;
+    this.result = null; this.resultInputId = null; this.inputSubmitted = true;
+    if (retry) this.retryAttempts++; else this.stepCount++;
+    this.rawBoundary = new RetryBoundary(this.inputId); this.assistantError = null; this.nativeFailure = false;
     this.modelObserved = false;
     this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
     this.inputContentSha256 = input?.contentSha256 ?? null;
-    this.inputs.push({ type: 'user', message: { role: 'user', content: input?.content ?? text }, parent_tool_use_id: null,
-      uuid: this.inputId, session_id: this.binding.nativeSessionId, origin: { kind: this.inputOrigin }, client_composed: true });
+    this.inputs.push({ type: 'user', message: { role: 'user', content: retry ? [] : input?.content ?? text }, parent_tool_use_id: null,
+      uuid: this.inputId, session_id: this.binding.nativeSessionId, origin: { kind: this.inputOrigin }, client_composed: true,
+      ...(retry ? { isSynthetic: true } : {}) });
   }
 
   async read() {
@@ -262,7 +378,9 @@ export class ClaudeSessionEngine {
         if (!message || typeof message !== 'object' || !bounded(message, 16 * 1024 * 1024)) throw Error('Native Claude frame exceeds its bound.');
         const failedAssistant = message.type === 'assistant' && message.error != null;
         if (failedAssistant) {
-          this.nativeFailure = true; this.grants.clear(); await this.host.closeAdmission(this.binding);
+          this.nativeFailure = true; this.assistantError = message.error; this.grants.clear();
+          if (this.retryProtocol) await this.host.suspendAdmission(this.binding);
+          else await this.host.closeAdmission(this.binding);
         }
         const reportedModel = message.message?.model ?? message.event?.message?.model;
         if (this.expectedModel && reportedModel != null && !failedAssistant) {
@@ -277,11 +395,13 @@ export class ClaudeSessionEngine {
           user_message_uuid: message.user_message_uuid, user_message_uuids: message.user_message_uuids,
           event: { message: { id: message.event?.message?.id } },
           message: message.message ? { id: message.message.id, content: parts.filter(v => v?.type === 'tool_use').map(v => ({ type: v.type, id: v.id, name: v.name })) } : undefined }, this.binding.requestId);
-        if (this.goal) identity.studioGoalStepId = this.inputId;
+        if (this.goal) identity.studioGoalStepId = this.stepInputId;
+        if (this.retryClaim) identity.nativeRetry = { schema: 1, claim: this.retryClaim };
         if (message.type === 'user' && message.isReplay === true && message.uuid === this.inputId) {
           const content = message.message?.content;
           const text = typeof content === 'string' ? content : Array.isArray(content) && content.length === 1 && content[0]?.type === 'text' ? content[0].text : null;
-          const matches = this.inputContentSha256 ? contentDigest(content) === this.inputContentSha256
+          const matches = this.retryClaim ? Array.isArray(content) && content.length === 0
+            : this.inputContentSha256 ? contentDigest(content) === this.inputContentSha256
             : typeof text === 'string' && createHash('sha256').update(text).digest('hex') === this.inputTextSha256;
           if (!this.inputSubmitted || message.isSynthetic === true && this.inputOrigin !== 'auto-continuation' || message.parent_tool_use_id != null || message.message?.role !== 'user'
             || !matches
@@ -289,7 +409,7 @@ export class ClaudeSessionEngine {
             throw Error('The native input echo does not match the original submitted text.');
           }
           identity.nativeInputRequestIds = [message.uuid];
-          identity.nativeInputReceiptKind = 'stdinEcho';
+          identity.nativeInputReceiptKind = this.retryClaim ? 'stdinEmptyBlocksEcho' : 'stdinEcho';
           identity.nativeInputTextSha256 = this.inputTextSha256;
           if (this.inputContentSha256) identity.nativeInputContentSha256 = this.inputContentSha256;
         }
@@ -300,23 +420,54 @@ export class ClaudeSessionEngine {
           throw Error('Native Claude produced an unbound, resumed or autonomous turn.');
         }
         if (identity.nativeInputRequestIds.length && (['assistant','stream_event','result'].includes(message.type)
-          || identity.nativeInputReceiptKind === 'stdinEcho')) {
+          || ['stdinEcho','stdinEmptyBlocksEcho'].includes(identity.nativeInputReceiptKind))) {
+          if (this.retryClaim && !this.inputAccepted && identity.nativeInputReceiptKind !== 'stdinEmptyBlocksEcho') {
+            throw Error('The original Claude retry input has no matching empty-block echo.');
+          }
           this.inputAccepted = true;
-          if (this.goal && this.goalStartedAt === null) this.goalStartedAt = Date.now();
+          if (this.goal && this.goalStartedNs === null) {
+            this.goalStartedAt = Date.now(); this.goalStartedNs = process.hrtime.bigint();
+          }
+          if (this.retryClaim && identity.nativeInputReceiptKind === 'stdinEmptyBlocksEcho'
+            && this.retryWaitStartedNs !== null) {
+            if (this.goal) this.goalExcludedNs += process.hrtime.bigint() - this.retryWaitStartedNs;
+            this.retryWaitStartedNs = null;
+          }
         }
+        this.rawBoundary.observe(message, this.expectedModel);
+        if (this.inputAccepted && !failedAssistant && (message.type === 'assistant' && parts.some(part =>
+          part.type === 'tool_use' || part.type === 'text' && part.text?.length)
+          || message.type === 'stream_event' && message.event?.delta?.type === 'text_delta' && message.event.delta.text?.length)) this.retryAttempts = 0;
         if (message.type === 'result' && this.liveActivation && !this.goal) {
           this.liveSourceResult = message;
           if (message.subtype !== 'success' || message.is_error) this.liveActivation.state = 'refused';
         }
         const between = message.type === 'result' && (this.goal || this.liveActivation?.state === 'waiting') && this.state === 'active'
           && message.subtype === 'success' && !message.is_error;
+        const retryBoundary = message.type === 'result' && this.retryProtocol && this.state === 'active'
+          && !(this.liveActivation && !this.goal)
+          && this.rawBoundary.candidate(message, this.inputAccepted, this.assistantError);
         if (message.type === 'result') {
+          if (this.retryProtocol && (!uuid(message.uuid) || this.resultIds.has(message.uuid) || this.resultIds.size >= 4096)) {
+            throw Error('The original Claude result identity is duplicated or exceeds its bound.');
+          }
+          if (this.retryProtocol) this.resultIds.add(message.uuid);
           if (this.nativeFailure && !message.is_error) throw Error('A native error was followed by an unconfirmed successful result. No replay was accepted.');
           this.result = message; this.resultInputId = this.inputId;
-          this.state = between ? 'between' : 'completed'; this.grants.clear();
+          this.state = retryBoundary ? 'retry_boundary' : between ? 'between' : 'completed'; this.grants.clear();
+          if (retryBoundary) {
+            this.retryWaitStartedNs = process.hrtime.bigint();
+            this.retryBoundary = { resultId: message.uuid, inputId: this.inputId, stepInputId: this.stepInputId };
+            identity.nativeRetryBoundary = { schema: 1, source: 'claude-2.1.312-response-boundary-v1',
+              ...this.retryBoundary, structuralCandidate: true, runtimeQualified: false };
+            await this.host.suspendAdmission(this.binding);
+          }
         }
         await this.host.receive({ binding: this.binding, identity, native: message });
-        if (message.type === 'result' && !between) {
+        if (identity.nativeInputReceiptKind === 'stdinEmptyBlocksEcho') {
+          this.retryEchoConfirmed = true; this.confirmRetryEcho?.();
+        }
+        if (message.type === 'result' && !between && !retryBoundary) {
           this.inputs.close();
           await this.host.closeAdmission(this.binding); this.query.close();
         }
@@ -336,6 +487,7 @@ export class ClaudeSessionEngine {
 
   async interrupt() {
     if (this.state === 'closed' || this.state === 'stopping') return;
+    if (this.state === 'retry_boundary' || this.state === 'retry_admitting' && !this.inputSubmitted) this.state = 'completed';
     if (this.liveActivation && !this.liveGoalInputSubmitted && (this.state === 'between'
       || this.liveSourceResult && !this.inputSubmitted && this.state === 'admitting')) {
       this.liveActivation.state = 'cancelled'; this.state = 'completed';
@@ -361,6 +513,7 @@ export class ClaudeSessionEngine {
 
   async close() {
     if (this.state === 'closed') return;
+    if (this.state === 'retry_boundary' || this.state === 'retry_admitting' && !this.inputSubmitted) this.state = 'completed';
     if ((this.goal || this.liveActivation) && this.state === 'between') {
       if (!this.goal) this.liveActivation.state = 'cancelled';
       this.state = 'completed'; await this.host.closeAdmission(this.binding);

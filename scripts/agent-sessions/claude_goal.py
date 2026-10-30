@@ -131,6 +131,9 @@ class GoalJournal:
         if live and (not run['busy'] or self.binding['worker']['pid'] != os.getpid()
                 or birth(os.getpid()) != self.binding['worker']['birth']):
             raise ProjectFault('The original Claude Play worker is no longer active.', 409)
+        if value.get('retryTime') is not None:
+            from claude_goal_budget import elapsed_ns
+            elapsed_ns(value, self.monotonic())
         return value
 
     def save(self, value):
@@ -197,7 +200,8 @@ class GoalJournal:
             return json.loads(previous['result'])
         value = self.read(); step = value['steps'][-1]
         if admission_error is not None:result=admission_error
-        elif self.w.stopping or value['state'] != 'running' or step['state'] != 'active' or not step['inputReceipt'] or step['report']:
+        elif (self.w.stopping or value['state'] != 'running' or step['state'] != 'active' or not step['inputReceipt'] or step['report']
+                or value.get('retryTime') is not None and value['retryTime'].get('hold') is not None):
             result={'success': False, 'error': 'unavailable', 'output': 'This original GOAL step cannot accept another progress report.'}
         else:
             result = {'success': True, 'output': 'The bounded GOAL report was recorded. Only the host may authorize another step.',
@@ -219,9 +223,14 @@ class GoalJournal:
                 or step['state'] not in ('admitting', 'active')
                 or any(s['nativeResult'] and s['nativeResult']['id'] == native_id for s in value['steps'])):
             raise ProjectFault('The native Claude GOAL result has a foreign or duplicate step identity.', 409)
+        # A terminal path that does not continue cannot leave an authority wait
+        # open. The original result and report remain the only step outcome.
+        self.cancel_retry_wait(value)
         step['nativeResult'] = {'id': native_id, 'subtype': native.get('subtype'), 'isError': native.get('is_error') is True}
+        if step.get('retryCurrent'): step['nativeResult']['inputId'] = self.actual_input(value)
         step['state'] = 'resultConfirmed'
-        unsafe = (not step['inputReceipt'] or self.w.uncertain_effect
+        retry = step.get('retryCurrent')
+        unsafe = (not step['inputReceipt'] or retry and not retry.get('noInput') and not retry['inputReceipt'] or self.w.uncertain_effect
             or self.w.store.db.execute("""SELECT 1 FROM tools WHERE run_id=? AND
                 (result IS NULL OR state IN ('intent','unknown') OR json_extract(result,'$.partialChangesPossible')=1
                  OR json_extract(result,'$.error')='unknown')""", (self.w.run_id,)).fetchone())
@@ -244,7 +253,126 @@ class GoalJournal:
 
     def expired(self, value=None):
         value = value or self.read()
-        return value['startedNs'] is not None and self.monotonic() - value['startedNs'] >= self.spec['maxActiveSeconds'] * 1000000000
+        from claude_goal_budget import elapsed_ns
+        return elapsed_ns(value, self.monotonic()) >= self.spec['maxActiveSeconds'] * 1000000000
+
+    def actual_input(self, value=None):
+        step = (value or self.read())['steps'][-1]; retry = step.get('retryCurrent')
+        return (retry['sourceInputId'] if retry.get('noInput') else retry['claim']['inputRequestId']) if retry else step['inputId']
+
+    def record_retry_claim(self, claim, source_input):
+        from claude_retry import valid_claim
+        valid_claim(claim); identity(source_input)
+        value = self.read(); step = value['steps'][-1]; wait = (value.get('retryTime') or {}).get('hold')
+        if (value['state'] != 'running' or step['state'] != 'active' or step['inputId'] != claim['stepInputId']
+                or not wait or any(wait['claim'][key] != claim[key] for key in ('holdId','stepInputId','failedResultId'))
+                or source_input != self.actual_input(value)):
+            raise ProjectFault('The physical retry is not bound to the original waiting Goal step.', 409)
+        previous = step.get('retryCurrent')
+        if previous and previous['claim'] == claim:
+            raise ProjectFault('The original retry was already claimed. It was not submitted twice.', 409)
+        step['retryCurrent'] = {'claim': dict(claim), 'sourceInputId': source_input,
+            'admissionId': None, 'inputReceipt': None, 'noInput': False}
+        # Previous physical attempts remain immutable in claudeRetryReceipt
+        # events. Only this pointer changes; the accepted Play/report do not.
+        self.save(value)
+
+    def record_retry_admission(self, claim, admission_id):
+        identity(admission_id); value = self.read(); step = value['steps'][-1]; retry = step.get('retryCurrent')
+        if (value['state'] != 'running' or self.w.stopping or not retry or retry['claim'] != claim
+                or retry['admissionId'] is not None or retry['noInput']):
+            raise ProjectFault('This original physical retry cannot receive another admission.', 409)
+        retry['admissionId'] = admission_id; self.save(value)
+
+    def record_retry_echo(self, claim, receipt, stopping=False):
+        value = self.read(); step = value['steps'][-1]; retry = step.get('retryCurrent')
+        if (not retry or retry['claim'] != claim or not retry['admissionId'] or retry['noInput']
+                or receipt.get('inputId') != claim['inputRequestId'] or receipt.get('messageId') != claim['inputRequestId']
+                or receipt.get('kind') != 'stdinEmptyBlocksEcho'
+                or value['state'] not in (('running','stopping') if stopping else ('running',))):
+            raise ProjectFault('The retry echo has no matching original Goal claim and admission.', 409)
+        if retry['inputReceipt']:
+            if retry['inputReceipt'] != receipt:raise ProjectFault('The original retry echo conflicts.', 409)
+            return
+        if not stopping:
+            from claude_goal_budget import finish
+            wait = (value.get('retryTime') or {}).get('hold')
+            if not wait or wait['claim']['holdId'] != claim['holdId']:
+                raise ProjectFault('The original retry wait is missing.', 409)
+            finish(value, wait['claim'], self.monotonic(), {'kind': 'nativeInputReceipt',
+                'inputId': receipt['inputId'], 'messageId': receipt['messageId']})
+        retry['inputReceipt'] = dict(receipt)
+        with self.w.store.db:self.save(value)
+
+    def retry_not_submitted(self, claim):
+        value = self.read(); retry = value['steps'][-1].get('retryCurrent')
+        if not retry or retry['claim'] != claim or retry['inputReceipt']:
+            raise ProjectFault('The original retry has no unsubmitted claim.', 409)
+        retry['noInput'] = True
+        with self.w.store.db:self.save(value)
+
+    def begin_retry_wait(self, native, original):
+        """Record an authority wait after a controller qualifies this failure.
+
+        This never claims or submits an input. The retry controller must
+        separately retain the query, qualify its boundary and bind its receipts.
+        """
+        from claude_goal_budget import begin, elapsed_ns
+        value = self.read(); step = value['steps'][-1]; current = self.monotonic()
+        if (self.w.stopping or self.w.done.is_set() or self.w.uncertain_effect or value['state'] != 'running'
+                or self.w.native is None or self.w.native.returncode is not None or self.w.native_receipt is not None
+                or step['state'] != 'active' or not step['inputReceipt'] or step['nativeResult'] is not None
+                or step['report'] and step['report']['status'] in ('complete', 'blocked')
+                or not isinstance(original, dict) or original.get('stepInputId') != step['inputId']
+                or not isinstance(native, dict) or native != self.w.native_result or native.get('type') != 'result'
+                or native.get('session_id') != self.binding['nativeSessionId']
+                or native.get('subtype') != 'success' or native.get('is_error') is not True
+                or native.get('uuid') != original.get('failedResultId')
+                or elapsed_ns(value, current) >= self.spec['maxActiveSeconds'] * 1000000000):
+            raise ProjectFault('This original Goal failure cannot suspend its active-time budget.', 409)
+        from claude_provider_errors import describe
+        failure = describe(native.get('providerError'), self.w.native_error_code, self.w.native_retry_observed)
+        if not failure['transientCandidate'] or failure['nativeRetryObserved']:
+            raise ProjectFault('This provider refusal cannot suspend the original Goal budget.', 409)
+        from claude_goal_store import pending_controls
+        from message_store import pending_queue
+        if pending_controls(self.w) or pending_queue(self.w.store, self.w.session_id):
+            raise ProjectFault('Human controls or queued input take priority over this Goal retry wait.', 409)
+        for row in self.w.store.db.execute('SELECT state,result FROM tools WHERE run_id=?', (self.w.run_id,)):
+            result = json.loads(row['result']) if row['result'] else None
+            if (row['state'] not in ('completed', 'failed') or not isinstance(result, dict)
+                    or type(result.get('success')) is not bool or result.get('error') == 'unknown'
+                    or result.get('partialChangesPossible') is True):
+                raise ProjectFault('An original tool outcome is unconfirmed. The Goal budget was not suspended.', 409)
+        if begin(value, original, current):
+            with self.w.store.db: self.save(value)
+
+    def received_retry_input(self, original, input_id, message_id):
+        """Called only after the controller validates the original stdin echo."""
+        from claude_goal_budget import finish
+        value = self.read(); step = value['steps'][-1]
+        if (self.w.stopping or self.w.done.is_set() or self.w.uncertain_effect or value['state'] != 'running' or step['state'] != 'active'
+                or self.w.native is None or self.w.native.returncode is not None or self.w.native_receipt is not None
+                or step['report'] and step['report']['status'] in ('complete', 'blocked')
+                or not isinstance(original, dict) or original.get('stepInputId') != step['inputId']):
+            raise ProjectFault('The original Goal wait no longer accepts an input receipt.', 409)
+        from claude_goal_store import pending_controls
+        if pending_controls(self.w):
+            raise ProjectFault('An original Pause or Stop takes priority over the retry input receipt.', 409)
+        confirmation = {'kind': 'nativeInputReceipt', 'inputId': input_id, 'messageId': message_id}
+        if finish(value, original, self.monotonic(), confirmation):
+            with self.w.store.db: self.save(value)
+
+    def cancel_retry_wait(self, value):
+        from claude_goal_budget import finish
+        time_evidence = value.get('retryTime')
+        if time_evidence is not None:
+            # Validate a closed interval as well; corrupt evidence never grants
+            # more execution merely because a terminal path is being handled.
+            from claude_goal_budget import elapsed_ns
+            current = self.monotonic(); elapsed_ns(value, current)
+            if time_evidence['hold'] is not None:
+                finish(value, time_evidence['hold']['claim'], current)
 
     def next(self):
         value = self.read()
@@ -264,6 +392,7 @@ class GoalJournal:
         if status not in ('paused', 'budgetLimited'): raise ValueError('Invalid bounded GOAL stop status.')
         value = self.read()
         if value['state'] in ('complete', 'blocked', 'budgetLimited', 'paused', 'unknown'): return
+        self.cancel_retry_wait(value)
         value.update(state='closing' if value['steps'][-1]['state']=='resultConfirmed' else 'stopping', terminalStatus=status, reason=reason)
         if commit:
             with self.w.store.db:self.save(value)
@@ -272,6 +401,7 @@ class GoalJournal:
     def finish(self, confirmed, no_input=False):
         value = self.read(); step = value['steps'][-1]
         if value['state'] in ('complete','blocked','budgetLimited','paused','unknown'):return value
+        self.cancel_retry_wait(value)
         if (confirmed and value['state']=='closing' and not self.w.uncertain_effect and step['state'] == 'resultConfirmed'
                 and step['inputReceipt'] and value.get('terminalStatus')):
             value['state'] = value['terminalStatus']

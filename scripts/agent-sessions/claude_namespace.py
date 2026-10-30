@@ -64,6 +64,7 @@ def prepare(worker,history,prepared,broker):
     write_new(root/'runtime.json',{'schema':1,'binding':binding,'mode':prepared['mode'],'historyConfirmed':prepared['historyConfirmed'],
         **({'inputContract':{key:native_input[key] for key in ('profileId','requestId','textSha256','contentSha256')}} if native_input else {}),
         'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal or live or config.get('claudeInput')),
+        **({'retryProtocol':1} if type(config.get('claudeRetryProtocol')) is int and config['claudeRetryProtocol']==1 else {}),
         **({'liveGoalPreparation':True} if live else {}),
         **({'goal':{key:config['claudeGoalExecution'][key] for key in ('executionId','maxSteps','maxActiveSeconds')}} if goal else {}),
         'effort':config.get('claudeModel',{}).get('effort',''),

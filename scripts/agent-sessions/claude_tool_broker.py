@@ -19,10 +19,11 @@ def failure(message):
 
 
 class ClaudeToolBroker:
-    def __init__(self,root,binding,tools,current,execute,admit=None):
+    def __init__(self,root,binding,tools,current,execute,admit=None,retry=None):
         self.root=Path(root).absolute();self.binding=json.loads(encode(binding));self.tools=set(tools)
         self.current=current;self.execute=execute;self.capability=secrets.token_hex(32)
         self.admit=admit
+        self.retry=retry;self.suspended=False
         self.grants={};self.calls={};self.connections=set();self.server=None;self.closed=False
 
     async def start(self):
@@ -37,11 +38,24 @@ class ClaudeToolBroker:
         if self.closed or not isinstance(value,dict) or value.get('binding')!=self.binding:
             return failure('This call does not belong to the original active Studio run.')
         operation=value.get('operation')
+        if operation=='retry_receipt':
+            if (set(value)!={'operation','binding','capability','retry'} or not self.retry or not self.retry.enabled
+                    or not isinstance(value.get('capability'),str) or not hmac.compare_digest(value['capability'],self.capability)):
+                return {'allowed':False}
+            result=await self.retry.confirm_receipt(value['retry'])
+            if self.closed:return {'allowed':False}
+            if result.get('allowed') is True:self.suspended=False
+            return result
         if operation=='admit':
-            if (set(value) not in ({'operation','binding','capability','account'},{'operation','binding','capability','account','usage'}) or not isinstance(value.get('capability'),str)
+            fields={'operation','binding','capability','account','usage'}
+            if (set(value) not in ({'operation','binding','capability','account'},fields,fields|{'retry'}) or not isinstance(value.get('capability'),str)
                 or not hmac.compare_digest(value['capability'],self.capability) or not isinstance(value.get('account'),dict)
                 or not await self.current(self.binding)):
                 return {'allowed':False}
+            if 'retry' in value:
+                if not self.retry or not self.retry.enabled:return {'allowed':False}
+                return await self.retry.admit(value['retry'],value['account'],value.get('usage'))
+            if self.suspended:return {'allowed':False}
             if self.admit is None:return {'allowed':False,'reason':'Native subscription limit admission is not yet qualified.'}
             return await self.admit(self.binding,value['account'],value.get('usage'))
         fields={'operation','binding','tool','nativeToolUseId','arguments'}
@@ -50,7 +64,7 @@ class ClaudeToolBroker:
             or not isinstance(value.get('tool'),str) or value['tool'] not in self.tools
             or not isinstance(value.get('arguments'),dict) or len(encode(value['arguments']).encode())>131072):
             return False if operation=='authorize' else failure('The original Studio tool call is outside its frozen binding.')
-        if not await self.current(self.binding):return False if operation=='authorize' else failure('Original Studio tool admission is closed.')
+        if self.suspended or not await self.current(self.binding):return False if operation=='authorize' else failure('Original Studio tool admission is closed.')
         call_id=value['nativeToolUseId'];digest=hashlib.sha256(encode({'tool':value['tool'],'arguments':value['arguments']}).encode()).hexdigest()
         if operation=='authorize':
             capability=value.get('capability')
@@ -89,6 +103,8 @@ class ClaudeToolBroker:
             except OSError:pass
 
     def stop_admission(self):self.closed=True;self.grants.clear()
+
+    def suspend_admission(self):self.suspended=True;self.grants.clear()
 
     async def close(self):
         self.stop_admission()

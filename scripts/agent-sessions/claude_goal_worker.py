@@ -93,7 +93,7 @@ class ClaudeGoalRuntime:
         if len(value['steps'])>1:
             previous=value['steps'][-2];result=previous['nativeResult']
             if (previous['state']=='resultConfirmed' and previous['inputReceipt'] and result
-                and result['subtype']=='success' and not result['isError']):return previous['inputId'],result['id']
+                and result['subtype']=='success' and not result['isError']):return result.get('inputId',previous['inputId']),result['id']
         elif self.live:
             source=value['liveSource']
             if source['result'] and source['inputConfirmed']:
@@ -155,7 +155,8 @@ class ClaudeGoalRuntime:
                 else:
                     no_input=self.no_input or (receipt.get('promptSubmitted') is False and receipt.get('inputSubmitted') is False
                         and not self.w.sent and not self.w.store.db.execute('SELECT 1 FROM tools WHERE run_id=?',(self.w.run_id,)).fetchone())
-                value = self.journal.finish(confirmed, no_input)
+                retry=getattr(self.w,'claude_retry',None)
+                value = self.journal.finish(confirmed and not (retry and retry.uncertain_start), no_input)
                 self.clock.end(unknown=value['state'] == 'unknown')
                 from claude_goal_store import project
                 project(self.w,value,final=True)

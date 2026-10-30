@@ -57,15 +57,16 @@ class ProviderRetry:
         self.progress = False; self.native_retry = False; self.failure = None; self.receipts = None
         self.saved_live_open = False; self.closed = False
         self.held_turns = set()
+        from goal_retry import GoalRetry
+        self.goal = GoalRetry(self)
+        self.goal_mode = False
 
     def eligible(self):
         from image_provider import selection
         from profile import CODEX_VERSION, CODEX_SHA256
         w = self.w; engine = w.config['engine']
         return (engine.get('version') == CODEX_VERSION and engine.get('sha256') == CODEX_SHA256
-                and bool(w.config.get('apiProvider') or selection(engine.get('profile')))
-                and not w.config.get('goalExecution')
-                and not (w.goal_worker and (not w.goal_worker.dormant or w.goal_worker.armed)))
+                and bool(w.config.get('apiProvider') or selection(engine.get('profile'))))
 
     def identity(self):
         w = self.w; row = get_run(w.store, w.run_id)
@@ -116,6 +117,8 @@ class ProviderRetry:
                 raise ValueError('Goal control takes priority')
         if w.goal_worker and w.goal_worker.native and w.goal_worker.native['status'] == 'active':
             raise ValueError('Native Goal is active')
+        if self.goal_mode:
+            self.goal.local_gate()
         if w.store.owner_type == 'project':
             with sqlite3.connect((Path(w.store.projects) / 'Projects.sqlite').as_uri() + '?mode=ro', uri=True) as projects:
                 current = projects.execute("SELECT pins FROM projects WHERE id=? AND state='ready'", (w.store.owner_id,)).fetchone()
@@ -136,6 +139,8 @@ class ProviderRetry:
         payload = {'binding': self.original, 'failedTurnId': self.failed_turn, 'retryTurnId': self.retry_turn,
                    'toolReceiptsSha256': self.receipts, 'deadlineNs': self.deadline,
                    'error': self.failure['text'], 'httpStatusCode': self.failure['httpStatusCode']}
+        if self.goal_mode:
+            payload['goal'] = self.goal.public_evidence()
         db.execute('''CREATE TABLE IF NOT EXISTS provider_retries(
             run_id TEXT PRIMARY KEY REFERENCES runs(id),session_id TEXT NOT NULL REFERENCES sessions(id),
             sequence INTEGER NOT NULL,attempt INTEGER NOT NULL,state TEXT NOT NULL,payload TEXT NOT NULL)''')
@@ -147,6 +152,7 @@ class ProviderRetry:
         w = self.w
         if not self.original or params.get('threadId') != w.thread_id:
             return False
+        self.goal.observe(method, params)
         if method == 'turn/started':
             self.native_retry = False
             if self.state == 'waiting':
@@ -154,6 +160,16 @@ class ProviderRetry:
                 w.uncertain_effect = True; w.outcome = 'unknown'; w.defer_stop()
             elif self.state == 'submitting':
                 self.retry_turn = params['turn']['id']
+                if self.retry_turn == self.failed_turn:
+                    self.unknown_start()
+                    return True
+                if self.goal_mode:
+                    try: self.goal.resumed(self.retry_turn)
+                    except Exception:
+                        self.unknown_start()
+                        # The native turn ID is nevertheless observed. Let the
+                        # normal stopping path adopt and interrupt that turn.
+                        return False
                 with w.store.db:
                     meta = json.loads(get_run(w.store, w.run_id)['worker'] or '{}')
                     if self.saved_live_open: meta['liveGoalOpen'] = True
@@ -165,6 +181,11 @@ class ProviderRetry:
             self.progress = True
         elif method == 'item/started' and params.get('turnId') == self.retry_turn and (params.get('item') or {}).get('type') in ('dynamicToolCall', 'webSearch', 'imageGeneration'):
             self.progress = True
+        elif (method == 'turn/completed' and self.goal_mode and self.state == 'continuing'
+                and params.get('turn', {}).get('status') == 'completed'
+                and params['turn'].get('id') == w.turn_id):
+            self.progress = True
+            with w.store.db: self.write('completed')
         elif method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed':
             from provider_errors import describe
             turn = params['turn']; failure = describe(turn.get('error'), api=bool(w.config.get('apiProvider')))
@@ -176,6 +197,22 @@ class ProviderRetry:
                     or failure['httpStatusCode'] not in (502, 503, 504) or not failure['transientCandidate']):
                 return False
             self.failed_turn = turn['id']; self.failure = failure
+            self.goal_mode = bool(w.config.get('goalExecution') or self.goal.active_execution())
+            if self.goal_mode and (type(w.config.get('goalRetryProtocol')) is not int or w.config['goalRetryProtocol'] != 1):
+                # New original-Goal recovery remains disabled until its native
+                # runtime qualification. Ordinary released retries are intact.
+                self.goal_mode = False
+                return False
+            if self.goal_mode:
+                try: evidence = self.goal.qualify(self.failed_turn, failure['httpStatusCode'])
+                except Exception:
+                    w.error = failure['text'] + ' Automatic Goal continuation was held because its original failure evidence could not be confirmed.'
+                    return False
+                # Native Goal read tools do not necessarily emit Studio dynamic
+                # tool events. Their complete original call/result is still
+                # confirmed model progress within this new failed turn.
+                if self.attempt and evidence['native']['functionCallsChecked']:
+                    self.progress = True
             if self.progress:
                 self.attempt = 0; self.sequence += 1; self.progress = False
             if self.attempt >= MAX_ATTEMPTS:
@@ -216,6 +253,8 @@ class ProviderRetry:
         # active instead. The precise final failure above is still mandatory.
         if thread.get('thread', {}).get('status', {}).get('type') not in ('idle', 'systemError'):
             raise ValueError('Native idle state not confirmed')
+        if self.goal_mode:
+            await self.goal.gate()
         if self.local_gate() != self.receipts:
             raise ValueError('Original receipts changed during readback')
 
@@ -252,12 +291,16 @@ class ProviderRetry:
         w.store.db.execute('BEGIN IMMEDIATE')
         try:
             if self.local_gate() != self.receipts: raise ValueError('Original retry admission changed')
+            if self.goal_mode: self.goal.local_gate(read_native=True)
             self.attempt += 1; self.retry_turn = None
             self.write('submitting'); w.store.db.commit()
         finally:
             if w.store.db.in_transaction: w.store.db.rollback()
         w.error = None
         try:
+            if self.goal_mode:
+                await self.goal.submit()
+                return
             result = await w.client.request('turn/start', {'threadId': w.thread_id, 'input': [],
                 'model': w.config['model'], 'effort': w.config['effort'],
                 'serviceTier': 'priority' if w.config.get('fastMode') else 'default'})
@@ -282,7 +325,17 @@ class ProviderRetry:
         except RPCRejected:
             if self.retry_turn is not None:
                 self.unknown_start(); return
-            w.outcome = 'failed'; w.error = self.failure['text'] + ' The native client rejected the empty continuation.'; w.done.set()
+            if self.goal_mode:
+                # A mutation error alone does not prove absence of an effect.
+                # Retain a known refusal only while the original blocked Goal,
+                # idle native process and complete failed section still match.
+                try: await self.gate()
+                except Exception:
+                    self.unknown_start(); return
+                if self.retry_turn is not None:
+                    self.unknown_start(); return
+            continuation = 'original Goal continuation' if self.goal_mode else 'empty continuation'
+            w.outcome = 'failed'; w.error = self.failure['text'] + ' The native client rejected the ' + continuation + '.'; w.done.set()
         except asyncio.TimeoutError:
             # Observe a confirmed start, but never submit an unconfirmed start
             # again. Its eventual native completion remains authoritative.
@@ -294,7 +347,26 @@ class ProviderRetry:
     def unknown_start(self):
         w = self.w; w.uncertain_effect = True; w.outcome = 'unknown'
         w.error = 'The original continuation start is unconfirmed. It was not submitted again.'
+        if self.goal_mode: self.goal.uncertain()
         w.defer_stop()
+
+    async def cancel_for_control(self):
+        """A human Goal control/Stop supersedes this one original timer."""
+        if self.state not in OPEN or self.w.uncertain_effect:
+            return
+        unconfirmed = self.state == 'submitting' and self.retry_turn is None
+        if unconfirmed:
+            self.w.uncertain_effect = True
+            self.w.outcome = 'unknown'
+            self.w.error = 'The original continuation start is unconfirmed. It was not submitted again.'
+            if self.goal_mode: self.goal.uncertain()
+        self.closed = True
+        self.pending = None
+        if self.task and self.task is not asyncio.current_task():
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
+        with self.w.store.db:
+            self.write('unknown' if unconfirmed else 'cancelled')
 
     async def close(self):
         self.closed = True

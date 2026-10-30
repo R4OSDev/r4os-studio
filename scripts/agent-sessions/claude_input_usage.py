@@ -148,6 +148,11 @@ class InputUsage:
                     terminal=(part.get('delta') or {}).get('stop_reason') in TERMINAL_REASONS
                     self.outputs[ident]=(output if output is not None else previous,output,terminal)
                 elif part.get('type') == 'message_stop' and self.active:
+                    if frame.get('incompleteResponse') is True:
+                        if len(self.invalid_outputs) < LIMIT:self.invalid_outputs.add(self.active)
+                        else:self.output_disabled=True
+                        self.active = None
+                        self.gap(); return
                     if len(self.completed) >= LIMIT: raise ValueError('Input usage response limit')
                     if self.active in self.outputs and frame.get('session_id')!=self.w.config['engine']['claude']['nativeSessionId']:
                         self.invalid_outputs.add(self.active);raise ValueError('Foreign native output closure')
