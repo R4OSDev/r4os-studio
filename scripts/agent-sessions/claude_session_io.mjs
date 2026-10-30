@@ -7,7 +7,11 @@ import { ClaudeSessionEngine } from './claude_session_engine.mjs';
 
 export function publicFrame(native) {
   const base = { type: native.type, subtype: native.subtype, uuid: native.uuid, session_id: native.session_id, parent_tool_use_id: native.parent_tool_use_id };
-  if (native.type === 'assistant') return { ...base, message: { id: native.message?.id, model: native.message?.model,
+  if (native.type === 'assistant') return { ...base, ...(native.error == null ? {} : { error: 'nativeError' }), message: { id: native.message?.id, model: native.message?.model,
+    usage: native.message?.usage && typeof native.message.usage === 'object'
+      ? Object.fromEntries(['input_tokens','cache_creation_input_tokens','cache_read_input_tokens'].map(key => {
+        const value = native.message.usage[key]; return [key, Number.isSafeInteger(value) && value >= 0 ? value : null];
+      })) : null,
     content: (native.message?.content ?? []).filter(v => ['text', 'tool_use'].includes(v.type)).map(v => v.type === 'text'
       ? { type: 'text', text: v.text } : { type: 'tool_use', id: v.id, name: v.name, input: v.input }) } };
   if (native.type === 'stream_event') {

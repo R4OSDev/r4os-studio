@@ -57,6 +57,12 @@ await test('display projection excludes raw thinking, signatures, images and pri
   assert.equal(publicFrame({ type: 'user', message: { content: [{ type: 'image', source: { data: 'private image bytes' } }] } }), null);
   const result = publicFrame({ type: 'result', subtype: 'error_during_execution', errors: ['private provider response'], usage: { input_tokens: 7 } });
   assert.equal(result.errors, undefined); assert.deepEqual(result.usage, { input_tokens: 7 });
+  const scoped = publicFrame({ ...native, error: 'private provider failure', message: { ...native.message,
+    usage: { input_tokens: 12, cache_creation_input_tokens: 0, cache_read_input_tokens: 5, output_tokens: 999999, privateDetail: 'secret' } } });
+  assert.deepEqual(scoped.message.usage, { input_tokens: 12, cache_creation_input_tokens: 0, cache_read_input_tokens: 5 });
+  assert.equal(scoped.error, 'nativeError'); assert.equal(JSON.stringify(scoped).includes('private provider failure'), false);
+  const missing = publicFrame({ ...native, message: { ...native.message, usage: { input_tokens: true, cache_read_input_tokens: -1 } } });
+  assert.deepEqual(missing.message.usage, { input_tokens: null, cache_creation_input_tokens: null, cache_read_input_tokens: null });
 });
 function admission(binding) { return { allowed: true, extraUsageDisabled: true, providerId: binding.providerId,
   nativeSessionId: binding.nativeSessionId, model: binding.model, admissionId: randomUUID(), expiresAt: Date.now() + 10000,

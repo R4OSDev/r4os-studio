@@ -32,8 +32,11 @@ run and Studio request. Conflicting duplicate receipts fail without changing
 the original. Main-loop usage and cumulative model snapshots retain different
 source semantics. Cumulative/resumed values are never summed as turn totals;
 native list-price estimates are separate from quota and actual billing.
-Statistics and lifetime totals remain unqualified for Claude. Session cleanup
-removes its private snapshots through the existing scoped deletion mechanism.
+Input/cache statistics and lifetime retention are implemented in0.8.46 through
+completed response IDs and the common numeric outbox. Output/total accounting
+remains unqualified. Details: [Claude-Input-Usage.md](Claude-Input-Usage.md).
+Session cleanup removes private snapshots through the existing scoped deletion
+mechanism while retaining the numeric lifetime receipts.
 
 The SDK has no qualified native Codex GOAL interface. Claude GOAL and queued/
 direct-message handoff are explicitly unavailable until bounded orchestration,

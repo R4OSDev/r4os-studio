@@ -1,3 +1,11 @@
+## Claude input/cache statistics (0.8.46)
+
+Completed native response IDs now feed confirmed Claude input/cache counters
+into session/project/lifetime statistics without double-counting replayed or
+parallel blocks. Output and total counts remain unknown. Public model admission
+and actual subscription acceptance stay gated. Details:
+[Claude-Input-Usage.md](Claude-Input-Usage.md).
+
 ## Original-worker provider continuations (0.8.45)
 
 New compatible ordinary-answer workers retain their original thread and empty

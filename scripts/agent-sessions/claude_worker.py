@@ -30,6 +30,8 @@ class ClaudeWorker(Worker):
         self.credential_lease=None;self.credential_worker=None
         self.admission_started_at=None
         self.admission_denial=None
+        from claude_input_usage import InputUsage
+        self.input_usage=InputUsage(self)
 
     async def admit_native(self,binding,account,usage):
         from claude_admission import admit
@@ -95,6 +97,7 @@ class ClaudeWorker(Worker):
     async def observe(self,frame):
         native=frame['native'];kind=native['type'];identity=frame['identity']
         if identity.get('nativeSessionId') not in (None,self.config['engine']['claude']['nativeSessionId']):raise ValueError('Native session changed.')
+        self.input_usage.notify(native)
         if kind=='stream_event':
             stream=native['event'];event_type=stream.get('type');index=stream.get('index')
             if event_type=='message_start':self.active_provider=stream.get('message',{}).get('id')
@@ -272,6 +275,7 @@ class ClaudeWorker(Worker):
                     history.unconfirmed(self.run_id)
                     if self.sent and not (self.stopping and confirmed and not self.uncertain_effect):self.outcome='unknown'
             if self.broker:await self.broker.close()
+            self.input_usage.finish()
             await self.cleanup()
             if self.lease:self.lease.close()
             reconcile_items(self.store,self.run_id,self.outcome)
