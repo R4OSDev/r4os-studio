@@ -72,6 +72,11 @@ accepted Play, report, bounds and successful tool receipts are not replaced.
 Python authoritative time ledger and Node monotone guard exclude retry waiting;
 statistics cannot grant more execution. A successful physical result records its
 actual input ID, so later refused Goal inputs still retain the correct predecessor.
+For live activation during an ordinary recovered response, the target additionally
+binds its committed physical echo and claim digest. Root Run/request identity stays
+unchanged. Native arm, source result and later no-input closure must all identify
+that actual source input; waiting or unconfirmed retry admission cannot arm a Goal.
+Legacy targets without this private protocol retain the original source identity.
 
 Pause/Stop cancels the timer, including during fresh admission. An idle failed
 query closes without interrupting an already completed input. Claimed but
@@ -118,9 +123,8 @@ transport refuses a changed echo instead of replaying original input.
 
 Actual retained-query continuation, wire/context equality, counters/exhaustion,
 Pause/Stop/Queue races, original Play/statistical clocks, admission/result loss,
-restore and shared-account cases remain unqualified. Ordinary-response Live-Play
-after an already accepted physical retry needs its source-input binding audited;
-the current live activation uses the original ordinary input ID. Both frozen
+restore, ordinary-response Live-Play after a physical retry and shared-account
+cases remain unqualified. Both frozen
 protocol producers remain off. The full0.8.10/17/23 acceptances stay open;
 static checks and source inspection do not complete them.
 

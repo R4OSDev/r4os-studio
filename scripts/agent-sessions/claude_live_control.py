@@ -4,7 +4,7 @@ import json
 import time
 from types import SimpleNamespace
 
-from claude_goal import digest, freeze
+from claude_goal import digest, freeze, live_source_input
 from claude_goal_control import ClaudeGoalControl
 from claude_goal_store import saved_value, snapshot, write
 from claude_live_store import close_source, mark, target
@@ -72,7 +72,7 @@ class ClaudeLiveGoalControl(ClaudeGoalControl):
             raise ProjectFault('The native live Goal receipt belongs to another request.',409)
         accepted=frame['event']=='goal_armed'
         if accepted and (frame.get('nativeSessionId')!=spec['nativeSessionId']
-            or frame.get('sourceInputRequestId')!=self.w.row['request_id'] or frame.get('state')!='waiting'):
+            or frame.get('sourceInputRequestId')!=live_source_input(runtime.journal.binding) or frame.get('state')!='waiting'):
             raise ProjectFault('The native live Goal source binding changed.',409)
         value=runtime.journal.read();source=value['liveSource']
         if source['armed'] or source['armRefused']:raise ProjectFault('Duplicate native Goal preparation receipt.',409)
@@ -80,13 +80,23 @@ class ClaudeLiveGoalControl(ClaudeGoalControl):
         with self.w.store.db:runtime.journal.save(value)
         self.arm_event.set();self.maybe_begin()
 
-    def source_result(self,native):
+    def source_result(self,native,reported=None):
         runtime=self.runtime;value=runtime.journal.read();source=value['liveSource']
         if source['result'] is not None:raise ProjectFault('The original live Goal source result was duplicated.',409)
         identity(native.get('uuid'))
         if native.get('session_id')!=runtime.journal.binding['nativeSessionId']:raise ProjectFault('The live Goal source session changed.',409)
+        physical=runtime.journal.binding.get('sourceInput')
+        if physical:
+            reported=reported or {};retry=reported.get('nativeRetry') or {}
+            if (reported.get('studioRequestId')!=runtime.journal.binding['requestId']
+                or reported.get('nativeSessionId')!=runtime.journal.binding['nativeSessionId']
+                or reported.get('nativeType')!='result' or reported.get('nativeMessageId')!=native['uuid']
+                or reported.get('nativeInputRequestIds') not in ([],[physical['inputId']])
+                or retry.get('schema')!=1 or digest(retry.get('claim'))!=physical['claimSha256']):
+                raise ProjectFault('The live Goal result is not bound to its confirmed retry input.',409)
         source.update(result={'id':native['uuid'],'subtype':native.get('subtype'),'isError':native.get('is_error') is True},
             inputConfirmed=self.w.input_receipt.is_set())
+        if physical:source['result']['inputId']=physical['inputId']
         with self.w.store.db:runtime.journal.save(value)
         self.maybe_begin()
 

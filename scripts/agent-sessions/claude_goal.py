@@ -43,6 +43,8 @@ REPORT_TOOL = {'name': 'report_goal', 'description':
 
 def digest(value): return hashlib.sha256(encode(value).encode()).hexdigest()
 def text_hash(value): return hashlib.sha256(value.encode()).hexdigest()
+def live_source_input(binding):
+    return binding['sourceInput']['inputId'] if 'sourceInput' in binding else binding['requestId']
 def boot(): return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 def exists(store):
     return store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='claude_goal_executions'").fetchone() is not None
@@ -86,6 +88,8 @@ class GoalJournal:
             'sessionId': worker.session_id, 'runId': worker.run_id, 'requestId': worker.row['request_id'],
             'configSha256': digest(worker.config), 'worker': worker.credential_worker,
             'nativeSessionId': worker.config['engine']['claude']['nativeSessionId']}
+        if 'sourceInput' in (self.spec.get('liveTarget') or {}):
+            self.binding['sourceInput']=self.spec['liveTarget']['sourceInput']
 
     def start(self):
         from goal_store import Goals

@@ -4,7 +4,7 @@ import os
 
 from attachment_store import birth
 from claude_goal import digest
-from session_store import encode
+from session_store import encode, identity
 from store import ProjectFault
 
 
@@ -44,7 +44,30 @@ def target(store,sid,run):
         'requestId':run['request_id'],'configSha256':digest(config),'worker':meta,
         'nativeSessionId':json.loads(store.row(sid)['engine'])['claude']['nativeSessionId']}
     if json.loads(row['binding'])!=expected:raise ProjectFault('The original Claude live worker binding changed.',409)
+    source=retry_source(store,run,expected,config)
+    if source:expected['sourceInput']=source
     return expected
+
+
+def retry_source(store,run,expected,config):
+    """Reference the committed physical echo; keep the root Run request intact."""
+    if type(config.get('claudeRetryProtocol')) is not int or config['claudeRetryProtocol']!=1:return None
+    if not store.db.execute("SELECT 1 FROM sqlite_master WHERE name='provider_retries'").fetchone():return None
+    row=store.db.execute('SELECT state,payload FROM provider_retries WHERE run_id=? AND session_id=?',
+        (run['id'],run['session_id'])).fetchone()
+    if not row:return None
+    value=json.loads(row['payload']);bound=value['binding'];claim=value.get('claim');receipt=value.get('inputReceipt')
+    if (row['state']!='continuing' or not isinstance(claim,dict) or not isinstance(receipt,dict)
+        or any(bound.get(key)!=expected[key] for key in ('owner','sessionId','runId','requestId','configSha256','nativeSessionId'))
+        or any(bound.get(key)!=expected['worker'][key] for key in ('pid','birth','release'))
+        or not bound.get('nativeBirth') or birth(bound['nativePid'])!=bound['nativeBirth']
+        or value.get('uncertainStart') is not False or value.get('stepInputId')!=run['request_id']
+        or claim.get('stepInputId')!=run['request_id'] or claim.get('failedResultId')!=value.get('failedResultId')
+        or receipt.get('kind')!='stdinEmptyBlocksEcho' or receipt.get('inputId')!=claim.get('inputRequestId')
+        or receipt.get('messageId')!=receipt.get('inputId') or not value.get('admissionId')):
+        raise ProjectFault('The original retry input has no confirmed live Goal source boundary.',409)
+    identity(receipt['inputId']);identity(value['admissionId'])
+    return {**receipt,'claimSha256':digest(claim)}
 
 
 def supported(store,run):

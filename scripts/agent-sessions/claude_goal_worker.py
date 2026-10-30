@@ -2,7 +2,7 @@
 import asyncio
 import time
 
-from claude_goal import GoalJournal
+from claude_goal import GoalJournal, live_source_input
 from goal_clock import GoalClock
 from run_store import event, item
 
@@ -57,9 +57,9 @@ class ClaudeGoalRuntime:
              'status': 'completed' if result['success'] else 'denied', 'output': result['output'], 'error': result.get('error')})
         return {'content': [{'type': 'text', 'text': __import__('session_store').encode(result)}], 'isError': not result['success']}
 
-    async def result(self, native):
+    async def result(self, native, reported=None):
         if self.live and not self.begun:
-            self.control.source_result(native);return True
+            self.control.source_result(native,reported);return True
         if self.control:await self.control.drain()
         continuing=self.journal.result(native)
         from claude_goal_store import project
@@ -97,7 +97,7 @@ class ClaudeGoalRuntime:
         elif self.live:
             source=value['liveSource']
             if source['result'] and source['inputConfirmed']:
-                return self.journal.binding['requestId'],source['result']['id']
+                return source['result'].get('inputId',self.journal.binding['requestId']),source['result']['id']
         return None
 
     def unsubmitted_after_result(self):
@@ -116,7 +116,7 @@ class ClaudeGoalRuntime:
         if self.live:
             native=receipt.get('liveGoal') or {};source=value['liveSource']
             if (native.get('executionId')!=self.journal.spec['executionId']
-                or native.get('sourceInputRequestId')!=self.journal.binding['requestId']
+                or native.get('sourceInputRequestId')!=live_source_input(self.journal.binding)
                 or not source['result'] or native.get('sourceResultId')!=source['result']['id']
                 or native.get('inputSubmitted') is not True):return False
         return True
@@ -145,11 +145,12 @@ class ClaudeGoalRuntime:
                     # Require a positive original result and explicit native proof.
                     source_bound=(source['result'] and source['inputConfirmed']
                         and receipt.get('resultId')==source['result']['id']
+                        and receipt.get('resultInputRequestId')==live_source_input(self.journal.binding)
                         and receipt.get('nativeSessionId')==self.journal.binding['nativeSessionId']
                         and receipt.get('studioRequestId')==self.journal.binding['requestId'])
                     no_input=bool(source_bound and (
                         native.get('executionId')==self.journal.spec['executionId']
-                        and native.get('sourceInputRequestId')==self.journal.binding['requestId']
+                        and native.get('sourceInputRequestId')==live_source_input(self.journal.binding)
                         and native.get('sourceResultId')==source['result']['id'] and native.get('inputSubmitted') is False
                         or source['armRefused'] and not source['armed'] and not source['beginSent'] and not native))
                 else:

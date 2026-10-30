@@ -218,7 +218,7 @@ class ClaudeWorker(Worker):
                     {'text':failure['text'],'providerError':{**{k:v for k,v in failure.items() if k!='text'},
                         'nativeResultId':native['uuid'],'nativeInputRequestIds':identity.get('nativeInputRequestIds',[])}})
             if await self.claude_retry.result(frame):return
-            if self.claude_goal and await self.claude_goal.result(native):return
+            if self.claude_goal and await self.claude_goal.result(native,identity):return
             if self.live_control:self.live_control.close_intent()
             if self.stopping:
                 if self.outcome not in ('completed','failed'):self.outcome='unknown' if self.uncertain_effect else 'interrupted'
