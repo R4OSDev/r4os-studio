@@ -124,6 +124,16 @@ class ClaudeWorker(Worker):
                         self.items[call]=value;item(self.store,self.session_id,self.run_id,value)
         elif kind=='system' and native.get('subtype')=='compact_boundary':
             event(self.store,self.session_id,self.run_id,'notice',{'text':'Claude compacted its original native conversation.'})
+        elif kind=='rate_limit_event':
+            from claude_limits_policy import event_sample
+            try:observation=event_sample(native.get('rate_limit_info'))
+            except (ValueError,OverflowError,OSError):
+                observation={'schema':1,'source':'claude-code-2.1.312/sdk-0.3.312/rate_limit_event',
+                    'receivedAt':__import__('session_store').now(),'status':'unavailable','scope':None,
+                    'usedPercent':None,'resetsAt':None,'overageEnabled':None,'usingOverage':False}
+            observation.update(studioSessionId=self.session_id,providerId=self.config['providerId'],runId=self.run_id)
+            observation['accountIdentity']=self.config.get('claudeProvider',{}).get('accountIdentity')
+            event(self.store,self.session_id,self.run_id,'claudeQuota',observation)
         elif kind=='result':
             self.native_result=native
             if not self.stopping:

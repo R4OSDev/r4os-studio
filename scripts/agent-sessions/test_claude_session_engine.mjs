@@ -57,6 +57,7 @@ await test('idle initialization submits no model message and cannot bypass the s
     assert.equal(f.options.settings.precomputeCompactionEnabled, false);
     assert.deepEqual(f.options.disallowedTools, ['Read', 'Bash', 'Agent', 'CronCreate']);
     assert.equal(f.options.env.ANTHROPIC_API_KEY, undefined); assert.equal(f.options.env.ANTHROPIC_AUTH_TOKEN, undefined);
+    assert.equal(f.options.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
     assert.equal(f.options.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, '1'); assert.equal(f.options.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1');
     assert.equal(f.options.env.CLAUDE_CODE_DISABLE_CRON, '1'); assert.equal(f.options.sessionId, f.frozen.nativeSessionId);
     assert.equal(f.options.persistSession, true); assert.equal(f.options.mcpServers.studio.command, '/usr/bin/python3');

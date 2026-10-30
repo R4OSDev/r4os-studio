@@ -199,7 +199,7 @@ class Host:
                 await self.handle({'operation':'cancel_provider','providerId':ident})
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
             return result
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
@@ -216,6 +216,7 @@ class Host:
                         raise ProjectFault('Reconcile or finish original bound workers before changing Claude authentication. No worker was stopped.',409)
                     return await self.claude_auth.start(ident,request.get('input'),request.get('owner'))
             if action=='auth_receipt':return self.claude_auth.view(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
+            if action=='limits':return await asyncio.to_thread(self.claude_auth.store.latest_limits,identity(request.get('id')))
             if action=='auth_code':return await self.claude_auth.submit(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'),request.get('code'))
             if action=='auth_cancel':return await self.claude_auth.cancel(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
             if action=='runtime':
@@ -229,6 +230,22 @@ class Host:
                 async with self.claude_probe_lock:
                     return await probe(self.config['providers'],self.root,request.get('requestId'))
             raise ProjectFault('Unsupported Claude provider operation.',400)
+        if op=='session_claude_limits':
+            kind,ident=binding(request);store=self.store(ident,kind)
+            try:
+                session=store.get(identity(request['sessionId']))
+                if session['engine'].get('kind')!='claude-code':return {'limits':None,'observation':None}
+                from claude_history import ClaudeHistory
+                from claude_provider_store import account_identity
+                original=ClaudeHistory(store,session['id']).get()
+                provider=self.claude_auth.store.get(session['providerId'])
+                if account_identity(provider['account'])!=original['accountIdentity']:
+                    return {'limits':None,'observation':None}
+                latest=store.db.execute("SELECT payload FROM events WHERE session_id=? AND kind='claudeQuota' ORDER BY seq DESC LIMIT 1",(session['id'],)).fetchone()
+                observed=json.loads(latest[0]) if latest else None
+                if observed and observed.get('accountIdentity')!=original['accountIdentity']:observed=None
+                return {'limits':self.claude_auth.store.latest_limits(session['providerId']),'observation':observed,'providerRevision':provider['revision']}
+            finally:store.close()
         if op in ('session_delete_preview','session_delete','session_delete_receipt'):
             import session_delete
             kind,ident=binding(request);sid=identity(request['sessionId'])

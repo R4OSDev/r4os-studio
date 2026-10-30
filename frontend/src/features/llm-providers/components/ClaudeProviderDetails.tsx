@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { ClaudeSubscriptionProvider, ClaudeProviderMutation, ClaudeRuntimeStatus, ClaudeAuthOperation, ClaudeAuthAction } from '../../../../../shared/claude-subscription';
 import type { ProviderApi } from '../useProviders';
+import type { ClaudeSubscriptionLimits } from '../../../../../shared/claude-subscription';
+import { ClaudeLimitsView } from './ClaudeLimitsView';
 
 const base = '/claude-subscriptions';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -64,10 +66,18 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
   const inflight = useRef(false), mounted = useRef(true);
   const generation = useRef(0);
   const runtime = useRuntime(api), request = api.request, reload = api.reload;
+  const [limits, setLimits] = useState<ClaudeSubscriptionLimits | null>(null);
+  useEffect(() => {
+    let active = true;
+    void request<{ limits: ClaudeSubscriptionLimits | null }>(`${base}/${provider.id}/limits`)
+      .then(value => { if (active) setLimits(value.limits); }).catch(() => { if (active) setLimits(null); });
+    return () => { active = false; };
+  }, [provider.id, provider.revision, request]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const accept = useCallback((value: ClaudeAuthOperation) => {
     if (!mounted.current) return;
     setOperation(value); setObserved(value.provider); setError('');
+    if (value.limits) setLimits(value.limits);
     if (!['pending', 'waiting'].includes(value.state)) { setCode(''); void reload(); }
   }, [reload]);
   const read = useCallback(async () => {
@@ -101,6 +111,7 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
   return <div className="provider-card">
     <div className="provider-card-heading"><div><h2>{provider.name}</h2><p>Claude subscription</p></div><span className={`provider-status ${provider.status === 'connected' ? 'connected' : ''}`}>{labels[provider.status]}</span></div>
     <Runtime {...runtime} />
+    <ClaudeLimitsView sample={limits} revision={provider.revision} />
     {provider.account && <dl className="claude-account"><div><dt>Account</dt><dd>{provider.account.email}</dd></div><div><dt>Plan</dt><dd>{provider.account.plan.toUpperCase()}</dd></div><div><dt>Organization</dt><dd>{provider.account.orgName || provider.account.orgId}</dd></div><div><dt>Native status checked</dt><dd>{new Date(provider.account.checkedAt).toLocaleString()}</dd></div></dl>}
     <p className="field-help">Model access will be available after the native session, tool and subscription limit checks are complete.</p>
     {error && <p role="alert" className="provider-alert">{error}</p>}
@@ -114,6 +125,7 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
     <div className="provider-actions">
       <button type="button" className="button-primary" disabled={busy || running || !runtime.runtime} onClick={() => void act('connect')}>{provider.status === 'not-connected' ? 'Connect Claude' : 'Reconnect'}</button>
       <button type="button" className="button-secondary" disabled={busy || running || !runtime.runtime} onClick={() => void act('status')}>Check provider status</button>
+      <button type="button" className="button-secondary" disabled={busy || running || provider.status !== 'connected' || !runtime.runtime} onClick={() => void act('limits')}>Check subscription limits</button>
       {running && <button type="button" className="button-secondary" disabled={busy} onClick={() => void control('cancel')}>Cancel sign-in</button>}
       {pending && <button type="button" className="button-secondary" disabled={busy} onClick={() => void read()}>Read original request</button>}
       {provider.status !== 'not-connected' && <button type="button" className="button-secondary" disabled={busy || running} onClick={() => setConfirmDisconnect(true)}>Disconnect</button>}

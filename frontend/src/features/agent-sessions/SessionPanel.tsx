@@ -1,5 +1,7 @@
 import { EnvironmentNotes } from './EnvironmentNotes';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
+import { SessionClaudeLimits } from './SessionClaudeLimits';
+import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
@@ -33,6 +35,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const { request: projectRequest, base: apiBase, scope } = useSessionApi();
   const base = sessionPath(projectId, sessionId);
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
+  const [claudeQuota, setClaudeQuota] = useState<ClaudeRateObservation | null>(null);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
   const [connection, setConnection] = useState('Connecting'), [stopping, setStopping] = useState(false);
   const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
@@ -105,6 +108,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       }
       if (event.kind === 'run') { setSession((s) => s ? { ...s, latestRun: event.payload as AgentRun } : s); changed(); }
       if (event.kind === 'environmentNotes') observeNotes(event.payload as { revision: number; count: number });
+      if (event.kind === 'claudeQuota') setClaudeQuota(event.payload as ClaudeRateObservation);
       if (event.kind === 'goal') observeGoal(event.payload as SessionGoal);
       if (event.kind === 'notice') {
         const notice = event.payload as { text: string };
@@ -173,6 +177,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
+    {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={projectSession ? 0 : undefined}
       onWheel={projectSession ? transcript.onWheel : undefined}
       onScroll={projectSession ? transcript.onScroll : (e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>

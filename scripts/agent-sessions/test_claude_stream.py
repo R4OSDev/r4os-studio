@@ -39,5 +39,11 @@ class NativeStream(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([i['text'] for i in values],['First block','Second block'])
         self.assertTrue(all(i['status']=='completed' for i in values))
         self.assertTrue(all(i['nativeOrigin']['nativeSessionId']==native and i['nativeOrigin']['nativeTurnId'] is None for i in values))
+        await observe({'type':'rate_limit_event','rate_limit_info':{'status':'allowed_warning','utilization':0.75,
+            'resetsAt':1793362800,'rateLimitType':'five_hour'}})
+        quota=json.loads(worker.store.db.execute("SELECT payload FROM events WHERE kind='claudeQuota'").fetchone()[0])
+        self.assertEqual(quota['usedPercent'],75);self.assertEqual(quota['studioSessionId'],f.sid)
+        self.assertEqual(quota['providerId'],f.provider)
+        self.assertNotEqual(get_run(worker.store,run['id'])['state'],'failed')
         with self.assertRaises(ValueError):
             await worker.observe({'identity':{'nativeSessionId':str(uuid.uuid4())},'native':{'type':'result'}})

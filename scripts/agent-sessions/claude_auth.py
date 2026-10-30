@@ -154,28 +154,53 @@ class ClaudeAuth:
 
     async def run(self,ident,job,result):
         rid=result['requestId'];state='failed';message='The native Claude authentication request failed. Existing credentials were preserved.'
-        status=None;account=None
+        status=None;account=None;usage=None
         try:
             runtime=await asyncio.to_thread(installed,self.store.parent);root=auth_home(self.store,ident)
             action=result['action']
-            if action!='status':
+            if action not in ('status','limits'):
                 _,code=await self.execute(job,command(runtime,root,action),action=='connect')
                 if code!=0:raise ValueError()
             raw,code=await self.execute(job,command(runtime,root,'status'))
             status,account,message=status_result(raw,code)
+            if action=='limits' and status=='connected':
+                from claude_limits_command import limits_command
+                try:
+                    output,usage_code=await self.execute(job,limits_command(runtime,root,rid))
+                    report=json.loads(output)
+                    if (usage_code!=0 or report.get('schema')!=1 or report.get('requestId')!=rid
+                        or report.get('nativeVersion')!=runtime['version'] or report.get('sdkVersion')!=runtime['sdkVersion']
+                        or report.get('promptMessagesSubmitted')!=0):raise ValueError()
+                    sdk_account=report.get('account')
+                    if (not isinstance(sdk_account,dict) or sdk_account.get('apiProvider')!='firstParty'
+                        or sdk_account.get('email')!=account['email'] or sdk_account.get('apiKeySource') not in (None,'none')
+                        or sdk_account.get('tokenSource') not in (None,'claude.ai')
+                        or {'Claude Pro':'pro','Claude Max':'max','pro':'pro','max':'max'}.get(sdk_account.get('subscriptionType'))!=account['plan']):raise ValueError()
+                    usage=report.get('usage')
+                    after,after_code=await self.execute(job,command(runtime,root,'status'))
+                    after_status,after_account,_=status_result(after,after_code)
+                    from claude_provider_store import account_identity
+                    if after_status!='connected' or account_identity(after_account)!=account_identity(account):
+                        usage=None;status=after_status;account=after_account
+                    message='Native subscription limits checked. Missing windows and unconfirmed extra usage remain unavailable.'
+                except (ValueError,TypeError,asyncio.TimeoutError,OSError):
+                    await self.kill(job)
+                    message='Native subscription usage is unavailable. No model prompt was submitted.'
             auth_home(self.store,ident)
             if action=='disconnect' and status!='not-connected':raise ValueError()
             state='complete'
         except asyncio.CancelledError:
             state='cancelled';message='Native sign-in cancelled. Explicitly check status before using this provider.';status='reauthentication-required';account=None
+            if result['action']=='limits':status=None;message='Native usage check cancelled. No model prompt was submitted.'
         except asyncio.TimeoutError:
             state='expired';message='The native authentication deadline elapsed. Explicitly check status before trying again.';status='reauthentication-required';account=None
+            if result['action']=='limits':status=None;message='The native usage check deadline elapsed. No model prompt was submitted.'
         except (OSError,ValueError,TypeError,ProjectFault):
             status='reauthentication-required';account=None
         finally:
             try:
                 await self.kill(job)
-                self.store.finish(ident,rid,state,message,status,account)
+                self.store.finish(ident,rid,state,message,status,account,usage)
             finally:
                 job['url']=None;job['state']=None;self.jobs.pop(ident,None)
 

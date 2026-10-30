@@ -22,7 +22,8 @@ test('metadata control has empty input, isolated environment, no tools or model-
     configured = values;
     // eslint-disable-next-line require-yield -- the metadata fixture emits no model messages.
     return { async *[Symbol.asyncIterator]() { await closed; }, initializationResult: async () => ({ claude_code_version: '2.1.312' }),
-      supportedModels: async () => [], accountInfo: async () => ({ tokenSource: 'none' }), interrupt: async () => ({ interrupted: false }), close: () => finish() };
+      supportedModels: async () => [], accountInfo: async () => ({ tokenSource: 'none' }), interrupt: async () => ({ interrupted: false }),
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async options => { assert.deepEqual(options, { skipBehaviors: true }); return { rate_limits_available: false, rate_limits: null }; }, close: () => finish() };
   } };
   const control = new ClaudeControl(fake, { executable: '/own/claude', cwd: '/own/empty', home: '/own/home', config: '/own/config' }, request);
   try {
@@ -31,6 +32,8 @@ test('metadata control has empty input, isolated environment, no tools or model-
     assert.deepEqual(configured.options.skills, []); assert.deepEqual(configured.options.plugins, []);
     assert.equal(configured.options.env.ANTHROPIC_API_KEY, undefined); assert.equal(configured.options.env.CLAUDE_CODE_OAUTH_TOKEN, undefined);
     assert.equal(configured.options.env.HTTPS_PROXY, undefined); assert.equal(configured.options.env.DISABLE_AUTOUPDATER, '1'); assert.equal(configured.options.env.HOME, '/own/home');
+    assert.equal(configured.options.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, undefined);
+    assert.equal((await control.control('usage')).value.rate_limits, null);
     assert.equal((await configured.options.canUseTool()).behavior, 'deny');
     await assert.rejects(control.control('turn/start')); await assert.rejects(control.control('thread/resume'));
     assert.equal((await control.control('account')).value.tokenSource, 'none');

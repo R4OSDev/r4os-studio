@@ -25,6 +25,13 @@ await test('Claude native auth requires same-origin browser/CSRF and binds every
     assert.equal((await app.inject(base)).statusCode, 403); assert.equal(calls.length, 0);
     const auth = await app.inject('/api/providers/');
     const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
+    assert.equal((await app.inject(base + '/' + id + '/limits')).statusCode, 403);
+    assert.equal((await app.inject({ url: base + '/' + id + '/limits', headers })).statusCode, 200);
+    assert.equal(calls.at(-1)?.action, 'limits');
+    const quotaInput = { requestId: randomUUID(), revision: 1, action: 'limits' };
+    assert.equal((await app.inject({ method: 'POST', url: base + '/' + id + '/auth', headers: { cookie: headers.cookie }, payload: quotaInput })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: base + '/' + id + '/auth', headers, payload: quotaInput })).statusCode, 200);
+    assert.equal((calls.at(-1)?.input as { action: string }).action, 'limits');
     assert.equal((await app.inject({ url: base, headers })).statusCode, 200);
     for (const extra of [{ origin: 'http://foreign.invalid' }, { host: 'foreign.invalid' }, { 'sec-fetch-site': 'cross-site' }]) {
       assert.equal((await app.inject({ url: base, headers: { ...headers, ...extra } })).statusCode, 403);

@@ -38,8 +38,14 @@ export class ClaudeControl {
       cwd: options.cwd, pathToClaudeCodeExecutable: options.executable,
       env: { PATH: '/usr/bin', HOME: options.home, CLAUDE_CONFIG_DIR: options.config,
         USER: 'r4os-studio', DISABLE_AUTOUPDATER: '1', DISABLE_UPDATES: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
-        DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' },
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_DISABLE_CLAUDE_MDS: '1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+        CLAUDE_CODE_DISABLE_CRON: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1', CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1',
+        // The pinned native usage control is a first-party Data API request;
+        // NONESSENTIAL_TRAFFIC would block it before HTTP. Keep the specific
+        // telemetry/report/update exclusions instead of claiming quota proof.
+        DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1' },
       tools: [], disallowedTools: [...sdk.BUILTIN_TOOL_NAMES], settingSources: [], skills: [], plugins: [], mcpServers: {},
+      settings: { precomputeCompactionEnabled: false },
       strictMcpConfig: true, permissionMode: 'dontAsk', persistSession: false, includePartialMessages: true,
       canUseTool: async () => ({ behavior: 'deny', message: 'This control adapter authorizes no model tools.' }), stderr: () => {},
     } });
@@ -62,11 +68,12 @@ export class ClaudeControl {
   }
   async control(operation) {
     if (this.closed || this.failed || this.pending) throw Error('The original Claude control is unavailable or busy.');
-    const methods = { initialize: 'initializationResult', models: 'supportedModels', account: 'accountInfo', interrupt: 'interrupt' };
+    const methods = { initialize: 'initializationResult', models: 'supportedModels', account: 'accountInfo', interrupt: 'interrupt',
+      usage: 'usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET' };
     if (typeof operation !== 'string' || !Object.hasOwn(methods, operation)) throw Error('This adapter does not authorize a model turn or unknown control.');
     this.pending = true; let timer;
     try {
-      const value = await Promise.race([this.query[methods[operation]](), new Promise((_, reject) => {
+      const value = await Promise.race([operation === 'usage' ? this.query[methods[operation]]({ skipBehaviors: true }) : this.query[methods[operation]](), new Promise((_, reject) => {
         timer = setTimeout(() => reject(Error('The original Claude control timed out.')), 12000);
       })]);
       if (this.failed || this.closed) throw Error('The original native stream is unavailable.');

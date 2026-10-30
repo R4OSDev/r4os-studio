@@ -13,7 +13,7 @@ export interface ClaudeProviderCreate { requestId: string; name: string }
 export interface ClaudeProviderMutation {
   requestId: string; state: 'complete'; provider: ClaudeSubscriptionProvider;
 }
-export type ClaudeAuthAction = 'connect' | 'status' | 'disconnect';
+export type ClaudeAuthAction = 'connect' | 'status' | 'disconnect' | 'limits';
 export interface ClaudeAuthRequest { requestId: string; revision: number; action: ClaudeAuthAction }
 export interface ClaudeAuthOperation {
   requestId: string; providerId: string; action: ClaudeAuthAction; revision: number;
@@ -21,6 +21,19 @@ export interface ClaudeAuthOperation {
   message: string | null; createdAt: string; updatedAt: string; provider: ClaudeSubscriptionProvider;
   /** Present only in the initiating live browser session, never persisted. */
   authorizationUrl?: string; expiresInSeconds?: number;
+  limits?: ClaudeSubscriptionLimits;
+}
+export interface ClaudeSubscriptionLimits {
+  schema: 1; source: string; receivedAt: string; providerId: string; providerRevision: number;
+  accountIdentity: string | null; requestId: string; plan: 'pro' | 'max' | null;
+  coverage: 'available' | 'partial' | 'unavailable'; extraUsageEnabled: boolean | null; message: string;
+  windows: { id: string; label: string; scope: string; usedPercent: number | null; remainingPercent: number | null; resetsAt: string | null }[];
+}
+export interface ClaudeRateObservation {
+  studioSessionId: string; providerId: string; runId: string; accountIdentity: string | null;
+  schema: 1; source: string; receivedAt: string; status: 'allowed' | 'allowed_warning' | 'rejected' | 'unavailable';
+  scope: string | null; usedPercent: number | null; resetsAt: string | null;
+  overageEnabled: boolean | null; usingOverage: boolean;
 }
 export interface ClaudeRuntimeStatus {
   id: string; version: string; sdkVersion: string; sha256: string; sdkArchiveSha256: string;

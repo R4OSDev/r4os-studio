@@ -1,3 +1,13 @@
+## Native Claude subscription observations (0.8.21, partial acceptance)
+
+Provider and compact session views now show native quota windows, remaining
+percentages, local reset/countdown and explicit stale/unknown coverage.
+Original protected metadata requests use the pinned native SDK with no model
+prompt or token-based quota estimate. Actual isolated usage/warning protocols
+and browser checks qualify these observations. Shared limit stopping and the
+final overage/model/lifecycle gate remain open; model admission stays closed.
+Details: [Claude-Limits.md](Claude-Limits.md).
+
 ## Native Claude sessions and Studio tools (0.8.20)
 
 Persistent native project/skill workers now reuse the existing Studio tool

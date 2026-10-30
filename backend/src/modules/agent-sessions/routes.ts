@@ -80,6 +80,10 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     security.session(request, reply);
     return { session: await sessionStore<AgentSession>(directory, { operation: 'get', ...owner(request.params.id), sessionId: request.params.sessionId }, providers) };
   });
+  app.get<{ Params: SessionParams }>(route + '/:sessionId/claude-limits', { schema: { params } }, async (request, reply) => {
+    security.session(request, reply);
+    return agentHost({ operation: 'session_claude_limits', ...owner(request.params.id), sessionId: request.params.sessionId });
+  });
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     preValidation: async (request) => {
       if (request.body && Object.hasOwn(request.body, 'environmentNotesEnabled') && typeof request.body.environmentNotesEnabled !== 'boolean') throw new ProjectError('Environment notes must be a boolean setting.',400);
