@@ -61,6 +61,7 @@ export class ClaudeSessionEngine {
   constructor(sdk, options, frozen, host) {
     this.binding = binding(frozen); this.host = host; this.inputs = new Inputs(); this.grants = new Map();
     this.state = 'initializing'; this.sent = false; this.result = null; this.error = null;
+    this.requireInputReceipt = options.requireInputReceipt === true; this.inputAccepted = false;
     if (!host || !['authorize', 'receive', 'admit', 'closeAdmission'].every(k => typeof host[k] === 'function')
       || typeof options.systemPrompt !== 'string' || Buffer.byteLength(options.systemPrompt) > 131072
       || !['new', 'resume'].includes(options.mode) || options.mode === 'resume' && options.historyConfirmed !== true) {
@@ -79,6 +80,7 @@ export class ClaudeSessionEngine {
       cwd: options.cwd, pathToClaudeCodeExecutable: options.executable, env: sessionEnvironment(options),
       ...(options.mode === 'new' ? { sessionId: this.binding.nativeSessionId, title: 'Studio session' } : { resume: this.binding.nativeSessionId }),
       persistSession: true, model: this.binding.model, systemPrompt: { type: 'custom', prompt: options.systemPrompt, snapshot: true },
+      ...(this.requireInputReceipt ? { extraArgs: { 'replay-user-messages': null } } : {}),
       ...(options.effort ? { effort: options.effort } : {}),
       tools: [], disallowedTools: [...sdk.BUILTIN_TOOL_NAMES], settingSources: [], skills: [], plugins: [], agents: {},
       settings: { precomputeCompactionEnabled: false },
@@ -87,7 +89,7 @@ export class ClaudeSessionEngine {
       hooks: { PreToolUse: [{ hooks: [input => this.beforeTool(input)] }] },
       canUseTool: async (name, input, details) => {
         const grant = this.grants.get(details.toolUseID), tool = mcpTool(name);
-        if (this.state === 'active' && tool && this.tools.has(tool) && details.mcpServer?.name === 'studio'
+        if (this.state === 'active' && (!this.requireInputReceipt || this.inputAccepted) && tool && this.tools.has(tool) && details.mcpServer?.name === 'studio'
           && details.mcpServer.source === 'dynamic' && !details.agentID && grant?.tool === tool && grant.hash === fingerprint(input)) {
           return { behavior: 'allow', updatedInput: input };
         }
@@ -103,7 +105,7 @@ export class ClaudeSessionEngine {
     const args = tool && this.enveloped.has(tool) ? wireInput && Object.keys(wireInput).length === 1
       && Object.hasOwn(wireInput, 'request') ? wireInput.request : null : wireInput;
     let allowed = false;
-    if (this.state === 'active' && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
+    if (this.state === 'active' && (!this.requireInputReceipt || this.inputAccepted) && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
       && tool && this.tools.has(tool) && opaque(input.tool_use_id) && !input.agent_id
       && input.mcp_server?.name === 'studio' && input.mcp_server.source === 'dynamic'
       && args && typeof args === 'object' && !Array.isArray(args) && bounded(args, 131072)) {
@@ -163,6 +165,7 @@ export class ClaudeSessionEngine {
       throw Error('The original native subscription/limit admission is unavailable. No model prompt was submitted.');
     }
     this.sent = true; this.state = 'active';
+    this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
     this.inputs.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null,
       uuid: this.binding.requestId, session_id: this.binding.nativeSessionId, origin: { kind: 'human' }, client_composed: true });
   }
@@ -181,13 +184,29 @@ export class ClaudeSessionEngine {
         const parts = Array.isArray(message.message?.content) ? message.message.content : [];
         const identity = messageIdentity({ type: message.type, subtype: message.subtype, session_id: message.session_id,
           uuid: message.uuid, parent_tool_use_id: message.parent_tool_use_id,
+          user_message_uuid: message.user_message_uuid, user_message_uuids: message.user_message_uuids,
           event: { message: { id: message.event?.message?.id } },
           message: message.message ? { id: message.message.id, content: parts.filter(v => v?.type === 'tool_use').map(v => ({ type: v.type, id: v.id, name: v.name })) } : undefined }, this.binding.requestId);
-        if (identity.nativeSessionId && identity.nativeSessionId !== this.binding.nativeSessionId || message.parent_tool_use_id != null
+        if (message.type === 'user' && message.isReplay === true && message.uuid === this.binding.requestId) {
+          const content = message.message?.content;
+          const text = typeof content === 'string' ? content : Array.isArray(content) && content.length === 1 && content[0]?.type === 'text' ? content[0].text : null;
+          if (!this.sent || message.isSynthetic === true || message.parent_tool_use_id != null || message.message?.role !== 'user'
+            || typeof text !== 'string' || createHash('sha256').update(text).digest('hex') !== this.inputTextSha256
+            || identity.nativeInputRequestIds.some(id => id !== this.binding.requestId)) {
+            throw Error('The native input echo does not match the original submitted text.');
+          }
+          identity.nativeInputRequestIds = [message.uuid];
+          identity.nativeInputReceiptKind = 'stdinEcho';
+          identity.nativeInputTextSha256 = this.inputTextSha256;
+        }
+        if (identity.nativeInputRequestIds.some(id => id !== this.binding.requestId)
+          || identity.nativeSessionId && identity.nativeSessionId !== this.binding.nativeSessionId || message.parent_tool_use_id != null
           || message.resume_reason || ['assistant', 'stream_event', 'result'].includes(message.type)
             && this.state !== 'active' && !(this.state === 'stopping' && this.sent)) {
           throw Error('Native Claude produced an unbound, resumed or autonomous turn.');
         }
+        if (identity.nativeInputRequestIds.length && (['assistant','stream_event','result'].includes(message.type)
+          || identity.nativeInputReceiptKind === 'stdinEcho')) this.inputAccepted = true;
         await this.host.receive({ binding: this.binding, identity, native: message });
         if (message.type === 'result') {
           this.result = message; this.state = 'completed'; this.grants.clear(); this.inputs.close();

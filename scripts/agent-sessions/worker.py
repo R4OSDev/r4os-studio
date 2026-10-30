@@ -217,7 +217,7 @@ class Worker:
             return await output({'success': False, 'error': 'invalidCall', 'output': 'This call does not belong to the active Studio run.'})
         return await self.bound_tool(name,params['arguments'],params['callId'])
 
-    async def bound_tool(self,name,arguments,call_id,output=None):
+    async def bound_tool(self,name,arguments,call_id,output=None,admission_error=None):
         """Common Studio receipts/effects after an engine proves its own binding."""
         if output is None:
             async def output(result,image_data=None):return await self.development.native_output(result,image_data)
@@ -276,6 +276,8 @@ class Worker:
         tool_id = name.replace('studio_', 'studio.', 1)
         if admission_closed:
             result = {'success': False, 'error': 'interrupted', 'output': 'The run is stopping.'}
+        elif admission_error is not None:
+            result = admission_error
         elif roadmap_denial:
             result = {'success': False, 'error': 'disabled', 'output': roadmap_denial}
         elif name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS) and not self.config['permissions'].get(tool_id, False):

@@ -6,6 +6,14 @@ const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-
 const identifier = value => typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= 256
   // eslint-disable-next-line no-control-regex -- native identifiers are opaque but cannot carry controls.
   && !/[\x00-\x20\x7f\ud800-\udfff]/u.test(value);
+function inputRequestIds(message) {
+  const primary = message.user_message_uuid, values = message.user_message_uuids;
+  if (primary != null && !uuid(primary) || values != null && (!Array.isArray(values) || values.length > 64 || values.some(value => !uuid(value)))) {
+    throw Error('Native Claude input identities are invalid.');
+  }
+  if (primary != null && values != null && !values.includes(primary)) throw Error('Native Claude input identities conflict.');
+  return [...new Set(values ?? (primary == null ? [] : [primary]))];
+}
 export function messageIdentity(message, studioRequestId) {
   if (!uuid(studioRequestId) || !message || typeof message !== 'object' || Array.isArray(message)
     || typeof message.type !== 'string' || message.type.length > 80 || Buffer.byteLength(JSON.stringify(message)) > MAX_MESSAGE) throw Error('Invalid native Claude message.');
@@ -16,6 +24,7 @@ export function messageIdentity(message, studioRequestId) {
   const tools = Array.isArray(content) ? content.filter(part => part && typeof part === 'object' && part.type === 'tool_use') : [];
   if (tools.some(part => !identifier(part.id) || !identifier(part.name))) throw Error('Native Claude tool identity is invalid.');
   return { studioRequestId, nativeSessionId: session ?? null,
+    nativeInputRequestIds: inputRequestIds(message),
     nativeMessageId: identifier(message.uuid) ? message.uuid : null,
     providerMessageId: identifier(provider) ? provider : null,
     nativeTurnId: null, nativeToolUseId: identifier(message.parent_tool_use_id) ? message.parent_tool_use_id : null,

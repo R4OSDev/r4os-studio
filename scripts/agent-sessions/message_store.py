@@ -111,8 +111,9 @@ class Messages:
                     raise ProjectFault('This request ID belongs to a different message.', 409)
                 return self.present(previous), False
             session = self.store.get(sid)
-            if session['engine'].get('kind')=='claude-code':
-                raise ProjectFault('Queue and direct-message handoff are not qualified for this native Claude runtime. Your input was preserved; wait for the current run and send explicitly.',409)
+            claude=session['engine'].get('kind')=='claude-code'
+            if claude and data['mode']=='steer':
+                raise ProjectFault('Direct Claude messages are not qualified. Queue this input to continue on the same native session after the original run ends.',409)
             if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.', 409)
             if data['mode'] == 'steer':
                 run = self.store.db.execute('SELECT * FROM runs WHERE id=? AND session_id=? AND busy=1', (target['runId'], sid)).fetchone()
@@ -134,9 +135,14 @@ class Messages:
             from run_store import capture_input
             run_input = {k: v for k, v in data.items() if k not in ('mode', 'target')}
             run_input.update(capabilities or {})
+            queue_context=None
+            if claude:
+                from claude_messages import context
+                queue_context=context(self.store,sid,provider_dir)
             if data['mode'] == 'steer': config, attachments = json.loads(run['config']), []
-            else: config, attachments, _ = capture_input(self.store, sid, run_input, provider_dir, image_capability)
+            else: config, attachments, _ = capture_input(self.store, sid, run_input, provider_dir, image_capability,queued_claude=queue_context)
             frozen = {'config': config, 'runInput': run_input, 'attachments': attachments}
+            if queue_context is not None: frozen['claudeQueue']=queue_context
             frozen_raw = encode(frozen)
             charge = len(raw.encode()) + len(frozen_raw.encode())
             if size + charge > MAX_BYTES: raise ProjectFault('The frozen message queue reached its storage limit. Your input was preserved.', 429)

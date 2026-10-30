@@ -48,7 +48,7 @@ def get_run(store, run_id):
     return row
 
 
-def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None):
+def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None):
     """Freeze a complete accepted selection without admitting a concurrent run."""
     session = store.get(session_id)
     goal_mode = data.get('mode') == 'goal'
@@ -122,7 +122,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     from api_models import freeze as freeze_api
     freeze_api(store,session_id,data,provider_dir,snapshot)
     from claude_selection import freeze as freeze_claude
-    freeze_claude(store,session_id,data,provider_dir,snapshot)
+    freeze_claude(store,session_id,data,provider_dir,snapshot,queue_context=queued_claude)
     return snapshot, attachments, request_hash
 
 

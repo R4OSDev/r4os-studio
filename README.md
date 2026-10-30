@@ -1,3 +1,12 @@
+## Claude queued follow-ups (0.8.47)
+
+Claude text follow-ups use the common queue, unchanged frozen selection and
+same native session after the original worker closes. Acceptance requires an
+actual native input receipt; local submission and metadata tags do not qualify.
+Stop/Unknown, changed bindings and coordinator recovery hold further dispatch.
+Direct steering/retry, GOAL and actual account acceptance remain open. Public
+model admission stays gated. Details: [Claude-Queue.md](Claude-Queue.md).
+
 ## Claude input/cache statistics (0.8.46)
 
 Completed native response IDs now feed confirmed Claude input/cache counters

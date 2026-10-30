@@ -32,6 +32,8 @@ class ClaudeWorker(Worker):
         self.admission_denial=None
         from claude_input_usage import InputUsage
         self.input_usage=InputUsage(self)
+        from claude_messages import queued
+        self.queued_input=queued(self);self.input_receipt=asyncio.Event()
 
     async def admit_native(self,binding,account,usage):
         from claude_admission import admit
@@ -61,6 +63,12 @@ class ClaudeWorker(Worker):
         return {'content':content,'isError':not result['success']}
 
     async def effect(self,name,arguments,call_id):
+        admission_error=None
+        if self.queued_input and not self.input_receipt.is_set():
+            try:await asyncio.wait_for(self.input_receipt.wait(),2)
+            except asyncio.TimeoutError:
+                admission_error={'success':False,'error':'inputUnconfirmed',
+                    'output':'The original Claude input ID is not confirmed. No Studio tool was executed.'}
         async def output(result,image_data=None):
             # A resumed native call can reuse an original receipt from an older
             # run. Publish its confirmed UI result without executing it again.
@@ -75,7 +83,7 @@ class ClaudeWorker(Worker):
                     if key in result:value[key]=result[key]
                 self.items[call_id]=value;item(self.store,self.session_id,self.run_id,value)
             return await self.mcp_output(result,image_data)
-        return await self.bound_tool(name,arguments,call_id,output)
+        return await self.bound_tool(name,arguments,call_id,output,admission_error=admission_error)
 
     async def command(self,operation,**fields):
         if not self.native or self.native.returncode is not None:raise RuntimeError('The original native process is unavailable.')
@@ -97,6 +105,8 @@ class ClaudeWorker(Worker):
     async def observe(self,frame):
         native=frame['native'];kind=native['type'];identity=frame['identity']
         if identity.get('nativeSessionId') not in (None,self.config['engine']['claude']['nativeSessionId']):raise ValueError('Native session changed.')
+        from claude_messages import acknowledge
+        acknowledge(self,frame)
         self.input_usage.notify(native)
         if kind=='stream_event':
             stream=native['event'];event_type=stream.get('type');index=stream.get('index')
@@ -258,6 +268,8 @@ class ClaudeWorker(Worker):
             self.outcome='unknown' if self.sent else ('interrupted' if self.stopping else 'failed')
         finally:
             confirmed=await self.finish_native()
+            from claude_messages import finalize as finish_input
+            finish_input(self)
             if self.credential_lease:
                 from claude_run_leases import ClaudeRunLeases
                 ClaudeRunLeases(self.manifest['providers']).finish_lease(self.credential_lease,self.credential_worker,confirmed or self.native is None)

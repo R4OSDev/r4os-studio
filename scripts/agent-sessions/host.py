@@ -548,6 +548,8 @@ class Host:
                 frozen = json.loads(row['frozen'])
                 if 'config' not in frozen or 'runInput' not in frozen:
                     messages.hold(sid, 'This legacy queued input has no frozen run selection. Remove and submit it explicitly.'); continue
+                from claude_messages import validate_queue
+                validate_queue(store,sid,frozen)
                 from goal_store import Goals, pending
                 goal = Goals(store).snapshot(sid)
                 if pending(store) or goal['phase'] not in ('idle',): continue

@@ -10,6 +10,10 @@ test('native SDK/session/provider/tool identities remain distinct, with no inven
   assert.equal(value.studioRequestId, request); assert.equal(value.nativeSessionId, session);
   assert.equal(value.nativeMessageId, 'native-sdk-message'); assert.equal(value.providerMessageId, 'msg_owned_provider');
   assert.equal(value.nativeTurnId, null); assert.deepEqual(value.toolUses, [{ id: 'toolu_owned', name: 'mcp__studio__write_file' }]);
+  assert.deepEqual(value.nativeInputRequestIds, []);
+  assert.deepEqual(messageIdentity({ ...message, user_message_uuid: request, user_message_uuids: [request] }, request).nativeInputRequestIds, [request]);
+  assert.throws(() => messageIdentity({ ...message, user_message_uuid: 'not-an-input-id' }, request));
+  assert.throws(() => messageIdentity({ ...message, user_message_uuid: request, user_message_uuids: [session] }, request));
   assert.equal(messageIdentity({ type: 'user', session_id: session, message: { content: 'Owned text' } }, request).supportedType, true);
   assert.equal(messageIdentity({ type: 'future-event', own: true }, request).supportedType, false);
   assert.throws(() => messageIdentity({ ...message, session_id: 'foreign-invalid-session' }, request));

@@ -38,9 +38,10 @@ remains unqualified. Details: [Claude-Input-Usage.md](Claude-Input-Usage.md).
 Session cleanup removes private snapshots through the existing scoped deletion
 mechanism while retaining the numeric lifetime receipts.
 
-The SDK has no qualified native Codex GOAL interface. Claude GOAL and queued/
-direct-message handoff are explicitly unavailable until bounded orchestration,
-budgets, original queue receipts and usage coverage are qualified. No Codex
+The SDK has no qualified native Codex GOAL interface. Claude GOAL and direct
+steering remain unavailable pending bounded orchestration and their original
+receipts/budgets. Text queues and native input acknowledgements are integrated
+in0.8.47; see [Claude-Queue.md](Claude-Queue.md). No Codex
 GOAL RPC, automatic retry, restore inference or automatic Play is substituted.
 Public Claude model execution remains disabled by the existing catalog gate.
 

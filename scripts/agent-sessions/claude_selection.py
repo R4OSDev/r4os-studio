@@ -19,13 +19,19 @@ def engine(providers,tool_profile):
         'sha256':runtime['sha256'],'available':True}
 
 
-def freeze(store,sid,data,providers,snapshot):
+def freeze(store,sid,data,providers,snapshot,queue_context=None):
     if snapshot['engine'].get('kind')!='claude-code':return
     provider=ClaudeProviders(providers).get(snapshot['providerId'])
     history=ClaudeHistory(store,sid).get();runtime=history['runtime']
+    queue_live=False
+    if queue_context is not None:
+        from claude_messages import context
+        if context(store,sid,providers)!=queue_context:
+            raise ProjectFault('The original Claude queue selection changed before capture.',409)
+        queue_live=history['phase'] in ('opening','active') and queue_context['source'] is not None
     if (provider['status']!='connected' or provider['runtimeProfileId']!=runtime['runtimeProfileId']
         or account_identity(provider['account'])!=history['accountIdentity'] or not history['accountIdentity']
-        or history['phase'] not in ('allocated','ready')):
+        or history['phase'] not in ('allocated','ready') and not queue_live):
         raise ProjectFault('The original Claude account/history is unavailable or unconfirmed. It was preserved.',409)
     if (data.get('mode')=='goal' or any(snapshot.get(key) for key in
         ('goalExecution','apiProvider','nativeImageGeneration','attachments','webSearchEnabled','fastMode'))):

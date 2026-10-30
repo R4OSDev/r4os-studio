@@ -55,6 +55,8 @@ await test('display projection excludes raw thinking, signatures, images and pri
       { type: 'text', text: 'Visible original text.' }, { type: 'image', source: { data: 'private image bytes' } }] } };
   assert.deepEqual(publicFrame(native).message.content, [{ type: 'text', text: 'Visible original text.' }]);
   assert.equal(publicFrame({ type: 'user', message: { content: [{ type: 'image', source: { data: 'private image bytes' } }] } }), null);
+  const echo = publicFrame({ type:'user',isReplay:true,uuid:randomUUID(),message:{role:'user',content:'private queued text'} });
+  assert.equal(echo.isReplay,true);assert.equal(echo.message,undefined);
   const result = publicFrame({ type: 'result', subtype: 'error_during_execution', errors: ['private provider response'], usage: { input_tokens: 7 } });
   assert.equal(result.errors, undefined); assert.deepEqual(result.usage, { input_tokens: 7 });
   const scoped = publicFrame({ ...native, error: 'private provider failure', message: { ...native.message,
@@ -108,6 +110,28 @@ await test('native session/tool IDs, exact grants, original text and one explici
     await f.engine.interrupt();
     assert.equal((await f.engine.beforeTool(input)).hookSpecificOutput.permissionDecision, 'deny');
     assert.equal(f.interrupts(), 1);
+  } finally { await f.engine.close(); }
+});
+
+await test('queued native tools require the original echoed input ID and foreign echoes fail closed', async () => {
+  const f = fixture({ admit: async ({ binding }) => admission(binding) }, { requireInputReceipt: true });
+  try {
+    await f.engine.initialize(); await f.engine.send('Own queued text'); await tick();
+    assert.deepEqual(f.options.extraArgs, {'replay-user-messages':null});
+    const input = { hook_event_name: 'PreToolUse', session_id: f.frozen.nativeSessionId, tool_name: 'mcp__studio__read_file',
+      tool_use_id: 'own-queued-tool', tool_input: { path: 'own.c' }, mcp_server: { name: 'studio', source: 'dynamic' } };
+    assert.equal((await f.engine.beforeTool(input)).hookSpecificOutput.permissionDecision, 'deny');
+    assert.equal(f.grants.length, 0);
+    f.feed.emit({type:'system',subtype:'status',session_id:f.frozen.nativeSessionId,uuid:randomUUID(),user_message_uuids:[f.frozen.requestId]});
+    await tick();assert.equal(f.engine.inputAccepted,false);
+    f.feed.emit({ type:'user',isReplay:true,uuid:f.frozen.requestId,session_id:f.frozen.nativeSessionId,
+      parent_tool_use_id:null,message:{role:'user',content:'Own queued text'} });
+    await tick(); assert.equal(f.engine.inputAccepted, true);
+    assert.deepEqual(f.received[1].identity.nativeInputRequestIds, [f.frozen.requestId]);
+    assert.equal((await f.engine.beforeTool(input)).hookSpecificOutput.permissionDecision, 'allow');
+    f.feed.emit({ type: 'assistant', uuid: randomUUID(), session_id: f.frozen.nativeSessionId,
+      user_message_uuid: randomUUID(), message: { id: 'own-foreign-input', content: [] } });
+    await tick(); assert.equal(f.engine.state, 'unconfirmed');
   } finally { await f.engine.close(); }
 });
 

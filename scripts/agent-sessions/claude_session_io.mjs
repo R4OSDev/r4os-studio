@@ -7,6 +7,7 @@ import { ClaudeSessionEngine } from './claude_session_engine.mjs';
 
 export function publicFrame(native) {
   const base = { type: native.type, subtype: native.subtype, uuid: native.uuid, session_id: native.session_id, parent_tool_use_id: native.parent_tool_use_id };
+  if (native.type === 'user' && native.isReplay === true) return { ...base, isReplay: true };
   if (native.type === 'assistant') return { ...base, ...(native.error == null ? {} : { error: 'nativeError' }), message: { id: native.message?.id, model: native.message?.model,
     usage: native.message?.usage && typeof native.message.usage === 'object'
       ? Object.fromEntries(['input_tokens','cache_creation_input_tokens','cache_read_input_tokens'].map(key => {
