@@ -43,6 +43,74 @@ function fixture(changes = {}, engineOptions = {}) {
   return { frozen, feed, sent, received, grants, engine, options, interrupts: () => interrupts };
 }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+function echo(f, input) {
+  f.feed.emit({ type: 'user', isReplay: true, uuid: input.uuid, session_id: f.frozen.nativeSessionId,
+    message: { role: 'user', content: input.message.content } });
+}
+const liveOptions = { requireInputReceipt: true, resolvedModel: 'owned-model', liveGoalPreparation: true, tools: ['read_file','report_goal'] };
+await test('live Goal arms without input and begins after the original result in the same query', async () => {
+  let admissions = 0;
+  const f = fixture({ admit: async ({ binding }) => { admissions++; return admission(binding); } }, liveOptions);
+  try {
+    const contract = { executionId: randomUUID(), objective: 'Original separately accepted live objective', maxSteps: 8, maxActiveSeconds: 900 };
+    await f.engine.initialize(); assert.throws(() => f.engine.armGoal(contract)); // No original submitted input.
+    await f.engine.send('Original ordinary source'); await tick();
+    const report = { hook_event_name: 'PreToolUse', session_id: f.frozen.nativeSessionId, tool_name: 'mcp__studio__report_goal',
+      tool_use_id: 'own-live-goal-report', tool_input: { status: 'complete', reason: 'Original check complete.' }, mcp_server: { name: 'studio', source: 'dynamic' } };
+    assert.equal((await f.engine.beforeTool(report)).hookSpecificOutput.permissionDecision, 'deny');
+    const armed = f.engine.armGoal(contract); assert.equal(armed.state, 'waiting');
+    assert.equal(f.engine.inputAccepted, false); // Arming is intent, never input acceptance.
+    assert.deepEqual(f.engine.armGoal(contract), armed); assert.throws(() => f.engine.armGoal({ ...contract, objective: 'Changed goal' }));
+    await assert.rejects(f.engine.beginGoal(contract.executionId)); assert.equal(f.sent.length, 1); assert.equal(admissions, 1);
+    echo(f, f.sent[0]); await tick();
+    const sourceResult = randomUUID(); f.feed.emit({ type: 'result', uuid: sourceResult, session_id: f.frozen.nativeSessionId, subtype: 'success', is_error: false }); await tick();
+    assert.equal(f.engine.state, 'between'); assert.equal(f.sent.length, 1); assert.equal(f.engine.goalStartedAt, null);
+    await f.engine.beginGoal(contract.executionId); await tick();
+    assert.equal(admissions, 2); assert.equal(f.sent.length, 2); assert.equal(f.sent[1].message.content, contract.objective);
+    assert.equal(f.sent[1].uuid, contract.executionId); assert.equal(f.sent[1].origin.kind, 'human');
+    assert.equal(f.sent[1].session_id, f.sent[0].session_id); assert.equal(f.engine.binding.requestId, f.frozen.requestId);
+    assert.equal(f.engine.stepCount, 1); assert.equal(f.engine.modelObserved, false); assert.equal(f.engine.goalStartedAt, null);
+    echo(f, f.sent[1]); await tick(); assert.notEqual(f.engine.goalStartedAt, null);
+    assert.equal((await f.engine.beforeTool(report)).hookSpecificOutput.permissionDecision, 'deny');
+    f.feed.emit({ type: 'stream_event', session_id: f.frozen.nativeSessionId, event: { type: 'message_start', message: { id: 'own-live-goal-response', model: 'owned-model' } } }); await tick();
+    assert.equal((await f.engine.beforeTool(report)).hookSpecificOutput.permissionDecision, 'allow');
+    f.feed.emit({ type: 'result', uuid: randomUUID(), session_id: f.frozen.nativeSessionId, subtype: 'success', is_error: false }); await tick();
+    assert.equal(f.engine.liveSourceResult.uuid, sourceResult); assert.equal(f.sent.length, 2);
+    await assert.rejects(f.engine.beginGoal(contract.executionId));
+  } finally { await f.engine.close(); }
+});
+await test('denied live admission or Stop preserves the completed ordinary result without another input', async () => {
+  for (const stop of [false, true]) {
+    let calls = 0, release;
+    const f = fixture({ admit: async ({ binding }) => ++calls === 1 ? admission(binding) : stop
+      ? await new Promise(resolve => { release = () => resolve(admission(binding)); }) : { allowed: false } }, liveOptions);
+    try {
+      await f.engine.initialize(); await f.engine.send('Own ordinary source'); await tick(); echo(f, f.sent[0]); await tick();
+      const executionId = randomUUID(); f.engine.armGoal({ executionId, objective: 'Own accepted objective', maxSteps: 8, maxActiveSeconds: 900 });
+      const sourceResult = randomUUID(); f.feed.emit({ type: 'result', uuid: sourceResult, session_id: f.frozen.nativeSessionId, subtype: 'success', is_error: false }); await tick();
+      const pending = f.engine.beginGoal(executionId); const rejected = assert.rejects(pending);
+      if (stop) { await tick(); await f.engine.interrupt(); release(); }
+      await rejected; await f.engine.close();
+      assert.equal(f.sent.length, 1); assert.equal(f.interrupts(), 0); assert.equal(f.engine.liveGoalInputSubmitted, false);
+      assert.equal(f.engine.result.uuid, sourceResult); assert.equal(f.engine.goalStartedAt, null); assert.equal(f.engine.error, null);
+    } finally { await f.engine.close(); }
+  }
+});
+await test('unarmed preparation and cancelled or failed source boundaries never start a Goal', async () => {
+  for (const mode of ['unarmed','cancel','failed']) {
+    const f = fixture({ admit: async ({ binding }) => admission(binding) }, liveOptions);
+    try {
+      await f.engine.initialize(); await f.engine.send('Original ordinary source'); await tick(); echo(f, f.sent[0]); await tick();
+      const executionId = randomUUID();
+      if (mode !== 'unarmed') f.engine.armGoal({ executionId, objective: 'Own saved objective', maxSteps: 8, maxActiveSeconds: 900 });
+      const sourceResult = randomUUID(); f.feed.emit({ type: 'result', uuid: sourceResult, session_id: f.frozen.nativeSessionId,
+        subtype: 'success', is_error: mode === 'failed' }); await tick();
+      if (mode === 'failed') { assert.equal(f.engine.activationReceipt().state, 'refused'); await assert.rejects(f.engine.beginGoal(executionId)); }
+      await f.engine.close(); assert.equal(f.sent.length, 1); assert.equal(f.interrupts(), 0);
+      assert.equal(f.engine.liveGoalInputSubmitted, false); assert.equal(f.engine.result.uuid, sourceResult); assert.equal(f.engine.goalStartedAt, null);
+    } finally { await f.engine.close(); }
+  }
+});
 await test('native image content is acknowledged before tools; changed image echo closes admission', async () => {
   const text = 'Own image user λ input', parts = [{ type: 'text', text }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'YWJj' } }];
   for (const changed of [false, true]) {

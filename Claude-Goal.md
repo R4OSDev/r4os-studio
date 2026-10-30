@@ -1,5 +1,12 @@
 # Bounded Studio GOAL controls (0.8.49, partial qualification)
 
+The private same-query transition from an ordinary response to a separately
+authorized Goal is protocol-qualified in0.8.56; see
+[Claude-Live-Goal.md](Claude-Live-Goal.md). It still needs public Save/Play,
+durable live-ledger, recovery and UI integration. Actual Pro-account ordinary
+text/tools/resume and image/document/skill checks have since passed in52/55;
+the original statement below deferring all real account acceptance is historical.
+
 The Claude worker has a separate Studio orchestration source. It sends no Codex
 Goal RPC and does not treat a Claude `/goal` event or a successful response as
 an equivalent control API. The shared Goal controls now have a provider-specific

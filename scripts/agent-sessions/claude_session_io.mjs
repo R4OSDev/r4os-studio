@@ -118,17 +118,27 @@ async function main() {
     for await (const line of lines) {
       if (Buffer.byteLength(line) > 262144) throw Error('The original native command exceeds its bound.');
       const command = JSON.parse(line);
-      if (!command || typeof command !== 'object' || !['initialize', 'send', 'continue', 'interrupt', 'close'].includes(command.operation)
-        || Object.keys(command).some(k => !['operation', ...(command.operation === 'send' ? ['text'] : command.operation === 'continue' ? ['inputRequestId'] : [])].includes(k))) throw Error('Invalid fixed native worker command.');
+      const fields = { initialize: [], send: ['text'], continue: ['inputRequestId'], interrupt: [], close: [],
+        arm_goal: ['executionId','objective','maxSteps','maxActiveSeconds'], begin_goal: ['executionId'] };
+      if (!command || typeof command !== 'object' || !Object.hasOwn(fields, command.operation)
+        || Object.keys(command).some(k => !['operation', ...fields[command.operation]].includes(k))) throw Error('Invalid fixed native worker command.');
       if (command.operation === 'close') break;
       if (command.operation === 'interrupt') { await engine.interrupt(); emit({ event: 'interrupted' }); continue; }
+      if (command.operation === 'arm_goal') {
+        const contract = Object.fromEntries(fields.arm_goal.map(key => [key, command[key]]));
+        try { emit({ event: 'goal_armed', requestId: config.binding.requestId, nativeSessionId: config.binding.nativeSessionId, ...engine.armGoal(contract) }); }
+        catch { emit({ event: 'goal_arm_refused', requestId: config.binding.requestId, executionId: command.executionId }); }
+        continue;
+      }
       if (busy) throw Error('The original native operation is busy.');
       busy = true;
       const pending = (async () => {
         try {
           if (command.operation === 'initialize') { await engine.initialize(); emit({ event: 'ready', nativeSessionId: config.binding.nativeSessionId }); }
-          if (command.operation === 'send' || command.operation === 'continue') {
-            if (command.operation === 'send') await engine.send(command.text); else await engine.continue(command.inputRequestId);
+          if (['send','continue','begin_goal'].includes(command.operation)) {
+            if (command.operation === 'send') await engine.send(command.text);
+            else if (command.operation === 'continue') await engine.continue(command.inputRequestId);
+            else await engine.beginGoal(command.executionId);
             emit({ event: 'submitted', requestId: config.binding.requestId, inputRequestId: engine.inputId });
           }
         } catch {
@@ -148,6 +158,7 @@ async function main() {
       historyReadable = info?.sessionId === config.binding.nativeSessionId;
     }
     emit({ event: 'closed', nativeSessionId: config.binding.nativeSessionId, studioRequestId: config.binding.requestId, promptSubmitted: engine.sent,
+      ...(engine.liveActivation ? { liveGoal: { ...engine.activationReceipt(), sourceResultId: engine.liveSourceResult?.uuid ?? null, inputSubmitted: engine.liveGoalInputSubmitted } } : {}),
       inputRequestId: engine.inputId, inputSubmitted: engine.inputSubmitted,
       resultId: engine.result?.uuid ?? null, subtype: engine.result?.subtype ?? null, historyReadable,
       originalStreamConfirmed: !engine.error });

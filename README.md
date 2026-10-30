@@ -1,3 +1,10 @@
+## Private Claude live Goal boundary (0.8.56)
+
+The native adapter can now retain a completed ordinary result and begin a
+separately authorized bounded Goal in the same query, with a new input ID and
+fresh admission. Arming alone submits nothing. Public Save/Play wiring and its
+durable activation remain open in0.8.23. Details: [Claude-Live-Goal.md](Claude-Live-Goal.md).
+
 ## Claude document and image inputs (0.8.55)
 
 Claude now receives ordered attachment content with original native input

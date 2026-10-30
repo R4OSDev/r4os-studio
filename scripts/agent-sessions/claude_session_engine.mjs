@@ -74,6 +74,11 @@ export class ClaudeSessionEngine {
     this.frozenInput = options.frozenInput ? preparedContent(options.frozenInput, this.inputId) : null;
     this.stepCount = 0; this.inputIds = new Set([this.inputId]); this.goalStartedAt = null;
     this.goal = options.goal ?? null;
+    this.liveGoalPreparation = options.liveGoalPreparation === true;
+    this.liveActivation = null; this.liveSourceResult = null; this.liveGoalInputSubmitted = false;
+    if (this.liveGoalPreparation && (this.goal || !this.requireInputReceipt || !options.tools?.includes('report_goal'))) {
+      throw Error('Invalid native live Goal preparation.');
+    }
     if (this.goal && (Object.keys(this.goal).sort().join(',') !== 'executionId,maxActiveSeconds,maxSteps'
       || this.goal.executionId !== this.binding.requestId || this.goal.maxSteps !== 8 || this.goal.maxActiveSeconds !== 900
       || !this.requireInputReceipt || !options.tools?.includes('report_goal'))) throw Error('Invalid bounded Studio GOAL contract.');
@@ -122,7 +127,8 @@ export class ClaudeSessionEngine {
       && Object.hasOwn(wireInput, 'request') ? wireInput.request : null : wireInput;
     let allowed = false;
     if (this.state === 'active' && !this.nativeFailure && (!this.requireInputReceipt || this.inputAccepted) && (!this.expectedModel || this.modelObserved) && input?.hook_event_name === 'PreToolUse' && input.session_id === this.binding.nativeSessionId
-      && tool && this.tools.has(tool) && opaque(input.tool_use_id) && !input.agent_id
+      && tool && this.tools.has(tool) && (tool !== 'report_goal' || this.goal && this.inputSubmitted && this.inputAccepted)
+      && opaque(input.tool_use_id) && !input.agent_id
       && input.mcp_server?.name === 'studio' && input.mcp_server.source === 'dynamic'
       && args && typeof args === 'object' && !Array.isArray(args) && bounded(args, 131072)) {
       const grant = { tool, hash: fingerprint(input.tool_input) }, old = this.grants.get(input.tool_use_id);
@@ -167,6 +173,44 @@ export class ClaudeSessionEngine {
     await this.submit(text, 'ready', this.frozenInput);
   }
 
+  armGoal(value) {
+    if (!value || Object.keys(value).sort().join(',') !== 'executionId,maxActiveSeconds,maxSteps,objective'
+      || !uuid(value.executionId) || value.maxSteps !== 8 || value.maxActiveSeconds !== 900
+      || typeof value.objective !== 'string' || !value.objective.trim() || Array.from(value.objective).length > 4000
+      || value.objective.includes('\0') || /[\ud800-\udfff]/u.test(value.objective)
+      || Buffer.byteLength(value.objective) > 16000) throw Error('Invalid original live Goal contract.');
+    if (this.liveActivation) {
+      if (fingerprint(this.liveActivation.contract) !== fingerprint(value)) throw Error('The original live Goal activation changed.');
+      return this.activationReceipt();
+    }
+    if (!this.liveGoalPreparation || this.goal || this.state !== 'active' || !this.sent
+      || this.nativeFailure || this.inputIds.has(value.executionId)) throw Error('This original native response cannot arm a live Goal.');
+    this.liveActivation = { contract: structuredClone(value), state: 'waiting', sourceInputRequestId: this.inputId };
+    return this.activationReceipt();
+  }
+
+  activationReceipt() {
+    return this.liveActivation ? { executionId: this.liveActivation.contract.executionId,
+      sourceInputRequestId: this.liveActivation.sourceInputRequestId, state: this.liveActivation.state } : null;
+  }
+
+  async beginGoal(executionId) {
+    const activation = this.liveActivation;
+    if (!activation || executionId !== activation.contract.executionId || activation.state !== 'waiting'
+      || this.state !== 'between' || !this.result || this.result.subtype !== 'success' || this.result.is_error
+      || this.nativeFailure || this.goal || !this.inputAccepted || this.inputIds.has(executionId)) {
+      throw Error('The original live Goal has no confirmed response boundary.');
+    }
+    this.liveSourceResult = this.result;
+    activation.state = 'admitting';
+    this.goal = { executionId, maxSteps: activation.contract.maxSteps, maxActiveSeconds: activation.contract.maxActiveSeconds };
+    this.inputId = executionId; this.inputIds.add(executionId); this.inputOrigin = 'human';
+    this.inputSubmitted = false; this.inputAccepted = false; this.state = 'admitting';
+    this.stepCount = 0; this.goalStartedAt = null;
+    await this.submit(activation.contract.objective, 'admitting');
+    this.liveGoalInputSubmitted = true; activation.state = 'started';
+  }
+
   async continue(inputId) {
     if (!this.goal || this.state !== 'between' || !this.result || this.result.subtype !== 'success' || this.result.is_error
       || !uuid(inputId) || this.inputIds.has(inputId) || this.stepCount >= this.goal.maxSteps
@@ -198,6 +242,7 @@ export class ClaudeSessionEngine {
     }
     this.sent = true; this.state = 'active';
     this.result = null; this.inputSubmitted = true; this.stepCount++;
+    this.modelObserved = false;
     this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
     this.inputContentSha256 = input?.contentSha256 ?? null;
     this.inputs.push({ type: 'user', message: { role: 'user', content: input?.content ?? text }, parent_tool_use_id: null,
@@ -252,7 +297,11 @@ export class ClaudeSessionEngine {
           this.inputAccepted = true;
           if (this.goal && this.goalStartedAt === null) this.goalStartedAt = Date.now();
         }
-        const between = message.type === 'result' && this.goal && this.state === 'active'
+        if (message.type === 'result' && this.liveActivation && !this.goal) {
+          this.liveSourceResult = message;
+          if (message.subtype !== 'success' || message.is_error) this.liveActivation.state = 'refused';
+        }
+        const between = message.type === 'result' && (this.goal || this.liveActivation?.state === 'waiting') && this.state === 'active'
           && message.subtype === 'success' && !message.is_error;
         if (message.type === 'result') {
           if (this.nativeFailure && !message.is_error) throw Error('A native error was followed by an unconfirmed successful result. No replay was accepted.');
@@ -273,6 +322,10 @@ export class ClaudeSessionEngine {
 
   async interrupt() {
     if (this.state === 'closed' || this.state === 'stopping') return;
+    if (this.liveActivation && !this.liveGoalInputSubmitted && (this.state === 'between'
+      || this.liveSourceResult && !this.inputSubmitted && this.state === 'admitting')) {
+      this.liveActivation.state = 'cancelled'; this.state = 'completed';
+    }
     if (this.state === 'completed') {
       this.grants.clear(); await this.host.closeAdmission(this.binding);
       this.inputs.close(); this.query.close(); return;
@@ -293,7 +346,13 @@ export class ClaudeSessionEngine {
 
   async close() {
     if (this.state === 'closed') return;
-    if (this.goal && this.state === 'between') {
+    if ((this.goal || this.liveActivation) && this.state === 'between') {
+      if (!this.goal) this.liveActivation.state = 'cancelled';
+      this.state = 'completed'; await this.host.closeAdmission(this.binding);
+    }
+    // A refused, unsubmitted live Goal must not interrupt an already completed
+    // ordinary response or turn that original result into an unknown history.
+    if (this.liveSourceResult && !this.liveGoalInputSubmitted && this.state === 'admitting' && !this.inputSubmitted) {
       this.state = 'completed'; await this.host.closeAdmission(this.binding);
     }
     if (!['completed', 'unconfirmed'].includes(this.state)) await this.interrupt();
