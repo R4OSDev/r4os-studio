@@ -1,3 +1,11 @@
+## Main roadmap card and navigation (0.8.35)
+
+The header now combines project name and Roadmap. A separate main-version card
+places progress beside metadata, with full-width closed Vision/Version notes
+sections. Version navigation uses two lines with accessible full titles.
+Existing draft/save/recovery behavior is retained. Details:
+[Roadmap-View.md](Roadmap-View.md).
+
 ## Project GitHub Issues (0.8.34)
 
 GitHub now has Connection and Issues in column three, with a separate open-issue

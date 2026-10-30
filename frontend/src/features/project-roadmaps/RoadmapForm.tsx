@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent,ReactNode } from 'react';
 import type { RoadmapBinding, RoadmapMutation, RoadmapMutationResult, RoadmapTarget } from '../../../../shared/project-roadmaps';
 import { ProjectRequestError, projectRequestId } from '../projects/api';
 import { mutate } from './api';
@@ -17,11 +17,12 @@ function savedRequest(key: string, target: RoadmapTarget, action: string): Roadm
   return value;
 }
 
-export function RoadmapForm({ id, token, binding, target, initial, create = false, notesMode = 'edit', saved, cancel, dirtyChanged, busyChanged }: {
+export function RoadmapForm({ id, token, binding, target, initial, create = false, notesMode = 'edit', saved, cancel, dirtyChanged, busyChanged,versionLayout }: {
   id: string; token: string; binding: RoadmapBinding; target: RoadmapTarget; initial: Input; create?: boolean;
   notesMode?: 'edit' | 'append_notes' | 'replace_notes';
   saved: (result: RoadmapMutationResult) => void; cancel: () => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
+  versionLayout?:{summary:ReactNode;actions:ReactNode};
 }) {
   const parent = 'subversionId' in target ? `.${target.versionId}.${target.subversionId}` : 'versionId' in target ? '.' + target.versionId : '';
   const key = `studio.roadmap.request.${id}.${target.kind}${parent}.${target.id ?? 'new'}${notesMode !== 'edit' ? '.' + notesMode : ''}`;
@@ -77,20 +78,32 @@ export function RoadmapForm({ id, token, binding, target, initial, create = fals
         placeholder={name === 'number' && create ? target.kind === 'subversion' ? 'Next subversion, or enter e.g. 0.1.1' : 'Next version, or enter e.g. 0.2.X' : undefined}
         value={String(draft[name] ?? '')} onChange={(event) => setDraft({ ...draft, [name]: event.target.value })} />}</div>;
   const noteLabel = ({ roadmap: 'Roadmap notes', version: 'Version notes', subversion: 'Subversion notes', task: 'Task notes', acceptance: 'Acceptance notes' })[target.kind];
-  return <form className="roadmap-form" aria-label={create ? 'New roadmap entry' : 'Roadmap entry settings'} onSubmit={(event) => void submit(event)}>
+  const statusField=<div className="project-field"><label htmlFor={formId + '-status'}>Status</label><select id={formId + '-status'} value={draft.status ?? 'open'} onChange={(event) => setDraft({ ...draft, status: event.target.value as NonNullable<Input['status']> })}>
+    <option value="open">Open</option>{isItem ? <option value="done">Done</option> : <option value="complete">Complete</option>}<option value="discarded">Discarded</option>
+  </select></div>;
+  const version=!!versionLayout&&target.kind==='version'&&!create&&notesMode==='edit';
+  return <form className={`roadmap-form${version?' roadmap-version-form':''}`} aria-label={create ? 'New roadmap entry' : 'Roadmap entry settings'} onSubmit={(event) => void submit(event)}>
     <fieldset className="project-fields" disabled={busy || !!pending || !!recovery.error}>
+      {version?<>
+        <div className="roadmap-version-top"><div className="roadmap-version-summary">{versionLayout.summary}</div>
+          <div className="roadmap-version-fields"><div className="roadmap-version-actions">{versionLayout.actions}</div>
+            {field('number','Version number')}{field('title','Title')}{statusField}
+          </div>
+        </div>
+        <details className="roadmap-version-fold"><summary>Vision</summary>{field('vision','Vision',true)}</details>
+        <details className="roadmap-version-fold"><summary>Version notes</summary>{field('notes','Version notes',true)}</details>
+      </>:<>
       {notesMode === 'edit' && <>
       {target.kind === 'roadmap' ? field('description', 'Roadmap description', true) : <>
         {!isItem && <>{field('number', target.kind === 'subversion' ? create ? 'Subversion number (optional)' : 'Subversion number' : create ? 'Version number (optional)' : 'Version number')}
           {field('title', 'Title')}</>}
         {isItem && field('description', 'Description', true)}
-        <div className="project-field"><label htmlFor={formId + '-status'}>Status</label><select id={formId + '-status'} value={draft.status ?? 'open'} onChange={(event) => setDraft({ ...draft, status: event.target.value as NonNullable<Input['status']> })}>
-          <option value="open">Open</option>{isItem ? <option value="done">Done</option> : <option value="complete">Complete</option>}<option value="discarded">Discarded</option>
-        </select></div>
+        {statusField}
         {target.kind === 'version' ? field('vision', 'Vision', true) : !isItem && field('description', 'Description', true)}
       </>}
       </>}
       {field('notes', notesMode === 'append_notes' ? 'Notes to append' : noteLabel, true)}
+      </>}
     </fieldset>
     {error && <p className="project-error" role="alert">{error}</p>}
     {pending && !busy && <p className="project-message" role="status">An original request needs confirmation. Retry it before editing this entry.</p>}

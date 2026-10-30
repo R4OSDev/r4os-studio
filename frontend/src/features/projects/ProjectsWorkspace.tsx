@@ -122,7 +122,9 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       {selected && opening.checking && !selected.deleting && <p className="project-message project-background-status" role="status">Checking GitHub in the background…</p>}
       {opening.notice && <p className="project-message project-background-status" role="status">{opening.notice} <button className="project-reload" type="button" onClick={opening.refresh}>Refresh GitHub status</button></p>}
       {selected && <>
-        {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
+        {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className={`page-heading${current.section==='Roadmap'?' roadmap-page-heading':''}`}><h1>{selected.name}{current.section==='Roadmap'?' Roadmap':''}</h1><span className="page-rule" />
+          {current.section==='Roadmap'&&<button type="button" className="roadmap-page-refresh" disabled={saving} onClick={()=>{if(!dirty||window.confirm('Discard unsaved roadmap changes and refresh?'))roadmap.reload();}}>Refresh</button>}
+        </div>}
         {current.section === 'Statistics' && <StatisticsPanel key={selected.id} projectId={selected.id} reauth={api.reload} />}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
         {current.section === 'GitHub' && (githubView==='Connection'?<ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />:<ProjectIssues key={selected.id} model={github}/>)}

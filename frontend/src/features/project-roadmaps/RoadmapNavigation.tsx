@@ -15,8 +15,8 @@ export function RoadmapNavigation({ model, selected, choose, create, disabled }:
       {model.loading && <p className="project-nav-message" role="status">Loading roadmap…</p>}
       {state?.exists && state.versions.items.map((version) => <button key={version.id} type="button"
         className={`nav-item roadmap-version-link ${selected === version.id ? 'selected' : ''}`} disabled={disabled}
-        aria-current={selected === version.id ? 'page' : undefined} onClick={() => choose(version.id)}>
-        <span><strong>{version.number}</strong><span className="roadmap-version-name">{version.title}</span>
+        aria-current={selected === version.id ? 'page' : undefined} title={`${version.number} ${version.title}`} aria-label={`${version.number} ${version.title}, ${versionStatusLabels[version.status]}${state.roadmap.currentVersionId===version.id?', Current':''}`} onClick={() => choose(version.id)}>
+        <span><span className="roadmap-version-line"><strong>{version.number}</strong><span className="roadmap-version-name">{version.title}</span></span>
           <small>{versionStatusLabels[version.status]}{state.roadmap.currentVersionId === version.id ? ' · Current' : ''}</small></span>
       </button>)}
       {state?.exists && state.versions.nextCursor && <button type="button" className="nav-item" disabled={disabled || model.paging}
