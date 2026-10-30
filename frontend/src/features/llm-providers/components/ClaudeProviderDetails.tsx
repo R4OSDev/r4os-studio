@@ -4,6 +4,7 @@ import type { ClaudeSubscriptionProvider, ClaudeProviderMutation, ClaudeRuntimeS
 import type { ProviderApi } from '../useProviders';
 import type { ClaudeSubscriptionLimits, ClaudeModelCatalog } from '../../../../../shared/claude-subscription';
 import { ClaudeLimitsView } from './ClaudeLimitsView';
+import { providerRequestId } from '../api';
 
 const base = '/claude-subscriptions';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
@@ -36,7 +37,7 @@ export function NewClaudeProvider({ api, created }: { api: ProviderApi; created:
       let result: ClaudeProviderMutation;
       if (pending) result = await api.request<ClaudeProviderMutation>(base + '/creation-requests/' + pending);
       else {
-        const requestId = crypto.randomUUID(); sessionStorage.setItem(key, requestId); setPending(requestId);
+        const requestId = providerRequestId(); sessionStorage.setItem(key, requestId); setPending(requestId);
         result = await api.request<ClaudeProviderMutation>(base, 'POST', { requestId, name: name.trim() });
       }
       sessionStorage.removeItem(key); setPending(null); await api.reload(); created(result.provider.id);
@@ -103,8 +104,10 @@ export function ClaudeProviderDetails({ initial, api }: { initial: ClaudeSubscri
   async function act(action: ClaudeAuthAction) {
     if (inflight.current) return;
     inflight.current = true; generation.current++; setBusy(true); setError(''); setCode(''); setConfirmDisconnect(false);
-    const requestId = crypto.randomUUID(); sessionStorage.setItem(key, requestId); setPending(requestId);
-    try { accept(await request<ClaudeAuthOperation>(`${base}/${provider.id}/auth`, 'POST', { requestId, revision: provider.revision, action })); }
+    try {
+      const requestId = providerRequestId(); sessionStorage.setItem(key, requestId); setPending(requestId);
+      accept(await request<ClaudeAuthOperation>(`${base}/${provider.id}/auth`, 'POST', { requestId, revision: provider.revision, action }));
+    }
     catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Read the original authentication result.'); }
     finally { inflight.current = false; if (mounted.current) setBusy(false); }
   }

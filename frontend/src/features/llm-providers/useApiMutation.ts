@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ApiModelMutation, ApiProviderKind, ApiProviderMutation } from '../../../../shared/api-providers';
 import type { ProviderApi } from './useProviders';
-import { ProviderRequestError } from './api';
+import { ProviderRequestError, providerRequestId } from './api';
 
 type Operation = 'create' | 'update' | 'disconnect' | 'delete' | 'model' | 'check';
 interface Pending { requestId: string; operation: Operation; revision?: number; kind?: ApiProviderKind }
@@ -32,7 +32,7 @@ export function useApiMutation(api: ProviderApi, id: string | null, models = fal
   }, [key]);
   async function send(operation: Operation, body: Record<string, unknown>, original = false): Promise<Result | undefined> {
     if (inflight.current || pending && !original || original && pending?.operation !== operation) return;
-    const next = original ? pending! : { requestId: crypto.randomUUID(), operation,
+    const next = original ? pending! : { requestId: providerRequestId(), operation,
       ...(operation === 'create' ? { kind: body.kind as ApiProviderKind } : {}),
       ...(['disconnect', 'delete'].includes(operation) ? { revision: body.revision as number } : {}) };
     try { sessionStorage.setItem(key, JSON.stringify(next)); }

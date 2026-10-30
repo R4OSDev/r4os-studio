@@ -1,3 +1,10 @@
+## Provider dialogs on HTTP LAN origins (0.8.51)
+
+Claude provider creation and authentication, and API provider mutations, now
+generate request UUIDs with browser `crypto.getRandomValues`. These flows also
+work on the Studio HTTP LAN origin where `crypto.randomUUID` is unavailable.
+Original request IDs are still stored before sending and retained for recovery.
+
 ## Claude final output statistics (0.8.50)
 
 Confirmed final stream counters now add per-response output and matching totals
