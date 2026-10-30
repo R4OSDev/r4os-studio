@@ -6,6 +6,7 @@ import { waitGitJob } from './projectApi';
 // Only pending promises are retained; reopening after completion checks again.
 const pending=new Map<string,Promise<GitHubProjectStatus>>();
 export const bindingKey=(binding:GitHubProjectBinding)=>JSON.stringify([binding.revision,binding.connectionId,binding.userId,binding.repository.id,binding.repository.owner,binding.repository.name,binding.branch]);
+export const pendingOpeningCheck=(id:string,binding:GitHubProjectBinding)=>pending.get(id+':'+bindingKey(binding));
 export function openingCheck(id:string,binding:GitHubProjectBinding,token:string) {
   const key=id+':'+bindingKey(binding),existing=pending.get(key);if(existing)return existing;
   if(pending.size>=8)return Promise.reject(new Error('Background GitHub checks are busy. Refresh the remote status shortly.'));

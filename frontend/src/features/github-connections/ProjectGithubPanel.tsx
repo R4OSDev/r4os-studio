@@ -7,6 +7,7 @@ import { RepositorySelect } from './RepositorySelect';
 import type { RepositoryChoice } from './RepositorySelect';
 import { clearGit, clearPull, pendingGit, pendingPull, pullProject, runGitJob, waitGitJob } from './projectApi';
 import { loadConnections } from './api';
+import {pendingOpeningCheck} from './openingCheck';
 import './project.css';
 
 const labels: Record<string, string> = { not_connected: 'Local project', unknown: 'Remote state unknown', not_pushed: 'Not pushed yet', remote_only: 'Remote history requires import', branch_missing: 'Remote branch missing', diverged: 'Local and remote history diverged', ahead: 'Local commits ready to push', behind: 'Remote commits available', up_to_date: 'Up to date at last check' };
@@ -14,8 +15,9 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
   const [binding, setBinding] = useState<GitHubProjectBinding | null>(null), [job, setJob] = useState<GitHubJob | null>(null), [status, setStatus] = useState<GitHubProjectStatus>();
   const [connections, setConnections] = useState<GitHubConnection[]>([]), [kinds, setKinds] = useState<string[]>([]);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [editing, setEditing] = useState(false), [diff, setDiff] = useState<GitHubDiff>();
+  const [writing,setWriting]=useState(false);
   const [commitMessage, setCommitMessage] = useState(''), [allFiles, setAllFiles] = useState(true), [files, setFiles] = useState<string[]>([]);
-  useEffect(() => { busyChanged?.(busy); return () => busyChanged?.(false); }, [busy, busyChanged]);
+  useEffect(() => { busyChanged?.(writing); return () => busyChanged?.(false); }, [writing, busyChanged]);
   useEffect(() => { dirtyChanged?.(editing || !!commitMessage.trim()); return () => dirtyChanged?.(false); }, [editing, commitMessage, dirtyChanged]);
   useEffect(() => {
     const controller = new AbortController();
@@ -24,46 +26,49 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
         const [value, capabilities, root] = await Promise.all([projectRequest<{ binding: GitHubProjectBinding | null; job: GitHubJob | null }>(`/${id}/github`, '', 'GET', undefined, controller.signal), projectRequest<{ kinds?: string[] }>('/github/capabilities', '', 'GET', undefined, controller.signal), loadConnections()]);
         if (controller.signal.aborted) return;
         setBinding(value.binding); setJob(value.job); setKinds(capabilities.kinds ?? []); setConnections(root.connections);
-        if (value.job && ['running', 'queued'].includes(value.job.state)) { setBusy(true); await waitGitJob(id, value.job.id, value.job, setJob, controller.signal); }
+        if (value.job && ['running', 'queued'].includes(value.job.state)) { setBusy(true);setWriting(!['status','check','diff'].includes(value.job.kind));await waitGitJob(id, value.job.id, value.job, setJob, controller.signal); }
+        const checking=value.binding?pendingOpeningCheck(id,value.binding):undefined;
+        if(checking){const checked=await checking;if(!controller.signal.aborted)setStatus(checked);return;}
         const read = await runGitJob(id, token, 'status', {});
         if (!controller.signal.aborted && read.result && 'snapshot' in read.result) setStatus(read.result);
       } catch (e) { if (!controller.signal.aborted) setError((e as Error).message); }
-      finally { if (!controller.signal.aborted) { setLoading(false); setBusy(false); } }
+      finally { if (!controller.signal.aborted) { setLoading(false); setBusy(false);setWriting(false); } }
     })();
     return () => controller.abort();
   }, [id, token]);
   async function update(kind: string, input: Record<string, unknown> = {}, original = false) {
     if (busy) return;
     setBusy(true); setError('');
+    setWriting(!['status','check','diff'].includes(kind));
     try {
       const result = await runGitJob(id, token, kind, input, ['status', 'check', 'diff'].includes(kind) ? undefined : setJob, original ? pendingGit(id) ?? undefined : undefined);
       if (result.result && 'snapshot' in result.result) { setStatus(result.result); setBinding(result.result.binding); }
       if (result.result && 'diff' in result.result) setDiff(result.result.diff);
       if (!['status', 'check', 'diff'].includes(kind)) {
         const read = await runGitJob(id, token, 'status', {}); if (read.result && 'snapshot' in read.result) { setStatus(read.result); setBinding(read.result.binding); }
-        setEditing(false);
+        setEditing(false);window.dispatchEvent(new CustomEvent('studio-project-github-changed',{detail:{projectId:id}}));
         if (kind === 'push') { setCommitMessage(''); setFiles([]); setAllFiles(true); }
       }
     } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
+    finally { setBusy(false);setWriting(false); }
   }
   async function reconcile() {
     if (!job) return;
-    setBusy(true); setError('');
+    setBusy(true);setWriting(true);setError('');
     try {
       const result = await projectRequest<GitHubJob>(`/${id}/github/jobs/${job.id}/reconcile`, token, 'POST', {}); setJob(result);
       if (result.state === 'completed') { clearGit(id); const read = await runGitJob(id, token, 'status', {}); if (read.result && 'snapshot' in read.result) { setStatus(read.result); setBinding(read.result.binding); } }
     } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
+    finally { setBusy(false);setWriting(false); }
   }
   async function pull() {
     if (!status || busy) return;
-    setBusy(true); setError('');
+    setBusy(true);setWriting(true);setError('');
     try {
       await pullProject(id, token, status, setJob);
       const read = await runGitJob(id, token, 'status', {}); if (read.result && 'snapshot' in read.result) setStatus(read.result);
     } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
+    finally { setBusy(false);setWriting(false); }
   }
   const connection = connections.find((v) => v.id === binding?.connectionId);
   const retained = pendingGit(id), pullRequest = pendingPull(id), unresolved = job?.state === 'unknown' || !!retained || !!pullRequest;

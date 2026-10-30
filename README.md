@@ -1,3 +1,11 @@
+## Project GitHub Issues (0.8.34)
+
+GitHub now has Connection and Issues in column three, with a separate open-issue
+total. The read-only list supports Open/Closed/All and paging; its total excludes
+pull requests and distinguishes confirmed zero from unavailable data. Bound
+account/repository checks, safe links, preserved Connection drafts and scope-aware
+reads keep existing project workflows intact. Details: [GitHub-Issues.md](GitHub-Issues.md).
+
 ## Preferred roadmap order (0.8.33)
 
 The versioned runtime contract now includes the user's approved wording:

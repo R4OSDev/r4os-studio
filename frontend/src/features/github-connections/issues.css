@@ -1,0 +1,27 @@
+.github-issues-navigation .github-issues-count { margin-left:auto; font-variant-numeric:tabular-nums; font-size:11px; color:#cbb5e0; }
+.github-issues-navigation:disabled .github-issues-count { color:inherit; }
+.project-issues { max-width:1050px; margin:24px 30px; padding:22px; border:1px solid #41314f; border-radius:12px; background:#1b1423; color:#e9dff1; }
+.project-issues>header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; margin-bottom:18px; }
+.project-issues h2 { margin:0; font-size:20px; font-weight:550; }
+.project-issues header p { margin:7px 0 0; color:#b6a5c8; overflow-wrap:anywhere; font-size:12px; }
+.github-issues-actions { display:flex; align-items:end; flex-wrap:wrap; gap:12px; }
+.github-issues-actions label { display:grid; gap:6px; font-size:11px; color:#bba9cb; }
+.project-issues button,.project-issues select { border:1px solid #574065; border-radius:6px; background:#2c2038; color:#e5d8ee; font:inherit; font-size:12px; padding:8px 13px; }
+.project-issues button:disabled { opacity:.4; }
+.project-issues button:focus-visible,.project-issues select:focus-visible,.github-issue a:focus-visible { outline:2px solid #bd94ed; outline-offset:3px; }
+.github-issues-checked { color:#b3a0c4; font-size:11px; line-height:1.7; }
+.github-issues-list { list-style:none; padding:0; margin:20px 0; display:grid; gap:11px; }
+.github-issue { padding:15px 17px; background:#21192b; border:1px solid #3f2f4d; border-radius:8px; min-width:0; }
+.github-issue-heading { display:flex; align-items:baseline; gap:12px; min-width:0; }
+.github-issue-state { padding:3px 7px; border:1px solid #8863a2; border-radius:12px; font-size:10px; color:#d6b7ee; flex-shrink:0; }
+.github-issue-state.closed { color:#ad9cbd; border-color:#5b496e; }
+.github-issue a { color:#eadcf6; font-size:14px; line-height:1.6; text-decoration:none; overflow-wrap:anywhere; }
+.github-issue a:hover { color:#d4aaff; text-decoration:underline; }
+.github-issue a>span { color:#b499cb; font-variant-numeric:tabular-nums; }
+.github-issue-labels { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.github-issue-labels span { border:1px solid #624d78; border-radius:5px; padding:3px 7px; color:#d0bddf; font-size:10px; overflow-wrap:anywhere; }
+.github-issue time { display:block; margin-top:10px; color:#a997bc; font-size:10px; }
+.github-issues-paging { display:flex; justify-content:flex-end; gap:10px; }
+.github-issues-error { color:#e4b8d3; font-size:12px; line-height:1.7; }
+.github-issues-empty { padding:24px 0; color:#b7a3c9; font-size:13px; }
+@media(max-width:600px){.project-issues{margin:16px 12px;padding:15px}.github-issue{padding:12px}.github-issue-heading{flex-wrap:wrap;gap:6px}}

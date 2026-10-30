@@ -16,6 +16,8 @@ import '../agent-sessions/styles.css';
 import './styles.css';
 import { editorRegistry } from '../project-editor/registry';
 import { ProjectGithubPanel } from '../github-connections/ProjectGithubPanel';
+import {GithubNavigation,ProjectIssues} from '../github-connections/ProjectIssues';
+import {useProjectIssues} from '../github-connections/useProjectIssues';
 import { useProjectOpening } from '../github-connections/useProjectOpening';
 import { UpdateProjectDialog } from '../github-connections/UpdateProjectDialog';
 import { useRoadmap } from '../project-roadmaps/useRoadmap';
@@ -29,6 +31,7 @@ const EditorFiles = lazy(() => import('../project-editor/EditorFiles'));
 
 export interface ProjectNavigation {
   section: 'Sessions' | 'Editor' | 'GitHub' | 'Roadmap' | 'Boards' | 'Statistics' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string; roadmapVersionId?: string; boardId?: string;
+  githubView?:'Connection'|'Issues';
 }
 export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
   selectedId: string | null; select: (id: string | null) => void;
@@ -47,6 +50,8 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   const boards = useBoards(selected && current.section === 'Boards' ? selected.id : null, current.boardId);
   const roadmap = useRoadmap(selected && current.section === 'Roadmap' ? selected.id : null, current.roadmapVersionId);
   const sessions = useSessions(selected && current.section === 'Sessions' ? selected.id : null);
+  const github=useProjectIssues(selected&&current.section==='GitHub'&&!selected.deleting?selected.id:null);
+  const githubView=current.githubView==='Issues'&&github.binding!==null?'Issues':'Connection';
   const chooseSession = (id: string) => {
     if (!selected || !leave()) return;
     navigate(selected.id, { ...current, section: 'Sessions', sessionId: id });
@@ -89,7 +94,9 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
             }}><Icon name={section === 'Statistics' ? 'statistics' : section === 'Boards' ? 'board' : section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
-      {selected && current.section === 'Boards' ? <BoardNavigation model={boards} disabled={saving} choose={id => {
+      {selected&&current.section==='GitHub'?<GithubNavigation model={github} selected={githubView} disabled={saving||!!selected.deleting} choose={view=>{
+        if(view!==githubView&&(view!=='Issues'||github.binding)&&leave())navigate(selected.id,{...current,githubView:view});
+      }}/>:selected && current.section === 'Boards' ? <BoardNavigation model={boards} disabled={saving} choose={id => {
         if (leave()) { setDirty(false); navigate(selected.id, { ...current, boardId: id }); }
       }} create={() => { if (leave()) { setDirty(false); setNewBoard(true); } }} />
         : selected && current.section === 'Roadmap' ? <RoadmapNavigation model={roadmap} selected={current.roadmapVersionId} disabled={saving}
@@ -118,7 +125,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className="page-heading"><h1>{selected.name}</h1><span className="page-rule" /></div>}
         {current.section === 'Statistics' && <StatisticsPanel key={selected.id} projectId={selected.id} reauth={api.reload} />}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
-        {current.section === 'GitHub' && <ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}
+        {current.section === 'GitHub' && (githubView==='Connection'?<ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />:<ProjectIssues key={selected.id} model={github}/>)}
         {current.section === 'Boards' && <BoardPanel key={selected.id + ':' + (current.boardId ?? 'auto')} id={selected.id} token={api.token} renewAuth={api.reload} model={boards} creating={newBoard}
           closeCreate={() => { setNewBoard(false); setDirty(false); }} created={id => { setNewBoard(false); setDirty(false); navigate(selected.id, { ...current, boardId: id }); }}
           removed={() => { setDirty(false); navigate(selected.id, { ...current, boardId: undefined }); boards.reload(); }} dirtyChanged={setDirty} busyChanged={setSaving} />}

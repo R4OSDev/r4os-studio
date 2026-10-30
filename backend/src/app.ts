@@ -24,6 +24,8 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   githubTransport?: typeof fetch;
 } = {}) {
   const app = Fastify({ logger });
+  const githubDirectory=join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
+    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub');
   const legacyCodex = '/opt/r4os-studio/bin/codex';
   const codexOverride = process.env.CODEX_BINARY;
   // Old installers set the fallback path explicitly before selectable tools
@@ -44,10 +46,9 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(statisticsRoutes, { prefix: '/api/statistics' });
   app.register(vmRoutes, { prefix: '/api/vms' });
   app.register(updateRoutes, { prefix: '/api/updates' });
-  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory });
+  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory,githubDirectory,githubTransport });
   app.register(settingsRoutes, { prefix: '/api/settings', directory: projectDirectory });
-  app.register(githubRoutes, { prefix: '/api/github', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
-    ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'GitHub'), projectDirectory, tester: githubTester, transport: githubTransport });
+  app.register(githubRoutes, { prefix: '/api/github', directory: githubDirectory, projectDirectory, tester: githubTester, transport: githubTransport });
   app.register(skillRoutes, { prefix: '/api/skills', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR
     ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'Skills'), providerDirectory: providers.directory });
   app.register(remoteHostRoutes, { prefix: '/api/remote-hosts', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR

@@ -4,10 +4,28 @@ import { ProjectError, projectStore } from '../projects/store.js';
 import { gitHost } from './client.js';
 import { projectBinding } from '../github-connections/references.js';
 import { developmentHost } from '../project-development/host.js';
+import {dirname,join} from 'node:path';
+import {GitHubIssues} from './issues.js';
+import {GitHubStore} from '../github-connections/store.js';
+import type {GitHubIssueState} from '../../../../shared/project-github-issues.js';
 
-export async function projectGithubRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions) {
+export async function projectGithubRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions,{githubDirectory=join(dirname(directory),'GitHub'),transport=fetch}:{githubDirectory?:string;transport?:typeof fetch}={}) {
   const uuid = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
   const params = { type: 'object', required: ['id'], properties: { id: uuid, requestId: uuid } };
+  const issues=new GitHubIssues(new GitHubStore(githubDirectory),async id=>{
+    const project=await projectStore<{deleting?:boolean}>(directory,{operation:'get_settings',id});
+    if(project.deleting)throw new ProjectError('The project is being deleted. Issue reads are unavailable.',409);
+    return projectBinding(directory,id);
+  },transport);
+  app.get<{Params:{id:string};Querystring:{bindingRevision:number;state?:GitHubIssueState;cursor?:string;refresh?:boolean}}>('/:id/github/issues',{
+    preValidation:async request=>{if(Object.keys(request.query as object).some(key=>!['bindingRevision','state','cursor','refresh'].includes(key)))throw new ProjectError('Unexpected issue query fields.',400);},
+    schema:{params,querystring:{type:'object',additionalProperties:false,required:['bindingRevision'],properties:{
+      bindingRevision:{type:'integer',minimum:1},state:{type:'string',enum:['open','closed','all']},cursor:{type:'string',minLength:1,maxLength:4096},refresh:{type:'boolean'}
+    }}}
+  },async(request,reply)=>{
+    sessions.session(request,reply);reply.header('Cache-Control','private, no-store');
+    return issues.read(request.params.id,request.query.bindingRevision,request.query.state??'open',request.query.cursor??null,request.query.refresh===true);
+  });
   app.get('/github/capabilities', async (request, reply) => {
     sessions.session(request, reply);
     return gitHost({ operation: 'capabilities' }).catch(() => ({ available: false, protocol: 1, reason: 'Git host support is unavailable.' }));
