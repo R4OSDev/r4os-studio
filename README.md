@@ -1,3 +1,9 @@
+## Live output-file criteria (0.8.40)
+
+New workers expose bounded, generation-bound observations of registered output
+files while an application runs. Explicit completion still performs a fresh
+preflight and owns closing/cleanup. Details: [Live-Output-Files.md](Live-Output-Files.md).
+
 ## Stored uploads icon (0.8.39)
 
 Saved files and pending cleanup now expose the existing upload dialog through

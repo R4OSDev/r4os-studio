@@ -21,6 +21,7 @@ class Execution:
         self.mailbox = None
         self.stop_requested = False; self.control = None; self.last = None
         self.completion = None; self.completion_future = None
+        self.files_checked_at = float('-inf'); self.live_deployment = None
         self.wake = asyncio.Event(); self.saved_observation = None
         self.intent = None; self.output_observation = None
         self.output_data = b''
@@ -59,6 +60,32 @@ class Execution:
                 self.output_observation = observation
         return bool(fresh)
 
+    async def observe_files(self, state, control, lease, force=False):
+        from live_output_files import INTERVAL_SECONDS, owned, read_registered, publish_observation
+        from vm_worker import guard
+        job = self.store.get(self.job['id'])
+        if getattr(self, 'stop_requested', False) or job['state'] == 'stopping': return state
+        if not job['settings'].get('outputFiles') or not force and asyncio.get_running_loop().time() - self.files_checked_at < INTERVAL_SECONDS:
+            return state
+        self.files_checked_at = asyncio.get_running_loop().time()
+        deployment = self.live_deployment
+        if deployment is None: raise DevelopmentFault('The running deployment binding is unavailable.')
+        guard(self.store, job, lease, allow_stopping=True); owned(job, deployment, state)
+        values = await read_registered(job, deployment, control.ssh, self.work)
+        self.files_checked_at = asyncio.get_running_loop().time()
+        after = await control.call('poll'); self.output(after); after['outputBase64'] = ''; self.last = after
+        guard(self.store, job, lease, allow_stopping=True)
+        if after.get('state') == 'completed': return after
+        current = self.store.get(job['id'])
+        if getattr(self, 'stop_requested', False) or current['state'] == 'stopping': return after
+        owned(current, deployment, after)
+        files = publish_observation(self.store, job, values)
+        self.store.observe(job['id'], outputFiles=files, liveFileObservation={
+            'schema': 1, 'mode': 'observed-interval', 'checkedAt': now(), 'refreshAfterMs': int(INTERVAL_SECONDS * 1000),
+            'bootId': job['target']['bootId'], 'process': job['process'], 'deploymentId': job['deploymentId'],
+            'sessionId': job.get('sessionId'), 'agentRunId': job.get('agentRunId'), 'completionConfirmed': False})
+        return after
+
     async def action(self, message, state, control, lease, process):
         from actions import admit, finish
         from evidence import read
@@ -86,9 +113,8 @@ class Execution:
             if operation == 'complete_check':
                 if self.completion or self.stop_requested: raise DevelopmentFault('This execution is already completing or stopping.')
                 from completion import validate
-                from output_files import collect
-                deployment = self.store.deployment(job['deploymentId'])
-                files = await collect(self.store, job, deployment, control.ssh, self.work)
+                state = await self.observe_files(state, control, lease, force=True)
+                files = self.store.get(job['id']).get('outputFiles', [])
                 # Re-observe after file reads before authorizing a close.
                 state = await control.call('poll'); self.output(state); state['outputBase64'] = ''
                 job = self.store.get(job['id'])
@@ -229,6 +255,7 @@ class Execution:
                 info = bound.get('exchangeInfo') if 'bound' in locals() else None
                 if info is None: info = await vm_call(lease, 'info')
                 deployment, owner_path = await rebind(ssh, info, target, deployment, store.id)
+                self.live_deployment = deployment
                 target = deployment['target']; store.update(job['id'], target=target, phase='verifying_deployment',
                     package={'format': 'exchange-build-v1', 'guestDirectory': deployment['guestDirectory'],
                         'relativeDirectory': deployment['guestDirectory'][3:].replace(chr(92), '/')})
@@ -315,6 +342,8 @@ class Execution:
                         if launcher and state['state'] == 'running':
                             await launcher.refresh()
                         fresh_output = self.output(state); state['outputBase64'] = ''; self.last = state
+                        if state['state'] == 'running' and not self.completion and not self.stop_requested:
+                            state = await self.observe_files(state, control, lease)
                         changed = last_poll != state or fresh_output
                         poll_delay = .2 if changed else min(2, poll_delay * 1.6)
                         last_poll = dict(state)
@@ -332,7 +361,7 @@ class Execution:
                             'phase': 'completing_checks' if self.completion else ('desktop_content' if native_ready else ('window_visible' if state.get('windowVisible') else ('service_ready' if state.get('serviceEndpointReady') else 'guest_running'))),
                             'guestState': {k: v for k, v in state.items() if k != 'outputBase64'}}
                         if state['state'] != 'completed':
-                            observed['check'] = evaluate(job['settings'], state, self.output_data, visual=current.get('visualAssessment'))
+                            observed['check'] = evaluate(job['settings'], state, self.output_data, current.get('outputFiles', []), visual=current.get('visualAssessment'))
                         store.observe(job['id'], **observed)
                         if job['settings'].get('serviceResponseContains') and state.get('serviceEndpointReady') and not service_checked and not self.stop_requested and store.get(job['id'])['state'] == 'running':
                             service_checked = True

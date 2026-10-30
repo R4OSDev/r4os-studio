@@ -82,6 +82,10 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
     {job?.readiness && <p>{({ transferred: 'Package verified', ready: 'Application ready', started: 'Process started', completed: 'Application ended', unsupported: 'Start unavailable', unknown: 'Outcome unconfirmed', failed: 'Start failed', interrupted: 'Interrupted' } as Record<string, string>)[job.readiness.state] ?? job.readiness.state}</p>}
     {job?.readiness?.reasonCode === 'desktop_content_unconfirmed' && <p>{job.readiness.reason}</p>}
+    {job?.liveFileObservation && <details className="development-live-files"><summary>Registered output files · {job.outputFiles?.filter(file=>file.state==='observed-stable').length ?? 0} observed stable</summary>
+      <p>Observed {new Date(job.liveFileObservation.checkedAt).toLocaleString()}. File criteria do not confirm process completion.</p>
+      <ul>{job.outputFiles?.map(file=><li key={file.name}><strong>{file.name}</strong> · {file.state ?? 'Recorded'}{file.error ? ` · ${file.error}` : file.sha256 ? <> · SHA-256 <code>{file.sha256}</code></> : ''}</li>)}</ul>
+    </details>}
     {job?.state === 'unknown' && <p>No action was repeated.</p>}
     {job?.vmStart?.ready && <p>SSH ready · R4OS {job.vmStart.guestRelease}{job.vmStart.checkedAt ? ` · ${new Date(job.vmStart.checkedAt).toLocaleString()}` : ''}</p>}
     {job?.state === 'unknown' && !job.guestState?.closeConfirmed && <button type="button" disabled={stopping} onClick={() => void reconcile()}>{stopping ? 'Reconciling…' : 'Reconcile receipts'}</button>}

@@ -164,6 +164,11 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  outputFiles?: { name: string; state?: 'missing' | 'unstable' | 'unconfirmed' | 'observed-stable'; id?: string;
+    sha256?: string; bytes?: number; createdAt?: string; containsExpectedText?: boolean; error?: string }[];
+  liveFileObservation?: { schema: 1; mode: 'observed-interval'; checkedAt: string; refreshAfterMs: number;
+    bootId: string; process: GuestProcessIdentity; deploymentId: string; sessionId: string | null;
+    agentRunId: string | null; completionConfirmed: false };
   updatePlan?: import('./update-packages.js').UpdatePackagePlan;
   packageArtifactId?: string | null;
   updateInstallation?: import('./update-packages.js').UpdateInstallation;

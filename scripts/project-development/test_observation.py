@@ -76,3 +76,69 @@ class EvidenceTest(unittest.TestCase):
                 (store.evidence(job['id'])/(image['id']+'.bin')).write_bytes(b'changed')
                 with self.assertRaises(DevelopmentFault): read(store, job['id'], image['id'])
             finally: store.close()
+
+class LiveFileTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import sqlite3
+        from types import SimpleNamespace
+        self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name);self.work=self.root/'Work';self.work.mkdir()
+        self.db=sqlite3.connect(':memory:');self.addCleanup(self.db.close)
+        self.job={'id':str(uuid.uuid4()),'projectId':str(uuid.uuid4()),'kind':'execution','state':'running',
+            'deploymentId':str(uuid.uuid4()),'target':{'bootId':str(uuid.uuid4())},'process':{'instanceId':7,'generation':'9007199254740993'},
+            'package':{'guestDirectory':r'F:\Build\P123ABCD\D123ABCD'},'settings':CriteriaTest().settings(outputFiles=[{'name':'RESULT.TXT','contains':'OK','sha256':None}])}
+        self.state={**self.job['process'],'state':'running','closeConfirmed':False}
+        self.deployment={'id':self.job['deploymentId'],'projectId':self.job['projectId'],'target':self.job['target'],'guestDirectory':self.job['package']['guestDirectory']}
+        self.store=SimpleNamespace(db=self.db,id=self.job['projectId'],evidence=lambda _id:self.root,get=lambda _id:self.job,observe=lambda _id,**fields:self.job.update(fields))
+        self.copies=[]
+    async def download(self,ssh,guest,local,**kwargs):
+        self.assertTrue(guest.endswith('/RESULT.TXT'));self.assertEqual(kwargs['maximum'],65536)
+        data=self.copies.pop(0)
+        if data is None:return False
+        local.write_bytes(data);return True
+    async def test_stable_deduplicated_changed_missing_and_later_files(self):
+        from unittest.mock import patch
+        from live_output_files import owned,read_registered,publish_observation
+        owned(self.job,self.deployment,self.state)
+        async def read(copies):
+            self.copies=list(copies)
+            with patch('live_output_files.download',self.download):return publish_observation(self.store,self.job,await read_registered(self.job,self.deployment,None,self.work))
+        first=await read([b'OK',b'OK']);same=await read([b'OK',b'OK'])
+        self.assertEqual(first[0]['id'],same[0]['id']);self.assertEqual(self.db.execute('SELECT count(*) FROM evidence').fetchone()[0],1)
+        changing=await read([b'OK',b'changed']);self.assertEqual(changing[0]['state'],'unstable')
+        self.assertEqual(evaluate(self.job['settings'],self.state,b'',changing)['state'],'inconclusive')
+        missing=await read([None,None]);self.assertEqual(missing[0]['state'],'missing')
+        appeared=await read([b'OK later',b'OK later']);self.assertNotEqual(first[0]['sha256'],appeared[0]['sha256']);self.assertEqual(list(self.work.iterdir()),[])
+    async def test_rate_limit_fresh_completion_preflight_and_natural_end(self):
+        from unittest.mock import patch,AsyncMock
+        from types import SimpleNamespace
+        from execution import Execution
+        from completion import validate as preflight
+        w=Execution.__new__(Execution);w.store=self.store;w.job=self.job;w.live_deployment=self.deployment;w.files_checked_at=float('-inf');w.work=self.work;w.output=lambda state:False
+        c=SimpleNamespace(ssh=None,call=AsyncMock(return_value=dict(self.state)))
+        with patch('live_output_files.download',self.download),patch('vm_worker.guard') as guard:
+            self.copies=[b'OK',b'OK'];await w.observe_files(self.state,c,None)
+            self.assertEqual(guard.call_count,2);await w.observe_files(self.state,c,None);self.assertEqual(c.call.await_count,1)
+            self.copies=[b'bad',b'bad'];await w.observe_files(self.state,c,None,force=True)
+            with self.assertRaises(DevelopmentFault):preflight(self.store,self.job,self.state,b'',self.job['outputFiles'])
+            self.copies=[b'OK',b'OK'];await w.observe_files(self.state,c,None,force=True)
+            self.assertEqual(preflight(self.store,self.job,self.state,b'',self.job['outputFiles'])['reason'],'criteria_complete')
+            self.job['settings']['expectedExitCode']=0
+            with self.assertRaises(DevelopmentFault):preflight(self.store,self.job,self.state,b'',self.job['outputFiles'])
+            c.call.return_value={**self.state,'state':'completed','closeConfirmed':True};self.copies=[b'OK',b'OK']
+            self.assertEqual((await w.observe_files(self.state,c,None,force=True))['state'],'completed')
+            with self.assertRaises(DevelopmentFault):preflight(self.store,self.job,c.call.return_value,b'',self.job['outputFiles'])
+            self.assertTrue(all(call.args[0]=='poll' for call in c.call.await_args_list))
+            w.stop_requested=True;self.assertIs(await w.observe_files(self.state,c,None,force=True),self.state)
+            self.assertEqual(self.copies,[])
+    async def test_foreign_or_stale_identity_is_rejected_before_read(self):
+        import copy
+        from live_output_files import owned
+        for field in ('generation','boot','deployment','path','ended'):
+            j=copy.deepcopy(self.job);d=copy.deepcopy(self.deployment);s=dict(self.state)
+            if field=='generation':s['generation']='1'
+            if field=='boot':d['target']['bootId']=str(uuid.uuid4())
+            if field=='deployment':d['id']=str(uuid.uuid4())
+            if field=='path':d['guestDirectory']=r'F:\Build\P123ABCD\D9999999'
+            if field=='ended':s['state']='completed'
+            with self.assertRaises(DevelopmentFault):owned(j,d,s)
