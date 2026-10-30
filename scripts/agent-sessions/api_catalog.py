@@ -34,10 +34,12 @@ class Catalogs:
 
     def public_model(self,provider,value):
         result=present(value,provider['protocol'])
+        from api_server import unavailable as server_unavailable
+        result['unavailableReasons']+=server_unavailable(provider,value)
         if provider['kind']=='openrouter':
             from openrouter_policy import unavailable
             result['unavailableReasons']+=unavailable(provider,value)
-            result['available']=not result['unavailableReasons']
+        result['available']=not result['unavailableReasons']
         return result
 
     def listing(self,ident):
@@ -117,6 +119,7 @@ class Catalogs:
                 raise ProjectFault('Read or reconcile the original metadata request before another check.',409)
             binding={k:provider[k] for k in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
             if provider['kind']=='openrouter':binding['openrouter']=provider['openrouter']
+            else:binding['server']=provider.get('server','custom')
             db.execute("INSERT INTO catalog_requests VALUES (?,?,?,?,?,'reserved',0,NULL,NULL,?)",(rid,ident,'refresh',fingerprint,encode(binding),now()))
             return {'requestId':rid,'providerId':ident,'state':'pending'},True
 

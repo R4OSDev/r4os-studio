@@ -17,7 +17,7 @@ export interface AgentRun { id: string; sessionId: string; owner?: SessionOwner;
 export interface AgentSession {
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { profile: string; version: string; sha256: string; available?: boolean;
-    api?: { providerId: string; baseUrl: string; protocol: 'responses' | 'chat-completions' } };
+    api?: { providerId: string; baseUrl: string; protocol: 'responses' | 'chat-completions'; server?: 'custom' | 'ollama' | 'lm-studio' } };
   webSearchEnabled?: boolean;
   environmentNotesEnabled?: boolean;
   imageGenerationEnabled?: boolean;

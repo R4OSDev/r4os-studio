@@ -1,4 +1,4 @@
-# API provider configuration (0.8.11–0.8.15)
+# API provider configuration (0.8.11–0.8.16)
 
 This is the configuration/credential foundation for OpenRouter, other
 OpenAI-compatible services and explicit local model servers. Existing OpenAI
@@ -19,6 +19,8 @@ OpenRouter0.8.15 adds bounded routing/attribution frozen into the original
 revision, precise API errors and origin notices. Its qualified scope is plain
 streamed Chat/function tools. Other API kinds retain their own protocols.
 See [API-OpenRouter.md](API-OpenRouter.md).
+
+Local/custom0.8.16 adds explicit `server: custom | ollama | lm-studio`, local defaults and profile-bound plain Responses/Chat. Old missing fields read as Custom without rewriting stored revisions. See [API-Local-Servers.md](API-Local-Servers.md).
 
 ## Browser and host responsibilities
 

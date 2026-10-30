@@ -1,3 +1,22 @@
+## Existing local/custom model servers (0.8.16)
+
+Local API now offers explicit Ollama/LM Studio server contracts and local
+address presets, optional bearer/no-auth, protocol and reverse-proxy prefixes.
+The real host worker checks Models metadata only; no model/server installation,
+download, loading or reconfiguration occurs. Exact manually declared model
+capabilities and actual configured context are required for named servers.
+
+Plain streamed text/function sessions preserve original native history,
+acknowledged call receipts, queue snapshots and same-thread resume. Responses
+is stateless for Ollama; LM Studio Responses/Chat use the qualified plain scope.
+Reasoning/image/hosted extras remain visibly unavailable. Profile changes bind
+new sessions; old records/threads and subscription accounts stay intact.
+
+Eight original-binary offline worker cases, actual GET-only metadata helpers,
+focused protocol/store/HTTP checks and browser1440/320 qualify these contracts
+without real model inference. Build/TypeScript/lint and normal immutable release
+verification apply. Details: [API-Local-Servers.md](API-Local-Servers.md).
+
 ## OpenRouter routing and qualified tool sessions (0.8.15)
 
 OpenRouter now binds exact model/key and optional backend order/allowlist,

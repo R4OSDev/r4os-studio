@@ -105,7 +105,7 @@ class ApiProviders:
         if row is None: raise ProjectFault('API provider not found.',404)
         if row['retired'] and not retired: raise ProjectFault('This API provider was deleted.',410)
         value=json.loads(row['data'])
-        if (not isinstance(value,dict) or set(value)-{'openrouter'}!=set(FIELDS) or value['id']!=ident or value['type']!='api'
+        if (not isinstance(value,dict) or set(value)-{'openrouter','server'}!=set(FIELDS) or value['id']!=ident or value['type']!='api'
                 or value['kind'] not in KINDS or value['protocol'] not in PROTOCOLS or value['auth'] not in ('none','bearer')
                 or type(value['revision']) is not int or value['revision']<1
                 or type(value['credentialRevision']) is not int or value['credentialRevision']<0
@@ -119,10 +119,15 @@ class ApiProviders:
         except (ProjectFault,ValueError):
             raise ProjectFault('The API provider record is unavailable. Existing data was preserved.',503) from None
         if value['kind']=='openrouter':
+            if 'server' in value:raise ProjectFault('Server presets belong to a different provider kind.',503)
             from openrouter_policy import policy
             try:value['openrouter']=policy(value.get('openrouter'))
             except ProjectFault:raise ProjectFault('The original OpenRouter settings are unavailable. Existing data was preserved.',503) from None
         elif 'openrouter' in value:raise ProjectFault('OpenRouter settings belong to a different provider kind.',503)
+        else:
+            from api_server import server
+            try:value['server']=server(value.get('server','custom'))
+            except ProjectFault:raise ProjectFault('The original API server contract is unavailable. Existing data was preserved.',503) from None
         return value
 
     def listing(self):
@@ -155,8 +160,8 @@ class ApiProviders:
     def mutate(self,operation,ident,data,finish=False):
         if not isinstance(data,dict):raise ProjectFault('Invalid API provider input.',400)
         rid=identity(data.get('requestId'));ident=identity(ident) if ident else None
-        if operation=='create':allowed={'requestId','name','kind','baseUrl','protocol','auth','key','openrouter'}
-        elif operation=='update':allowed={'requestId','revision','name','baseUrl','protocol','auth','key','enabled','openrouter'}
+        if operation=='create':allowed={'requestId','name','kind','baseUrl','protocol','auth','key','openrouter','server'}
+        elif operation=='update':allowed={'requestId','revision','name','baseUrl','protocol','auth','key','enabled','openrouter','server'}
         elif operation in ('disconnect','delete'):allowed={'requestId','revision'}
         else:raise ProjectFault('Invalid API provider operation.',400)
         if set(data)-allowed:raise ProjectFault('Unexpected API provider fields.',400)
@@ -200,9 +205,13 @@ class ApiProviders:
             else:
                 if 'name' in data:value['name']=name(data['name'])
                 if value['kind']=='openrouter':
+                    if 'server' in data:raise ProjectFault('Server presets require a Custom or Local API connection.',400)
                     from openrouter_policy import policy
                     value['openrouter']=policy(data.get('openrouter',value.get('openrouter')))
                 elif 'openrouter' in data:raise ProjectFault('Routing settings require an OpenRouter connection.',400)
+                else:
+                    from api_server import server
+                    value['server']=server(data.get('server',value.get('server','custom')))
                 old_endpoint=endpoint(value['baseUrl'],value['kind']);new_endpoint=endpoint(data.get('baseUrl',value['baseUrl']),value['kind'])
                 if old_endpoint['origin']!=new_endpoint['origin'] and value['keyConfigured'] and 'key' not in data:
                     raise ProjectFault('Changing API origin requires a replacement key or explicit key removal.',400)

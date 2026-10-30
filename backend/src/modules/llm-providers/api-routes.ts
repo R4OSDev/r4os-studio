@@ -18,6 +18,7 @@ const fields = {
   baseUrl: { type: 'string', minLength: 1, maxLength: 2048 },
   protocol: { type: 'string', enum: ['responses', 'chat-completions'] },
   auth: { type: 'string', enum: ['none', 'bearer'] },
+  server: { type: 'string', enum: ['custom', 'ollama', 'lm-studio'] },
   openrouter,
 };
 const params = { type: 'object', required: ['id'], additionalProperties: false, properties: { id: uuid } };

@@ -54,6 +54,7 @@ class ApiRuntime:
             data={'binding':{key:self.binding[key] for key in ('baseUrl','protocol','auth','kind')}|{'model':self.model},
                 'addresses':addresses,'key':self.credential,'relayToken':self.token,'chatPolicy':self.chat}
             if self.binding['kind']=='openrouter':data['binding']['openrouter']=self.binding.get('openrouter')
+            else:data['binding']['server']=self.binding.get('server','custom')
             self.child.stdin.write(json.dumps(data,separators=(',',':')).encode()+b'\n');await self.child.stdin.drain()
             ready=json.loads(await asyncio.wait_for(self.child.stdout.readline(),5))
             if set(ready)!={'port'} or type(ready['port']) is not int or not 1<=ready['port']<=65535:raise ValueError()

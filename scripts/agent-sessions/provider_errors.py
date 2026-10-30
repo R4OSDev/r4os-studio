@@ -25,6 +25,7 @@ MESSAGES = {
     'apiAccountRequired': 'The API account needs credits or billing attention (HTTP402).',
     'apiAccessDenied': 'The API account cannot access this model (HTTP403).',
     'apiServiceUnavailable': 'The API model service is temporarily unavailable.',
+    'apiModelOrRouteUnavailable': 'The selected model or API route was not found (HTTP404). Review the exact model ID and API prefix.',
 }
 CONNECTIONS = {'httpConnectionFailed', 'responseStreamConnectionFailed',
                'responseStreamDisconnected', 'responseTooManyFailedAttempts'}
@@ -42,6 +43,7 @@ def describe(error,api=False):
     connection_code=code
     if api and status==402:code='apiAccountRequired'
     if api and status==403:code='apiAccessDenied'
+    if api and status==404:code='apiModelOrRouteUnavailable'
     if api and status==429:code='rateLimitExceeded'
     if api and status==503:code='apiServiceUnavailable'
     if api and (code=='unknown' and info=='other' or code=='responseStreamDisconnected'):
@@ -63,6 +65,7 @@ def describe(error,api=False):
                 'insufficient_quota':'usageLimitExceeded','rate_limit_exceeded':'rateLimitExceeded',
                 'invalid_api_key':'unauthorized','model_not_found':'badRequest',
                 'chat_semantics_unavailable':'apiProtocolUnsupported','chat_invalid_tool_arguments':'apiInvalidToolArguments',
+                'api_server_semantics_unavailable':'apiProtocolUnsupported',
                 'chat_protocol_error':'apiProtocolError','chat_stream_incomplete':'apiStreamIncomplete',
                 'api_account_required':'apiAccountRequired','api_access_denied':'apiAccessDenied','api_service_unavailable':'apiServiceUnavailable'}.get(candidate,code) if isinstance(candidate,str) else code
         except (ValueError,TypeError):pass

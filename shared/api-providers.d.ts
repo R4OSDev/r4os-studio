@@ -2,6 +2,7 @@
 export type ApiProviderKind = 'openrouter' | 'openai-compatible' | 'local';
 export type ApiProtocol = 'responses' | 'chat-completions';
 export type ApiAuth = 'none' | 'bearer';
+export type ApiServer = 'custom' | 'ollama' | 'lm-studio';
 export interface OpenRouterSettings {
   order: string[]; only: string[]; allowFallbacks: boolean;
   attribution: { url: string; title: string } | null;
@@ -15,14 +16,15 @@ export interface ApiProvider {
   /** Configuration alone never establishes model/tool/Goal compatibility. */
   runtime: 'not-qualified';
   openrouter?: OpenRouterSettings;
+  server?: ApiServer;
 }
 export interface ApiProviderCreate {
   requestId: string; name: string; kind: ApiProviderKind; baseUrl: string;
-  protocol: ApiProtocol; auth: ApiAuth; key?: string; openrouter?: OpenRouterSettings;
+  protocol: ApiProtocol; auth: ApiAuth; key?: string; openrouter?: OpenRouterSettings; server?: ApiServer;
 }
 export interface ApiProviderUpdate {
   requestId: string; revision: number; name?: string; baseUrl?: string;
-  protocol?: ApiProtocol; auth?: ApiAuth; key?: string | null; enabled?: boolean; openrouter?: OpenRouterSettings;
+  protocol?: ApiProtocol; auth?: ApiAuth; key?: string | null; enabled?: boolean; openrouter?: OpenRouterSettings; server?: ApiServer;
 }
 export interface ApiProviderMutation {
   requestId: string; state: 'pending' | 'complete'; provider: ApiProvider;

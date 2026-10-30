@@ -70,7 +70,13 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     const routingUpdate={requestId,revision:1,openrouter:routing};
     assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:routingUpdate})).statusCode,200);
     assert.deepEqual((calls.at(-1)?.input as typeof routingUpdate).openrouter,routing);
+    const serverUpdate={requestId,revision:1,server:'ollama'};
+    assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:serverUpdate})).statusCode,200);
+    assert.deepEqual(calls.at(-1)?.input,serverUpdate);
     const beforeInvalid=calls.length;
+    for(const server of [true,123,{},'Ollama','unknown']) {
+      assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:{requestId,revision:1,server}})).statusCode,400);
+    }
     for(const [path,payload] of [['/models/check',{...check,providerRevision:'1'}],['/models',{...manual,catalogRevision:'0'}],
       ['/models',{...manual,model:{...model,contextWindow:'8192'}}],['/models',{...manual,model:{...model,capabilities:{...model.capabilities,text:true}}}],
       ['/models',{...manual,model:{...model,unexpected:secret}}]]) {

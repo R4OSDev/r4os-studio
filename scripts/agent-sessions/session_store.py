@@ -296,7 +296,8 @@ PRAGMA user_version=1;
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)
-            if api:selected_engine['api']={'providerId':api['id'],'baseUrl':api['baseUrl'],'protocol':api['protocol']}
+            if api:selected_engine['api']={'providerId':api['id'],'baseUrl':api['baseUrl'],'protocol':api['protocol'],
+                'server':api.get('server','custom')}
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))

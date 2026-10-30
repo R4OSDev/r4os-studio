@@ -5,6 +5,7 @@ import net from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import { chatRequest, ChatStream, ChatFault } from './api_chat.mjs';
 import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin } from './api_openrouter.mjs';
+import { serverProfile, localRequest } from './api_local.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
@@ -23,6 +24,7 @@ const ERROR_CODES = new Map([
   ['api_account_required', 'The API account requires credits or billing attention.'],
   ['api_access_denied', 'The API account cannot access this model.'],
   ['api_service_unavailable', 'The API model service is temporarily unavailable.'],
+  ['api_server_semantics_unavailable', 'The configured server adapter cannot preserve this model operation.'],
 ]);
 const sockets = new Set(), upstreams = new Set();
 let server, stopped = false;
@@ -49,7 +51,7 @@ const configuration = await new Promise((resolve, reject) => {
 }).catch(() => { process.stdout.write('{"error":"API transport bootstrap unavailable"}\n'); process.exit(1); });
 
 const { binding, addresses, key, relayToken, chatPolicy } = configuration;
-let target, router = null, originOrdinal = 0;
+let target, router = null, originOrdinal = 0, profile = 'custom';
 try {
   target = new URL(binding.baseUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash
@@ -63,7 +65,7 @@ try {
   if (binding.kind === 'openrouter') {
     if (binding.protocol !== 'chat-completions' || binding.auth !== 'bearer' || chatPolicy?.reasoning !== 'none') throw Error();
     router = routerSettings(binding.openrouter ?? {});
-  }
+  } else profile = serverProfile(binding.server);
 } catch { process.stdout.write('{"error":"API transport binding unavailable"}\n'); process.exit(1); }
 
 function fail(response, status, code = 'provider_error') {
@@ -98,10 +100,13 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         || (value.previous_response_id !== undefined && value.previous_response_id !== null && value.previous_response_id !== '')
         || value.conversation || !Array.isArray(value.tools) || value.tools.some(tool => tool.type !== 'function')) throw Error();
       if (binding.protocol === 'chat-completions') {
-        chat = chatRequest(value, chatPolicy);
+        chat = profile === 'custom' ? chatRequest(value, chatPolicy) : localRequest(value, profile, binding.protocol);
         if (router) chat = routerRequest(chat, router, chatPolicy);
         body = Buffer.from(JSON.stringify(chat));
         if (body.length > MAX_REQUEST) throw new ChatFault('chat_semantics_unavailable');
+      } else if (profile !== 'custom') {
+        body = Buffer.from(JSON.stringify(localRequest(value, profile, binding.protocol)));
+        if (body.length > MAX_REQUEST) throw new ChatFault('api_server_semantics_unavailable');
       }
     } catch (error) { fail(response, 400, error instanceof ChatFault ? error.code : 'provider_error'); return; }
     const transport = target.protocol === 'https:' ? https : http;

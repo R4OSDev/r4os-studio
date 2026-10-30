@@ -35,6 +35,11 @@ def catalog(providers,provider):
             seen.add(slug)
         models=copy.deepcopy(value['models'])
         if provider['kind']=='openrouter':models=[model for model in models if model.get('studio_chat',{}).get('reasoning')=='none']
+        if provider.get('server','custom')!='custom':
+            models=[model for model in models if model.get('default_reasoning_level')=='none'
+                and model.get('supported_reasoning_levels')==[{'effort':'none','description':'None'}]
+                and type(model.get('context_window')) is int and model['context_window']>0
+                and (provider['protocol']!='chat-completions' or model.get('studio_chat',{}).get('reasoning')=='none')]
         return models
     except (OSError,ValueError,TypeError,KeyError):
         raise ProjectFault('The API model catalog is unqualified or belongs to an older configuration. Refresh its model metadata before starting work.',409) from None
@@ -74,7 +79,7 @@ def freeze(store,sid,data,providers,snapshot):
     if provider is None:raise ProjectFault('The original API connection is unavailable.',409)
     if not provider['enabled']:raise ProjectFault('This API connection is disconnected.',409)
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
-            or selected['protocol']!=provider['protocol']):
+            or selected['protocol']!=provider['protocol'] or selected.get('server','custom')!=provider.get('server','custom')):
         raise ProjectFault('The API connection identity changed. Create a new session; the existing conversation was preserved.',409)
     if data.get('mode')=='goal':raise ProjectFault('Native Goal execution is not qualified for this API model.',409)
     if session.get('webSearchEnabled',False) or session.get('imageGenerationEnabled',False) or session.get('fastMode',False):
@@ -85,5 +90,6 @@ def freeze(store,sid,data,providers,snapshot):
     model.pop('studio_chat',None)
     snapshot['apiProvider']={key:provider[key] for key in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
     if provider['kind']=='openrouter':snapshot['apiProvider']['openrouter']=copy.deepcopy(provider['openrouter'])
+    else:snapshot['apiProvider']['server']=provider.get('server','custom')
     snapshot['apiModels']={'models':[model]};snapshot['apiRunId']=future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation']=False
