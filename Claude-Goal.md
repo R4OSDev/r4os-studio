@@ -95,6 +95,7 @@ real account or exercise a user session.
 
 Synthetic auth and the owned Messages endpoint do not prove a real subscription,
 entitlement, quota or invoice. Public account/model admission stays gated.
-Live activation, remaining direct/retry/output accounting and overall real
+Live activation, remaining direct/retry integration and overall real
 subscription acceptance remain open rather than being inferred from these
-isolated results.
+isolated results. Final stream token accounting is qualified separately in
+[Claude-Input-Usage.md](Claude-Input-Usage.md).

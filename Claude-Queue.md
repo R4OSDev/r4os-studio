@@ -54,6 +54,7 @@ replayed tool ID. The native input echo and both closed streams were confirmed.
 
 These controlled cases use synthetic auth and an owned fake Messages endpoint.
 They are not real subscription/entitlement/billing evidence. Public Claude model
-admission remains gated. Bounded GOAL orchestration, direct steering/retry,
-remaining statistics and real account acceptance stay open in0.8.19/21–23.
+admission remains gated. Bounded GOAL controls/queue priority are added in0.8.49,
+final stream statistics in0.8.50. Live activation, direct steering/retry and real
+account acceptance stay open in0.8.19/21–23.
 Existing Codex/API queues, native profiles and user data are preserved.

@@ -1,3 +1,13 @@
+## Claude final output statistics (0.8.50)
+
+Confirmed final stream counters now add per-response output and matching totals
+to session/project/lifetime statistics. Separate immutable receipts preserve
+existing input counts, deduplicate resumed responses and survive scoped session
+cleanup. Missing/interrupted measurements remain unknown with partial coverage;
+assistant placeholders, cumulative session values and quota are not substituted.
+Actual account acceptance remains deferred by the user. Details:
+[Claude-Input-Usage.md](Claude-Input-Usage.md).
+
 ## Claude GOAL controls and queue priority (0.8.49, partial)
 
 Project and skill Goal controls now support provider-specific local Save,

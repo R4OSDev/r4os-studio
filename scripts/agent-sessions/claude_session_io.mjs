@@ -18,6 +18,12 @@ export function publicFrame(native) {
   if (native.type === 'stream_event') {
     const e = native.event, event = { type: e?.type, index: e?.index };
     if (e?.type === 'message_start') event.message = { id: e.message?.id, model: e.message?.model };
+    if (e?.type === 'message_delta') {
+      const output = e.usage?.output_tokens;
+      event.usage = { output_tokens: Number.isSafeInteger(output) && output >= 0 ? output : null };
+      event.delta = { stop_reason: ['end_turn','tool_use','max_tokens','stop_sequence','pause_turn','refusal','model_context_window_exceeded'].includes(e.delta?.stop_reason)
+        ? e.delta.stop_reason : null };
+    }
     if (e?.type === 'content_block_start') event.content_block = { type: e.content_block?.type,
       ...(e.content_block?.type === 'tool_use' ? { id: e.content_block.id, name: e.content_block.name } : {}) };
     if (e?.type === 'content_block_delta') event.delta = e.delta?.type === 'text_delta' ? { type: 'text_delta', text: e.delta.text }

@@ -40,8 +40,9 @@ the original. Main-loop usage and cumulative model snapshots retain different
 source semantics. Cumulative/resumed values are never summed as turn totals;
 native list-price estimates are separate from quota and actual billing.
 Input/cache statistics and lifetime retention are implemented in0.8.46 through
-completed response IDs and the common numeric outbox. Output/total accounting
-remains unqualified. Details: [Claude-Input-Usage.md](Claude-Input-Usage.md).
+completed response IDs and the common numeric outbox. Final stream output and
+matching response totals are added in0.8.50; missing values remain unknown.
+Details: [Claude-Input-Usage.md](Claude-Input-Usage.md).
 Session cleanup removes private snapshots through the existing scoped deletion
 mechanism while retaining the numeric lifetime receipts.
 

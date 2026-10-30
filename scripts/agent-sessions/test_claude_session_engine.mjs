@@ -68,6 +68,10 @@ await test('display projection excludes raw thinking, signatures, images and pri
   assert.equal(scoped.error, 'nativeError'); assert.equal(JSON.stringify(scoped).includes('private provider failure'), false);
   const missing = publicFrame({ ...native, message: { ...native.message, usage: { input_tokens: true, cache_read_input_tokens: -1 } } });
   assert.deepEqual(missing.message.usage, { input_tokens: null, cache_creation_input_tokens: null, cache_read_input_tokens: null });
+  const tail = publicFrame({ type:'stream_event', event:{ type:'message_delta', delta:{stop_reason:'end_turn',stop_sequence:'private'}, usage:{output_tokens:13,input_tokens:999,privateDetail:'secret'} } });
+  assert.deepEqual(tail.event.usage,{output_tokens:13});
+  assert.deepEqual(tail.event.delta,{stop_reason:'end_turn'});
+  assert.deepEqual(publicFrame({type:'stream_event',event:{type:'message_delta',usage:{output_tokens:true}}}).event.usage,{output_tokens:null});
 });
 function admission(binding) { return { allowed: true, extraUsageDisabled: true, providerId: binding.providerId,
   nativeSessionId: binding.nativeSessionId, model: binding.model, admissionId: randomUUID(), expiresAt: Date.now() + 10000,
