@@ -6,11 +6,19 @@ import { ProviderError } from './errors.js';
 
 const uuid = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const revision = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
+const providerSlugs = { type: 'array', maxItems: 16, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 120 } };
+const openrouter = { type: 'object', additionalProperties: false, properties: {
+  order: providerSlugs, only: providerSlugs, allowFallbacks: { type: 'boolean' },
+  attribution: { anyOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, required: ['url', 'title'], properties: {
+    url: { type: 'string', minLength: 1, maxLength: 512 }, title: { type: 'string', minLength: 1, maxLength: 80 },
+  } }] },
+} };
 const fields = {
   requestId: uuid, name: { type: 'string', minLength: 1, maxLength: 80 },
   baseUrl: { type: 'string', minLength: 1, maxLength: 2048 },
   protocol: { type: 'string', enum: ['responses', 'chat-completions'] },
   auth: { type: 'string', enum: ['none', 'bearer'] },
+  openrouter,
 };
 const params = { type: 'object', required: ['id'], additionalProperties: false, properties: { id: uuid } };
 const retiring = { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision'], properties: { requestId: uuid, revision } } };
@@ -41,9 +49,22 @@ function modelInput(value: unknown, manual: boolean) {
 function input(value: unknown, allowed: string[]) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProviderError('Invalid API provider input.');
   for (const [field, item] of Object.entries(value)) {
+    if (field === 'openrouter' && allowed.includes(field)) { routingInput(item); continue; }
     if (!allowed.includes(field) || (field === 'revision' ? typeof item !== 'number' || !Number.isSafeInteger(item)
       : field === 'enabled' ? typeof item !== 'boolean' : field === 'key' && item === null ? false : typeof item !== 'string')) {
       throw new ProviderError('Invalid API provider fields.');
+    }
+  }
+}
+
+function routingInput(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProviderError('Invalid OpenRouter input.');
+  for (const [key, item] of Object.entries(value)) {
+    if (['order', 'only'].includes(key) ? !Array.isArray(item) || item.some(v => typeof v !== 'string')
+      : key === 'allowFallbacks' ? typeof item !== 'boolean'
+        : key === 'attribution' ? item !== null && (!item || typeof item !== 'object' || Array.isArray(item)
+          || Object.entries(item).some(([field, entry]) => !['url', 'title'].includes(field) || typeof entry !== 'string')) : true) {
+      throw new ProviderError('Invalid OpenRouter fields.');
     }
   }
 }

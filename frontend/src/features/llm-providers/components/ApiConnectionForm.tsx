@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import type { ApiAuth, ApiProtocol, ApiProvider, ApiProviderKind, ApiProviderMutation } from '../../../../../shared/api-providers';
 import type { ProviderApi } from '../useProviders';
 import { useApiMutation } from '../useApiMutation';
+import { OpenRouterFields, routerDraft, routerSettings } from './OpenRouterFields';
 
 export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API' };
 export type LeaveGuard = (guard: () => boolean) => void;
@@ -15,11 +16,13 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   const [auth, setAuth] = useState<ApiAuth>(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
   const [enabled, setEnabled] = useState(initial?.enabled ?? true), [secret, setSecret] = useState('');
   const [keyAction, setKeyAction] = useState<'keep' | 'replace' | 'clear'>(initial ? 'keep' : 'replace');
+  const [routing, setRouting] = useState(() => routerDraft(initial?.openrouter));
   const mutation = useApiMutation(api, initial?.id ?? null), field = useRef<HTMLInputElement>(null);
   const retryConfig = mutation.notFound && !!mutation.pending && ['create', 'update'].includes(mutation.pending.operation);
   const dirty = name !== (initial?.name ?? apiKinds[kind]) || baseUrl !== (initial?.baseUrl ?? (kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : ''))
     || protocol !== (initial?.protocol ?? 'chat-completions') || auth !== (initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'))
-    || enabled !== (initial?.enabled ?? true) || !!secret || !!initial && keyAction !== 'keep';
+    || enabled !== (initial?.enabled ?? true) || !!secret || !!initial && keyAction !== 'keep'
+    || kind === 'openrouter' && JSON.stringify(routing) !== JSON.stringify(routerDraft(initial?.openrouter));
   useEffect(() => {
     setLeaveGuard?.(() => !mutation.busy && (!dirty && !mutation.pending || window.confirm('Leave these API settings? Unsaved keys will be discarded. An original pending request remains available on return.')));
     const warn = (event: BeforeUnloadEvent) => { if (dirty || mutation.pending) event.preventDefault(); };
@@ -33,6 +36,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const data = { name: name.trim(), baseUrl: baseUrl.trim(), protocol, auth,
+      ...(kind === 'openrouter' ? { openrouter: routerSettings(routing) } : {}),
       ...(initial ? { revision: initial.revision, enabled: auth === 'bearer' && (keyAction === 'clear' || !initial.keyConfigured && !secret) ? false : enabled } : { kind }),
       ...(auth === 'bearer' && keyAction === 'replace' && secret ? { key: secret } : initial && (keyAction === 'clear' || auth === 'none') ? { key: null } : {}) };
     await accept(await mutation.send(initial ? 'update' : 'create', data, !!mutation.pending) as ApiProviderMutation | undefined);
@@ -40,15 +44,16 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   function cancel() {
     setSecret(''); setName(initial?.name ?? apiKinds[kind]); setUrl(initial?.baseUrl ?? (kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : ''));
     setProtocol(initial?.protocol ?? 'chat-completions'); setAuth(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
-    setEnabled(initial?.enabled ?? true); setKeyAction(initial ? 'keep' : 'replace');
+    setEnabled(initial?.enabled ?? true); setKeyAction(initial ? 'keep' : 'replace'); setRouting(routerDraft(initial?.openrouter));
   }
   return <form className="provider-form api-connection-form" onSubmit={event => void submit(event)} aria-label="API connection">
     <fieldset disabled={mutation.busy || !!mutation.pending && !retryConfig}>
       <label htmlFor="api-name">Display name</label><input id="api-name" value={name} required maxLength={80} autoComplete="off" onChange={event => setName(event.target.value)} />
       <label htmlFor="api-url">Base URL</label><input id="api-url" value={baseUrl} required maxLength={2048} autoComplete="off" placeholder={kind === 'local' ? 'http://127.0.0.1:11434/v1' : 'https://api.example.com/v1'} onChange={event => setUrl(event.target.value)} />
       <p className="field-help">Local addresses are resolved by the Studio host. Include the API prefix, without a model route or query.</p>
-      <label htmlFor="api-protocol">Protocol</label><select id="api-protocol" value={protocol} onChange={event => setProtocol(event.target.value as ApiProtocol)}><option value="chat-completions">Chat Completions</option><option value="responses">Responses</option></select>
-      <label htmlFor="api-auth">Authentication</label><select id="api-auth" value={auth} onChange={event => { setAuth(event.target.value as ApiAuth); setSecret(''); }}><option value="bearer">Bearer API key</option><option value="none">No authentication</option></select>
+      <label htmlFor="api-protocol">Protocol</label><select id="api-protocol" value={protocol} onChange={event => setProtocol(event.target.value as ApiProtocol)}><option value="chat-completions">Chat Completions</option><option value="responses" disabled={kind === 'openrouter'}>Responses{kind === 'openrouter' ? ' · unavailable for OpenRouter' : ''}</option></select>
+      {kind === 'openrouter' && <p className="field-help">Streamed text and function tools use Chat Completions. Reasoning tool-history, Responses and hosted web/images are currently unavailable for this provider.</p>}
+      <label htmlFor="api-auth">Authentication</label><select id="api-auth" value={auth} onChange={event => { setAuth(event.target.value as ApiAuth); setSecret(''); }}><option value="bearer">Bearer API key</option><option value="none" disabled={kind === 'openrouter'}>No authentication</option></select>
       {auth === 'bearer' && <div className="api-key-editor">
         <p className="field-help">{initial?.keyConfigured ? 'A key is configured. Its value cannot be read back.' : 'No key is configured. You can save now and add it later.'}</p>
         {initial && <div className="provider-actions"><button type="button" className="button-secondary" onClick={() => { setKeyAction('replace'); requestAnimationFrame(() => field.current?.focus()); }}>Replace key</button><button type="button" className="button-secondary" onClick={() => { setSecret(''); setKeyAction('clear'); }}>Clear key</button></div>}
@@ -56,6 +61,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
         {keyAction === 'clear' && <p className="field-help">The key will be removed when you save. This connection will be disabled.</p>}
       </div>}
       {initial && <label className="api-enabled"><input type="checkbox" checked={enabled} disabled={auth === 'bearer' && (keyAction === 'clear' || !initial.keyConfigured && !secret)} onChange={event => setEnabled(event.target.checked)} />Enabled for new runs</label>}
+      {kind === 'openrouter' && <OpenRouterFields draft={routing} change={setRouting} />}
     </fieldset>
     <p className="field-help">Saving stores configuration only. It does not check metadata or send a model request.</p>
     {mutation.error && <p className="provider-alert" role="alert">{mutation.error}</p>}

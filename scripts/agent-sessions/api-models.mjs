@@ -2,6 +2,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { routerSettings, routerHeaders } from './api_openrouter.mjs';
 
 const MAX_BODY = 4 * 1024 * 1024, MAX_MODELS = 256;
 let request, socket, finished = false;
@@ -64,6 +65,7 @@ function model(entry) {
       capabilities.functionTools = parameters.includes('tools') && parameters.includes('tool_choice') ? 'supported' : 'unsupported';
       capabilities.reasoning = parameters.some(value => ['reasoning', 'reasoning_effort', 'include_reasoning'].includes(value)) ? 'supported' : 'unsupported';
     }
+    if (entry.reasoning != null) capabilities.reasoning = typeof entry.reasoning === 'object' && !Array.isArray(entry.reasoning) ? 'supported' : 'unknown';
     capabilities.streaming = 'supported'; // Published endpoint-level streaming contract.
   }
   return { id, name, contextWindow, maxOutputTokens, capabilities, efforts: [], defaultEffort: null };
@@ -71,6 +73,7 @@ function model(entry) {
 const host = target.hostname.replace(/^\[|\]$/g, ''), address = addresses[0];
 const headers = { Accept: 'application/json', 'Accept-Encoding': 'identity', 'User-Agent': 'R4OS-Studio-Model-Metadata', Connection: 'close' };
 if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
+if (binding.kind === 'openrouter') Object.assign(headers, routerHeaders(routerSettings(binding.openrouter ?? {})));
 request = (target.protocol === 'https:' ? https : http).request({ protocol: target.protocol, hostname: host,
   port: target.port || undefined, path: target.pathname.replace(/\/$/, '') + '/models', method: 'GET', headers,
   agent: false, maxHeaderSize: 16384, autoSelectFamily: false, family: net.isIP(address),
@@ -80,7 +83,7 @@ request = (target.protocol === 'https:' ? https : http).request({ protocol: targ
   }, rejectUnauthorized: true, servername: net.isIP(host) ? undefined : host,
 }, response => {
   const status = response.statusCode ?? 502;
-  if (status < 200 || status >= 300) { fail(status === 401 || status === 403 ? 'auth' : status === 402 ? 'account' : status === 429 ? 'rate_limit' : status >= 300 && status < 400 ? 'redirect' : status === 404 ? 'no_catalog' : 'http'); return; }
+  if (status < 200 || status >= 300) { fail(status === 401 || status === 403 ? 'auth' : status === 402 ? 'account' : status === 429 ? 'rate_limit' : status >= 300 && status < 400 ? 'redirect' : status === 404 ? 'no_catalog' : status >= 500 ? 'unavailable' : 'http'); return; }
   if (!String(response.headers['content-type'] ?? '').startsWith('application/json') || response.headers['content-encoding']
     || Number(response.headers['content-length'] ?? 0) > MAX_BODY) { fail('format'); return; }
   const chunks = []; let count = 0;

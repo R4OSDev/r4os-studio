@@ -519,6 +519,19 @@ class Worker:
                         self.outcome='unknown';self.uncertain_effect=True
                         self.error=self.error or 'The original API transport closure is unconfirmed. Credentials and history were preserved.'
             self.usage_stats.finalize()
+            if self.api_runtime and self.config['apiProvider']['kind']=='openrouter':
+                # Observations belong to this original run, not the model input,
+                # a tool receipt or an invented billing/generation identity.
+                for origin in self.api_runtime.origins:
+                    try:
+                        detail={'providerId':self.config['providerId'],'configRevision':self.config['apiProvider']['revision'],**origin}
+                        label=('OpenRouter · selected: '+origin['requestedModel']+' · reported model: '+(origin['reportedModel'] or 'Unknown')
+                            +' · backend: '+(origin['reportedBackend'] or origin['endpointBackend'] or 'Unknown'))
+                        if origin['endpointModel'] and origin['endpointModel']!=origin['reportedModel']:label+=' · endpoint model: '+origin['endpointModel']
+                        with self.store.db:
+                            item(self.store,self.session_id,self.run_id,{'id':'api-origin-'+self.run_id+'-'+str(origin['ordinal']),
+                                'runId':self.run_id,'type':'notice','status':'completed','text':label,'apiOrigin':detail})
+                    except Exception:pass  # Metadata loss cannot replay an original model/tool action.
             if self.goal_worker:
                 from goal_worker import end_turns
                 self.goal_worker.clock.end(unknown=self.uncertain_effect or self.outcome=='unknown')

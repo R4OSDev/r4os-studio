@@ -46,6 +46,7 @@ export interface SessionOptions {
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }
 export interface SessionItem {
+  apiOrigin?: import('./api-providers.js').ApiResponseOrigin;
   generatedImage?: import('./generated-images.js').GeneratedImage;
   generatedAsset?: import('./generated-images.js').GeneratedAsset;
   attachments?: import('./agent-inputs.js').FrozenAttachment[];

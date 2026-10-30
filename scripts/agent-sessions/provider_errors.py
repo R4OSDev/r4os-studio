@@ -22,6 +22,9 @@ MESSAGES = {
     'apiStreamIncomplete': 'The model response stream ended before completing.',
     'apiOutputLimit': 'The model reached its output limit before completion.',
     'apiContentFilter': 'The model service blocked this response.',
+    'apiAccountRequired': 'The API account needs credits or billing attention (HTTP402).',
+    'apiAccessDenied': 'The API account cannot access this model (HTTP403).',
+    'apiServiceUnavailable': 'The API model service is temporarily unavailable.',
 }
 CONNECTIONS = {'httpConnectionFailed', 'responseStreamConnectionFailed',
                'responseStreamDisconnected', 'responseTooManyFailedAttempts'}
@@ -36,6 +39,11 @@ def describe(error,api=False):
         if candidate in CONNECTIONS and isinstance(info[candidate], dict):
             code = candidate; value = info[candidate].get('httpStatusCode')
             if type(value) is int and 100 <= value <= 599: status = value
+    connection_code=code
+    if api and status==402:code='apiAccountRequired'
+    if api and status==403:code='apiAccessDenied'
+    if api and status==429:code='rateLimitExceeded'
+    if api and status==503:code='apiServiceUnavailable'
     if api and (code=='unknown' and info=='other' or code=='responseStreamDisconnected'):
         # Codex0.163.0 retains HTTP400 Responses error JSON as Other rather
         # than its typed SSE classification. Decode only bounded, known codes
@@ -55,9 +63,11 @@ def describe(error,api=False):
                 'insufficient_quota':'usageLimitExceeded','rate_limit_exceeded':'rateLimitExceeded',
                 'invalid_api_key':'unauthorized','model_not_found':'badRequest',
                 'chat_semantics_unavailable':'apiProtocolUnsupported','chat_invalid_tool_arguments':'apiInvalidToolArguments',
-                'chat_protocol_error':'apiProtocolError','chat_stream_incomplete':'apiStreamIncomplete'}.get(candidate,code) if isinstance(candidate,str) else code
+                'chat_protocol_error':'apiProtocolError','chat_stream_incomplete':'apiStreamIncomplete',
+                'api_account_required':'apiAccountRequired','api_access_denied':'apiAccessDenied','api_service_unavailable':'apiServiceUnavailable'}.get(candidate,code) if isinstance(candidate,str) else code
         except (ValueError,TypeError):pass
     transient = code in ('httpConnectionFailed', 'responseStreamConnectionFailed') and status in (502, 503, 504)
+    if api and status==503 and connection_code in ('httpConnectionFailed','responseStreamConnectionFailed','responseTooManyFailedAttempts'):transient=True
     message = MESSAGES.get(code, 'The model service reported an error.')
     if code in CONNECTIONS:
         suffix = f' (HTTP{status}).' if status is not None else '.'
@@ -76,4 +86,5 @@ def describe(error,api=False):
         raw = error.get('message'); raw = raw[:4096] if isinstance(raw, str) else ''
         if re.search(r'\b401\b|\bunauthorized\b', raw, re.I): message = MESSAGES['unauthorized']
         elif re.search(r'\b429\b|usage limit|quota exceeded', raw, re.I): message = MESSAGES['usageLimitExceeded']
+    if api and (code=='unauthorized' or status==401):message='The API key was rejected. Review this connection’s key and permissions (HTTP401).'
     return {'code': code, 'httpStatusCode': status, 'transientCandidate': transient, 'text': message}

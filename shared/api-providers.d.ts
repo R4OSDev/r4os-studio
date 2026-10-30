@@ -2,6 +2,10 @@
 export type ApiProviderKind = 'openrouter' | 'openai-compatible' | 'local';
 export type ApiProtocol = 'responses' | 'chat-completions';
 export type ApiAuth = 'none' | 'bearer';
+export interface OpenRouterSettings {
+  order: string[]; only: string[]; allowFallbacks: boolean;
+  attribution: { url: string; title: string } | null;
+}
 export interface ApiProvider {
   id: string; type: 'api'; kind: ApiProviderKind; name: string;
   baseUrl: string; protocol: ApiProtocol; auth: ApiAuth;
@@ -10,14 +14,15 @@ export interface ApiProvider {
   createdAt: string; updatedAt: string;
   /** Configuration alone never establishes model/tool/Goal compatibility. */
   runtime: 'not-qualified';
+  openrouter?: OpenRouterSettings;
 }
 export interface ApiProviderCreate {
   requestId: string; name: string; kind: ApiProviderKind; baseUrl: string;
-  protocol: ApiProtocol; auth: ApiAuth; key?: string;
+  protocol: ApiProtocol; auth: ApiAuth; key?: string; openrouter?: OpenRouterSettings;
 }
 export interface ApiProviderUpdate {
   requestId: string; revision: number; name?: string; baseUrl?: string;
-  protocol?: ApiProtocol; auth?: ApiAuth; key?: string | null; enabled?: boolean;
+  protocol?: ApiProtocol; auth?: ApiAuth; key?: string | null; enabled?: boolean; openrouter?: OpenRouterSettings;
 }
 export interface ApiProviderMutation {
   requestId: string; state: 'pending' | 'complete'; provider: ApiProvider;
@@ -50,4 +55,14 @@ export interface ApiModelCatalog {
 export interface ApiModelMutation {
   requestId: string; providerId: string; state: 'pending' | 'complete' | 'failed' | 'unknown';
   catalogRevision?: number; modelId?: string; error?: string;
+}
+/** Run-bound observations; requested model and local IDs are not provider receipts. */
+export interface ApiResponseOrigin {
+  providerId: string; configRevision: number; ordinal: number; requestedModel: string;
+  reportedRequested: string | null; reportedModel: string | null; reportedBackend: string | null;
+  endpointModel: string | null; endpointBackend: string | null; strategy: string | null;
+  gatewayAttempt: number | null; providerResponseId: string | null; localResponseId: string;
+  finishReason: string | null;
+  usage: { input_tokens: number; output_tokens: number; total_tokens: number;
+    input_tokens_details?: { cached_tokens?: number }; output_tokens_details?: { reasoning_tokens?: number } } | null;
 }

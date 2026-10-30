@@ -1,4 +1,4 @@
-# API provider configuration (0.8.11–0.8.14)
+# API provider configuration (0.8.11–0.8.15)
 
 This is the configuration/credential foundation for OpenRouter, other
 OpenAI-compatible services and explicit local model servers. Existing OpenAI
@@ -14,6 +14,11 @@ verified remote account/model entitlement. Model discovery, settings UI and
 session selection are implemented in0.8.14; see [API-Model-Catalogs.md](API-Model-Catalogs.md).
 No real provider was probed. Chat Completions translation is qualified in0.8.13 through
 [API-Chat-Completions.md](API-Chat-Completions.md). Existing subscription sessions are not converted.
+
+OpenRouter0.8.15 adds bounded routing/attribution frozen into the original
+revision, precise API errors and origin notices. Its qualified scope is plain
+streamed Chat/function tools. Other API kinds retain their own protocols.
+See [API-OpenRouter.md](API-OpenRouter.md).
 
 ## Browser and host responsibilities
 

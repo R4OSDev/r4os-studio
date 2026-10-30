@@ -32,6 +32,14 @@ class Catalogs:
         return (row['revision'],json.loads(row['data'])) if row else (0,{'configRevision':provider['revision'],'models':[],
             'checkedAt':None,'checkedConfigRevision':None,'checkedCredentialRevision':None,'truncated':False})
 
+    def public_model(self,provider,value):
+        result=present(value,provider['protocol'])
+        if provider['kind']=='openrouter':
+            from openrouter_policy import unavailable
+            result['unavailableReasons']+=unavailable(provider,value)
+            result['available']=not result['unavailableReasons']
+        return result
+
     def listing(self,ident):
         with self.api.connect() as db:
             provider=self.api.current(db,ident);revision,data=self.raw(db,provider)
@@ -39,7 +47,7 @@ class Catalogs:
                 'stale':data['configRevision']!=provider['revision'],'checkedAt':data['checkedAt'],
                 'metadataCurrent':data.get('checkedConfigRevision')==provider['revision'] and data['checkedCredentialRevision']==provider['credentialRevision'],
                 'checkedCredentialRevision':data['checkedCredentialRevision'],'truncated':data['truncated'],
-                'models':[present(value,provider['protocol']) for value in data['models']]}
+                'models':[self.public_model(provider,value) for value in data['models']]}
 
     def native_models(self,ident):
         with self.api.connect() as db:
@@ -47,7 +55,7 @@ class Catalogs:
             if not has(db,'model_catalogs') or not db.execute('SELECT 1 FROM model_catalogs WHERE provider_id=?',(ident,)).fetchone():return None
             _,data=self.raw(db,provider)
             if data['configRevision']!=provider['revision']:return []
-            return [model for value in data['models'] if (model:=native(value,provider['protocol'])) is not None]
+            return [model for value in data['models'] if self.public_model(provider,value)['available'] and (model:=native(value,provider['protocol'])) is not None]
 
     def request(self,db,ident,rid):
         row=db.execute('SELECT * FROM catalog_requests WHERE id=? AND provider_id=?',(identity(rid),identity(ident))).fetchone() if has(db,'catalog_requests') else None
@@ -108,6 +116,7 @@ class Catalogs:
             if db.execute("SELECT 1 FROM catalog_requests WHERE provider_id=? AND phase!='complete'",(ident,)).fetchone():
                 raise ProjectFault('Read or reconcile the original metadata request before another check.',409)
             binding={k:provider[k] for k in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
+            if provider['kind']=='openrouter':binding['openrouter']=provider['openrouter']
             db.execute("INSERT INTO catalog_requests VALUES (?,?,?,?,?,'reserved',0,NULL,NULL,?)",(rid,ident,'refresh',fingerprint,encode(binding),now()))
             return {'requestId':rid,'providerId':ident,'state':'pending'},True
 

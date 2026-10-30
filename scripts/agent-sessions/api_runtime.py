@@ -36,6 +36,7 @@ class ApiRuntime:
         identity(self.binding['id'])
         self.provider='studio_api_'+self.binding['id'].replace('-','_')
         self.token=secrets.token_hex(32)
+        self.reader=None;self.origins=[];self.origin_error=False
 
     async def start(self):
         if self.binding['protocol'] not in ('responses','chat-completions') or self.binding['protocol']=='chat-completions' and not isinstance(self.chat,dict):
@@ -52,14 +53,46 @@ class ApiRuntime:
                 stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,limit=65536)
             data={'binding':{key:self.binding[key] for key in ('baseUrl','protocol','auth','kind')}|{'model':self.model},
                 'addresses':addresses,'key':self.credential,'relayToken':self.token,'chatPolicy':self.chat}
+            if self.binding['kind']=='openrouter':data['binding']['openrouter']=self.binding.get('openrouter')
             self.child.stdin.write(json.dumps(data,separators=(',',':')).encode()+b'\n');await self.child.stdin.drain()
             ready=json.loads(await asyncio.wait_for(self.child.stdout.readline(),5))
             if set(ready)!={'port'} or type(ready['port']) is not int or not 1<=ready['port']<=65535:raise ValueError()
             self.port=ready['port']
+            if self.binding['kind']=='openrouter':self.reader=asyncio.create_task(self.read_origins())
         except (OSError,ValueError,asyncio.TimeoutError,ConnectionError):
             await self.close();raise ProjectFault('The private model transport could not start.',503) from None
 
     def selection(self):return {'modelProvider':self.provider}
+
+    async def read_origins(self):
+        """Trusted relay diagnostics only; never an inference/control channel."""
+        fields={'event','ordinal','requestedModel','reportedRequested','reportedModel','reportedBackend','endpointModel','endpointBackend',
+            'strategy','gatewayAttempt','providerResponseId','localResponseId','finishReason','usage'}
+        try:
+            while raw:=await self.child.stdout.readline():
+                if len(raw)>8192 or len(self.origins)>=256:raise ValueError()
+                value=json.loads(raw)
+                if (not isinstance(value,dict) or set(value)!=fields or value['event']!='origin'
+                        or type(value['ordinal']) is not int or not 1<=value['ordinal']<=256
+                        or self.origins and value['ordinal']<=self.origins[-1]['ordinal']
+                        or value['requestedModel']!=self.model):raise ValueError()
+                for field in fields-{'event','ordinal','gatewayAttempt','usage'}:
+                    text=value[field]
+                    if text is not None and (not isinstance(text,str) or not 1<=len(text.encode())<=256
+                            or any(ord(c)<32 or ord(c)==127 or 0xd800<=ord(c)<=0xdfff for c in text)
+                            or isinstance(self.credential,str) and self.credential in text):raise ValueError()
+                attempt=value['gatewayAttempt']
+                if attempt is not None and (type(attempt) is not int or not 1<=attempt<=32):raise ValueError()
+                usage=value['usage']
+                if usage is not None:
+                    counters={'input_tokens','output_tokens','total_tokens'}
+                    if not isinstance(usage,dict) or set(usage)-counters-{'input_tokens_details','output_tokens_details'} or not counters<=set(usage):raise ValueError()
+                    if any(type(usage[k]) is not int or not 0<=usage[k]<=9007199254740991 for k in counters):raise ValueError()
+                    for field,key in [('input_tokens_details','cached_tokens'),('output_tokens_details','reasoning_tokens')]:
+                        if field in usage and (not isinstance(usage[field],dict) or set(usage[field])-{key}
+                                or any(type(v) is not int or not 0<=v<=9007199254740991 for v in usage[field].values())):raise ValueError()
+                self.origins.append({k:v for k,v in value.items() if k!='event'})
+        except (OSError,ValueError,TypeError,UnicodeError):self.origin_error=True
 
     def arguments(self,original):
         if self.port is None or self.child is None or self.child.returncode is not None:
@@ -90,6 +123,10 @@ class ApiRuntime:
                     self.child.terminate()
                     try:await asyncio.wait_for(self.child.wait(),2)
                     except asyncio.TimeoutError:self.child.kill();await self.child.wait()
+        if self.reader:
+            try:await asyncio.wait_for(asyncio.shield(self.reader),2)
+            except asyncio.TimeoutError:
+                self.origin_error=True;self.reader.cancel();await asyncio.gather(self.reader,return_exceptions=True)
         if self.key_file and self.key_inode is not None:
             try:
                 private(self.key_file)

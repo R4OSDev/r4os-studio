@@ -66,11 +66,21 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     const manual={requestId,providerRevision:1,catalogRevision:0,model};
     assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/models',headers,payload:manual})).statusCode,200);
     assert.equal(calls.at(-1)?.action,'model_save');
+    const routing={order:['owned/provider'],only:['owned/provider'],allowFallbacks:false,attribution:{url:'https://example.test/owned-app',title:'Owned app'}};
+    const routingUpdate={requestId,revision:1,openrouter:routing};
+    assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:routingUpdate})).statusCode,200);
+    assert.deepEqual((calls.at(-1)?.input as typeof routingUpdate).openrouter,routing);
     const beforeInvalid=calls.length;
     for(const [path,payload] of [['/models/check',{...check,providerRevision:'1'}],['/models',{...manual,catalogRevision:'0'}],
       ['/models',{...manual,model:{...model,contextWindow:'8192'}}],['/models',{...manual,model:{...model,capabilities:{...model.capabilities,text:true}}}],
       ['/models',{...manual,model:{...model,unexpected:secret}}]]) {
       assert.equal((await app.inject({method:'POST',url:base+'/'+id+path,headers,payload})).statusCode,400);
+    }
+    assert.equal(calls.length,beforeInvalid);
+    for(const openrouter of [{...routing,allowFallbacks:'false'},{...routing,headers:{Authorization:secret}},
+      {...routing,only:[2]},{...routing,attribution:{...routing.attribution,title:4}},
+      {...routing,order:Array.from({length:17},(_,i)=>'owned/'+i)}]) {
+      assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:{requestId,revision:1,openrouter}})).statusCode,400);
     }
     assert.equal(calls.length,beforeInvalid);
     assert.equal((await app.inject({url:base+'/'+id+'/model-requests/'+requestId,headers})).statusCode,200);

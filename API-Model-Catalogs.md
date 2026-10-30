@@ -101,3 +101,8 @@ cover kinds, optional keys, original response loss/retry, exact manual IDs,
 metadata-only checks, keyboard focus and project/skill draft/upload retention.
 Build, TypeScript, lint and Python syntax are required before publication.
 All fixtures are owned/local, with no real key, model inference or user VM/run.
+
+OpenRouter0.8.15 applies a provider-specific gate: plain streamed Chat/function
+tools and its own bearer key. Reasoning tool-history and OpenRouter Responses
+remain unavailable; generic/local Responses is unchanged. Optional routing and
+attribution, actual origin records and precise errors: [API-OpenRouter.md](API-OpenRouter.md).

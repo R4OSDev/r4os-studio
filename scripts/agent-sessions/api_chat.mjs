@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 const MAX_TEXT = 196608, MAX_ARGS = 131072, MAX_EVENT = 524288, MAX_CALLS = 32;
 const PROVIDER_ERRORS = new Set(['context_length_exceeded', 'usage_limit_exceeded', 'insufficient_quota',
-  'rate_limit_exceeded', 'invalid_api_key', 'model_not_found']);
+  'rate_limit_exceeded', 'invalid_api_key', 'model_not_found', 'api_account_required', 'api_access_denied', 'api_service_unavailable']);
 export const CHAT_NATIVE_METADATA = Symbol('private native transport metadata');
 export class ChatFault extends Error {
   constructor(code = 'chat_protocol_error') { super(code); this.code = code; }
@@ -132,7 +132,8 @@ function usage(value) {
 }
 
 export class ChatStream {
-  constructor(request, emit) {
+  constructor(request, emit, observer = {}) {
+    this.observer = observer;
     this.names = new Set(request.tools.map(tool => tool.function.name)); this.emit = emit;
     this.nativeMetadata = request[CHAT_NATIVE_METADATA] ?? {};
     this.decoder = new TextDecoder('utf-8', { fatal: true }); this.buffer = ''; this.data = [];
@@ -178,7 +179,11 @@ export class ChatStream {
     if (raw === '[DONE]') { this.complete(); return; }
     let value; try { value = JSON.parse(raw); } catch { bad('chat_protocol_error'); }
     if (!object(value)) bad('chat_protocol_error');
-    if (value.error) bad(object(value.error) && PROVIDER_ERRORS.has(value.error.code) ? value.error.code : 'provider_error');
+    if (value.error) {
+      const code = object(value.error) ? this.observer.errorCode?.(value.error.code) ?? value.error.code : null;
+      bad(PROVIDER_ERRORS.has(code) ? code : 'provider_error');
+    }
+    this.observer.observe?.(value);
     if (!Array.isArray(value.choices) || value.choices.length > 1) bad('chat_protocol_error');
     if (value.id != null) {
       if (!identifier(value.id) || this.providerId !== undefined && this.providerId !== value.id) bad('chat_protocol_error');

@@ -4,6 +4,7 @@ import https from 'node:https';
 import net from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import { chatRequest, ChatStream, ChatFault } from './api_chat.mjs';
+import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin } from './api_openrouter.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
@@ -19,6 +20,9 @@ const ERROR_CODES = new Map([
   ['chat_invalid_tool_arguments', 'The model sent invalid or incomplete tool arguments.'],
   ['chat_protocol_error', 'The model response does not match the qualified Chat Completions protocol.'],
   ['chat_stream_incomplete', 'The model response stream ended before completing.'],
+  ['api_account_required', 'The API account requires credits or billing attention.'],
+  ['api_access_denied', 'The API account cannot access this model.'],
+  ['api_service_unavailable', 'The API model service is temporarily unavailable.'],
 ]);
 const sockets = new Set(), upstreams = new Set();
 let server, stopped = false;
@@ -45,7 +49,7 @@ const configuration = await new Promise((resolve, reject) => {
 }).catch(() => { process.stdout.write('{"error":"API transport bootstrap unavailable"}\n'); process.exit(1); });
 
 const { binding, addresses, key, relayToken, chatPolicy } = configuration;
-let target;
+let target, router = null, originOrdinal = 0;
 try {
   target = new URL(binding.baseUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash
@@ -56,6 +60,10 @@ try {
     || !['none', 'bearer'].includes(binding.auth) || (binding.auth === 'bearer' && (typeof key !== 'string' || !/^[\x21-\x7e]{1,8192}$/.test(key)))) throw Error();
   const literal = target.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(literal) && !addresses.includes(literal)) throw Error();
+  if (binding.kind === 'openrouter') {
+    if (binding.protocol !== 'chat-completions' || binding.auth !== 'bearer' || chatPolicy?.reasoning !== 'none') throw Error();
+    router = routerSettings(binding.openrouter ?? {});
+  }
 } catch { process.stdout.write('{"error":"API transport binding unavailable"}\n'); process.exit(1); }
 
 function fail(response, status, code = 'provider_error') {
@@ -90,7 +98,9 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         || (value.previous_response_id !== undefined && value.previous_response_id !== null && value.previous_response_id !== '')
         || value.conversation || !Array.isArray(value.tools) || value.tools.some(tool => tool.type !== 'function')) throw Error();
       if (binding.protocol === 'chat-completions') {
-        chat = chatRequest(value, chatPolicy); body = Buffer.from(JSON.stringify(chat));
+        chat = chatRequest(value, chatPolicy);
+        if (router) chat = routerRequest(chat, router, chatPolicy);
+        body = Buffer.from(JSON.stringify(chat));
         if (body.length > MAX_REQUEST) throw new ChatFault('chat_semantics_unavailable');
       }
     } catch (error) { fail(response, 400, error instanceof ChatFault ? error.code : 'provider_error'); return; }
@@ -98,6 +108,9 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
     const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'Accept-Encoding': 'identity',
       'Content-Length': String(body.length), 'User-Agent': 'R4OS-Studio-Model-Transport', Connection: 'close' };
     if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
+    if (router) Object.assign(headers, routerHeaders(router, true));
+    const origin = router ? new RouterOrigin(binding.model, router, key) : null;
+    const ordinal = origin ? ++originOrdinal : null; let originReported = false;
     const originalHost = target.hostname.replace(/^\[|\]$/g, '');
     const address = addresses[0];
     // Python validates the complete DNS answer against the selected network
@@ -122,6 +135,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         const finish = () => {
           let code = 'provider_error';
           try { const name = JSON.parse(Buffer.concat(errors).toString('utf8')).error?.code; if (ERROR_CODES.has(name)) code = name; } catch { /* Safe generic failure. */ }
+          if (router) code = routerError(status) ?? code;
           fail(response, status >= 400 && status <= 599 ? status : 502, code);
         };
         incoming.once('end', finish); incoming.once('error', () => fail(response, 502)); return;
@@ -133,12 +147,16 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
       response.writeHead(status, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'close' });
       let received = 0, emitted = 0, failed = false;
       const emit = event => {
+        if (origin && !originReported && ['response.completed', 'response.incomplete'].includes(event.type)) {
+          originReported = true;
+          if (ordinal <= 256) process.stdout.write(JSON.stringify(origin.report(parser, ordinal)) + '\n');
+        }
         const encoded = 'event: ' + event.type + '\ndata: ' + JSON.stringify(event) + '\n\n';
         emitted += Buffer.byteLength(encoded);
         if (emitted > MAX_RESPONSE) throw new ChatFault('chat_protocol_error');
         if (!response.write(encoded)) incoming.pause();
       };
-      const parser = chat ? new ChatStream(chat, emit) : null;
+      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), errorCode: routerError } : {}) : null;
       const broken = error => {
         if (failed || response.destroyed || response.writableEnded) return;
         failed = true;

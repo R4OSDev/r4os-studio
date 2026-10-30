@@ -10,7 +10,8 @@ from store import ProjectFault
 
 ERRORS={
     'auth':'The API connection rejected authentication. Review its key and permissions.',
-    'account':'The API account requires attention before metadata can be read.',
+    'account':'The API account needs credits or billing attention before metadata can be read.',
+    'unavailable':'The metadata service is temporarily unavailable. Check again explicitly later.',
     'rate_limit':'The API metadata rate limit was reached. Check again explicitly later.',
     'redirect':'The metadata endpoint redirected. Configure its final base URL explicitly.',
     'no_catalog':'This endpoint has no standard Models API. Add an exact model ID manually.',

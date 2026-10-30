@@ -9,6 +9,9 @@ from store import ProjectFault
 
 
 def catalog(providers,provider):
+    if provider['kind']=='openrouter':
+        from openrouter_policy import unavailable
+        if unavailable(provider):return []
     from api_catalog import Catalogs
     models=Catalogs(providers).native_models(provider['id'])
     if models is not None:return models
@@ -30,7 +33,9 @@ def catalog(providers,provider):
                     or slug in seen or model.get('use_responses_lite') is not False
                     or model.get('input_modalities')!=['text']):raise ValueError()
             seen.add(slug)
-        return copy.deepcopy(value['models'])
+        models=copy.deepcopy(value['models'])
+        if provider['kind']=='openrouter':models=[model for model in models if model.get('studio_chat',{}).get('reasoning')=='none']
+        return models
     except (OSError,ValueError,TypeError,KeyError):
         raise ProjectFault('The API model catalog is unqualified or belongs to an older configuration. Refresh its model metadata before starting work.',409) from None
 
@@ -79,5 +84,6 @@ def freeze(store,sid,data,providers,snapshot):
     if provider['protocol']=='chat-completions':snapshot['apiChat']=chat_policy(model,snapshot['effort'])
     model.pop('studio_chat',None)
     snapshot['apiProvider']={key:provider[key] for key in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
+    if provider['kind']=='openrouter':snapshot['apiProvider']['openrouter']=copy.deepcopy(provider['openrouter'])
     snapshot['apiModels']={'models':[model]};snapshot['apiRunId']=future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation']=False

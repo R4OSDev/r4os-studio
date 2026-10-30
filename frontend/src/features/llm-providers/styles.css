@@ -109,4 +109,7 @@ button:disabled { cursor: default; opacity: .55; }
 .api-model-form .api-efforts { display: flex; flex-wrap: wrap; gap: 14px; margin: 20px 0; padding: 12px; border: 1px solid #4b395c; border-radius: 5px; }
 .api-efforts legend { color: #b0a2c0; font-size: 12px; }
 .api-efforts label { display: flex; align-items: center; gap: 6px; margin: 0; }
+.api-router-fields { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.api-router-fields h3 { margin: 0; font-size: 14px; font-weight: 500; }
+.api-router-fields > label:not(:first-child) { margin-top: 18px; }
 @media (max-width: 440px) { .api-model-limits { grid-template-columns: 1fr; gap: 0; } .api-model-list summary { flex-wrap: wrap; } .api-models .provider-properties > div { grid-template-columns: 1fr; gap: 4px; } }

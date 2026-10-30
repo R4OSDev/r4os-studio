@@ -136,3 +136,9 @@ remains the separate unfinished0.8.10 controller.
 Primary references: pinned Codex source83086188ae0614bd882818ff1aa23f3194962012;
 [OpenRouter streaming](https://openrouter.ai/docs/api_reference/streaming),
 [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
+
+OpenRouter0.8.15 uses this translator through a fixed documented plain-Chat
+boundary with required-parameter routing and separately reported provenance.
+Native store:false maps to stateless Chat, without an undocumented wire field.
+Signed reasoning/Responses and hosted extras remain unavailable for that kind;
+other API kinds retain their previous contracts. See [API-OpenRouter.md](API-OpenRouter.md).

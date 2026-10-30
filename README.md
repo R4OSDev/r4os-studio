@@ -1,3 +1,24 @@
+## OpenRouter routing and qualified tool sessions (0.8.15)
+
+OpenRouter now binds exact model/key and optional backend order/allowlist,
+explicit gateway fallbacks and app attribution. All sent tool parameters must
+be supported. Plain streamed Chat/function history uses the unchanged native
+engine, original tool ledger and stateless same-thread resume. OpenRouter
+reasoning tool-history/Responses and hosted extras are explicitly unavailable;
+other API kinds retain their qualified protocols.
+
+Run-bound notices distinguish the requested model from reported model/backend,
+endpoint labels and provider/local response IDs. Missing origin/usage stays
+unknown. Key/account/access/rate/temporary errors are precise; no automatic
+retry, model/provider switch or inference on Save/open is introduced.
+
+Two protocol/four policy groups, protected HTTP, owned TLS/DNS/metadata,
+eight actual native project/skill/error/Stop/resume cases and browser1440/320
+qualify the change. No real key or model inference is used; one public Models
+metadata read validates the current schema. Required build/TypeScript/lint and
+normal immutable release/user-data verification apply.
+Details: [API-OpenRouter.md](API-OpenRouter.md).
+
 ## API connections, model catalogs and session choices (0.8.14)
 
 System → Settings → LLM Provider now offers OpenRouter, Custom API and Local API
