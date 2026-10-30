@@ -87,6 +87,10 @@ def acknowledge(worker, frame):
             or reported.get('nativeType') not in ('assistant', 'stream_event', 'result', 'user')
             or not (reported.get('nativeMessageId') or reported.get('providerMessageId'))):
         raise ProjectFault('The native Claude input receipt belongs to another request. It was not replayed.', 409)
+    content_sha=w.config.get('claudeInput',{}).get('contentSha256')
+    if content_sha and (reported.get('nativeType')=='user' or not w.input_receipt.is_set()) and (
+            reported.get('nativeInputReceiptKind')!='stdinEcho' or reported.get('nativeInputContentSha256')!=content_sha):
+        raise ProjectFault('The original queued Claude content has no matching native echo. It was not repeated.',409)
     messages = Messages(w.store); db = w.store.db
     with db:
         db.execute('''CREATE TABLE IF NOT EXISTS claude_input_receipts(
@@ -113,6 +117,7 @@ def acknowledge(worker, frame):
             'runId': w.run_id, 'requestId': row['request_id'], 'inputSha256': row['input_hash'],
             'configSha256': digest(w.config), 'nativeSessionId': reported['nativeSessionId'],
             'nativeInputRequestIds': ids, 'worker': w.credential_worker}
+        if content_sha:binding['nativeContentSha256']=content_sha
         previous = db.execute('SELECT payload FROM claude_input_receipts WHERE request_id=?', (row['request_id'],)).fetchone()
         if previous:
             if json.loads(previous[0])['binding'] != binding:
@@ -153,6 +158,7 @@ def acknowledge_original(w,frame):
         or reported.get('nativeInputRequestIds')!=[w.row['request_id']]
         or reported.get('nativeInputReceiptKind')!='stdinEcho'
         or reported.get('nativeInputTextSha256')!=expected.get('textSha256')
+        or expected.get('contentSha256') and reported.get('nativeInputContentSha256')!=expected['contentSha256']
         or reported.get('nativeSessionId')!=w.config['engine']['claude']['nativeSessionId']
         or native.get('session_id')!=reported['nativeSessionId'] or not reported.get('nativeMessageId')):
         raise ProjectFault('The native Claude echo differs from the original text request. It was not repeated.',409)
@@ -168,6 +174,7 @@ def acknowledge_original(w,frame):
         'runId':w.run_id,'requestId':w.row['request_id'],'inputSha256':expected['textSha256'],
         'configSha256':digest(w.config),'nativeSessionId':reported['nativeSessionId'],
         'nativeInputRequestIds':reported['nativeInputRequestIds'],'worker':w.credential_worker}
+    if expected.get('contentSha256'):binding['nativeContentSha256']=expected['contentSha256']
     with w.store.db:
         w.store.db.execute('''CREATE TABLE IF NOT EXISTS claude_input_receipts(
             request_id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id),run_id TEXT NOT NULL,
@@ -176,7 +183,7 @@ def acknowledge_original(w,frame):
         if previous:
             if json.loads(previous[0])['binding']!=binding:raise ProjectFault('The original Claude input receipt conflicts.',409)
         else:
-            payload={'schema':1,'kind':'original-text','binding':binding,'nativeMessageId':reported['nativeMessageId'],
+            payload={'schema':1,'kind':'original-content' if expected.get('contentSha256') else 'original-text','binding':binding,'nativeMessageId':reported['nativeMessageId'],
                 'providerMessageId':reported.get('providerMessageId'),'nativeTurnId':None,'nativeType':'user',
                 'nativeInputReceiptKind':'stdinEcho','nativeInputTextSha256':expected['textSha256']}
             w.store.db.execute('INSERT INTO claude_input_receipts VALUES (?,?,?,?,?)',

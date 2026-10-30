@@ -35,7 +35,7 @@ def freeze(store,sid,data,providers,snapshot,queue_context=None):
         or history['phase'] not in ('allocated','ready') and not queue_live):
         raise ProjectFault('The original Claude account/history is unavailable or unconfirmed. It was preserved.',409)
     if (data.get('mode')=='goal' and not snapshot.get('claudeGoalExecution') or any(snapshot.get(key) for key in
-        ('goalExecution','apiProvider','nativeImageGeneration','attachments','webSearchEnabled','fastMode'))):
+        ('goalExecution','apiProvider','nativeImageGeneration','webSearchEnabled','fastMode'))):
         raise ProjectFault('This native Claude input/lifecycle capability has not been qualified.',409)
     snapshot['claudeProvider']={'providerId':provider['id'],'providerRevision':provider['revision'],
         'runtimeProfileId':provider['runtimeProfileId'],'accountIdentity':history['accountIdentity']}
@@ -52,6 +52,8 @@ def freeze(store,sid,data,providers,snapshot,queue_context=None):
     snapshot['claudeSessionProfileId']=catalog['sessionProfileId']
     if data.get('mode')!='goal':
         snapshot['claudeInput']={'requestId':identity(data['requestId']),'textSha256':hashlib.sha256(data['text'].encode()).hexdigest()}
+    from claude_inputs import freeze as freeze_input
+    freeze_input(store,sid,data,snapshot)
     snapshot['claudeRunId']=str(uuid.uuid5(uuid.NAMESPACE_URL,'r4os-studio-claude-run:'+encode(
         {'owner':{'type':store.owner_type,'id':store.owner_id},'session':identity(sid),'request':identity(data['requestId'])})))
 

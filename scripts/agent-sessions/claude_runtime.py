@@ -29,6 +29,25 @@ def text_profile():
         raise ProjectFault('The qualified Claude text adapter is unavailable. Existing conversations were preserved.',503) from None
 
 
+def input_profile():
+    """The bounded Studio input contract does not change vendor install pins."""
+    try:
+        value=json.loads((Path(__file__).resolve().parents[2]/'shared/claude-input-profile.json').read_text());text=text_profile()
+        if (value.get('schema')!=1 or value.get('id')!='studio-claude-inputs-0.3.312-v1'
+            or value.get('textProfileId')!=text['id'] or any(value.get(k)!=text[k] for k in
+                ('runtimeProfileId','nativeVersion','nativeSha256','sdkVersion','sdkArchiveSha256'))
+            or value.get('systemPrompt')!='custom-snapshot' or value.get('skills')!='studio-broker'
+            or value.get('documents')!='explicit-text-extraction' or value.get('imageModels')!='authenticated-native-fixed'
+            or value.get('imageCapabilitySource')!='https://platform.claude.com/docs/en/build-with-claude/vision'
+            or value.get('representativeRealModelCheck')!='claude-haiku-5-5'
+            or value.get('imageMediaTypes')!=['image/png','image/jpeg','image/webp']
+            or value.get('maxImageBytes')!=4194304 or value.get('maxImageBytesPerSend')!=8388608
+            or value.get('maxNativeInputBytes')!=12582912 or value.get('nativeContentReceiptRequired') is not True):raise ValueError()
+        return value
+    except (OSError,ValueError,KeyError,TypeError):
+        raise ProjectFault('The qualified Claude input contract is unavailable. Original inputs were preserved.',503) from None
+
+
 def verify(path,expected=None):
     expected=expected or profile();path=Path(path).absolute()
     try:

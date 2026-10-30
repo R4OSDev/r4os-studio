@@ -178,6 +178,9 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
   const issue = drafts.some(value => value.state !== 'ready') ? 'Wait for every selected upload to be ready, or remove it.'
     : selected.some(value => value.readable === false) ? selected.find(value => value.readable === false)!.limitation ?? 'This document has no readable text.'
       : selected.some(value => value.mode === 'localImage') && model?.imageInputs !== 'supported' ? (model?.imageInputs === 'unsupported' ? 'This model does not support images. Choose another model; your files are preserved.' : 'Image support is unavailable. Reload the model choices before sending images.')
+        : session?.engine.kind === 'claude-code' && (selected.some(value => value.mode === 'localImage' && value.size > 4194304)
+          || selected.filter(value => value.mode === 'localImage').reduce((sum, value) => sum + value.size, 0) > 8388608)
+          ? 'Claude image input allows 4 MiB per image and 8 MiB per send. Remove a selection or use smaller images; your uploads are preserved.'
         : selected.some(value => value.mode !== 'localImage' && (value.extractedBytes ?? 0) > 8192)
           && (!session?.permissions['studio.read_attachment'] || !session.permissions['studio.read_file']) ? 'Enable Read attachment and Read file for long documents, or use a new session.' : '';
   const accepted = useCallback((ids: string[]) => { store(old => old.filter(value => !value.attachment || !ids.includes(value.attachment.id))); if (ids.length) refreshStored(); }, [store, refreshStored]);

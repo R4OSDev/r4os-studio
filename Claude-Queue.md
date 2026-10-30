@@ -1,5 +1,13 @@
 # Claude queued messages (0.8.47, partial lifecycle)
 
+Since0.8.55 queues also freeze explicit document/image blocks and their ordered
+content digest. The native stdin echo must confirm that content before any
+Studio effect. Later response frames reuse that original receipt without
+requiring a second content echo. The unchanged SDK/CLI, production admission and
+common file broker were checked with an owned queued image/document/skill case.
+See [Claude-Inputs.md](Claude-Inputs.md). Direct steering and the remaining23
+overall lifecycle acceptance stay separate.
+
 Compatible Claude sessions can accept text follow-ups into the existing shared
 message queue while their original worker is active. Saving an intent starts no
 model. FIFO dispatch waits for the preceding run to end and for the original

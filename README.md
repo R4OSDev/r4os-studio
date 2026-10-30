@@ -1,3 +1,14 @@
+## Claude document and image inputs (0.8.55)
+
+Claude now receives ordered attachment content with original native input
+receipts. Documents retain explicit extraction/provenance; qualified native models
+accepts actual PNG/JPEG/WebP image blocks (4 MiB each,8 MiB per send). Read the
+native model catalog again to enable the qualified image capability. Existing
+catalogs keep their prior image status. System/project/skill
+sources are hash-bound snapshots, and skills use the permitted Studio broker.
+Missing or changed content is refused without losing uploads or replaying work.
+Details: [Claude-Inputs.md](Claude-Inputs.md).
+
 ## Claude provider removal and auth recovery (0.8.54)
 
 Disconnect a Claude subscription before using **Remove provider**, then type its

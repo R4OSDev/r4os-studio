@@ -33,7 +33,7 @@ export interface ClaudeModelCatalog {
   models: { id: string; nativeValue: string; resolvedModel: string | null; name: string; description: string;
     aliases: string[]; efforts: string[]; defaultEffort: string; supportsEffort: boolean | null;
     adaptiveThinking: boolean | null; fastModeAdvertised: boolean | null; fastModeAvailable: false;
-    contextWindow: null; imageInputs: 'unknown'; inputModalities: ['text']; available: boolean;
+    contextWindow: null; imageInputs: 'unknown' | 'supported'; imageSource?: 'unreported' | 'studio-input-profile'; inputModalities: ('text' | 'image')[]; available: boolean; inputProfileId?: string;
     unavailableReasons: string[]; source: 'native-supportedModels'; entitlement: 'not-verified-by-model-advertisement' }[];
 }
 export interface ClaudeSubscriptionLimits {

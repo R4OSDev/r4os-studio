@@ -1,6 +1,7 @@
 /** Persistent native Claude query and fixed Studio MCP boundary. */
 import { createHash } from 'node:crypto';
 import { messageIdentity } from './claude_engine.mjs';
+import { contentDigest, preparedContent } from './claude_content.mjs';
 
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value);
 const opaque = value => typeof value === 'string' && Buffer.byteLength(value) > 0 && Buffer.byteLength(value) <= 256
@@ -70,6 +71,7 @@ export class ClaudeSessionEngine {
     this.state = 'initializing'; this.sent = false; this.result = null; this.error = null;
     this.requireInputReceipt = options.requireInputReceipt === true; this.inputAccepted = false;
     this.inputId = this.binding.requestId; this.inputSubmitted = false; this.inputOrigin = 'human';
+    this.frozenInput = options.frozenInput ? preparedContent(options.frozenInput, this.inputId) : null;
     this.stepCount = 0; this.inputIds = new Set([this.inputId]); this.goalStartedAt = null;
     this.goal = options.goal ?? null;
     if (this.goal && (Object.keys(this.goal).sort().join(',') !== 'executionId,maxActiveSeconds,maxSteps'
@@ -158,10 +160,11 @@ export class ClaudeSessionEngine {
   }
 
   async send(text) {
-    if (this.state !== 'ready' || this.sent || typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 131072) {
+    if (this.state !== 'ready' || this.sent || typeof text !== 'string' || !text.trim() && !this.frozenInput || Buffer.byteLength(text) > 131072
+      || this.frozenInput && createHash('sha256').update(text).digest('hex') !== this.frozenInput.textSha256) {
       throw Error('Only one explicit original Studio request can be submitted by this worker.');
     }
-    await this.submit(text, 'ready');
+    await this.submit(text, 'ready', this.frozenInput);
   }
 
   async continue(inputId) {
@@ -175,7 +178,7 @@ export class ClaudeSessionEngine {
     await this.submit(GOAL_CONTINUE_TEXT, 'admitting');
   }
 
-  async submit(text, expectedState) {
+  async submit(text, expectedState, input = null) {
     // The limit/auth stage owns admission. A real native plan and disabled
     // overage must be proved there; an SDK model list is never authorization.
     const account = await deadline(this.query.accountInfo());
@@ -196,7 +199,8 @@ export class ClaudeSessionEngine {
     this.sent = true; this.state = 'active';
     this.result = null; this.inputSubmitted = true; this.stepCount++;
     this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
-    this.inputs.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null,
+    this.inputContentSha256 = input?.contentSha256 ?? null;
+    this.inputs.push({ type: 'user', message: { role: 'user', content: input?.content ?? text }, parent_tool_use_id: null,
       uuid: this.inputId, session_id: this.binding.nativeSessionId, origin: { kind: this.inputOrigin }, client_composed: true });
   }
 
@@ -225,14 +229,17 @@ export class ClaudeSessionEngine {
         if (message.type === 'user' && message.isReplay === true && message.uuid === this.inputId) {
           const content = message.message?.content;
           const text = typeof content === 'string' ? content : Array.isArray(content) && content.length === 1 && content[0]?.type === 'text' ? content[0].text : null;
+          const matches = this.inputContentSha256 ? contentDigest(content) === this.inputContentSha256
+            : typeof text === 'string' && createHash('sha256').update(text).digest('hex') === this.inputTextSha256;
           if (!this.inputSubmitted || message.isSynthetic === true && this.inputOrigin !== 'auto-continuation' || message.parent_tool_use_id != null || message.message?.role !== 'user'
-            || typeof text !== 'string' || createHash('sha256').update(text).digest('hex') !== this.inputTextSha256
+            || !matches
             || identity.nativeInputRequestIds.some(id => id !== this.inputId)) {
             throw Error('The native input echo does not match the original submitted text.');
           }
           identity.nativeInputRequestIds = [message.uuid];
           identity.nativeInputReceiptKind = 'stdinEcho';
           identity.nativeInputTextSha256 = this.inputTextSha256;
+          if (this.inputContentSha256) identity.nativeInputContentSha256 = this.inputContentSha256;
         }
         if (identity.nativeInputRequestIds.some(id => id !== this.inputId)
           || identity.nativeSessionId && identity.nativeSessionId !== this.binding.nativeSessionId || message.parent_tool_use_id != null

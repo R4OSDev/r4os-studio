@@ -1,4 +1,4 @@
-# Native client model facts and text sessions (0.8.52)
+# Native client model facts and session inputs (0.8.55)
 
 Read native model catalog in the connected Claude provider view uses the same
 protected original metadata-request flow as subscription limits. The unchanged
@@ -14,7 +14,14 @@ without inventing a default effort. Unsupported shapes fail without changing
 existing selections. Reconnecting a different account cannot reuse its cache.
 
 The pinned ModelInfo exposes neither context-window size nor image support.
-Those facts remain unknown. Fast Mode remains unavailable even when the client
+Context size remains unknown. A separate hash-pinned Studio input profile in55
+qualifies image delivery for authenticated fixed native Claude wire IDs, using
+the provider's vision contract and the checked SDK content path. The actual
+real-model check uses `claude-haiku-5-5`; it does not assert inference for every
+model. The separate capability source stays explicit instead of fabricating a
+ModelInfo field.
+Fresh catalog receipts are required for that additional capability. See
+[Claude-Inputs.md](Claude-Inputs.md). Fast Mode remains unavailable even when the client
 advertises it. Client model advertisements are not an independent subscription
 entitlement or billing guarantee. Fresh catalogs with a fixed resolved model
 ID can qualify text selection through `shared/claude-text-profile.json`.
@@ -31,7 +38,8 @@ validated against the native catalog. Existing conversations cannot change
 engine or native account; choose another provider in a new conversation.
 
 Native Studio prompts/project instructions/skill snapshots retain the existing
-frozen input path. Unqualified attachments are refused rather than discarded.
+frozen input path and an explicit native source hash. Documents and qualified
+images use the native content contract. Unqualified attachments are refused rather than discarded.
 If a tool captures a screenshot for a model with unqualified image delivery,
 the original result stays intact and a separate model-visible notice explains
 that capture does not prove visual inspection.

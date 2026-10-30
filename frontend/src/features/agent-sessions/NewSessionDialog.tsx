@@ -66,7 +66,7 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
         <ProjectField id="session-fast-mode" label="Fast Mode"><select id="session-fast-mode" value={fastMode ? 'on' : 'off'} onChange={(e) => setFast(e.target.value === 'on')}><option value="off">Off</option><option value="on" disabled={!chosen?.fastModeAvailable}>On</option></select></ProjectField>
       </fieldset>
       {!options && !error && <p className="project-dialog-status" role="status">Loading…</p>}
-      {provider?.type === 'claude-subscription' && <p className="field-help">Claude subscription · Text input and Studio tools. Each send checks the native account and included usage. Image attachments and Fast Mode are unavailable.</p>}
+      {provider?.type === 'claude-subscription' && <p className="field-help">Claude subscription · Text, documents and Studio tools. {chosen?.imageInputs === 'supported' ? 'PNG/JPEG/WebP images are qualified for this model (4 MiB each, 8 MiB per send).' : 'Image input is not qualified for this model.'} Each send checks the native account and included usage. Fast Mode is unavailable.</p>}
       {selectedEngine && !selectedEngine.available && <p className="project-dialog-error" role="alert">{selectedEngine.reason}</p>}
       {options && !options.providers.some((p) => availableModels(p).length) && <p className="project-dialog-error">Connect a provider and configure an available model in System settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}

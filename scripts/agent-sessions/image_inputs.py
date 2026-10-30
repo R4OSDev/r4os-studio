@@ -81,6 +81,9 @@ def history(store,sid):
 def qualify(store,sid,session,provider_dir,records):
     if not any(m['mode']=='localImage' for m in records+history(store,sid)):return
     engine=session['engine']
+    if engine.get('kind')=='claude-code':
+        from claude_inputs import qualify_images
+        return qualify_images(store,sid,session,provider_dir,records+history(store,sid))
     if engine.get('version')!=CODEX_VERSION or engine.get('sha256')!=CODEX_SHA256:
         raise ProjectFault('Images require the qualified native runtime. The conversation and uploads were preserved.',409)
     model=next((m for m in provider_models(provider_dir,session['providerId']) if m['id']==session['model']),None)

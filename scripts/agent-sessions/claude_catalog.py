@@ -2,7 +2,7 @@
 import re
 
 from claude_provider_store import account_identity
-from claude_runtime import profile,text_profile
+from claude_runtime import profile,text_profile,input_profile
 from session_store import now
 from store import ProjectFault
 
@@ -19,7 +19,7 @@ def display(value,maximum):
 
 def normalize(rows,provider,request_id):
     if not isinstance(rows,list) or not 1<=len(rows)<=256:raise ProjectFault('The native model catalog is unavailable.',503)
-    adapter=text_profile();qualified=provider.get('status')=='connected' and bool(account_identity(provider.get('account')))
+    adapter=text_profile();inputs=input_profile();qualified=provider.get('status')=='connected' and bool(account_identity(provider.get('account')))
     models={}
     for row in rows:
         if (not isinstance(row,dict) or not identifier(row.get('value')) or not display(row.get('displayName'),200)
@@ -36,11 +36,13 @@ def normalize(rows,provider,request_id):
             'efforts':['',*efforts] if row.get('supportsEffort') is True and efforts else [''],
             'defaultEffort':'','supportsEffort':row.get('supportsEffort'),
             'adaptiveThinking':row.get('supportsAdaptiveThinking'),'fastModeAdvertised':row.get('supportsFastMode'),
-            'fastModeAvailable':False,'contextWindow':None,'imageInputs':'unknown','inputModalities':['text'],
+            'fastModeAvailable':False,'contextWindow':None,'imageInputs':'unknown','imageSource':'unreported','inputModalities':['text'],
             'available':qualified and canonical is not None,
             'unavailableReasons':[] if qualified else ['Connect and check the native Claude subscription before selecting this model.'],
             'source':'native-supportedModels','entitlement':'not-verified-by-model-advertisement'}
         if canonical is None:fact['unavailableReasons'].append('The native client did not resolve this model to a fixed wire identifier.')
+        if qualified and canonical and canonical.startswith('claude-'):
+            fact.update(imageInputs='supported',imageSource='studio-input-profile',inputModalities=['text','image'],inputProfileId=inputs['id'])
         if key in models:
             previous=models[key];aliases=previous['aliases']+[row['value']]
             # Preserve aliases as provenance, while preferring a named row to

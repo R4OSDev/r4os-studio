@@ -261,8 +261,12 @@ class ClaudeWorker(Worker):
         history=ClaudeHistory(self.store,self.session_id);prepared=None
         try:
             if self.row['state']=='stopping':self.outcome='interrupted';return
-            if any(self.config.get(key) for key in ('goalExecution','nativeGoalPreparation','apiProvider','nativeImageGeneration','attachments','webSearchEnabled','fastMode')):
+            if any(self.config.get(key) for key in ('goalExecution','nativeGoalPreparation','apiProvider','nativeImageGeneration','webSearchEnabled','fastMode')):
                 raise ProjectFault('This native Claude input/lifecycle capability has not been qualified.',409)
+            if self.config.get('attachments'):
+                from claude_inputs import prepared_input
+                if prepared_input(self.store,self.session_id,self.run_id,self.config) is None:
+                    raise ProjectFault('The original Claude attachments have no qualified native input contract.',409)
             self.lease=open_lock(self.store.projects,self.store.owner_type,self.store.owner_id);fcntl.flock(self.lease,fcntl.LOCK_EX|fcntl.LOCK_NB)
             from claude_run_leases import ClaudeRunLeases
             selected=self.config.get('claudeProvider');original=history.get();frozen=original['runtime']

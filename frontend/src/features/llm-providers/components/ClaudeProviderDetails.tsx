@@ -141,11 +141,11 @@ export function ClaudeProviderDetails({ initial, api, removed }: { initial: Clau
     <section className="claude-models" aria-label="Native Claude model catalog"><h3>Native model catalog</h3>
       <p className="field-help">{catalog ? `Native client metadata received ${new Date(catalog.receivedAt).toLocaleString()}.` : 'Read the native model catalog to enable text sessions for this account.'} A listed model is not a subscription entitlement or billing guarantee. Each send checks the native account and included usage.</p>
       {catalog?.models.map(model => <article key={model.id} className="claude-model-row"><strong>{model.name}</strong><code>{model.id}</code><p>{model.description}</p>
-        <p>Effort: {model.efforts.map(value => value || 'Native default').join(' · ')}. Context window: Unknown. Image input: Unknown. Fast Mode: Unavailable.</p>
+        <p>Effort: {model.efforts.map(value => value || 'Native default').join(' · ')}. Context window: Unknown. Image input: {model.imageInputs === 'supported' ? 'Qualified PNG/JPEG/WebP (4 MiB each, 8 MiB per send)' : 'Unknown'}. Fast Mode: Unavailable.</p>
         <p>{model.unavailableReasons.join(' ')}</p></article>)}
     </section>
     {provider.account && <dl className="claude-account"><div><dt>Account</dt><dd>{provider.account.email}</dd></div><div><dt>Plan</dt><dd>{provider.account.plan.toUpperCase()}</dd></div><div><dt>Organization</dt><dd>{provider.account.orgName || provider.account.orgId}</dd></div><div><dt>Native status checked</dt><dd>{new Date(provider.account.checkedAt).toLocaleString()}</dd></div></dl>}
-    <p className="field-help">Text sessions use this native Claude subscription with Studio tools. Image attachments, hosted web search, image generation and Fast Mode are unavailable. Paid extra usage must be disabled in your Claude account.</p>
+    <p className="field-help">Text, documents and qualified image inputs use this native Claude subscription with Studio tools. PDFs use extracted text; embedded images are not inspected. Hosted web search, image generation, native subagents and Fast Mode are unavailable. Paid extra usage must be disabled in your Claude account.</p>
     {error && <p role="alert" className="provider-alert">{error}</p>}
     {operation?.message && <p role="status" className="field-help">{operation.message}</p>}
     {operation?.authorizationUrl && <form className="provider-form" onSubmit={event => void control('code', event)}>

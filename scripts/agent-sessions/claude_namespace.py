@@ -12,9 +12,9 @@ from tool_catalog import specifications
 from store import ProjectFault
 
 
-def write_new(path,value):
+def write_new(path,value,maximum=262144):
     data=json.dumps(value,separators=(',',':'),ensure_ascii=False).encode()
-    if len(data)>262144:raise ProjectFault('The frozen Claude bridge configuration exceeds its bound.',409)
+    if len(data)>maximum:raise ProjectFault('The frozen Claude bridge configuration exceeds its bound.',409)
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'wb') as stream:stream.write(data);stream.flush();os.fsync(stream.fileno())
 
@@ -45,10 +45,21 @@ def prepare(worker,history,prepared,broker):
         tools.append(REPORT_TOOL)
     write_new(root/'tools.json',{'schema':1,'binding':binding,'tools':tools})
     from instructions import compose
-    prompt=compose(config)+'\n\nSTUDIO CLAUDE TOOL CONTRACT: Use only mcp__studio__ tools. Native file, shell, web, agent, memory, scheduler, plugin and computer tools are unavailable. Studio owns tool permissions and original receipts; never repeat an unconfirmed effect. The host alone owns native authentication, limits and resume.'
+    prompt=compose(config)
+    if 'claudeInstructions' in config:
+        from claude_inputs import sha
+        from claude_runtime import input_profile
+        source=config['claudeInstructions'];raw=prompt.encode()
+        if source!={'profileId':input_profile()['id'],'sha256':sha(raw),'bytes':len(raw)}:
+            raise ProjectFault('The frozen native Claude instructions changed. No input was submitted.',409)
+    prompt+='\n\nSTUDIO CLAUDE TOOL CONTRACT: Use only mcp__studio__ tools. Native file, shell, web, agent, memory, scheduler, plugin and computer tools are unavailable. Studio owns tool permissions and original receipts; never repeat an unconfirmed effect. The host alone owns native authentication, limits and resume.'
     if goal:
         prompt+='\n\nBOUNDED STUDIO GOAL: The next human input is the original saved objective activated by Play. Work only within its existing authority and tool permissions. Before ending each step call mcp__studio__report_goal with continue, complete or blocked and a concise reason. A report grants no new scope. The host may continue the same objective for at most eight steps and 900 active seconds per Play; never create your own scheduler or autonomous loop.'
+    from claude_inputs import prepared_input
+    native_input=prepared_input(worker.store,worker.session_id,worker.run_id,config)
+    if native_input:write_new(root/'input.json',native_input,12582912+4096)
     write_new(root/'runtime.json',{'schema':1,'binding':binding,'mode':prepared['mode'],'historyConfirmed':prepared['historyConfirmed'],
+        **({'inputContract':{key:native_input[key] for key in ('profileId','requestId','textSha256','contentSha256')}} if native_input else {}),
         'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal or config.get('claudeInput')),
         **({'goal':{key:config['claudeGoalExecution'][key] for key in ('executionId','maxSteps','maxActiveSeconds')}} if goal else {}),
         'effort':config.get('claudeModel',{}).get('effort',''),
@@ -67,7 +78,8 @@ def prepare(worker,history,prepared,broker):
         '--setenv','HOME','/home/studio','--setenv','USER','r4os-studio','--setenv','CLAUDE_CONFIG_DIR','/config','--setenv','PATH','/usr/bin']
     for path in ('/etc/resolv.conf','/etc/hosts','/etc/nsswitch.conf','/etc/ssl/certs'):
         if Path(path).exists():args+=['--ro-bind',path,path]
-    for name in ('claude_engine.mjs','claude_session_engine.mjs','claude_session_io.mjs'):
+    if native_input:args+=['--ro-bind',str(root/'input.json'),'/bridge/input.json']
+    for name in ('claude_engine.mjs','claude_session_engine.mjs','claude_session_io.mjs','claude_content.mjs'):
         args+=['--ro-bind',str(source/name),'/runtime/'+name]
     return ['/usr/bin/python3','-B',str(source/'claude_launch.py'),*args[1:],
         '--','/usr/bin/node','/runtime/claude_session_io.mjs']

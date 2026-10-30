@@ -1,4 +1,4 @@
-"""Canonical native facts never manufacture entitlement, context or image support."""
+"""Native facts and separately attributed input support never grant entitlement."""
 import unittest
 import uuid
 import json
@@ -46,6 +46,15 @@ class NativeCatalog(unittest.TestCase):
         selected=provider_models(f.providers,provider['id']);self.assertEqual(selected[0]['id'],'claude-own')
         self.assertTrue(selected[0]['available']);self.assertFalse(auth.get(provider['id'])['enabled'])
         self.assertTrue(catalog['sessionModelsQualified']);self.assertTrue(catalog['sessionProfileId'])
+        with auth.auth_db(write=True) as db:
+            source=db.execute('SELECT data FROM auth_requests WHERE id=?',(catalog['requestId'],)).fetchone()[0]
+            earlier=json.loads(source)
+            for model in earlier['catalog']['models']:
+                model.update(imageInputs='unknown',inputModalities=['text']);model.pop('inputProfileId',None);model.pop('imageSource',None)
+            db.execute('UPDATE auth_requests SET data=? WHERE id=?',(json.dumps(earlier),catalog['requestId']))
+        self.assertTrue(provider_models(f.providers,provider['id'])[0]['available'])
+        self.assertEqual(provider_models(f.providers,provider['id'])[0]['imageInputs'],'unknown')
+        with auth.auth_db(write=True) as db:db.execute('UPDATE auth_requests SET data=? WHERE id=?',(source,catalog['requestId']))
         # Older metadata without this Studio adapter qualification never becomes
         # eligible merely because the application was updated.
         with auth.auth_db(write=True) as db:
@@ -58,3 +67,17 @@ class NativeCatalog(unittest.TestCase):
         self.assertFalse(auth.get(provider['id'])['enabled'])
         self.assertIsNone(auth.latest_catalog(provider['id']))
         self.assertEqual(provider_models(f.providers,provider['id']),[])
+
+    def test_image_capability_uses_its_own_profile_source_and_disconnected_rows_do_not_qualify(self):
+        status,account,_=status_result(json.dumps({'loggedIn':True,'authMethod':'claude.ai','apiProvider':'firstParty',
+            'configDirectory':'/config','subscriptionType':'pro','email':'own@example.test','orgId':'own-org','orgName':'Own fixture'}),0)
+        provider={'id':str(uuid.uuid4()),'revision':1,'status':status,'account':account}
+        rows=[{'value':name,'resolvedModel':name,'displayName':name,'description':'Owned canonical native row'} for name in
+            ('claude-opus-5-5','claude-sonnet-5-5','claude-haiku-5-5','claude-fable-5-1')]
+        value=normalize(rows,provider,str(uuid.uuid4()))
+        for model in value['models']:
+            self.assertEqual(model['imageInputs'],'supported');self.assertEqual(model['imageSource'],'studio-input-profile')
+            self.assertTrue(model['inputProfileId']);self.assertEqual(model['source'],'native-supportedModels')
+            self.assertIsNone(model['contextWindow']);self.assertEqual(model['entitlement'],'not-verified-by-model-advertisement')
+        closed=normalize(rows,{**provider,'status':'not-connected','account':None},str(uuid.uuid4()))
+        self.assertTrue(all(m['imageInputs']=='unknown' and not m['available'] for m in closed['models']))

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { ClaudeSessionEngine, GOAL_CONTINUE_TEXT } from './claude_session_engine.mjs';
 import { publicFrame } from './claude_session_io.mjs';
+import { createHash } from 'node:crypto';
+import { contentDigest, INPUT_PROFILE } from './claude_content.mjs';
 
 class Feed {
   constructor() { this.values = []; this.waiter = null; this.closed = false; }
@@ -19,6 +21,7 @@ class Feed {
 function fixture(changes = {}, engineOptions = {}) {
   const frozen = { providerId: randomUUID(), studioSessionId: randomUUID(), nativeSessionId: randomUUID(), runId: randomUUID(),
     requestId: randomUUID(), ownerId: randomUUID(), ownerType: 'project', toolProfile: 'studio-tools-v14', model: 'owned-model' };
+  if (typeof engineOptions.frozenInput === 'function') engineOptions = { ...engineOptions, frozenInput: engineOptions.frozenInput(frozen.requestId) };
   if (engineOptions.goal === true) engineOptions = { ...engineOptions,
     goal: { executionId: frozen.requestId, maxSteps: 8, maxActiveSeconds: 900 },
     requireInputReceipt: true, tools: ['read_file', 'report_goal'] };
@@ -40,6 +43,40 @@ function fixture(changes = {}, engineOptions = {}) {
   return { frozen, feed, sent, received, grants, engine, options, interrupts: () => interrupts };
 }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+await test('native image content is acknowledged before tools; changed image echo closes admission', async () => {
+  const text = 'Own image user λ input', parts = [{ type: 'text', text }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'YWJj' } }];
+  for (const changed of [false, true]) {
+    const f = fixture({ admit: async ({ binding }) => admission(binding) }, { requireInputReceipt: true, resolvedModel: 'owned-model',
+      frozenInput: requestId => ({ profileId: INPUT_PROFILE, requestId, textSha256: createHash('sha256').update(text).digest('hex'),
+        contentSha256: contentDigest(parts), content: parts }) });
+    try {
+      await f.engine.initialize(); await f.engine.send(text); await tick(); assert.deepEqual(f.sent[0].message.content, parts);
+      const tool = { hook_event_name: 'PreToolUse', session_id: f.frozen.nativeSessionId, tool_name: 'mcp__studio__read_file',
+        tool_use_id: 'own-image-bound-call', tool_input: { path: 'own.c' }, mcp_server: { name: 'studio', source: 'dynamic' } };
+      assert.equal((await f.engine.beforeTool(tool)).hookSpecificOutput.permissionDecision, 'deny');
+      const echo = structuredClone(parts); if (changed) echo[1].source.data = 'eHl6';
+      f.feed.emit({ type: 'user', isReplay: true, uuid: f.frozen.requestId, session_id: f.frozen.nativeSessionId,
+        message: { role: 'user', content: echo } }); await tick();
+      if (changed) { assert.equal(f.engine.state, 'unconfirmed'); assert.equal(f.grants.length, 0); }
+      else {
+        assert.equal(f.received.at(-1).identity.nativeInputContentSha256, contentDigest(parts));
+        f.feed.emit({ type: 'stream_event', session_id: f.frozen.nativeSessionId,
+          event: { type: 'message_start', message: { id: 'own-image-response', model: 'owned-model' } } }); await tick();
+        assert.equal((await f.engine.beforeTool(tool)).hookSpecificOutput.permissionDecision, 'allow');
+        assert.equal(publicFrame({ type: 'user', isReplay: true, message: { role: 'user', content: parts } }).message, undefined);
+      }
+    } finally { await f.engine.close(); }
+  }
+});
+await test('attachment-only native content needs no invented user text', async () => {
+  const content = [{ type: 'text', text: '{"kind":"studio_attachment_metadata"}' },
+    { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'YWJj' } }];
+  const f = fixture({ admit: async ({ binding }) => admission(binding) }, { requireInputReceipt: true,
+    frozenInput: requestId => ({ profileId: INPUT_PROFILE, requestId, textSha256: createHash('sha256').update('').digest('hex'),
+      contentSha256: contentDigest(content), content }) });
+  try { await f.engine.initialize(); await f.engine.send(''); await tick(); assert.deepEqual(f.sent[0].message.content, content); }
+  finally { await f.engine.close(); }
+});
 await test('canonical native model and selected effort cannot silently change', async () => {
   const f = fixture({ admit: async ({ binding }) => admission(binding) }, { resolvedModel: 'owned-model', effort: 'high' });
   try {

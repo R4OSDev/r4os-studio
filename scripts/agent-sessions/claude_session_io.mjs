@@ -88,8 +88,16 @@ async function main() {
   const config = JSON.parse(raw);
   if (config.schema !== 1 || !/^[a-f0-9]{64}$/.test(config.capability)) throw Error('Invalid frozen native runtime binding.');
   const sdk = await import(pathToFileURL('/runtime/sdk/sdk.mjs').href);
+  let frozenInput;
+  if (config.inputContract) {
+    const input = await readFile('/bridge/input.json');
+    if (input.byteLength > 12582912 + 4096) throw Error('The original native content exceeds its bound.');
+    frozenInput = JSON.parse(input);
+    const keys = ['profileId','requestId','textSha256','contentSha256'];
+    if (Object.keys(config.inputContract).length !== keys.length || keys.some(key => config.inputContract[key] !== frozenInput[key])) throw Error('Changed native input manifest.');
+  }
   let admissionClosed = false;
-  const engine = new ClaudeSessionEngine(sdk, { ...config, cwd: '/inference', home: '/home/studio', config: '/config',
+  const engine = new ClaudeSessionEngine(sdk, { ...config, frozenInput, cwd: '/inference', home: '/home/studio', config: '/config',
     executable: '/runtime/native/claude' }, config.binding, {
     authorize: value => admissionClosed ? false : broker({ ...value, operation: 'authorize', capability: config.capability }),
     admit: async ({ binding, query }) => {
