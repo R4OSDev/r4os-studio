@@ -71,3 +71,27 @@ hierarchy matched server metadata. Dirty/double-click, historical selection, a
 reply lost after server preparation, same-ID recovery and selection changes
 were checked. The existing project-roadmap API/export test, build/TypeScript
 and lint passed. No user roadmap, session or VM was changed.
+
+## Subversion cards (0.8.37)
+
+Subversions form a separate list of evenly spaced cards. Native disclosure
+headers show a chevron, number/title, textual saved status and separate confirmed
+task/acceptance totals, including discarded counts. Titles wrap fully. Existing
+project/subversion expansion storage and order are retained. Reorder buttons
+have a separate footer outside the clickable summary.
+
+Expanded cards separate description/notes, entry actions, Tasks and Acceptance
+items. Open/Done/Discarded groups keep visible text labels; counts on incomplete
+pages say loaded. Descriptions/notes remain focusable scroll regions with their
+full text. Add/Edit/Append/Replace/Mark done/Reopen/Delete, confirmation, retained
+original requests and pagination keep their previous paths. Cleanup history
+stays the final independent block. This release changes no stored statuses,
+order, notes, IDs, permissions or agent instructions.
+
+The actual frontend was inspected against read-only real R4Craft data at
+1440/320 px: native keyboard disclosure, editor/note routing without saves,
+header progress/status, complete description access, reorder placement and
+pagination. A temporary DOM-only long title caused no horizontal overflow.
+Existing mutation/recovery code is byte-identical. Build/TypeScript/lint passed;
+no new tests or fixtures were added for styling. Evidence is in the development
+workspace under Research/R4OS/Roadmap-Implementation/0.8.37/.

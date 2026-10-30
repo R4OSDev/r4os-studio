@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from '../../app/Icon';
 import type { RoadmapBinding, RoadmapItem, RoadmapMutation, RoadmapSubversionHeader, RoadmapTarget } from '../../../../shared/project-roadmaps';
 import { ProjectRequestError, projectRequestId } from '../projects/api';
 import { mutate } from './api';
@@ -66,22 +67,22 @@ function ItemCollection(props: Shared & { subversionId: string; kind: 'task' | '
     {(list.error || actions.error) && <p className="project-error" role="alert">{list.error || actions.error}</p>}
     {list.loading && <p role="status">Loading {collectionLabel}…</p>}
     {(['open', 'done', 'discarded'] as const).map((status) => <div className="roadmap-item-group" key={status}>
-      <h5>{itemStatusLabels[status]} <span>{items.filter((item) => item.status === status).length}</span></h5>
+      <h5><span className="roadmap-status" data-status={status}>{itemStatusLabels[status]}</span><span className="roadmap-group-count">{items.filter((item) => item.status === status).length}{list.page?.nextCursor ? ' loaded' : ''}</span></h5>
       <ul>{items.filter((item) => item.status === status).map((item) => {
         const reference = { ...target, id: item.id };
         const pending = hasPending(props.id, reference);
         return <li key={item.id} className="roadmap-item" aria-label={`${noun}: ${item.description}`}>
           <p className="roadmap-item-description" tabIndex={0}>{item.description}</p>
-          <span className="roadmap-status">{itemStatusLabels[item.status]}</span>
+          <span className="roadmap-status" data-status={item.status}>{itemStatusLabels[item.status]}</span>
           <NoteDetails notes={item.notes} />
-          <div className="roadmap-entry-actions">
+          <div className="roadmap-entry-actions" role="group" aria-label="Entry actions">
             {pending ? <button type="button" disabled={props.disabled} onClick={() => void actions.perform('update', reference, {})}>Confirm original change</button> : <>
               <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: `Edit ${noun}`, target: reference,
                 initial: { description: item.description, notes: item.notes, status: item.status } })}>Edit {noun}</button>
               <button type="button" disabled={props.disabled} onClick={() => void actions.perform('update', reference, { status: item.status === 'open' ? 'done' : 'open' })}>{item.status === 'open' ? 'Mark done' : 'Reopen'}</button>
               <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: `Append ${noun} notes`, target: reference, initial: { notes: '' }, notesMode: 'append_notes' })}>Append notes</button>
               <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: `Edit ${noun} notes`, target: reference, initial: { notes: item.notes }, notesMode: 'replace_notes' })}>Edit notes</button>
-              <button type="button" disabled={props.disabled} onClick={() => actions.remove(reference, `${noun} “${item.description.slice(0, 160)}”`)}>Delete {noun}</button>
+              <button type="button" className="roadmap-delete" disabled={props.disabled} onClick={() => actions.remove(reference, `${noun} “${item.description.slice(0, 160)}”`)}>Delete {noun}</button>
             </>}
           </div>
         </li>;
@@ -102,19 +103,27 @@ function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }
     const open = event.currentTarget.open; setExpanded(open);
     try { if (open) sessionStorage.setItem(expandedKey, '1'); else sessionStorage.removeItem(expandedKey); } catch { /* Expanding does not require browser storage. */ }
   }}>
-    <summary><span><strong>{sub.number}</strong> {sub.title}</span><small>{versionStatusLabels[sub.status]}</small></summary>
+    <summary>
+      <span className="roadmap-subversion-title"><Icon name="chevron"/><span><strong>{sub.number}</strong><span>{sub.title}</span></span></span>
+      <span className="roadmap-status" data-status={sub.status}>{versionStatusLabels[sub.status]}</span>
+      <span className="roadmap-subversion-progress">{(['tasks','acceptances'] as const).map(kind=><span key={kind}>
+        <span>{kind==='tasks'?'Tasks':'Acceptance items'}</span><strong>{sub.progress[kind].done} / {sub.progress[kind].total}</strong>
+        <span>done{sub.progress[kind].discarded ? ` · ${sub.progress[kind].discarded} discarded` : ''}</span>
+      </span>)}</span>
+    </summary>
     {expanded && <div className="roadmap-subversion-body">
-      <p className="roadmap-item-description" tabIndex={0}>{sub.description || 'No description yet.'}</p>
-      <p className="project-message">Tasks: {sub.progress.tasks.done}/{sub.progress.tasks.total} done · Acceptance items: {sub.progress.acceptances.done}/{sub.progress.acceptances.total} done</p>
-      <NoteDetails notes={sub.notes} />
+      <section className="roadmap-subversion-description" aria-label="Description and notes"><h4>Description</h4>
+        <p className="roadmap-item-description" tabIndex={0}>{sub.description || 'No description yet.'}</p>
+        <NoteDetails notes={sub.notes} />
+      </section>
       {actions.error && <p className="project-error" role="alert">{actions.error}</p>}
-      <div className="roadmap-entry-actions">
+      <div className="roadmap-entry-actions" role="group" aria-label="Entry actions">
         {pending ? <button type="button" disabled={props.disabled} onClick={() => void actions.perform('update', target, {})}>Confirm original change</button> : <>
           <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: 'Edit subversion', target,
             initial: { number: sub.number, title: sub.title, description: sub.description, notes: sub.notes, status: sub.status } })}>Edit subversion</button>
           <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: 'Append subversion notes', target, initial: { notes: '' }, notesMode: 'append_notes' })}>Append notes</button>
           <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: 'Edit subversion notes', target, initial: { notes: sub.notes }, notesMode: 'replace_notes' })}>Edit notes</button>
-          <button type="button" disabled={props.disabled} onClick={() => actions.remove(target, `subversion ${sub.number} “${sub.title}”`,
+          <button type="button" className="roadmap-delete" disabled={props.disabled} onClick={() => actions.remove(target, `subversion ${sub.number} “${sub.title}”`,
             `Its ${sub.progress.tasks.total} tasks, ${sub.progress.acceptances.total} acceptance items and their notes will also be removed.`)}>Delete subversion</button>
         </>}
       </div>
@@ -145,7 +154,7 @@ export function Subversions(props: Shared) {
     {pending && <button type="button" disabled={props.disabled} onClick={() => void actions.perform('reorder', target, {})}>Confirm original order change</button>}
     {entries.map((sub, index) => <div className="roadmap-subversion-row" key={sub.id}>
       <Subversion {...props} sub={sub} />
-      <div className="roadmap-order-actions" aria-label={`Order ${sub.number}`}>
+      <div className="roadmap-order-actions" role="group" aria-label={`Order ${sub.number}`}><span>Order</span>
         <button type="button" disabled={props.disabled || pending || !!list.page?.nextCursor || entries.length > 500 || index === 0} onClick={() => move(index, -1)} aria-label={`Move ${sub.number} up`}>↑</button>
         <button type="button" disabled={props.disabled || pending || !!list.page?.nextCursor || entries.length > 500 || index === entries.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${sub.number} down`}>↓</button>
       </div>

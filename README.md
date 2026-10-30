@@ -1,3 +1,9 @@
+## Subversion roadmap cards (0.8.37)
+
+Collapsible cards now put saved status and task/acceptance progress in their
+headers, with distinct content/action sections and separate reorder controls.
+Cleanup history remains last. Details: [Roadmap-View.md](Roadmap-View.md).
+
 ## Direct roadmap export (0.8.36)
 
 The main-version download icon starts the existing immutable saved-version
