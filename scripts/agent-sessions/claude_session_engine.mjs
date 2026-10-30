@@ -8,6 +8,9 @@ const opaque = value => typeof value === 'string' && Buffer.byteLength(value) > 
   && !/[\x00-\x20\x7f\ud800-\udfff]/u.test(value);
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const bounded = (value, max) => Buffer.byteLength(JSON.stringify(value)) <= max;
+export const GOAL_CONTINUE_TEXT = 'Continue the original saved Studio GOAL within its unchanged scope and permissions. '
+  + 'Inspect original receipts before acting; never repeat an unconfirmed effect. '
+  + 'Before ending this step, call mcp__studio__report_goal with continue, complete or blocked and a concise reason.';
 async function deadline(work, ms = 15000) {
   let timer;
   try { return await Promise.race([work, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('The original Claude operation timed out.')), ms); })]); }
@@ -62,6 +65,12 @@ export class ClaudeSessionEngine {
     this.binding = binding(frozen); this.host = host; this.inputs = new Inputs(); this.grants = new Map();
     this.state = 'initializing'; this.sent = false; this.result = null; this.error = null;
     this.requireInputReceipt = options.requireInputReceipt === true; this.inputAccepted = false;
+    this.inputId = this.binding.requestId; this.inputSubmitted = false; this.inputOrigin = 'human';
+    this.stepCount = 0; this.inputIds = new Set([this.inputId]); this.goalStartedAt = null;
+    this.goal = options.goal ?? null;
+    if (this.goal && (Object.keys(this.goal).sort().join(',') !== 'executionId,maxActiveSeconds,maxSteps'
+      || this.goal.executionId !== this.binding.requestId || this.goal.maxSteps !== 8 || this.goal.maxActiveSeconds !== 900
+      || !this.requireInputReceipt || !options.tools?.includes('report_goal'))) throw Error('Invalid bounded Studio GOAL contract.');
     if (!host || !['authorize', 'receive', 'admit', 'closeAdmission'].every(k => typeof host[k] === 'function')
       || typeof options.systemPrompt !== 'string' || Buffer.byteLength(options.systemPrompt) > 131072
       || !['new', 'resume'].includes(options.mode) || options.mode === 'resume' && options.historyConfirmed !== true) {
@@ -147,6 +156,21 @@ export class ClaudeSessionEngine {
     if (this.state !== 'ready' || this.sent || typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 131072) {
       throw Error('Only one explicit original Studio request can be submitted by this worker.');
     }
+    await this.submit(text, 'ready');
+  }
+
+  async continue(inputId) {
+    if (!this.goal || this.state !== 'between' || !this.result || this.result.subtype !== 'success' || this.result.is_error
+      || !uuid(inputId) || this.inputIds.has(inputId) || this.stepCount >= this.goal.maxSteps
+      || this.goalStartedAt === null || Date.now() - this.goalStartedAt >= this.goal.maxActiveSeconds * 1000) {
+      throw Error('The original bounded Studio GOAL cannot continue.');
+    }
+    this.inputId = inputId; this.inputIds.add(inputId); this.inputOrigin = 'auto-continuation';
+    this.inputSubmitted = false; this.inputAccepted = false; this.state = 'admitting';
+    await this.submit(GOAL_CONTINUE_TEXT, 'admitting');
+  }
+
+  async submit(text, expectedState) {
     // The limit/auth stage owns admission. A real native plan and disabled
     // overage must be proved there; an SDK model list is never authorization.
     const account = await deadline(this.query.accountInfo());
@@ -155,7 +179,7 @@ export class ClaudeSessionEngine {
     // source for a native file login. Auth status/limit admission must provide
     // the positive native method and normalized plan; absence is not proof.
     const plan = { 'Claude Pro': 'pro', 'Claude Max': 'max', pro: 'pro', max: 'max' }[account.subscriptionType];
-    if (this.state !== 'ready' || account.apiProvider !== 'firstParty' || account.apiKeySource != null && account.apiKeySource !== 'none'
+    if (this.state !== expectedState || account.apiProvider !== 'firstParty' || account.apiKeySource != null && account.apiKeySource !== 'none'
       || account.tokenSource != null && account.tokenSource !== 'claude.ai' || !plan
       || admission?.authMethod !== 'claude.ai' || admission.apiProvider !== 'firstParty' || admission.subscriptionType !== plan
       || admission.allowed !== true || admission.extraUsageDisabled !== true
@@ -165,9 +189,10 @@ export class ClaudeSessionEngine {
       throw Error('The original native subscription/limit admission is unavailable. No model prompt was submitted.');
     }
     this.sent = true; this.state = 'active';
+    this.result = null; this.inputSubmitted = true; this.stepCount++;
     this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
     this.inputs.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null,
-      uuid: this.binding.requestId, session_id: this.binding.nativeSessionId, origin: { kind: 'human' }, client_composed: true });
+      uuid: this.inputId, session_id: this.binding.nativeSessionId, origin: { kind: this.inputOrigin }, client_composed: true });
   }
 
   async read() {
@@ -187,29 +212,38 @@ export class ClaudeSessionEngine {
           user_message_uuid: message.user_message_uuid, user_message_uuids: message.user_message_uuids,
           event: { message: { id: message.event?.message?.id } },
           message: message.message ? { id: message.message.id, content: parts.filter(v => v?.type === 'tool_use').map(v => ({ type: v.type, id: v.id, name: v.name })) } : undefined }, this.binding.requestId);
-        if (message.type === 'user' && message.isReplay === true && message.uuid === this.binding.requestId) {
+        if (this.goal) identity.studioGoalStepId = this.inputId;
+        if (message.type === 'user' && message.isReplay === true && message.uuid === this.inputId) {
           const content = message.message?.content;
           const text = typeof content === 'string' ? content : Array.isArray(content) && content.length === 1 && content[0]?.type === 'text' ? content[0].text : null;
-          if (!this.sent || message.isSynthetic === true || message.parent_tool_use_id != null || message.message?.role !== 'user'
+          if (!this.inputSubmitted || message.isSynthetic === true && this.inputOrigin !== 'auto-continuation' || message.parent_tool_use_id != null || message.message?.role !== 'user'
             || typeof text !== 'string' || createHash('sha256').update(text).digest('hex') !== this.inputTextSha256
-            || identity.nativeInputRequestIds.some(id => id !== this.binding.requestId)) {
+            || identity.nativeInputRequestIds.some(id => id !== this.inputId)) {
             throw Error('The native input echo does not match the original submitted text.');
           }
           identity.nativeInputRequestIds = [message.uuid];
           identity.nativeInputReceiptKind = 'stdinEcho';
           identity.nativeInputTextSha256 = this.inputTextSha256;
         }
-        if (identity.nativeInputRequestIds.some(id => id !== this.binding.requestId)
+        if (identity.nativeInputRequestIds.some(id => id !== this.inputId)
           || identity.nativeSessionId && identity.nativeSessionId !== this.binding.nativeSessionId || message.parent_tool_use_id != null
           || message.resume_reason || ['assistant', 'stream_event', 'result'].includes(message.type)
             && this.state !== 'active' && !(this.state === 'stopping' && this.sent)) {
           throw Error('Native Claude produced an unbound, resumed or autonomous turn.');
         }
         if (identity.nativeInputRequestIds.length && (['assistant','stream_event','result'].includes(message.type)
-          || identity.nativeInputReceiptKind === 'stdinEcho')) this.inputAccepted = true;
-        await this.host.receive({ binding: this.binding, identity, native: message });
+          || identity.nativeInputReceiptKind === 'stdinEcho')) {
+          this.inputAccepted = true;
+          if (this.goal && this.goalStartedAt === null) this.goalStartedAt = Date.now();
+        }
+        const between = message.type === 'result' && this.goal && this.state === 'active'
+          && message.subtype === 'success' && !message.is_error;
         if (message.type === 'result') {
-          this.result = message; this.state = 'completed'; this.grants.clear(); this.inputs.close();
+          this.result = message; this.state = between ? 'between' : 'completed'; this.grants.clear();
+        }
+        await this.host.receive({ binding: this.binding, identity, native: message });
+        if (message.type === 'result' && !between) {
+          this.inputs.close();
           await this.host.closeAdmission(this.binding); this.query.close();
         }
       }
@@ -238,6 +272,9 @@ export class ClaudeSessionEngine {
 
   async close() {
     if (this.state === 'closed') return;
+    if (this.goal && this.state === 'between') {
+      this.state = 'completed'; await this.host.closeAdmission(this.binding);
+    }
     if (!['completed', 'unconfirmed'].includes(this.state)) await this.interrupt();
     this.inputs.close(); this.query.close(); await deadline(this.pump, 12000); this.state = 'closed';
   }

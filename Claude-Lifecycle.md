@@ -1,5 +1,10 @@
 # Native Claude lifecycle (0.8.23, partial)
 
+The private bounded Studio GOAL engine is qualified separately in
+[Claude-Goal.md](Claude-Goal.md). It preserves the original Play and native
+session, with fresh admission per step. Public Goal controls/live activation
+remain gated pending their separate adapter and actual account acceptance.
+
 Stop closes tool admission before requesting the native interrupt. Studio drains
 the original terminal result before closing the query. A confirmed result and
 readable, unchanged native history permit a later explicit resume on the same

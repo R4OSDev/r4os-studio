@@ -54,7 +54,7 @@ class Host:
         return state in ('active', 'activating', 'deactivating', 'reloading')
 
     async def goal_worker_matches(self, meta, row):
-        if not (json.loads(row['config']).get('goalExecution') or json.loads(row['config']).get('nativeGoalPreparation')):return True
+        if not any(json.loads(row['config']).get(key) for key in ('goalExecution','claudeGoalExecution','nativeGoalPreparation')):return True
         try:
             pid=int(await systemctl('show',UNIT.format(row['id']),'--property=MainPID','--value'))
             if pid<=0 or (Path('/proc')/str(pid)).stat().st_uid!=self.config['uid']:return False
@@ -122,7 +122,7 @@ class Host:
                     for saved in store.db.execute('SELECT session_id FROM session_inboxes'):
                         self.inboxes.add((kind, project_id, saved['session_id']))
                 from goal_store import Goals
-                live_plays={json.loads(r['config']).get('goalExecution',{}).get('requestId')
+                live_plays={(json.loads(r['config']).get('goalExecution') or json.loads(r['config']).get('claudeGoalExecution') or {}).get('requestId')
                     for r in store.db.execute('SELECT * FROM runs WHERE busy=1') if r['id'] in self.active}
                 if __import__('goal_store').exists(store):
                     for command in store.db.execute("SELECT * FROM goal_commands WHERE state='pending' AND stage!='accepted'"):
@@ -468,8 +468,9 @@ class Host:
                             raise ProjectFault('This worker release cannot preserve native image inputs. The conversation and attachments were preserved.',503)
                     if not previous and request['input'].get('mode') == 'goal':
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
-                        if not target.is_relative_to('/opt/r4os-studio/releases') or not (target/'scripts/agent-sessions/goal_worker.py').is_file():
-                            raise ProjectFault('This worker release has no native multi-turn Goal support.',503)
+                        required=('claude_goal.py','claude_goal_worker.py') if store.get(session_id)['engine'].get('kind')=='claude-code' else ('goal_worker.py',)
+                        if not target.is_relative_to('/opt/r4os-studio/releases') or not all((target/'scripts/agent-sessions'/name).is_file() for name in required):
+                            raise ProjectFault('This worker release cannot preserve the original Goal engine contract.',503)
                     if not previous and request['input'].get('roadmapSettings') == 1:
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if kind != 'project' or not target.is_relative_to('/opt/r4os-studio/releases') or not (target / 'scripts/agent-sessions/roadmap_access.py').is_file():
@@ -638,6 +639,10 @@ class Host:
                 if row['busy']: transition(store, run_id, 'interrupted', 'Run stopped.')
             self.active.pop(run_id, None)
             self.unbound.discard(run_id)
+            if json.loads(row['config']).get('claudeGoalExecution'):
+                from claude_goal import lost as lost_claude
+                from goal_clock import lost as lost_claude_clock
+                lost_claude(store,run_id);lost_claude_clock(store,run_id)
             if json.loads(row['config']).get('goalExecution'):
                 from goal_store import Goals
                 goals=Goals(store);goals.lost_worker(run_id)

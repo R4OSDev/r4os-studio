@@ -80,7 +80,10 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     accepted=attachments+history(store,session_id)
     if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)
     if any(m['mode'] in ('text','pdfText') for m in accepted):snapshot['documentContext']=True
-    if goal_mode:
+    if goal_mode and session['engine'].get('kind') == 'claude-code':
+        from claude_goal import freeze as freeze_claude_goal
+        snapshot['claudeGoalExecution'] = freeze_claude_goal(store, session_id, command)
+    elif goal_mode:
         snapshot['goalExecution'] = {'requestId': data['goalRequestId'], 'objective': captured_goal['objective'],
             'threadId':captured_goal['threadId'],'commandFingerprint':command['fingerprint'],
             'captureSha256':hashlib.sha256(encode(captured_goal).encode()).hexdigest()}

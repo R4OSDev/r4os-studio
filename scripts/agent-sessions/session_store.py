@@ -419,7 +419,7 @@ PRAGMA user_version=1;
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
                 'goalControlSupport':r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
                 **({'goalActivation':activation} if activation else {}),
-                **({'mode':'goal'} if json.loads(r['config']).get('goalExecution') else {}),
+                **({'mode':'goal'} if json.loads(r['config']).get('goalExecution') or json.loads(r['config']).get('claudeGoalExecution') else {}),
                 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}
 

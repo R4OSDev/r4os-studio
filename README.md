@@ -1,3 +1,12 @@
+## Bounded Claude GOAL engine (0.8.48, private)
+
+A separate Studio execution ledger qualifies up to eight Claude steps and 900
+active seconds under one original Play. Every continuation needs native input,
+progress and result receipts, confirmed tool outcomes and fresh subscription
+admission. Automatic provenance stays in the Studio ledger; no Codex Goal RPC or
+new human authority is invented. Public Goal controls/model admission and real
+account acceptance remain gated. Details: [Claude-Goal.md](Claude-Goal.md).
+
 ## Claude queued follow-ups (0.8.47)
 
 Claude text follow-ups use the common queue, unchanged frozen selection and

@@ -87,8 +87,8 @@ async function main() {
     for await (const line of lines) {
       if (Buffer.byteLength(line) > 262144) throw Error('The original native command exceeds its bound.');
       const command = JSON.parse(line);
-      if (!command || typeof command !== 'object' || !['initialize', 'send', 'interrupt', 'close'].includes(command.operation)
-        || Object.keys(command).some(k => !['operation', ...(command.operation === 'send' ? ['text'] : [])].includes(k))) throw Error('Invalid fixed native worker command.');
+      if (!command || typeof command !== 'object' || !['initialize', 'send', 'continue', 'interrupt', 'close'].includes(command.operation)
+        || Object.keys(command).some(k => !['operation', ...(command.operation === 'send' ? ['text'] : command.operation === 'continue' ? ['inputRequestId'] : [])].includes(k))) throw Error('Invalid fixed native worker command.');
       if (command.operation === 'close') break;
       if (command.operation === 'interrupt') { await engine.interrupt(); emit({ event: 'interrupted' }); continue; }
       if (busy) throw Error('The original native operation is busy.');
@@ -96,9 +96,13 @@ async function main() {
       const pending = (async () => {
         try {
           if (command.operation === 'initialize') { await engine.initialize(); emit({ event: 'ready', nativeSessionId: config.binding.nativeSessionId }); }
-          if (command.operation === 'send') { await engine.send(command.text); emit({ event: 'submitted', requestId: config.binding.requestId }); }
+          if (command.operation === 'send' || command.operation === 'continue') {
+            if (command.operation === 'send') await engine.send(command.text); else await engine.continue(command.inputRequestId);
+            emit({ event: 'submitted', requestId: config.binding.requestId, inputRequestId: engine.inputId });
+          }
         } catch {
           emit({ event: 'unconfirmed', requestId: config.binding.requestId, promptSubmitted: engine.sent,
+            inputRequestId: engine.inputId, inputSubmitted: engine.inputSubmitted,
             message: command.operation === 'initialize' ? 'The original native Claude/MCP initialization was not confirmed.'
               : engine.sent ? 'The original native operation is unconfirmed. It was not repeated.' : 'Native subscription/limit admission is unavailable. No model prompt was submitted.' });
         } finally { busy = false; }
@@ -113,6 +117,7 @@ async function main() {
       historyReadable = info?.sessionId === config.binding.nativeSessionId;
     }
     emit({ event: 'closed', nativeSessionId: config.binding.nativeSessionId, studioRequestId: config.binding.requestId, promptSubmitted: engine.sent,
+      inputRequestId: engine.inputId, inputSubmitted: engine.inputSubmitted,
       resultId: engine.result?.uuid ?? null, subtype: engine.result?.subtype ?? null, historyReadable,
       originalStreamConfirmed: !engine.error });
   }

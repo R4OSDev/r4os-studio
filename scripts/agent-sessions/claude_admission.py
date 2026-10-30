@@ -73,7 +73,8 @@ async def admit(worker,binding,account,usage):
 def explicit_resume(worker,hold,account):
     """An old queued input and a timer are not new human authorization."""
     db=worker.store.db
-    if worker.config.get('goalExecution'):return False  # Qualified Goal Play adapter supplies its own receipt later.
+    if worker.config.get('goalExecution') or worker.config.get('claudeGoalExecution'):
+        return False  # A bounded automatic step can never release an account hold.
     queued=(db.execute("SELECT mode FROM session_messages WHERE request_id=?",(worker.row['request_id'],)).fetchone()
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_messages'").fetchone() else None)
     if not queued:return worker.row['created_at']>hold['createdAt']

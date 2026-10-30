@@ -39,11 +39,18 @@ def prepare(worker,history,prepared,broker):
     if binding!=broker.binding:raise ProjectFault('The original native bridge binding changed.',409)
     tools=[{'name':t['name'][7:],'description':t['description'],'inputSchema':t['inputSchema']}
         for t in specifications(config['engine']['profile'])]
+    goal=getattr(worker,'claude_goal',None)
+    if goal:
+        from claude_goal import REPORT_TOOL
+        tools.append(REPORT_TOOL)
     write_new(root/'tools.json',{'schema':1,'binding':binding,'tools':tools})
     from instructions import compose
     prompt=compose(config)+'\n\nSTUDIO CLAUDE TOOL CONTRACT: Use only mcp__studio__ tools. Native file, shell, web, agent, memory, scheduler, plugin and computer tools are unavailable. Studio owns tool permissions and original receipts; never repeat an unconfirmed effect. The host alone owns native authentication, limits and resume.'
+    if goal:
+        prompt+='\n\nBOUNDED STUDIO GOAL: The next human input is the original saved objective activated by Play. Work only within its existing authority and tool permissions. Before ending each step call mcp__studio__report_goal with continue, complete or blocked and a concise reason. A report grants no new scope. The host may continue the same objective for at most eight steps and 900 active seconds per Play; never create your own scheduler or autonomous loop.'
     write_new(root/'runtime.json',{'schema':1,'binding':binding,'mode':prepared['mode'],'historyConfirmed':prepared['historyConfirmed'],
-        'requireInputReceipt':getattr(worker,'queued_input',False),
+        'requireInputReceipt':bool(getattr(worker,'queued_input',False) or goal),
+        **({'goal':{key:config['claudeGoalExecution'][key] for key in ('executionId','maxSteps','maxActiveSeconds')}} if goal else {}),
         'effort':config.get('claudeModel',{}).get('effort',''),
         'resolvedModel':config.get('claudeModel',{}).get('resolvedModel'),
         'tools':[t['name'] for t in tools],'envelopedTools':[t['name'] for t in tools if t['inputSchema'].get('oneOf') or t['inputSchema'].get('anyOf')],

@@ -34,11 +34,16 @@ class ClaudeWorker(Worker):
         self.input_usage=InputUsage(self)
         from claude_messages import queued
         self.queued_input=queued(self);self.input_receipt=asyncio.Event()
+        self.claude_goal=None
+        if self.config.get('claudeGoalExecution'):
+            from claude_goal_worker import ClaudeGoalRuntime
+            self.claude_goal=ClaudeGoalRuntime(self)
 
     async def admit_native(self,binding,account,usage):
         from claude_admission import admit
         result=await admit(self,binding,account,usage)
         if result.get('allowed') is not True:self.admission_denial=result
+        if self.claude_goal:self.claude_goal.admitted(result)
         return result
 
     async def current(self,binding):
@@ -64,11 +69,13 @@ class ClaudeWorker(Worker):
 
     async def effect(self,name,arguments,call_id):
         admission_error=None
-        if self.queued_input and not self.input_receipt.is_set():
+        if (self.queued_input or self.claude_goal) and not self.input_receipt.is_set():
             try:await asyncio.wait_for(self.input_receipt.wait(),2)
             except asyncio.TimeoutError:
                 admission_error={'success':False,'error':'inputUnconfirmed',
                     'output':'The original Claude input ID is not confirmed. No Studio tool was executed.'}
+        if name=='studio_report_goal' and self.claude_goal:
+            return await self.claude_goal.report(arguments,call_id,admission_error)
         async def output(result,image_data=None):
             # A resumed native call can reuse an original receipt from an older
             # run. Publish its confirmed UI result without executing it again.
@@ -107,6 +114,7 @@ class ClaudeWorker(Worker):
         if identity.get('nativeSessionId') not in (None,self.config['engine']['claude']['nativeSessionId']):raise ValueError('Native session changed.')
         from claude_messages import acknowledge
         acknowledge(self,frame)
+        if self.claude_goal:self.claude_goal.acknowledge(frame)
         self.input_usage.notify(native)
         if kind=='stream_event':
             stream=native['event'];event_type=stream.get('type');index=stream.get('index')
@@ -164,6 +172,7 @@ class ClaudeWorker(Worker):
             self.native_result=native
             from claude_usage_receipts import record as usage_receipt
             usage_receipt(self,native)
+            if self.claude_goal and await self.claude_goal.result(native):return
             if self.stopping:
                 if self.outcome not in ('completed','failed'):self.outcome='unknown' if self.uncertain_effect else 'interrupted'
             else:
@@ -183,8 +192,11 @@ class ClaudeWorker(Worker):
                 elif kind=='ready':self.initialized=True;self.ready.set()
                 elif kind=='submitted':
                     if value.get('requestId')!=self.row['request_id']:raise ValueError('Original native request changed.')
+                    if self.claude_goal:
+                        self.claude_goal.submitted(value);self.native_result=None
                     self.sent=True;transition(self.store,self.run_id,'running')
                 elif kind=='unconfirmed':
+                    if self.claude_goal:self.claude_goal.unconfirmed(value)
                     self.sent=self.sent or value.get('promptSubmitted') is True
                     self.error=(self.admission_denial or {}).get('reason') or value['message']
                     self.outcome='unknown' if self.sent else ('interrupted' if self.stopping else 'failed');self.done.set();self.ready.set()
@@ -200,6 +212,11 @@ class ClaudeWorker(Worker):
     async def _stop(self):
         self.stopping=True
         if self.broker:self.broker.stop_admission()
+        if self.claude_goal:
+            try:self.claude_goal.stop()
+            except Exception:
+                self.uncertain_effect=True
+                self.error=self.error or 'The original bounded GOAL ledger is unconfirmed. Native Stop still closes admission.'
         if self.native and self.native.returncode is None:
             try:await self.command('interrupt')
             except (OSError,RuntimeError):self.uncertain_effect=True
@@ -244,11 +261,13 @@ class ClaudeWorker(Worker):
             ClaudeRunLeases(self.manifest['providers']).claim(credential,self.credential_worker);self.credential_lease=credential
             if self.store.owner_type=='project':await self.build_snapshots.start()
             transition(self.store,self.run_id,'starting',worker={'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())})
+            if self.claude_goal:self.claude_goal.start()
             prepared=history.prepare(self.run_id);frozen=prepared['runtime']
             binding={'providerId':self.config['providerId'],'studioSessionId':self.session_id,'nativeSessionId':frozen['nativeSessionId'],
                 'runId':self.run_id,'requestId':self.row['request_id'],'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
                 'model':self.config['model'],'toolProfile':self.config['engine']['profile']}
-            self.broker=ClaudeToolBroker(self.socket_root,binding,tools_for(self.config['engine']['profile']),self.current,self.effect,
+            tool_names=tools_for(self.config['engine']['profile'])+(('report_goal',) if self.claude_goal else ())
+            self.broker=ClaudeToolBroker(self.socket_root,binding,tool_names,self.current,self.effect,
                 admit=self.admit_native)
             await self.broker.start()
             from claude_namespace import prepare
@@ -261,7 +280,7 @@ class ClaudeWorker(Worker):
             await asyncio.wait_for(self.ready.wait(),20)
             if self.done.is_set() or self.stopping:raise ProjectFault('The original native Claude startup was not confirmed.',409)
             self.admission_started_at=time.time()
-            await self.command('send',text=request_text(self.store,self.run_id))
+            await self.command('send',text=self.config['claudeGoalExecution']['objective'] if self.claude_goal else request_text(self.store,self.run_id))
             await self.done.wait()
         except Exception as error:
             self.error=self.error or (str(error) if isinstance(error,ProjectFault) else 'The native Claude run could not confirm its original result.')
@@ -287,6 +306,9 @@ class ClaudeWorker(Worker):
                     history.unconfirmed(self.run_id)
                     if self.sent and not (self.stopping and confirmed and not self.uncertain_effect):self.outcome='unknown'
             if self.broker:await self.broker.close()
+            if self.claude_goal:
+                try:await self.claude_goal.finish(confirmed and history.get()['phase'] in ('ready','allocated'))
+                except Exception:self.outcome='unknown';self.error=self.error or 'The original bounded Claude GOAL ledger could not confirm its closure.'
             self.input_usage.finish()
             await self.cleanup()
             if self.lease:self.lease.close()

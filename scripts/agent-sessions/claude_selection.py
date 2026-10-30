@@ -33,7 +33,7 @@ def freeze(store,sid,data,providers,snapshot,queue_context=None):
         or account_identity(provider['account'])!=history['accountIdentity'] or not history['accountIdentity']
         or history['phase'] not in ('allocated','ready') and not queue_live):
         raise ProjectFault('The original Claude account/history is unavailable or unconfirmed. It was preserved.',409)
-    if (data.get('mode')=='goal' or any(snapshot.get(key) for key in
+    if (data.get('mode')=='goal' and not snapshot.get('claudeGoalExecution') or any(snapshot.get(key) for key in
         ('goalExecution','apiProvider','nativeImageGeneration','attachments','webSearchEnabled','fastMode'))):
         raise ProjectFault('This native Claude input/lifecycle capability has not been qualified.',409)
     snapshot['claudeProvider']={'providerId':provider['id'],'providerRevision':provider['revision'],

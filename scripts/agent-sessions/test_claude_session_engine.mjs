@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { ClaudeSessionEngine } from './claude_session_engine.mjs';
+import { ClaudeSessionEngine, GOAL_CONTINUE_TEXT } from './claude_session_engine.mjs';
 import { publicFrame } from './claude_session_io.mjs';
 
 class Feed {
@@ -19,13 +19,16 @@ class Feed {
 function fixture(changes = {}, engineOptions = {}) {
   const frozen = { providerId: randomUUID(), studioSessionId: randomUUID(), nativeSessionId: randomUUID(), runId: randomUUID(),
     requestId: randomUUID(), ownerId: randomUUID(), ownerType: 'project', toolProfile: 'studio-tools-v14', model: 'owned-model' };
+  if (engineOptions.goal === true) engineOptions = { ...engineOptions,
+    goal: { executionId: frozen.requestId, maxSteps: 8, maxActiveSeconds: 900 },
+    requireInputReceipt: true, tools: ['read_file', 'report_goal'] };
   const feed = new Feed(), sent = [], received = [], grants = [];
   let options, interrupts = 0;
   const sdk = { BUILTIN_TOOL_NAMES: ['Read', 'Bash', 'Agent', 'CronCreate'], query: value => {
     options = value.options;
     void (async () => { for await (const input of value.prompt) sent.push(input); })();
     return Object.assign(feed, { initializationResult: async () => ({ claude_code_version: '2.1.312', hooks_applied: true }),
-      mcpServerStatus: async () => [{ name: 'studio', status: 'connected', source: 'dynamic', tools: [{ name: 'read_file' }] }],
+      mcpServerStatus: async () => [{ name: 'studio', status: 'connected', source: 'dynamic', tools: (engineOptions.tools ?? ['read_file']).map(name => ({ name })) }],
       accountInfo: async () => ({ tokenSource: 'claude.ai', apiProvider: 'firstParty', subscriptionType: 'pro' }),
       interrupt: async () => { interrupts++; if (sent.length) feed.emit({ type: 'result', subtype: 'error_during_execution',
         uuid: randomUUID(), session_id: frozen.nativeSessionId, is_error: true }); } });
@@ -148,4 +151,45 @@ await test('Stop wins against pending admission; foreign/rescue turns fail witho
     g.feed.emit({ type: 'assistant', session_id: randomUUID(), uuid: randomUUID(), message: { id: 'unbound', content: [] }, resume_reason: 'rescue' });
     await tick(); assert.equal(g.engine.state, 'unconfirmed'); assert.equal(g.sent.length, 0); assert.equal(g.received.length, 0);
   } finally { await g.engine.close(); }
+});
+
+await test('bounded Studio GOAL uses distinct native inputs and automatic origin with fresh admission per step', async () => {
+  const admissions = [];
+  const f = fixture({ admit: async ({ binding }) => { admissions.push(binding.requestId); return admission(binding); } }, { goal: true });
+  const echo = input => f.feed.emit({ type: 'user', isReplay: true, uuid: input.uuid, session_id: f.frozen.nativeSessionId,
+    parent_tool_use_id: null, message: { role: 'user', content: input.message.content } });
+  const result = () => f.feed.emit({ type: 'result', subtype: 'success', is_error: false, uuid: randomUUID(), session_id: f.frozen.nativeSessionId });
+  try {
+    await f.engine.initialize(); await f.engine.send('The original owned objective.'); await tick();
+    echo(f.sent[0]); await tick(); result(); await tick();
+    assert.equal(f.engine.state, 'between'); assert.equal(f.sent.length, 1);
+    const next = randomUUID(); await f.engine.continue(next); await tick();
+    assert.equal(admissions.length, 2); assert.equal(f.sent.length, 2);
+    assert.equal(f.sent[0].origin.kind, 'human'); assert.equal(f.sent[1].origin.kind, 'auto-continuation');
+    assert.equal(f.sent[1].uuid, next); assert.equal(f.sent[1].message.content, GOAL_CONTINUE_TEXT);
+    assert.equal(f.engine.inputAccepted, false);
+    echo(f.sent[1]); await tick();
+    assert.equal(f.engine.inputAccepted, true);
+    const last = f.received.at(-1).identity;
+    assert.equal(last.studioRequestId, f.frozen.requestId); assert.equal(last.studioGoalStepId, next);
+    assert.deepEqual(last.nativeInputRequestIds, [next]); assert.equal(last.nativeTurnId, null);
+    result(); await tick(); await assert.rejects(f.engine.continue(next));
+  } finally { await f.engine.close(); }
+});
+
+await test('native GOAL step cap prevents a ninth input and never self-continues on a result', async () => {
+  const f = fixture({ admit: async ({ binding }) => admission(binding) }, { goal: true });
+  try {
+    await f.engine.initialize(); await f.engine.send('Owned bounded objective'); await tick();
+    for (let step = 0; step < 8; step++) {
+      const input = f.sent[step];
+      f.feed.emit({ type: 'user', isReplay: true, uuid: input.uuid, session_id: f.frozen.nativeSessionId,
+        parent_tool_use_id: null, message: { role: 'user', content: input.message.content } });
+      await tick();
+      f.feed.emit({ type: 'result', subtype: 'success', is_error: false, uuid: randomUUID(), session_id: f.frozen.nativeSessionId });
+      await tick(); assert.equal(f.sent.length, step + 1);
+      if (step < 7) { await f.engine.continue(randomUUID()); await tick(); }
+    }
+    await assert.rejects(f.engine.continue(randomUUID())); assert.equal(f.sent.length, 8);
+  } finally { await f.engine.close(); }
 });

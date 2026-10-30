@@ -154,6 +154,8 @@ class Goals:
                         'The original Goal control process ended. No native mutation was repeated.')
 
     def lost_worker(self, run_id):
+        from claude_goal import lost as lost_claude
+        lost_claude(self.store,run_id)
         if not exists(self.store): return
         from goal_worker import end_turns
         end_turns(self.store,run_id)
