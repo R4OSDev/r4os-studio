@@ -14,7 +14,9 @@ from store import ProjectFault
 
 async def probe(providers,state,request_id):
     request_id=identity(request_id);runtime=await asyncio.to_thread(installed,providers)
-    state=Path(state).absolute();private(state,directory=True,create=True)
+    # The existing agents directory deliberately has its own, older mode.
+    # Give this new facility its own private root; never chmod user run storage.
+    state=Path(state).absolute()/'ClaudeControl';private(state,directory=True,create=True)
     with tempfile.TemporaryDirectory(prefix='claude-control-',dir=state) as temporary:
         root=Path(temporary)
         for name in ('Home','Config'):(root/name).mkdir(mode=0o700)

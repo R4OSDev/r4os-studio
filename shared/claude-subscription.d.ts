@@ -2,15 +2,29 @@
 export interface ClaudeSubscriptionProvider {
   id: string; type: 'claude-subscription'; name: string;
   revision: number; profileRevision: 1; runtimeProfileId: string;
-  status: 'not-connected'; enabled: false;
-  auth: { kind: 'native-plan'; state: 'not-connected' };
+  status: 'not-connected' | 'connected' | 'reauthentication-required' | 'unsupported'; enabled: false;
+  auth: { kind: 'native-plan'; state: ClaudeSubscriptionProvider['status'] };
   createdAt: string; updatedAt: string;
-  /** Authentication and limit enforcement are qualified in later stages. */
-  account: null;
+  /** Native auth evidence; model and overage qualification remain separate. */
+  account: null | { email: string | null; orgId: string | null; orgName: string | null;
+    plan: 'pro' | 'max'; authMethod: 'claude.ai'; apiProvider: 'firstParty'; checkedAt: string };
 }
 export interface ClaudeProviderCreate { requestId: string; name: string }
 export interface ClaudeProviderMutation {
   requestId: string; state: 'complete'; provider: ClaudeSubscriptionProvider;
+}
+export type ClaudeAuthAction = 'connect' | 'status' | 'disconnect';
+export interface ClaudeAuthRequest { requestId: string; revision: number; action: ClaudeAuthAction }
+export interface ClaudeAuthOperation {
+  requestId: string; providerId: string; action: ClaudeAuthAction; revision: number;
+  state: 'pending' | 'waiting' | 'complete' | 'failed' | 'cancelled' | 'expired' | 'unconfirmed' | 'reconciled';
+  message: string | null; createdAt: string; updatedAt: string; provider: ClaudeSubscriptionProvider;
+  /** Present only in the initiating live browser session, never persisted. */
+  authorizationUrl?: string; expiresInSeconds?: number;
+}
+export interface ClaudeRuntimeStatus {
+  id: string; version: string; sdkVersion: string; sha256: string; sdkArchiveSha256: string;
+  qualified: Record<string, boolean>;
 }
 export interface ClaudeEngineBinding {
   kind: 'claude-code'; profile: 'studio-claude-sdk-v1'; profileRevision: 1;

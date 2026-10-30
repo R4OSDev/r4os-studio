@@ -113,3 +113,8 @@ button:disabled { cursor: default; opacity: .55; }
 .api-router-fields h3 { margin: 0; font-size: 14px; font-weight: 500; }
 .api-router-fields > label:not(:first-child) { margin-top: 18px; }
 @media (max-width: 440px) { .api-model-limits { grid-template-columns: 1fr; gap: 0; } .api-model-list summary { flex-wrap: wrap; } .api-models .provider-properties > div { grid-template-columns: 1fr; gap: 4px; } }
+.claude-account { display: grid; gap: .75rem; margin: 1rem 0; }
+.claude-account > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .75rem; }
+.claude-account dt { color: var(--muted); }
+.claude-account dd { margin: 0; overflow-wrap: anywhere; }
+.claude-sign-in { display: inline-flex; width: fit-content; max-width: 100%; text-decoration: none; }

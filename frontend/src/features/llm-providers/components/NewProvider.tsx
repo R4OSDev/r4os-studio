@@ -6,9 +6,10 @@ import { Icon } from '../../../app/Icon';
 import { ApiConnectionForm, apiKinds } from './ApiConnectionForm';
 import type { LeaveGuard } from './ApiConnectionForm';
 import type { ApiProviderKind } from '../../../../../shared/api-providers';
+import { NewClaudeProvider } from './ClaudeProviderDetails';
 
 export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi; created: (id: string) => void; setLeaveGuard?: LeaveGuard }) {
-  const [type, setType] = useState<'openai' | ApiProviderKind>(() => {
+  const [type, setType] = useState<'openai' | 'claude-subscription' | ApiProviderKind>(() => {
     try { const kind = JSON.parse(sessionStorage.getItem('studio.api.provider.new') ?? 'null')?.kind as ApiProviderKind; return Object.hasOwn(apiKinds, kind) ? kind : 'openai'; }
     catch { return 'openai'; }
   });
@@ -32,7 +33,7 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
   return <div className="provider-card">
     <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><div><h2>Connect an AI provider</h2><p>Choose an account subscription or an API connection.</p></div></div>
     <div className="provider-form"><label htmlFor="provider-type">Provider</label>
-      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · ChatGPT subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · ChatGPT subscription</option><option value="claude-subscription">Claude · Pro / Max subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {type === 'openai' ? <form onSubmit={(event) => void submit(event)} className="provider-form">
       <p className="field-help">ChatGPT subscription access. No API key required.</p>
       <label htmlFor="provider-name">Display name</label>
@@ -40,8 +41,8 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
       <p className="field-help">This name appears in the Views column.</p>
       {error && <p className="provider-alert" role="alert">{error}</p>}
       <div className="provider-actions"><button className="button-primary" type="submit" disabled={busy || api.loading || !!api.error || !name.trim()}>{busy ? 'Adding provider…' : 'Add OpenAI provider'}</button></div>
-    </form> : <ApiConnectionForm key={type} api={api} kind={type} saved={created} setLeaveGuard={value => { guard.current = value; setLeaveGuard?.(value); }} />}
-    <div className="provider-hint"><Icon name="system" /><p>{type === 'openai' ? 'Manage the connection here. OpenAI handles your sign-in in a separate browser tab.' : 'API keys stay on the Studio host. Add model metadata after saving the connection.'}</p></div>
+    </form> : type === 'claude-subscription' ? <NewClaudeProvider api={api} created={created} /> : <ApiConnectionForm key={type} api={api} kind={type} saved={created} setLeaveGuard={value => { guard.current = value; setLeaveGuard?.(value); }} />}
+    <div className="provider-hint"><Icon name="system" /><p>{type === 'openai' ? 'Manage the connection here. OpenAI handles your sign-in in a separate browser tab.' : type === 'claude-subscription' ? 'Sign in to your own Claude plan with the native client. Credentials stay in its private provider directory.' : 'API keys stay on the Studio host. Add model metadata after saving the connection.'}</p></div>
   </div>;
 }
 

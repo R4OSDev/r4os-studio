@@ -56,8 +56,10 @@ class ClaudeProviders:
                 'status','enabled','auth','createdAt','updatedAt','account'}
                 or value['id']!=ident or value['type']!='claude-subscription' or type(value['revision']) is not int or value['revision']<1
                 or type(value['profileRevision']) is not int or value['profileRevision']!=1
-                or value['runtimeProfileId']!=profile()['id'] or value['status']!='not-connected' or value['enabled'] is not False
-                or value['auth']!={'kind':'native-plan','state':'not-connected'} or value['account'] is not None
+                or value['runtimeProfileId']!=profile()['id'] or value['enabled'] is not False
+                or value['status'] not in ('not-connected','connected','reauthentication-required','unsupported')
+                or value['auth']!={'kind':'native-plan','state':value['status']}
+                or not valid_account(value['account'],value['status'])
                 or not all(isinstance(value[k],str) for k in ('name','createdAt','updatedAt')) or name(value['name'])!=value['name']):
             raise ProjectFault('The original Claude provider identity is unavailable. Existing data was preserved.',503)
         return value
@@ -98,3 +100,11 @@ class ClaudeProviders:
             db.execute('INSERT INTO revisions VALUES (?,1,?)',(ident,encode(value)))
             db.execute('INSERT INTO requests VALUES (?,?,?)',(rid,fingerprint,encode(result)))
             return result
+
+
+def valid_account(value,status):
+    if status!='connected':return value is None
+    return (isinstance(value,dict) and set(value)=={'email','orgId','orgName','plan','authMethod','apiProvider','checkedAt'}
+        and value['plan'] in ('pro','max') and value['authMethod']=='claude.ai' and value['apiProvider']=='firstParty'
+        and all(value[k] is None or isinstance(value[k],str) and len(value[k])<=320 and all(ord(c)>=32 for c in value[k])
+            for k in ('email','orgId','orgName')) and isinstance(value['checkedAt'],str))

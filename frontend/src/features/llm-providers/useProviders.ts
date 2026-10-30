@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderList, ProviderUsage } from '../../../../shared/llm-providers.js';
 import type { ApiProvider } from '../../../../shared/api-providers.js';
+import type { ClaudeSubscriptionProvider } from '../../../../shared/claude-subscription.js';
 import { loadProviders, requestProvider } from './api';
 import { remainingUsage } from './usage-format';
 
@@ -9,6 +10,7 @@ export function useProviders(usageVisible = true) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiProviders, setApiProviders] = useState<ApiProvider[]>([]), [apiError, setApiError] = useState('');
+  const [claudeProviders, setClaudeProviders] = useState<ClaudeSubscriptionProvider[]>([]), [claudeError, setClaudeError] = useState('');
   const csrf = useRef('');
   const usageGeneration = useRef(0);
   const usageRequests = useRef<Record<string, number>>({});
@@ -31,6 +33,8 @@ export function useProviders(usageVisible = true) {
       const next = await loadProviders(); accept(next);
       try { setApiProviders((await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken)).providers); setApiError(''); }
       catch (cause) { setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
+      try { setClaudeProviders((await requestProvider<{ providers: ClaudeSubscriptionProvider[] }>('/claude-subscriptions', next.csrfToken)).providers); setClaudeError(''); }
+      catch (cause) { setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
     } catch (cause) { fail(cause); }
   }, [accept, fail]);
 
@@ -42,6 +46,10 @@ export function useProviders(usageVisible = true) {
         const result = await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken);
         if (active) { setApiProviders(result.providers); setApiError(''); }
       } catch (cause) { if (active) setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
+      try {
+        const result = await requestProvider<{ providers: ClaudeSubscriptionProvider[] }>('/claude-subscriptions', next.csrfToken);
+        if (active) { setClaudeProviders(result.providers); setClaudeError(''); }
+      } catch (cause) { if (active) setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
     }).catch((cause: unknown) => { if (active) fail(cause); });
     return () => { active = false; };
   }, [accept, fail]);
@@ -82,7 +90,7 @@ export function useProviders(usageVisible = true) {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
   }, [data.providers, request, usageVisible]);
 
-  return { ...data, providers: [...data.providers, ...apiProviders], apiError, remainingByProvider, loading, error, reload, request };
+  return { ...data, providers: [...data.providers, ...apiProviders, ...claudeProviders], apiError, claudeError, remainingByProvider, loading, error, reload, request };
 }
 
 export type ProviderApi = ReturnType<typeof useProviders>;

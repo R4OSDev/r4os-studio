@@ -43,6 +43,8 @@ class Host:
         self.session_delete_tasks={}
         self.catalog_lock=asyncio.Lock();self.catalog_tasks={}
         self.claude_probe_lock=asyncio.Lock()
+        from claude_auth import ClaudeAuth
+        self.claude_auth=ClaudeAuth(config['providers'])
         self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -75,6 +77,7 @@ class Host:
         return value
 
     async def recover(self):
+        self.claude_auth.store.recover()
         from api_catalog_host import recover as recover_catalogs
         await recover_catalogs(self)
         from session_delete import recover as recover_session_deletions
@@ -196,7 +199,7 @@ class Host:
                 await self.handle({'operation':'cancel_provider','providerId':ident})
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
             return result
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiLocal':1, 'apiUsageOrigins':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
@@ -204,11 +207,23 @@ class Host:
             if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
             if action=='creation_receipt':return await asyncio.to_thread(store.receipt,request.get('requestId'))
             if action=='create':return await asyncio.to_thread(store.create,request.get('input'))
+            if action=='auth_start':
+                ident=identity(request.get('id'))
+                async with self.lock:
+                    await self.refresh()
+                    if self.claude_probe_lock.locked():raise ProjectFault('A native Claude metadata probe is still active.',429)
+                    if self.unbound or any(meta['providerId']==ident for meta in self.active.values()):
+                        raise ProjectFault('Reconcile or finish original bound workers before changing Claude authentication. No worker was stopped.',409)
+                    return await self.claude_auth.start(ident,request.get('input'),request.get('owner'))
+            if action=='auth_receipt':return self.claude_auth.view(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
+            if action=='auth_code':return await self.claude_auth.submit(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'),request.get('code'))
+            if action=='auth_cancel':return await self.claude_auth.cancel(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
             if action=='runtime':
                 from claude_runtime import installed
                 runtime=await asyncio.to_thread(installed,self.config['providers'])
                 return {key:runtime[key] for key in ('id','version','sdkVersion','sha256','sdkArchiveSha256','qualified')}
             if action=='probe':
+                if self.claude_auth.busy:raise ProjectFault('A native Claude authentication operation is still active.',429)
                 if self.claude_probe_lock.locked():raise ProjectFault('A Claude metadata probe is already active.',429)
                 from claude_probe import probe
                 async with self.claude_probe_lock:
@@ -681,7 +696,7 @@ async def main():
                     await host.refresh()
                     await host.dispatch_queues()
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.catalog_tasks and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.catalog_tasks and not host.claude_auth.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:
@@ -696,6 +711,7 @@ async def main():
             except asyncio.TimeoutError: pass
     monitor = asyncio.create_task(maintain())
     async with server: await stopped.wait()
+    await host.claude_auth.close()
     monitor.cancel(); await asyncio.gather(monitor, return_exceptions=True)
     if host.connections:
         try: await asyncio.wait_for(asyncio.gather(*host.connections, return_exceptions=True), 25)

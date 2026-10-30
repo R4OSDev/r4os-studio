@@ -1,3 +1,16 @@
+## Native Claude subscription sign-in (0.8.19, partial acceptance)
+
+System → LLM Providers now offers a named Claude Pro/Max provider with native
+Connect, code handoff, Cancel, timestamped Status, Reconnect and confirmed
+Disconnect. Native credentials stay private per provider; original requests
+recover without repeating sign-in. Existing OpenAI/API providers stay intact.
+
+Model use remains disabled until the session/tool and limit/overage stages.
+Actual empty-home network-isolated CLI checks and controlled auth/UI cases
+qualify the integration; a real human subscription login and the final native
+refresh/expiry/worker/queue acceptance remain open. Details:
+[Claude-Authentication.md](Claude-Authentication.md).
+
 ## Native Claude Subscription foundation (0.8.18)
 
 A distinct Claude-plan identity and immutable engine binding now prepare the
