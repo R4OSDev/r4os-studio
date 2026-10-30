@@ -79,7 +79,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       }}>{name}</button>)}</div>
       <fieldset className="project-fields" disabled={saving || reloading} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
         {tab === 'General' ? <>
-          {session.engine.api && <p className="agent-terminal-hint">This conversation keeps its API connection and protocol. Create a new session to change providers. Hosted web/image generation, image input, Fast Mode and native Goal are unavailable through this adapter.</p>}
+          {session.engine.api && <p className="agent-terminal-hint">This conversation keeps its API connection and protocol. Create a new session to change providers. GOAL uses its function tools and starts only after Play. Hosted web/image generation, image input and Fast Mode are unavailable through this adapter.</p>}
           {session.engine.kind === 'claude-code' && <p className="agent-terminal-hint">This conversation keeps its native Claude account and history. Choose another provider in a new session. Documents use explicit text extraction; images require a qualified image model (4 MiB each, 8 MiB per send). Studio tools use fresh subscription checks. Fast Mode is unavailable.</p>}
           {model?.available === false && <p className="project-dialog-error">{model.unavailableReasons?.join(' ')}</p>}
           <ProjectField id="settings-session-name" label="Name"><input id="settings-session-name" required maxLength={120} value={draft.name} onChange={(e) => patch({ name: e.target.value })} /></ProjectField>

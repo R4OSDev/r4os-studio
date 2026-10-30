@@ -63,7 +63,8 @@ class Goals:
             from claude_goal_store import accept
             return accept(self,sid,data)
         if self.store.get(sid)['engine'].get('api'):
-            raise ProjectFault('Native Goal controls are not qualified for this API model.',409)
+            from api_goals import require
+            require(self.store.get(sid)['engine'])
         if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target'}
                 or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int
                 or ('sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1))

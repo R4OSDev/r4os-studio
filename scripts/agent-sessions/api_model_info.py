@@ -59,7 +59,10 @@ def present(value,protocol):
         if declared['capabilities'][key]!='supported':reasons.append({'text':'Text input','functionTools':'Function tools','streaming':'Streaming'}[key]+' is not confirmed.')
     if not declared['efforts'] or declared['defaultEffort'] is None:reasons.append('The reasoning/default-effort contract is not confirmed.')
     if protocol=='chat-completions' and declared['contextWindow'] is None:reasons.append('Chat Completions needs a confirmed context window.')
-    for key in ('imageInput','webSearch','imageGeneration','goals'):effective[key]='unsupported'
+    for key in ('imageInput','webSearch','imageGeneration'):effective[key]='unsupported'
+    # GOAL is a Studio/native lifecycle over the existing function contract,
+    # not a hosted provider endpoint or a model capability guessed from its ID.
+    effective['goals']='supported' if not reasons else 'unsupported'
     return {**declared,'declaredCapabilities':declared['capabilities'],'capabilities':effective,
         'available':not reasons,'unavailableReasons':reasons,'source':copy.deepcopy(value.get('source'))}
 

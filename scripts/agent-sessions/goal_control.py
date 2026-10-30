@@ -22,8 +22,6 @@ def matches(action, text, raw):
 
 
 async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
-    if store.get(sid)['engine'].get('api'):
-        raise ProjectFault('Native Goal controls are not qualified for this API model.',409)
     goals=Goals(store); row=goals.command(sid,rid); command=json.loads(row['payload'])
     if row['state']!='pending': return goals.receipt(sid,rid)
     if command['action']=='play': raise ProjectFault('Goal execution requires the multi-turn worker.',503)
@@ -35,7 +33,10 @@ async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
         session=store.get(sid); thread=store.row(sid)['thread_id']
         if not thread and (command['action']!='save' or not command['objective'].strip()):
             return goals.finish(sid,rid)
-        args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
+        if session['engine'].get('api'):
+            from api_goals import metadata_arguments
+            args=metadata_arguments(store,sid,providers,new_thread=not thread)
+        else:args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
                 Path(providers)/session['providerId'],store.directory/sid/'Codex',
                 json.loads((Path(__file__).parent/'features.json').read_text()),session['model'],session['providerId'],
                 session['engine'].get('profile',PROFILE),goals_enabled=True)

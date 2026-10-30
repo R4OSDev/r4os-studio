@@ -49,15 +49,16 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     const load = async () => {
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ apiNativeGoals?: number; claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
       const controls = claudeSession ? support.claudeGoals === 1 : support.nativeGoals === 1;
       const runs = claudeSession ? support.claudeGoalExecution === 1 : support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1;
-      observe(state.goal); setAvailable(!apiSession && controls && support.enabled !== false);
-      setExecution(!apiSession && controls && runs && support.enabled !== false);
-      setReadback(!apiSession && (claudeSession ? controls : support.nativeGoalReadback === 1)); setLiveExecution(!apiSession && (claudeSession ? support.claudeLiveGoals === 1 : support.liveGoalControl === 1));
-      if (!apiSession && (!controls || !runs))
+      const engineReady = !apiSession || support.apiNativeGoals === 1;
+      observe(state.goal); setAvailable(engineReady && controls && support.enabled !== false);
+      setExecution(engineReady && controls && runs && support.enabled !== false);
+      setReadback(engineReady && (claudeSession ? controls : support.nativeGoalReadback === 1)); setLiveExecution(engineReady && (claudeSession ? support.claudeLiveGoals === 1 : support.liveGoalControl === 1));
+      if (!engineReady || !controls || !runs)
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });

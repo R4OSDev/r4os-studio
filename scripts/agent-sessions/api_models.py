@@ -81,7 +81,8 @@ def freeze(store,sid,data,providers,snapshot):
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
             or selected['protocol']!=provider['protocol'] or selected.get('server','custom')!=provider.get('server','custom')):
         raise ProjectFault('The API connection identity changed. Create a new session; the existing conversation was preserved.',409)
-    if data.get('mode')=='goal':raise ProjectFault('Native Goal execution is not qualified for this API model.',409)
+    from api_goals import qualified,require
+    if data.get('mode')=='goal':require(session['engine'])
     if session.get('webSearchEnabled',False) or session.get('imageGenerationEnabled',False) or session.get('fastMode',False):
         raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model. Review its explicit session settings.',409)
     models=catalog(providers,provider);model=next((m for m in models if m['slug']==snapshot['model']),None)
@@ -92,4 +93,5 @@ def freeze(store,sid,data,providers,snapshot):
     if provider['kind']=='openrouter':snapshot['apiProvider']['openrouter']=copy.deepcopy(provider['openrouter'])
     else:snapshot['apiProvider']['server']=provider.get('server','custom')
     snapshot['apiModels']={'models':[model]};snapshot['apiRunId']=future_run_id(store,sid,data['requestId'])
-    snapshot['nativeGoalPreparation']=False
+    if qualified(session['engine']):snapshot['apiGoalProtocol']=1
+    else:snapshot['nativeGoalPreparation']=False

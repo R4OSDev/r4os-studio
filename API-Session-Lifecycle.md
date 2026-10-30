@@ -1,4 +1,4 @@
-# API session lifecycle and usage (0.8.17, partial)
+# API session lifecycle and usage (0.8.17, supplemented in0.8.60)
 
 Project/Skill API sessions keep the original native engine, current frozen
 Studio/Agents.md or Skill Manager instructions, selected skill resources,
@@ -10,7 +10,8 @@ VM adapter is introduced. Existing project pins and native histories stay fixed.
 Neutral API model descriptors explicitly restrict image input and hosted native
 extras. Image capture/inspection rejects an unqualified model before calling
 the development broker; unsupported image attachments, hosted web/generation,
-Fast Mode and native Goal cannot silently fall through to text. Text/PDF
+and Fast Mode cannot silently fall through to text. Native GOAL now uses the
+qualified function lifecycle described in [API-Goals.md](API-Goals.md). Text/PDF
 attachment references retain the existing extraction/size/read-tool contract;
 unsupported opaque content fails rather than being dropped by the adapter.
 Guest build/deploy/GUI success is not newly claimed for each model provider.
@@ -67,7 +68,9 @@ private histories and API provenance while preserving lifetime numeric totals.
 Provider retirement keeps its original public revision/receipt references; it
 does not convert or remove another provider's conversations. Source/aggregate
 SQLite restore and repeated native scans reuse the same numeric receipt keys.
-Normal API runs never invent GOAL time; Goal remains explicitly unavailable.
+Ordinary API runs do not accrue GOAL time without an explicit Play. Native
+GOAL executions now retain their original Play clocks and unchanged spending
+receipt identities; status readback does not add time or spending.
 
 ## Qualified evidence and remaining work
 
@@ -90,9 +93,9 @@ private protocol observations. Build/TypeScript/lint and immutable installation/
 original-data verification remain required. Evidence:
 `Research/R4OS/Roadmap-Implementation/0.8.17/` in the workspace.
 
-**Subversion0.8.17 remains open.** Its available session/rights and usage work can
-be recorded separately. Automatic60-second/five-attempt retries and their shared
-lifecycle/final acceptance depend on the still-open0.8.10 controller. No retry
-was enabled, no past run resumed and no Goal/extra capability inferred from API
-reachability. See [Provider-Retries.md](Provider-Retries.md). Later independent
-provider work may proceed while these specific items remain explicitly open.
+**Subversion0.8.17 remains open.** The ordinary-answer retry controller was added
+in0.8.45. The0.8.60 supplement adds qualified native GOAL/Live-Play controls and
+their metadata, lease, original-snapshot and selected-effort integration. Active
+GOAL retry recovery and the shared positive retry/final acceptance still depend
+on0.8.10. No past run was resumed and no hosted capability was inferred from
+API reachability. See [Provider-Retries.md](Provider-Retries.md).

@@ -1,3 +1,12 @@
+## GOAL for API providers (0.8.60)
+
+API sessions now support native GOAL Save/Play, live activation, Pause/Stop and
+status readback. Saving and checking status need no API credential or model
+request. Explicit Play keeps the original API lease, thread, permissions and
+selected effort. Existing snapshots remain unchanged; older coordinators keep
+the controls unavailable. Details and remaining retry scope:
+[API-Goals.md](API-Goals.md).
+
 ## Claude GOAL admission after a completed step (0.8.59)
 
 If fresh subscription admission refuses a later Goal input, the worker now

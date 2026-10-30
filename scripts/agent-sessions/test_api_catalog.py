@@ -40,10 +40,12 @@ class Catalog(unittest.TestCase):
 
     def test_unknowns_qualification_neutral_descriptor_and_revision_scope(self):
         self.assertFalse(present(facts(),'chat-completions')['available']);self.assertIsNone(native(facts(),'chat-completions'))
+        self.assertEqual(present(facts(),'chat-completions')['capabilities']['goals'],'unsupported')
         data=self.save();result=self.store.save_model(self.ident,data)
         self.assertEqual(self.store.save_model(self.ident,data),result)
         catalog=self.store.listing(self.ident);self.assertTrue(catalog['models'][0]['available']);self.assertFalse(catalog['metadataCurrent'])
         self.assertEqual(catalog['models'][0]['efforts'],['none']);self.assertEqual(catalog['models'][0]['capabilities']['imageInput'],'unsupported')
+        self.assertEqual(catalog['models'][0]['capabilities']['goals'],'supported')
         model=self.store.native_models(self.ident)[0];self.assertEqual(model['context_window'],8192);self.assertEqual(model['default_reasoning_level'],'none')
         self.assertFalse(model['supports_reasoning_summary_parameter']);self.assertFalse(model['use_responses_lite'])
         self.api.mutate('update',self.ident,{'requestId':request(),'revision':1,'baseUrl':'http://127.0.0.1:11434/v2'})

@@ -74,7 +74,7 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
       <button type="button" className="button-secondary" disabled={mutation.busy || !!pending} onClick={() => edit(model)}>Edit model facts</button>
     </details>)}</div>
     {catalog && !catalog.models.length && <p className="field-help">No cached models. Check metadata or add an exact model ID.</p>}
-    <p className="field-help">Image input, hosted web search, image generation, Fast Mode and native Goal are currently unavailable through these API adapters.</p>
+    <p className="field-help">GOAL is provided by Studio when text, streaming and function tools are confirmed. It starts only after Play. Image input, hosted web search, image generation and Fast Mode are unavailable through these API adapters.</p>
     {!draft ? <button type="button" className="button-secondary" disabled={!catalog || mutation.busy || !!pending && !(mutation.notFound && pending.operation === 'model')} onClick={() => edit()}>{pending?.operation === 'model' ? 'Re-enter original model facts' : 'Add exact model ID'}</button>
       : <form className="provider-form api-model-form" onSubmit={event => void save(event)} aria-label="Explicit model facts">
         <h4>Explicit model facts</h4><p className="field-help">Enter facts from the model and endpoint documentation. Unknown capabilities stay unavailable for agent execution; saving does not test them.</p>

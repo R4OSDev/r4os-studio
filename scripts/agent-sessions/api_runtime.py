@@ -13,6 +13,10 @@ from session_store import identity
 from store import ProjectFault
 
 
+def provider_name(ident):
+    return 'studio_api_'+identity(ident).replace('-','_')
+
+
 async def resolve_binding(binding):
     checked=endpoint(binding['baseUrl'],binding['kind'])
     from urllib.parse import urlsplit
@@ -34,7 +38,7 @@ class ApiRuntime:
         self.chat=chat
         self.runtime=Path(runtime).absolute();self.child=None;self.port=None;self.key_file=None;self.key_inode=None
         identity(self.binding['id'])
-        self.provider='studio_api_'+self.binding['id'].replace('-','_')
+        self.provider=provider_name(self.binding['id'])
         self.token=secrets.token_hex(32)
         self.reader=None;self.origins=[];self.usages=[];self.origin_error=False
 
@@ -74,7 +78,12 @@ class ApiRuntime:
                 if len(raw)>8192:raise ValueError()
                 value=json.loads(raw)
                 if isinstance(value,dict) and value.get('event')=='usage':
-                    if (set(value)!={'event','ordinal','responseId','usage'} or len(self.usages)>=256
+                    if len(self.usages)>=256:
+                        # Long Goal runs can outlive the bounded observation
+                        # set. Keep draining the trusted relay; never create
+                        # extra numeric receipts or leave its stdout unread.
+                        self.origin_error=True;continue
+                    if (set(value)!={'event','ordinal','responseId','usage'}
                             or type(value['ordinal']) is not int or not 1<=value['ordinal']<=256
                             or self.usages and value['ordinal']<=self.usages[-1]['ordinal']
                             or not isinstance(value['responseId'],str) or not 1<=len(value['responseId'].encode())<=256
@@ -85,7 +94,9 @@ class ApiRuntime:
                             or set(usage)-{'input_tokens','output_tokens','total_tokens','cached_input_tokens','reasoning_output_tokens'}
                             or any(type(v) is not int or not 0<=v<=9007199254740991 for v in usage.values())):raise ValueError()
                     self.usages.append(value);continue
-                if self.binding['kind']!='openrouter' or len(self.origins)>=256:raise ValueError()
+                if self.binding['kind']!='openrouter':raise ValueError()
+                if len(self.origins)>=256:
+                    self.origin_error=True;continue
                 if (not isinstance(value,dict) or set(value)!=fields or value['event']!='origin'
                         or type(value['ordinal']) is not int or not 1<=value['ordinal']<=256
                         or self.origins and value['ordinal']<=self.origins[-1]['ordinal']

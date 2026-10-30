@@ -375,6 +375,9 @@ class Worker:
         for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
         try:
             if self.row['state'] == 'stopping': self.outcome = 'interrupted'; return
+            if (self.config.get('apiProvider') and (self.config.get('goalExecution') or self.config.get('nativeGoalPreparation'))
+                    and self.config.get('apiGoalProtocol')!=1):
+                raise __import__('store').ProjectFault('This original API run has no qualified Goal lifecycle contract. Its frozen snapshot was preserved.',409)
             if self.config.get('nativeImageGeneration') is True:
                 from image_generation import freeze
                 capability=freeze(self.config,self.config.get('imageGenerationCapability'))
@@ -473,7 +476,7 @@ class Worker:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {**native_provider,'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
-                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode},
+                           'ephemeral': False, 'dynamicTools': specifications(self.config['engine'].get('profile', PROFILE)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})},
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
                 with self.store.db:
