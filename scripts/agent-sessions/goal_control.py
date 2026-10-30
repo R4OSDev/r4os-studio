@@ -22,6 +22,8 @@ def matches(action, text, raw):
 
 
 async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
+    if store.get(sid)['engine'].get('api'):
+        raise ProjectFault('Native Goal controls are not qualified for this API model.',409)
     goals=Goals(store); row=goals.command(sid,rid); command=json.loads(row['payload'])
     if row['state']!='pending': return goals.receipt(sid,rid)
     if command['action']=='play': raise ProjectFault('Goal execution requires the multi-turn worker.',503)

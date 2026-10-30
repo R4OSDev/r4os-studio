@@ -9,6 +9,8 @@ from store import ProjectFault
 
 
 async def readback(store, sid, rpc_factory=CodexRPC):
+    if store.get(sid)['engine'].get('api'):
+        raise ProjectFault('Native Goal readback is not qualified for this API model.',409)
     goals=Goals(store);before=goals.snapshot(sid);thread=before['threadId']
     if not thread: return {'goal':before,'nativeRead':False,'superseded':False}
     session=store.get(sid);state=store.directory/sid/'Codex';client=None

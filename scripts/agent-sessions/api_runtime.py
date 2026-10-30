@@ -1,0 +1,92 @@
+"""Run-owned Responses transport and native launch binding, never a tool loop."""
+import asyncio
+import ipaddress
+import json
+import os
+from pathlib import Path
+import secrets
+import socket
+
+from api_endpoint import endpoint, resolved_addresses
+from api_provider_store import private
+from session_store import identity
+from store import ProjectFault
+
+
+class ApiRuntime:
+    def __init__(self,binding,model,credential,runtime):
+        self.binding=dict(binding);self.model=model;self.credential=credential
+        self.runtime=Path(runtime).absolute();self.child=None;self.port=None;self.key_file=None;self.key_inode=None
+        identity(self.binding['id'])
+        self.provider='studio_api_'+self.binding['id'].replace('-','_')
+        self.token=secrets.token_hex(32)
+
+    async def start(self):
+        if self.binding['protocol']!='responses':raise ProjectFault('This API protocol needs its qualified Chat Completions adapter.',409)
+        checked=endpoint(self.binding['baseUrl'],self.binding['kind'])
+        from urllib.parse import urlsplit
+        parsed=urlsplit(checked['baseUrl']);host=parsed.hostname;port=parsed.port or (443 if parsed.scheme=='https' else 80)
+        try:
+            try: addresses=[str(ipaddress.ip_address(host))]
+            except ValueError:
+                values=await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo,host,port,type=socket.SOCK_STREAM),10)
+                addresses=[value[4][0] for value in values]
+            addresses=resolved_addresses(checked,addresses)
+        except ProjectFault:raise
+        except (OSError,ValueError,asyncio.TimeoutError):
+            raise ProjectFault('The configured model endpoint could not be resolved safely.',503) from None
+        self.runtime.mkdir(mode=0o700,parents=True,exist_ok=True);private(self.runtime,directory=True)
+        self.key_file=self.runtime/'relay.key'
+        fd=os.open(self.key_file,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:
+            os.write(fd,self.token.encode());os.fsync(fd);self.key_inode=os.fstat(fd).st_ino
+        finally:os.close(fd)
+        try:
+            self.child=await asyncio.create_subprocess_exec('/usr/bin/node',str(Path(__file__).with_name('api-transport.mjs')),
+                stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,limit=65536)
+            data={'binding':{key:self.binding[key] for key in ('baseUrl','protocol','auth','kind')}|{'model':self.model},
+                'addresses':addresses,'key':self.credential,'relayToken':self.token}
+            self.child.stdin.write(json.dumps(data,separators=(',',':')).encode()+b'\n');await self.child.stdin.drain()
+            ready=json.loads(await asyncio.wait_for(self.child.stdout.readline(),5))
+            if set(ready)!={'port'} or type(ready['port']) is not int or not 1<=ready['port']<=65535:raise ValueError()
+            self.port=ready['port']
+        except (OSError,ValueError,asyncio.TimeoutError,ConnectionError):
+            await self.close();raise ProjectFault('The private model transport could not start.',503) from None
+
+    def selection(self):return {'modelProvider':self.provider}
+
+    def arguments(self,original):
+        if self.port is None or self.child is None or self.child.returncode is not None:
+            raise ProjectFault('The original model transport is not available.',503)
+        args=list(original);position=args.index('--chdir')
+        args[position:position]=['--dir','/api','--ro-bind',str(self.key_file),'/api/relay.key',
+            '--ro-bind',str(Path(__file__).with_name('api-model-launcher.py')),'/api/launcher.py']
+        execute=args.index('/usr/bin/prlimit')+3
+        if args[execute]!='/bin/codex':raise ProjectFault('The native model launch binding changed.',503)
+        args[execute:execute+1]=['/usr/bin/python3','-I','-B','/api/launcher.py']
+        settings={'name':'Studio API','base_url':f'http://127.0.0.1:{self.port}/v1','wire_api':'responses',
+            'requires_openai_auth':False,'supports_websockets':False,'supports_standalone_web_search':False,
+            'request_max_retries':0,'stream_max_retries':0,'env_key':'STUDIO_API_RELAY_TOKEN'}
+        # A private provider ID is stable across runs of this API connection.
+        # The changing loopback address and nonce never replace its thread ID.
+        import json as wire
+        pairs=[]
+        for key,value in settings.items():pairs.append(key+'='+wire.dumps(value,separators=(',',':')))
+        args+=['-c','model_provider='+wire.dumps(self.provider),'-c','model_providers.'+self.provider+'={'+','.join(pairs)+'}']
+        return args
+
+    async def close(self):
+        if self.child:
+            if self.child.stdin:self.child.stdin.close()
+            if self.child.returncode is None:
+                try:await asyncio.wait_for(self.child.wait(),2)
+                except asyncio.TimeoutError:
+                    self.child.terminate()
+                    try:await asyncio.wait_for(self.child.wait(),2)
+                    except asyncio.TimeoutError:self.child.kill();await self.child.wait()
+        if self.key_file and self.key_inode is not None:
+            try:
+                private(self.key_file)
+                if self.key_file.stat().st_ino==self.key_inode:self.key_file.unlink()
+            except FileNotFoundError:pass
+        self.credential=None;self.port=None

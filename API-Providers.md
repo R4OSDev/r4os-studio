@@ -1,4 +1,4 @@
-# API provider configuration (0.8.11)
+# API provider configuration (0.8.11–0.8.12)
 
 This is the configuration/credential foundation for OpenRouter, other
 OpenAI-compatible services and explicit local model servers. Existing OpenAI
@@ -7,12 +7,12 @@ API connections have a separate UUID, name, kind, canonical base URL,
 Responses/Chat Completions protocol, none/bearer auth, configuration revision
 and credential revision. Public responses expose `keyConfigured`, never a key.
 
-**Model transport is not qualified yet.** API records report
-`runtime: "not-qualified"`; `configured` describes configuration, not a verified
-remote connection or model entitlement. They are not silently added to existing
-subscription sessions. Responses transport, Chat Completions translation, model
-catalogs and the settings UI follow in0.8.12–0.8.17. The actual DNS/TLS/socket,
-redirect and stream acceptance remains open until those transports are checked.
+**Responses transport is qualified in0.8.12** for the pinned native binary and
+revision-bound internal model catalogs; see [API-Responses.md](API-Responses.md).
+API records still report `runtime: "not-qualified"`: configuration is not a
+verified remote account/model entitlement. Model discovery and settings UI are
+later roadmap entries; no real provider was probed. Chat Completions translation
+remains0.8.13. Existing subscription sessions are not converted.
 
 ## Browser and host responsibilities
 
@@ -69,14 +69,18 @@ final disconnect/removal and retain their original credentials. A disconnect
 closes admission before cancellation and preserves a pending original request
 if worker closure cannot be confirmed. Read/reconnect never retries the effect.
 
-The lease schema is reserved for the qualified model-runtime integration.0.8.11
-does not create model leases or authorize API inference. Future admission must
-atomically verify the current enabled/config/credential revisions, bind the
-original Run/worker identity and release only on confirmed worker end. The
-shared secret database must never be mounted into a model or tool namespace.
-Only that lease's selected credential may enter its model transport; no key in
-Run/config/worker JSON, process arguments, model context, SSE or tool environment.
-No subscription account credentials are reused for an API provider.
+0.8.12 reserves exact Run/session/owner/request bindings at normal or queued
+admission and claims them with the original worker PID/birth/release. Rotation
+retains the selected revision; Stop closes native/relay before release. Queue
+cancellation releases its never-started reservation; session deletion refuses
+held API admissions/transports so unconfirmed evidence survives. Disconnect
+atomically closes admission before releasing unclaimed reservations and stopping
+original active workers. Unknown/malformed leases remain protected. The shared
+secret database is never mounted into a model or tool namespace. Only that
+lease's selected credential enters the trusted relay's private bootstrap pipe;
+the model gets an unrelated local nonce. No key enters Run/config/worker JSON,
+argv, model input, browser SSE or the tool environment. Subscription credentials
+are never reused for an API provider. See API-Responses.md for lifetime limits.
 
 ## Endpoint and transport boundary
 
@@ -93,15 +97,17 @@ scope. The transport must connect to an exact checked IP, preserve the original
 TLS server name/certificate verification and reject redirects or a fresh DNS
 lookup between check and connect. Only fixed model API operations may use the
 bound API prefix. Request, JSON/SSE/tool-argument and time bounds must be enforced
-by the qualified Responses/Chat adapter.0.8.11 sends no HTTP request and claims
-no actual DNS/TLS/redirect/stream acceptance; these remain a dependency on0.8.12/13.
+by the qualified transport. The actual Responses relay now enforces and checks
+these boundaries in0.8.12, including verified TLS and fixed-IP sockets; Chat
+Completions translation remains a separate0.8.13 qualification.
 
 ## Checks
 
-Six isolated Python cases run as the actual unprivileged service user cover
+Nine isolated Python cases run as the actual unprivileged service user cover
 masked persistence, same-request/stale/concurrent edits, origin/key boundaries,
 rollback across both databases, protected paths/modes, held revision leases and
-original disconnect recovery. One new HTTP case and fourteen existing provider
+original disconnect recovery, API admission/rotation/claim and queue/deletion
+lifetime guards. Two existing queue/deletion cases also pass. One new HTTP case and fourteen existing provider
 cases cover auth/Host/Origin/CSRF, bounded schemas, secret masking and unchanged
 subscription sign-in/usage/disconnect behavior. No real API key, model request,
 user session/VM action or production provider mutation is used.

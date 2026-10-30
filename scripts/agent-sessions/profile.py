@@ -114,7 +114,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None,catalog_data=None):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
     if type(image_generation_enabled) is not bool:raise ValueError('Invalid native image generation capability.')
@@ -143,10 +143,10 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     missing_model = catalog.exists() and model and not any(v.get('slug') == model for v in json.loads(regular(catalog).read_text())['models'])
     stale_modalities=(image_modalities is not None and catalog.exists() and model and not missing_model
         and next(v for v in json.loads(regular(catalog).read_text())['models'] if v.get('slug')==model).get('input_modalities',['text','image'])!=image_modalities)
-    if not catalog.exists() or missing_model or stale_modalities or (catalog_source and previous_source and previous_source['providerId'] != catalog_source):
+    if catalog_data is not None or not catalog.exists() or missing_model or stale_modalities or (catalog_source and previous_source and previous_source['providerId'] != catalog_source):
         # Only non-secret model metadata is read. AuthManager continues to use
         # the one original credential store and its original physical locks.
-        cache = json.loads(regular(provider_home / 'models_cache.json').read_text())
+        cache = json.loads(json.dumps(catalog_data)) if catalog_data is not None else json.loads(regular(provider_home / 'models_cache.json').read_text())
         models = cache.get('models')
         if not isinstance(models, list) or not models:
             raise ValueError('Refresh this provider model catalog before starting a session.')

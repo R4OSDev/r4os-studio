@@ -45,20 +45,34 @@ def text(value, maximum, empty=False):
 
 def providers(directory):
     file = Path(directory) / 'providers.json'
-    if not file.exists(): return []
-    if file.resolve(strict=True) != file.absolute() or not file.is_file():
-        raise ProjectFault('Provider storage is unavailable.', 503)
-    values = json.loads(file.read_text())
-    return [v for v in values if v.get('type') == 'openai' and v.get('connected') is True]
+    values=[]
+    if file.exists():
+        if file.resolve(strict=True) != file.absolute() or not file.is_file():
+            raise ProjectFault('Provider storage is unavailable.', 503)
+        values=json.loads(file.read_text())
+    result=[v for v in values if v.get('type') == 'openai' and v.get('connected') is True]
+    # API storage availability never rewrites or disables a subscription.
+    from api_provider_store import ApiProviders
+    try:
+        legacy={v.get('id') for v in values}
+        result += [v for v in ApiProviders(directory).listing() if v['enabled'] and v['id'] not in legacy]
+    except ProjectFault:pass
+    return result
 
 
 def provider_models(directory, provider_id):
     identity(provider_id)
     source = Path(directory) / provider_id / 'models_cache.json'
     try:
-        if source.resolve(strict=True) != source.absolute() or not source.is_file(): raise ValueError()
-        values = json.loads(source.read_text())['models']
-    except (OSError, ValueError, KeyError):
+        # Existing subscription homes remain authoritative for their UUID.
+        if source.exists():
+            if source.resolve(strict=True) != source.absolute() or not source.is_file(): raise ValueError()
+            values = json.loads(source.read_text())['models']
+        else:
+            from api_models import connection,catalog
+            provider=connection(directory,provider_id)
+            values=catalog(directory,provider) if provider else []
+    except (OSError, ValueError, KeyError, ProjectFault):
         return []
     result = []
     from image_inputs import model_images,model_modalities
@@ -103,6 +117,8 @@ def validate_settings(data, provider_dir):
     text(data['name'], 120)
     candidate = next((v for v in providers(provider_dir) if v['id'] == data['providerId']), None)
     if candidate is None: raise ProjectFault('Connect the selected provider before saving these settings.', 409)
+    if candidate.get('type')=='api' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
+        raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model.',409)
     model = next((m for m in provider_models(provider_dir, data['providerId']) if m['id'] == data['model']), None)
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)
@@ -259,11 +275,15 @@ PRAGMA user_version=1;
             settings['webSearchEnabled'] = True
             settings['imageGenerationEnabled']=True
             settings['environmentNotesEnabled']=True
+            api=next((v for v in providers(provider_dir) if v['id']==settings['providerId'] and v.get('type')=='api'),None)
+            if api:
+                settings['webSearchEnabled']=False;settings['imageGenerationEnabled']=False
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
             settings['permissions'] = {'studio.' + v: default_enabled(v) for v in permission_tools(self.selected_profile)}
             validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)
+            if api:selected_engine['api']={'providerId':api['id'],'baseUrl':api['baseUrl'],'protocol':api['protocol']}
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))
@@ -291,6 +311,10 @@ PRAGMA user_version=1;
         self.db.execute('BEGIN IMMEDIATE')
         try:
             previous = self.get(session_id)
+            if data.get('providerId',previous['providerId'])!=previous['providerId']:
+                new_api=any(v['id']==data['providerId'] and v.get('type')=='api' for v in providers(provider_dir))
+                if previous['engine'].get('api') or new_api:
+                    raise ProjectFault('Changing API connection requires a new session. This conversation was preserved.',409)
             if previous['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before saving.')
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1', (session_id,)).fetchone():
                 raise ProjectFault('Stop or resolve the current run before changing session settings.')

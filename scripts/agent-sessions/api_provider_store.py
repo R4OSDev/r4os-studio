@@ -179,6 +179,7 @@ class ApiProviders:
             if operation in ('disconnect','delete'):
                 if not original:
                     value['enabled']=False;self.save(db,value)
+                    self.release_unstarted(db,ident)
                     db.execute("INSERT INTO requests VALUES (?,?,?,?,NULL,'admission_closed')",(rid,ident,operation,fingerprint))
                     return {'requestId':rid,'state':'pending','provider':value}
                 if db.execute("SELECT 1 FROM leases WHERE provider_id=? AND state!='released'",(ident,)).fetchone():
@@ -213,3 +214,79 @@ class ApiProviders:
             if original:db.execute("UPDATE requests SET result=?,phase='complete' WHERE id=?",(encode(result),rid))
             else:db.execute("INSERT INTO requests VALUES (?,?,?,?,?,'complete')",(rid,ident,operation,fingerprint,encode(result)))
             return result
+
+    def run_binding(self,run_id,owner_type,owner_id,sid,rid,snapshot):
+        if owner_type not in ('project','skill') or snapshot.get('apiRunId')!=identity(run_id):
+            raise ProjectFault('The original API run binding is unavailable.',409)
+        return {'schema':1,'owner':{'type':owner_type,'id':identity(owner_id)},'sessionId':identity(sid),
+            'requestId':identity(rid),'configSha256':hashlib.sha256(encode(snapshot).encode()).hexdigest()}
+
+    def reserve(self,run_id,owner_type,owner_id,sid,rid,snapshot):
+        binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot);selected=snapshot['apiProvider']
+        with self.connect(write=True) as db:
+            value=self.current(db,selected['id'])
+            if not value['enabled'] or any(value[k]!=v for k,v in selected.items()):
+                raise ProjectFault('The API connection changed before admission. No model request was started.',409)
+            previous=db.execute('SELECT * FROM leases WHERE run_id=?',(run_id,)).fetchone()
+            if previous:
+                if (previous['state']!='reserved' or previous['provider_id']!=value['id']
+                        or json.loads(previous['binding'])!=binding):
+                    raise ProjectFault('The original API reservation has changed. It was not replaced.',409)
+                return
+            db.execute("INSERT INTO leases VALUES (?,?,?,?,'reserved',?)",(run_id,value['id'],value['revision'],value['credentialRevision'],encode(binding)))
+
+    def claim(self,run_id,owner_type,owner_id,sid,rid,snapshot,worker):
+        binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot)
+        from attachment_store import birth
+        if (set(worker)!={'pid','birth','release'} or worker['pid']!=os.getpid() or worker['birth']!=birth(os.getpid())
+                or not isinstance(worker['release'],str) or not worker['release']):
+            raise ProjectFault('The original API worker identity is unavailable.',409)
+        with self.connect(write=True) as db:
+            row=db.execute('SELECT * FROM leases WHERE run_id=?',(run_id,)).fetchone()
+            selected=snapshot['apiProvider'];value=self.current(db,selected['id'])
+            if (not value['enabled'] or row is None or row['state']!='reserved' or row['provider_id']!=selected['id']
+                    or row['config_revision']!=selected['revision'] or row['credential_revision']!=selected['credentialRevision']
+                    or json.loads(row['binding'])!=binding):
+                raise ProjectFault('The original API admission is no longer available. No replacement request was started.',409)
+            credential=None
+            if selected['auth']=='bearer':
+                secret=db.execute('SELECT value FROM secrets.credentials WHERE provider_id=? AND revision=?',
+                    (selected['id'],selected['credentialRevision'])).fetchone()
+                if not secret:raise ProjectFault('The original API credential revision is unavailable.',409)
+                credential=key(secret[0])
+            db.execute("UPDATE leases SET state='active',binding=? WHERE run_id=?",(encode(binding|{'worker':worker}),run_id))
+            return credential
+
+    def release(self,run_id,owner_type,owner_id,sid,rid,snapshot,worker=None):
+        binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot)
+        with self.connect(write=True) as db:
+            row=db.execute('SELECT * FROM leases WHERE run_id=?',(run_id,)).fetchone()
+            if row is None or row['state']=='released':return
+            expected=binding if row['state']=='reserved' else binding|{'worker':worker}
+            if row['state'] not in ('reserved','active') or json.loads(row['binding'])!=expected:
+                raise ProjectFault('API transport closure could not be bound to its original worker. Credentials were preserved.',503)
+            db.execute("UPDATE leases SET state='released' WHERE run_id=?",(run_id,))
+            self.cleanup(db,self.current(db,row['provider_id'],retired=True))
+
+    def release_unstarted(self,db,ident):
+        # Called only after this transaction closed admission. Claim checks
+        # enabled under the same lock before exposing a credential to a worker.
+        for row in db.execute("SELECT run_id,binding FROM leases WHERE provider_id=? AND state='reserved'",(ident,)).fetchall():
+            try:
+                value=json.loads(row['binding'])
+                if (set(value)!={'schema','owner','sessionId','requestId','configSha256'} or type(value['schema']) is not int or value['schema']!=1
+                        or set(value['owner'])!={'type','id'} or value['owner']['type'] not in ('project','skill')
+                        or len(value['configSha256'])!=64):continue
+                for candidate in (row['run_id'],value['owner']['id'],value['sessionId'],value['requestId']):identity(candidate)
+            except (ValueError,KeyError,TypeError,ProjectFault):continue
+            db.execute("UPDATE leases SET state='released' WHERE run_id=?",(row['run_id'],))
+
+    def held_session(self,provider_id,owner_type,owner_id,sid):
+        with self.connect() as db:
+            if db is None:return False
+            for row in db.execute("SELECT binding FROM leases WHERE provider_id=? AND state!='released'",(identity(provider_id),)):
+                try:
+                    value=json.loads(row['binding'])
+                    if value['owner']=={'type':owner_type,'id':owner_id} and value['sessionId']==sid:return True
+                except (ValueError,TypeError,KeyError):return True
+            return False

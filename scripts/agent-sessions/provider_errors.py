@@ -1,5 +1,6 @@
 """Safe native error descriptions. A transient candidate never authorizes replay."""
 import re
+import json
 
 MESSAGES = {
     'usageLimitExceeded': 'This provider has reached its usage limit.',
@@ -20,7 +21,7 @@ CONNECTIONS = {'httpConnectionFailed', 'responseStreamConnectionFailed',
                'responseStreamDisconnected', 'responseTooManyFailedAttempts'}
 
 
-def describe(error):
+def describe(error,api=False):
     error = error if isinstance(error, dict) else {}
     info = error.get('codexErrorInfo'); status = None
     code = info if isinstance(info, str) and info in MESSAGES else 'unknown'
@@ -29,6 +30,19 @@ def describe(error):
         if candidate in CONNECTIONS and isinstance(info[candidate], dict):
             code = candidate; value = info[candidate].get('httpStatusCode')
             if type(value) is int and 100 <= value <= 599: status = value
+    if api and code=='unknown' and info=='other':
+        # Codex0.163.0 retains HTTP400 Responses error JSON as Other rather
+        # than its typed SSE classification. Decode only bounded, known codes
+        # from the private relay's sanitized envelope; never render its text.
+        raw=error.get('message')
+        try:
+            value=json.loads(raw) if isinstance(raw,str) and len(raw)<=4096 else None
+            detail=value.get('error') if isinstance(value,dict) and set(value)=={'error'} else None
+            candidate=detail.get('code') if isinstance(detail,dict) else None
+            code={'context_length_exceeded':'contextWindowExceeded','usage_limit_exceeded':'usageLimitExceeded',
+                'insufficient_quota':'usageLimitExceeded','rate_limit_exceeded':'rateLimitExceeded',
+                'invalid_api_key':'unauthorized','model_not_found':'badRequest'}.get(candidate,'unknown') if isinstance(candidate,str) else 'unknown'
+        except (ValueError,TypeError):pass
     transient = code in ('httpConnectionFailed', 'responseStreamConnectionFailed') and status in (502, 503, 504)
     message = MESSAGES.get(code, 'The model service reported an error.')
     if code in CONNECTIONS:

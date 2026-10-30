@@ -56,6 +56,8 @@ class Goals:
 
     @goal_guard
     def accept(self, sid, data):
+        if self.store.get(sid)['engine'].get('api'):
+            raise ProjectFault('Native Goal controls are not qualified for this API model.',409)
         if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target'}
                 or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int
                 or ('sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1))

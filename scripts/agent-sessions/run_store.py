@@ -113,6 +113,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot.update(remote_snapshot(store, session['engine']['profile'], data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+    from api_models import freeze as freeze_api
+    freeze_api(store,session_id,data,provider_dir,snapshot)
     return snapshot, attachments, request_hash
 
 
@@ -162,7 +164,7 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         if frozen is not None:
             if snapshot != frozen: raise ProjectFault('The queued selection changed. The queue was held; review its original input.',409)
             snapshot = frozen
-        ident = str(uuid.uuid4()); stamp = now()
+        ident = snapshot.get('apiRunId') or str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))
         from image_inputs import reference
@@ -185,6 +187,9 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
                 'text': 'Enabled skills without a published revision were unavailable for this run: ' + ', '.join(v['name'] for v in unavailable)}, False)
         event(store, session_id, ident, 'run', store.run_present(get_run(store, ident)), False)
         store.db.execute('UPDATE sessions SET updated_at=? WHERE id=?', (stamp, session_id))
+        if snapshot.get('apiProvider'):
+            from api_provider_store import ApiProviders
+            ApiProviders(provider_dir).reserve(ident,store.owner_type,store.owner_id,session_id,key,snapshot)
         store.db.commit()
         return store.run_present(get_run(store, ident)), True
     finally:

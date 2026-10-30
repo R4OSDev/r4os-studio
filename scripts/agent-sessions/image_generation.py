@@ -13,6 +13,8 @@ def evaluate(session,model,provider,account,engine,bridge=False):
     result={'schema':1,'providerId':session['providerId'],'model':session['model'],'engine':session['engine'],
         'checkedAt':now(),'state':'unknown','available':False,'qualified':False,'reason':'Native image capability could not be confirmed.'}
     def finish(state,reason):result.update(state=state,available=state=='available',reason=reason);return result
+    if session['engine'].get('api'):
+        return finish('unavailable','Native image generation is not qualified for this API model.')
     if engine.get('sha256')!=CODEX_SHA256 or engine.get('version')!=CODEX_VERSION:
         return finish('unavailable','Select the qualified Codex 0.163.0 runtime before using image generation.')
     if session['engine'].get('profile') not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):

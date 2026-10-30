@@ -86,6 +86,76 @@ class Providers(unittest.TestCase):
         self.assertCountEqual(results,['complete',409]);self.assertEqual(self.store.get(value['id'])['revision'],2)
         self.assertEqual(self.keys(),[(1,self.secret)])
 
+    def test_original_run_reservation_rotation_claim_and_disconnect(self):
+        value=self.create();ident=value['id'];run,owner,sid,rid=(request() for _ in range(4))
+        selected={k:value[k] for k in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
+        config={'apiProvider':selected,'apiRunId':run}
+        args=(run,'project',owner,sid,rid,config)
+        self.store.reserve(*args);self.store.reserve(*args)
+        with self.assertRaises(ProjectFault):self.store.reserve(run,'skill',owner,sid,rid,config)
+        self.store.mutate('update',ident,{'requestId':request(),'revision':1,'key':self.second})
+        self.assertEqual(len(self.keys()),2)
+        from attachment_store import birth
+        worker={'pid':os.getpid(),'birth':birth(os.getpid()),'release':'fixture-only'}
+        self.assertEqual(self.store.claim(*args,worker),self.secret)
+        with self.assertRaises(ProjectFault):self.store.claim(*args,worker)
+        data={'requestId':request(),'revision':2}
+        self.assertEqual(self.store.mutate('disconnect',ident,data)['state'],'pending')
+        with self.assertRaises(ProjectFault):self.store.mutate('disconnect',ident,data,finish=True)
+        with self.assertRaises(ProjectFault):self.store.release(*args,{**worker,'birth':'foreign'})
+        self.assertEqual(len(self.keys()),2)
+        self.store.release(*args,worker);self.assertEqual(self.keys(),[(2,self.second)])
+        self.assertEqual(self.store.mutate('disconnect',ident,data,finish=True)['state'],'complete')
+        self.assertEqual(self.keys(),[])
+
+    def test_disconnect_closes_unclaimed_admission_without_exposing_key(self):
+        value=self.create();run,owner,sid,rid=(request() for _ in range(4))
+        config={'apiRunId':run,'apiProvider':{k:value[k] for k in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}}
+        args=(run,'skill',owner,sid,rid,config);self.store.reserve(*args)
+        data={'requestId':request(),'revision':1};self.store.mutate('delete',value['id'],data)
+        from attachment_store import birth
+        worker={'pid':os.getpid(),'birth':birth(os.getpid()),'release':'fixture-only'}
+        with self.assertRaises(ProjectFault):self.store.claim(*args,worker)
+        self.assertEqual(self.store.mutate('delete',value['id'],data,finish=True)['state'],'complete')
+        self.assertEqual(self.keys(),[])
+
+    def test_api_queue_cancellation_and_deletion_guard_preserve_legacy_session(self):
+        from unittest.mock import patch,AsyncMock
+        from test_runs import Runs
+        from session_store import encode
+        from profile import PROFILE,CODEX_VERSION,CODEX_SHA256
+        from message_store import Messages
+        from host import Host
+        from session_delete import inspect as inspect_session
+        fixture=Runs();fixture.setUp()
+        try:
+            fixture.providers.chmod(0o700);apis=ApiProviders(fixture.providers)
+            provider=apis.mutate('create',None,self.input)['provider'];ident=provider['id']
+            models=apis.root/'Models';models.mkdir(mode=0o700)
+            catalog=models/(ident+'.json');catalog.write_text(encode({'schema':1,'providerId':ident,'configRevision':1,
+                'models':[{'slug':'fixture','visibility':'list','use_responses_lite':False,'input_modalities':['text'],
+                    'supported_reasoning_levels':[{'effort':'low'}]}]}));catalog.chmod(0o600)
+            with fixture.open() as store,patch('session_store.engine',return_value={'profile':PROFILE,'version':CODEX_VERSION,'sha256':CODEX_SHA256,'available':True}):
+                session=store.create({'requestId':request(),'name':'Own API session','providerId':ident,'model':'fixture','effort':'low'},fixture.providers)
+                sid=session['id'];self.assertFalse(session['webSearchEnabled']);self.assertFalse(session['imageGenerationEnabled'])
+                with self.assertRaises(ProjectFault):store.update(fixture.sid,{'revision':1,'providerId':ident},fixture.providers)
+                legacy=dict(store.row(fixture.sid));messages=Messages(store);rid=request()
+                receipt,fresh=messages.accept(sid,{'requestId':rid,'revision':1,'text':'Own queued input','mode':'queue'},fixture.providers)
+                self.assertTrue(fresh);self.assertEqual(receipt['state'],'queued')
+                self.assertTrue(apis.held_session(ident,'project',fixture.pid,sid))
+                self.assertFalse(apis.held_session(ident,'project',fixture.pid,fixture.sid))
+                host=Host({'projects':str(fixture.projects),'r4os':str(fixture.r4os),'providers':str(fixture.providers),'uid':os.getuid()})
+                with patch('session_delete.unit_states',AsyncMock(return_value=False)):
+                    before=asyncio.run(inspect_session(host,store,sid))[0]
+                    self.assertFalse(before['allowed']);self.assertTrue(any('API admission' in v for v in before['blockers']))
+                    result=messages.control(sid,{'requestId':request(),'revision':messages.snapshot(sid)['revision'],
+                        'action':'cancel','messageId':rid},fixture.providers)
+                    self.assertFalse(apis.held_session(ident,'project',fixture.pid,sid))
+                    self.assertTrue(asyncio.run(inspect_session(host,store,sid))[0]['allowed'])
+                self.assertEqual(dict(store.row(fixture.sid)),legacy)
+                self.assertNotIn(self.secret,encode(result))
+        finally:fixture.tearDown()
+
     def test_endpoint_and_key_boundaries_before_transport(self):
         self.assertEqual(endpoint('http://localhost:11434/v1/','local')['baseUrl'],'http://127.0.0.1:11434/v1')
         self.assertEqual(endpoint('https://[::1]:8443/v1','local')['baseUrl'],'https://[::1]:8443/v1')

@@ -136,6 +136,11 @@ async def inspect(host, store, sid):
     if has(store.db,'session_deletions') and store.db.execute('SELECT 1 FROM session_deletions WHERE session_id=?',(sid,)).fetchone():
         raise ProjectFault('This session already has an original deletion request. Read that receipt.',409)
     blockers = []; runs = set()
+    api=json.loads(row['engine']).get('api')
+    if api:
+        from api_provider_store import ApiProviders
+        if ApiProviders(host.config['providers']).held_session(api['providerId'],store.owner_type,store.owner_id,sid):
+            blockers.append('An original API admission or transport is unconfirmed. Reconcile or disconnect that provider before deleting its evidence.')
     for run in store.db.execute('SELECT * FROM runs WHERE session_id=?', (sid,)):
         runs.add(identity(run['id']))
         if run['busy'] or run['state'] in ('queued','starting','running','stopping'):

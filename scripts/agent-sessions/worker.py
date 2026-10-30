@@ -50,6 +50,7 @@ class Worker:
         self.turn_requested = False
         self.uncertain_effect = False
         self.items = {}; self.lease = None
+        self.api_runtime=None;self.api_worker=None
         self.generated_started=set();self.stop_task=None;self.interrupt_tasks={};self.closing=False
         self.sandbox = Sandbox(self)
         from skill_resources import SkillResources
@@ -76,7 +77,7 @@ class Worker:
         if params.get('threadId') and params['threadId'] != self.thread_id: return
         if method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed' and not self.error:
             from provider_errors import describe
-            if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'])['text']
+            if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'],api=bool(self.config.get('apiProvider')))['text']
         self.usage_stats.notify(method,params)
         if self.message_worker: self.message_worker.observe(method, params)
         if self.goal_worker and await self.goal_worker.notify(method, params): return
@@ -96,7 +97,7 @@ class Worker:
             self.done.set()
         elif method == 'error':
             from provider_errors import describe
-            description = describe(params.get('error')); retrying = params.get('willRetry') is True
+            description = describe(params.get('error'),api=bool(self.config.get('apiProvider'))); retrying = params.get('willRetry') is True
             event(self.store, self.session_id, self.run_id, 'notice', {'text': description['text'], 'retrying': retrying,
                 'providerError': {key: value for key, value in description.items() if key != 'text'}})
             if not retrying: self.error = description['text']
@@ -367,6 +368,21 @@ class Worker:
             transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())})
             state = self.store.directory / self.session_id / 'Codex'
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
+            if self.config.get('apiProvider'):
+                from api_provider_store import ApiProviders,private
+                from api_runtime import ApiRuntime
+                self.api_worker={'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())}
+                credential=ApiProviders(self.manifest['providers']).claim(self.run_id,self.store.owner_type,self.store.owner_id,
+                    self.session_id,self.row['request_id'],self.config,self.api_worker)
+                # This session owns its native home; it cannot see subscription
+                # auth or the API secret database. Only the trusted relay gets
+                # the exact credential revision reserved at admission.
+                state.mkdir(mode=0o700,parents=True,exist_ok=True);private(state,directory=True)
+                provider_home=state/'ApiHome';provider_home.mkdir(mode=0o700,exist_ok=True);private(provider_home,directory=True)
+                self.api_runtime=ApiRuntime(self.config['apiProvider'],self.config['model'],credential,
+                    self.store.directory/self.session_id/'ApiTransport'/self.run_id)
+                credential=None
+                await self.api_runtime.start()
             binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
             from image_inputs import mounts as image_mounts,native_input
             try:mounts=image_mounts(self.store,self.session_id,self.config)
@@ -374,7 +390,8 @@ class Worker:
                 self.error=str(error);raise
             args, profile = prepare(binary, provider_home, state,
                                     json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], self.config['engine'].get('profile', PROFILE),
-                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'),image_generation_enabled=self.config.get('nativeImageGeneration') is True,generated_root=GeneratedImages(self.store,self.session_id).native_root() if self.config.get('nativeImageGeneration') else None)
+                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'),image_generation_enabled=self.config.get('nativeImageGeneration') is True,generated_root=GeneratedImages(self.store,self.session_id).native_root() if self.config.get('nativeImageGeneration') else None,catalog_data=self.config.get('apiModels'))
+            if self.api_runtime:args=self.api_runtime.arguments(args)
             from instructions import compose
             instructions = compose(self.config)
             if self.goal_worker and self.goal_worker.dormant:
@@ -423,6 +440,7 @@ class Worker:
             service_tier = 'priority' if self.config.get('fastMode', False) else 'default'
             from image_provider import selection as image_provider_selection
             native_provider=image_provider_selection(self.config['engine'].get('profile',PROFILE))
+            if self.api_runtime:native_provider=self.api_runtime.selection()
             if self.thread_id:
                 try: await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
                 except Exception:
@@ -481,7 +499,25 @@ class Worker:
                 goals = Goals(self.store); rid = self.config['goalExecution']['requestId']
                 if goals.command(self.session_id, rid)['state'] == 'pending':
                     goals.finish(self.session_id, rid, 'unknown' if self.turn_requested else 'failed', self.error or 'The original Goal activation was not confirmed.')
-            await self.cleanup()
+            try:await self.cleanup()
+            except Exception:
+                if not self.config.get('apiProvider'):raise
+                self.outcome='unknown';self.uncertain_effect=True
+                self.error=self.error or 'The original API run cleanup is unconfirmed. Inspect its retained receipts.'
+                if self.client:
+                    try:await self.client.close()
+                    except Exception:pass
+            finally:
+                if self.config.get('apiProvider'):
+                    try:
+                        if self.api_runtime:await self.api_runtime.close()
+                        if self.client and self.client.child and self.client.child.returncode is None:raise RuntimeError('Native process closure is unconfirmed.')
+                        from api_provider_store import ApiProviders
+                        ApiProviders(self.manifest['providers']).release(self.run_id,self.store.owner_type,self.store.owner_id,
+                            self.session_id,self.row['request_id'],self.config,self.api_worker)
+                    except Exception:
+                        self.outcome='unknown';self.uncertain_effect=True
+                        self.error=self.error or 'The original API transport closure is unconfirmed. Credentials and history were preserved.'
             self.usage_stats.finalize()
             if self.goal_worker:
                 from goal_worker import end_turns

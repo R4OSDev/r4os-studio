@@ -26,6 +26,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
   const [checkAgain, setCheckAgain] = useState(false), [refresh, setRefresh] = useState(0);
   const generation = useRef(0), inflight = useRef(false);
+  const apiSession = !!session?.engine.api;
   useEffect(() => { const current = ++generation.current; return () => { generation.current = current + 1; }; }, [base]);
   const observe = useCallback((value: SessionGoal) => {
     if (value.sessionId !== sessionId || value.owner.id !== projectId || value.owner.type !== scope)
@@ -47,15 +48,15 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
         request<{ liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
-      observe(state.goal); setAvailable(support.nativeGoals === 1 && support.enabled !== false);
-      setExecution(support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1 && support.enabled !== false);
-      setReadback(support.nativeGoalReadback === 1); setLiveExecution(support.liveGoalControl === 1);
+      observe(state.goal); setAvailable(!apiSession && support.nativeGoals === 1 && support.enabled !== false);
+      setExecution(!apiSession && support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1 && support.enabled !== false);
+      setReadback(!apiSession && support.nativeGoalReadback === 1); setLiveExecution(!apiSession && support.liveGoalControl === 1);
       if (support.nativeGoals === 1 && (support.nativeGoalExecution !== 2 || support.nativeImageInputs !== 1 || support.documentInputs !== 1))
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [base, request, observe, refresh]);
+  }, [base, request, observe, refresh, apiSession]);
 
   const accept = useCallback((receipt: GoalReceipt, data: GoalCommand) => {
     if (receipt.requestId !== data.requestId || receipt.action !== data.action) throw new Error('The Goal receipt does not match the original request.');

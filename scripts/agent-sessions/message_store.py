@@ -147,6 +147,9 @@ class Messages:
             value = self.receipt(sid, key)
             from run_store import event
             event(self.store, sid, None, 'message', value, False)
+            if data['mode']=='queue' and config.get('apiProvider'):
+                from api_provider_store import ApiProviders
+                ApiProviders(provider_dir).reserve(config['apiRunId'],self.store.owner_type,self.store.owner_id,sid,key,config)
             self.store.db.commit()
             return value, True
         finally:
@@ -170,7 +173,7 @@ class Messages:
                 item(self.store, sid, row['run_id'], {'id':'user-'+request_id, 'runId':row['run_id'], 'turnId':value['target']['turnId'], 'type':'user', 'text':value['text'], 'status':'completed', 'messageRequestId':request_id}, False)
             return value
 
-    def control(self, sid, data):
+    def control(self, sid, data, provider_dir=None):
         self.store.row(sid)
         if (set(data) - {'requestId', 'revision', 'action', 'messageId'} or not {'requestId','revision','action'} <= set(data)
                 or data['action'] not in ('resume', 'cancel') or type(data['revision']) is not int):
@@ -189,6 +192,11 @@ class Messages:
             if data['action'] == 'cancel':
                 row = self.row(sid, data.get('messageId'))
                 if row['mode'] != 'queue' or row['state'] != 'queued': raise ProjectFault('Only an unsent queued message can be removed.', 409)
+                config=json.loads(row['frozen'] or '{}').get('config',{})
+                if config.get('apiProvider'):
+                    if provider_dir is None:raise ProjectFault('The original API reservation needs its provider binding before cancellation.',503)
+                    from api_provider_store import ApiProviders
+                    ApiProviders(provider_dir).release(config['apiRunId'],self.store.owner_type,self.store.owner_id,sid,row['request_id'],config)
                 self.store.db.execute("UPDATE session_messages SET state='cancelled',updated_at=? WHERE request_id=?", (now(), row['request_id']))
                 self.store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?', (sid,))
             else:

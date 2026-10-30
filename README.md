@@ -1,3 +1,30 @@
+## Native API Responses transport (0.8.12)
+
+New API-bound project/skill sessions can use the unchanged Codex0.163.0 runtime
+with a qualified revision-bound internal text-model catalog. A private run-owned
+relay pins checked DNS addresses, verifies original TLS/SNI, rejects redirects
+and bounds POST/SSE/error traffic. The real credential only enters that relay;
+native receives a private unrelated nonce and tools retain their separate
+network/credential-free namespace. Original Run/request/worker leases retain
+credential revisions through rotation and refuse new claims after disconnect.
+Queue cancellation and session deletion respect these original reservations.
+
+Native sends full local history with store:false and no previous response ID;
+stateful-capable endpoints use the same full-context mode. Studio items/deltas,
+complete argument validation, rights and original call receipts stay in the
+existing broker. Restart resumes the same thread; Stop, context rejection and
+lost completion do not replay tool effects. Native retries, Responses Lite and
+WebSockets are disabled for this provider. Hosted web/image/Fast/Goal capability
+needs separate API-model qualification and is unavailable in these sessions.
+
+Six original-binary offline Studio-worker fixtures, a core restart probe,
+verified TLS/DNS/redirect/bounds checks, nine private-store cases and two existing
+queue/deletion cases pass, plus build/TypeScript/lint. No real API/model inference,
+production provider, user session/VM or pins changed. This is transport support;
+provider/model UI and discovery remain later roadmap entries, and public
+configuration still does not claim verified remote entitlement. See
+[API-Responses.md](API-Responses.md) and [API-Providers.md](API-Providers.md).
+
 ## API connection and credential foundation (0.8.11)
 
 Protected `/api/providers/api-connections` CRUD manages separate OpenRouter,
