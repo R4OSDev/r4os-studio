@@ -275,7 +275,7 @@ class GoalJournal:
         if (confirmed and value['state']=='closing' and not self.w.uncertain_effect and step['state'] == 'resultConfirmed'
                 and step['inputReceipt'] and value.get('terminalStatus')):
             value['state'] = value['terminalStatus']
-        elif confirmed and value['state'] in ('admitting','stopping') and no_input and not step['submitted'] and not step['inputReceipt']:
+        elif confirmed and not self.w.uncertain_effect and value['state'] in ('admitting','stopping') and no_input and not step['submitted'] and not step['inputReceipt']:
             value.update(state=value.get('terminalStatus','paused' if self.w.stopping else 'blocked'), reason='No input was submitted for this original step. Review before pressing Play again.')
         else:
             value.update(state='unknown', reason='The original bounded GOAL closure is unconfirmed. Nothing will be replayed automatically.')

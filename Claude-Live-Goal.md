@@ -1,4 +1,4 @@
-# Live Studio GOAL with Claude (0.8.57)
+# Live Studio GOAL with Claude (0.8.57, supplemented in0.8.59)
 
 New compatible ordinary Claude workers accept **Save** and **Play** while the
 original response is running. Save stores a paused objective locally. Play shows
@@ -60,6 +60,17 @@ source result, Goal execution and whether any Goal input was submitted. The
 ordinary `promptSubmitted` flag cannot be used as Goal submission evidence.
 No-input classification requires matching positive source and closure evidence.
 
+After an earlier Goal step completes, refusal or revocation of the next fresh
+admission must use that immediate Goal predecessor, rather than the older
+ordinary source result. The native closure now retains `resultInputRequestId`
+beside the result ID and separately identifies the current unsubmitted input.
+The host requires the preceding confirmed step, original request/session,
+readable history and confirmed stream closure. A live execution also retains
+its original source and Play bindings. Missing/foreign identities, a submitted
+current input or uncertain effects preserve Unknown. A proved no-input closure
+ends as Blocked, or Paused for the original Pause/Stop, without a second clock,
+input, query, interruption of an already completed input or tool replay.
+
 ## Verification and remaining work
 
 Seven focused controller cases cover delayed original echo versus Goal clock,
@@ -91,3 +102,15 @@ also used Reduced Motion. These UI responses are not a public backend inference
 proof. Full direct-message/retry and subscription lifecycle acceptance remain
 open in0.8.23; this release completes its live Goal integration task only after
 publication and installed readback.
+
+The0.8.59 supplement adds three focused host cases and one native-engine group
+with idle/live Goal and refusal/Stop scenarios. They cover the immediate
+predecessor, missing/foreign closure fields and uncertain earlier effects.
+Three existing engine groups and one initial-live-refusal host case also pass.
+An isolated unchanged SDK/CLI production-worker run confirms one ordinary input
+and one completed Goal input; the third fresh admission reports an exhausted
+synthetic subscription limit before the next input. The original Play remains
+confirmed, the Goal becomes Blocked, history stays readable, and its one clock
+ends. No actual user quota, subscription inference or provider retry was used.
+This targeted admission fix does not complete the remaining overall lifecycle
+and retry acceptance in0.8.23.

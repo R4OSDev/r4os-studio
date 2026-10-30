@@ -160,7 +160,7 @@ async function main() {
     emit({ event: 'closed', nativeSessionId: config.binding.nativeSessionId, studioRequestId: config.binding.requestId, promptSubmitted: engine.sent,
       ...(engine.liveActivation ? { liveGoal: { ...engine.activationReceipt(), sourceResultId: engine.liveSourceResult?.uuid ?? null, inputSubmitted: engine.liveGoalInputSubmitted } } : {}),
       inputRequestId: engine.inputId, inputSubmitted: engine.inputSubmitted,
-      resultId: engine.result?.uuid ?? null, subtype: engine.result?.subtype ?? null, historyReadable,
+      resultId: engine.result?.uuid ?? null, resultInputRequestId: engine.resultInputId, subtype: engine.result?.subtype ?? null, historyReadable,
       originalStreamConfirmed: !engine.error });
   }
 }

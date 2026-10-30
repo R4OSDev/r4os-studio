@@ -1,3 +1,12 @@
+## Claude GOAL admission after a completed step (0.8.59)
+
+If fresh subscription admission refuses a later Goal input, the worker now
+retains the preceding confirmed Goal result and its exact input identity.
+Matching closure/history evidence ends the Goal as Blocked, or Paused after
+Pause/Stop, without another input or an unnecessary native interrupt. Missing
+or contradictory evidence and uncertain effects still retain Unknown.
+Details and verification limits: [Claude-Live-Goal.md](Claude-Live-Goal.md).
+
 ## Claude follow-ups after the current response (0.8.58)
 
 Claude sessions show **After response** for Ctrl+Enter while a compatible response

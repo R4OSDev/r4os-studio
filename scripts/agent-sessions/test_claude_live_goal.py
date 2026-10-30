@@ -163,3 +163,60 @@ class ClaudeLiveGoal(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Messages(w.store).receipt(w.session_id,queued['requestId'])['state'],'queued')
         self.assertEqual(Messages(w.store).row(w.session_id,queued['requestId'])['frozen'],frozen)
         self.assertFalse(Messages(w.store).snapshot(w.session_id)['held'])
+
+    async def later_admission(self):
+        w,control=await self.source();data,runtime=await self.play(w,control)
+        self.armed(w,control,data['requestId']);w.input_receipt.set()
+        source=self.result(w);await runtime.result(source);await asyncio.sleep(.02)
+        runtime.admitted({'allowed':True,'admissionId':uid()});runtime.submitted({'inputRequestId':data['requestId']})
+        runtime.acknowledge(self.echo(w,runtime))
+        runtime.journal.report({'status':'continue','reason':'The first checked step is complete; authorized work remains.'},'own-first-step')
+        previous=self.result(w);self.assertTrue(await runtime.result(previous))
+        value=runtime.journal.read();self.assertEqual(len(value['steps']),2)
+        runtime.unconfirmed({'requestId':w.row['request_id'],'inputRequestId':value['steps'][1]['inputId'],'inputSubmitted':False})
+        w.native_receipt={'nativeSessionId':self.f.native,'studioRequestId':w.row['request_id'],
+            'inputRequestId':value['steps'][1]['inputId'],'inputSubmitted':False,
+            'resultInputRequestId':value['steps'][0]['inputId'],'resultId':previous['uuid'],
+            'originalStreamConfirmed':True,'historyReadable':True,
+            'liveGoal':{'executionId':data['requestId'],'sourceInputRequestId':w.row['request_id'],
+                'sourceResultId':source['uuid'],'inputSubmitted':True}}
+        return w,runtime
+
+    async def close_later_admission(self,stop):
+        w,runtime=await self.later_admission();original=copy.deepcopy(w.config)
+        self.assertTrue(runtime.unsubmitted_after_result())
+        if stop:w.stopping=True;runtime.stop()
+        w.done.set();await runtime.finish(True);value=runtime.journal.read()
+        self.assertEqual(value['state'],'paused' if stop else 'blocked')
+        self.assertTrue(value['steps'][0]['inputReceipt']);self.assertTrue(value['steps'][0]['nativeResult'])
+        self.assertFalse(value['steps'][1]['submitted']);self.assertIsNone(value['steps'][1]['inputReceipt'])
+        self.assertEqual(w.store.db.execute('SELECT state FROM goal_clocks').fetchall()[0][0],'ended')
+        self.assertEqual(w.store.db.execute('SELECT count(*) FROM goal_clocks').fetchone()[0],1)
+        self.assertEqual(w.command.await_count,3);self.assertEqual(w.config,original)
+        self.assertEqual(json.loads(get_run(w.store,w.run_id)['config']),original)
+
+    async def test_refused_later_admission_closes_from_the_completed_goal_predecessor(self):
+        await self.close_later_admission(False)
+
+    async def test_stop_during_later_admission_closes_without_another_goal_input(self):
+        await self.close_later_admission(True)
+
+    async def test_later_admission_rejects_missing_or_foreign_closure_and_unknown_effect(self):
+        w,runtime=await self.later_admission();value=runtime.journal.read();receipt=w.native_receipt
+        self.assertTrue(runtime.later_input_not_submitted(receipt,value))
+        for field,bad in [('resultInputRequestId',None),('resultInputRequestId',uid()),('resultId',uid()),
+            ('inputRequestId',uid()),('inputSubmitted',True),('originalStreamConfirmed',False),
+            ('historyReadable',False),('nativeSessionId',uid()),('studioRequestId',uid())]:
+            with self.subTest(field=field,bad=bad):
+                self.assertFalse(runtime.later_input_not_submitted(receipt|{field:bad},value))
+        for field,bad in [('executionId',uid()),('sourceInputRequestId',uid()),('sourceResultId',uid()),('inputSubmitted',False)]:
+            with self.subTest(liveField=field):
+                changed=receipt|{'liveGoal':receipt['liveGoal']|{field:bad}}
+                self.assertFalse(runtime.later_input_not_submitted(changed,value))
+        with self.assertRaises(ValueError):runtime.unconfirmed({'requestId':uid(),'inputSubmitted':False})
+        w.uncertain_effect=True;self.assertFalse(runtime.unsubmitted_after_result())
+        self.assertFalse(runtime.later_input_not_submitted(receipt,value))
+        # Even a caller claiming no input cannot erase an unknown earlier effect.
+        self.assertEqual(runtime.journal.finish(True,True)['state'],'unknown')
+        w.done.set();await runtime.finish(True)
+        self.assertEqual(w.store.db.execute('SELECT state FROM goal_clocks').fetchone()[0],'unknown')

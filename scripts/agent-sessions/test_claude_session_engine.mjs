@@ -337,3 +337,32 @@ await test('native GOAL step cap prevents a ninth input and never self-continues
     await assert.rejects(f.engine.continue(randomUUID())); assert.equal(f.sent.length, 8);
   } finally { await f.engine.close(); }
 });
+
+await test('refused or revoked later Goal admission keeps the completed predecessor without interrupting it', async () => {
+  for (const live of [false, true]) for (const stop of [false, true]) {
+    let admissions = 0, release;
+    const f = fixture({ admit: async ({ binding }) => {
+      if (++admissions <= (live ? 2 : 1)) return admission(binding);
+      return stop ? await new Promise(resolve => { release = () => resolve(admission(binding)); }) : { allowed: false };
+    } }, live ? liveOptions : { goal: true });
+    try {
+      await f.engine.initialize(); await f.engine.send('Owned initial input'); await tick(); echo(f, f.sent[0]); await tick();
+      const source = randomUUID(), executionId = randomUUID();
+      if (live) f.engine.armGoal({ executionId, objective: 'Owned accepted objective', maxSteps: 8, maxActiveSeconds: 900 });
+      f.feed.emit({ type: 'result', uuid: source, session_id: f.frozen.nativeSessionId, subtype: 'success', is_error: false }); await tick();
+      if (live) {
+        await f.engine.beginGoal(executionId); await tick(); echo(f, f.sent[1]); await tick();
+        f.feed.emit({ type: 'result', uuid: randomUUID(), session_id: f.frozen.nativeSessionId, subtype: 'success', is_error: false }); await tick();
+      }
+      const previousInput = f.sent.at(-1).uuid, previousResult = f.engine.result.uuid;
+      const next = randomUUID(), pending = f.engine.continue(next), rejected = assert.rejects(pending);
+      if (stop) { await tick(); await f.engine.interrupt(); release(); }
+      await rejected;
+      await f.engine.close();
+      assert.equal(f.sent.length, live ? 2 : 1); assert.equal(f.engine.inputId, next); assert.equal(f.engine.inputSubmitted, false);
+      assert.equal(f.engine.result.uuid, previousResult); assert.equal(f.engine.resultInputId, previousInput);
+      if (live) { assert.equal(f.engine.liveSourceResult.uuid, source); assert.equal(f.engine.liveGoalInputSubmitted, true); }
+      assert.equal(f.interrupts(), 0); assert.equal(f.engine.error, null);
+    } finally { await f.engine.close(); }
+  }
+});

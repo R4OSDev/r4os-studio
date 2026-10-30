@@ -75,7 +75,7 @@ function mcpTool(name) {
 export class ClaudeSessionEngine {
   constructor(sdk, options, frozen, host) {
     this.binding = binding(frozen); this.host = host; this.inputs = new Inputs(); this.grants = new Map();
-    this.state = 'initializing'; this.sent = false; this.result = null; this.error = null;
+    this.state = 'initializing'; this.sent = false; this.result = null; this.resultInputId = null; this.error = null;
     this.requireInputReceipt = options.requireInputReceipt === true; this.inputAccepted = false;
     this.inputId = this.binding.requestId; this.inputSubmitted = false; this.inputOrigin = 'human';
     this.frozenInput = options.frozenInput ? preparedContent(options.frozenInput, this.inputId) : null;
@@ -248,7 +248,7 @@ export class ClaudeSessionEngine {
       throw Error('The original native subscription/limit admission is unavailable. No model prompt was submitted.');
     }
     this.sent = true; this.state = 'active';
-    this.result = null; this.inputSubmitted = true; this.stepCount++;
+    this.result = null; this.resultInputId = null; this.inputSubmitted = true; this.stepCount++;
     this.modelObserved = false;
     this.inputTextSha256 = createHash('sha256').update(text).digest('hex');
     this.inputContentSha256 = input?.contentSha256 ?? null;
@@ -312,7 +312,8 @@ export class ClaudeSessionEngine {
           && message.subtype === 'success' && !message.is_error;
         if (message.type === 'result') {
           if (this.nativeFailure && !message.is_error) throw Error('A native error was followed by an unconfirmed successful result. No replay was accepted.');
-          this.result = message; this.state = between ? 'between' : 'completed'; this.grants.clear();
+          this.result = message; this.resultInputId = this.inputId;
+          this.state = between ? 'between' : 'completed'; this.grants.clear();
         }
         await this.host.receive({ binding: this.binding, identity, native: message });
         if (message.type === 'result' && !between) {
@@ -327,12 +328,19 @@ export class ClaudeSessionEngine {
     }
   }
 
+  completedPredecessor() {
+    return this.goal && this.state === 'admitting' && !this.inputSubmitted
+      && this.result?.subtype === 'success' && !this.result.is_error
+      && uuid(this.resultInputId) && this.resultInputId !== this.inputId;
+  }
+
   async interrupt() {
     if (this.state === 'closed' || this.state === 'stopping') return;
     if (this.liveActivation && !this.liveGoalInputSubmitted && (this.state === 'between'
       || this.liveSourceResult && !this.inputSubmitted && this.state === 'admitting')) {
       this.liveActivation.state = 'cancelled'; this.state = 'completed';
     }
+    if (this.completedPredecessor()) this.state = 'completed';
     if (this.state === 'completed') {
       this.grants.clear(); await this.host.closeAdmission(this.binding);
       this.inputs.close(); this.query.close(); return;
@@ -360,6 +368,12 @@ export class ClaudeSessionEngine {
     // A refused, unsubmitted live Goal must not interrupt an already completed
     // ordinary response or turn that original result into an unknown history.
     if (this.liveSourceResult && !this.liveGoalInputSubmitted && this.state === 'admitting' && !this.inputSubmitted) {
+      this.state = 'completed'; await this.host.closeAdmission(this.binding);
+    }
+    // Admission for a later Goal input can fail or be revoked while the last
+    // completed Goal result remains authoritative. There is no active input
+    // to interrupt; retain that result and its actual input identity.
+    if (this.completedPredecessor()) {
       this.state = 'completed'; await this.host.closeAdmission(this.binding);
     }
     if (!['completed', 'unconfirmed'].includes(this.state)) await this.interrupt();

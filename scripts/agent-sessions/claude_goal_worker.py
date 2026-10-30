@@ -83,8 +83,43 @@ class ClaudeGoalRuntime:
 
     def unconfirmed(self, frame):
         if self.live and not self.begun:return
+        if frame.get('requestId')!=self.journal.binding['requestId']:
+            raise ValueError('The unsubmitted Claude Goal input belongs to another original run.')
         current = self.journal.read()['steps'][-1]
         self.no_input = frame.get('inputRequestId') == current['inputId'] and frame.get('inputSubmitted') is False
+
+    def predecessor(self,value=None):
+        value=value or self.journal.read()
+        if len(value['steps'])>1:
+            previous=value['steps'][-2];result=previous['nativeResult']
+            if (previous['state']=='resultConfirmed' and previous['inputReceipt'] and result
+                and result['subtype']=='success' and not result['isError']):return previous['inputId'],result['id']
+        elif self.live:
+            source=value['liveSource']
+            if source['result'] and source['inputConfirmed']:
+                return self.journal.binding['requestId'],source['result']['id']
+        return None
+
+    def unsubmitted_after_result(self):
+        """Provisional run outcome; final closure still needs its native proof."""
+        previous=self.predecessor()
+        return bool(self.no_input and not self.w.uncertain_effect and previous and self.w.native_result and self.w.native_result.get('uuid')==previous[1])
+
+    def later_input_not_submitted(self,receipt,value):
+        previous=self.predecessor(value);step=value['steps'][-1]
+        if (not previous or len(value['steps'])<2 or self.w.uncertain_effect or step['submitted'] or step['inputReceipt']
+            or receipt.get('originalStreamConfirmed') is not True or receipt.get('historyReadable') is not True
+            or receipt.get('nativeSessionId')!=self.journal.binding['nativeSessionId']
+            or receipt.get('studioRequestId')!=self.journal.binding['requestId']
+            or receipt.get('inputRequestId')!=step['inputId'] or receipt.get('inputSubmitted') is not False
+            or receipt.get('resultInputRequestId')!=previous[0] or receipt.get('resultId')!=previous[1]):return False
+        if self.live:
+            native=receipt.get('liveGoal') or {};source=value['liveSource']
+            if (native.get('executionId')!=self.journal.spec['executionId']
+                or native.get('sourceInputRequestId')!=self.journal.binding['requestId']
+                or not source['result'] or native.get('sourceResultId')!=source['result']['id']
+                or native.get('inputSubmitted') is not True):return False
+        return True
 
     def stop(self):
         if self.started:
@@ -101,8 +136,11 @@ class ClaudeGoalRuntime:
             if self.started:
                 if self.control:await self.control.close()
                 receipt=self.w.native_receipt or {}
-                if self.live:
-                    value=self.journal.read();source=value['liveSource'];native=receipt.get('liveGoal') or {}
+                value=self.journal.read()
+                if len(value['steps'])>1:
+                    no_input=self.later_input_not_submitted(receipt,value)
+                elif self.live:
+                    source=value['liveSource'];native=receipt.get('liveGoal') or {}
                     # Ordinary promptSubmitted must never count as a Goal input.
                     # Require a positive original result and explicit native proof.
                     source_bound=(source['result'] and source['inputConfirmed']

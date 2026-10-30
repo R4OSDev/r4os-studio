@@ -36,6 +36,22 @@ API snapshot after reservation. Its original hash remains intact; missing legacy
 context coverage stays unknown. No historical lease, run or queue snapshot is
 rewritten to make a changed configuration appear original.
 
+### Pinned Codex GOAL boundary reviewed in0.8.59
+
+The installed Codex0.163.0 source at
+[`83086188ae0614bd882818ff1aa23f3194962012`](https://github.com/openai/codex/tree/83086188ae0614bd882818ff1aa23f3194962012)
+confirms a final turn error can set an active Goal to Blocked before publishing
+the terminal error. The public `thread/goal/updated` notification includes an
+optional `turnId`, but omits the private event ID and specific transition cause.
+A model-issued Goal update can carry the same turn ID. Turn correlation and a
+nearby transport error therefore do not independently prove that only the
+transport failure caused the block. A status-only `thread/goal/set` can preserve
+usage but can also start work immediately; it does not supply that missing
+cause or a conditional original-failure permit. No automatic reactivation was
+added. Model/human blocks and Stop/Pause remain authoritative. This is a source
+finding, not a provider-retry runtime qualification; no retry fixtures or
+inference were added for0.8.10.
+
 **Still open:** active GOAL/Live-Play recovery and its pause/clock/budget/queue
 integration, plus positive integrated runtime acceptance. This controller does
 not take over GOAL execution. Tasks2/3 remain partial and task4/acceptance remain

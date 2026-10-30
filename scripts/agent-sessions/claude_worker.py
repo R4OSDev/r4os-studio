@@ -224,13 +224,12 @@ class ClaudeWorker(Worker):
                     if not self.live_control:raise ValueError('Unexpected native live Goal receipt.')
                     self.live_control.native_arm(value)
                 elif kind=='unconfirmed':
+                    if value.get('requestId')!=self.row['request_id']:raise ValueError('Original native unconfirmed request changed.')
                     if self.claude_goal:self.claude_goal.unconfirmed(value)
                     self.sent=self.sent or value.get('promptSubmitted') is True
                     self.error=(self.admission_denial or {}).get('reason') or value['message']
-                    source=(self.claude_goal.journal.read().get('liveSource') if self.claude_goal and self.claude_goal.live else None)
-                    known_no_goal=(source and self.claude_goal.no_input and source['result'] and source['inputConfirmed']
-                        and self.native_result and self.native_result.get('uuid')==source['result']['id'])
-                    self.outcome=('interrupted' if self.stopping else 'failed') if known_no_goal or not self.sent else 'unknown'
+                    known_no_input=self.claude_goal and self.claude_goal.unsubmitted_after_result()
+                    self.outcome=('interrupted' if self.stopping else 'failed') if known_no_input or not self.sent else 'unknown'
                     self.done.set();self.ready.set()
                 elif kind=='closed':
                     if value.get('nativeSessionId')!=self.config['engine']['claude']['nativeSessionId']:raise ValueError('Native closure session changed.')
