@@ -93,7 +93,20 @@ def provider_models(directory, provider_id):
 def options(provider_dir, r4os, selected_profile=PROFILE):
     values = []
     for v in providers(provider_dir):
-        values.append({'id': v['id'], 'name': v['name'], 'models': provider_models(provider_dir, v['id'])})
+        reason=None
+        models=provider_models(provider_dir,v['id'])
+        if v.get('type')=='api':
+            from api_catalog import Catalogs
+            try:catalog=Catalogs(provider_dir).listing(v['id'])
+            except (ProjectFault,OSError,ValueError,TypeError,KeyError):
+                catalog={'models':[]};models=[];reason='This API model catalog is unavailable. Review this connection in System settings.'
+            if catalog['models']:
+                models=[{'id':m['id'],'name':m['name'],'efforts':m['efforts'],'defaultEffort':m['defaultEffort'] or '',
+                    'fastModeAvailable':False,'imageInputs':'unsupported','inputModalities':['text'],
+                    'available':m['available'] and not catalog['stale'],
+                    'unavailableReasons':['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
+                    'contextWindow':m['contextWindow'],'source':m['source']} for m in catalog['models']]
+        values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,**({'unavailableReason':reason} if reason else {})})
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
             'nativeTools': [{'id': 'web_search', 'defaultEnabled': True},{'id':'image_generation','defaultEnabled':True}],
             'engine': engine(r4os, selected_profile)}

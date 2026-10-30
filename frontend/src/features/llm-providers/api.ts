@@ -1,5 +1,9 @@
 import type { ProviderList } from '../../../../shared/llm-providers.js';
 
+export class ProviderRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 let loadingRequest: Promise<ProviderList> | null = null;
 export function loadProviders(): Promise<ProviderList> {
   if (loadingRequest) return loadingRequest;
@@ -21,7 +25,7 @@ export async function requestProvider<T>(path: string, csrfToken: string, method
   });
   if (!response.ok) {
     const result = await response.json().catch(() => ({})) as { message?: string };
-    throw new Error(result.message ?? 'The provider request failed. Please try again.');
+    throw new ProviderRequestError(result.message ?? 'The provider request failed. Please try again.', response.status);
   }
   return response.status === 204 ? undefined as T : await response.json() as T;
 }

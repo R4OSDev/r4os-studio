@@ -1,4 +1,4 @@
-# API provider configuration (0.8.11–0.8.12)
+# API provider configuration (0.8.11–0.8.14)
 
 This is the configuration/credential foundation for OpenRouter, other
 OpenAI-compatible services and explicit local model servers. Existing OpenAI
@@ -10,8 +10,9 @@ and credential revision. Public responses expose `keyConfigured`, never a key.
 **Responses transport is qualified in0.8.12** for the pinned native binary and
 revision-bound internal model catalogs; see [API-Responses.md](API-Responses.md).
 API records still report `runtime: "not-qualified"`: configuration is not a
-verified remote account/model entitlement. Model discovery and settings UI are
-later roadmap entries; no real provider was probed. Chat Completions translation is qualified in0.8.13 through
+verified remote account/model entitlement. Model discovery, settings UI and
+session selection are implemented in0.8.14; see [API-Model-Catalogs.md](API-Model-Catalogs.md).
+No real provider was probed. Chat Completions translation is qualified in0.8.13 through
 [API-Chat-Completions.md](API-Chat-Completions.md). Existing subscription sessions are not converted.
 
 ## Browser and host responsibilities
@@ -34,6 +35,11 @@ Bootstrap auth with GET `/api/providers/`. The following paths are relative to
 | GET /id | Read masked configuration; deleted IDs return410 |
 | PATCH /id | Revision-checked changes; key replaces, null removes |
 | GET /id/requests/requestId | Read the original masked result or pending retirement; never sends/cancels work |
+| GET /creation-requests/requestId | Read original creation without needing a provider UUID from a lost reply |
+| GET /id/models | Read the local revisioned public model catalog, no metadata request |
+| POST /id/models/check | Journal/start a bounded metadata-only check with original requestId/providerRevision |
+| POST /id/models | Save explicit model facts with providerRevision/catalogRevision and original requestId |
+| GET /id/model-requests/requestId | Read original model-save/metadata receipt without repeating the effect |
 | POST /id/disconnect | Close admission, stop only that provider's original agent workers, remove credentials after confirmed closure |
 | DELETE /id | The same closure plus a retired-ID tombstone |
 

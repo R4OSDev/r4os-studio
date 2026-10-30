@@ -1,3 +1,4 @@
+import { availableModels, providerAllowed, providerLabel } from './modelChoices';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentSession, AgentToolId, SessionOptions, NativeImageCapability } from '../../../../shared/agent-sessions';
@@ -44,13 +45,13 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   const hasImageTools = 'studio.list_generated_images' in draft.permissions;
   const imageKey = draft.providerId + ':' + draft.model + ':' + draft.engine.profile;
   useEffect(() => {
-    if (tab !== 'Tools' || draft.imageGenerationEnabled === false || !hasImageTools) return;
+    if (draft.engine.api || tab !== 'Tools' || draft.imageGenerationEnabled === false || !hasImageTools) return;
     const controller = new AbortController(), query = new URLSearchParams({ providerId: draft.providerId, model: draft.model });
     void projectRequest<NativeImageCapability>(sessionPath(projectId, session.id) + '/image-capability?' + query, '', 'GET', undefined, controller.signal)
       .then(value => { if (!controller.signal.aborted) setImageCapability({ key: imageKey, value }); })
       .catch((failure: Error) => { if (!controller.signal.aborted) setImageCapability({ key: imageKey, error: failure.message }); });
     return () => controller.abort();
-  }, [tab, draft.imageGenerationEnabled, hasImageTools, draft.providerId, draft.model, imageKey, projectId, session.id, projectRequest]);
+  }, [tab, draft.engine.api, draft.imageGenerationEnabled, hasImageTools, draft.providerId, draft.model, imageKey, projectId, session.id, projectRequest]);
   const patch = (values: Partial<AgentSession>) => setDraft((old) => ({ ...old, ...values }));
   async function submit(e: FormEvent) {
     e.preventDefault(); if (saving || reloading) return;
@@ -77,14 +78,16 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       }}>{name}</button>)}</div>
       <fieldset className="project-fields" disabled={saving || reloading} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
         {tab === 'General' ? <>
+          {session.engine.api && <p className="agent-terminal-hint">This conversation keeps its API connection and protocol. Create a new session to change providers. Hosted web/image generation, image input, Fast Mode and native Goal are unavailable through this adapter.</p>}
+          {model?.available === false && <p className="project-dialog-error">{model.unavailableReasons?.join(' ')}</p>}
           <ProjectField id="settings-session-name" label="Name"><input id="settings-session-name" required maxLength={120} value={draft.name} onChange={(e) => patch({ name: e.target.value })} /></ProjectField>
           <ProjectField id="settings-session-provider" label="Provider"><select id="settings-session-provider" value={draft.providerId} onChange={(e) => {
-            const next = options?.providers.find((p) => p.id === e.target.value), selected = next?.models.find((m) => m.id === draft.model) ?? next?.models[0];
+            const next = options?.providers.find((p) => p.id === e.target.value), selected = availableModels(next).find((m) => m.id === draft.model) ?? availableModels(next)[0];
             patch({ providerId: e.target.value, model: selected?.id ?? '', effort: selected?.efforts.includes(draft.effort) ? draft.effort : selected?.defaultEffort ?? '', fastMode: draft.fastMode && !!selected?.fastModeAvailable });
-          }}>{!provider && <option value={draft.providerId}>Unavailable provider</option>}{options?.providers.map((p) => <option key={p.id} value={p.id} disabled={!p.models.length}>{p.name}</option>)}</select></ProjectField>
+          }}>{!provider && <option value={draft.providerId}>Unavailable provider</option>}{options?.providers.map((p) => <option key={p.id} value={p.id} disabled={!availableModels(p).length || !providerAllowed(session, p)}>{providerLabel(p)}</option>)}</select></ProjectField>
           <ProjectField id="settings-session-model" label="Model"><select id="settings-session-model" value={draft.model} onChange={(e) => {
             const next = provider?.models.find((m) => m.id === e.target.value); patch({ model: e.target.value, effort: next?.efforts.includes(draft.effort) ? draft.effort : next?.defaultEffort ?? '', fastMode: draft.fastMode && !!next?.fastModeAvailable });
-          }}>{!model && <option value={draft.model}>{draft.model}</option>}{provider?.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></ProjectField>
+          }}>{!model && <option value={draft.model}>{draft.model}</option>}{provider?.models.map((m) => <option key={m.id} value={m.id} disabled={m.available === false}>{m.name}{m.available === false ? ' · unavailable' : ''}</option>)}</select></ProjectField>
           <ProjectField id="settings-session-effort" label="Reasoning"><select id="settings-session-effort" value={draft.effort} onChange={(e) => patch({ effort: e.target.value })}>{!model?.efforts.includes(draft.effort) && <option value={draft.effort}>{draft.effort}</option>}{model?.efforts.map((effort) => <option key={effort}>{effort}</option>)}</select></ProjectField>
           <ProjectField id="settings-session-fast" label="Fast Mode"><select id="settings-session-fast" value={draft.fastMode ? 'on' : 'off'} onChange={(e) => patch({ fastMode: e.target.value === 'on' })}><option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option></select></ProjectField>
         </> : tab === 'Skills' ? <div className="agent-skill-choices">
@@ -102,14 +105,14 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           <label className="agent-permission"><span>Environment notes</span><input type="checkbox" role="switch" aria-label="Environment notes" checked={!!draft.environmentNotesAccess?.available && (draft.environmentNotesEnabled ?? true)} disabled={!draft.environmentNotesAccess?.available} onChange={event => patch({ environmentNotesEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
           <p className="agent-terminal-hint">{draft.environmentNotesAccess?.available ? 'Read and record useful Studio environment observations. On by default. Changes apply from the next run. Existing notes remain available to view and delete.' : draft.environmentNotesAccess?.reason ?? 'New session required for environment note tools. This conversation keeps its original native profile.'}</p>
         </fieldset><fieldset><legend>Web</legend>
-          <label className="agent-permission"><span>Web search</span><input type="checkbox" role="switch" aria-label="Web search" checked={draft.webSearchEnabled ?? true} onChange={(e) => patch({ webSearchEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
-          <p className="agent-terminal-hint">Search the web, open pages and find text. On by default. Changes apply from the next run. Availability depends on the selected model and account.</p>
+          <label className="agent-permission"><span>Web search</span><input type="checkbox" role="switch" aria-label="Web search" disabled={!!draft.engine.api} checked={draft.webSearchEnabled ?? true} onChange={(e) => patch({ webSearchEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
+          <p className="agent-terminal-hint">{draft.engine.api ? 'Hosted web search is unavailable through this API adapter.' : 'Search the web, open pages and find text. On by default. Changes apply from the next run. Availability depends on the selected model and account.'}</p>
         </fieldset>{scope === 'project' && <fieldset><legend>Roadmap</legend>
           <label className="agent-permission"><span>Roadmap</span><input type="checkbox" role="switch" aria-label="Roadmap" checked={draft.roadmapEnabled ?? true} onChange={(e) => patch({ roadmapEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
           <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content remains in the native history.</p>
           <p className="agent-terminal-hint" role="status">{draft.roadmapAccess?.available ? 'Roadmap tools available in this session.' : draft.roadmapAccess?.reason ?? 'New session required for Roadmap tools. This conversation keeps its original native tool profile.'}</p>
         </fieldset>}{(scope === 'skill' ? ['Files', 'Terminal', 'Skills', 'Images'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub', 'Remote Hosts', 'Images']).map((group) => <fieldset key={group}><legend>{group}</legend>
-          {group === 'Images' && <><label className="agent-permission"><span>Image generation</span><input type="checkbox" role="switch" aria-label="Image generation" checked={draft.imageGenerationEnabled ?? true} onChange={event => patch({ imageGenerationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
+          {group === 'Images' && <><label className="agent-permission"><span>Image generation</span><input type="checkbox" role="switch" aria-label="Image generation" disabled={!!draft.engine.api} checked={draft.imageGenerationEnabled ?? true} onChange={event => patch({ imageGenerationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
             <p className="agent-terminal-hint">On by default. Effective only when this account, provider, model and worker support native image generation. Changes apply from the next run; saving settings does not generate images.</p>
             <p className="agent-terminal-hint" role="status">{draft.imageGenerationEnabled === false ? 'Image generation is off for the next run.' : !hasImageTools ? 'New session required for generated-image tools. This conversation keeps its original profile.' : imageCapability?.key === imageKey ? imageCapability.value?.reason ?? imageCapability.error : 'Checking native image capability…'}</p>
             <p className="agent-terminal-hint">{scope === 'project' ? 'Project import also needs Write file, and Create directory for new folders. Register the asset and verify its finished R4X resources.' : 'These images belong to this skill session. No project import or project filesystem is available.'}</p></>}

@@ -141,8 +141,11 @@ class ApiProviders:
 
     def cleanup(self,db,value):
         keep=value['credentialRevision'] if value['auth']=='bearer' and value['keyConfigured'] else -1
-        db.execute("DELETE FROM secrets.credentials WHERE provider_id=? AND revision!=? AND revision NOT IN (SELECT credential_revision FROM leases WHERE provider_id=? AND state!='released')",
-            (value['id'],keep,value['id']))
+        extra='';args=(value['id'],keep,value['id'])
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='catalog_requests'").fetchone():
+            extra=" AND revision NOT IN (SELECT json_extract(binding,'$.credentialRevision') FROM catalog_requests WHERE provider_id=? AND held=1)"
+            args+=(value['id'],)
+        db.execute("DELETE FROM secrets.credentials WHERE provider_id=? AND revision!=? AND revision NOT IN (SELECT credential_revision FROM leases WHERE provider_id=? AND state!='released')"+extra,args)
 
     def mutate(self,operation,ident,data,finish=False):
         if not isinstance(data,dict):raise ProjectFault('Invalid API provider input.',400)
@@ -184,6 +187,9 @@ class ApiProviders:
                     return {'requestId':rid,'state':'pending','provider':value}
                 if db.execute("SELECT 1 FROM leases WHERE provider_id=? AND state!='released'",(ident,)).fetchone():
                     raise ProjectFault('Original API worker leases are still unconfirmed. Credentials were preserved.',503)
+                if (db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='catalog_requests'").fetchone()
+                        and db.execute('SELECT 1 FROM catalog_requests WHERE provider_id=? AND held=1',(ident,)).fetchone()):
+                    raise ProjectFault('An original metadata transport is unconfirmed. Credentials were preserved.',503)
                 value['revision']+=1;value['updatedAt']=now();value['enabled']=False
                 value['credentialRevision']+=1;value['keyConfigured']=False;self.cleanup(db,value);self.save(db,value,operation=='delete')
             else:
@@ -220,6 +226,12 @@ class ApiProviders:
             raise ProjectFault('The original API run binding is unavailable.',409)
         return {'schema':1,'owner':{'type':owner_type,'id':identity(owner_id)},'sessionId':identity(sid),
             'requestId':identity(rid),'configSha256':hashlib.sha256(encode(snapshot).encode()).hexdigest()}
+
+    def creation_receipt(self,rid):
+        with self.connect() as db:
+            row=db.execute("SELECT result FROM requests WHERE id=? AND operation='create'",(identity(rid),)).fetchone() if db else None
+            if row is None or not row[0]:raise ProjectFault('Original API provider creation not found.',404)
+            return json.loads(row[0])
 
     def reserve(self,run_id,owner_type,owner_id,sid,rid,snapshot):
         binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot);selected=snapshot['apiProvider']

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderList, ProviderUsage } from '../../../../shared/llm-providers.js';
+import type { ApiProvider } from '../../../../shared/api-providers.js';
 import { loadProviders, requestProvider } from './api';
 import { remainingUsage } from './usage-format';
 
@@ -7,6 +8,7 @@ export function useProviders(usageVisible = true) {
   const [data, setData] = useState<ProviderList>({ providers: [], csrfToken: '', signInAvailable: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [apiProviders, setApiProviders] = useState<ApiProvider[]>([]), [apiError, setApiError] = useState('');
   const csrf = useRef('');
   const usageGeneration = useRef(0);
   const usageRequests = useRef<Record<string, number>>({});
@@ -25,12 +27,22 @@ export function useProviders(usageVisible = true) {
     setLoading(false);
   }, []);
   const reload = useCallback(async () => {
-    try { accept(await loadProviders()); } catch (cause) { fail(cause); }
+    try {
+      const next = await loadProviders(); accept(next);
+      try { setApiProviders((await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken)).providers); setApiError(''); }
+      catch (cause) { setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
+    } catch (cause) { fail(cause); }
   }, [accept, fail]);
 
   useEffect(() => {
     let active = true;
-    void loadProviders().then((next) => { if (active) accept(next); }).catch((cause: unknown) => { if (active) fail(cause); });
+    void loadProviders().then(async (next) => {
+      if (!active) return; accept(next);
+      try {
+        const result = await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken);
+        if (active) { setApiProviders(result.providers); setApiError(''); }
+      } catch (cause) { if (active) setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
+    }).catch((cause: unknown) => { if (active) fail(cause); });
     return () => { active = false; };
   }, [accept, fail]);
 
@@ -70,7 +82,7 @@ export function useProviders(usageVisible = true) {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
   }, [data.providers, request, usageVisible]);
 
-  return { ...data, remainingByProvider, loading, error, reload, request };
+  return { ...data, providers: [...data.providers, ...apiProviders], apiError, remainingByProvider, loading, error, reload, request };
 }
 
 export type ProviderApi = ReturnType<typeof useProviders>;

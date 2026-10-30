@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
 import { useSessionApi, ProjectRequestError, sessionPath } from './api';
 
+import { availableModels, providerAllowed, providerLabel } from './modelChoices';
+
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
 
 export function ComposerSettings({ session, projectId, token, disabled, saved, busyChanged, refreshAuth }: {
@@ -51,13 +53,13 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
       <label className="agent-account-choice"><span>Account</span>
         <select aria-label="Account" value={choice.providerId} onChange={(event) => {
           const nextAccount = options?.providers.find((value) => value.id === event.target.value);
-          const nextModel = nextAccount?.models.find((value) => value.id === choice.model) ?? nextAccount?.models[0];
+          const nextModel = availableModels(nextAccount).find((value) => value.id === choice.model) ?? availableModels(nextAccount)[0];
           void change({ providerId: event.target.value, model: nextModel?.id ?? '',
             effort: nextModel?.efforts.includes(choice.effort) ? choice.effort : nextModel?.defaultEffort ?? '',
             fastMode: choice.fastMode && !!nextModel?.fastModeAvailable });
         }}>
           {!account && <option value={choice.providerId}>{options ? 'Unavailable account' : 'Loading accounts…'}</option>}
-          {options?.providers.map((value) => <option key={value.id} value={value.id} disabled={!value.models.length}>{value.name}</option>)}
+          {options?.providers.map((value) => <option key={value.id} value={value.id} disabled={!availableModels(value).length || !providerAllowed(session, value)}>{providerLabel(value)}</option>)}
         </select>
       </label>
       <label className="agent-model-choice"><span>Model</span>
@@ -68,7 +70,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
             fastMode: choice.fastMode && !!nextModel?.fastModeAvailable });
         }}>
           {!model && <option value={choice.model}>{choice.model}</option>}
-          {account?.models.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}
+          {account?.models.map((value) => <option key={value.id} value={value.id} disabled={value.available === false}>{value.name}{value.available === false ? ' · unavailable' : ''}</option>)}
         </select>
       </label>
       <label><span>Reasoning</span>
@@ -83,6 +85,8 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
         </select>
       </label>
     </fieldset>
+    {session.engine.api && <p className="agent-terminal-hint">API connection is fixed for this conversation. Choose another provider in a new session.</p>}
+    {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
     {error && <p className="agent-choice-error" role="alert">{error}</p>}
   </div>;
 }

@@ -9,6 +9,9 @@ from store import ProjectFault
 
 
 def catalog(providers,provider):
+    from api_catalog import Catalogs
+    models=Catalogs(providers).native_models(provider['id'])
+    if models is not None:return models
     ident=identity(provider['id']);root=ApiProviders(providers).root/'Models';path=root/(ident+'.json')
     if not path.exists() and not path.is_symlink():return []
     try:

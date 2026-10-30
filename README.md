@@ -1,3 +1,26 @@
+## API connections, model catalogs and session choices (0.8.14)
+
+System → Settings → LLM Provider now offers OpenRouter, Custom API and Local API
+beside the existing ChatGPT subscription. Explicit Save/Cancel/Replace/Clear
+keeps keys write-only. Save/open and new sessions do not send model requests.
+Check connection reads one bounded Models API through a fixed, verified-TLS/
+pinned-IP helper; original receipts, key rotation and confirmed transport exit
+protect recovery/disconnect. Cache plus original receipt publish atomically.
+
+Model source, limits and declared/effective capabilities are visible. Generic
+IDs remain unknown; exact manual IDs and documented capabilities/efforts can be
+configured without paid probes or copied OpenAI model defaults. Qualified facts
+compile neutral descriptors for the unchanged pinned native engine. Project and
+Skill New Session/settings/composer preserve fixed provider identity, missing
+model values, original requests, message drafts and uploads. API-hosted web/image,
+image input, Fast Mode and native Goal remain unavailable pending qualification.
+
+Focused private-store/actual metadata-helper, TLS/DNS/bounds, protected HTTP,
+original-native SQLite-catalog project/skill/Stop and browser1440/320 cases cover
+the change, with build/TypeScript/lint. No real credentials, remote model calls,
+inference, user agent/VM actions or component pin changes are required.
+Details: [API-Model-Catalogs.md](API-Model-Catalogs.md).
+
 ## Native Chat Completions adapter (0.8.13)
 
 Qualified Chat-Completions-only API models now use the same native0.163.0 agent,

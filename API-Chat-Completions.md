@@ -40,8 +40,9 @@ the rich catalog passed to native. Missing/unrepresentable capabilities fail
 before a Run or credential reservation is created. No guessed model capability,
 context window or substitute inference is used.
 
-Model discovery/settings UI and real account/model entitlement remain later
-roadmap entries0.8.14–17. Public connection records still describe configuration,
+Model discovery/settings UI and neutral descriptors from explicit facts are
+provided by0.8.14 ([API-Model-Catalogs.md](API-Model-Catalogs.md)). Real account/model
+and extended lifecycle qualification follows0.8.15–17. Public connection records still describe configuration,
 not remote qualification. Image input/generation, hosted web, Fast Mode and
 native Goal execution are not qualified for these API sessions. Proprietary
 provider protocols, opaque reasoning, extension deltas, unsupported structured

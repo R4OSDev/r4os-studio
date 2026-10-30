@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentSession, SessionCreate, SessionOptions } from '../../../../shared/agent-sessions';
+import { availableModels, providerLabel } from './modelChoices';
 import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, projectRequestId, ProjectRequestError, sessionPath } from './api';
 
@@ -27,7 +28,7 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
       if (controller.signal.aborted) return;
       setOptions(r);
       if (!pending) {
-        const provider = r.providers.find((p) => p.models.length), chosen = provider?.models[0];
+        const provider = r.providers.find((p) => availableModels(p).length), chosen = availableModels(provider)[0];
         setProvider(provider?.id ?? ''); setModel(chosen?.id ?? ''); setEffort(chosen?.defaultEffort ?? '');
       }
     }).catch((e: Error) => { if (!controller.signal.aborted) setError(e.message); });
@@ -54,20 +55,20 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
       <fieldset className="project-fields" disabled={busy || !!pending}>
         <ProjectField id="session-name" label="Name"><input id="session-name" required autoComplete="off" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} /></ProjectField>
         <ProjectField id="session-provider" label="Provider"><select id="session-provider" required value={providerId} onChange={(e) => {
-          const p = options?.providers.find((p) => p.id === e.target.value), m = p?.models[0]; setProvider(e.target.value); setModel(m?.id ?? ''); setEffort(m?.defaultEffort ?? ''); setFast(false);
-        }}><option value="" disabled>Select provider</option>{options?.providers.map((p) => <option key={p.id} value={p.id} disabled={!p.models.length}>{p.name}</option>)}</select></ProjectField>
+          const p = options?.providers.find((p) => p.id === e.target.value), m = availableModels(p)[0]; setProvider(e.target.value); setModel(m?.id ?? ''); setEffort(m?.defaultEffort ?? ''); setFast(false);
+        }}><option value="" disabled>Select provider</option>{options?.providers.map((p) => <option key={p.id} value={p.id} disabled={!availableModels(p).length}>{providerLabel(p)}</option>)}</select></ProjectField>
         <div className="project-form-row">
           <ProjectField id="session-model" label="Model"><select id="session-model" required value={model} onChange={(e) => { const next = provider?.models.find((m) => m.id === e.target.value); setModel(e.target.value); setEffort(next?.defaultEffort ?? ''); setFast((fast) => fast && !!next?.fastModeAvailable); }}>
-            <option value="" disabled>Select model</option>{provider?.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></ProjectField>
+            <option value="" disabled>Select model</option>{provider?.models.map((m) => <option key={m.id} value={m.id} disabled={m.available === false}>{m.name}{m.available === false ? ' · unavailable' : ''}</option>)}</select></ProjectField>
           <ProjectField id="session-effort" label="Reasoning"><select id="session-effort" required value={effort} onChange={(e) => setEffort(e.target.value)}><option value="" disabled>Select effort</option>{chosen?.efforts.map((v) => <option key={v} value={v}>{v}</option>)}</select></ProjectField>
         </div>
         <ProjectField id="session-fast-mode" label="Fast Mode"><select id="session-fast-mode" value={fastMode ? 'on' : 'off'} onChange={(e) => setFast(e.target.value === 'on')}><option value="off">Off</option><option value="on" disabled={!chosen?.fastModeAvailable}>On</option></select></ProjectField>
       </fieldset>
       {!options && !error && <p className="project-dialog-status" role="status">Loading…</p>}
       {options && !options.engine.available && <p className="project-dialog-error" role="alert">{options.engine.reason}</p>}
-      {options && !options.providers.some((p) => p.models.length) && <p className="project-dialog-error">Connect a provider in System settings.</p>}
+      {options && !options.providers.some((p) => availableModels(p).length) && <p className="project-dialog-error">Connect a provider and configure an available model in System settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
-      <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!options?.engine.available || !chosen))}>{busy ? 'Creating…' : pending ? 'Retry create' : 'Create session'}</button></footer>
+      <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!options?.engine.available || !chosen || chosen.available === false))}>{busy ? 'Creating…' : pending ? 'Retry create' : 'Create session'}</button></footer>
     </form>
   </dialog>;
 }

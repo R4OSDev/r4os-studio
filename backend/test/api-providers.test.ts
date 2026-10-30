@@ -53,6 +53,29 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     }
     const receipt = await app.inject({url:base+'/'+id+'/requests/'+requestId,headers});
     assert.equal(receipt.json().state,'complete');assert.equal(calls.at(-1)?.action,'receipt');assert.ok(!receipt.body.includes(secret));
+    assert.equal((await app.inject({url:base+'/creation-requests/'+requestId,headers})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'creation_receipt');
+    assert.equal((await app.inject({url:base+'/'+id+'/models',headers})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'models');
+    const check={requestId,providerRevision:1};
+    assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/models/check',headers:{cookie:headers.cookie},payload:check})).statusCode,403);
+    assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/models/check',headers,payload:check})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'catalog_refresh');
+    const model={id:'own/exact',name:'Own model',contextWindow:8192,maxOutputTokens:null,
+      capabilities:Object.fromEntries(['text','functionTools','streaming','imageInput','reasoning','webSearch','imageGeneration','goals'].map(key=>[key,'unknown'])),efforts:[],defaultEffort:null};
+    const manual={requestId,providerRevision:1,catalogRevision:0,model};
+    assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/models',headers,payload:manual})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'model_save');
+    const beforeInvalid=calls.length;
+    for(const [path,payload] of [['/models/check',{...check,providerRevision:'1'}],['/models',{...manual,catalogRevision:'0'}],
+      ['/models',{...manual,model:{...model,contextWindow:'8192'}}],['/models',{...manual,model:{...model,capabilities:{...model.capabilities,text:true}}}],
+      ['/models',{...manual,model:{...model,unexpected:secret}}]]) {
+      assert.equal((await app.inject({method:'POST',url:base+'/'+id+path,headers,payload})).statusCode,400);
+    }
+    assert.equal(calls.length,beforeInvalid);
+    assert.equal((await app.inject({url:base+'/'+id+'/model-requests/'+requestId,headers})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'catalog_receipt');
+    assert.ok(calls.every(call=>call.operation==='api_provider'));
     available=false;assert.equal((await app.inject({url:base,headers})).statusCode,503);
     assert.equal((await app.inject({url:'/api/providers/',headers})).statusCode,200);
   } finally {

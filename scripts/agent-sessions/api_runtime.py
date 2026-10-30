@@ -13,6 +13,21 @@ from session_store import identity
 from store import ProjectFault
 
 
+async def resolve_binding(binding):
+    checked=endpoint(binding['baseUrl'],binding['kind'])
+    from urllib.parse import urlsplit
+    parsed=urlsplit(checked['baseUrl']);host=parsed.hostname;port=parsed.port or (443 if parsed.scheme=='https' else 80)
+    try:
+        try: addresses=[str(ipaddress.ip_address(host))]
+        except ValueError:
+            values=await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo,host,port,type=socket.SOCK_STREAM),10)
+            addresses=[value[4][0] for value in values]
+        return resolved_addresses(checked,addresses)
+    except ProjectFault:raise
+    except (OSError,ValueError,asyncio.TimeoutError):
+        raise ProjectFault('The configured model endpoint could not be resolved safely.',503) from None
+
+
 class ApiRuntime:
     def __init__(self,binding,model,credential,runtime,chat=None):
         self.binding=dict(binding);self.model=model;self.credential=credential
@@ -25,18 +40,7 @@ class ApiRuntime:
     async def start(self):
         if self.binding['protocol'] not in ('responses','chat-completions') or self.binding['protocol']=='chat-completions' and not isinstance(self.chat,dict):
             raise ProjectFault('The selected API protocol has no qualified transport binding.',409)
-        checked=endpoint(self.binding['baseUrl'],self.binding['kind'])
-        from urllib.parse import urlsplit
-        parsed=urlsplit(checked['baseUrl']);host=parsed.hostname;port=parsed.port or (443 if parsed.scheme=='https' else 80)
-        try:
-            try: addresses=[str(ipaddress.ip_address(host))]
-            except ValueError:
-                values=await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo,host,port,type=socket.SOCK_STREAM),10)
-                addresses=[value[4][0] for value in values]
-            addresses=resolved_addresses(checked,addresses)
-        except ProjectFault:raise
-        except (OSError,ValueError,asyncio.TimeoutError):
-            raise ProjectFault('The configured model endpoint could not be resolved safely.',503) from None
+        addresses=await resolve_binding(self.binding)
         self.runtime.mkdir(mode=0o700,parents=True,exist_ok=True);private(self.runtime,directory=True)
         self.key_file=self.runtime/'relay.key'
         fd=os.open(self.key_file,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)

@@ -17,13 +17,15 @@ these capabilities need their own qualification. Ordinary Studio tool rights
 and their existing schema/permission/result broker remain in force.
 
 Model metadata must already be qualified for that configuration revision.
-`ApiProviders/Models/<provider UUID>.json` is a private0700/0600 internal catalog
+Since0.8.14 the private SQLite catalog is authoritative when present; explicit
+facts compile a neutral pinned native descriptor. See [API-Model-Catalogs.md](API-Model-Catalogs.md).
+`ApiProviders/Models/<provider UUID>.json` remains a private0700/0600 compatibility catalog
 with `{schema:1, providerId, configRevision, models}`; models use the pinned
 binary's rich native catalog schema. It currently permits text input and
 Responses without Responses Lite. Missing, stale or unsupported metadata does
 not invent a context window, tool capability or reasoning mode. Catalog
-discovery/writing, provider UI and per-model capability reporting are later
-roadmap entries0.8.14–0.8.17. A configured connection is not proof of remote
+discovery/writing, provider UI and per-model capability reporting are provided
+by0.8.14; provider-specific/lifecycle qualification follows0.8.15–17. A configured connection is not proof of remote
 availability or entitlement; the public record retains `runtime:not-qualified`.
 
 Admission freezes public config/credential revisions and selected native model

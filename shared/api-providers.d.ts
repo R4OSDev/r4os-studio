@@ -29,15 +29,25 @@ export interface ApiProviderBinding {
 }
 
 /** Missing provider metadata stays unknown until a specific model is qualified. */
-export interface ApiModel {
+export type ApiCapability = 'supported' | 'unsupported' | 'unknown';
+export type ApiEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export interface ApiModelFacts {
   id: string; name: string; contextWindow: number | null;
-  capabilities: {
-    text: 'supported' | 'unsupported' | 'unknown';
-    functionTools: 'supported' | 'unsupported' | 'unknown';
-    imageInput: 'supported' | 'unsupported' | 'unknown';
-    reasoning: 'supported' | 'unsupported' | 'unknown';
-    webSearch: 'supported' | 'unsupported' | 'unknown';
-    imageGeneration: 'supported' | 'unsupported' | 'unknown';
-    goals: 'supported' | 'unsupported' | 'unknown';
-  };
+  maxOutputTokens: number | null;
+  capabilities: Record<'text' | 'functionTools' | 'streaming' | 'imageInput' | 'reasoning' | 'webSearch' | 'imageGeneration' | 'goals', ApiCapability>;
+  efforts: ApiEffort[]; defaultEffort: ApiEffort | null;
+}
+export interface ApiModel extends ApiModelFacts {
+  declaredCapabilities: ApiModelFacts['capabilities'];
+  available: boolean; unavailableReasons: string[];
+  source: { kind: 'metadata' | 'manual'; recordedAt: string; url?: string } | null;
+}
+export interface ApiModelCatalog {
+  providerId: string; revision: number; configRevision: number; stale: boolean;
+  checkedAt: string | null; metadataCurrent: boolean; checkedCredentialRevision: number | null;
+  truncated: boolean; models: ApiModel[];
+}
+export interface ApiModelMutation {
+  requestId: string; providerId: string; state: 'pending' | 'complete' | 'failed' | 'unknown';
+  catalogRevision?: number; modelId?: string; error?: string;
 }
