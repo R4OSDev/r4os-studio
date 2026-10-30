@@ -26,6 +26,14 @@ class Usage:
             self.store.db.execute('CREATE TABLE IF NOT EXISTS statistic_history(key TEXT PRIMARY KEY,inode TEXT NOT NULL,offset INTEGER NOT NULL,skipping INTEGER NOT NULL)')
     def ingest(self,thread,turn,response,usage,camel=False,run_id=None):
         if thread!=self.store.row(self.sid)['thread_id'] or not all(valid_id(x) for x in (thread,turn,response)):return False
+        if not run_id:
+            row=self.store.db.execute('SELECT id FROM runs WHERE session_id=? AND turn_id=? ORDER BY rowid DESC LIMIT 1',(self.sid,turn)).fetchone()
+            if not row and self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_turns'").fetchone():
+                row=self.store.db.execute('SELECT r.id FROM runs r JOIN goal_turns g ON r.id=g.run_id WHERE r.session_id=? AND g.turn_id=?',(self.sid,turn)).fetchone()
+            run_id=row[0] if row else None
+        from api_usage import reported
+        api,wire=reported(self.store,self.sid,run_id,response)
+        if api:usage=wire;camel=False
         identity={'source':'codex-response-v1','runtime':CODEX_SHA256,'thread':thread,'response':response}
         self.schema();source=Source(self.store)
         if not isinstance(usage,dict):
@@ -37,16 +45,17 @@ class Usage:
         try:value=source.put(self.sid,'tokens',identity,values)
         except Exception:
             source.put(self.sid,'gap',{'conflictingUsage':identity},{'missing':1});return False
-        if not run_id:
-            row=self.store.db.execute('SELECT id FROM runs WHERE session_id=? AND turn_id=? ORDER BY rowid DESC LIMIT 1',(self.sid,turn)).fetchone()
-            if not row and self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_turns'").fetchone():
-                row=self.store.db.execute('SELECT r.id FROM runs r JOIN goal_turns g ON r.id=g.run_id WHERE r.session_id=? AND g.turn_id=?',(self.sid,turn)).fetchone()
-            run_id=row[0] if row else None
         with self.store.db:self.store.db.execute('INSERT OR IGNORE INTO statistic_usage VALUES (?,?,?,?,?)',(value['key'],self.sid,run_id,turn,'raw' if camel else 'nativeRecord'))
+        from api_usage import record
+        try:record(self.store,self.sid,value['key'],thread,response,run_id)
+        except (ProjectFault,ValueError,TypeError,KeyError):
+            source.put(self.sid,'gap',{'apiUsageProvenanceUnconfirmed':identity},{'missing':1})
         return True
-    def scan(self,budget=BUDGET):
+    def scan(self,budget=BUDGET,api_final=False):
         session=self.store.row(self.sid);thread=session['thread_id']
         if not thread or not qualified(json.loads(session['engine'])):return 0
+        if (json.loads(session['engine']).get('api') and not api_final
+                and self.store.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1',(self.sid,)).fetchone()):return 0
         base=self.store.directory/self.sid/'Codex';files=[]
         for name in ('native','archived'):
             root=base/name
@@ -96,17 +105,23 @@ class Usage:
         return count
 
 class WorkerUsage:
-    def __init__(self,worker):self.w=worker;self.task=None;self.closed=False;self.failed=False
+    def __init__(self,worker):self.w=worker;self.task=None;self.closed=False;self.failed=False;self.pending={}
     def notify(self,method,params):
         if not qualified(self.w.config['engine']):return
         try:
-            if method=='rawResponse/completed':Usage(self.w.store,self.w.session_id).ingest(params.get('threadId'),params.get('turnId'),params.get('responseId'),params.get('usage'),True,self.w.run_id)
+            if method=='rawResponse/completed':
+                if self.w.config.get('apiProvider'):
+                    key=(params.get('threadId'),params.get('turnId'),params.get('responseId'))
+                    if all(valid_id(v) for v in key) and len(self.pending)<256:self.pending[key]=True
+                    else:self.failed=True
+                else:Usage(self.w.store,self.w.session_id).ingest(params.get('threadId'),params.get('turnId'),params.get('responseId'),params.get('usage'),True,self.w.run_id)
             if method in ('rawResponse/completed','thread/tokenUsage/updated','turn/completed') and not self.closed and (not self.task or self.task.done()):self.task=asyncio.create_task(self.collect())
         except Exception:self.failed=True
     async def collect(self):
         await asyncio.sleep(.05)
         try:
-            Usage(self.w.store,self.w.session_id).scan();Source(self.w.store).flush()
+            if not self.w.config.get('apiProvider'):Usage(self.w.store,self.w.session_id).scan()
+            Source(self.w.store).flush()
         except Exception:self.failed=True
     async def close(self):
         self.closed=True
@@ -114,8 +129,18 @@ class WorkerUsage:
     def finalize(self):
         if not qualified(self.w.config['engine']):return
         try:
-            usage=Usage(self.w.store,self.w.session_id);usage.scan();usage.schema()
+            usage=Usage(self.w.store,self.w.session_id)
+            if self.w.config.get('apiProvider'):
+                from api_usage import wire_receipts
+                wire_receipts(self.w.store,self.w.session_id,self.w.run_id,self.w.api_runtime.usages if self.w.api_runtime else [])
+                for thread,turn,response in self.pending:usage.ingest(thread,turn,response,None,run_id=self.w.run_id)
+            usage.scan(api_final=bool(self.w.config.get('apiProvider')));usage.schema()
             if self.w.outcome!='completed' or not self.w.store.db.execute('SELECT 1 FROM statistic_usage WHERE run_id=?',(self.w.run_id,)).fetchone():
                 Source(self.w.store).put(self.w.session_id,'gap',{'runWithoutResponseUsage':self.w.run_id},{'missing':1})
             Source(self.w.store).flush()
-        except Exception:self.failed=True
+        except Exception:
+            self.failed=True
+            try:
+                Source(self.w.store).put(self.w.session_id,'gap',{'unconfirmedUsageCollection':self.w.run_id},{'missing':1})
+                Source(self.w.store).flush()
+            except Exception:pass

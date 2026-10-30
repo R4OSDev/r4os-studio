@@ -1,3 +1,20 @@
+## API lifecycle and authoritative usage (0.8.17, partial)
+
+API statistics now join original native response receipts to explicit provider
+wire counters. Omitted subcounters stay unknown instead of inheriting native
+zero defaults. Frozen provider/adapter/thread provenance stays private; existing
+spend keys and subscription counts remain unchanged. API usage publishes after
+original transport closure and deduplicates raw/history/restore observations.
+
+Focused Node/Python and original-binary offline cases cover project/skill
+instructions/rights, text functions, resume, queue/key rotation, unknown leases,
+Stop, missing usage and provider/session deletion with retained lifetime totals.
+Unsupported images/hosted extras/Goal stay explicit. No real model inference,
+user guest action or new server/model installation is used.
+
+0.8.17 remains open for the0.8.10 retry controller and final lifecycle acceptance.
+Details: [API-Session-Lifecycle.md](API-Session-Lifecycle.md).
+
 ## Existing local/custom model servers (0.8.16)
 
 Local API now offers explicit Ollama/LM Studio server contracts and local

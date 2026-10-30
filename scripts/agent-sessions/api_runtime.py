@@ -36,7 +36,7 @@ class ApiRuntime:
         identity(self.binding['id'])
         self.provider='studio_api_'+self.binding['id'].replace('-','_')
         self.token=secrets.token_hex(32)
-        self.reader=None;self.origins=[];self.origin_error=False
+        self.reader=None;self.origins=[];self.usages=[];self.origin_error=False
 
     async def start(self):
         if self.binding['protocol'] not in ('responses','chat-completions') or self.binding['protocol']=='chat-completions' and not isinstance(self.chat,dict):
@@ -59,20 +59,33 @@ class ApiRuntime:
             ready=json.loads(await asyncio.wait_for(self.child.stdout.readline(),5))
             if set(ready)!={'port'} or type(ready['port']) is not int or not 1<=ready['port']<=65535:raise ValueError()
             self.port=ready['port']
-            if self.binding['kind']=='openrouter':self.reader=asyncio.create_task(self.read_origins())
+            self.reader=asyncio.create_task(self.read_origins())
         except (OSError,ValueError,asyncio.TimeoutError,ConnectionError):
             await self.close();raise ProjectFault('The private model transport could not start.',503) from None
 
     def selection(self):return {'modelProvider':self.provider}
 
     async def read_origins(self):
-        """Trusted relay diagnostics only; never an inference/control channel."""
+        """Trusted relay usage/origin observations; never an inference/control channel."""
         fields={'event','ordinal','requestedModel','reportedRequested','reportedModel','reportedBackend','endpointModel','endpointBackend',
             'strategy','gatewayAttempt','providerResponseId','localResponseId','finishReason','usage'}
         try:
             while raw:=await self.child.stdout.readline():
-                if len(raw)>8192 or len(self.origins)>=256:raise ValueError()
+                if len(raw)>8192:raise ValueError()
                 value=json.loads(raw)
+                if isinstance(value,dict) and value.get('event')=='usage':
+                    if (set(value)!={'event','ordinal','responseId','usage'} or len(self.usages)>=256
+                            or type(value['ordinal']) is not int or not 1<=value['ordinal']<=256
+                            or self.usages and value['ordinal']<=self.usages[-1]['ordinal']
+                            or not isinstance(value['responseId'],str) or not 1<=len(value['responseId'].encode())<=256
+                            or any(ord(c)<33 or ord(c)==127 or 0xd800<=ord(c)<=0xdfff for c in value['responseId'])
+                            or isinstance(self.credential,str) and self.credential in value['responseId']):raise ValueError()
+                    usage=value['usage']
+                    if usage is not None and (not isinstance(usage,dict) or not usage
+                            or set(usage)-{'input_tokens','output_tokens','total_tokens','cached_input_tokens','reasoning_output_tokens'}
+                            or any(type(v) is not int or not 0<=v<=9007199254740991 for v in usage.values())):raise ValueError()
+                    self.usages.append(value);continue
+                if self.binding['kind']!='openrouter' or len(self.origins)>=256:raise ValueError()
                 if (not isinstance(value,dict) or set(value)!=fields or value['event']!='origin'
                         or type(value['ordinal']) is not int or not 1<=value['ordinal']<=256
                         or self.origins and value['ordinal']<=self.origins[-1]['ordinal']

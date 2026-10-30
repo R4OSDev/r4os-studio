@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { chatRequest, ChatStream, ChatFault } from './api_chat.mjs';
 import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin } from './api_openrouter.mjs';
 import { serverProfile, localRequest } from './api_local.mjs';
+import { reportedUsage, ResponsesUsage } from './api_usage.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
@@ -51,7 +52,7 @@ const configuration = await new Promise((resolve, reject) => {
 }).catch(() => { process.stdout.write('{"error":"API transport bootstrap unavailable"}\n'); process.exit(1); });
 
 const { binding, addresses, key, relayToken, chatPolicy } = configuration;
-let target, router = null, originOrdinal = 0, profile = 'custom';
+let target, router = null, requestOrdinal = 0, profile = 'custom';
 try {
   target = new URL(binding.baseUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash
@@ -115,7 +116,11 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
     if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
     if (router) Object.assign(headers, routerHeaders(router, true));
     const origin = router ? new RouterOrigin(binding.model, router, key) : null;
-    const ordinal = origin ? ++originOrdinal : null; let originReported = false;
+    const ordinal = ++requestOrdinal; let originReported = false, usageReported = false;
+    const reportUsage = (responseId, usage) => {
+      if (usageReported || ordinal > 256) return; usageReported = true;
+      process.stdout.write(JSON.stringify({ event: 'usage', ordinal, responseId, usage }) + '\n');
+    };
     const originalHost = target.hostname.replace(/^\[|\]$/g, '');
     const address = addresses[0];
     // Python validates the complete DNS answer against the selected network
@@ -152,6 +157,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
       response.writeHead(status, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'close' });
       let received = 0, emitted = 0, failed = false;
       const emit = event => {
+        if (['response.completed', 'response.incomplete'].includes(event.type)) reportUsage(parser.id, reportedUsage(parser.used));
         if (origin && !originReported && ['response.completed', 'response.incomplete'].includes(event.type)) {
           originReported = true;
           if (ordinal <= 256) process.stdout.write(JSON.stringify(origin.report(parser, ordinal)) + '\n');
@@ -162,6 +168,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         if (!response.write(encoded)) incoming.pause();
       };
       const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), errorCode: routerError } : {}) : null;
+      const observedUsage = chat ? null : new ResponsesUsage(reportUsage);
       const broken = error => {
         if (failed || response.destroyed || response.writableEnded) return;
         failed = true;
@@ -175,10 +182,11 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         received += chunk.length;
         if (received > MAX_RESPONSE || stopped) { incoming.destroy(); response.destroy(); return; }
         if (parser) { try { parser.push(chunk); } catch (error) { broken(error); } }
-        else if (!response.write(chunk)) incoming.pause();
+        else { observedUsage.push(chunk); if (!response.write(chunk)) incoming.pause(); }
       });
       response.on('drain', () => incoming.resume());
       incoming.on('end', () => {
+        observedUsage?.push(new Uint8Array(), true);
         if (parser && !failed) { try { parser.push(new Uint8Array(), true); } catch (error) { broken(error); return; } }
         if (!failed) response.end();
       });
