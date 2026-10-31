@@ -1,5 +1,6 @@
 """Own fixtures only: scopes, lifetime races, durable cleanup and numeric retention."""
 from contextlib import closing
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from session_store import SessionStore, encode
 from profile import SKILL_PROFILE
 from run_store import admit, transition
 from session_delete import preview, delete, resume, original, recover
+from session_lifetime import acquire
 from skill_application import packages
 from stats_store import Source, read
 from store import ProjectFault
@@ -122,6 +124,27 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
         with self.open() as store:
             self.assertEqual(original(store,self.sid,data['requestId'])['state'],'unknown')
             self.assertEqual((store.directory/self.sid/'new').read_text(),'preserve replacement')
+
+    async def test_transient_readers_allow_preview_confirmed_delete_and_original_cleanup_in_both_scopes(self):
+        skill, skill_sid = self.add_skill(); host = self.host()
+        for kind, owner, sid in [('project', self.pid, self.sid), ('skill', skill, skill_sid)]:
+            async def after_reader(operation):
+                # Model an already-running status/history read. A real flock is
+                # held until the deletion request has had a chance to acquire it.
+                with acquire(self.projects, kind, owner, sid):
+                    pending = asyncio.create_task(operation())
+                    await asyncio.sleep(0)
+                return await pending
+
+            view = await after_reader(lambda: preview(host, kind, owner, sid))
+            self.assertTrue(view['allowed'], view)
+            data = {'requestId': str(uuid.uuid4()), 'revision': view['revision'],
+                    'scopeHash': view['scopeHash'], 'confirmName': view['name']}
+            accepted = await after_reader(lambda: delete(host, kind, owner, sid, data))
+            self.assertEqual(accepted['state'], 'deleting')
+            await after_reader(lambda: resume(host, kind, owner, sid, data['requestId']))
+            with closing(SessionStore(self.projects, self.r4os, owner, kind)) as store:
+                self.assertEqual(original(store, sid, data['requestId'])['state'], 'deleted')
 
     async def test_active_queue_goal_and_unknown_tool_are_denied_before_deletion(self):
         host=self.host()

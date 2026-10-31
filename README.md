@@ -1,3 +1,13 @@
+## Session deletion after Stop (0.8.64)
+
+Deletion preview, confirmed admission and original cleanup now wait up to two
+seconds for short status/history reads to release the session lifetime gate.
+A stopped session no longer immediately reports “This session is in use” when
+the confirmation opens during a brief read. The name field becomes available
+after a successful preview. Active workers, pending or unknown effects, changed
+scope/revision and incorrect names retain their existing rejection rules;
+no lock is forced and no deletion request or tool effect is replayed.
+
 ## Session stream shutdown (0.8.63)
 
 Closing or backpressured session event streams no longer write a later

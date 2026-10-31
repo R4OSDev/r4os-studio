@@ -208,10 +208,23 @@ async def inspect(host, store, sid):
     return public, {'device':device,'inode':inode,'runs':sorted(runs),'history':history}
 
 
+async def exclusive(store, sid):
+    # Status/history requests hold short shared lifetime gates even after Stop.
+    # Wait only for that gate, before inspecting or admitting any deletion.
+    loop = asyncio.get_running_loop(); deadline = loop.time() + 2
+    while True:
+        try: return acquire(store.projects, store.owner_type, store.owner_id, sid, True)
+        except ProjectFault as error:
+            if error.code != 423: raise
+            remaining = deadline - loop.time()
+            if remaining <= 0: raise
+            await asyncio.sleep(min(0.05, remaining))
+
+
 async def preview(host, kind, owner, sid):
     store = SessionStore(host.config['projects'],host.config['r4os'],owner,kind)
     try:
-        with acquire(store.projects,kind,owner,sid,True): return (await inspect(host,store,sid))[0]
+        with (await exclusive(store, sid)): return (await inspect(host,store,sid))[0]
     finally: store.close()
 
 
@@ -229,7 +242,7 @@ async def delete(host, kind, owner, sid, data):
         if previous:
             if previous['session_id'] != sid or previous['fingerprint'] != fingerprint: raise ProjectFault('This request ID belongs to another deletion.',409)
             return original(store,sid,rid)
-        with lifecycle.lock(skills_root(store.projects),fault=ProjectFault), acquire(store.projects,kind,owner,sid,True):
+        with lifecycle.lock(skills_root(store.projects),fault=ProjectFault), (await exclusive(store, sid)):
             current,private=await inspect(host,store,sid)
             if not current['allowed']: raise ProjectFault(current['blockers'][0],409)
             if data['revision'] != current['revision'] or data['scopeHash'] != current['scopeHash'] or data['confirmName'] != current['name']:
@@ -318,7 +331,7 @@ async def resume(host,kind,owner,sid,rid):
         row=store.db.execute('SELECT * FROM session_deletions WHERE request_id=? AND session_id=?',(identity(rid),identity(sid))).fetchone()
         if not row or row['phase']=='deleted': return
         try:
-            with lifecycle.lock(skills_root(store.projects),fault=ProjectFault), acquire(store.projects,kind,owner,sid,True):
+            with lifecycle.lock(skills_root(store.projects),fault=ProjectFault), (await exclusive(store, sid)):
                 with store.db: store.db.execute('UPDATE session_deletions SET error=NULL WHERE request_id=?',(rid,))
                 await finish(host,store,row)
                 host.inboxes.discard((kind,owner,sid))
