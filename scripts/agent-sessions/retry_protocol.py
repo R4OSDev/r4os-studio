@@ -1,7 +1,7 @@
 """Freeze qualified retry capabilities before leases; preserve old queue bytes."""
 from store import ProjectFault
 
-FIELDS=('goalRetryProtocol','claudeRetryProtocol')
+FIELDS=('goalRetryProtocol','claudeRetryProtocol','streamRetryProtocol')
 
 
 def offered(snapshot):
@@ -19,7 +19,7 @@ def offered(snapshot):
     if not snapshot.get('apiProvider'):
         from image_provider import selection
         if not selection(engine.get('profile')):return {}
-    return {'goalRetryProtocol':1}
+    return {'goalRetryProtocol':1,'streamRetryProtocol':1}
 
 
 def freeze(snapshot,original=None):

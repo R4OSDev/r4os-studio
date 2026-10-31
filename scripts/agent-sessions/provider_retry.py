@@ -1,4 +1,4 @@
-"""Original-worker continuations after confirmed pre-response HTTP failures.
+"""Original-worker continuations after qualified HTTP or body-read failures.
 
 Only the pinned zero-retry native provider is eligible. A continuation carries
 no user input. This ledger is observation/recovery evidence, never permission
@@ -187,14 +187,18 @@ class ProviderRetry:
             self.progress = True
             with w.store.db: self.write('completed')
         elif method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed':
-            from provider_errors import describe
+            from provider_errors import describe, response_body_decode_failure
             turn = params['turn']; failure = describe(turn.get('error'), api=bool(w.config.get('apiProvider')))
             if turn.get('id') != w.turn_id: return False
             error = turn.get('error')
             info = error.get('codexErrorInfo') if isinstance(error, dict) else None
             code = next(iter(info)) if isinstance(info, dict) and len(info) == 1 else None
-            if (not self.eligible() or self.native_retry or code != 'httpConnectionFailed'
-                    or failure['httpStatusCode'] not in (502, 503, 504) or not failure['transientCandidate']):
+            http_failure = code == 'httpConnectionFailed' and failure['httpStatusCode'] in (502, 503, 504)
+            stream_failure = (isinstance(error, dict) and response_body_decode_failure(info, error.get('message'))
+                              and type(w.config.get('streamRetryProtocol')) is int
+                              and w.config['streamRetryProtocol'] == 1)
+            if (not self.eligible() or self.native_retry or not (http_failure or stream_failure)
+                    or not failure['transientCandidate']):
                 return False
             self.failed_turn = turn['id']; self.failure = failure
             self.goal_mode = bool(w.config.get('goalExecution') or self.goal.active_execution())
@@ -204,7 +208,8 @@ class ProviderRetry:
                 self.goal_mode = False
                 return False
             if self.goal_mode:
-                try: evidence = self.goal.qualify(self.failed_turn, failure['httpStatusCode'])
+                try: evidence = self.goal.qualify(self.failed_turn, failure['httpStatusCode'],
+                    'responseBodyDecodeFailed' if stream_failure else 'httpConnectionFailed')
                 except Exception:
                     w.error = failure['text'] + ' Automatic Goal continuation was held because its original failure evidence could not be confirmed.'
                     return False

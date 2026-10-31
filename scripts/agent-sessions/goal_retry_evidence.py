@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 import stat
 
+from provider_errors import response_body_decode_failure
+
 RUNTIME_VERSION='0.163.0'
 RUNTIME_SHA256='399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
 MAX_LINE=524288
@@ -31,16 +33,19 @@ class Scope:
     thread_id:str
     failed_turn_id:str
     native_model:str
-    http_status:int
+    http_status:int|None
     goal_binding_sha256:str
     studio_functions:frozenset[str]
+    failure_code:str='httpConnectionFailed'
 
     def validate(self):
         for value in (self.thread_id,self.failed_turn_id):
             if not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',value):
                 raise UnqualifiedEvidence('The original native identity is invalid.')
-        if (not self.native_model or len(self.native_model.encode())>256
-            or self.http_status not in (502,503,504) or type(self.http_status) is not int
+        qualified_failure=(self.failure_code=='httpConnectionFailed' and type(self.http_status) is int
+                           and self.http_status in (502,503,504)
+                           or self.failure_code=='responseBodyDecodeFailed' and self.http_status is None)
+        if (not self.native_model or len(self.native_model.encode())>256 or not qualified_failure
             or not re.fullmatch('[a-f0-9]{64}',self.goal_binding_sha256)
             or not isinstance(self.studio_functions,frozenset)
             or len(self.studio_functions)>128
@@ -79,6 +84,36 @@ def opaque(value):
     return (isinstance(value,str) and 0<len(value.encode())<=256
         and not any(ord(c)<=32 or ord(c)==127 or 0xd800<=ord(c)<=0xdfff for c in value))
 
+def text_only_compaction(payload,scope):
+    """A pinned completed checkpoint is data, not a replacement execution log.
+
+    Keep scanning the entire original turn across it. Accept only the observed
+    remote checkpoint with messages/encrypted compaction and no embedded tools;
+    never use its summary as proof of a tool result or Goal control.
+    """
+    fields={'message','replacement_history','replacement_history_metadata','guardian_history',
+        'retained_context','mcp_resource_origins','window_number','first_window_id','previous_window_id',
+        'window_id','compaction_response_id','latest_token_usage_record','resume_metadata'}
+    history=payload.get('replacement_history');resume=payload.get('resume_metadata')
+    if (scope.failure_code!='responseBodyDecodeFailed' or set(payload)-fields
+        or payload.get('message')!='' or not isinstance(history,list) or not 0<len(history)<=1024
+        or not isinstance(resume,dict) or resume.get('last_started_turn_id')!=scope.failed_turn_id):
+        return False
+    metadata=payload.get('replacement_history_metadata')
+    if metadata is not None and (not isinstance(metadata,list) or len(metadata)!=len(history)
+                                or any(not isinstance(item,dict) for item in metadata)):
+        return False
+    for item in history:
+        if not isinstance(item,dict):return False
+        if item.get('type')=='compaction':
+            if not isinstance(item.get('encrypted_content'),str) or not item['encrypted_content']:return False
+        elif item.get('type')=='message':
+            if item.get('role') not in ('user','developer','assistant') or not isinstance(item.get('content'),list):return False
+            if any(not isinstance(content,dict) or content.get('type') not in
+                   ('input_text','output_text','input_image','refusal') for content in item['content']):return False
+        else:return False
+    return any(item['type']=='compaction' for item in history)
+
 def inspect_stream(handle,relative_path,scope):
     before=os.fstat(handle.fileno())
     if (not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid()
@@ -97,7 +132,7 @@ def inspect_stream(handle,relative_path,scope):
         if not discarded.endswith(b'\n'):
             raise UnqualifiedEvidence('The bounded native suffix starts inside an incomplete record.')
     start=None;terminal=None;previous_ordinal=None;contexts=0;count=0
-    issued=set();returned=set();saw_blocked=False;section=hashlib.sha256()
+    issued=set();returned=set();saw_blocked=False;section=hashlib.sha256();compactions=0
     while handle.tell()<end:
         at=handle.tell();line=handle.readline(min(MAX_LINE+1,end-handle.tell()))
         if start is None:
@@ -129,10 +164,15 @@ def inspect_stream(handle,relative_path,scope):
             raise UnqualifiedEvidence('New native activity follows the failed terminal record.')
         if kind=='event_msg':
             if event=='task_complete':
-                info=(payload.get('error') or {}).get('codex_error_info')
+                error=payload.get('error')
+                if not isinstance(error,dict):raise UnqualifiedEvidence('The final native failure is missing.')
+                info=error.get('codex_error_info')
+                exact_failure=(info=={'http_connection_failed':{'http_status_code':scope.http_status}}
+                    if scope.failure_code=='httpConnectionFailed'
+                    else response_body_decode_failure(info,error.get('message')))
                 if (terminal is not None or payload.get('turn_id')!=scope.failed_turn_id
-                    or info!={'http_connection_failed':{'http_status_code':scope.http_status}}):
-                    raise UnqualifiedEvidence('The exact final native HTTP failure is missing.')
+                    or not exact_failure):
+                    raise UnqualifiedEvidence('The exact final native failure is missing.')
                 terminal=at
             elif event=='thread_goal_updated':
                 goal=payload.get('goal')
@@ -171,6 +211,10 @@ def inspect_stream(handle,relative_path,scope):
         elif kind=='turn_context':
             if payload.get('turn_id')!=scope.failed_turn_id:
                 raise UnqualifiedEvidence('The original native turn context changed.')
+        elif kind=='compacted':
+            if issued!=returned or not text_only_compaction(payload,scope):
+                raise UnqualifiedEvidence('The native compaction checkpoint is unqualified or has outstanding tools.')
+            compactions+=1
         elif kind not in SAFE_METADATA:
             raise UnqualifiedEvidence('A compaction, replacement or unknown native record prevents continuation.')
     after=os.fstat(handle.fileno())
@@ -178,11 +222,13 @@ def inspect_stream(handle,relative_path,scope):
         raise UnqualifiedEvidence('The original native evidence changed during the read.')
     if start is None or terminal is None or not contexts or issued!=returned:
         raise UnqualifiedEvidence('The original native turn coverage or function results are incomplete.')
-    return {'currentNativeEnd':end==before.st_size,'runtimeSha256':RUNTIME_SHA256,'threadId':scope.thread_id,'failedTurnId':scope.failed_turn_id,
+    proof={'currentNativeEnd':end==before.st_size,'runtimeSha256':RUNTIME_SHA256,'threadId':scope.thread_id,'failedTurnId':scope.failed_turn_id,
         'fileSha256':digest(relative_path),'fileSnapshot':signature(after),'headerSha256':hashlib.sha256(header).hexdigest(),
         'turnStartOffset':start,'terminalOffset':terminal,'lastOrdinal':previous_ordinal,
         'sectionSha256':section.hexdigest(),'goalBindingSha256':scope.goal_binding_sha256,
         'functionCallsChecked':len(issued),'modelGoalMutationExcluded':True}
+    if scope.failure_code=='responseBodyDecodeFailed':proof['compactionsChecked']=compactions
+    return proof
 
 def inspect_original(native_root,scope):
     """Inspect exactly one original file under the trusted worker-owned root.

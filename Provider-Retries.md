@@ -1,4 +1,4 @@
-# Provider continuations (0.8.61)
+# Provider continuations (0.8.61, extended in0.8.68)
 
 New compatible project and skill runs can recover from qualified temporary
 provider failures in their original worker. This completes the ordinary-answer,
@@ -15,6 +15,11 @@ Codex0.163.0 runtime and private zero-retry provider or API adapter. It freezes
 CLI2.1.312 and Agent SDK0.3.312 pins. Capabilities are captured before any API or
 subscription credential lease is reserved. A protocol flag alone cannot authorize
 inference; the living controller still checks every original receipt and gate.
+
+Since0.8.68, compatible new Codex/API captures also freeze `streamRetryProtocol: 1`.
+It enables only the exact observed response-body decoding failure described below.
+Saved queues missing this flag retain its absence; existing running workers and
+previously failed runs are not upgraded or restarted.
 
 Previously saved runs and queues are never upgraded. A stored queue without a
 flag keeps its absence and byte-identical configuration, including its existing
@@ -48,18 +53,34 @@ tabs, coordinator recovery and host restart never restore an inference timer.
 
 ## Codex and API
 
-Only typed final HTTP502/503/504 `httpConnectionFailed` failures qualify. Partial
-streams, missing status, internal retries, unresolved images/tools and unknown
-outcomes are excluded. Ordinary responses use `turn/start` with `input: []` in the
-same original process/thread, without a user message ID or repeated prompt.
+Typed final HTTP502/503/504 `httpConnectionFailed` failures qualify. Since0.8.68,
+the new stream capability also accepts a final pinned-native `other` error whose
+message is exactly `stream disconnected before completion: Transport error:
+network error: error decoding response body`. It needs no fabricated HTTP status;
+the public retry contract reports `httpStatusCode: null` and a fixed safe message.
+Arbitrary `other` errors, other stream failures, internal retries, unresolved
+images/tools and unknown outcomes remain excluded. Ordinary responses use
+`turn/start` with `input: []` in the same original process/thread, without a user
+message ID or repeated prompt. Already completed tool results remain in that
+thread; the controller does not resubmit the original prompt or tool calls.
 
 A Goal additionally needs its confirmed original Play/Live-Play, unchanged human
 control sequence, original active-to-blocked notification and complete current
 failed native rollout section. The exact pinned binary logs function calls before
 execution. Header/owner/file/EOF/context/model/ordinal/call-result checks exclude
-model-issued Goal writes, compaction, incomplete effects and later activity.
+model-issued Goal writes, incomplete effects and later activity.
 A public Blocked notification or nearby503 is insufficient. Before submission,
 the same original section and idle blocked Goal are read and checked again.
+
+For the new decoding-failure path, a completed remote context checkpoint may
+occur inside the fully retained original failed turn. Its exact known structure
+must contain only historical messages and encrypted compaction, name the same
+started turn, and have no outstanding calls at the checkpoint. The scanner still
+checks every original call/result and ordinal before and after it. A checkpoint
+never substitutes for missing originals, supplies a tool receipt or authorizes a
+Goal write. Other checkpoint shapes and the older HTTP retry path retain their
+existing hold. This uses the pinned native compaction installation and wire
+definitions at `83086188ae0614bd882818ff1aa23f3194962012`.
 
 Goal continuation uses status-only `thread/goal/set(active, origin: automatic)`
 with no new objective, budget, user text or tool output. A matching new native
@@ -137,6 +158,14 @@ omitted. The actual pinned runtime confirmed an identical retained model-message
 wire and tool result, one original effect and one query/Run across continuation.
 
 ## Verification and practical limits
+
+The0.8.68 extension was reviewed against the unchanged original R4Craft/Session II
+failure and the pinned source. Its final turn contains838 contiguous records,
+139 paired function calls/results and one completed remote compaction checkpoint.
+Python syntax/AST, Build/TypeScript/Lint and installed-source checks cover this
+change. **No tests, fixtures, native model calls or failure simulations were run
+for0.8.68, at the user's explicit request.** The checks below describe the earlier
+0.8.61 qualification and do not claim runtime coverage of the extension.
 
 Targeted checks use the unmodified pinned native runtimes with owned synthetic
 accounts and endpoints in closed network namespaces. They exercise successful

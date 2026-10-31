@@ -26,9 +26,17 @@ MESSAGES = {
     'apiAccessDenied': 'The API account cannot access this model (HTTP403).',
     'apiServiceUnavailable': 'The API model service is temporarily unavailable.',
     'apiModelOrRouteUnavailable': 'The selected model or API route was not found (HTTP404). Review the exact model ID and API prefix.',
+    'responseBodyDecodeFailed': 'The model response connection failed while reading the response body.',
 }
 CONNECTIONS = {'httpConnectionFailed', 'responseStreamConnectionFailed',
                'responseStreamDisconnected', 'responseTooManyFailedAttempts'}
+RESPONSE_BODY_DECODE_MESSAGE = (
+    'stream disconnected before completion: Transport error: network error: error decoding response body')
+
+
+def response_body_decode_failure(info, message):
+    """Only the exact observed pinned-native failure, never a text substring."""
+    return info == 'other' and message == RESPONSE_BODY_DECODE_MESSAGE
 
 
 def describe(error,api=False):
@@ -40,6 +48,8 @@ def describe(error,api=False):
         if candidate in CONNECTIONS and isinstance(info[candidate], dict):
             code = candidate; value = info[candidate].get('httpStatusCode')
             if type(value) is int and 100 <= value <= 599: status = value
+    if response_body_decode_failure(info, error.get('message')):
+        code = 'responseBodyDecodeFailed'
     connection_code=code
     if api and status==402:code='apiAccountRequired'
     if api and status==403:code='apiAccessDenied'
@@ -70,6 +80,7 @@ def describe(error,api=False):
                 'api_account_required':'apiAccountRequired','api_access_denied':'apiAccessDenied','api_service_unavailable':'apiServiceUnavailable'}.get(candidate,code) if isinstance(candidate,str) else code
         except (ValueError,TypeError):pass
     transient = code in ('httpConnectionFailed', 'responseStreamConnectionFailed') and status in (502, 503, 504)
+    if code == 'responseBodyDecodeFailed': transient = True
     if api and status==503 and connection_code in ('httpConnectionFailed','responseStreamConnectionFailed','responseTooManyFailedAttempts'):transient=True
     message = MESSAGES.get(code, 'The model service reported an error.')
     if code in CONNECTIONS:

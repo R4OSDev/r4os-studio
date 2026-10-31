@@ -1,3 +1,20 @@
+## Continue response-body decoding failures (0.8.68)
+
+Compatible new Codex/API runs can continue the exact observed native
+`network error: error decoding response body` failure in their original worker
+and thread. Ordinary responses, GOAL and Live-Goal use the existing60-second
+delay and at most five additional attempts without model progress. Completed
+tool results remain in the conversation. Pause/Stop, queued input, changed
+rights, limits and unconfirmed effects retain priority.
+
+The new capability is frozen for new runs; saved queues, already running workers
+and failed runs retain their previous behavior. GOAL checks the complete original
+failed turn, including a known completed remote context checkpoint with paired
+calls. No old prompt or tool result is submitted again. The specific failure has
+a safe English message and a nullable HTTP status. No tests or model calls were
+run for this extension, as explicitly requested; syntax/Build/TypeScript/Lint and
+source review were used. Details: [Provider-Retries.md](Provider-Retries.md).
+
 ## Use sent attachments as project files (0.8.67)
 
 New runs expose already sent attachment originals read-only under

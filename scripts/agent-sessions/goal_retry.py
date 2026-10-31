@@ -116,7 +116,7 @@ class GoalRetry:
     def original_native(self, scope):
         return inspect_original(Path(self.w.store.directory) / self.w.session_id / 'Codex/native', scope)
 
-    def qualify(self, turn_id, status):
+    def qualify(self, turn_id, status, failure_code='httpConnectionFailed'):
         """Establish a candidate only from a live, original active-to-blocked turn."""
         engine = self.w.config['engine']
         if engine.get('version') != RUNTIME_VERSION or engine.get('sha256') != RUNTIME_SHA256:
@@ -139,7 +139,8 @@ class GoalRetry:
             raise ValueError('The original Goal budget is exhausted')
         from profile import tools_for
         scope = Scope(self.w.thread_id, turn_id, self.w.config['model'], status,
-                      play['goalBindingSha256'], frozenset('studio_' + name for name in tools_for(self.w.config['engine']['profile'])))
+                      play['goalBindingSha256'], frozenset('studio_' + name for name in tools_for(self.w.config['engine']['profile'])),
+                      failure_code)
         native = self.original_native(scope)
         self.evidence = {'play': play, 'blocked': blocked, 'native': native, 'scope': scope}
         self.started.clear()
