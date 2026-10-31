@@ -6,8 +6,13 @@ import { ProjectError } from '../projects/store.js';
 /** A fixed helper with binary stdin; never a model or general shell command. */
 export function attachmentStore<T>(directory: string, request: Record<string, unknown>, bytes?: Buffer): Promise<T> {
   return new Promise((resolve, reject) => {
+    // Production uploads inherit web-service filters that prevent rootless
+    // Bubblewrap startup. The existing coordinator validates only the owned
+    // pending attachment ID; it receives neither arbitrary paths nor commands.
+    const decoder = process.env.NODE_ENV === 'production'
+      ? [process.env.STUDIO_AGENTS_SOCKET ?? '/run/r4os-studio-agents/host.sock'] : [];
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/agent-sessions/attachment_cli.py', import.meta.url)),
-      directory, componentRoot()], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
+      directory, componentRoot(), ...decoder], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
     let output = '', settled = false;
     const finish = (error?: Error, value?: T) => {
       if (settled) return;

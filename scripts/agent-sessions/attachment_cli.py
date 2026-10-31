@@ -14,7 +14,11 @@ def main():
     request=json.loads(raw);kind,ident=binding(request)
     store=SessionStore(sys.argv[1],sys.argv[2],ident,kind)
     try:
-        attachments=Attachments(store,request['sessionId']);op=request['operation']
+        decoder=None
+        if len(sys.argv)>3:
+            from attachment_decode import request_decode
+            decoder=lambda ident:request_decode(store,request['sessionId'],ident,sys.argv[3])
+        attachments=Attachments(store,request['sessionId'],decoder);op=request['operation']
         if op in ('generated_list','generated_access'):
             from generated_images import GeneratedImages
             images=GeneratedImages(store,request['sessionId'])

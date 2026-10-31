@@ -43,6 +43,8 @@ def decode_image(path):
         '/usr/bin/python3','-I','-B','/check.py']
     try:
         result=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,check=False)
+        if not result.stdout:
+            raise ProjectFault('Studio could not start the isolated image validator. The image was not decoded; restore attachment validation support.',503)
         if len(result.stdout)>4096:raise ValueError()
         value=json.loads(result.stdout)
         if result.returncode or 'error' in value:
@@ -66,6 +68,8 @@ def decode_pdf(path):
         '/usr/bin/python3','-I','-B','/check.py']
     try:
         result=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=False)
+        if not result.stdout:
+            raise ProjectFault('Studio could not start the isolated PDF validator. The document was not decoded; restore attachment validation support.',503)
         if result.returncode or len(result.stdout)>8*1024*1024:raise ValueError()
         value=json.loads(result.stdout)
         if (value.get('mode')!='pdfText' or value.get('mediaType')!='application/pdf' or type(value.get('readable')) is not bool
@@ -76,11 +80,11 @@ def decode_pdf(path):
         raise ProjectFault('PDF validation failed or the qualified Poppler25.03.0 decoder is unavailable. Use a valid PDF or UTF-8 text.',400) from None
 
 
-def inspect(path,name,claimed):
+def inspect(path,name,claimed,decoder=None):
     with regular(path).open('rb') as stream:head=stream.read(16)
     if head.startswith(b'\x89PNG\r\n\x1a\n') or head.startswith(b'\xff\xd8') or (head[:4]==b'RIFF' and head[8:12]==b'WEBP'):
-        return decode_image(path)
-    if head.startswith(b'%PDF-'):return decode_pdf(path)
+        return decoder() if decoder else decode_image(path)
+    if head.startswith(b'%PDF-'):return decoder() if decoder else decode_pdf(path)
     extension=name.rsplit('.',1)[-1].lower() if '.' in name else ''
     if extension not in TEXT_EXTENSIONS and not (not extension and claimed.startswith('text/')):
         raise ProjectFault('Unsupported attachment. Use PNG/JPEG/WebP, a valid PDF, or UTF-8 text/source files.',400)
@@ -94,7 +98,7 @@ def inspect(path,name,claimed):
 
 
 class Attachments:
-    def __init__(self,store,sid):self.store=store;self.sid=identity(sid);store.row(self.sid)
+    def __init__(self,store,sid,decoder=None):self.store=store;self.sid=identity(sid);self.decoder=decoder;store.row(self.sid)
 
     def exists(self):return self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='session_attachments' AND type='table'").fetchone() is not None
 
@@ -189,7 +193,8 @@ class Attachments:
                     target.write(chunk);hashed.update(chunk)
                 target.flush();os.fsync(target.fileno())
             if total!=size or hashed.hexdigest()!=sha:raise ProjectFault('The received attachment size or SHA-256 does not match.',400)
-            info=inspect(temp,name,claimed);extracted=info.pop('_text',None);meta.update(info)
+            decoder=(lambda:self.decoder(ident)) if self.decoder else None
+            info=inspect(temp,name,claimed,decoder);extracted=info.pop('_text',None);meta.update(info)
             if extracted is not None:
                 extracted=extracted.encode('utf-8')
                 if hashlib.sha256(extracted).hexdigest()!=info['extractedSha256'] or len(extracted)!=info['extractedBytes']:raise ProjectFault('PDF extraction identity changed.',409)

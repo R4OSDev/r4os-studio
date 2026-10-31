@@ -1,3 +1,18 @@
+## Attachment validation in the web service (0.8.65)
+
+Production image/PDF uploads now use the existing unprivileged agent coordinator
+for the fixed, networkless decoder. The web service retains all its hardening;
+`RestrictSUIDSGID` and `ProtectKernelTunables` otherwise prevent Bubblewrap from
+starting there. Delegation accepts only a registered owner/session and pending
+attachment ID, verifies the original byte count/SHA-256 before and after decoding,
+and runs one validation at a time within the coordinator's memory budget.
+It accepts no paths or commands.
+An unavailable coordinator has a service error and no local fallback. Standalone
+development keeps the direct isolated decoder. File limits, qualified decoders,
+original receipts and explicit Send behavior remain unchanged. A protected
+production-mode HTTP test accepted the user's unmodified 32×32 palette PNG and
+an owned PDF, retained receipts and rejected truncated/unavailable-service cases.
+
 ## Session deletion after Stop (0.8.64)
 
 Deletion preview, confirmed admission and original cleanup now wait up to two
