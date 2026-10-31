@@ -1,5 +1,5 @@
-.agent-model-context { display:flex; align-items:flex-end; gap:8px; flex:0 1 220px; min-width:0; max-width:100%; }
-.agent-model-context .agent-model-choice { flex:1 1 120px; min-width:0; }
+.agent-fast-context { display:flex; align-items:flex-end; gap:8px; flex:0 0 auto; min-width:0; max-width:100%; }
+.agent-fast-context>label { flex:1 1 80px; min-width:0; }
 .agent-context-control { display:flex; flex-direction:column; gap:5px; flex:0 0 72px; }
 .agent-context-label { color:#ac9bbb; font-size:10px; }
 .agent-context { display:flex; align-items:center; justify-content:center; gap:2px; width:72px; height:32px; padding:2px 4px; border:1px solid #59406d; border-radius:6px; color:#d9b8f6; background:#251b2e; cursor:help; }
@@ -23,4 +23,4 @@
 .agent-context-tooltip dd { min-width:0; margin:0; text-align:right; font-variant-numeric:tabular-nums; }
 .agent-model-controls select:disabled { opacity:.55; }
 @media (prefers-reduced-motion:reduce) { .agent-context.pulse { animation:none; box-shadow:0 0 0 1px #b685db66,inset 0 0 8px #b685db18; } }
-@media (max-width:440px) { .agent-model-context { grid-column:1 / -1; width:100%; flex-basis:100%; } }
+@media (max-width:440px) { .agent-fast-context { grid-column:1 / -1; width:100%; } }

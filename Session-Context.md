@@ -36,7 +36,8 @@ GOAL-time contract changes. Session deletion removes only its own snapshot.
 
 ## Speedometer and details (0.8.25)
 
-A compact violet speedometer sits immediately right of Model. It uses the
+A compact violet speedometer sits immediately right of Fast Mode (since0.8.62).
+Both controls stay together when the composer wraps on narrow screens. It uses the
 unrounded measured ratio for its pulse: exactly 50% is quiet; any valid value
 above 50% pulses. Reduced Motion keeps a static highlight. Pending, stale and
 unavailable show a dash, no numeric meter value and no current warning pulse.

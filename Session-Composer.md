@@ -11,7 +11,7 @@ No Goal eligibility, clock measurement, request recovery or editor/save logic
 changes. The STOP color adjustment remains the separate 0.8.44 task.
 
 Account/Model/Reasoning/Fast Mode share their own matching frame with padding
-and responsive wrapping. The context gauge remains immediately right of Model
+and responsive wrapping. Since0.8.62 the context gauge sits immediately right of Fast Mode
 inside that frame; attachment/send controls remain outside. Model choice,
 provider binding, save/recovery and disabled conditions are unchanged.
 

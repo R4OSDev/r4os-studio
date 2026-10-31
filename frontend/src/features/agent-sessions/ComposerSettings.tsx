@@ -64,7 +64,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
           {options?.providers.map((value) => <option key={value.id} value={value.id} disabled={!availableModels(value).length || !providerAllowed(session, value)}>{providerLabel(value)}</option>)}
         </select>
       </label>
-      <div className="agent-model-context"><label className="agent-model-choice"><span>Model</span>
+      <label className="agent-model-choice"><span>Model</span>
         <select aria-label="Model" value={choice.model} disabled={controlsDisabled||!account?.models.length} onChange={(event) => {
           const nextModel = account?.models.find((value) => value.id === event.target.value);
           void change({ model: event.target.value,
@@ -74,18 +74,18 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
           {!model && <option value={choice.model}>{choice.model}</option>}
           {account?.models.map((value) => <option key={value.id} value={value.id} disabled={value.available === false}>{value.name}{value.available === false ? ' · unavailable' : ''}</option>)}
         </select>
-      </label><ContextIndicator context={session.context}/></div>
+      </label>
       <label><span>Reasoning</span>
         <select aria-label="Reasoning" value={choice.effort} disabled={controlsDisabled||!model} onChange={(event) => void change({ effort: event.target.value })}>
           {!model?.efforts.includes(choice.effort) && <option value={choice.effort}>{effortLabel(choice.effort, account)}</option>}
           {model?.efforts.map((value) => <option key={value} value={value}>{effortLabel(value, account)}</option>)}
         </select>
       </label>
-      <label><span>Fast Mode</span>
+      <div className="agent-fast-context"><label><span>Fast Mode</span>
         <select aria-label="Fast Mode" value={choice.fastMode ? 'on' : 'off'} disabled={controlsDisabled||!model} onChange={(event) => void change({ fastMode: event.target.value === 'on' })}>
           <option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option>
         </select>
-      </label>
+      </label><ContextIndicator context={session.context}/></div>
     </fieldset>
     {session.engine.api && <p className="agent-terminal-hint">API connection is fixed for this conversation. Choose another provider in a new session.</p>}
     {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
