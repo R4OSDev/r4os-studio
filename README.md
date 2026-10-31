@@ -1,3 +1,10 @@
+## Simple session deletion confirmation (0.8.66)
+
+Session settings → Delete session now asks **Are you sure?**, with **Yes** and
+**No** and no name field. No preserves the settings draft. Yes submits the
+current preview's session identity and revision through the existing deletion
+API. Active/unconfirmed work and original receipt recovery retain their checks.
+
 ## Attachment validation in the web service (0.8.65)
 
 Production image/PDF uploads now use the existing unprivileged agent coordinator
