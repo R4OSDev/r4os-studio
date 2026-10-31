@@ -55,6 +55,8 @@ def compose(config):
     text += image_instructions(config)
     from document_inputs import instructions as document_instructions
     text += document_instructions(config)
+    from attachment_files import instructions as attachment_instructions
+    text += attachment_instructions(config)
     from image_instructions import compose as image_generation_instructions
     text += image_generation_instructions(config)
     # Saved custom prompts remain original. Bound workers apply current timing

@@ -59,6 +59,11 @@ class Sandbox:
         if self.script_roots:
             args += ['--dir', '/skills']
             for ident, path in self.script_roots: args += ['--ro-bind', str(path), '/skills/' + ident]
+        from attachment_files import mounts as attachment_mounts
+        originals = attachment_mounts(self.worker)
+        if originals:
+            args += ['--dir', '/attachments']
+            for source, target in originals: args += ['--ro-bind', source, target]
         # PowerShell/.NET resolve the current Unix identity during startup.
         # These public OS records are read-only; shadow, auth and host homes
         # remain absent from the namespace.

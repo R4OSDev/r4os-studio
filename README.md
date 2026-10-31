@@ -1,3 +1,19 @@
+## Use sent attachments as project files (0.8.67)
+
+New runs expose already sent attachment originals read-only under
+`/attachments/<attachment UUID>.<png|jpg|webp|txt|pdf>` in the existing tool
+sandbox. With **Run command**, **Read attachment** and **Read file** enabled,
+the agent can verify the hash and copy a requested texture into `assets/`
+using the normal terminal. Existing conversations can use prior sent files
+on their next explicit message; no upload or new session is needed.
+
+Access freezes the exact accepted owner/session references, validates original
+bytes and requires the active run's workspace lease. Unsent uploads, other
+sessions, credentials and host paths stay outside the namespace. No file is
+automatically copied or executed. Already admitted workers and old queued
+captures keep their original access; a new queue keeps its original file set.
+The existing tools, native profiles and SDK/project pins remain unchanged.
+
 ## Simple session deletion confirmation (0.8.66)
 
 Session settings → Delete session now asks **Are you sure?**, with **Yes** and

@@ -48,7 +48,7 @@ def get_run(store, run_id):
     return row
 
 
-def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None):
+def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None, original=None):
     """Freeze a complete accepted selection without admitting a concurrent run."""
     session = store.get(session_id)
     goal_mode = data.get('mode') == 'goal'
@@ -80,6 +80,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
             snapshot['claudeGoalPreparation']=data['liveGoalPreparation']==1
     if 'attachments' in data:snapshot['attachments']=attachments
     accepted=attachments+history(store,session_id)
+    from attachment_files import freeze as freeze_attachment_files
+    freeze_attachment_files(snapshot, accepted, original)
     if any(m['mode']=='localImage' for m in accepted):snapshot.update(imageContext=True,imageInputModalities=modalities)
     if any(m['mode'] in ('text','pdfText') for m in accepted):snapshot['documentContext']=True
     if goal_mode and session['engine'].get('kind') == 'claude-code':
@@ -175,7 +177,7 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         if store.owner_type == 'project':
             from project_maintenance import pending_git
             if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
-        snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None)
+        snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None, original=frozen)
         if frozen is not None:
             # Adding a capability to new captures must not upgrade old queued
             # inputs or change their already reserved API lease hash.
