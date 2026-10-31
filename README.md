@@ -1,3 +1,13 @@
+## Session stream shutdown (0.8.63)
+
+Closing or backpressured session event streams no longer write a later
+heartbeat or resume output after an asynchronous read. Response errors are
+handled locally, and stream/timer cleanup is idempotent. This prevents a
+disconnected session stream from crashing the web service and its private VM
+bridge. Event cursors, replay/live delivery and ongoing agents/VMs retain their
+existing behavior. Details and targeted regression coverage:
+[Session-Text-Streaming.md](Session-Text-Streaming.md).
+
 ## Provider recovery (0.8.61)
 
 Compatible new Codex/API and Claude subscription runs can continue qualified

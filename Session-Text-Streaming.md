@@ -1,4 +1,25 @@
-# Live assistant text (0.8.29)
+# Session text streaming
+
+## Server stream lifecycle (0.8.63)
+
+The shared project/skill SSE route checks the response before each write and
+again after an asynchronous event read. Backpressure ends the current stream
+without sending a later heartbeat. Initial delivery that closes the stream
+does not start polling. Close, finish and response errors release its timer
+and registration; repeated cleanup is safe. Asynchronous response errors have
+a local listener so they cannot terminate the web service or its private VM
+bridge.
+
+The existing 300 ms poll, 40-poll heartbeat, bounded backlog, authentication
+reconnect and cursor/live/replay semantics are preserved. Reconnecting reads
+persisted events; it does not replay a model input, tool effect or VM job.
+
+Targeted HTTP regression covers real backpressure on the heartbeat poll,
+disconnect while a read is pending, cursor replay/live delivery in both owner
+routes, local response errors and shutdown during a pending read. No native
+provider inference or guest action is required.
+
+## Live assistant text (0.8.29)
 
 New live assistant text in project and skill sessions advances in complete
 Unicode graphemes, with a brief violet glow on the latest four characters.

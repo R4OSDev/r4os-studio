@@ -61,33 +61,57 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
     const initial = await agentHost<EventResponse>({ ...payload, after });
     reply.hijack();
     const response = reply.raw;
-    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
-    response.flushHeaders();
     let closed = false, timer: NodeJS.Timeout | undefined;
-    const close = () => { closed = true; clearTimeout(timer); streams.delete(close); response.end(); };
+    const release = () => { closed = true; clearTimeout(timer); streams.delete(close); };
+    const close = () => {
+      if (closed) return;
+      release();
+      if (!response.writableEnded && !response.destroyed) response.end();
+    };
+    const writable = () => {
+      if (closed) return false;
+      if (response.writableEnded || response.destroyed) { release(); return false; }
+      return true;
+    };
+    const write = (frame: string) => {
+      if (!writable()) return false;
+      if (!response.write(frame) || response.writableLength > 512 * 1024) { close(); return false; }
+      return true;
+    };
     streams.add(close);
-    response.on('close', () => { closed = true; clearTimeout(timer); streams.delete(close); });
+    response.on('close', release);
+    response.on('finish', release);
+    // ServerResponse errors are emitted asynchronously, outside poll's catch.
+    response.on('error', close);
     let caughtUp=false;
     const send = (result: EventResponse) => {
+      if (!writable()) return false;
       for (const event of result.events) {
         if (event.seq <= after) continue;
         const frame = `id: ${event.seq}\ndata: ${JSON.stringify({...event,delivery:caughtUp?'live':'replay'})}\n\n`;
         after = event.seq;
-        if (!response.write(frame) || response.writableLength > 512 * 1024) { close(); break; }
+        if (!write(frame)) return false;
       }
       if(!result.events.length)caughtUp=true;
+      return writable();
     };
-    send(initial);
+    try {
+      if (!writable()) return;
+      response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+      response.flushHeaders();
+      if (!send(initial)) return;
+    } catch { close(); return; }
     let heartbeats = 0;
     const poll = async () => {
-      if (closed) return;
+      if (!writable()) return;
       try {
-        send(await agentHost<EventResponse>({ ...payload, after }));
-        if (++heartbeats % 40 === 0) response.write(': heartbeat\n\n');
+        // The response may close while the original read is in flight.
+        if (!send(await agentHost<EventResponse>({ ...payload, after }))) return;
+        if (++heartbeats % 40 === 0 && !write(': heartbeat\n\n')) return;
         // Refresh authentication on bounded reconnects, without stopping a run.
         if (heartbeats >= 800) { close(); return; }
       } catch { close(); return; }
-      if (!closed) timer = setTimeout(() => { void poll(); }, 300);
+      if (writable()) timer = setTimeout(() => { void poll(); }, 300);
     };
     timer = setTimeout(() => { void poll(); }, 300);
 
