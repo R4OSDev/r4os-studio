@@ -14,13 +14,16 @@ from pathlib import Path
 import re
 import stat
 
-from provider_errors import response_body_decode_failure
+from provider_errors import TRANSPORT_FAILURE_CODES, transport_failure
 
 RUNTIME_VERSION='0.163.0'
 RUNTIME_SHA256='399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
 MAX_LINE=524288
 MAX_TAIL=8*1024*1024
 MAX_RECORDS=16384
+STREAM_V2_MAX_LINE=2*1024*1024
+STREAM_V2_MAX_TAIL=32*1024*1024
+STREAM_V2_MAX_RECORDS=65536
 SAFE_EVENTS=frozenset({'token_count','thread_settings_applied','agent_message',
     'agent_reasoning','agent_reasoning_raw_content','mcp_tool_call_end',
     'web_search_end','image_generation_end','item_completed','user_message'})
@@ -37,14 +40,19 @@ class Scope:
     goal_binding_sha256:str
     studio_functions:frozenset[str]
     failure_code:str='httpConnectionFailed'
+    stream_protocol:int=1
 
     def validate(self):
         for value in (self.thread_id,self.failed_turn_id):
             if not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',value):
                 raise UnqualifiedEvidence('The original native identity is invalid.')
+        if type(self.stream_protocol) is not int or self.stream_protocol not in (1,2):
+            raise UnqualifiedEvidence('The original stream retry protocol is invalid.')
         qualified_failure=(self.failure_code=='httpConnectionFailed' and type(self.http_status) is int
-                           and self.http_status in (502,503,504)
-                           or self.failure_code=='responseBodyDecodeFailed' and self.http_status is None)
+                           and self.http_status in (502,503,504) and self.stream_protocol==1
+                           or self.failure_code=='responseBodyDecodeFailed' and self.http_status is None
+                           or self.failure_code=='responseTransportTimeout' and self.http_status is None
+                           and self.stream_protocol==2)
         if (not self.native_model or len(self.native_model.encode())>256 or not qualified_failure
             or not re.fullmatch('[a-f0-9]{64}',self.goal_binding_sha256)
             or not isinstance(self.studio_functions,frozenset)
@@ -67,8 +75,8 @@ def object_pairs(values):
 
 def invalid_constant(_):raise UnqualifiedEvidence('Invalid native JSON number.')
 
-def decode(line):
-    if len(line)>MAX_LINE or not line.endswith(b'\n'):
+def decode(line,max_line=MAX_LINE):
+    if len(line)>max_line or not line.endswith(b'\n'):
         raise UnqualifiedEvidence('The original native record is oversized or incomplete.')
     try:value=json.loads(line,object_pairs_hook=object_pairs,parse_constant=invalid_constant)
     except (ValueError,UnicodeError,RecursionError) as error:
@@ -95,7 +103,7 @@ def text_only_compaction(payload,scope):
         'retained_context','mcp_resource_origins','window_number','first_window_id','previous_window_id',
         'window_id','compaction_response_id','latest_token_usage_record','resume_metadata'}
     history=payload.get('replacement_history');resume=payload.get('resume_metadata')
-    if (scope.failure_code!='responseBodyDecodeFailed' or set(payload)-fields
+    if (scope.failure_code not in TRANSPORT_FAILURE_CODES or set(payload)-fields
         or payload.get('message')!='' or not isinstance(history,list) or not 0<len(history)<=1024
         or not isinstance(resume,dict) or resume.get('last_started_turn_id')!=scope.failed_turn_id):
         return False
@@ -115,36 +123,39 @@ def text_only_compaction(payload,scope):
     return any(item['type']=='compaction' for item in history)
 
 def inspect_stream(handle,relative_path,scope):
+    max_line=STREAM_V2_MAX_LINE if scope.stream_protocol==2 else MAX_LINE
+    max_tail=STREAM_V2_MAX_TAIL if scope.stream_protocol==2 else MAX_TAIL
+    max_records=STREAM_V2_MAX_RECORDS if scope.stream_protocol==2 else MAX_RECORDS
     before=os.fstat(handle.fileno())
     if (not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid()
         or before.st_nlink!=1 or before.st_mode & 0o022):
         raise UnqualifiedEvidence('The original native file ownership or type changed.')
     end=before.st_size
-    header=handle.readline(MAX_LINE+1);meta=decode(header)
+    header=handle.readline(max_line+1);meta=decode(header,max_line)
     if (meta.get('type')!='session_meta' or meta['payload'].get('id')!=scope.thread_id
         or meta['payload'].get('cli_version')!=RUNTIME_VERSION or meta['payload'].get('cwd')!='/workspace'):
         raise UnqualifiedEvidence('The original native session header does not match.')
-    offset=max(len(header),end-MAX_TAIL);handle.seek(offset)
+    offset=max(len(header),end-max_tail);handle.seek(offset)
     if offset>len(header):
-        discarded=handle.readline(MAX_LINE+1)
+        discarded=handle.readline(max_line+1)
         while discarded and not discarded.endswith(b'\n') and handle.tell()<end:
-            discarded=handle.readline(min(MAX_LINE+1,end-handle.tell()))
+            discarded=handle.readline(min(max_line+1,end-handle.tell()))
         if not discarded.endswith(b'\n'):
             raise UnqualifiedEvidence('The bounded native suffix starts inside an incomplete record.')
     start=None;terminal=None;previous_ordinal=None;contexts=0;count=0
     issued=set();returned=set();saw_blocked=False;section=hashlib.sha256();compactions=0
     while handle.tell()<end:
-        at=handle.tell();line=handle.readline(min(MAX_LINE+1,end-handle.tell()))
+        at=handle.tell();line=handle.readline(min(max_line+1,end-handle.tell()))
         if start is None:
-            if len(line)>MAX_LINE or not line.endswith(b'\n'):
+            if len(line)>max_line or not line.endswith(b'\n'):
                 while line and not line.endswith(b'\n') and handle.tell()<end:
-                    line=handle.readline(min(MAX_LINE+1,end-handle.tell()))
+                    line=handle.readline(min(max_line+1,end-handle.tell()))
                 continue
-            try:value=decode(line)
+            try:value=decode(line,max_line)
             except UnqualifiedEvidence:continue
-        else:value=decode(line)
+        else:value=decode(line,max_line)
         count+=1
-        if count>MAX_RECORDS:raise UnqualifiedEvidence('The native suffix exceeds its record bound.')
+        if count>max_records:raise UnqualifiedEvidence('The native suffix exceeds its record bound.')
         kind=value.get('type');payload=value['payload'];event=payload.get('type')
         matching_start=(kind=='event_msg' and event=='task_started' and payload.get('turn_id')==scope.failed_turn_id)
         if matching_start:
@@ -169,7 +180,7 @@ def inspect_stream(handle,relative_path,scope):
                 info=error.get('codex_error_info')
                 exact_failure=(info=={'http_connection_failed':{'http_status_code':scope.http_status}}
                     if scope.failure_code=='httpConnectionFailed'
-                    else response_body_decode_failure(info,error.get('message')))
+                    else transport_failure(info,error.get('message'))==scope.failure_code)
                 if (terminal is not None or payload.get('turn_id')!=scope.failed_turn_id
                     or not exact_failure):
                     raise UnqualifiedEvidence('The exact final native failure is missing.')
@@ -227,7 +238,10 @@ def inspect_stream(handle,relative_path,scope):
         'turnStartOffset':start,'terminalOffset':terminal,'lastOrdinal':previous_ordinal,
         'sectionSha256':section.hexdigest(),'goalBindingSha256':scope.goal_binding_sha256,
         'functionCallsChecked':len(issued),'modelGoalMutationExcluded':True}
-    if scope.failure_code=='responseBodyDecodeFailed':proof['compactionsChecked']=compactions
+    if scope.failure_code in TRANSPORT_FAILURE_CODES:proof['compactionsChecked']=compactions
+    if scope.stream_protocol==2:
+        proof['streamRetryProtocol']=2
+        proof['limits']={'maxLineBytes':max_line,'maxTailBytes':max_tail,'maxRecords':max_records}
     return proof
 
 def inspect_original(native_root,scope):

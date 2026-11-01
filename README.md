@@ -1,3 +1,22 @@
+## Continue native transport timeouts (0.8.69)
+
+New compatible Codex/API runs also continue the exact observed native
+`stream disconnected before completion: Transport error: timeout` failure.
+The existing60-second delay, five additional attempts without model progress,
+original worker/thread, confirmed tools, Goal/Live-Play and control gates apply.
+A specific safe message explains the timeout; no HTTP status is invented.
+
+New captures freeze stream retry protocol2. Their complete failed-turn evidence
+reader remains bounded at32MiB total,2MiB per record and65,536 records, covering
+the observed8.9MB turn and865KB context checkpoint. Every original ordinal and
+paired call/result is still required. Saved version1 queues keep decoding-only
+recovery and their previous reader limits; HTTP recovery is unchanged. No old
+worker or failed run is restarted. No tests, fixtures, model calls or failure
+simulations are run for this extension, as requested. Static checks and details:
+[Provider-Retries.md](Provider-Retries.md).
+An initial admission hold caused by an unconfirmed tool result or possible
+partial changes now names that reason in the safe session error.
+
 ## Continue response-body decoding failures (0.8.68)
 
 Compatible new Codex/API runs can continue the exact observed native

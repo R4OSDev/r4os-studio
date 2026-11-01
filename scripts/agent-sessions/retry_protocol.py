@@ -19,7 +19,7 @@ def offered(snapshot):
     if not snapshot.get('apiProvider'):
         from image_provider import selection
         if not selection(engine.get('profile')):return {}
-    return {'goalRetryProtocol':1,'streamRetryProtocol':1}
+    return {'goalRetryProtocol':1,'streamRetryProtocol':2}
 
 
 def freeze(snapshot,original=None):
@@ -29,7 +29,11 @@ def freeze(snapshot,original=None):
         if original is not None:
             if field not in original:
                 snapshot.pop(field,None);continue
-            if type(original[field]) is not int or original[field]!=1 or available.get(field)!=1:
+            versions=(1,2) if field=='streamRetryProtocol' else (1,)
+            if (type(original[field]) is not int or original[field] not in versions
+                or available.get(field) not in versions or original[field]>available[field]):
                 raise ProjectFault('The saved retry protocol is unavailable. Preserve the original queue and submit explicitly after review.',409)
+            snapshot[field]=original[field]
+            continue
         if field in available:snapshot[field]=available[field]
         else:snapshot.pop(field,None)

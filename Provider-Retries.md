@@ -1,4 +1,4 @@
-# Provider continuations (0.8.61, extended in0.8.68)
+# Provider continuations (0.8.61, extended in0.8.68–0.8.69)
 
 New compatible project and skill runs can recover from qualified temporary
 provider failures in their original worker. This completes the ordinary-answer,
@@ -16,10 +16,12 @@ CLI2.1.312 and Agent SDK0.3.312 pins. Capabilities are captured before any API o
 subscription credential lease is reserved. A protocol flag alone cannot authorize
 inference; the living controller still checks every original receipt and gate.
 
-Since0.8.68, compatible new Codex/API captures also freeze `streamRetryProtocol: 1`.
-It enables only the exact observed response-body decoding failure described below.
-Saved queues missing this flag retain its absence; existing running workers and
-previously failed runs are not upgraded or restarted.
+Since0.8.69, compatible new Codex/API captures freeze `streamRetryProtocol: 2`.
+It enables the exact observed response-body decoding and transport-timeout failures
+described below, with bounded evidence reading suitable for the observed long turn.
+The0.8.68 version1 capability retains its original decoding-only behavior and
+evidence limits. Saved queues preserve version1, version2 or a missing flag exactly;
+they are never upgraded. Existing workers and failed runs are not restarted.
 
 Previously saved runs and queues are never upgraded. A stored queue without a
 flag keeps its absence and byte-identical configuration, including its existing
@@ -53,11 +55,13 @@ tabs, coordinator recovery and host restart never restore an inference timer.
 
 ## Codex and API
 
-Typed final HTTP502/503/504 `httpConnectionFailed` failures qualify. Since0.8.68,
-the new stream capability also accepts a final pinned-native `other` error whose
-message is exactly `stream disconnected before completion: Transport error:
-network error: error decoding response body`. It needs no fabricated HTTP status;
-the public retry contract reports `httpStatusCode: null` and a fixed safe message.
+Typed final HTTP502/503/504 `httpConnectionFailed` failures qualify. The new stream
+capability also accepts a final pinned-native `other` error with one of two exact
+messages: `stream disconnected before completion: Transport error: network error:
+error decoding response body` (versions1/2) or `stream disconnected before
+completion: Transport error: timeout` (version2). Neither needs a fabricated HTTP
+status; the public retry contract reports `httpStatusCode: null` and a fixed safe
+message specific to decoding or timeout.
 Arbitrary `other` errors, other stream failures, internal retries, unresolved
 images/tools and unknown outcomes remain excluded. Ordinary responses use
 `turn/start` with `input: []` in the same original process/thread, without a user
@@ -72,7 +76,7 @@ model-issued Goal writes, incomplete effects and later activity.
 A public Blocked notification or nearby503 is insufficient. Before submission,
 the same original section and idle blocked Goal are read and checked again.
 
-For the new decoding-failure path, a completed remote context checkpoint may
+For the qualified stream-failure paths, a completed remote context checkpoint may
 occur inside the fully retained original failed turn. Its exact known structure
 must contain only historical messages and encrypted compaction, name the same
 started turn, and have no outstanding calls at the checkpoint. The scanner still
@@ -81,6 +85,14 @@ never substitutes for missing originals, supplies a tool receipt or authorizes a
 Goal write. Other checkpoint shapes and the older HTTP retry path retain their
 existing hold. This uses the pinned native compaction installation and wire
 definitions at `83086188ae0614bd882818ff1aa23f3194962012`.
+
+Version2 reads at most32MiB of the current original suffix, with at most2MiB per
+record and65,536 records. It still needs the original failed-turn start and every
+subsequent ordinal/call/result through the same immutable EOF. It does not read a
+truncated prefix as evidence or drop oversized records inside that turn. Original
+HTTP and version1 decoding continuations retain8MiB/512KiB/16,384-record limits.
+This change covers the observed8,860,386-byte turn and865,169-byte record without
+removing the bounds. The original1,024 paired-call limit and other gates remain.
 
 Goal continuation uses status-only `thread/goal/set(active, origin: automatic)`
 with no new objective, budget, user text or tool output. A matching new native
@@ -158,6 +170,22 @@ omitted. The actual pinned runtime confirmed an identical retained model-message
 wire and tool result, one original effect and one query/Run across continuation.
 
 ## Verification and practical limits
+
+The0.8.69 extension was reviewed against the next unchanged R4Craft/Session II
+failure at2026-10-31T23:08:24Z (November1,00:08CET). The run used0.8.68 and
+stream protocol1; its actual final error was `Transport error: timeout`, so no
+retry candidate was created. Its final turn has1,973 contiguous records,347 paired
+function calls/results and one completed remote compaction checkpoint. Both the
+total turn and largest record exceed the old reader limits. Python syntax/AST,
+Build/TypeScript/Lint, source review and installed-source/preservation checks are
+used for0.8.69. At the user's continuing request, no tests, fixtures, model calls
+or failure simulations are run for this extension.
+The original run also retains a failed patch marked `partialChangesPossible`.
+That separate admission hold is preserved. Complete native call/result pairing
+alone does not clear a tool's explicit possible-partial-change result.
+When the initial tool-receipt gate holds a continuation for this reason, the
+safe session error now explains that the tool outcome or possible partial changes
+need review, alongside the original transport failure.
 
 The0.8.68 extension was reviewed against the unchanged original R4Craft/Session II
 failure and the pinned source. Its final turn contains838 contiguous records,

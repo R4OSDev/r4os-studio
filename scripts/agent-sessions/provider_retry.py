@@ -23,6 +23,10 @@ MAX_ATTEMPTS = 5
 OPEN = ('waiting', 'submitting', 'continuing')
 
 
+class UnconfirmedToolOutcome(ValueError):
+    pass
+
+
 def digest(value):
     return hashlib.sha256(encode(value).encode()).hexdigest()
 
@@ -130,7 +134,7 @@ class ProviderRetry:
             if (receipt['state'] not in ('completed', 'failed') or not isinstance(result, dict)
                     or type(result.get('success')) is not bool or result.get('error') == 'unknown'
                     or result.get('partialChangesPossible') is True):
-                raise ValueError('Tool outcome is unconfirmed')
+                raise UnconfirmedToolOutcome('Tool outcome is unconfirmed')
             hashed.update(encode(dict(receipt)).encode())
         return hashed.hexdigest()
 
@@ -187,16 +191,18 @@ class ProviderRetry:
             self.progress = True
             with w.store.db: self.write('completed')
         elif method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed':
-            from provider_errors import describe, response_body_decode_failure
+            from provider_errors import describe, transport_failure
             turn = params['turn']; failure = describe(turn.get('error'), api=bool(w.config.get('apiProvider')))
             if turn.get('id') != w.turn_id: return False
             error = turn.get('error')
             info = error.get('codexErrorInfo') if isinstance(error, dict) else None
             code = next(iter(info)) if isinstance(info, dict) and len(info) == 1 else None
             http_failure = code == 'httpConnectionFailed' and failure['httpStatusCode'] in (502, 503, 504)
-            stream_failure = (isinstance(error, dict) and response_body_decode_failure(info, error.get('message'))
-                              and type(w.config.get('streamRetryProtocol')) is int
-                              and w.config['streamRetryProtocol'] == 1)
+            stream_code = transport_failure(info, error.get('message')) if isinstance(error, dict) else None
+            stream_protocol = w.config.get('streamRetryProtocol')
+            stream_failure = (type(stream_protocol) is int and (
+                stream_code == 'responseBodyDecodeFailed' and stream_protocol in (1, 2)
+                or stream_code == 'responseTransportTimeout' and stream_protocol == 2))
             if (not self.eligible() or self.native_retry or not (http_failure or stream_failure)
                     or not failure['transientCandidate']):
                 return False
@@ -209,7 +215,8 @@ class ProviderRetry:
                 return False
             if self.goal_mode:
                 try: evidence = self.goal.qualify(self.failed_turn, failure['httpStatusCode'],
-                    'responseBodyDecodeFailed' if stream_failure else 'httpConnectionFailed')
+                    stream_code if stream_failure else 'httpConnectionFailed',
+                    stream_protocol if stream_failure else 1)
                 except Exception:
                     w.error = failure['text'] + ' Automatic Goal continuation was held because its original failure evidence could not be confirmed.'
                     return False
@@ -228,6 +235,9 @@ class ProviderRetry:
             with w.store.db:
                 w.store.db.execute('UPDATE runs SET turn_id=? WHERE id=?', (self.failed_turn, w.run_id))
                 try: self.receipts = self.local_gate()
+                except UnconfirmedToolOutcome:
+                    w.error = failure['text'] + ' Automatic continuation was held because a tool outcome is unconfirmed or may include partial changes. Review the original tool result before continuing.'
+                    return False
                 except Exception: return False
                 meta = json.loads(get_run(w.store, w.run_id)['worker'] or '{}')
                 self.saved_live_open = meta.get('liveGoalOpen') is True
