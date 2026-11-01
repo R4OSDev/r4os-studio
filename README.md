@@ -1,3 +1,29 @@
+## Environment notes for upstream faults and feature requests (0.8.76)
+
+Reporting policy2 explicitly covers observed Studio/tool/workflow faults and
+faults in dependencies outside the agent's accessible project: public APIs/ABI,
+SDK/Contract, kernel, Desktop and libraries. An upstream component is a valid
+reporting target even when it is a separate application or repository. Reports
+identify the known component/version, operation, expected/observed behavior and
+impact using available evidence, with suspected causes distinguished from facts.
+
+Concrete API extensions, Desktop functions and library functions that simplify
+the actual workflow can be reported without a preceding failure. The existing
+separately filterable **Suggestion** type (`kind=suggestion`) identifies these
+requests; category continues to describe the affected area. Record the missing
+capability, use case and benefit. Ordinary bugs in the editable app project,
+expected permissions/Stop and corrected misuse retain their existing treatment.
+
+Both tool descriptions and the common runtime instruction block carry the scope.
+The block replaces earlier note guidance on compatible new runs/resumes with
+Environment notes enabled. Existing native threads keep their original dynamic
+tool declarations; new threads receive the updated descriptions. Schemas, tools,
+permissions, saved global/project prompts and original notes remain unchanged.
+Read-before-write, deduplication, concise private content, no reporting quota or
+extra investigation solely for reporting, and user-deleted-note protection remain.
+Six existing targeted note tests, schema/source review, Build/TypeScript and lint
+verify the update without model calls or production note creation.
+
 ## Session deletion after completed upload failures (0.8.75)
 
 Session deletion now recognizes rejected uploads and confirmed purges as terminal
