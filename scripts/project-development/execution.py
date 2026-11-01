@@ -143,6 +143,7 @@ class Execution:
             allowed = {'kind', 'text'} if console_text else ({'kind', 'text', 'frameId'} if gui_text else ({'kind', 'key', 'frameId'} if kind == 'key' else {'kind', 'x', 'y', 'frameId'}))
             if kind == 'gesture':
                 allowed = {'kind', 'frameId', 'steps'} | ({'observeAfterStep'} if 'observeAfterStep' in value else set())
+                if 'interrupt' in value: allowed.add('interrupt')
             if kind == 'key' and 'repeat' in value: allowed.add('repeat')
             if set(value) != allowed: raise DevelopmentFault('Unexpected VM input fields.', 400)
             if state['state'] != 'running': raise DevelopmentFault('The owned guest process has ended.')
@@ -314,6 +315,8 @@ class Execution:
                         raise DevelopmentFault('The guest controller does not confirm its declared extended input capability.')
                     if deployment.get('helperCapabilities', {}).get('gestureVersion') == 1 and hello['result'].get('gestureVersion') != 1:
                         raise DevelopmentFault('The guest controller does not confirm its declared gesture capability.')
+                    if deployment.get('helperCapabilities', {}).get('dragInterruptVersion') == 1 and hello['result'].get('dragInterruptVersion') != 1:
+                        raise DevelopmentFault('The guest controller does not confirm its declared drag interrupt capability.')
                     guard(store, job, lease, allow_stopping=True)
                     if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                         closed = await control.call('finish')

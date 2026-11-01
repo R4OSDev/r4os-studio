@@ -79,6 +79,16 @@ retains the previous host output and its own original transport records.
 
 ## Own Desktop window control v1 (0.8.73)
 
+New helpers also declare dragInterruptVersion1. A profile17 gesture may include
+one Escape or prepared own resize/minimize between the last held step and its
+final up. The complete native command is saved by the host before input; its
+operation is submitted once and status reads never repeat it. Apply while the
+original release is pending and later composed-frame proof remain separate.
+Unexpected changes, Stop, deadline or lost control release the original press.
+Outside-client capture routing remains unsupported; no Desktop-owner takeover.
+Existing gestureVersion1 and older declarations stay compatible. See
+Drag-Interrupts.md for admission, timing, permissions and evidence limits.
+
 New helpers declare windowControlVersion1 without changing the existing private
 control/watchdog transport versions. Only a profile16 session with its explicit
 window permission and per-run opt-in requests DESKRUN controller delegation.

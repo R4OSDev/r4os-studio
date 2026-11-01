@@ -8,7 +8,7 @@ import asyncio
 class DevelopmentTools:
     def __init__(self, worker): self.worker = worker
 
-    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16')
+    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17')
 
     def present(self,job,page=None):
         if not self.compact(): return page or {'job':job}
@@ -147,6 +147,11 @@ class DevelopmentTools:
                 data = await self.request('window', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
                 return {'success': data.get('confirmed', False), 'output': encode(data), 'development': {'jobId': value['jobId']}}
             if name == 'send_vm_input':
+                if 'interrupt' in value:
+                    from vm_worker import broker_call
+                    capability = await broker_call({'operation': 'capabilities'})
+                    if capability.get('features', {}).get('dragInterrupt') != 1:
+                        raise DevelopmentFault('Drag interrupts require the current development coordinator; no input was admitted.', 503)
                 if value.get('observeAfterStep') is not None and not self.image_capable():
                     raise DevelopmentFault('An intermediate gesture image requires an image-capable model.', 409)
                 data = await self.request('input', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
@@ -157,7 +162,7 @@ class DevelopmentTools:
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
                     **({'development': {'jobId': job['id']}} if job else
-                       {'development': {'jobId': value['jobId']}} if name == 'control_app_window' else {})}
+                       {'development': {'jobId': value['jobId']}} if name in ('control_app_window','send_vm_input') else {})}
 
     async def wait_for_vm(self, job, call_id, arguments):
         from contracts import ACTIVE, DevelopmentFault, LIMITS, UnconfirmedGuestEffect

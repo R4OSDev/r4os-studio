@@ -2,7 +2,7 @@
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill' or not rights.get('studio.read_development_job'): return ''
-    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16')
+    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17')
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
         'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '

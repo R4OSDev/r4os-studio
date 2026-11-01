@@ -116,6 +116,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         .guiFrameBindingVersion = @as(u32, 1),
         .guiInputVersion = @as(u32, 2),
         .gestureVersion = @as(u32, 1),
+        .dragInterruptVersion = @as(u32, 1),
         .watchdogVersion = @as(u32, 1), .bootstrapRemoved = true, .watchdogInstanceId = daemon.instance_id,
         .watchdogGeneration = daemon_generation[0..daemon_generation_len],
         .receiptFile = std.mem.sliceTo(&response, 0), .modulePath = module_path });

@@ -1,7 +1,7 @@
 """Stable Studio dynamic tool declarations; authorization is checked for every call."""
 from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, tools_for
 from copy import deepcopy
-from profile import WINDOW_PROFILE
+from profile import WINDOW_PROFILE, DRAG_PROFILE
 
 
 def obj(properties, required=()):
@@ -94,9 +94,9 @@ def specifications(profile=PROFILE):
     # dispatcher BEFORE execution, even if the model retains their declarations.
     result = []
     for name in tools_for(profile):
-        definition = ROADMAP_CONTRACT_DEFS[name] if profile in (CONTRACT_PROFILE,NOTES_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE) and name in ROADMAP_CONTRACT_DEFS else DEFS[name]
+        definition = ROADMAP_CONTRACT_DEFS[name] if profile in (CONTRACT_PROFILE,NOTES_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE) and name in ROADMAP_CONTRACT_DEFS else DEFS[name]
         description, schema = definition[0], deepcopy(definition[1])
-        if profile == WINDOW_PROFILE and name == 'run_project':
+        if profile in (WINDOW_PROFILE,DRAG_PROFILE) and name == 'run_project':
             schema['properties']['windowControl'] = {'type':'boolean'}
             description += ' Set windowControl=true only when this run needs resize/minimize/restore; it requires Control app window permission and delegates this original launch to the helper. It consumes the existing SSH command budget. Ordinary runs keep their original budget.'
         if profile in (GUI_PROFILE, ROADMAP_PROFILE,*REMOTE_PROFILES) and name == 'send_vm_input':
@@ -111,7 +111,7 @@ def specifications(profile=PROFILE):
             schema['properties']['kind']['enum'] = ['text', 'guiText', 'key', 'click']
             schema['properties']['key'] = {'type': 'string', 'minLength': 1, 'maxLength': 32}
             schema['properties']['repeat'] = {'type': 'integer', 'minimum': 1, 'maximum': 16}
-        if profile in (GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE) and name == 'send_vm_input':
+        if profile in (GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE) and name == 'send_vm_input':
             description += (' kind=gesture queues one own-client plan: 1..32 down/move/up steps, '
                 'monotonic atMilliseconds=0..2000, explicit left/right button on down/up; '
                 'release within the same call. Use timed down/up pairs for double click. '
@@ -130,7 +130,23 @@ def specifications(profile=PROFILE):
                 'atMilliseconds': {'type': 'integer', 'minimum': 0, 'maximum': 2000},
             }, ['phase', 'x', 'y', 'atMilliseconds'])}
             schema['properties']['observeAfterStep'] = {'type': 'integer', 'minimum': 1, 'maximum': 32}
-        if profile in (DETAIL_PROFILE,WINDOW_PROFILE) and name == 'read_development_job':
+            if profile == DRAG_PROFILE:
+                description += (' Optional interrupt inserts Escape or an own native resize/minimize between the last held step and the final up. '
+                    'interrupt.atMilliseconds must fall between those two steps; resize/minimize must be scheduled by 1000ms. '
+                    'Requires a new drag-interrupt-v1 helper; window actions also require Control app window and windowControl=true on the original run. '
+                    'The guest holds only until the bounded interrupt/release, records actual dispatch/application receipts, and releases on Stop or uncertainty. '
+                    'Minimize proves an own-window transition, not an invented app focus event. Restore separately after inspecting the original receipt. '
+                    'Outside-client capture remains unavailable: injected coordinates do not exercise native pointer routing.')
+                schema['properties']['interrupt'] = {'oneOf': [
+                    obj({'action': {'type':'string','enum':['escape']},
+                         'atMilliseconds': {'type':'integer','minimum':0,'maximum':2000}}, ['action','atMilliseconds']),
+                    obj({'action': {'type':'string','enum':['minimize']},
+                         'atMilliseconds': {'type':'integer','minimum':0,'maximum':1000}}, ['action','atMilliseconds']),
+                    obj({'action': {'type':'string','enum':['resize']},
+                         'atMilliseconds': {'type':'integer','minimum':0,'maximum':1000},
+                         'width': {'type':'integer','minimum':64,'maximum':1280},
+                         'height': {'type':'integer','minimum':64,'maximum':1024}}, ['action','atMilliseconds','width','height'])]}
+        if profile in (DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE) and name == 'read_development_job':
             description = ('Read this session\'s original development job without replay. Default summary is compact. '
                 'view=details or inventory returns UTF-8 JSON fragments with snapshot hash and a cursor; continue the same view/cursor. '
                 'view=output returns a bounded original log page; continue from nextOffset while hasMore. '
@@ -211,7 +227,7 @@ def validate_arguments(name, value, profile=PROFILE):
                 if not isinstance(spec, dict): raise ValueError('Unknown tool argument.')
                 validate(spec, entry, path + '.' + key)
     validate(root, value)
-    if (profile in (CONTRACT_PROFILE,NOTES_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE) and name == 'update_roadmap'
+    if (profile in (CONTRACT_PROFILE,NOTES_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE) and name == 'update_roadmap'
             and value.get('operation') == 'mutate' and value.get('action') == 'create'):
         kind = value['target']['kind']
         required = 'title' if kind in ('version', 'subversion') else 'description'

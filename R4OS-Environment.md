@@ -73,6 +73,17 @@ bounded gesture tool still stays within the own client and never holds a press
 across calls. Native availability alone does not qualify an outside-client Studio
 drag or global input.
 
+New profile17 sessions and drag-interrupt-v1 deployments can include Escape or
+an originally delegated resize/minimize before the final up in the same bounded
+gesture. Older profiles retain their input schemas. Window interrupts additionally
+need the original run's windowControl=true and Control app window permission.
+The original native request/operation is persisted before input and never replayed.
+The guest records apply while release is still pending; actual held app state,
+Escape/focus consumption and a composed frame still need their own observations.
+Restore separately after inspecting the original result. Full0.88.107 native
+host input is bound to the registered Desktop, so outside-client routing is still
+unsupported by this helper. See Drag-Interrupts.md.
+
 Desktop owns lifecycle and consuming reap. New desktopEvidence-v1 helpers use
 the original epoch and acknowledged WINSVC lease to retain exact exit and output
 after Desktop cleanup. Native flags distinguish complete empty output, truncation

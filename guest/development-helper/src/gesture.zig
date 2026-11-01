@@ -7,6 +7,22 @@ pub const Step = struct {
     atMilliseconds: u32,
 };
 
+pub const Interrupt = struct {
+    action: enum { escape, resize, minimize },
+    atMilliseconds: u32,
+    nativeRequest: []const u8 = "",
+};
+
+pub fn validInterrupt(value: Interrupt, steps: []const Step) bool {
+    if (steps.len < 2 or steps[steps.len - 1].phase != .up or
+        value.atMilliseconds < steps[steps.len - 2].atMilliseconds or
+        value.atMilliseconds > steps[steps.len - 1].atMilliseconds) return false;
+    return switch (value.action) {
+        .escape => value.nativeRequest.len == 0,
+        .resize, .minimize => value.atMilliseconds <= 1000 and value.nativeRequest.len > 0 and value.nativeRequest.len <= 512,
+    };
+}
+
 pub fn buttonMask(step: Step) u32 {
     return switch (step.button) { .none => 0, .left => 1, .right => 2 };
 }

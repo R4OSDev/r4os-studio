@@ -75,6 +75,14 @@ pub const Controller = struct {
         return result;
     }
 
+    pub fn matchesPrepared(self: *const Controller, opaque_request: []const u8, kind: u32, minimum_milliseconds: u32) bool {
+        const request = decode(native.Request, opaque_request) orelse return false;
+        const expected = self.prepared orelse return false;
+        const now = self.sys.ticks();
+        return !self.submitted and request.kind == kind and std.meta.eql(request, expected) and
+            request.deadline > now and request.deadline - now >= self.sys.ticksFromMilliseconds(minimum_milliseconds);
+    }
+
     pub fn status(self: *Controller, operation: u64) native.Call {
         const token = self.token orelse return .{ .failure = a.desktop_action_result_unavailable };
         // Scope status cannot replace the outstanding operation's receipt or

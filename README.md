@@ -1,3 +1,21 @@
+## Escape and own-window actions during a bounded drag (0.8.83)
+
+New project sessions use profile17 and can interrupt a held gesture with Escape
+or an actual delegated resize/minimize, followed by release in the same bounded
+call. Window actions require their separate original run permission/grant. The
+complete native request is persisted before input, submitted once and read only
+by its original operation after uncertainty. Native apply while release is still
+pending, composed frames and app consumption remain separate evidence. Existing
+conversations retain their exact tool schemas; a new session and deployment are
+needed for the new optional `interrupt` field. App artifacts/pins stay unchanged.
+
+Outside-client drag routing remains unavailable to the helper: direct app queue
+coordinates would bypass native capture, whose host owner is Desktop. The case
+stays open pending a scoped native input delegation. No icon integration is
+included. See [Drag-Interrupts.md](Drag-Interrupts.md) for the contract and limits.
+Direct implementation without roadmap changes, tests, fixtures or inference;
+Studio static checks and both pinned private helper builds are used instead.
+
 ## Retained completion after an owned check close (0.8.82)
 
 An own Desktop process can detach before its retained native completion becomes

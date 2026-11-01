@@ -41,6 +41,8 @@ pub const Request = struct {
     gestureVersion: u32 = 0,
     gestureId: []const u8 = "",
     steps: []const gesture.Step = &.{},
+    gestureInterruptVersion: u32 = 0,
+    gestureInterrupt: ?gesture.Interrupt = null,
     relayInstanceId: u32 = 0,
     relayGeneration: u64 = 0,
 };
@@ -81,6 +83,10 @@ const State = struct {
     gestureReleaseQueued: bool = true,
     gestureActive: bool = false,
     gestureId: []const u8 = "",
+    gestureInterruptHeld: bool = false,
+    gestureInterruptConfirmed: bool = false,
+    gestureInterruptAtMilliseconds: ?u32 = null,
+    gestureWindowSubmitted: bool = false,
     stopReason: ?[]const u8 = null,
     closeConfirmed: bool = false,
     inputAccepted: ?u32 = null,
@@ -132,6 +138,9 @@ const Controller = struct {
     gesture_count: usize = 0,
     gesture_born: u64 = 0,
     gesture_id: [36]u8 = undefined,
+    gesture_interrupt: ?gesture.Interrupt = null,
+    gesture_interrupt_started: bool = false,
+    gesture_native_request: [512]u8 = undefined,
     gesture_binding: struct { id: i32 = -1, width: i32 = 0, height: i32 = 0 } = .{},
     state: State = .{},
     evidence_token: ?evidence.Token = null,
@@ -357,6 +366,14 @@ const Controller = struct {
         if (req.gestureVersion != 1 or req.frameBindingVersion != 1 or self.state.gestureActive or
             self.mouse_pending or req.gestureId.len != 36 or std.mem.eql(u8, req.gestureId, self.state.gestureId) or
             !gesture.valid(req.steps, self.state.windowWidth, self.state.windowHeight)) return false;
+        if (req.gestureInterrupt) |interrupt| {
+            if (req.gestureInterruptVersion != 1 or !gesture.validInterrupt(interrupt, req.steps)) return false;
+            if (interrupt.action != .escape) {
+                const windows = if (self.windows) |*value| value else return false;
+                const kind = if (interrupt.action == .resize) abi.desktop_action_kind_resize else abi.desktop_action_kind_minimize;
+                if (!windows.matchesPrepared(interrupt.nativeRequest, kind, interrupt.atMilliseconds + 500)) return false;
+            }
+        } else if (req.gestureInterruptVersion != 0) return false;
         for (req.gestureId) |c| if (!(std.ascii.isHex(c) or c == '-')) return false;
         const current = self.clock();
         if (current == 0 or current >= self.deadline_ns) return false;
@@ -365,6 +382,12 @@ const Controller = struct {
         self.gesture_count = req.steps.len;
         self.gesture_born = current;
         self.gesture_binding = .{ .id = self.state.windowId, .width = self.state.windowWidth, .height = self.state.windowHeight };
+        self.gesture_interrupt = req.gestureInterrupt;
+        self.gesture_interrupt_started = false;
+        if (self.gesture_interrupt) |*interrupt| {
+            @memcpy(self.gesture_native_request[0..interrupt.nativeRequest.len], interrupt.nativeRequest);
+            interrupt.nativeRequest = self.gesture_native_request[0..interrupt.nativeRequest.len];
+        }
         self.state.gestureId = &self.gesture_id;
         self.state.gestureAccepted = 0;
         self.state.inputAccepted = 0;
@@ -372,8 +395,66 @@ const Controller = struct {
         self.state.gestureAborted = null;
         self.state.gestureReleaseQueued = true;
         self.state.gestureActive = true;
+        self.state.gestureInterruptHeld = false;
+        self.state.gestureInterruptConfirmed = false;
+        self.state.gestureInterruptAtMilliseconds = null;
+        self.state.gestureWindowSubmitted = false;
         return true;
     }
+
+    // Runs only immediately before the final up. The original native request
+    // was prepared and persisted by the host before this gesture was admitted.
+    // Pending/lost replies are read by their original operation, never resent.
+    fn interruptGesture(self: *Controller, current: u64, index: usize) bool {
+        const interrupt = self.gesture_interrupt orelse return true;
+        if (index + 1 != self.gesture_count) return true;
+        if (current < self.gesture_born or current - self.gesture_born > 2_000_000_000) {
+            self.abortGesture("interrupt_time_limit"); return false;
+        }
+        if (current - self.gesture_born < @as(u64, interrupt.atMilliseconds) * 1_000_000) return false;
+        if (!self.gesture_interrupt_started) {
+            if (!self.mouse_pending) { self.abortGesture("interrupt_not_held"); return false; }
+            self.gesture_interrupt_started = true;
+            self.state.gestureInterruptHeld = true;
+            self.state.gestureInterruptAtMilliseconds = @intCast((current - self.gesture_born) / 1_000_000);
+            if (interrupt.action == .escape) {
+                var event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.key_down),
+                    .window_id = self.gesture_binding.id, .key = r4os.gui.Key.escape, .tick = self.sys.ticks() };
+                if (self.desk.guiPushEvent(self.process.?.raw, &event) < 0) {
+                    self.abortGesture("interrupt_queue_rejected"); return false;
+                }
+                self.state.gestureInterruptConfirmed = true;
+                return true;
+            }
+            const windows = if (self.windows) |*value| value else { self.abortGesture("interrupt_window_unavailable"); return false; };
+            self.state.gestureWindowSubmitted = true;
+            _ = windows.command(interrupt.nativeRequest);
+            self.windowView();
+        }
+        if (interrupt.action == .escape or self.state.gestureInterruptConfirmed) return true;
+        const windows = if (self.windows) |*value| value else return false;
+        const prepared = windows.prepared orelse return false;
+        if (windows.last) |last| {
+            if (last.request.operation == prepared.operation and last.phase == abi.desktop_action_phase_applied and last.result == 0) {
+                self.state.gestureInterruptConfirmed = true;
+                return true;
+            }
+        }
+        const result = windows.status(prepared.operation);
+        self.windowView();
+        if (result == .failure) return false;
+        const reply = result.reply;
+        if (reply.request.operation != prepared.operation) { self.abortGesture("interrupt_receipt_mismatch"); return false; }
+        if (reply.phase == abi.desktop_action_phase_applied and reply.result == 0) {
+            // No final up has been queued yet: this is an actual applied own
+            // transition while our button is still held, not a later inference.
+            self.state.gestureInterruptConfirmed = true;
+            return true;
+        }
+        if (reply.phase != abi.desktop_action_phase_pending) self.abortGesture("interrupt_window_unconfirmed");
+        return false;
+    }
+
     fn tickGesture(self: *Controller) void {
         if (!self.state.gestureActive) { self.releaseMouse(); return; }
         while (self.state.gestureActive) {
@@ -391,17 +472,35 @@ const Controller = struct {
             }
             switch (self.process.?.status()) { .value => {}, else => { self.abortGesture("process_ended"); return; } }
             self.windowState();
-            if (!self.state.windowVisible or !self.state.windowFocused or self.state.windowId != self.gesture_binding.id or
-                self.state.windowWidth != self.gesture_binding.width or self.state.windowHeight != self.gesture_binding.height) {
+            // Only an admitted own native interrupt may change this view.
+            // After submission, the sole remaining mouse event is cleanup up.
+            if (!self.state.gestureWindowSubmitted and
+                (!self.state.windowVisible or !self.state.windowFocused or self.state.windowId != self.gesture_binding.id or
+                self.state.windowWidth != self.gesture_binding.width or self.state.windowHeight != self.gesture_binding.height)) {
                 self.abortGesture("window_changed"); return;
             }
             const index: usize = self.state.gestureAccepted orelse 0;
             const step = self.gesture_steps[index];
+            if (!self.interruptGesture(self.clock(), index)) return;
             const dispatch_time = self.clock();
             if (dispatch_time < self.gesture_born or dispatch_time - self.gesture_born > 2_000_000_000) {
                 self.abortGesture("time_or_control_limit"); return;
             }
             if (dispatch_time - self.gesture_born < @as(u64, step.atMilliseconds) * 1_000_000) return;
+            if (self.state.gestureWindowSubmitted) {
+                // The native transition may have minimized/resized the view.
+                // Release the original press without queuing a new target or
+                // borrowing coordinates from a replacement screenshot.
+                self.releaseMouse();
+                if (self.mouse_pending) return;
+                const elapsed = (self.clock() - self.gesture_born) / 1_000_000;
+                self.gesture_times[index] = @intCast(@min(elapsed, std.math.maxInt(u32)));
+                self.state.gestureAccepted = @intCast(index + 1);
+                self.state.inputAccepted = self.state.gestureAccepted;
+                self.state.gestureTimesMilliseconds = self.gesture_times[0 .. index + 1];
+                self.state.gestureActive = false;
+                return;
+            }
             const buttons = switch (step.phase) {
                 .down => gesture.buttonMask(step), .up => @as(u32, 0),
                 .move => self.mouse_buttons,

@@ -40,7 +40,7 @@ async def execute(execution, message, request, state, control, lease, process, a
     from observation import capture
     from authorization import authorize
     store = execution.store; job = store.get(execution.job['id']); value = message['input']
-    if authorization and authorization['engine']['profile'] not in ('studio-tools-v14','studio-tools-v15','studio-tools-v16'):
+    if authorization and authorization['engine']['profile'] not in ('studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17'):
         raise DevelopmentFault('This conversation retains its original input schema. A new gesture-capable session is required.')
     deployment = store.deployment(job['deploymentId'])
     if deployment.get('helperCapabilities', {}).get('gestureVersion') != 1 or request.get('frameBindingVersion') != 1:
@@ -54,20 +54,27 @@ async def execute(execution, message, request, state, control, lease, process, a
             authorize(store, message['owner'], 'capture', message['peerPid'], job)
     gesture_id = message['requestId']
     request.update(gestureVersion=1, gestureId=gesture_id, steps=plan)
+    interrupt = None
+    if 'interrupt' in value:
+        from gesture_interrupt import prepare
+        interrupt = await prepare(execution, message, plan, request, lease, authorization)
     guard(store, job, lease)
     if authorization: authorize(store, message['owner'], 'input', message['peerPid'], job)
     state = await control.call('input', **request)  # Exactly once; lost ack stays unknown.
-    deadline = asyncio.get_running_loop().time() + 3
+    deadline = asyncio.get_running_loop().time() + (5 if interrupt else 3)
     image_id = None; observation_error = None; attempted = False
     while True:
         execution.output(state); state['outputBase64'] = ''; execution.last = state
         if state.get('gestureId') != gesture_id:
             raise UnconfirmedGuestEffect('The gesture receipt has a different identity. Its plan was not replayed.')
-        if not state.get('gestureActive'): break
+        if not state.get('gestureActive') and (not interrupt or state.get('gestureReleaseQueued') is True): break
         cancel = execution.stop_requested or store.get(job['id'])['state'] == 'stopping'
         try:
             guard(store, job, lease)
-            if authorization: authorize(store, message['owner'], 'input', message['peerPid'], job)
+            if authorization:
+                authorize(store, message['owner'], 'input', message['peerPid'], job)
+                if interrupt and interrupt['input']['interrupt']['action'] != 'escape':
+                    authorize(store, message['owner'], 'window', message['peerPid'], job)
         except DevelopmentFault: cancel = True
         if cancel:
             state = await control.call('cancel_gesture', generation=process['generation'], gestureId=gesture_id)
@@ -100,4 +107,8 @@ async def execute(execution, message, request, state, control, lease, process, a
         **({'observationId': image_id} if image_id else {}),
         **({'observationError': observation_error} if observation_error else {})}
     if observe_after and not attempted: result['observationError'] = 'The gesture ended before the requested intermediate observation was available.'
+    if interrupt:
+        from gesture_interrupt import receipt
+        result = await receipt(execution, message, state, result, interrupt, lease)
+        state = await control.call('poll'); execution.output(state); state['outputBase64'] = ''; execution.last = state
     return state, result

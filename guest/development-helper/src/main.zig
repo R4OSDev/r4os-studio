@@ -39,6 +39,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .guiInputVersion = @as(u32, 2),
             .guiFrameBindingVersion = @as(u32, 1),
             .gestureVersion = @as(u32, 1),
+            .dragInterruptVersion = @as(u32, 1),
             .nativeDesktopLaunch = false,
             .desktopAdoptionVersion = @as(u32, 1),
             .desktopEvidenceVersion = @as(u32, 1),
