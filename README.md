@@ -1,3 +1,24 @@
+## SDK release metadata compatibility (0.8.70)
+
+Published SDK sets can omit the redundant component `source_url` when they
+declare an exact source commit. Studio derives the canonical official repository
+URL from that commit; an explicitly contradictory URL is still rejected.
+Archive names, release URLs, prefixes, byte counts, SHA-256 values, package
+versions and the SDK's exact Contract pin retain their checks.
+
+The capability catalog supports both the original nested `package` metadata and
+the direct `file`/`bytes`/`sha256` layout published with SDK0.64.127. The direct
+asset URL is derived within the selected official SDK release. Conflicting
+metadata, cross-release URLs, invalid names/digests and oversized JSON are
+rejected. SDK selection, Zig/C project tools, SDK Rust download and existing Rust
+pins share the same interpretation; original manifest bytes/hashes are retained.
+
+The actual published SDK, Contract, Libraries, HostTools and capability assets
+were read and checked against the release manifest and checksum list. No SDK
+code, model calls or tests were run. Existing defaults and project pins are
+preserved; **Check for updates** refreshes the SDK catalog before the user chooses
+a download or default separately.
+
 ## Continue native transport timeouts (0.8.69)
 
 New compatible Codex/API runs also continue the exact observed native

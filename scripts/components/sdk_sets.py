@@ -14,6 +14,7 @@ import stat
 from urllib.error import HTTPError
 
 from common import read_url
+from sdk_metadata import component_source_url
 from service import atomic
 
 PARTS = ('sdk', 'contract', 'libraries')
@@ -79,9 +80,9 @@ def parse_manifest(selected, raw):
                 or not isinstance(revision, str) or not REVISION.fullmatch(revision)
                 or not isinstance(package, dict)):
             raise ValueError(f'The SDK release has invalid {kind} package identities.')
-        source = f'https://github.com/R4OSDev/r4os-{kind}/tree/{revision}'
+        source = component_source_url(part, kind)
         filename, sha, size = package.get('file'), package.get('sha256'), package.get('bytes')
-        if (part.get('source_url') != source or part.get('archive_prefix') != kind.upper() + '/'
+        if (part.get('archive_prefix') != kind.upper() + '/'
                 or not isinstance(filename, str) or not re.fullmatch(r'[A-Za-z0-9_.+-]+\.tar\.gz', filename)
                 or package.get('url') != release_prefix + filename
                 or not isinstance(sha, str) or not SHA256.fullmatch(sha)

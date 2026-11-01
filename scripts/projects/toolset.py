@@ -9,6 +9,7 @@ import tempfile
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'components'))
 from common import read_url, download, unpack
 from rust_sdk import verify_files, command
+from sdk_metadata import capabilities_package
 
 
 class Download:
@@ -33,7 +34,7 @@ def prepare(context, pinned=None, verify_components=True):
     for kind in ('sdk', 'contract'):
         if release[kind]['source_commit'] != context['pins'][kind]['revision']:
             raise ValueError('The selected ' + kind.upper() + ' does not match the SDK release metadata.')
-    devkit = release['devkit']; package = devkit['package']; capability = release['capabilities']['package']
+    devkit = release['devkit']; package = devkit['package']; capability = capabilities_package(release, url)
     for item in (package, capability):
         if not item['url'].startswith(url.rsplit('/', 1)[0] + '/'):
             raise ValueError('The SDK tools archive must belong to its selected SDK release.')
@@ -72,6 +73,7 @@ def prepare(context, pinned=None, verify_components=True):
     cap_path = base / 'sdk-capabilities.json'
     if not cap_path.exists():
         data = read_url(capability['url'], 2 * 1024**2)
+        if len(data) != capability['bytes']: raise ValueError('The SDK capability size changed.')
         if hashlib.sha256(data).hexdigest() != pin['capabilitiesSha256']:
             raise ValueError('The SDK capability checksum changed.')
         cap_path.write_bytes(data)

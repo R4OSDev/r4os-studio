@@ -7,6 +7,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'components'))
 from rust_sdk import verify, inspect_installation, verify_files, environment, command, digest
+from sdk_metadata import capabilities_package
 
 
 def runner(root, defaults, check_files=True):
@@ -57,6 +58,7 @@ def local(root, defaults, context, pinned=None, check_files=True):
     contract = context['paths']['contract']; linker = toolchain / 'lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld'
     target_prefix = str(compiler.parent.parent / 'lib/rustlib' / profile['bare_target']) + '/'
     sysroot = {key: value for key, value in record['fileHashes'].items() if key.startswith(target_prefix)}
+    release_url = 'https://github.com/R4OSDev/r4os-sdk/releases/download/v' + release['sdk']['package_version'] + '/SDK-Release.json'
     pin = {'id': selected['id'], 'version': record['version'], 'cargoVersion': record['cargoVersion'],
            'sha256': record['sha256'], 'toolProfileSha256': tools['pin']['profileSha256'],
            'binarySha256': record['fileHashes'][str(compiler)],
@@ -68,10 +70,10 @@ def local(root, defaults, context, pinned=None, check_files=True):
            'rustupVersion': profile['rustup_version'], 'powershellVersion': record['powershellVersion'], 'target': profile['bare_target'],
            'codegenProfile': json.loads((context['paths']['sdk'] / 'r4os/rust_module_profile.json').read_text())['id'],
            'codegenSha256': digest(context['paths']['sdk'] / 'r4os/rust_module_profile.json'), 'cpuBaselineSha256': digest(contract / 'Module/CpuBaseline.json'),
-           'release': {'url': 'https://github.com/R4OSDev/r4os-sdk/releases/download/v' + release['sdk']['package_version'] + '/SDK-Release.json',
+           'release': {'url': release_url,
                        'sha256': tools['pin']['releaseSha256'], 'sdkRevision': release['sdk']['source_commit'],
                        'contractRevision': release['contract']['source_commit'], 'devkitRevision': release['devkit']['source_commit'],
-                       'capabilitiesSha256': release['capabilities']['package']['sha256']}}
+                       'capabilitiesSha256': capabilities_package(release, release_url)['sha256']}}
     if pinned and pin != pinned: raise ValueError('Pinned project Rust tools changed.')
     result = {'prefix': prefix, 'profile': profile, 'pin': pin, 'compiler': compiler, 'contractPath': contract,
               'contractPin': context['pins']['contract'], 'tools': tools['tools'],

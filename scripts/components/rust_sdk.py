@@ -9,6 +9,7 @@ import tempfile
 import uuid
 
 from common import download, publish, read_url, unpack
+from sdk_metadata import capabilities_package, component_source_url
 
 SPEC = json.loads((Path(__file__).resolve().parents[2] / 'shared/r4os/rust-sdk.json').read_text())
 COMPILER = 'Install/Toolchains/Rust/rustup/toolchains/1.99.0-x86_64-unknown-linux-gnu/bin/rustc'
@@ -37,7 +38,8 @@ def for_sdk(sdk):
     raw = read_url(url, 2 * 1024**2); release = json.loads(raw)
     if release.get('schema') != 1 or release.get('interface') != 'r4os-sdk-release' or release['sdk']['source_commit'] != sdk['revision']:
         raise ValueError('The SDK tool release differs from its selected sources.')
-    item = release['capabilities']['package']; data = read_url(item['url'], 2 * 1024**2)
+    item = capabilities_package(release, url); data = read_url(item['url'], 2 * 1024**2)
+    if len(data) != item['bytes']: raise ValueError('The SDK capability size changed.')
     if hashlib.sha256(data).hexdigest() != item['sha256']: raise ValueError('The SDK capability checksum changed.')
     cap = json.loads(data)
     return {'id': 'sdk-' + version, 'version': cap['tools']['rust_version'], 'releaseUrl': url,
@@ -132,7 +134,7 @@ def install(manager, spec=None):
         prefix = work / 'installed'
         prefix.mkdir()
         for key, name in (('devkit', 'Tools'), ('capabilities', 'capabilities.json')):
-            item = release[key]['package']
+            item = capabilities_package(release, spec['releaseUrl']) if key == 'capabilities' else release[key]['package']
             archive = work / item['file']
             download(manager, item['url'], archive, item['sha256'], limit=64 * 1024**2)
             if key == 'devkit':
@@ -140,6 +142,7 @@ def install(manager, spec=None):
                 source.rename(prefix / name)
                 archive.unlink()
             else:
+                if archive.stat().st_size != item['bytes']: raise ValueError('The SDK capability size changed.')
                 archive.rename(prefix / name)
         (prefix / 'SDK-Release.json').write_bytes(raw)
         tools = prefix / 'Tools'
@@ -150,6 +153,7 @@ def install(manager, spec=None):
         verify_files(tools, {v['path']: v['sha256'] for v in profile['files']})
         # Rust and Zig may require different revisions with the same Contract
         # package version. Install the release dependency without changing defaults.
+        contract_source = component_source_url(release['contract'], 'contract')
         contract = manager.root / 'Contract' / release['contract']['source_commit']
         if not contract.exists():
             from service import package_info
@@ -168,7 +172,7 @@ def install(manager, spec=None):
             hashed = command([compiler['binary'], 'fetch', '--global-cache-dir', verification / 'cache', source],
                              {'PATH': '/usr/bin:/bin', 'HOME': str(verification)}, verification)
             contract_record = {**package_info(source), 'id': contract.name, 'revision': contract.name,
-                               'archiveUrl': item['url'], 'sourceUrl': release['contract']['source_url'],
+                               'archiveUrl': item['url'], 'sourceUrl': contract_source,
                                'sha256': item['sha256'], 'packageHash': hashed, 'installedAt': now()}
             (source / '.studio-component.json').write_text(json.dumps(contract_record, indent=2) + '\n')
             publish(source, contract)
