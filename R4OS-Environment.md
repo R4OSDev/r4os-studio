@@ -1,3 +1,17 @@
+## Desktop icons and project publication (0.8.84)
+
+Desktop icons already use manifest ICON (first resource, type1/index0) and a
+R4LNK in C:\R4OS\DESKTOP with ICON=INTERNAL, as shipped by Notepad. No window-icon
+setter is required. New profile18 sessions can explicitly deploy a GUI R4X with
+desktopShortcut=true; existing conversations retain their schema and can use
+Deploy to desktop on their completed development cards. Current run guidance
+explains both paths. Publication owns only the project's derived link and chosen
+deployment; normal test deployments preserve it. Foreign/edited links and unknown
+results are protected. Never substitute global Desktop input or system-path shell
+writes. Link readback, embedded icon and visible guest consumption are separate;
+publication does not launch the app or complete a visual acceptance. Details and
+exact source pins: Desktop-Shortcuts.md. Taskbar/window icons remain separate.
+
 ## Host-only tests and cc (0.8.9)
 
 Tool terminals expose the existing validated public host `cc` driver with one

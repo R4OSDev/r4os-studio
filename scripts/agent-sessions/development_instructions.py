@@ -2,7 +2,7 @@
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill' or not rights.get('studio.read_development_job'): return ''
-    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17')
+    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18')
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
         'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '
@@ -31,4 +31,27 @@ def compose(config):
         'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
         'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
         'app/SDK contract; host Rust builds do not imply a native guest compiler.'
-    ) + presentation
+    ) + presentation + desktop_icons(config)
+
+
+def desktop_icons(config):
+    current = config.get('engine', {}).get('profile') == 'studio-tools-v18'
+    action = ('For an explicitly requested GUI R4X desktop publication use studio_deploy_project with '
+        'desktopShortcut=true and the chosen verified artifactId. Ordinary test deployments omit this option. '
+        'It needs Deploy project permission and a current development coordinator; it never starts the app. ') if current else (
+        'This conversation retains its original deploy schema: do not invent a desktopShortcut argument. '
+        'The browser offers Deploy to desktop on completed GUI builds/deployments; the agent option needs a new v18 session. ')
+    return ('\n\nSTUDIO DESKTOP ICONS v1: R4OS already supports application desktop icons. '
+        'Notepad declares ICON=Assets/Desktop.ico in module.R4MF; the SDK embeds the first ICON as resource type1/index0. '
+        'C:\\R4OS\\DESKTOP\\NOTEPAD.LNK uses R4S_FORMAT=1, SCHEMA=R4LNK, TARGET=<R4X>, TITLE=Notepad, POLICY=gui, ICON=INTERNAL. '
+        'Desktop reads the embedded icon directly without running the app. No window-icon setter API is required for this case. '
+        'Use a supported bitmap ICO; the reviewed decoder supports uncompressed DIB 8/32-bit, displayed at32x32. '
+        'Inspect the actual artifact resourceInventory for icon/index0 and embeddedVerified; a source asset alone is insufficient. '
+        + action + 'The publication owns one exact link per project/VM, preserves foreign or edited links, checks old bytes, '
+        'and retains the original intent/backup. After uncertainty only original receipt reconciliation is allowed, never another native write. '
+        'SSH system-path write protection stays enabled; do not improvise SFTP/shell edits of C:\\R4OS or change VM lifecycle/settings. '
+        'A fullReadbackVerified desktopShortcut proves link bytes; iconEmbedded proves the resource inventory only. '
+        'consumerVerified/guestVerified remain false until separate real evidence. Visible desktop appearance and launch via that link '
+        'are separate from a normal process/window launch. Existing own-client screenshot/input tools do not grant global Desktop control. '
+        'Do not close acceptance merely from publication, wait for taskbar icons, or treat missing window-icon APIs as a blocker. '
+        'Taskbar/window icons are separate features.')

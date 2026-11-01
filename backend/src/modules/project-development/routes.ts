@@ -92,12 +92,13 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     preValidation: async (request) => {
       const value = request.body;
       if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'artifactId'].includes(key)))
+        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'artifactId', 'desktopShortcut'].includes(key))
+        || ('desktopShortcut' in value && typeof value.desktopShortcut !== 'boolean'))
         throw new ProjectError('Unexpected deployment fields.', 400);
     },
     schema: { params, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'projectRevision', 'settingsRevision', 'artifactId'], properties: {
-        requestId: identity, projectRevision: revision, settingsRevision: revision, artifactId: identity,
+        requestId: identity, projectRevision: revision, settingsRevision: revision, artifactId: identity, desktopShortcut: { type: 'boolean' },
       } } },
   }, async (request, reply) => {
     security.mutation(request, reply);

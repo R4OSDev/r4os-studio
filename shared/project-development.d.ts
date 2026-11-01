@@ -19,6 +19,7 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  desktopShortcutVersion?: 1;
   windowControlVersion?: 1;
   desktopLaunchBudget?: DesktopArgumentLayout | null;
   evidenceCapabilities?: {
@@ -86,6 +87,7 @@ export interface DevelopmentTarget {
   helperProtocol: number;
 }
 export interface DevelopmentDeployment {
+  desktopShortcut?: DesktopShortcutReceipt;
   format?: 'exchange-build-v1';
   readiness?: DevelopmentReadiness;
   id: string; projectId: string; jobId: string; artifactId: string;
@@ -94,6 +96,12 @@ export interface DevelopmentDeployment {
   guestDirectory: string; entry: string; helper: string; helperSourceSha256: string;
   files: { path: string; bytes: number; sha256: string; fullReadbackVerified: boolean }[];
   pins: ProjectPins; createdAt: string;
+}
+export interface DesktopShortcutReceipt {
+  state: 'published'; projectId: string; vmId: string; jobId: string;
+  deploymentId: string; artifactId: string; path: string; content: string; sha256: string;
+  fullReadbackVerified: true; iconEmbedded: boolean;
+  consumerVerified: false; guestVerified: false; applicationStarted: false; checkedAt: string;
 }
 export interface GuestProcessIdentity {
   instanceId: number;
@@ -190,6 +198,8 @@ export interface DevelopmentJob {
   nextStep?: string | null;
   checkCompletion?: { requestId: string; reason: 'criteria_complete'; state: 'closing' | 'completed' | 'failed'; closed?: boolean; completedAt?: string };
   desktopLaunch?: DesktopLaunchReceipt;
+  desktopShortcutRequested?: boolean;
+  desktopShortcut?: DesktopShortcutReceipt;
   windowControlRequested?: boolean;
   windowControl?: { version: number; available: boolean; operationId?: string; reason?: string; native?: Record<string, unknown> };
   package?: { format: 'exchange-build-v1' | 'legacy-c'; relativeDirectory: string; guestDirectory: string };
@@ -222,6 +232,7 @@ export interface DevelopmentJob {
   completedAt: string | null;
 }
 export interface DevelopmentJobPage {
+  artifactSummary?: { id: string; kind?: DevelopmentArtifact['kind']; role?: ProjectTemplate };
   startOffset?:number;pageBytes?:number;totalBytes?:number;hasMore?:boolean;
   captureLimitReached?:boolean;captureTruncated?:boolean|null;outputEncoding?:'utf-8'|'replacement';rawOutputBase64?:string;
   executionEvidence?: DevelopmentExecutionEvidence | null;
@@ -269,6 +280,7 @@ export interface DevelopmentBuildInput extends DevelopmentSubmission {
 }
 export interface DevelopmentDeployInput extends DevelopmentSubmission {
   artifactId: string;
+  desktopShortcut?: boolean;
 }
 export interface DevelopmentRunInput extends DevelopmentSubmission {
   deploymentId: string;

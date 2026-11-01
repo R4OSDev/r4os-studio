@@ -1,3 +1,20 @@
+## Publish a project on the VM desktop (0.8.84)
+
+Completed GUI R4X development cards offer **Deploy to desktop**. New profile18
+agent sessions can set `desktopShortcut=true` on `studio_deploy_project` under
+their existing Deploy project permission. Studio publishes one project/VM-owned
+R4LNK with ICON=INTERNAL to the selected verified deployment. Normal test deploys
+leave it unchanged. Existing or edited foreign links are preserved; original old
+bytes/intent, atomic native publication, full readback and cleanup are retained.
+Lost results are reconciled from original receipts only, without replay.
+
+Current agent guidance explains Notepad's manifest/resource/link path and the
+separate embedded-icon, link-byte and visible-guest findings. Earlier native tool
+schemas stay unchanged; their browser action remains available. No app/VM start,
+Goal/roadmap mutation, tests, fixtures or inference. Build/TypeScript/lint and the
+pinned private helper builds are the checks; guest publication/visual proof is
+still unqualified. See [Desktop-Shortcuts.md](Desktop-Shortcuts.md).
+
 ## Escape and own-window actions during a bounded drag (0.8.83)
 
 New project sessions use profile17 and can interrupt a held gesture with Escape

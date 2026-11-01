@@ -8,7 +8,7 @@ import asyncio
 class DevelopmentTools:
     def __init__(self, worker): self.worker = worker
 
-    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17')
+    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18')
 
     def present(self,job,page=None):
         if not self.compact(): return page or {'job':job}
@@ -72,7 +72,17 @@ class DevelopmentTools:
                 finally: store.close()
                 body = {'requestId': request_id, 'projectRevision': revision, 'settingsRevision': settings['revision']}
                 operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start'}[name]
-                if name == 'deploy_project': body['artifactId'] = value['artifactId']
+                if name == 'deploy_project':
+                    body['artifactId'] = value['artifactId']
+                    if 'desktopShortcut' in value:
+                        if self.worker.config['engine']['profile'] != 'studio-tools-v18' or type(value['desktopShortcut']) is not bool:
+                            raise DevelopmentFault('Desktop publication requires its declared v18 deployment option.', 403)
+                        if value['desktopShortcut']:
+                            from vm_worker import broker_call
+                            capabilities = await broker_call({'operation': 'capabilities'})
+                            if capabilities.get('features', {}).get('desktopShortcut') != 1:
+                                raise DevelopmentFault('Desktop publication requires the current development coordinator. No deployment was started.', 503)
+                        body['desktopShortcut'] = value['desktopShortcut']
                 if name == 'run_project':
                     body['deploymentId'] = value['deploymentId']
                     if 'windowControl' in value:

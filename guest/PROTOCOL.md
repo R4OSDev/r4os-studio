@@ -114,3 +114,21 @@ allocation counter, including earlier failed preparations. Status cannot rewind
 that counter; exhaustion fails before preparation. WINSVC's original grant and
 the helper's one-submission guard remain unchanged; existing deployed helpers
 use the corrected host allocator without replacement.
+## Explicit project desktop shortcut (0.8.84)
+
+The normal helper handshake adds `desktopShortcutVersion=1` when the required
+public file stream/checked atomic/checked delete operations are available.
+`STHELP.R4X <original-job-UUID> shortcut` is one bounded, one-shot desktop-link
+publication, separate from the process controller. It reads only DSKIN.JSN beside
+itself, verifies the deployment ownership receipt and its own derived module
+directory, and targets only that directory's APP.R4X. The project-derived fixed
+Desktop link uses POLICY=gui and ICON=INTERNAL. No generic path or shell input.
+
+Original host backup/intent and the guest create-only DSKINT.JSN marker precede
+mutation. Existing link bytes must match the saved own receipt; a checked native
+atomic replacement verifies old/new bytes with the native size/checksum contract,
+then full readback and checked backup cleanup complete. DSKOUT.JSN and stdout
+carry the same bound result. The host reads both and the exact link bytes before
+recording success. Lost replies are observed from this original result, never by
+resubmitting the helper. Unknown stages/backups remain protected. The receipt
+does not confirm desktop visibility, app launch or application consumption.

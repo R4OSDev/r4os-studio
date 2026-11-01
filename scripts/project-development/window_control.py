@@ -18,7 +18,7 @@ def enabled(store, job):
     finally: connection.close()
     if not row or row[0] != job.get('sessionId'): return False
     config = json.loads(row[1])
-    return (config.get('engine', {}).get('profile') in ('studio-tools-v16','studio-tools-v17')
+    return (config.get('engine', {}).get('profile') in ('studio-tools-v16','studio-tools-v17','studio-tools-v18')
         and config.get('permissions', {}).get('studio.control_app_window') is True
         and config.get('permissions', {}).get('studio.run_project') is True)
 
@@ -93,7 +93,7 @@ async def perform(execution, job, message, state, control, lease, authorization)
     from authorization import authorize
     from vm_worker import guard
     from actions import finish
-    if not authorization or authorization['engine']['profile'] not in ('studio-tools-v16','studio-tools-v17'):
+    if not authorization or authorization['engine']['profile'] not in ('studio-tools-v16','studio-tools-v17','studio-tools-v18'):
         raise DevelopmentFault('Own window control requires its explicit session permission.',403)
     if not (job.get('windowControl') or {}).get('available'):
         raise DevelopmentFault((job.get('windowControl') or {}).get('reason') or 'Deploy and run with the window-control-v1 helper and controller delegation first.')

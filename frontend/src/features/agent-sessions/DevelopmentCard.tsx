@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DevelopmentEvidence, DevelopmentExecutionEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
-import { busyRun, projectRequest, projectRequestId } from './api';
+import { busyRun, projectRequest, projectRequestId, ProjectRequestError } from './api';
 import { CodeBlock } from './Transcript';
 import { UpdateRecord } from '../projects/UpdateRecord';
+import { DesktopDeployment } from './DesktopDeployment';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 export function developmentRef(value: unknown): { jobId: string } | null {
   if (!value || typeof value !== 'object') return null;
@@ -16,11 +17,12 @@ export function DevelopmentImage({ projectId, value }: { projectId: string; valu
   const path = `/api/projects/${projectId}/development/jobs/${image.jobId}/evidence/${image.id}`;
   return <figure className="development-image"><a href={path} target="_blank" rel="noopener noreferrer"><img src={path} loading="lazy" alt="Assigned VM screenshot" width={image.width} height={image.height} /></a><figcaption>{image.diagnosticOnly ? 'Diagnostic only · Desktop content unconfirmed · ' : ''}{new Date(image.createdAt).toLocaleString()} · {image.width} × {image.height}</figcaption></figure>;
 }
-export function DevelopmentCard({ projectId, jobId, token }: { projectId: string; jobId: string; token: string }) {
+export function DevelopmentCard({ projectId, jobId, token, desktopAction = true }: { projectId: string; jobId: string; token: string; desktopAction?: boolean }) {
   const [job, setJob] = useState<DevelopmentJob | null>(null), [error, setError] = useState(''), [stopping, setStopping] = useState(false);
   const [open, setOpen] = useState(false), [output, setOutput] = useState(''), [more, setMore] = useState(false), [loading, setLoading] = useState(false);
   const [evidence, setEvidence] = useState<DevelopmentEvidence[]>([]);
   const [executionEvidence, setExecutionEvidence] = useState<DevelopmentExecutionEvidence | null>(null);
+  const [artifact, setArtifact] = useState<DevelopmentJobPage['artifactSummary']>();
   const cursor = useRef(0), [kind, setKind] = useState('Output'), [truncated, setTruncated] = useState(false);
   const recoveryId = useRef<string | null>(null);
   const completionId = useRef<string | null>(null);
@@ -30,7 +32,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     const refresh = async () => {
       try {
         const page = await projectRequest<DevelopmentJobPage>(path + '?metadataOnly=true', '', 'GET', undefined, controller.signal);
-        if (controller.signal.aborted) return; setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setError('');
+        if (controller.signal.aborted) return; setJob(page.job); setArtifact(page.artifactSummary); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setError('');
         if (busyRun(page.job.state)) timer = window.setTimeout(() => void refresh(), 2000);
       } catch (e) { if (!controller.signal.aborted) { setError((e as Error).message); timer = window.setTimeout(() => void refresh(), 4000); } }
     };
@@ -52,7 +54,10 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
   async function reconcile() {
     setStopping(true); recoveryId.current ??= projectRequestId();
     try { const r = await projectRequest<{ job: DevelopmentJob }>(path + '/reconcile', token, 'POST', { requestId: recoveryId.current }); setJob(r.job); recoveryId.current = null; setError(''); }
-    catch (e) { setError((e as Error).message); } finally { setStopping(false); }
+    catch (e) {
+      if (job?.desktopShortcutRequested && e instanceof ProjectRequestError) recoveryId.current = null;
+      setError((e as Error).message);
+    } finally { setStopping(false); }
   }
   async function completeChecks() {
     setStopping(true); completionId.current ??= projectRequestId();
@@ -80,6 +85,13 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
       <p>Process console: {executionEvidence.output.state}{executionEvidence.output.bytes !== undefined ? ` · ${executionEvidence.output.bytes.toLocaleString()} bytes retained` : ''}. {executionEvidence.output.reason}</p>
     </div>}
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
+    {job?.desktopShortcut && <div aria-label="Desktop shortcut receipt">
+      <p>Desktop shortcut verified · {job.desktopShortcut.iconEmbedded ? 'Icon embedded' : 'Generic application icon'}</p>
+      <p><code>{job.desktopShortcut.path.replace(/^\/C\//, 'C:\\').replaceAll('/', '\\')}</code></p>
+      <p>Desktop display and launch from the shortcut remain unconfirmed.</p>
+    </div>}
+    {desktopAction && job?.state === 'completed' && (job.kind === 'build' || job.kind === 'deploy') && artifact?.kind === 'R4X' && artifact.role === 'desktop'
+      && <DesktopDeployment projectId={projectId} sourceJobId={jobId} artifactId={artifact.id} token={token} />}
     {job?.readiness && <p>{({ transferred: 'Package verified', ready: 'Application ready', started: 'Process started', completed: 'Application ended', unsupported: 'Start unavailable', unknown: 'Outcome unconfirmed', failed: 'Start failed', interrupted: 'Interrupted' } as Record<string, string>)[job.readiness.state] ?? job.readiness.state}</p>}
     {job?.readiness?.reasonCode === 'desktop_content_unconfirmed' && <><p>{job.readiness.reason}</p>{job.readiness.desktopEvidence && <p>Process confirmed · Window {job.readiness.desktopEvidence.windowVisible ? 'visible' : 'unconfirmed'} / {job.readiness.desktopEvidence.windowFocused ? 'focused' : 'unfocused'} · Content unconfirmed. Original STATUS reconciliation is bounded{job.readiness.desktopEvidence.statusRetentionExpired ? '; native retention expired' : ''}.</p>}</>}
     {job?.liveFileObservation && <details className="development-live-files"><summary>Registered output files · {job.outputFiles?.filter(file=>file.state==='observed-stable').length ?? 0} observed stable</summary>

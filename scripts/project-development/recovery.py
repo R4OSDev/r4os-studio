@@ -60,6 +60,14 @@ def local(store, job):
         row = store.db.execute('SELECT id FROM deployments WHERE job_id=?', (job['id'],)).fetchone()
         if not row: return None
         value = store.deployment(row[0], recovering=True)
+        if job.get('desktopShortcutRequested'):
+            from desktop_shortcuts import verify_native
+            work = store.root / 'DeployWork' / job['id']
+            if not (work / 'desktop-receipt.json').exists(): return None
+            original = read(work / 'desktop-receipt.json')
+            verify_native(store, job, value, read(work / 'desktop-intent.json'), original['native'])
+            if original['receipt'] != value.get('desktopShortcut'):
+                raise DevelopmentFault('The desktop receipt differs from its original completed deployment.')
         artifact = store.artifact(value['artifactId'])
         directory = 'C:\\P' + hashlib.sha256(store.id.encode()).hexdigest()[:7].upper() + '\\D' + identity(value['id']).replace('-', '')[:7].upper()
         if value.get('format') == 'exchange-build-v1':
@@ -75,7 +83,8 @@ def local(store, job):
             or not value['files'] or any(v.get('fullReadbackVerified') is not True for v in value['files'])):
             raise DevelopmentFault('The deployment publication receipt is incomplete. Guest files were preserved.')
         return store.recovered(job['id'], 'completed', receipt('committed-deployment-readback', deploymentId=value['id'], historical=True),
-            deploymentId=value['id'], target=value['target'], exitCode=0, error=None)
+            deploymentId=value['id'], target=value['target'], exitCode=0, error=None,
+            **({'desktopShortcut': value['desktopShortcut']} if value.get('desktopShortcut') else {}))
     if job['kind'] != 'execution': return None
     work = store.root / 'ExecutionWork' / job['id']; closed = work / 'closed.json'
     if not closed.exists(): return None
@@ -117,6 +126,9 @@ def local(store, job):
 
 
 async def reconcile(store, job, host=None):
+    if job['kind'] == 'deploy' and job.get('desktopShortcutRequested'):
+        from desktop_shortcuts import reconcile as desktop_reconcile
+        return await desktop_reconcile(store, job, host)
     if job['kind'] in ('update_install','update_commit','update_verify','update_recovery'):
         if host is None:raise DevelopmentFault('Current update observation support is required.')
         from update_recovery import reconcile as update_reconcile
