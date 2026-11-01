@@ -138,11 +138,14 @@ class Host:
 
     async def handle(self, request, peer_pid=None):
         op = request.get('operation')
-        if op in ('github_import_finish', 'github_pull_validate'):
-            if set(request) != {'operation', 'projectId', 'input'} or not isinstance(request.get('input'), dict): raise DevelopmentFault('Invalid GitHub SDK validation request.', 400)
+        if op in ('github_import_finish', 'github_pull_validate', 'project_pins_apply'):
+            fields = {'operation', 'projectId', 'input'} | ({'hosts'} if op == 'project_pins_apply' else set())
+            if set(request) != fields or not isinstance(request.get('input'), dict): raise DevelopmentFault('Invalid SDK validation request.', 400)
             project_id = identity(request['projectId'])
-            helper = 'github_import' if op == 'github_import_finish' else 'github_pull'
-            payload = {'operation': 'finish', 'id': project_id, 'input': request['input']} if helper == 'github_import' else {'operation': 'validate', 'id': project_id, 'requestId': identity(request['input'].get('requestId'))}
+            helper = 'project_pins' if op == 'project_pins_apply' else 'github_import' if op == 'github_import_finish' else 'github_pull'
+            payload = ({'operation': 'apply', 'id': project_id, 'input': request['input'], 'hosts': request['hosts']} if helper == 'project_pins' else
+                       {'operation': 'finish', 'id': project_id, 'input': request['input']} if helper == 'github_import' else
+                       {'operation': 'validate', 'id': project_id, 'requestId': identity(request['input'].get('requestId'))})
             if helper == 'github_pull' and set(request['input']) != {'requestId'}: raise DevelopmentFault('Unexpected pull validation fields.', 400)
             async with self.git_validation:
                 self.git_validating += 1
@@ -154,7 +157,7 @@ class Host:
                         try: os.killpg(process.pid, signal.SIGKILL)
                         except ProcessLookupError: pass
                         await process.wait(); raise
-                    if len(output) > 2 * 1024**2: raise DevelopmentFault('GitHub SDK response exceeded its limit.', 503)
+                    if len(output) > 2 * 1024**2: raise DevelopmentFault('SDK response exceeded its limit.', 503)
                     value = json.loads(output)
                     if 'error' in value: raise DevelopmentFault(value['error'], value.get('code', 503))
                     return value['result']
@@ -295,7 +298,7 @@ class Host:
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')

@@ -13,7 +13,7 @@ def project_id(value):
     return value
 
 
-def acquire(projects, identity, exclusive=False):
+def acquire(projects, identity, exclusive=False, pins_recovery=False):
     project_id(identity)
     parent = Path(projects).absolute() / '.studio/project-use'
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -25,6 +25,9 @@ def acquire(projects, identity, exclusive=False):
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode): raise ProjectFault('Invalid project reservation.', 503)
         fcntl.flock(stream, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
+        gate = Path(projects).absolute() / '.studio/project-pins' / (identity + '.json')
+        if not pins_recovery and (gate.exists() or gate.is_symlink()):
+            raise ProjectFault('Finish the original pin change in Project Settings → Pins before using this project.', 409)
         return stream
     except BlockingIOError:
         stream.close()

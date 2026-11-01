@@ -1,3 +1,14 @@
+## Explicit pin changes for existing projects (0.8.77)
+
+Project pin APIs select an installed SDK with its matching Contract and compiler,
+validate the published component/tool identities and the existing app manifest
+through the unprivileged development coordinator, and publish catalog and portable
+`.r4os-studio/project.json` pins together. Project-wide idle admission, durable
+request receipts and a recovery gate protect interrupted publication. Source
+files, Cargo.lock, other projects and global defaults are preserved. No app build
+or runtime success is implied. Project Settings → Pins is added in the following
+release; architecture and limits: `../Docs/Project-Pins.md`.
+
 ## Environment notes for upstream faults and feature requests (0.8.76)
 
 Reporting policy2 explicitly covers observed Studio/tool/workflow faults and

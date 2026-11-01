@@ -15,6 +15,7 @@ import { roadmapRoutes } from '../project-roadmaps/routes.js';
 import { boardRoutes } from '../project-boards/routes.js';
 import { agentHost } from '../agent-sessions/host.js';
 import type { ProjectActivity } from '../../../../shared/projects.js';
+import { projectPinRoutes } from './pin-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const fields = {
@@ -59,6 +60,7 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);
   developmentRoutes(app, sessions);
+  projectPinRoutes(app, directory, sessions);
   app.get<{ Params: { id: string } }>('/:id/build-cache', {
     schema: { params: { type: 'object', required: ['id'], properties: { id: identity } } },
   }, async (request, reply) => {

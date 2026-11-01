@@ -45,8 +45,8 @@ def selection_revision(root, defaults, template):
     return hashlib.sha256((template + json.dumps(rust, sort_keys=True)).encode()).hexdigest()
 
 
-def profile(root, projects, pinned=None, resolve_rust=True, verify_components=True):
-    defaults = pinned or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
+def profile(root, projects, pinned=None, resolve_rust=True, verify_components=True, selected=None):
+    defaults = pinned or selected or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
     sdk_id = defaults['sdk'].get('revision')
     contract_id = defaults['contract'].get('revision')
     zig_id = defaults['zig'].get('version')

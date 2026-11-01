@@ -62,3 +62,18 @@ export interface ProjectAgents {
 }
 export interface ProjectBuildCacheState { available: boolean; pendingRequestId: string | null }
 export interface ProjectBuildCacheCleared { requestId: string; cleared: boolean; changed: boolean; superseded: boolean }
+
+export interface ProjectPinChoice {
+  sdkId: string; version?: string; available: boolean; isDefault: boolean; reason?: string; selectionId?: string;
+  components?: Pick<ProjectPins, 'sdk' | 'contract'> & {
+    zig: Omit<ProjectPins['zig'], 'binarySha256'> & { binarySha256?: string };
+    rust?: { id: string; version: string };
+  };
+}
+export interface ProjectPinOptions {
+  project: Project; choices: ProjectPinChoice[]; available: boolean; pendingRequestId: string | null;
+}
+export interface ProjectPinUpdate { requestId: string; revision: number; sdkId: string; selectionId: string }
+export interface ProjectPinReceipt {
+  requestId: string; state: 'missing' | 'unknown' | 'complete'; input?: ProjectPinUpdate; project?: Project; message?: string;
+}

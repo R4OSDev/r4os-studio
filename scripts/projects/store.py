@@ -184,7 +184,10 @@ def main():
     if len(data) > 131072:
         raise ValueError('Project request is too large.')
     request = json.loads(data)
-    with connect(Path(sys.argv[1])) as db:
+    from contextlib import nullcontext
+    from project_use import acquire
+    lifetime = acquire(Path(sys.argv[1]), request['id']) if request.get('operation') == 'update' else nullcontext()
+    with lifetime, connect(Path(sys.argv[1])) as db:
         result = operation(db, request, Path(sys.argv[2]))
     print(json.dumps({'result': result}, ensure_ascii=False))
 
