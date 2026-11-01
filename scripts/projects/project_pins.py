@@ -82,7 +82,7 @@ def choices(root, current):
                         selected['rust'] = {'id': installed.name, 'version': record['version']}
                         identities.append(record); break
                 if 'rust' not in selected: raise ValueError('Install the SDK-compatible Rust toolchain in System → Updates → Components.')
-            item.update(available=True, components=selected,
+            item.update(available=True, components=selected, releaseSha256=selection['manifestSha256'],
                         selectionId=hashed({'project': current['id'], 'revision': current['revision'], 'pins': current['pins'],
                                             'manifest': selection['manifestSha256'], 'components': identities}))
         except FileNotFoundError:
@@ -90,7 +90,10 @@ def choices(root, current):
         except (ValueError, KeyError, OSError, ProjectFault) as error:
             item['reason'] = str(error) if isinstance(error, (ValueError, ProjectFault)) else 'The installed SDK set is incomplete. Check System → Updates → Components.'
         result.append(item)
-    return sorted(result, key=lambda v: tuple(int(n) for n in v.get('version', '0.0.0').split('.')), reverse=True)
+    def version_key(value):
+        version = value.get('version', '')
+        return tuple(map(int, version.split('.'))) if isinstance(version, str) and re.fullmatch(r'\d+\.\d+\.\d+', version) else (0, 0, 0)
+    return sorted(result, key=version_key, reverse=True)
 
 
 def storage(projects, identity, create=False):
@@ -135,7 +138,7 @@ def receipt(projects, identity, request_id):
     base = storage(projects, identity)
     value = original(base, identity, request_id)
     if not value: return {'requestId': request_id, 'state': 'missing'}
-    return value.get('result') or {'requestId': request_id, 'state': 'unknown', 'input': value['input'],
+    return {**value['result'], 'input': value['input']} if value.get('result') else {'requestId': request_id, 'state': 'unknown', 'input': value['input'],
                                  'message': 'Retry the original pin change to finish publication.'}
 
 
@@ -209,6 +212,11 @@ def apply(projects, root, identity, data, hosts):
                 raise ProjectFault('The installed SDK selection changed or is unavailable. Reload Pins.', 409)
             from sdk import profile
             context = profile(root, projects, resolve_rust=current['language'] == 'Rust', selected=choice['components'])
+            if context['pins'].get('sdkTools', {}).get('releaseSha256') != choice['releaseSha256']:
+                raise ProjectFault('The SDK release metadata changed. Refresh its installed set in System → Updates before applying.', 409)
+            for kind in ('sdk', 'contract', 'zig'):
+                if any(context['pins'][kind].get(key) != expected for key, expected in choice['components'][kind].items()):
+                    raise ProjectFault('Installed component metadata changed during verification. Reload Pins.', 409)
             if current['language'] == 'Rust':
                 if not context.get('rust'): raise ProjectFault('The SDK-compatible Rust toolchain is unavailable.', 409)
                 context['pins']['rust'] = context['rust']['pin']

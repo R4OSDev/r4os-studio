@@ -64,7 +64,7 @@ export interface ProjectBuildCacheState { available: boolean; pendingRequestId: 
 export interface ProjectBuildCacheCleared { requestId: string; cleared: boolean; changed: boolean; superseded: boolean }
 
 export interface ProjectPinChoice {
-  sdkId: string; version?: string; available: boolean; isDefault: boolean; reason?: string; selectionId?: string;
+  sdkId: string; version?: string; available: boolean; isDefault: boolean; reason?: string; selectionId?: string; releaseSha256?: string;
   components?: Pick<ProjectPins, 'sdk' | 'contract'> & {
     zig: Omit<ProjectPins['zig'], 'binarySha256'> & { binarySha256?: string };
     rust?: { id: string; version: string };

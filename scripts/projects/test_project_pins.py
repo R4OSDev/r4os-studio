@@ -20,7 +20,7 @@ class PinTests(unittest.TestCase):
         self.projects = Path(self.temp.name) / 'Projects'; self.root = Path(self.temp.name) / 'R4OS'
         self.id = str(uuid.uuid4()); self.request = str(uuid.uuid4())
         self.old = {'sdk': {'version': '0.64.92', 'revision': '1' * 40}, 'contract': {}, 'zig': {}}
-        self.new = {'sdk': {'version': '0.64.127', 'revision': '2' * 40}, 'contract': {}, 'zig': {}}
+        self.new = {'sdk': {'version': '0.64.127', 'revision': '2' * 40}, 'contract': {}, 'zig': {}, 'sdkTools': {'releaseSha256':'f' * 64}}
         with closing(connect(self.projects)) as db, db:
             db.execute("INSERT INTO projects VALUES (?,?, '', 'Zig','terminal','APP',NULL,?,'before','before',1,'ready')", (self.id, 'Own QA', json.dumps(self.old)))
         self.work = self.projects / self.id / 'Workspace'; (self.work / '.r4os-studio').mkdir(parents=True)
@@ -30,7 +30,7 @@ class PinTests(unittest.TestCase):
         (self.work / 'main.zig').write_text('Original source\n')
         self.input = {'requestId': self.request, 'revision': 1, 'sdkId': '2' * 40, 'selectionId': 'a' * 64}
         self.hosts = {'agents': True, 'development': True, 'unsafe': False}
-        self.choice = {'sdkId': '2' * 40, 'available': True, 'selectionId': 'a' * 64, 'components': self.new}
+        self.choice = {'sdkId': '2' * 40, 'available': True, 'selectionId': 'a' * 64, 'components': self.new, 'releaseSha256': 'f' * 64}
         for target, result in [('project_pins.choices', [self.choice]), ('sdk.profile', {'pins': self.new}),
                                ('github_import.manifest', 'APP'), ('clear_cache.worker_admission', None)]:
             mock = patch(target, return_value=result); mock.start(); self.addCleanup(mock.stop)
@@ -48,7 +48,7 @@ class PinTests(unittest.TestCase):
     def test_apply_original_receipt_and_conflicting_id(self):
         result = self.apply(); self.assertEqual(result['state'], 'complete'); self.assert_pair(self.new, 2)
         self.assertEqual(self.apply(), result)
-        self.assertEqual(pins.receipt(self.projects, self.id, self.request), result)
+        self.assertEqual(pins.receipt(self.projects, self.id, self.request), {**result, 'input': self.input})
         with self.assertRaises(ProjectFault): self.apply({**self.input, 'sdkId': '3' * 40})
         self.assert_pair(self.new, 2)
 
@@ -67,6 +67,15 @@ class PinTests(unittest.TestCase):
             with self.assertRaises(ProjectFault): self.apply()
         with patch('remote_binding.assert_change_safe', side_effect=ProjectFault('Unknown remote job')):
             with self.assertRaises(ProjectFault): self.apply()
+        self.assert_pair(self.old, 1)
+
+    def test_selected_release_cannot_change_during_verification(self):
+        changed = {**self.new, 'sdkTools': {'releaseSha256': 'e' * 64}}
+        with patch('sdk.profile', return_value={'pins': changed}):
+            with self.assertRaisesRegex(ProjectFault, 'release metadata changed'): self.apply()
+        changed = {**self.new, 'sdk': {**self.new['sdk'], 'version': 'other'}}
+        with patch('sdk.profile', return_value={'pins': changed}):
+            with self.assertRaisesRegex(ProjectFault, 'component metadata changed'): self.apply()
         self.assert_pair(self.old, 1)
 
     def test_file_published_before_database_commit_is_recoverable(self):

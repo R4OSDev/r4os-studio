@@ -45,6 +45,11 @@ export class EditorRegistry {
     p.notice = 'Saved sources were updated from GitHub. Review and reload changed files; open drafts are kept.';
     p.trees.clear(); this.changed(); if (p.initialized) this.refresh(id);
   }
+  pinsChanged(id: string) {
+    const p = this.projects.get(id); if (!p) return;
+    p.notice = 'Project pins changed. Review and reload portable project metadata; open drafts are kept.';
+    p.trees.clear(); this.changed(); if (p.initialized) this.refresh(id);
+  }
   private request<T>(p: EditorProject, path: string, method = 'GET', body?: unknown) {
     return projectRequest<T>(`/${p.id}/editor${path}`, p.token, method, body);
   }

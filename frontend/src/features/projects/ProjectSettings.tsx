@@ -7,7 +7,7 @@ import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { ProjectBuildCache } from './ProjectBuildCache';
 import { HostSelect } from '../remote-hosts/HostSelect';
 
-export type ProjectSettingsView = 'General' | 'Virtual machine' | 'Remote host' | 'Run & Test' | 'Agents.md';
+export type ProjectSettingsView = 'General' | 'Pins' | 'Virtual machine' | 'Remote host' | 'Run & Test' | 'Agents.md';
 export function ProjectSettings({ id, view, token, dirtyChanged, busyChanged, saved, deleted }: {
   id: string; view: ProjectSettingsView; token: string; dirtyChanged: (value: boolean) => void;
   busyChanged: (value: boolean) => void;

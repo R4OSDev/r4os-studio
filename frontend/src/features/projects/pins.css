@@ -1,0 +1,30 @@
+.project-settings.project-pins-settings { max-width: 1040px; }
+.project-pins-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 25px 0; }
+.project-pins-settings .project-pins-heading h2 { padding: 0; }
+.project-pins-heading .project-reload { padding: 7px 12px; }
+.project-pins-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; padding: 0 25px 24px; }
+.project-pin-card { min-width: 0; padding: 20px; border: 1px solid #483456; border-radius: 9px; background: #21182b; }
+.project-pin-card h3 { margin: 0 0 20px; color: #e5d0fa; font-size: 14px; font-weight: 550; }
+.project-pin-card > .project-message { margin: 18px 0 0; }
+.project-pin-list { margin: 0; }
+.project-pin-list > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #a484bd1c; font-size: 13px; }
+.project-pin-list dt { color: #bdaaca; }
+.project-pin-list dd { margin: 0; text-align: right; color: #eadbf8; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.project-pin-list small { display: block; margin-top: 5px; color: #ad96bf; font-size: 11px; }
+.project-pin-card > .project-field + .project-pin-list { margin-top: 14px; }
+.project-pin-details { min-width: 0; margin-top: 20px; color: #bfa4d5; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.project-pin-details summary { padding: 4px 0; cursor: pointer; }
+.project-pin-details summary:focus-visible { outline: 2px solid #bd94ed; outline-offset: 3px; }
+.project-pin-details section { padding-top: 12px; }
+.project-pin-details h4 { margin: 0 0 8px; color: #e4c8fc; font-size: 12px; }
+.project-pin-details dl { margin: 0; }
+.project-pin-details dt { color: #aa92bb; }
+.project-pin-details dd { margin: 3px 0 12px; color: #d2c1e0; font-family: ui-monospace, monospace; font-size: 11px; }
+.project-pin-details dd span { display: block; }
+@media (max-width: 1050px) { .project-pins-columns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .project-pins-heading { padding: 18px 16px 0; }
+  .project-pins-columns { gap: 14px; padding: 0 14px 18px; }
+  .project-pin-card { padding: 16px; }
+  .project-pins-settings > .project-message, .project-pins-settings > .project-error { padding: 14px 16px; }
+}

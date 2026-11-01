@@ -1,3 +1,20 @@
+## Project Settings → Pins (0.8.78)
+
+Existing projects can now explicitly select an installed SDK under
+**Projects → project → Settings → Pins**. The view compares current SDK, Contract,
+Zig and applicable Rust versions, with expandable source revisions and checksums.
+Contract and compiler bindings follow the selected SDK. Apply affects only this
+project; active work and unsaved editor drafts block changes. Source files and
+Cargo.lock stay intact, while portable project metadata and catalog pins change
+together. A pin change validates components and the manifest; build afterwards
+to check application source compatibility.
+
+Lost responses and reloads retain the original request. Status checks only read
+its receipt; explicit retries reconcile the same publication. Editor drafts are
+kept and changed metadata is flagged for review. Actual pin switches and isolated
+SDK127/Contract68 builds are qualified for Zig, C and Rust without migrating user
+projects. Details and limits: `../Docs/Project-Pins.md`.
+
 ## Explicit pin changes for existing projects (0.8.77)
 
 Project pin APIs select an installed SDK with its matching Contract and compiler,
@@ -6,8 +23,8 @@ through the unprivileged development coordinator, and publish catalog and portab
 `.r4os-studio/project.json` pins together. Project-wide idle admission, durable
 request receipts and a recovery gate protect interrupted publication. Source
 files, Cargo.lock, other projects and global defaults are preserved. No app build
-or runtime success is implied. Project Settings → Pins is added in the following
-release; architecture and limits: `../Docs/Project-Pins.md`.
+or runtime success is implied. The Project Settings → Pins interface is available
+since 0.8.78; architecture and limits: `../Docs/Project-Pins.md`.
 
 ## Environment notes for upstream faults and feature requests (0.8.76)
 
