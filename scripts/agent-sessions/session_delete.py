@@ -172,7 +172,9 @@ async def inspect(host, store, sid):
         goal = store.db.execute('SELECT phase,native FROM session_goals WHERE session_id=?',(sid,)).fetchone()
         if goal and (goal['phase'] != 'idle' or json.loads(goal['native'] or '{}').get('status') == 'active'):
             blockers.append('Pause or stop the Goal and confirm its original receipt first.')
-    if has(store.db,'session_attachments') and store.db.execute("SELECT 1 FROM session_attachments WHERE session_id=? AND state NOT IN ('ready','removed') LIMIT 1",(sid,)).fetchone():
+    # Rejected uploads and confirmed purges are terminal original receipts.
+    # Preserve blockers for pending, unknown, removing and unfamiliar states.
+    if has(store.db,'session_attachments') and store.db.execute("SELECT 1 FROM session_attachments WHERE session_id=? AND state NOT IN ('ready','removed','rejected','purged') LIMIT 1",(sid,)).fetchone():
         blockers.append('An attachment operation is active or unconfirmed.')
     for tool in store.db.execute("SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.state IN ('intent','unknown')",(sid,)):
         if tool['tool'] in READ_ONLY: continue

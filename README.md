@@ -1,3 +1,20 @@
+## Session deletion after completed upload failures (0.8.75)
+
+Session deletion now recognizes rejected uploads and confirmed purges as terminal
+attachment receipts, alongside ready and removed attachments. Previously, an
+unsupported file or an earlier validation failure permanently blocked deletion
+with an active-or-unconfirmed attachment message. The same issue affected files
+whose unused originals had already been fully purged.
+
+Pending uploads, uncertain outcomes, incomplete removal and unfamiliar states
+still block preview and confirmed admission. Original receipts and attachment
+bytes remain intact until the user confirms the ordinary session deletion.
+Project and skill sessions share the correction; the Yes/No dialog is unchanged.
+Eight targeted deletion tests cover actual rejected uploads and completed purges,
+both owner scopes, unchanged originals before confirmation, unrelated sessions,
+active/unknown/cleanup states and existing deletion recovery. Build, TypeScript,
+lint and protected production preview readback accompany the fix.
+
 ## Session composer without keyboard footer (0.8.74; roadmap0.8.46)
 
 The remaining idle keyboard hint is removed from the shared project/skill

@@ -1,6 +1,8 @@
 """Own fixtures only: scopes, lifetime races, durable cleanup and numeric retention."""
 from contextlib import closing
 import asyncio
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -145,6 +147,60 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
             await after_reader(lambda: resume(host, kind, owner, sid, data['requestId']))
             with closing(SessionStore(self.projects, self.r4os, owner, kind)) as store:
                 self.assertEqual(original(store, sid, data['requestId'])['state'], 'deleted')
+
+    async def test_rejected_uploads_and_confirmed_purges_allow_both_scopes_without_receipt_changes(self):
+        from attachment_store import Attachments
+        skill,skill_sid=self.add_skill();host=self.host()
+        for kind,owner,sid in [('project',self.pid,self.sid),('skill',skill,skill_sid)]:
+            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
+                attachments=Attachments(store,sid)
+                def upload(name):
+                    raw=b'Own original upload bytes'
+                    return attachments.upload({'requestId':str(uuid.uuid4()),'name':name,
+                        'mediaType':'application/octet-stream','size':len(raw),
+                        'sha256':hashlib.sha256(raw).hexdigest()},io.BytesIO(raw))
+                rejected=upload('unsupported.bmp');self.assertEqual(rejected['state'],'rejected')
+                purged=upload('unused.txt');attachments.remove(purged['attachment']['id'])
+                self.assertEqual(attachments.row(purged['attachment']['id'])['state'],'purged')
+                ready=upload('retained.txt');ready_path=Path(attachments.access(ready['attachment']['id'])['path'])
+                original_bytes=ready_path.read_bytes()
+                rows=[tuple(r) for r in store.db.execute('SELECT * FROM session_attachments ORDER BY id')]
+            data=await self.command(host,kind,owner,sid)
+            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
+                self.assertEqual([tuple(r) for r in store.db.execute('SELECT * FROM session_attachments ORDER BY id')],rows)
+                self.assertEqual(Attachments(store,sid).receipt(rejected['requestId']),rejected)
+                self.assertEqual(ready_path.read_bytes(),original_bytes)
+            await delete(host,kind,owner,sid,data)
+            await resume(host,kind,owner,sid,data['requestId'])
+            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
+                self.assertEqual(original(store,sid,data['requestId'])['state'],'deleted')
+                self.assertFalse(store.db.execute('SELECT 1 FROM session_attachments WHERE session_id=?',(sid,)).fetchone())
+                self.assertFalse(ready_path.exists())
+
+    async def test_active_uncertain_cleanup_and_unfamiliar_upload_states_still_block_both_scopes(self):
+        from attachment_store import Attachments
+        skill,skill_sid=self.add_skill();host=self.host()
+        for kind,owner,sid in [('project',self.pid,self.sid),('skill',skill,skill_sid)]:
+            own_attachment,other_attachment,other_sid=(str(uuid.uuid4()) for _ in range(3))
+            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
+                row=store.row(sid);Attachments(store,sid).schema()
+                with store.db:
+                    store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')",(other_sid,owner,'Other session',row['settings'],row['engine']))
+                    for ident,session,state in [(own_attachment,sid,'ready'),(other_attachment,other_sid,'pending')]:
+                        store.db.execute("INSERT INTO session_attachments VALUES (?,?,?,'hash','{}',?,NULL,'{}','now')",(ident,session,str(uuid.uuid4()),state))
+            data=await self.command(host,kind,owner,sid)
+            for state in ('pending','unknown','removing','future-state'):
+                with self.subTest(scope=kind,state=state):
+                    with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store,store.db:
+                        store.db.execute('UPDATE session_attachments SET state=? WHERE id=?',(state,own_attachment))
+                    view=await preview(host,kind,owner,sid)
+                    self.assertFalse(view['allowed']);self.assertIn('An attachment operation is active or unconfirmed.',view['blockers'])
+                    with self.assertRaises(ProjectFault) as blocked:await delete(host,kind,owner,sid,data)
+                    self.assertEqual(blocked.exception.code,409)
+                    self.assertIn('attachment operation',str(blocked.exception))
+                    with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
+                        self.assertFalse(store.db.execute('SELECT 1 FROM session_deletions WHERE session_id=?',(sid,)).fetchone())
+                        self.assertEqual(store.db.execute('SELECT state FROM session_attachments WHERE id=?',(other_attachment,)).fetchone()[0],'pending')
 
     async def test_active_queue_goal_and_unknown_tool_are_denied_before_deletion(self):
         host=self.host()
