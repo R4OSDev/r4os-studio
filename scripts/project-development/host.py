@@ -386,7 +386,7 @@ class Host:
             if op == 'reconcile':
                 from actions import admit, finish
                 from recovery import reconcile
-                if not isinstance(request['input'], dict) or set(request['input']) != {'requestId'}: raise DevelopmentFault('Unexpected recovery fields.', 400)
+                if not isinstance(request.get('input'), dict) or set(request['input']) != {'requestId'}: raise DevelopmentFault('Unexpected recovery fields.', 400)
                 job = store.get(request['id'])
                 if await self.alive(job['id'], job['kind']): raise DevelopmentFault('This worker is still active. Reconnect to its current job instead.')
                 try:

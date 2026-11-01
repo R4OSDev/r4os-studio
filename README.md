@@ -1,3 +1,32 @@
+## Guest gestures and original watchdog recovery (0.8.79)
+
+New helper deployments declare `gestureVersion:1` in qualification and in the
+live controller, so a supported right-button gesture is no longer rejected by
+missing deployment metadata. Existing deployments retain their original bytes;
+deploy the artifact again to use the updated helper. The helper's saved-evidence
+observer now advertises `desktopEvidenceRecoveryVersion:1` and uses matching
+eight-character basenames on the Exchange drive.
+
+For older observers, recovery can read the original independent watchdog's
+final receipt after checking the unchanged VM/boot, original helper bytes,
+controller/execution identity, process generation and native completion sequence.
+This confirms only the original process end. Missed console output and app
+criteria remain incomplete/inconclusive, and a control-loss exit remains a
+failed execution even when the native exit code is zero. No helper, application
+start or input is replayed. Prior unknown records and frozen configurations stay
+intact; the new closure receipt is archived separately.
+
+A committed image assessment now reports its own confirmed host effect instead
+of inheriting an unrelated unknown execution state. Goal recovery can link that
+exact original assessment receipt to the confirmed guest end. Malformed recovery
+requests receive400 rather than an internal503. This is a direct hotfix with no
+roadmap changes, tests, fixtures or model calls.
+
+The actual original Minesweeper/Main process was reconciled from its final native
+watchdog frame; its Goal remains paused in the same thread and ready for explicit
+Play. Studio build/TypeScript/lint and both pinned guest-helper builds passed.
+No VM was stopped/restarted and no user app was rebuilt, redeployed or launched.
+
 ## Project Settings → Pins (0.8.78)
 
 Existing projects can now explicitly select an installed SDK under

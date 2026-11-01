@@ -122,7 +122,12 @@ class DevelopmentTools:
                     if set(value) != {'jobId', 'action', 'evidenceId', 'state', 'notes'}: raise DevelopmentFault('Provide image ID, state and notes for assessment.', 400)
                     job = await self.request('assess', id=value['jobId'], input={'requestId': request_id,
                         'evidenceId': value['evidenceId'], 'state': value['state'], 'notes': value['notes']})
-                    return self.result(job)
+                    # This call commits a host image judgment. An earlier
+                    # unconfirmed guest execution is separate from that receipt.
+                    result = self.result(job)
+                    result.update(success=True)
+                    result.pop('error', None)
+                    return result
                 if set(value) - {'jobId', 'action'}: raise DevelopmentFault('Unexpected capture fields.', 400)
                 data = await self.request('capture', id=value['jobId'], input={'requestId': request_id})
                 metadata = data['metadata']

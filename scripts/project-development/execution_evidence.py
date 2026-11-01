@@ -1,5 +1,6 @@
 """Read-only presentation of original execution receipts; never grants replay."""
 import hashlib
+import re
 from contracts import DevelopmentFault, LIMITS
 from recovery import read
 
@@ -21,15 +22,28 @@ def describe(store, job):
         if any(started['process'].get(key) != process[key] for key in ('instanceId', 'generation')): return result
         closed = (work / 'closed.json').exists()
         retained = (work / 'retained-completion.json').exists()
-        value = read(work / ('retained-completion.json' if retained else ('closed.json' if closed else 'output-observation.json')))
+        watchdog = (work / 'watchdog-completion.json').exists()
+        value = read(work / ('retained-completion.json' if retained else 'watchdog-completion.json' if watchdog else
+                            'closed.json' if closed else 'output-observation.json'))
         if any(value.get(key) != val for key, val in expected.items()) or type(value.get('schema')) is not int or value['schema'] != 1: return result
-        if closed and not retained and (value.get('state') != 'closed' or value.get('applicationStarted') is False): return result
+        if closed and not retained and not watchdog and (value.get('state') != 'closed' or value.get('applicationStarted') is False): return result
         if retained and value.get('state') != 'retained-completion': return result
-        state = value.get('completion') if closed or retained else value.get('observation')
+        if watchdog and not retained and value.get('state') != 'watchdog-completion': return result
+        if watchdog and not retained:
+            reference = value.get('watchdogReceipt') or {}
+            if not isinstance(reference.get('file'), str) or not re.fullmatch(r'watchdog-original-[a-f0-9]{32}\.json', reference['file']): return result
+            path = work / reference['file']
+            raw = read(path)
+            if hashlib.sha256(path.read_bytes()).hexdigest() != reference.get('sha256'): return result
+            if (not isinstance(raw, dict) or raw.get('instance') != job['executionId'] or raw.get('success') is not True
+                or any((raw.get('result') or {}).get(key) != value['completion'].get(key)
+                       for key in ('state', 'instanceId', 'generation', 'closeConfirmed', 'exitCode', 'completionSequence'))): return result
+        state = value.get('completion') if closed or retained or watchdog else value.get('observation')
         if not isinstance(state, dict) or any(state.get(key) != process[key] for key in ('instanceId', 'generation')): return result
-        result['source'] = 'native-retained-completion' if retained else ('private-guest-close-receipt' if closed else 'private-guest-observation')
+        result['source'] = ('native-retained-completion' if retained else 'original-watchdog-completion' if watchdog else
+                            'private-guest-close-receipt' if closed else 'private-guest-observation')
         result['processEndConfirmed'] = state.get('state') == 'completed' and state.get('closeConfirmed') is True
-        result['cleanupConfirmed'] = bool(not retained and closed and result['processEndConfirmed'] and
+        result['cleanupConfirmed'] = bool(not retained and not watchdog and closed and result['processEndConfirmed'] and
             all(value.get('cleanupReceipt', {}).get(key) is True for key in ('closed', 'serviceRemoved', 'watchdogRemoved')))
         code = state.get('exitCode')
         result['exitStatusConfirmed'] = type(code) is int and -2147483648 <= code <= 2147483647

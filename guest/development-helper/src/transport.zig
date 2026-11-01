@@ -111,6 +111,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
     control.emit(sys, instance, 0, true, .{ .interface = "r4os-studio-guest", .controlVersion = @as(u32, 2),
         .desktopAdoptionVersion = @as(u32, 1),
         .desktopEvidenceVersion = @as(u32, 1),
+        .desktopEvidenceRecoveryVersion = @as(u32, 1),
         .windowControlVersion = @as(u32, 1),
         .guiFrameBindingVersion = @as(u32, 1),
         .guiInputVersion = @as(u32, 2),

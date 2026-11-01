@@ -118,12 +118,14 @@ async def query_saved(ssh, deployment, execution_id, work, token, operation='sta
         raise DevelopmentFault('The retained observer has no verified deployment directory.')
     from contracts import identity
     identity(execution_id); unpack(token)
+    if deployment.get('helperCapabilities', {}).get('desktopEvidenceRecoveryVersion') != 1:
+        raise DevelopmentFault('The original observer does not support 8.3 recovery files. Read its original watchdog completion instead; no helper was replaced.')
     if operation not in ('status', 'read', 'release'):
         raise DevelopmentFault('Recovery cannot create or acknowledge evidence.')
     attempt = work / ('evidence-observer-' + uuid.uuid4().hex)
     local = attempt.with_suffix('.intent.json')
     save(local, {'instance': execution_id, 'token': token, 'operation': operation, 'offset': offset})
-    guest = '/' + directory[0] + directory[2:].replace(chr(92), '/') + '/E' + execution_id[:8] + '.JSN'
+    guest = '/' + directory[0] + directory[2:].replace(chr(92), '/') + '/E' + execution_id[:7].upper() + '.JSN'
     # Guest SFTP publication is create-only. Replace only this exact own
     # nonce-bound control file while the VM lease excludes another observer.
     await batch(ssh, ['-rm ' + quote(guest), 'put ' + quote(local) + ' ' + quote(guest)])
@@ -182,6 +184,13 @@ async def recover(store, job, host, vm, lease, info):
         if verification.stat().st_size != helper['bytes'] or digest(verification) != helper['sha256']:
             raise DevelopmentFault('The saved observer helper changed; evidence was preserved.')
         verification.unlink()
+        # Older immutable observers use a nine-character basename. Their own
+        # independent watchdog still leaves a valid 8.3 completion receipt.
+        if deployment.get('helperCapabilities', {}).get('desktopEvidenceRecoveryVersion') != 1:
+            from watchdog_recovery import recover as watchdog_completion
+            try: return await watchdog_completion(store, job, deployment, ssh, work, intent)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                raise DevelopmentFault('The original watchdog evidence is missing or damaged. Existing receipts and quarantine were preserved.') from None
         async def query(op='status', offset=0):
             return await query_saved(ssh, deployment, intent['executionId'], work, token, op, offset)
         status = await query()

@@ -1,5 +1,12 @@
 # Studio guest execution adapter
 
+0.8.79 includes `gestureVersion:1` in both qualification and the live controller.
+The saved-evidence observer advertises `desktopEvidenceRecoveryVersion:1` and
+uses Exxxxxxx.JSN/Vxxxxxxx.JSN, matching the Exchange drive's8.3 name limits.
+Older immutable helpers keep their original bytes. The host may reconcile their
+original Axxxxxxx.JSN watchdog completion after exact identity/native completion
+checks, without running a replacement helper or replaying an application start.
+
 0.8.2 adds `gestureVersion:1`. A complete plan has at most32 client-relative
 down/move/up steps over2000ms, balanced left/right press/release and an exact
 focused window/geometry binding. The independent watchdog advances it even

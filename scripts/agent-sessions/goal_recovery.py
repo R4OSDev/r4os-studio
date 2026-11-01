@@ -1,12 +1,35 @@
 """Bounded original references and read-only development reconciliation metadata."""
 import json
+import hashlib
 import sqlite3
 import uuid
 from contextlib import closing
 
 
 DEVELOPMENT = {'studio_build_project': 'build', 'studio_deploy_project': 'deploy',
-    'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_read_development_job': None}
+    'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_read_development_job': None,
+    'studio_capture_vm': 'execution'}
+
+
+def assessment_receipt(db, job, tool, request, reference):
+    """Only a completed original host annotation, never a capture/input replay."""
+    if 'intent' not in tool.keys() or not tool['intent'] or len(tool['intent'].encode()) > 8192: return False
+    intent = json.loads(tool['intent'])
+    if (not isinstance(intent, dict) or set(intent) != {'action', 'jobId', 'evidenceId', 'state', 'notes'}
+        or intent['action'] != 'assess' or intent['jobId'] != reference): return False
+    row = db.execute('SELECT fingerprint,state,substr(result,1,8193) FROM actions WHERE id=? AND job_id=?',
+                     (request, job['id'])).fetchone()
+    if not row or row[1] != 'completed' or not row[2] or len(row[2].encode()) > 8192: return False
+    assessment = json.loads(row[2]).get('assessment') or {}
+    actor = assessment.get('actorId') or {}
+    if (assessment.get('requestId') != request or assessment.get('actor') != 'agent'
+        or actor.get('agentRunId') != tool['run_id'] or not isinstance(actor.get('model'), str)
+        or assessment.get('settingsRevision') != job['settingsRevision']
+        or any(assessment.get(key) != intent[key] for key in ('evidenceId', 'state', 'notes'))): return False
+    fields = {'operation': 'assess', 'requestId': request, 'settingsRevision': job['settingsRevision'],
+        **{key: intent[key] for key in ('evidenceId', 'state', 'notes')}, 'actor': 'agent', 'actorId': actor}
+    fingerprint = hashlib.sha256(json.dumps(fields, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return row[0] == fingerprint
 
 
 def development(store, sid, tool):
@@ -19,9 +42,10 @@ def development(store, sid, tool):
         reference = (result.get('development') or {}).get('jobId')
         if reference is not None and str(uuid.UUID(reference)) != reference: return None
         reading = tool['tool'] == 'studio_read_development_job'
+        annotation = tool['tool'] == 'studio_capture_vm'
         request = str(uuid.uuid5(uuid.UUID(tool['run_id']), 'development:' + tool['call_id']))
         with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=.1)) as db:
-            if reading:
+            if reading or annotation:
                 if reference is None: return None
                 row = db.execute('SELECT request_id,substr(payload,1,2097153) FROM jobs WHERE id=?', (reference,)).fetchone()
             else:
@@ -32,15 +56,20 @@ def development(store, sid, tool):
                     or job.get('projectId') != store.owner_id or job.get('sessionId') != sid
                     or job.get('state') not in ('queued', 'starting', 'running', 'stopping', 'completed', 'failed', 'interrupted', 'unknown')
                     or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start')): return None
-            if not reading and (job.get('agentRunId') != tool['run_id'] or row[0] != request
+            if annotation:
+                if (job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution'
+                    or not assessment_receipt(db, job, tool, request, reference)): return None
+            elif not reading and (job.get('agentRunId') != tool['run_id'] or row[0] != request
                     or job['kind'] != DEVELOPMENT[tool['tool']]): return None
             value = {'jobId': job_id, 'kind': job['kind'], 'state': job['state'], 'readOnly': reading}
+            if annotation: value.update(visualAssessment=True, effectConfirmed=True)
             recovery = job.get('recovery') or {}
             if (job['kind'] == 'execution' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown')
                     and type(recovery.get('schema')) is int and recovery['schema'] == 1
                     and str(uuid.UUID(recovery['id'])) == recovery['id'] and recovery.get('guestEndConfirmed') is True
                     and recovery.get('replayed') is False and (job.get('guestState') or {}).get('closeConfirmed') is True
-                    and recovery.get('source') in ('vm-stopped', 'vm-replaced', 'private-guest-close-receipt')):
+                    and recovery.get('source') in ('vm-stopped', 'vm-replaced', 'private-guest-close-receipt',
+                        'native-retained-completion', 'original-watchdog-completion')):
                 proof = db.execute('SELECT substr(receipt,1,8193) FROM recoveries WHERE id=? AND job_id=?',
                     (recovery.get('id'), job_id)).fetchone()
                 if proof and len(proof[0].encode()) <= 8192 and json.loads(proof[0]) == recovery:
@@ -52,7 +81,7 @@ def development(store, sid, tool):
 
 def snapshot(store, sid):
     runs=store.db.execute("SELECT id,state FROM runs WHERE session_id=? AND state='unknown' ORDER BY rowid DESC LIMIT 9",(sid,)).fetchall()
-    tools=store.db.execute("""SELECT t.run_id,t.call_id,t.tool,t.state,substr(t.result,1,262145) AS result FROM tools t JOIN runs r ON r.id=t.run_id
+    tools=store.db.execute("""SELECT t.run_id,t.call_id,t.tool,t.state,substr(t.result,1,262145) AS result,substr(t.intent,1,8193) AS intent FROM tools t JOIN runs r ON r.id=t.run_id
         WHERE r.session_id=? AND t.state='unknown' ORDER BY t.rowid DESC LIMIT 33""",(sid,)).fetchall()
     if not runs and not tools:return None
     references=[]
@@ -76,6 +105,8 @@ def instructions(config):
         'Its historical run/tool may remain unknown and its application test/exit status may still be unavailable. '
         'Do not treat that historical flag as an unresolved live process or ask for an already supplied job ID. '
         'A readOnly reference identifies a status read, not another application start. '
+        'A visualAssessment reference with effectConfirmed=true identifies the committed original host image judgment; '
+        'it did not start, stop or send input to the app. Its linked guest completion is a separate receipt. '
         'The user pressing Play authorizes work on the visible Goal, but does not establish that an earlier effect failed. '
         'Inspect the original durable job/receipt and current files before continuing related work. Never replay an unknown '
         'write, command, VM action, remote operation or deployment merely because the browser or coordinator restarted. '

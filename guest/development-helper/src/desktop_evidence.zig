@@ -61,7 +61,7 @@ pub fn recover(sys: r4os.r4sys.Context, instance: []const u8, module: []const u8
     const slash = std.mem.lastIndexOfScalar(u8, module, '\\') orelse return 95;
     var input: [256:0]u8 = .{0} ** 256;
     var output: [256:0]u8 = .{0} ** 256;
-    const short = instance[0..8];
+    const short = instance[0..7];
     _ = std.fmt.bufPrintZ(&input, "{s}\\E{s}.JSN", .{module[0..slash], short}) catch return 95;
     _ = std.fmt.bufPrintZ(&output, "{s}\\V{s}.JSN", .{module[0..slash], short}) catch return 95;
     var bytes: [1024]u8 = undefined;
