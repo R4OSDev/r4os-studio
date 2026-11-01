@@ -3,7 +3,6 @@ import asyncio
 import json
 import re
 import sqlite3
-import uuid
 from contracts import DevelopmentFault, UnconfirmedGuestEffect
 from jobs import now
 from layout import save
@@ -46,6 +45,18 @@ def public(value, request_id=None):
     result['appliedConfirmed'] = value.get('phase') == 3 and value.get('result') == 0
     result['confirmed'] = result['appliedConfirmed'] and value.get('frameReady') is True
     return result
+
+
+def next_operation(job):
+    # WINSVC rejects any operation below the previous one on this grant.
+    # UUID-derived request IDs are idempotency keys, not ordered native IDs.
+    values = [(job.get('windowControl') or {}).get('operationId'), job.get('windowOperationCounter', '0')]
+    if any(not isinstance(value, str) or not re.fullmatch(r'0|[1-9][0-9]{0,19}', value) for value in values):
+        raise DevelopmentFault('The original window operation counter is unavailable. No command was prepared.')
+    previous = max(int(value) for value in values)
+    if previous >= 18446744073709551615:
+        raise DevelopmentFault('The original window operation counter is exhausted. No command was prepared.')
+    return str(previous + 1)
 
 
 async def bind(execution, launch, state):
@@ -92,7 +103,10 @@ async def perform(execution, job, message, state, control, lease, authorization)
     if action == 'status':
         operation = str(int(value.get('operationId',(job.get('windowControl') or {}).get('operationId','0'))))
     else:
-        operation = str(int(uuid.UUID(request_id).hex[:16],16) or 1)
+        operation = next_operation(job)
+        # Reserve before preparation, so even a rejected/failed preparation
+        # cannot reuse an ID or let a status read rewind the next command.
+        execution.store.update(job['id'], windowOperationCounter=operation)
         prepared = await control.call('window_prepare',windowOperation=operation,windowKind=action,
             windowWidth=value.get('width',0),windowHeight=value.get('height',0))
         if not isinstance(prepared.get('nativeRequest'),str): raise DevelopmentFault('The own native window request could not be prepared.')
@@ -117,6 +131,8 @@ async def perform(execution, job, message, state, control, lease, authorization)
     if 'transportError' in result:
         raise UnconfirmedGuestEffect('The original window operation is unconfirmed. Query its operationId; no command was replayed.')
     if result.get('operationId') != operation:
+        if result.get('operationId') == '0' and result.get('result') == -1:
+            raise UnconfirmedGuestEffect('The native broker has no matching receipt for original window operation ' + operation + '. No command was replayed.')
         raise UnconfirmedGuestEffect('The window receipt names another operation. No command was replayed.')
     value = public(result,request_id)
     if action == 'status': value['confirmed'] = result.get('result') == 0

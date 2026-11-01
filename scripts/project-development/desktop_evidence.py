@@ -167,8 +167,10 @@ async def recover(store, job, host, vm, lease, info):
         raise DevelopmentFault('The saved evidence scope differs from its original job.')
     boot = await host.boots.ensure(vm, info['invocationId'])
     target = intent['target']
-    if any(target.get(k) != boot.get(k) for k in ('vmId', 'vmRevision', 'imageId', 'imageSha256', 'bootId')):
-        return None  # Never combine an old token with a newly observed boot.
+    if (target.get('vmId') != vm['id'] or any(target.get(k) != vm.get(k)
+        for k in ('imageId', 'imageSha256'))
+        or target.get('vmRevision') != vm['revision']): return None
+    same_boot = all(target.get(k) == boot.get(k) for k in ('vmId', 'vmRevision', 'imageId', 'imageSha256', 'bootId'))
     helper = next((f for f in deployment['files'] if f.get('path', '').endswith('/STHELP.R4X')), None)
     if not helper or deployment.get('helperCapabilities', {}).get('desktopEvidenceVersion') != 1: return None
     directory = deployment['guestDirectory']
@@ -184,9 +186,10 @@ async def recover(store, job, host, vm, lease, info):
         if verification.stat().st_size != helper['bytes'] or digest(verification) != helper['sha256']:
             raise DevelopmentFault('The saved observer helper changed; evidence was preserved.')
         verification.unlink()
-        # Older immutable observers use a nine-character basename. Their own
-        # independent watchdog still leaves a valid 8.3 completion receipt.
-        if deployment.get('helperCapabilities', {}).get('desktopEvidenceRecoveryVersion') != 1:
+        # The original watchdog file survives an observer restart. It proves
+        # only this execution's historical native end, without reusing its
+        # old boot token or calling any helper in the newly observed boot.
+        if not same_boot or deployment.get('helperCapabilities', {}).get('desktopEvidenceRecoveryVersion') != 1:
             from watchdog_recovery import recover as watchdog_completion
             try: return await watchdog_completion(store, job, deployment, ssh, work, intent)
             except (OSError, ValueError, KeyError, TypeError, AttributeError):

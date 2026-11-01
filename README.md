@@ -1,3 +1,27 @@
+## Ordered own-window operations (0.8.80)
+
+Resize, Minimize and Restore now reserve strictly increasing native operation
+IDs within the original execution. WINSVC rejects numbers below its previous
+operation; deriving them from random request UUIDs could make Restore fail after
+a successful Minimize. The durable request UUID remains the idempotency key.
+The counter is reserved before helper preparation, survives rejected preparation
+and status reads, and fails before submission if missing, damaged or exhausted.
+Existing deployed helpers support this host correction without redeployment.
+
+An unknown native response with operation zero is reported as a missing original
+receipt rather than a different operation. No uncertain command is retried.
+Goal recovery links admitted own-window requests to their exact original
+execution, including older error replies without a job link. It preserves the
+unknown action and separately reports confirmed guest closure; it never claims
+that Restore succeeded. Original watchdog completions may be read after a host
+observer restart, with unchanged VM/image/package bindings and full original
+helper verification. The old boot token is never used for a helper call.
+
+This direct hotfix covers the actual R4Craft/Main and Minesweeper/Main Restore
+failures, with no roadmap changes, tests, fixtures or model calls. Their original
+watchdog frames confirm process closure after control loss; app checks/output
+remain inconclusive/incomplete. Main stays paused for explicit user Play.
+
 ## Guest gestures and original watchdog recovery (0.8.79)
 
 New helper deployments declare `gestureVersion:1` in qualification and in the

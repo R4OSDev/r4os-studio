@@ -96,3 +96,11 @@ the previous command's confirmed composed frame. Applied is immutable and Curren
 is live. Window view revisions invalidate images even after restoring the same
 geometry. Unknown effects remain protected; no automatic repeat or new app launch.
 window_release returns the original native release outcome before helper finish.
+
+Since0.8.80 the host reserves strictly increasing unsigned64-bit operation IDs
+per execution before window_prepare. The UUID request key remains independent.
+The next number exceeds both the last saved window receipt and the durable
+allocation counter, including earlier failed preparations. Status cannot rewind
+that counter; exhaustion fails before preparation. WINSVC's original grant and
+the helper's one-submission guard remain unchanged; existing deployed helpers
+use the corrected host allocator without replacement.

@@ -151,7 +151,8 @@ class DevelopmentTools:
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
-                    **({'development': {'jobId': job['id']}} if job else {})}
+                    **({'development': {'jobId': job['id']}} if job else
+                       {'development': {'jobId': value['jobId']}} if name == 'control_app_window' else {})}
 
     async def wait_for_vm(self, job, call_id, arguments):
         from contracts import ACTIVE, DevelopmentFault, LIMITS, UnconfirmedGuestEffect
