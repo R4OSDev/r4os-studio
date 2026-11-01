@@ -8,7 +8,8 @@ from contextlib import closing
 
 DEVELOPMENT = {'studio_build_project': 'build', 'studio_deploy_project': 'deploy',
     'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_read_development_job': None,
-    'studio_capture_vm': 'execution', 'studio_control_app_window': 'execution'}
+    'studio_capture_vm': 'execution', 'studio_control_app_window': 'execution',
+    'studio_complete_development_job': 'execution'}
 
 
 def assessment_receipt(db, job, tool, request, reference):
@@ -32,24 +33,29 @@ def assessment_receipt(db, job, tool, request, reference):
     return row[0] == fingerprint
 
 
-def window_receipt(store, db, job, tool, request, sid):
-    """Link a real original window intent, without confirming its effect."""
+def execution_action_receipt(store, db, job, tool, request, sid):
+    """Link an original window/close intent, without confirming its effect."""
     if not tool['intent'] or len(tool['intent'].encode()) > 8192: return False
     intent = json.loads(tool['intent'])
     if not isinstance(intent, dict) or intent.get('jobId') != job['id']: return False
     value = {key: val for key, val in intent.items() if key != 'jobId'}
-    action = value.get('action')
-    keys = {'action', 'width', 'height'} if action == 'resize' else {'action'}
-    if action == 'status' and 'operationId' in value: keys.add('operationId')
-    if action not in ('resize', 'minimize', 'restore', 'status') or set(value) != keys: return False
+    completion = tool['tool'] == 'studio_complete_development_job'
+    if completion:
+        if value or (job.get('checkCompletion') or {}).get('requestId') != request: return False
+    else:
+        action = value.get('action')
+        keys = {'action', 'width', 'height'} if action == 'resize' else {'action'}
+        if action == 'status' and 'operationId' in value: keys.add('operationId')
+        if action not in ('resize', 'minimize', 'restore', 'status') or set(value) != keys: return False
     run = store.db.execute('SELECT substr(worker,1,8193) FROM runs WHERE id=? AND session_id=?',
                            (tool['run_id'], sid)).fetchone()
     if not run or not run[0] or len(run[0].encode()) > 8192: return False
     pid = json.loads(run[0]).get('pid')
     if type(pid) is not int or pid <= 0: return False
     row = db.execute('SELECT fingerprint,state FROM actions WHERE id=? AND job_id=?', (request, job['id'])).fetchone()
-    fields = {'operation': 'window', 'requestId': request, 'input': value,
+    fields = {'operation': 'complete_check' if completion else 'window', 'requestId': request,
         'owner': {'sessionId': sid, 'agentRunId': tool['run_id']}, 'peerPid': pid}
+    if not completion: fields['input'] = value
     fingerprint = hashlib.sha256(json.dumps(fields, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return bool(row and row[1] in ('intent', 'completed') and row[0] == fingerprint)
 
@@ -63,14 +69,15 @@ def development(store, sid, tool):
         result = json.loads(tool['result']) if tool['result'] else {}
         reference = (result.get('development') or {}).get('jobId')
         window = tool['tool'] == 'studio_control_app_window'
-        if window and reference is None and tool['intent'] and len(tool['intent'].encode()) <= 8192:
+        completion = tool['tool'] == 'studio_complete_development_job'
+        if (window or completion) and reference is None and tool['intent'] and len(tool['intent'].encode()) <= 8192:
             reference = json.loads(tool['intent']).get('jobId')
         if reference is not None and str(uuid.UUID(reference)) != reference: return None
         reading = tool['tool'] == 'studio_read_development_job'
         annotation = tool['tool'] == 'studio_capture_vm'
         request = str(uuid.uuid5(uuid.UUID(tool['run_id']), 'development:' + tool['call_id']))
         with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=.1)) as db:
-            if reading or annotation or window:
+            if reading or annotation or window or completion:
                 if reference is None: return None
                 row = db.execute('SELECT request_id,substr(payload,1,2097153) FROM jobs WHERE id=?', (reference,)).fetchone()
             else:
@@ -81,9 +88,9 @@ def development(store, sid, tool):
                     or job.get('projectId') != store.owner_id or job.get('sessionId') != sid
                     or job.get('state') not in ('queued', 'starting', 'running', 'stopping', 'completed', 'failed', 'interrupted', 'unknown')
                     or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start')): return None
-            if window:
+            if window or completion:
                 if (job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution'
-                    or not window_receipt(store, db, job, tool, request, sid)): return None
+                    or not execution_action_receipt(store, db, job, tool, request, sid)): return None
             elif annotation:
                 if (job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution'
                     or not assessment_receipt(db, job, tool, request, reference)): return None
@@ -92,6 +99,7 @@ def development(store, sid, tool):
             value = {'jobId': job_id, 'kind': job['kind'], 'state': job['state'], 'readOnly': reading}
             if annotation: value.update(visualAssessment=True, effectConfirmed=True)
             if window: value.update(windowAction=True, effectConfirmed=False)
+            if completion: value.update(checkCompletion=True, effectConfirmed=False)
             recovery = job.get('recovery') or {}
             if (job['kind'] == 'execution' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown')
                     and type(recovery.get('schema')) is int and recovery['schema'] == 1
@@ -138,6 +146,8 @@ def instructions(config):
         'it did not start, stop or send input to the app. Its linked guest completion is a separate receipt. '
         'A windowAction reference identifies the original admitted own-window request, not a confirmed successful action. '
         'A separately confirmed guest end closes that original process/window scope; do not replay the old window request. '
+        'A checkCompletion reference identifies the original close/check intent. Guest closure alone does not confirm '
+        'its cleanup or a passed check; inspect the original job and never repeat that completion call. '
         'The user pressing Play authorizes work on the visible Goal, but does not establish that an earlier effect failed. '
         'Inspect the original durable job/receipt and current files before continuing related work. Never replay an unknown '
         'write, command, VM action, remote operation or deployment merely because the browser or coordinator restarted. '

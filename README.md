@@ -1,3 +1,25 @@
+## Retained completion after an owned check close (0.8.82)
+
+An own Desktop process can detach before its retained native completion becomes
+available. During an already-admitted `complete_development_job`, the worker now
+allows up to five seconds of read-only polling on the same original controller
+when that exact process generation temporarily reports unknown with an existing
+retained-evidence lease. It sends no second close, input or launch. VM/job guards,
+original completion request, process identity and user Stop remain binding.
+Returned output is preserved while polling; a timeout, changed identity or missing
+receipt retains the existing unknown protection. Successful completion still
+requires the actual native end and original helper/service cleanup receipts.
+
+Goal recovery can link the exact admitted check-completion intent to its original
+job and any separately confirmed guest end. It does not certify that the unknown
+completion call or cleanup succeeded, and never replays it. Minesweeper/Main's
+actual late watchdog receipt confirms process83/generation83 and native exit0
+after the original requested close; its historical incomplete completion remains
+distinct from the successful visual assessment. Original records are preserved.
+
+Direct hotfix without roadmap changes, tests, fixtures or model calls. Studio
+build, TypeScript, lint and Python syntax are checked; no user app or VM is started.
+
 ## Read unknown jobs without stopping the Goal (0.8.81)
 
 A successful `read_development_job` now confirms the read independently of the

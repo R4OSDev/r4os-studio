@@ -1,9 +1,40 @@
 """Explicit check completion; observed success never grants implicit stop rights."""
+import asyncio
 from contracts import DevelopmentFault, hash_value
 from checks import evaluate
 from evidence import read
 from jobs import now
 from frame_binding import current
+
+
+async def await_original_close(execution, control, state, lease):
+    """A retained completion can arrive after Desktop detached the process."""
+    from vm_worker import guard
+    from layout import save
+    marker = execution.completion
+    job = execution.store.get(execution.job['id'])
+    pending = job.get('checkCompletion') or {}
+    if (not marker or pending.get('requestId') != marker.get('requestId') or pending.get('state') != 'closing'
+        or state.get('state') != 'unknown' or state.get('stopReason') != 'user_stop'
+        or state.get('desktopEvidenceRetained') is not True or state.get('closeConfirmed') is True): return state
+    process = job.get('process') or {}
+    if any(state.get(key) != process.get(key) for key in ('instanceId', 'generation')): return state
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 5
+    while loop.time() < deadline and not execution.stop_requested:
+        guard(execution.store, job, lease, allow_stopping=True)
+        await asyncio.sleep(min(.1, max(0, deadline - loop.time())))
+        remaining = deadline - loop.time()
+        if remaining <= 0: break
+        try: observed = await asyncio.wait_for(control.call('poll'), remaining)
+        except asyncio.TimeoutError: break  # Abandon this controller; never submit another close.
+        if any(observed.get(key) != process.get(key) for key in ('instanceId', 'generation')): return state
+        save(execution.work / 'completion-close-observation.json', {'schema': 1, 'jobId': job['id'],
+            'requestId': marker['requestId'], 'target': job['target'], 'observedAt': now(), 'state': observed})
+        execution.output(observed); observed['outputBase64'] = ''
+        state = observed
+        if state.get('state') != 'unknown': break
+    return state
 
 
 def snapshot(job):
