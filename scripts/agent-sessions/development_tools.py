@@ -100,6 +100,11 @@ class DevelopmentTools:
                 if mode in ('details','inventory','output'):
                     from development_projection import view
                     result['output']=encode(view(page,mode,value.get('cursor'),value.get('offset',0)))
+                # The read succeeded even when the original job is unknown.
+                # Keep its state/evidence visible without declaring a new
+                # unconfirmed effect or aborting the native Goal on a read.
+                result.update(success=True)
+                result.pop('error', None)
                 return result
             if name == 'complete_development_job':
                 page = await self.request('complete_check', id=value['jobId'], input={'requestId': request_id})

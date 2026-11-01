@@ -1,3 +1,20 @@
+## Read unknown jobs without stopping the Goal (0.8.81)
+
+A successful `read_development_job` now confirms the read independently of the
+original job state. Failed, interrupted, unknown and readiness-unconfirmed jobs
+retain their actual status, evidence, checks and exit information in the result;
+they no longer turn a status read into an unconfirmed new effect. Summary,
+details, inventory and output views share this behavior. Missing permissions,
+unavailable originals and invalid cursors still fail the read normally. Start,
+input, window and completion outcomes keep their existing effect semantics.
+
+Solitaire/Main's original window failure predates0.8.80; subsequent successful
+reads of that old unknown execution repeatedly stopped its Goal. The original
+guest closure is reconciled through the existing independent watchdog recovery,
+with historical records preserved and app checks/output still inconclusive/
+incomplete. Main remains paused for explicit Play. This direct hotfix changes no
+roadmap and uses no tests, fixtures, model calls or user app/VM runs.
+
 ## Ordered own-window operations (0.8.80)
 
 Resize, Minimize and Restore now reserve strictly increasing native operation
