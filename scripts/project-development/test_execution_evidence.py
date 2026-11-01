@@ -96,3 +96,21 @@ class ExecutionEvidenceTest(unittest.TestCase):
         result = self.read()
         self.assertTrue(result['cleanupConfirmed'])
         self.assertEqual(result['output']['state'], 'unconfirmed')
+
+    def test_retained_completion_is_independent_of_old_cleanup_and_survives_reload(self):
+        self.closed()
+        original = (self.work/'closed.json').read_bytes()
+        data = b'EXPECTED'; self.log.write_bytes(data)
+        save(self.work/'retained-completion.json', {**self.intent, 'state': 'retained-completion',
+            'completion': {**self.state, 'exitCode': 37, 'outputIncomplete': False, 'completionObserved': True},
+            'outputReceipt': {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}})
+        result = self.read()
+        self.assertEqual(result['source'], 'native-retained-completion')
+        self.assertEqual(result['exitCode'], 37)
+        self.assertTrue(result['processEndConfirmed']); self.assertFalse(result['cleanupConfirmed'])
+        self.assertEqual(result['output']['state'], 'complete')
+        self.assertEqual((self.work/'closed.json').read_bytes(), original)
+        value = json.loads((self.work/'retained-completion.json').read_text())
+        value['target'] = {'bootId': 'different-boot'}
+        save(self.work/'retained-completion.json', value)
+        self.assertFalse(self.read()['exitStatusConfirmed'])

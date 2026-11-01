@@ -4,18 +4,18 @@
   "id": "r4os-process-v1",
   "helperPins": {
     "sdk": {
-      "version": "0.64.66",
-      "revision": "41770f2c354e461a5663ad805b7b2955dab1d5a9",
-      "sha256": "ceefe7dfcb24de6a04b486a635e8c06f8aef4ebee31ae4554fe1daa00371d6be",
-      "url": "https://codeload.github.com/R4OSDev/r4os-sdk/tar.gz/41770f2c354e461a5663ad805b7b2955dab1d5a9",
-      "zigPackageHash": "r4os_sdk-0.64.66-NnPzAmmyHAEFQ063lYoN7Kkfw1ZM7Pe2guJQ1T0VN0dj"
+      "version": "0.64.127",
+      "revision": "fbb5041487441473612d04d3166bcfa21f3d555f",
+      "sha256": "110d6652e5c60268fa0a35399727b02915f5d737e1128e62224f3435d220ea46",
+      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.127/R4OS-SDK-0.64.127-source.tar.gz",
+      "zigPackageHash": "r4os_sdk-0.64.127-NnPzAgQA4AE5LIlg-K_VjZRRpBgi0Y2f4TGsAA5SY6fk"
     },
     "contract": {
-      "version": "0.64.41",
-      "revision": "95f762623e6ac2025e9a8aa781713c7c957629a8",
-      "sha256": "f724215744132c7ce654771bed0d9d90bcf7f935d197c37ed5df8976d26854f1",
-      "url": "https://codeload.github.com/R4OSDev/r4os-contract/tar.gz/95f762623e6ac2025e9a8aa781713c7c957629a8",
-      "zigPackageHash": "r4os_contract-0.64.41-ELhbYWSDHQEJOXYyn-1ekF7KRsCWoyuQsPe-vNdnm4Ob"
+      "version": "0.64.68",
+      "revision": "4c96b21df75662ca6a3af3c8ee332c342e2db185",
+      "sha256": "777212d407d54264119a3899cb90cfbaaeebbaaa747a6ae98e727ab324991d90",
+      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.127/R4OS-Contract-0.64.68-source.tar.gz",
+      "zigPackageHash": "r4os_contract-0.64.68-ELhbYXnULgG8guJL6_WIiw8iFYQutqMNWaC2qaYrnDgy"
     },
     "zig": {
       "version": "0.16.0",
@@ -51,14 +51,14 @@
   "evidenceCapabilities": {
     "desktop": {
       "exitStatus": {
-        "state": "unconfirmed",
-        "reasonCode": "desktop_completion_retention_unconfirmed",
-        "reason": "Desktop owns process cleanup. Generation-bound exit status is captured when available; native completion retention after Desktop cleanup is unconfirmed."
+        "state": "conditional",
+        "reasonCode": "desktop_evidence_handoff_required",
+        "reason": "New deployments use the public WINSVC evidence handoff. The running guest must confirm the original launch epoch and acknowledge its exact process lease; legacy or unavailable evidence remains unconfirmed."
       },
       "consoleOutput": {
-        "state": "unconfirmed",
-        "reasonCode": "desktop_console_routing_unconfirmed",
-        "reason": "The controller reads the process console and retained completion tail. Desktop routing of application writes, including Rust App.write, is unconfirmed. Empty captured output does not prove that the app wrote nothing."
+        "state": "conditional",
+        "reasonCode": "desktop_evidence_output_flags_required",
+        "reason": "The retained native completion carries application writes, including Rust App.write. Complete, empty, truncated and incomplete output are reported separately from process end and helper cleanup."
       }
     }
   },
@@ -72,6 +72,7 @@
     "requestRetentionSecondsUpperBound": 60,
     "capability": "runtime-receipt-discovery",
     "processAdoptionVersion": 1,
-    "workingDirectory": "native-desktop"
+    "workingDirectory": "native-desktop",
+    "evidenceHandoffVersion": 1
   }
 }

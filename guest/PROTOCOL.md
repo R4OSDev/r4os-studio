@@ -59,3 +59,19 @@ retains a lease/watchdog and explicit stop until its actual end. A VM reset,
 delete, force-stop, image switch or access reconfiguration cannot silently race
 that lease. No downloaded root installer or arbitrary administrative guest shell
 is part of this contract.
+
+## Retained desktop evidence v1 (0.8.72)
+
+New helpers declare desktopEvidenceVersion1, with unchanged control/watchdog
+and transport versions. The private evidence operation uses the generated
+Contract68 128-byte token encoded as base64, lossless decimal generations and
+original service outcomes. Reserve/Offer/ACK are host-controlled steps with
+durable intent/token records between them. Status resolves an uncertain native
+RPC. The original DESKRUN epoch is never replaced by a later STATUS scope.
+
+A fresh `STHELP <execution UUID> evidence` reader accepts only Status/Read/Release
+from its exact deployment-local E<UUID-prefix>.JSN request; it cannot Reserve,
+Offer, ACK, spawn, reap or mutate a window. Host recovery verifies the original
+boot and helper bytes and serializes this fixed file under the VM lease. The
+reader returns the original completion and bounded output chunks. Recovery
+retains the previous host output and its own original transport records.

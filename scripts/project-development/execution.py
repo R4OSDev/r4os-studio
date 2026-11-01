@@ -375,6 +375,8 @@ class Execution:
                             if not state['closeConfirmed']: raise UnconfirmedGuestEffect('The process completion was not fully reaped.')
                             files = await collect(store, store.get(job['id']), deployment, ssh, self.work)
                             store.update(job['id'], outputFiles=files, check=evaluate(job['settings'], state, self.log.read_bytes() if self.log.exists() else b'', files, store.get(job['id']).get('visualAssessment')))
+                            from desktop_evidence import release as release_evidence
+                            await release_evidence(control, self.work)
                             closed = await control.call('finish')
                             if not closed.get('closed') or not closed.get('serviceRemoved', False) or not closed.get('watchdogRemoved'):
                                 raise UnconfirmedGuestEffect('Owned service cleanup was not confirmed.')

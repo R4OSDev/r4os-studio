@@ -55,8 +55,19 @@ def receipt(output):
             raise ValueError('Invalid pre-submission diagnostic.')
         return value
     fields = {'request', 'phase', 'error', 'errorlevel', 'process_id', 'process_generation', 'window', 'content', 'raw', 'terminal'}
-    if set(value) != fields or value['phase'] not in PHASES or value['error'] != ERRORS[code] or type(value['terminal']) is not bool:
+    extras = {'evidence_retained', 'evidence_unavailable', 'evidence_scope_available', 'evidence_epoch',
+              'control_requested', 'control_result', 'control_grant'}
+    if (set(value) not in (fields, fields | extras) or value['phase'] not in PHASES or value['error'] != ERRORS[code] or type(value['terminal']) is not bool):
         raise ValueError('Unsupported DESKRUN receipt.')
+    if 'evidence_epoch' in value:
+        epoch = value['evidence_epoch']
+        if (any(type(value[k]) is not bool for k in ('evidence_retained', 'evidence_unavailable', 'evidence_scope_available', 'control_requested'))
+            or not isinstance(epoch, list) or len(epoch) != 3
+            or any(not isinstance(v, str) or not re.fullmatch(r'[0-9]{1,20}', v) or int(v) > U64 for v in epoch)
+            or value['evidence_scope_available'] != bool(any(int(v) for v in epoch))
+            or type(value['control_result']) is not int or not -12 <= value['control_result'] <= 0
+            or not isinstance(value['control_grant'], str) or not re.fullmatch(r'[0-9]{1,20}', value['control_grant']) or int(value['control_grant']) > U64):
+            raise ValueError('Invalid DESKRUN evidence scope.')
     request_key(value['request'])
     for name, maximum in (('process_id', 4294967295), ('process_generation', U64), ('window', 2147483647), ('content', U64)):
         if type(value[name]) is not int or not 0 <= value[name] <= maximum: raise ValueError('Invalid DESKRUN counter.')
@@ -176,6 +187,7 @@ class DesktopLaunch:
         self.key = None; self.value = None; self.index = 0; self.process = None
         self.deadline = None; self.next_status = 0; self.status_expired = False
         self.force_status = False; self.heartbeat_done = asyncio.Event()
+        self.evidence_launch = None
 
     def guard(self, stopping=False):
         from vm_worker import guard
@@ -197,6 +209,8 @@ class DesktopLaunch:
                 raise UnconfirmedGuestEffect('Launch outcome unknown: SSH returned no valid DESKRUN request identity. No launch was repeated.') from None
             return None
         save(root.with_suffix('.receipt.json'), value)
+        if starting and value.get('evidence_scope_available'):
+            self.evidence_launch = value.copy()
         if value['phase'] == 'before_submit':
             if starting: raise NotSubmitted('DESKRUN rejected the launch before submission: ' + value['error'] + '.')
             if self.value:
@@ -266,7 +280,23 @@ class DesktopLaunch:
         # Do not reap Desktop-owned children or replace their native window ID.
         remaining = max(1, min(300, int(self.deadline - loop.time()) + 1))
         broker_id, broker_generation, _, _ = self.key.split(':')
+        retained = None
+        if self.deployment.get('helperCapabilities', {}).get('desktopEvidenceVersion') == 1 and self.evidence_launch:
+            from desktop_evidence import handoff
+            try:
+                retained = await handoff(self.owner.control, self.owner.work,
+                    {**self.evidence_launch, 'process_id': value['process_id'], 'process_generation': value['process_generation']})
+            except DevelopmentFault:
+                # A failed evidence RPC must not prevent bounded watchdog
+                # cleanup of a child whose exact original identity is known.
+                # Adoption does not launch/reap or repeat a native retain.
+                try:
+                    await self.owner.control.call('adopt_desktop', instanceId=value['process_id'], generation=value['process_generation'],
+                        brokerInstanceId=int(broker_id), brokerGeneration=broker_generation, timeoutSeconds=remaining)
+                except DevelopmentFault: pass
+                raise
         return await self.owner.control.call('adopt_desktop', instanceId=value['process_id'], generation=value['process_generation'],
+            **({'evidenceToken': retained} if retained else {}),
             brokerInstanceId=int(broker_id), brokerGeneration=broker_generation, timeoutSeconds=remaining)
 
     async def refresh(self):

@@ -148,6 +148,9 @@ async def reconcile(store, job, host=None):
         intent = read(work / 'intent.json') if (work / 'intent.json').exists() else {}
         replaced = bool(intent.get('vmInvocationId') and info['invocationId'] and intent['vmInvocationId'] != info['invocationId'])
         if info['vm']['state'] != 'stopped' and not replaced:
+            from desktop_evidence import recover as retained_completion
+            retained = await retained_completion(store, job, host, vm, lease, info)
+            if retained: return retained
             return store.recovered(job['id'], 'unknown', receipt('unconfirmed-guest', guestEndConfirmed=False,
                 reason='The guest end is unconfirmed. Its watchdog may still be cleaning up. Stop the assigned VM explicitly if no private close receipt becomes available.'))
         state = {'state': 'completed', 'exitCode': None, 'closeConfirmed': True, 'outputIncomplete': True,

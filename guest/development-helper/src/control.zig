@@ -3,6 +3,7 @@ const std = @import("std");
 const r4os = @import("r4os");
 const abi = r4os.abi;
 const gesture = @import("gesture.zig");
+const evidence = @import("desktop_evidence.zig");
 pub const Request = struct {
     version: u32 = 1,
     instance: []const u8,
@@ -16,6 +17,9 @@ pub const Request = struct {
     instanceId: u32 = 0,
     brokerInstanceId: u32 = 0,
     brokerGeneration: []const u8 = "",
+    evidenceOperation: []const u8 = "",
+    evidenceToken: []const u8 = "",
+    evidenceOffset: u32 = 0,
     serviceName: []const u8 = "",
     inputKind: []const u8 = "text",
     key: u32 = 0,
@@ -77,6 +81,8 @@ const State = struct {
     serviceCheckPassed: ?bool = null,
     serviceResponseBase64: []const u8 = "",
     exitEvidenceUnavailable: bool = false,
+    desktopEvidenceRetained: bool = false,
+    completionFlags: u32 = 0,
 };
 
 const Controller = struct {
@@ -118,6 +124,7 @@ const Controller = struct {
     gesture_id: [36]u8 = undefined,
     gesture_binding: struct { id: i32 = -1, width: i32 = 0, height: i32 = 0 } = .{},
     state: State = .{},
+    evidence_token: ?evidence.Token = null,
 
     fn clock(self: *Controller) u64 { return self.sys.monotonicNanoseconds() orelse 0; }
     fn raw(self: *Controller) abi.ProgramProcessHandle {
@@ -187,6 +194,17 @@ const Controller = struct {
         // and reaps its child; a borrowed handle permits bounded close/kill and
         // completion reads without stealing native lifecycle ownership.
         if (req.brokerInstanceId == 0 or broker_generation == 0) return false;
+        if (req.evidenceToken.len != 0) {
+            const token = evidence.decode(req.evidenceToken) orelse return false;
+            if (token.process.instance_id != process.raw or token.process.generation != generation or
+                token.broker.instance_id != req.brokerInstanceId or token.broker.generation != broker_generation or token.serial == 0) return false;
+            const client = r4os.desktop_evidence.Client{ .sys = self.sys };
+            const status = client.status(token);
+            if (status != .reply or status.reply.phase != abi.desktop_evidence_phase_acknowledged or
+                (status.reply.result != 0 and status.reply.result != abi.desktop_evidence_result_pending)) return false;
+            self.evidence_token = token;
+            self.state.desktopEvidenceRetained = true;
+        }
         self.process = process;
         // A lost broker must not prevent cleanup of an already started child.
         // Its original receipt identity gates subsequent window observations.
@@ -464,7 +482,18 @@ const Controller = struct {
             if (self.completed == null) {
                 if (self.clock() >= self.deadline_ns) self.stop("timeout");
                 if (self.stopped != null and self.clock() - self.closing_ns > 2_000_000_000) { _ = p.kill(); }
-                switch (p.waitReady(r4os.time_contract.timeoutPoll())) {
+                if (self.evidence_token) |token| {
+                    const client = r4os.desktop_evidence.Client{ .sys = self.sys };
+                    const status = client.status(token);
+                    if (status == .reply and status.reply.result == 0 and
+                        status.reply.completion.handle.instance_id == p.raw and status.reply.completion.handle.generation == p.generation and
+                        status.reply.completion.sequence != 0) {
+                        self.completed = status.reply.completion;
+                    } else if (status != .reply or status.reply.result != abi.desktop_evidence_result_pending) {
+                        self.incomplete = true;
+                        self.state.state = "unknown";
+                    }
+                } else switch (p.waitReady(r4os.time_contract.timeoutPoll())) {
                     .ready => |completion| { self.completed = completion; },
                     .would_block, .timed_out => {},
                     .failure => |code| {
@@ -483,6 +512,9 @@ const Controller = struct {
             var count: usize = 0;
             if (self.completed) |completion| {
                 self.state.completionObserved = true;
+                self.state.completionFlags = completion.flags;
+                if (completion.flags & abi.program_completion_flag_output_incomplete != 0) self.incomplete = true;
+                if (self.evidence_token != null and completion.flags & abi.program_completion_flag_output_available == 0) self.incomplete = true;
                 if (!self.completion_initialized) {
                     // Completion retains a bounded tail, not an ever-growing
                     // stream. Align its cursor with the last delivered counter.
@@ -495,7 +527,13 @@ const Controller = struct {
                 }
                 if (self.output_cursor < completion.output_length) {
                     const want = @min(self.output.len, completion.output_length - self.output_cursor);
-                    switch (p.completionRead(self.output_cursor, self.output[0..want])) {
+                    if (self.evidence_token) |token| {
+                        const client = r4os.desktop_evidence.Client{ .sys = self.sys };
+                        const result = client.read(token, self.output_cursor, self.output[0..@min(want, abi.desktop_evidence_max_output_chunk)]);
+                        if (result == .reply and result.reply.result == 0 and result.reply.data_bytes != 0) {
+                            count = result.reply.data_bytes; self.output_cursor += @intCast(count);
+                        } else { self.incomplete = true; self.output_cursor = completion.output_length; }
+                    } else switch (p.completionRead(self.output_cursor, self.output[0..want])) {
                         .bytes => |n| { count = n; self.output_cursor += n; if (n == 0) { self.incomplete = true; self.output_cursor = completion.output_length; } },
                         else => { self.incomplete = true; self.output_cursor = completion.output_length; },
                     }
@@ -533,7 +571,7 @@ const Controller = struct {
                 } else {
                     // An unavailable or inconsistent console observation must
                     // not certify that an empty stream is complete.
-                    self.incomplete = true;
+                    if (self.evidence_token == null) self.incomplete = true;
                 }
             }
             if (count != 0) {
@@ -625,6 +663,9 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         sequence = req.sequence; heartbeat = current;
         if (std.mem.eql(u8, req.operation, "start")) {
             if (!controller.start(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The owned role could not be started." }); return 77; }
+        } else if (std.mem.eql(u8, req.operation, "evidence")) {
+            if (!evidence.respond(sys, &response, instance, sequence, req.evidenceOperation, req.evidenceToken, req.evidenceOffset)) return 80;
+            continue;
         } else if (std.mem.eql(u8, req.operation, "adopt_desktop")) {
             if (!controller.adoptDesktop(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The exact Desktop process generation could not be adopted." }); return 77; }
         } else if (std.mem.eql(u8, req.operation, "service_check")) {

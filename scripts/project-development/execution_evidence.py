@@ -20,14 +20,16 @@ def describe(store, job):
         if intent.get('state') != 'intent' or started.get('state') != 'started': return result
         if any(started['process'].get(key) != process[key] for key in ('instanceId', 'generation')): return result
         closed = (work / 'closed.json').exists()
-        value = read(work / ('closed.json' if closed else 'output-observation.json'))
+        retained = (work / 'retained-completion.json').exists()
+        value = read(work / ('retained-completion.json' if retained else ('closed.json' if closed else 'output-observation.json')))
         if any(value.get(key) != val for key, val in expected.items()) or type(value.get('schema')) is not int or value['schema'] != 1: return result
-        if closed and (value.get('state') != 'closed' or value.get('applicationStarted') is False): return result
-        state = value.get('completion') if closed else value.get('observation')
+        if closed and not retained and (value.get('state') != 'closed' or value.get('applicationStarted') is False): return result
+        if retained and value.get('state') != 'retained-completion': return result
+        state = value.get('completion') if closed or retained else value.get('observation')
         if not isinstance(state, dict) or any(state.get(key) != process[key] for key in ('instanceId', 'generation')): return result
-        result['source'] = 'private-guest-close-receipt' if closed else 'private-guest-observation'
+        result['source'] = 'native-retained-completion' if retained else ('private-guest-close-receipt' if closed else 'private-guest-observation')
         result['processEndConfirmed'] = state.get('state') == 'completed' and state.get('closeConfirmed') is True
-        result['cleanupConfirmed'] = bool(closed and result['processEndConfirmed'] and
+        result['cleanupConfirmed'] = bool(not retained and closed and result['processEndConfirmed'] and
             all(value.get('cleanupReceipt', {}).get(key) is True for key in ('closed', 'serviceRemoved', 'watchdogRemoved')))
         code = state.get('exitCode')
         result['exitStatusConfirmed'] = type(code) is int and -2147483648 <= code <= 2147483647

@@ -1,3 +1,34 @@
+## Retained Desktop completion (0.8.72; roadmap0.8.1)
+
+New deployments build their private helper with SDK0.64.127 and its exact
+Contract0.64.68. DESKRUN's original request and 192-bit service epoch bind an
+independent WINSVC evidence lease before Desktop's launch reference expires.
+Studio durably saves the receiver intent, reservation serial and canonical
+process token before Offer/ACK. Lost RPC replies are reconciled by Status for
+that same intent; no replacement app or independent retain is submitted.
+
+The helper reads the retained actual exit code, completion sequence and output
+of that process generation after Desktop cleanup. Native output flags preserve
+empty, truncated and incomplete results. Exit status, output completeness,
+process end, helper cleanup and visual checks remain separate. Old deployments
+retain their original helpers and conservative behavior; an unavailable or
+stale lease never supplies an inferred exit code or a passing text criterion.
+
+Explicit job recovery can run a fresh reader of an acknowledged saved token
+only after checking the original VM/boot, deployment and helper bytes. It copies
+output atomically, keeps the previous captured stream and writes a separate
+completion receipt. This does not claim helper cleanup or replay the app.
+The last native reference is released after the host has durable evidence.
+Run and Test describes these capabilities as conditional until the assigned
+guest confirms the actual handoff.
+
+Qualification uses SDK0.64.127 / Contract0.64.68 / Full0.88.107 with Kernel0.1.452
+in a separate KVM guest. Six native cases cover fast C exit37, Rust App.write
+exit29, zero output, a truncated131072-byte write, intentionally discarded
+Offer/ACK replies, a fresh saved-token reader, stale epochs and explicit release.
+Targeted host checks, helper builds, Studio build, TypeScript and lint accompany
+the native evidence. User projects, sessions, pins and VM processes are preserved.
+
 ## Automatic VM host keys (0.8.71)
 
 VM Settings no longer offers **Verify a new host key**. After a release change

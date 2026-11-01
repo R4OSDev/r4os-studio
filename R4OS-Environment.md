@@ -64,8 +64,12 @@ native capture of Move/Up outside the client. Bounded own-client gestures0.8.2
 do not test an outside drag. An actual capture/release contract and native proof
 remain necessary. Similarly, Desktop process end, helper cleanup, native exit
 status, complete output and a visual assertion remain independent evidence;
-completion retention after Desktop reap and Rust `App.write` routing remain
-unconfirmed as described in the0.8.1 README section.
+older helpers cannot guarantee retention after Desktop reap. New deployments
+with `desktopEvidenceVersion:1` use the original DESKRUN epoch and acknowledged
+WINSVC lease (private helper SDK0.64.127 / Contract0.64.68). Inspect the actual
+handoff, completion/output flags and execution evidence; absent or stale evidence
+remains unconfirmed. The Rust `App.write` path is qualified separately in the
+0.8.72 README section; this never upgrades historical jobs or old helper pins.
 
 ## Storage and Nexus limits
 
@@ -85,5 +89,6 @@ localization to application data, fonts and rendering; preserved Unicode text
 must not be replaced as a guessed fix. The canonical112-byte Desktop command
 budget remains enforced; its advance display is separately planned in0.8.42.
 
-This release implements guidance and qualification only. No new window mutation,
-permission, native tool declaration, guest binary or pin migration is introduced.
+The original0.8.3 contribution implemented guidance and qualification only. Its
+window-action prerequisite remains separate from the0.8.72 completion adapter;
+no window mutation or global project-pin migration is introduced by that adapter.

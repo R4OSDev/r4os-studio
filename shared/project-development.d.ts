@@ -21,8 +21,8 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
 export interface DevelopmentOptions {
   desktopLaunchBudget?: DesktopArgumentLayout | null;
   evidenceCapabilities?: {
-    exitStatus: { state: 'unconfirmed'; reasonCode: string; reason: string };
-    consoleOutput: { state: 'unconfirmed'; reasonCode: string; reason: string };
+    exitStatus: { state: 'unconfirmed' | 'conditional'; reasonCode: string; reason: string };
+    consoleOutput: { state: 'unconfirmed' | 'conditional'; reasonCode: string; reason: string };
   } | null;
   revision: string;
   build: DevelopmentCapability;
@@ -233,7 +233,7 @@ export interface DevelopmentJobPage {
 /** Independent findings read from matching private originals; grants no lifecycle action. */
 export interface DevelopmentExecutionEvidence {
   version: 1;
-  source?: 'private-guest-close-receipt' | 'private-guest-observation';
+  source?: 'private-guest-close-receipt' | 'private-guest-observation' | 'native-retained-completion';
   processEndConfirmed: boolean;
   cleanupConfirmed: boolean;
   exitStatusConfirmed: boolean;
