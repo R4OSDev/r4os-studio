@@ -1,3 +1,15 @@
+## Session composer without keyboard footer (0.8.74; roadmap0.8.46)
+
+The remaining idle keyboard hint is removed from the shared project/skill
+session composer. Its paragraph leaves no empty row. Keyboard handlers, Send,
+queue/direct delivery, IME handling, attachments, errors and recovery controls
+retain their existing behavior. The shared hint style remains in use for
+functional attachment guidance.
+
+Source/diff review, targeted sight checks at1440/320px with an existing preview,
+Studio build, TypeScript and lint verify this text removal. No new tests or
+browser fixtures and no model calls, Send, Play or VM actions are used.
+
 ## Own Desktop window controls (0.8.73; roadmap0.8.3)
 
 New project sessions expose **Control app window** in the VM tool permissions.

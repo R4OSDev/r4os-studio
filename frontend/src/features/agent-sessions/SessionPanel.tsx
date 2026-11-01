@@ -253,7 +253,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
           {active && <button type="button" title={afterResponse ? 'Ctrl+Enter: wait for this response, then continue the same Claude conversation' : attachments.hasFiles ? 'Queue the complete input with its attachments' : 'Ctrl+Enter: append to the original active turn'} disabled={sending || !!pending || blocked || empty || !!attachments.issue || (!direct && !afterResponse)} onClick={() => void send(true)}>{afterResponse ? 'After response' : 'Send now'}</button>}
           <button className="agent-send" disabled={sending || !session || (!pending && (blocked || empty || !!attachments.issue || queueMode && !inbox.available))}>{sending ? 'Sending…' : pending ? 'Check original request' : queueMode ? 'Queue message' : 'Send'}</button></div>
       </div>
-      {!queueMode && <p className="agent-keyboard-hint">Enter: send · Shift+Enter: new line</p>}
       {active && attachments.hasFiles && <p className="agent-keyboard-hint">{afterResponse ? 'The complete input and its attachments will wait for this response.' : 'Queue the complete input with its attachments. Direct delivery supports text only.'}</p>}
       {pending && <div className="agent-pending-message" aria-label="Preserved original message">
         <details><summary>Original request · {composer.receipt?.state ?? 'checking'}</summary><p>{pending.input.text}</p></details>
