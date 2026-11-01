@@ -41,6 +41,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .nativeDesktopLaunch = false,
             .desktopAdoptionVersion = @as(u32, 1),
             .desktopEvidenceVersion = @as(u32, 1),
+            .windowControlVersion = @as(u32, 1),
             .exchangeRunVersion = @as(u32, 1),
             .argumentBytes = @as(u32, 127),
             .serviceSelfTest = true,

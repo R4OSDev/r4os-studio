@@ -103,6 +103,9 @@ class Jobs:
             return admit(self, request, owner)
         if kind not in ('build', 'deploy', 'execution', 'vm_start'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
+        if kind == 'execution' and 'windowControl' in request:
+            expected.add('windowControl')
+            if type(request['windowControl']) is not bool: raise DevelopmentFault('Window control must be a boolean.',400)
         if kind == 'execution' and 'overrides' in request: expected.add('overrides')
         if set(request) != expected:
             raise DevelopmentFault('Unexpected development fields.', 400)
@@ -158,6 +161,7 @@ class Jobs:
                 'source': None, 'projectRevision': self.project['revision'],
                 'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
                 'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
+            if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))
             self.db.commit(); return job, True

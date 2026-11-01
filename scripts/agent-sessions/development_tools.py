@@ -8,7 +8,7 @@ import asyncio
 class DevelopmentTools:
     def __init__(self, worker): self.worker = worker
 
-    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') == 'studio-tools-v15'
+    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16')
 
     def present(self,job,page=None):
         if not self.compact(): return page or {'job':job}
@@ -23,7 +23,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -75,6 +75,14 @@ class DevelopmentTools:
                 if name == 'deploy_project': body['artifactId'] = value['artifactId']
                 if name == 'run_project':
                     body['deploymentId'] = value['deploymentId']
+                    if 'windowControl' in value:
+                        if type(value['windowControl']) is not bool: raise DevelopmentFault('Window control must be a boolean.',400)
+                        if value['windowControl']:
+                            from vm_worker import broker_call
+                            capability = await broker_call({'operation':'capabilities'})
+                            if capability.get('features',{}).get('windowControl') != 1:
+                                raise DevelopmentFault('Window controls require the current development coordinator. No app was started.',503)
+                        body['windowControl'] = value['windowControl']
                     overrides = {k: value[k] for k in ('arguments', 'timeoutSeconds') if k in value}
                     overrides.update(value.get('criteria', {}))
                     if overrides: body['overrides'] = overrides
@@ -125,6 +133,9 @@ class DevelopmentTools:
                     'instruction': 'When the user asks to see the screenshot, include this image Markdown in your response. You may supply a descriptive alt text. The saved image is reused; do not capture again just to present it.'}
                 return {'success': True, 'output': encode({**metadata, 'presentation': presentation}), 'development': {'jobId': value['jobId']}, 'image': metadata,
                     **({'_transientImage': data} if data.get('authorizedForAgentOutput') is True else {})}
+            if name == 'control_app_window':
+                data = await self.request('window', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
+                return {'success': data.get('confirmed', False), 'output': encode(data), 'development': {'jobId': value['jobId']}}
             if name == 'send_vm_input':
                 if value.get('observeAfterStep') is not None and not self.image_capable():
                     raise DevelopmentFault('An intermediate gesture image requires an image-capable model.', 409)

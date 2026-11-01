@@ -1,3 +1,39 @@
+## Own Desktop window controls (0.8.73; roadmap0.8.3)
+
+New project sessions expose **Control app window** in the VM tool permissions.
+The tool resizes the client area, minimizes or restores only the live Desktop
+app launched by that session. Enable the permission and pass `windowControl=true`
+to `studio_run_project` with a newly deployed helper. The original DESKRUN launch
+delegates to its actual generation-bound watchdog. Ordinary runs retain their
+previous command budget; delegated launches include the full controller option
+in the existing112-byte SSH limit and reject oversized commands before starting.
+
+The adapter uses SDK0.64.127 / Contract0.64.68's native Desktop actions. An exact
+broker epoch, original launch request, process generation, window incarnation and
+grant bind each command. Studio saves the complete native request, deadline and
+operation ID before submission. A lost native result triggers Status for that
+same operation. Applied and Current states and fresh composed-frame confirmation
+remain distinct; unconfirmed actions prevent new commands and old-image input.
+A scope-only status cannot replace an outstanding operation's receipt.
+
+Existing sessions preserve their original dynamic tool declarations; create a
+new session to use this new tool. Old deployments and guests without the native
+delegation return a concrete limitation. No other session, foreign window, global
+WM action or automatic app relaunch is exposed. Capture a new image after a
+window action before further input. Native frame confirmation is separate from
+an agent's visual assessment or the configured app checks.
+
+Qualification used an isolated Full0.88.107 / Kernel0.1.452 guest: client resize to
+640×400, minimize/restore, deliberately discarded native restore reply, a button
+click changing state42 to43 in the same app, tampered request rejection and a real
+reused GUI slot protected from an ended controller. Current sources and actual
+native frame/geometry receipts accompany the screenshots. Settings were checked
+at1440/320px for both new and preserved legacy sessions. Targeted host tests,
+private helper builds, Studio build, TypeScript and lint accompany the evidence.
+Environment guidance now describes the installed native capabilities and keeps
+project-specific pins, compiler availability and outside-client capture limits
+explicit. User projects, sessions, defaults and VM processes remain preserved.
+
 ## Retained Desktop completion (0.8.72; roadmap0.8.1)
 
 New deployments build their private helper with SDK0.64.127 and its exact

@@ -5,14 +5,17 @@ WINDOW_FIELDS = ('instanceId', 'generation', 'windowId', 'windowWidth', 'windowH
 
 
 def window(state):
-    return {key: state.get(key) for key in WINDOW_FIELDS}
+    result = {key: state.get(key) for key in WINDOW_FIELDS}
+    if state.get('windowViewRevision') is not None:
+        result.update(windowViewRevision=state['windowViewRevision'], windowActionPending=state.get('windowActionPending', False))
+    return result
 
 
 def current(image, job, state, maximum_age=30, focused=False):
     """Validate a recent observed interval, never claim an atomic guest frame."""
     process = job.get('process') or {}
     observed = image.get('process') or {}
-    if (image.get('diagnosticOnly') or image.get('contentUnconfirmed') or image.get('kind') != 'screenshot' or not image.get('bootId')
+    if (state.get('windowActionPending') or image.get('diagnosticOnly') or image.get('contentUnconfirmed') or image.get('kind') != 'screenshot' or not image.get('bootId')
         or image['bootId'] != (job.get('target') or {}).get('bootId')
         or not process.get('instanceId') or state.get('state') != 'running'
         or state.get('closeConfirmed') or state.get('stopReason') or not state.get('windowVisible')

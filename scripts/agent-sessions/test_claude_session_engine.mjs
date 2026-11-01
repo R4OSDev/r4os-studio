@@ -18,9 +18,9 @@ class Feed {
     }
   }
 }
-function fixture(changes = {}, engineOptions = {}) {
+function fixture(changes = {}, engineOptions = {}, bindingChanges = {}) {
   const frozen = { providerId: randomUUID(), studioSessionId: randomUUID(), nativeSessionId: randomUUID(), runId: randomUUID(),
-    requestId: randomUUID(), ownerId: randomUUID(), ownerType: 'project', toolProfile: 'studio-tools-v14', model: 'owned-model' };
+    requestId: randomUUID(), ownerId: randomUUID(), ownerType: 'project', toolProfile: 'studio-tools-v14', model: 'owned-model', ...bindingChanges };
   if (typeof engineOptions.frozenInput === 'function') engineOptions = { ...engineOptions, frozenInput: engineOptions.frozenInput(frozen.requestId) };
   if (engineOptions.goal === true) engineOptions = { ...engineOptions,
     goal: { executionId: frozen.requestId, maxSteps: 8, maxActiveSeconds: 900 },
@@ -43,6 +43,17 @@ function fixture(changes = {}, engineOptions = {}) {
   return { frozen, feed, sent, received, grants, engine, options, interrupts: () => interrupts };
 }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+await test('window-control profile and preserved profiles bind without submitting input', async () => {
+  for (const toolProfile of ['studio-tools-v14', 'studio-tools-v15', 'studio-tools-v16', 'studio-skill-tools-v5']) {
+    const f = fixture({}, {}, { toolProfile });
+    try {
+      assert.equal(f.engine.binding.toolProfile, toolProfile);
+      assert.equal(f.sent.length, 0);
+      assert.equal(f.engine.inputSubmitted, false);
+    } finally { await f.engine.close(); }
+  }
+  assert.throws(() => fixture({}, {}, { toolProfile: 'studio-tools-v999' }), /Invalid frozen Claude session binding/);
+});
 function echo(f, input) {
   f.feed.emit({ type: 'user', isReplay: true, uuid: input.uuid, session_id: f.frozen.nativeSessionId,
     message: { role: 'user', content: input.message.content } });

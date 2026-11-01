@@ -97,7 +97,7 @@ class Execution:
             authorization = authorize(self.store, message['owner'], message['operation'], message['peerPid'], self.store.get(self.job['id']))
         operation = message.get('operation')
         if self.completion and operation != 'complete_check': raise DevelopmentFault('This execution is completing its checks; no further input or capture is admitted.')
-        if operation not in ('capture', 'input', 'complete_check') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation == 'input' else set()) | ({'owner', 'peerPid'} if authorization else set())):
+        if operation not in ('capture', 'input', 'window', 'complete_check') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation in ('input','window') else set()) | ({'owner', 'peerPid'} if authorization else set())):
             raise DevelopmentFault('Invalid execution action.', 400)
         previous = admit(self.store, self.job['id'], message)
         if previous is not None:
@@ -110,6 +110,9 @@ class Execution:
         self.last = state
         job = self.store.get(self.job['id'])
         try:
+            if operation == 'window':
+                from window_control import perform
+                return await perform(self,job,message,state,control,lease,authorization)
             if operation == 'complete_check':
                 if self.completion or self.stop_requested: raise DevelopmentFault('This execution is already completing or stopping.')
                 from completion import validate
@@ -299,6 +302,10 @@ class Execution:
                 start_sent = False; hello_ready = False
                 try:
                     hello = await control.open(); hello_ready = True; save(self.work / 'controller.json', hello)
+                    from window_control import enabled as window_enabled
+                    self.window_controller = (hello['result'] if desktop and window_enabled(store,job)
+                        and deployment.get('helperCapabilities',{}).get('windowControlVersion') == 1
+                        and hello['result'].get('windowControlVersion') == 1 else None)
                     if desktop and hello['result'].get('desktopAdoptionVersion') != 1:
                         raise DevelopmentFault('The guest controller does not support exact Desktop process adoption.')
                     if deployment.get('helperCapabilities', {}).get('guiFrameBindingVersion') == 1 and hello['result'].get('guiFrameBindingVersion') != 1:
@@ -376,6 +383,8 @@ class Execution:
                             files = await collect(store, store.get(job['id']), deployment, ssh, self.work)
                             store.update(job['id'], outputFiles=files, check=evaluate(job['settings'], state, self.log.read_bytes() if self.log.exists() else b'', files, store.get(job['id']).get('visualAssessment')))
                             from desktop_evidence import release as release_evidence
+                            from window_control import release as release_window
+                            await release_window(self, control)
                             await release_evidence(control, self.work)
                             closed = await control.call('finish')
                             if not closed.get('closed') or not closed.get('serviceRemoved', False) or not closed.get('watchdogRemoved'):

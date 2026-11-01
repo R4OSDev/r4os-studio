@@ -4,6 +4,7 @@ const r4os = @import("r4os");
 const abi = r4os.abi;
 const gesture = @import("gesture.zig");
 const evidence = @import("desktop_evidence.zig");
+const window_control = @import("window_control.zig");
 pub const Request = struct {
     version: u32 = 1,
     instance: []const u8,
@@ -20,6 +21,12 @@ pub const Request = struct {
     evidenceOperation: []const u8 = "",
     evidenceToken: []const u8 = "",
     evidenceOffset: u32 = 0,
+    windowGrant: []const u8 = "",
+    windowOperation: []const u8 = "0",
+    windowKind: []const u8 = "",
+    windowWidth: i32 = 0,
+    windowHeight: i32 = 0,
+    nativeRequest: []const u8 = "",
     serviceName: []const u8 = "",
     inputKind: []const u8 = "text",
     key: u32 = 0,
@@ -83,6 +90,9 @@ const State = struct {
     exitEvidenceUnavailable: bool = false,
     desktopEvidenceRetained: bool = false,
     completionFlags: u32 = 0,
+    windowViewRevision: ?[]const u8 = null,
+    windowActionPending: bool = false,
+    windowObservationError: ?[]const u8 = null,
 };
 
 const Controller = struct {
@@ -125,6 +135,53 @@ const Controller = struct {
     gesture_binding: struct { id: i32 = -1, width: i32 = 0, height: i32 = 0 } = .{},
     state: State = .{},
     evidence_token: ?evidence.Token = null,
+    windows: ?window_control.Controller = null,
+    window_view_buffer: [24]u8 = undefined,
+
+    fn windowView(self: *Controller) void {
+        const windows = if (self.windows) |*value| value else return;
+        const token = windows.token orelse return;
+        const reply = windows.last orelse return;
+        if (!std.meta.eql(reply.current.window, token.window)) return;
+        self.state.windowViewRevision = std.fmt.bufPrint(&self.window_view_buffer, "{d}", .{reply.current.view_revision}) catch return;
+        self.state.windowActionPending = windows.submitted and !windows.frame_confirmed;
+    }
+
+    fn windowRequest(self: *Controller, req: Request, path: [*:0]const u8, instance: []const u8) bool {
+        const publish = @import("transport.zig").publish;
+        const windows = if (self.windows) |*value| value else return false;
+        if (std.mem.eql(u8, req.operation, "window_release"))
+            return window_control.respond(self.sys, path, instance, req.sequence, windows.release());
+        if (std.mem.eql(u8, req.operation, "window_status")) {
+            const operation = std.fmt.parseInt(u64, req.windowOperation, 10) catch return false;
+            const result = windows.status(operation); self.windowView();
+            return window_control.respond(self.sys, path, instance, req.sequence, result);
+        }
+        if (!self.started or self.console_role or self.service_owned or self.state.closeConfirmed or
+            self.stopped != null or self.state.gestureActive or self.mouse_pending or self.process == null) return false;
+        switch (self.process.?.status()) {
+            .value => |info| { if (info.state == @intFromEnum(abi.ProgramInstanceState.done)) return false; },
+            else => return false,
+        }
+        if (std.mem.eql(u8, req.operation, "window_bind")) {
+            const scope = evidence.decode(req.evidenceToken) orelse return false;
+            const grant = std.fmt.parseInt(u64, req.windowGrant, 10) catch return false;
+            const result = windows.bind(scope, grant, self.raw()); self.windowView();
+            return window_control.respond(self.sys, path, instance, req.sequence, result);
+        }
+        if (std.mem.eql(u8, req.operation, "window_prepare")) {
+            const operation = std.fmt.parseInt(u64, req.windowOperation, 10) catch return false;
+            const request = windows.prepare(operation, req.windowKind, req.windowWidth, req.windowHeight) orelse return false;
+            self.windowView();
+            return window_control.prepared(self.sys, path, instance, req.sequence, request);
+        }
+        if (std.mem.eql(u8, req.operation, "window_command")) {
+            self.state.windowViewRevision = "unconfirmed"; self.state.windowActionPending = true;
+            const result = windows.command(req.nativeRequest); self.windowView();
+            return window_control.respond(self.sys, path, instance, req.sequence, result);
+        }
+        return publish(self.sys, path, instance, req.sequence, false, .{ .@"error" = "Unsupported own window request." });
+    }
 
     fn clock(self: *Controller) u64 { return self.sys.monotonicNanoseconds() orelse 0; }
     fn raw(self: *Controller) abi.ProgramProcessHandle {
@@ -220,6 +277,7 @@ const Controller = struct {
         return true;
     }
     fn boundWindow(self: *Controller, req: Request) bool {
+        if (self.state.windowActionPending) return false;
         self.windowState();
         if (!self.state.windowVisible or !self.state.windowFocused) return false;
         if (req.frameBindingVersion == 1) {
@@ -445,24 +503,31 @@ const Controller = struct {
     fn windowState(self: *Controller) void {
         self.state.windowVisible = false;
         self.state.windowFocused = false;
+        self.state.windowObservationError = "process_window_unavailable";
         self.state.guiRevision = if (self.process != null) self.desk.guiRevision(self.process.?.raw) else 0;
         if (self.state.windowId < 0 or self.process == null) return;
         const services = r4os.Services{ .sys = self.sys };
+        self.state.windowObservationError = "window_service_unavailable";
         var connection = switch (services.open("WINSVC")) { .connection => |c| c, else => return };
         defer { _ = connection.close(); }
         if (self.desktop_broker) |broker| {
+            self.state.windowObservationError = "window_broker_identity_unavailable";
             if (connection.info.instance_id != broker.raw) return;
             switch (broker.status()) { .value => {}, else => return }
         }
         var snapshot: abi.WindowServiceSnapshot = .{};
+        self.state.windowObservationError = "window_snapshot_unavailable";
         switch (connection.call(abi.window_service_op_snapshot, "", std.mem.asBytes(&snapshot),
             r4os.time_contract.timeoutFinite(.{ .nanoseconds = 200_000_000 }))) {
-            .response => |response| { if (response.bytes != @sizeOf(abi.WindowServiceSnapshot)) return; },
+            .response => |response| { if (response.bytes != @sizeOf(abi.WindowServiceSnapshot)) { self.state.windowObservationError = "window_snapshot_size_mismatch"; return; } },
             else => return,
         }
+        self.state.windowObservationError = "window_snapshot_identity_mismatch";
         if (snapshot.magic != abi.window_service_snapshot_magic or snapshot.version != abi.window_service_snapshot_version) return;
+        self.state.windowObservationError = "window_process_identity_unavailable";
         switch (self.process.?.status()) { .value => {}, else => return }
         if (self.desktop_broker) |broker| { switch (broker.status()) { .value => {}, else => return } }
+        self.state.windowObservationError = "window_record_unavailable";
         for (snapshot.records) |record| {
             if (record.instance_id != self.process.?.raw or record.window_id != self.state.windowId) continue;
             self.state.windowVisible = (record.flags & abi.window_service_flag_visible) != 0 and
@@ -471,6 +536,7 @@ const Controller = struct {
                 snapshot.status.focused_instance == self.process.?.raw;
             self.state.windowWidth = record.w;
             self.state.windowHeight = record.h;
+            self.state.windowObservationError = null;
             return;
         }
     }
@@ -616,6 +682,7 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
     const publish = @import("transport.zig").publish;
     var own_handle: abi.ProgramProcessHandle = .{};
     if (sys.programOpenHandle(@intCast(app.raw.instance_id), &own_handle) != 0) return 73;
+    controller.windows = .{ .sys = sys, .own = own_handle };
     var generation: [24]u8 = undefined;
     const generation_text = std.fmt.bufPrint(&generation, "{d}", .{own_handle.generation}) catch return 73;
     if (!publish(sys, &response, instance, 0, true, .{ .ready = true, .daemonInstanceId = own_handle.instance_id,
@@ -663,6 +730,11 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         sequence = req.sequence; heartbeat = current;
         if (std.mem.eql(u8, req.operation, "start")) {
             if (!controller.start(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The owned role could not be started." }); return 77; }
+        } else if (std.mem.startsWith(u8, req.operation, "window_")) {
+            if (!controller.windowRequest(req, &response, instance)) {
+                _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The own window binding, command or live process is unavailable." });
+            }
+            continue;
         } else if (std.mem.eql(u8, req.operation, "evidence")) {
             if (!evidence.respond(sys, &response, instance, sequence, req.evidenceOperation, req.evidenceToken, req.evidenceOffset)) return 80;
             continue;

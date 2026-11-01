@@ -57,12 +57,12 @@ class ProjectionTest(unittest.TestCase):
         self.assertEqual(base64.b64decode(r['output']['data']),malformed)
 
     def test_legacy_full_shape_and_readiness_unknown_classification(self):
-        for profile in ('studio-tools-v13','studio-tools-v14','studio-tools-v15'):
+        for profile in ('studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16'):
             tool=DevelopmentTools(SimpleNamespace(config={'engine':{'profile':profile}},manifest={'projectId':'project'},session_id='session'))
             p=page();p['job'].update(kind='execution',state='running',exitCode=None,readiness={'reasonCode':'desktop_content_unconfirmed','state':'unknown'})
             r=tool.result(p['job'],p)
             self.assertFalse(r['success']);self.assertEqual(r['error'],'readiness_unknown');self.assertEqual(r['development']['jobId'],'original-job')
-            if profile=='studio-tools-v15':self.assertLess(len(r['output'].encode()),LIMIT_BYTES)
+            if profile in ('studio-tools-v15','studio-tools-v16'):self.assertLess(len(r['output'].encode()),LIMIT_BYTES)
             else:self.assertEqual(json.loads(r['output'])['job']['pins'],p['job']['pins'])
 
 class ReadViewTest(unittest.IsolatedAsyncioTestCase):

@@ -39,3 +39,21 @@ class AuthorizationTest(unittest.TestCase):
         authorize_job(self.store,self.job,allow_stopping=True)
         self.db.execute('UPDATE runs SET state=?,busy=0',('completed',));self.db.commit();authorize_job(self.store,self.job)
         with self.assertRaises(DevelopmentFault):authorize(self.store,self.owner,'capture',os.getpid(),self.job)
+
+    def test_window_control_requires_v16_own_session_and_both_frozen_rights(self):
+        from window_control import enabled
+        self.job['windowControlRequested']=True
+        self.config['engine']['profile']='studio-tools-v16';self.save()
+        authorize(self.store,self.owner,'window',os.getpid(),self.job)
+        self.assertTrue(enabled(self.store,self.job))
+        for permission in ('studio.control_app_window','studio.run_project'):
+            self.config['permissions'][permission]=False;self.save()
+            with self.assertRaises(DevelopmentFault):authorize(self.store,self.owner,'window',os.getpid(),self.job)
+            self.assertFalse(enabled(self.store,self.job))
+            self.config['permissions'][permission]=True;self.save()
+        foreign={**self.job,'sessionId':str(uuid.uuid4())}
+        with self.assertRaises(DevelopmentFault):authorize(self.store,self.owner,'window',os.getpid(),foreign)
+        self.assertFalse(enabled(self.store,foreign))
+        self.config['engine']['profile']='studio-tools-v15';self.save()
+        with self.assertRaises(DevelopmentFault):authorize(self.store,self.owner,'window',os.getpid(),self.job)
+        self.assertFalse(enabled(self.store,self.job))

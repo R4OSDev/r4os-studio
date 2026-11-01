@@ -11,6 +11,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
 from profile import NOTE_TOOLS, ROADMAP_PROFILE, REMOTE_PROFILES, REMOTE_TOOLS, ROADMAP_TOOLS, GUI_PROFILE, prepare, write_json, TOOLS, PROFILE, COMPLETION_PROFILE, VM_PROFILE, DEVELOPMENT_PROFILE, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
+from profile import WINDOW_TOOLS
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -192,7 +193,7 @@ class Worker:
             from github_tools import GitHubTools
             return await GitHubTools(self).call(arguments, call_id)
         if name in AUTHOR_TOOLS and self.store.owner_type == 'skill': return await self.skills.call(name, arguments, call_id)
-        if name in DEVELOPMENT_TOOLS and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
+        if name in (*DEVELOPMENT_TOOLS, *WINDOW_TOOLS) and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
@@ -287,6 +288,7 @@ class Worker:
             except asyncio.CancelledError: result = {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True}
             except Exception:
                 uncertain = name[7:] in ('import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
+                uncertain = uncertain or name == 'studio_control_app_window' and (not isinstance(arguments,dict) or arguments.get('action') != 'status')
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -441,7 +443,9 @@ class Worker:
                 instructions += '\n\nSTUDIO DESKTOP EVIDENCE: Before choosing GUI test criteria, account for unconfirmed native Desktop completion retention and console routing (also for Rust App.write). The controller captures available generation-bound receipts and process-console bytes; it cannot guarantee an exit code or complete application output after Desktop cleanup. Never silently remove configured criteria. A confirmed process end, helper cleanup, a GUI assessment and passed exit/text checks are separate findings. Read executionEvidence on the original job; missing exit/output stays inconclusive where required, never exit code zero or permission to relaunch. Persisted observations do not authorize replay or reap.'
             if 'complete_development_job' in tools_for(self.config['engine']['profile']):
                 instructions += '\n\nSTUDIO CHECK LIFECYCLE: Image assessment alone leaves the bounded process running. After all configured test criteria pass, explicitly call studio_complete_development_job and wait for its cleanup receipt before reporting the full test complete. Never complete a plain interactive launch unless the user requested the test to finish. Unknown closure must not be repeated.'
-            if self.config['engine']['profile'] in ('studio-tools-v14','studio-tools-v15'):
+            if self.config['engine']['profile'] == 'studio-tools-v16':
+                instructions += '\n\nSTUDIO OWN WINDOW CONTROL v1: studio_control_app_window needs its own enabled session permission, a new window-control-v1 deployment, windowControl=true on studio_run_project, and the controller delegated by that original launch. Resize uses client dimensions and the observed position; minimize/restore target only that exact own window incarnation. Applied native receipt and current composed-frame proof are separate. Do not turn pending/missing frames into a visual pass. Read the original operationId with action=status after uncertainty; never start a replacement app or repeat a command. Applied view changes invalidate older screenshot input references, so capture again before input. A launch-time controller flag consumes the existing SSH command budget; overlong arguments fail before starting the app and must be shortened deliberately.'
+            if self.config['engine']['profile'] in ('studio-tools-v14','studio-tools-v15','studio-tools-v16'):
                 instructions += '\n\nSTUDIO GUI GESTURES v1: The gesture form of studio_send_vm_input requires a newly deployed gesture-v1 helper. Supply one recent focused frame and a complete plan of at most32 down/move/up steps within2000 milliseconds, using left/right on down/up. Release inside the same call; never hold across tool calls. Two timed down/up pairs form a double click; moves without down are hover. The guest owns the time limit and abort/release on changed geometry/focus/process, Stop or deadline. Accepted prefix and actual enqueue times are separate from app consumption. Optional observeAfterStep captures one observed interval and needs Capture VM plus image capability; leave enough time before the next phase, inspect the actual image, and do not infer an exact pressed frame from its schedule. No outside-client pointer capture, global input or automatic retry after partial/lost replies.'
             elif 'send_vm_input' in tools_for(self.config['engine']['profile']):
                 instructions += '\n\nSTUDIO GUI GESTURE AVAILABILITY: This conversation keeps its original input schema and cannot submit kind=gesture. A new project session with profile v14 and a newly deployed gesture-v1 helper is required for bounded drag, right-click or double-click plans. Existing click/key/text capabilities remain as declared; do not invent gesture fields, silently replace the requested interaction or replay partial input.'

@@ -79,7 +79,7 @@ def receipt(output):
     return {**value, 'process_generation': str(value['process_generation']), 'content': str(value['content'])}
 
 
-def command_text(deployment, arguments, wait_ms):
+def command_text(deployment, arguments, wait_ms, controller=None):
     path = deployment['guestDirectory'] + chr(92) + 'APP.R4X'
     # This is a fixed verified package path, never a caller-selected shell path.
     if not re.fullmatch(r'[A-Z]:\\Build\\P[A-F0-9]{7}\\D[A-F0-9]{7}\\APP\.R4X', path, re.IGNORECASE):
@@ -89,13 +89,20 @@ def command_text(deployment, arguments, wait_ms):
     # Use DESKRUN's native five-second default without spending argument bytes
     # on an optional flag. Short execution deadlines still get an explicit wait.
     wait = '' if wait_ms == DEFAULT_WAIT_MS else f' /WAIT:{wait_ms}'
-    text = f'DESKRUN /JSON{wait} /WAITFRAME "{path}"' + (' ' + arguments if arguments else '')
+    delegation = ''
+    if controller is not None:
+        pid, generation = controller.get('watchdogInstanceId'), controller.get('watchdogGeneration')
+        if (type(pid) is not int or not 0 < pid <= 4294967295 or not isinstance(generation,str)
+            or not re.fullmatch(r'[0-9]{1,20}',generation) or not 0 < int(generation) <= U64):
+            raise NotSubmitted('The exact native window controller identity is unavailable.')
+        delegation = f' /CONTROLLER:{pid}:{generation}'
+    text = f'DESKRUN /JSON{wait} /WAITFRAME{delegation} "{path}"' + (' ' + arguments if arguments else '')
     return text
 
 
-def launch_budget(deployment, arguments, wait_ms):
-    text = command_text(deployment, arguments, wait_ms)
-    fixed = len(command_text(deployment, '', wait_ms).encode())
+def launch_budget(deployment, arguments, wait_ms, controller=None):
+    text = command_text(deployment, arguments, wait_ms, controller)
+    fixed = len(command_text(deployment, '', wait_ms, controller).encode())
     try: used = len(text.encode()); argument_bytes = len(arguments.encode())
     except UnicodeError: raise NotSubmitted('Desktop arguments must contain valid UTF-8 text. No application was started.',400) from None
     capacity = SSH_EXEC_BYTES - fixed - 1
@@ -106,12 +113,12 @@ def launch_budget(deployment, arguments, wait_ms):
         'waitMilliseconds': wait_ms, 'withinLimit': used <= SSH_EXEC_BYTES}
 
 
-def command(deployment, arguments, wait_ms):
-    value = launch_budget(deployment, arguments, wait_ms)
+def command(deployment, arguments, wait_ms, controller=None):
+    value = launch_budget(deployment, arguments, wait_ms, controller)
     if not value['withinLimit']:
         raise NotSubmitted(f"Desktop launch requires {value['commandBytes']} UTF-8 command bytes; R4OS SSHD allows {SSH_EXEC_BYTES} after its Terminal wrapper. Shorten the application arguments. No application was started.",
             400, reason_code='desktop_arguments_too_long')
-    return command_text(deployment, arguments, wait_ms)
+    return command_text(deployment, arguments, wait_ms, controller)
 
 
 async def exchange(ssh, text, timeout):
@@ -246,7 +253,10 @@ class DesktopLaunch:
     async def start(self):
         loop = asyncio.get_running_loop(); self.deadline = loop.time() + self.job['settings']['timeoutSeconds']
         wait_ms = min(DEFAULT_WAIT_MS, self.job['settings']['timeoutSeconds'] * 1000)
-        text = command(self.deployment, self.job['settings']['arguments'], wait_ms)
+        controller = getattr(self.owner,'window_controller',None)
+        text = command(self.deployment, self.job['settings']['arguments'], wait_ms, controller)
+        if controller:
+            self.store.update(self.job['id'], desktopLaunchBudget=launch_budget(self.deployment,self.job['settings']['arguments'],wait_ms,controller))
         heartbeat = asyncio.create_task(self.heartbeat())
         launch = asyncio.create_task(self.query(text, wait_ms / 1000 + 5, starting=True))
         try:
@@ -295,9 +305,14 @@ class DesktopLaunch:
                         brokerInstanceId=int(broker_id), brokerGeneration=broker_generation, timeoutSeconds=remaining)
                 except DevelopmentFault: pass
                 raise
-        return await self.owner.control.call('adopt_desktop', instanceId=value['process_id'], generation=value['process_generation'],
+        state = await self.owner.control.call('adopt_desktop', instanceId=value['process_id'], generation=value['process_generation'],
             **({'evidenceToken': retained} if retained else {}),
             brokerInstanceId=int(broker_id), brokerGeneration=broker_generation, timeoutSeconds=remaining)
+        if controller:
+            from window_control import bind
+            self.owner.output(state); state['outputBase64'] = ''
+            state = await bind(self.owner,self,state)
+        return state
 
     async def refresh(self):
         loop = asyncio.get_running_loop()

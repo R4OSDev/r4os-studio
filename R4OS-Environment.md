@@ -9,86 +9,91 @@ Use the project's bound Rust for a host-only `rustc --test`; do not rewrite test
 scripts, Cargo.lock, project pins or global defaults as a linker workaround.
 GCC14.2.0 is the checked driver on this host, not a required global version.
 
-# Project environment qualification (0.8.3)
+# Project environment qualification (0.8.3 / 0.8.73)
 
-Host compilation, native guest facilities and Studio test adapters are separate
-capabilities. Workers include the current project's language, role, revision and
-SDK/Contract/compiler pins in their runtime guidance. These are startup metadata;
-an older deployed artifact keeps its original build pins and VM/boot binding.
-No project pins, application files, saved prompts or native threads are changed.
+Host builds, guest facilities and Studio adapters have separate capabilities.
+Runtime guidance includes this project's actual language/role and immutable
+SDK/Contract/compiler pins. Older deployments keep their original build pins and
+VM/boot binding. The private helper pins below never replace project pins,
+application sources, saved prompts or existing native conversations.
 
-## Own window actions: native prerequisite remains open
+## Own window controls
 
-Qualified sources:
+Qualified immutable sources:
 
-| Component | Version / immutable revision | Relevant source |
+| Component | Version / revision | Source |
 | --- | --- | --- |
-| Private helper SDK | 0.64.66 / 41770f2c354e461a5663ad805b7b2955dab1d5a9 | r4os/program.zig |
-| Private helper Contract | 0.64.41 / 95f762623e6ac2025e9a8aa781713c7c957629a8 | Generated/SDK/Zig/abi.zig and abi_generated.zig |
-| Nexus SDK | 0.64.92 / 51ed03d813d9baeab630746f1d1bbc46c2d2a1e6 | r4os/window_mode.zig, Shared/C/include/r4os/app_gui.h, README.md |
-| Nexus Contract | 0.64.45 / db155842d346a8aae0aadea73288105140c95af6 | API/ApiContract.json, Generated/SDK/C/include/r4os/abi_technical_generated.h |
-| Public WINSVC implementation snapshot | f54855b1e5a82e2591999a6561adbaf98155b5a6 | src/main.zig: performAction, src/window_mode.zig |
-| Public Desktop implementation snapshot | af339ec95950e6a077c6bbe0c0cc24fbd6e49c12 | src/app.zig: mirrorWindow*, sendWindowServiceOp |
+| Private helper SDK | 0.64.127 / fbb5041487441473612d04d3166bcfa21f3d555f | r4os/desktop_actions.zig, desktop_evidence.zig, README.md |
+| Matching Contract | 0.64.68 / 4c96b21df75662ca6a3af3c8ee332c342e2db185 | Generated/SDK/Zig/abi_generated.zig and abi.zig |
+| Full guest | 0.88.107 / Kernel0.1.452 | verified image and R4OS-SOURCES-0.88.107.json |
+| WINSVC | 0.1.31 / a670557e352e1b574b08494756b58b86cb80ca59 | desktop_actions, desktop_evidence, main.zig |
+| Desktop | 0.1.198 / 0a5b341ce3253cb073d3760b7ad0dea5732cf84b | src/rust/hosted/actions.rs, windows/service_mirror.rs |
+| DESKRUN | 0.1.3 / 5d5fa5b001a649bd4245d4ad29eef9b9839c8a65 | original launch scope and controller grant |
 
-The legacy WINSVC minimize/restore/update operations change a stored record.
-Desktop mirrors its own window operations into this registry. An accepted
-registry request does not attest applied Desktop geometry or a visible state
-change. `gui_set_window_info(instance_id, info)` likewise does not establish a
-generation-bound, externally authorized WM request with an application receipt.
+New project sessions use tool profile16. Earlier conversations keep their exact
+original declarations. studio_control_app_window requires its own enabled
+session permission, an active own job and a new window-control-v1 deployment.
+Request windowControl=true on studio_run_project only when that run needs window
+actions. Ordinary starts keep their previous argument budget.
 
-The newer `WindowModeRequest` does have owner, Desktop and service generations,
-window incarnation and request IDs. Its documented modes are **0 decorated** and
-**1 borderless fullscreen**. It has no width/height/minimize/restore request.
-The existence of this qualified mode path must not be generalized to the three
-requested operations. The source snapshots above are qualification evidence,
-not a claim that a particular running guest has those revisions installed.
+DESKRUN delegates that original child to the exact helper process generation.
+Original request, 192-bit broker epoch, grant, controller, Desktop, app generation
+and window incarnation stay bound. Resize uses client dimensions and preserves
+the observed position. Minimize/restore use native WM commands. No registry write,
+global input workaround or arbitrary PID/window is accepted. The controller flag
+consumes the same112-byte SSH command budget. Overlong commands fail before app
+start; never truncate arguments or launch a replacement app automatically.
 
-Studio exposes no mutating own-window adapter until the required native contract
-is established. Needed: generation-/window-bound resize/minimize/restore, native
-Desktop authorization, idempotent original request identity, actual applied
-state/geometry readback and explicit stale/unsupported/unknown outcomes. A new
-adapter will also need an explicit session right and frame invalidation. No
-global mouse/key workaround or changing registry metadata as a test substitute.
-The positive action/foreign-target/response-loss guest acceptance remains open.
+The host saves the complete native request, original operation and deadline
+before one submission. Read action=status for its original operationId after
+uncertainty. Applied is an immutable native receipt; Current is a separate live
+view. frameReady requires the actual composed view and a fresh app frame when
+visible. Missing/pending frames are not passing visual tests. Applied view changes
+invalidate older screenshot input references; capture again before input.
+Unknown effects remain protected and are not replayed.
+
+A separate Full0.88.107 KVM guest qualifies real resize/minimize/restore of one
+C GUI process/window, actual pixels and fresh native frame receipts, preserved
+app state and a subsequent consumed click. Tampered targets, discarded native
+restore reply, actual GUI-slot reuse and an ended controller retain protection.
+This is not an outside-client drag test. Guests/deployments without a confirmed
+grant stay unsupported; original jobs/helpers are not migrated.
 
 ## C GUI, capture and output
 
-The higher `app_gui.h` raw/message facade is not the complete technical ABI.
-The generated technical C header already defines focus/font event values.
-The public facade and window-flag access need separate qualification against the
-selected source. `WindowService` flags and `GuiWindowFlag` have different meanings;
-do not copy numeric values between them or add local ABI constants.
+SDK127 Shared/C/include/r4os/app_gui.h provides typed focus-gained/lost and
+font-changed raw events/messages, named R4_GUI_WINDOW_FLAG_* flags and native
+pointer identity/capture/status/release with window-incarnation binding. Use the
+selected project's own facade/generated header. GUI flags and WindowService
+registry flags have different meanings; never copy numeric values between them
+or invent local ABI constants for an older SDK.
 
-The observed R4DESK v17 table and local `gui.MouseCapture` state do not establish
-native capture of Move/Up outside the client. Bounded own-client gestures0.8.2
-do not test an outside drag. An actual capture/release contract and native proof
-remain necessary. Similarly, Desktop process end, helper cleanup, native exit
-status, complete output and a visual assertion remain independent evidence;
-older helpers cannot guarantee retention after Desktop reap. New deployments
-with `desktopEvidenceVersion:1` use the original DESKRUN epoch and acknowledged
-WINSVC lease (private helper SDK0.64.127 / Contract0.64.68). Inspect the actual
-handoff, completion/output flags and execution evidence; absent or stale evidence
-remains unconfirmed. The Rust `App.write` path is qualified separately in the
-0.8.72 README section; this never upgrades historical jobs or old helper pins.
+Applications can use their selected SDK's actual capture contract. Studio's
+bounded gesture tool still stays within the own client and never holds a press
+across calls. Native availability alone does not qualify an outside-client Studio
+drag or global input.
 
-## Storage and Nexus limits
+Desktop owns lifecycle and consuming reap. New desktopEvidence-v1 helpers use
+the original epoch and acknowledged WINSVC lease to retain exact exit and output
+after Desktop cleanup. Native flags distinguish complete empty output, truncation
+and incomplete output. GUI writes can become observable through retained terminal
+completion rather than a live console: empty running output does not prove the
+app wrote nothing. Process end, cleanup, exit, complete text and visual criteria
+stay separate. Missing/stale leases and older helpers get no invented evidence.
+See the0.8.72 README section.
 
-The stored Solitaire observations on Full0.87.14 show long staging basenames
-failing Exchange stream creation while checked short basenames succeeded.
-This is a provider/volume observation, not a universal8.3 naming rule or a proven
-kernel/FAT defect. Preserve app names and pins; qualify the target provider's
-stream-create/replace rules separately from SDK path syntax.
+## Provider and language boundaries
 
-SDK0.64.92 explicitly describes native R4CC as a C subset and native Zig/Rust
-compilers as unavailable. Studio's host Rust app builds do not contradict that.
-The Nexus HTTP POST/SSE,12-KiB request buffer, TCP server deadline and
-PeerClosed/remaining-data concerns are native language/API questions. A model
-provider integration does not extend a guest SDK. No reproduction of packet loss
-or TLS failure is asserted by source review. A reported glyph issue still needs
-localization to application data, fonts and rendering; preserved Unicode text
-must not be replaced as a guessed fix. The canonical112-byte Desktop command
-budget remains enforced; its advance display is separately planned in0.8.42.
+Historical Solitaire/Full0.87.14 failures for long Exchange staging names are
+provider/volume observations, not a universal8.3 SDK rule. Studio's short package
+and control filenames are its transport layout. Preserve app names and pins; use
+rules documented or exposed by the actual selected provider.
 
-The original0.8.3 contribution implemented guidance and qualification only. Its
-window-action prerequisite remains separate from the0.8.72 completion adapter;
-no window mutation or global project-pin migration is introduced by that adapter.
+Host Rust builds do not qualify a compiler in the guest. SDK127 delivery
+explicitly excludes native Rust-compilation qualification, and this feature adds
+no Studio guest Rust-build adapter. Inspect actual release capabilities instead
+of repeating an old SDK92 limitation as a current global rule. POST/SSE,
+cancellation/request size, TCP deadlines/PeerClosed and Unicode likewise follow
+the selected SDK and running guest. A Studio model provider does not extend guest
+APIs. Preserve codepoints and inspect current sources/errors; historical Nexus
+findings do not prove a limitation persists after an upstream update.

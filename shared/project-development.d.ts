@@ -19,6 +19,7 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  windowControlVersion?: 1;
   desktopLaunchBudget?: DesktopArgumentLayout | null;
   evidenceCapabilities?: {
     exitStatus: { state: 'unconfirmed' | 'conditional'; reasonCode: string; reason: string };
@@ -189,6 +190,8 @@ export interface DevelopmentJob {
   nextStep?: string | null;
   checkCompletion?: { requestId: string; reason: 'criteria_complete'; state: 'closing' | 'completed' | 'failed'; closed?: boolean; completedAt?: string };
   desktopLaunch?: DesktopLaunchReceipt;
+  windowControlRequested?: boolean;
+  windowControl?: { version: number; available: boolean; operationId?: string; reason?: string; native?: Record<string, unknown> };
   package?: { format: 'exchange-build-v1' | 'legacy-c'; relativeDirectory: string; guestDirectory: string };
 
   vmStart?: {

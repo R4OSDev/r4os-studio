@@ -75,3 +75,24 @@ Offer, ACK, spawn, reap or mutate a window. Host recovery verifies the original
 boot and helper bytes and serializes this fixed file under the VM lease. The
 reader returns the original completion and bounded output chunks. Recovery
 retains the previous host output and its own original transport records.
+
+
+## Own Desktop window control v1 (0.8.73)
+
+New helpers declare windowControlVersion1 without changing the existing private
+control/watchdog transport versions. Only a profile16 session with its explicit
+window permission and per-run opt-in requests DESKRUN controller delegation.
+The delegated controller is the actual watchdog's complete native process handle.
+The original launch epoch/request/grant binds the one owned window incarnation;
+no public request supplies a VM, PID, window ID, position, flag or native token.
+
+window_bind is read-only Status of that original grant. window_prepare obtains a
+fresh Current state and prepares a bounded resize/minimize/restore request with
+an operation ID and native deadline. The host saves the exact192-byte request
+before window_command. The helper permits one submission matching every prepared
+byte. window_status queries only the prepared original operation after submission;
+scope-only Status cannot overwrite an outstanding receipt. Another command needs
+the previous command's confirmed composed frame. Applied is immutable and Current
+is live. Window view revisions invalidate images even after restoring the same
+geometry. Unknown effects remain protected; no automatic repeat or new app launch.
+window_release returns the original native release outcome before helper finish.
