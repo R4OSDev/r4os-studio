@@ -1,3 +1,18 @@
+## Automatic VM host keys (0.8.71)
+
+VM Settings no longer offers **Verify a new host key**. After a release change
+or system reset, the first authorized SSH connection already authenticates the
+guest and binds its new host key to that VM, image and system generation.
+**Save access** is unnecessary for this automatic binding. The fingerprint,
+**Enable SSH access** and **Check access** remain available. A changed key for
+an unchanged VM/image/system binding still fails verification.
+
+The four existing VMs were checked through the normal development coordinator:
+all authenticated with distinct current host keys and reported R4OS0.88.107 /
+Kernel0.1.452, without a manual trust reset or VM restart. Only the redundant
+UI control was removed; transport behavior and compatibility API are unchanged.
+Build, TypeScript, lint and source review are used; no tests or fixtures are run.
+
 ## SDK release metadata compatibility (0.8.70)
 
 Published SDK sets can omit the redundant component `source_url` when they
