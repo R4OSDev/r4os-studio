@@ -181,7 +181,7 @@ class Execution:
                     state, result = await execute(self, message, request, state, control, lease, process, authorization)
                     finish(self.store, message['requestId'], result)
                     return state, result
-                from gui_input import key as gui_key, text as gui_string, LEGACY_KEYS
+                from gui_input import key as gui_key, text as gui_string, LEGACY_KEYS, SHORTCUTS
                 repeat = value.get('repeat', 1)
                 if type(repeat) is not int or not 1 <= repeat <= 16:
                     raise DevelopmentFault('Repeat a key between 1 and 16 times.', 400)
@@ -191,7 +191,15 @@ class Execution:
                 if gui_text:
                     request['input'] = gui_string(value['text']); expected = len(request['input'])
                 elif kind == 'key':
-                    request['key'] = gui_key(value['key']); expected = repeat
+                    shortcut = value['key'] in SHORTCUTS
+                    if shortcut:
+                        if authorization and authorization['engine']['profile'] != 'studio-tools-v20':
+                            raise DevelopmentFault('This conversation retains its original key contract. Use an editor-shortcut-capable session.',403)
+                        if (deployment.get('helperCapabilities',{}).get('editorShortcutVersion') != 1
+                                or request.get('frameBindingVersion') != 1 or repeat != 1):
+                            raise DevelopmentFault('Ctrl+A requires a new editor-shortcut-v1 helper, a focused frame and repeat=1.',400)
+                        request['editorShortcutVersion'] = 1
+                    request['key'] = gui_key(value['key'],editor_shortcuts=shortcut); expected = repeat
                     if deployment.get('helperCapabilities', {}).get('guiInputVersion') == 2: request['keyRepeat'] = repeat
                 else:
                     if any(type(value[k]) is not int or not 0 <= value[k] <= 1279 for k in ('x', 'y')):
@@ -204,6 +212,8 @@ class Execution:
             result = {'accepted': state.get('inputAccepted', 0), 'kind': kind, 'process': process,
                 'delivery': 'owned-event-queue', 'consumptionConfirmed': False,
                 'expected': expected, 'complete': state.get('inputAccepted', 0) == expected}
+            if request.get('editorShortcutVersion') == 1:
+                result.update(shortcut=value['key'],semanticCodepoint=request['key'],heldModifiers=False,releaseRequired=False)
             finish(self.store, message['requestId'], result)
             return state, result
         except DevelopmentFault as error:
@@ -313,6 +323,8 @@ class Execution:
                         raise DevelopmentFault('The guest controller does not confirm its declared window binding capability.')
                     if deployment.get('helperCapabilities', {}).get('guiInputVersion') == 2 and hello['result'].get('guiInputVersion') != 2:
                         raise DevelopmentFault('The guest controller does not confirm its declared extended input capability.')
+                    if deployment.get('helperCapabilities', {}).get('editorShortcutVersion') == 1 and hello['result'].get('editorShortcutVersion') != 1:
+                        raise DevelopmentFault('The guest controller does not confirm its declared editor shortcut capability.')
                     if deployment.get('helperCapabilities', {}).get('gestureVersion') == 1 and hello['result'].get('gestureVersion') != 1:
                         raise DevelopmentFault('The guest controller does not confirm its declared gesture capability.')
                     if deployment.get('helperCapabilities', {}).get('dragInterruptVersion') == 1 and hello['result'].get('dragInterruptVersion') != 1:

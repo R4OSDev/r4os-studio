@@ -129,6 +129,8 @@ class Host:
             'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1, 'desktopShortcutVersion':1,
             'desktopLinkActivation': {'available':False,'reasonCode':'native_link_activation_unqualified',
                 'reason':'The public native contract does not provide qualified own-link activation with a recoverable original launch receipt.'},
+            'editorShortcuts': {'version':1,'keys':['Ctrl+A'],'unsupported':['Ctrl+Home','Ctrl+End'],
+                'delivery':'semantic-codepoint','requiresNewDeployment':True},
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),
@@ -325,7 +327,7 @@ class Host:
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
                 elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
-                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19'):
+                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20'):
                     raise DevelopmentFault('This native conversation retains its original deployment schema. Desktop publication requires a new v18 session or the browser action.', 403)
                 if op == 'execution' and request.get('input',{}).get('windowControl') is True:
                     authorize(store,owner,'window',peer_pid)

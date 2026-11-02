@@ -2,7 +2,7 @@
 from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, tools_for
 from copy import deepcopy
 from profile import WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE
-from profile import LOOKUP_PROFILE
+from profile import LOOKUP_PROFILE, EDITOR_PROFILE
 
 
 def obj(properties, required=()):
@@ -90,6 +90,14 @@ DEFS['read_environment_notes']=('Read/search bounded session-local reports and f
 DEFS['record_environment_note']=('Record an observed Studio/tool/workflow fault or a fault in an inaccessible dependency, including public APIs/ABI, SDK/Contract, kernel, Desktop or libraries. Also record useful workflow-saving feature requests for APIs, Desktop or libraries even without a failure. Use kind=problem for faults and the separate kind=suggestion for feature requests; category names the affected area. Based on existing evidence, name component/version and expected versus observed behavior for a problem, or the missing capability, use case and benefit for a suggestion. First read current session notes and pass their revision; reuse similar entries unchanged. Exclude bugs and normal compiler/test failures in the user\'s editable project, expected permissions/Stop, corrected misuse and ordinary waits. No quota, extra commands/tests/inference, secrets/private paths/raw logs or deleted-report recreation. Server binds origin and deduplicates this call. No edit/delete or failed-tool retry.',obj({'revision':{'type':'integer','minimum':0,'maximum':9007199254740991},'kind':NOTE_KIND,'category':NOTE_CATEGORY,'title':{'type':'string','minLength':1,'maxLength':160},'description':{'type':'string','minLength':1,'maxLength':4000},**{key:{'type':'string','maxLength':1000} for key in ('impact','workaround','suggestion')}},['revision','kind','category','title','description']))
 
 def specifications(profile=PROFILE):
+    if profile == EDITOR_PROFILE:
+        result = deepcopy(specifications(LOOKUP_PROFILE))
+        declaration = next(value for value in result if value['name'] == 'studio_send_vm_input')
+        declaration['description'] += (' This profile additionally accepts key="Ctrl+A", repeat omitted or 1, '
+            'with a newly deployed editor-shortcut-v1 helper and a recent focused own frame. It queues the native '
+            'select-all codepoint atomically, with no physically held modifiers. Ctrl+Home/End and clipboard shortcuts '
+            'are unavailable. Enqueue does not prove selection or application consumption; inspect afterward.')
+        return result
     if profile == LOOKUP_PROFILE:
         result = deepcopy(specifications(DESKTOP_PROFILE))
         declaration = next(value for value in result if value['name'] == 'studio_read_development_job')
@@ -187,6 +195,8 @@ def specifications(profile=PROFILE):
 
 
 def validate_arguments(name, value, profile=PROFILE):
+    if profile == EDITOR_PROFILE:
+        return validate_arguments(name,value,LOOKUP_PROFILE)
     if profile == LOOKUP_PROFILE and not (name == 'read_development_job' and 'lookup' in value):
         return validate_arguments(name,value,DESKTOP_PROFILE)
     definition = next((v for v in specifications(profile) if v['name'] == 'studio_' + name), None)

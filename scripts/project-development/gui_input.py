@@ -5,10 +5,12 @@ KEYS = {'Enter': 13, 'Tab': 9, 'Escape': 27, 'Space': 32, 'Backspace': 8, 'Delet
     'ArrowUp': 128, 'ArrowDown': 129, 'Shift+Tab': 132, 'ArrowLeft': 136, 'ArrowRight': 137,
     'Home': 138, 'End': 139, 'PageUp': 141, 'PageDown': 142}
 LEGACY_KEYS = ('Enter', 'Tab', 'Escape', 'Space')
+SHORTCUTS = {'Ctrl+A': 1}  # Public r4os.gui.Key.ctrl_a, not a physical modifier.
 
 
-def key(value):
+def key(value, editor_shortcuts=False):
     if isinstance(value, str):
+        if editor_shortcuts and value in SHORTCUTS: return SHORTCUTS[value]
         if value in KEYS: return KEYS[value]
         if len(value) == 1 and 32 <= ord(value) <= 126: return ord(value)
     raise DevelopmentFault('Use one printable ASCII character or a supported navigation key; use GUI text for Unicode.', 400)

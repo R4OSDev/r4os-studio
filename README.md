@@ -1,3 +1,12 @@
+## Own-client Select All (0.9.6)
+
+New v20 conversations can send Ctrl+A as one native semantic GUI event with a
+fresh focused own frame and a newly deployed editor-shortcut-v1 helper. No
+physical modifier is held; existing key repeats and older declarations remain
+unchanged. Ctrl+Home/End and clipboard operations are unavailable. Enqueue does
+not prove application consumption. No tests, inference or app/VM runs. See
+[Editor-Shortcuts.md](Editor-Shortcuts.md).
+
 ## Desktop link activation boundary (0.9.5)
 
 Development options explicitly report native own-link activation as unavailable.

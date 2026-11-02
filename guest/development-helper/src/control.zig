@@ -31,6 +31,7 @@ pub const Request = struct {
     inputKind: []const u8 = "text",
     key: u32 = 0,
     keyRepeat: u32 = 1,
+    editorShortcutVersion: u32 = 0,
     x: i32 = 0,
     y: i32 = 0,
     expectedRevision: u32 = 0,
@@ -314,7 +315,10 @@ const Controller = struct {
             }
         } else {
             if (req.keyRepeat < 1 or req.keyRepeat > 16) return false;
+            if (req.editorShortcutVersion > 1 or (req.editorShortcutVersion == 1 and
+                (req.key != r4os.gui.Key.ctrl_a or req.keyRepeat != 1))) return false;
             const supported = switch (req.key) {
+                r4os.gui.Key.ctrl_a => req.editorShortcutVersion == 1 and req.keyRepeat == 1,
                 ' '...'~', r4os.gui.Key.backspace, r4os.gui.Key.tab, r4os.gui.Key.enter, r4os.gui.Key.escape,
                 r4os.gui.Key.delete, r4os.gui.Key.up, r4os.gui.Key.down, r4os.gui.Key.shift_tab,
                 r4os.gui.Key.left, r4os.gui.Key.right, r4os.gui.Key.home, r4os.gui.Key.end,

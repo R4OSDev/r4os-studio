@@ -19,6 +19,7 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  editorShortcuts?: { version: 1; keys: ['Ctrl+A']; unsupported: ['Ctrl+Home', 'Ctrl+End']; delivery: 'semantic-codepoint'; requiresNewDeployment: true };
   desktopLinkActivation?: DevelopmentCapability;
   desktopShortcutVersion?: 1;
   windowControlVersion?: 1;

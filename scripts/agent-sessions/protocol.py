@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 EXPECTED = {'agentHostProtocol': 1, 'agentWorkerProtocol': 1, 'agentDataSchema': 1}
-PROFILES = ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-skill-tools-v1', 'studio-skill-tools-v2', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10', 'studio-skill-tools-v3','studio-tools-v11','studio-skill-tools-v4','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19','studio-skill-tools-v5')
+PROFILES = ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3', 'studio-tools-v4', 'studio-skill-tools-v1', 'studio-skill-tools-v2', 'studio-tools-v5', 'studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10', 'studio-skill-tools-v3','studio-tools-v11','studio-skill-tools-v4','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19','studio-skill-tools-v5', 'studio-tools-v20')
 
 
 def supported_profiles(root):
