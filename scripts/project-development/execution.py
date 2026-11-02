@@ -136,7 +136,7 @@ class Execution:
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']
-            if not isinstance(value, dict) or value.get('kind') not in ('text', 'guiText', 'key', 'click', 'gesture'):
+            if not isinstance(value, dict) or value.get('kind') not in ('text', 'guiText', 'key', 'click', 'gesture', 'keyPlan'):
                 raise DevelopmentFault('Choose a bounded console or GUI input.', 400)
             kind = value['kind']; gui_text = kind == 'guiText' or kind == 'text' and 'frameId' in value
             console_text = kind == 'text' and not gui_text
@@ -144,6 +144,7 @@ class Execution:
             if kind == 'gesture':
                 allowed = {'kind', 'frameId', 'steps'} | ({'observeAfterStep'} if 'observeAfterStep' in value else set())
                 if 'interrupt' in value: allowed.add('interrupt')
+            if kind == 'keyPlan': allowed = {'kind','frameId','steps'}
             if kind == 'key' and 'repeat' in value: allowed.add('repeat')
             if set(value) != allowed: raise DevelopmentFault('Unexpected VM input fields.', 400)
             if state['state'] != 'running': raise DevelopmentFault('The owned guest process has ended.')
@@ -181,6 +182,11 @@ class Execution:
                     state, result = await execute(self, message, request, state, control, lease, process, authorization)
                     finish(self.store, message['requestId'], result)
                     return state, result
+                if kind == 'keyPlan':
+                    from key_plans import execute
+                    state,result = await execute(self,message,request,state,control,lease,authorization)
+                    finish(self.store,message['requestId'],result)
+                    return state,result
                 from gui_input import key as gui_key, text as gui_string, LEGACY_KEYS, SHORTCUTS
                 repeat = value.get('repeat', 1)
                 if type(repeat) is not int or not 1 <= repeat <= 16:
@@ -193,7 +199,7 @@ class Execution:
                 elif kind == 'key':
                     shortcut = value['key'] in SHORTCUTS
                     if shortcut:
-                        if authorization and authorization['engine']['profile'] != 'studio-tools-v20':
+                        if authorization and authorization['engine']['profile'] not in ('studio-tools-v20','studio-tools-v21'):
                             raise DevelopmentFault('This conversation retains its original key contract. Use an editor-shortcut-capable session.',403)
                         if (deployment.get('helperCapabilities',{}).get('editorShortcutVersion') != 1
                                 or request.get('frameBindingVersion') != 1 or repeat != 1):
@@ -325,6 +331,8 @@ class Execution:
                         raise DevelopmentFault('The guest controller does not confirm its declared extended input capability.')
                     if deployment.get('helperCapabilities', {}).get('editorShortcutVersion') == 1 and hello['result'].get('editorShortcutVersion') != 1:
                         raise DevelopmentFault('The guest controller does not confirm its declared editor shortcut capability.')
+                    if deployment.get('helperCapabilities', {}).get('keyPlanVersion') == 1 and hello['result'].get('keyPlanVersion') != 1:
+                        raise DevelopmentFault('The guest controller does not confirm its declared key-plan capability.')
                     if deployment.get('helperCapabilities', {}).get('gestureVersion') == 1 and hello['result'].get('gestureVersion') != 1:
                         raise DevelopmentFault('The guest controller does not confirm its declared gesture capability.')
                     if deployment.get('helperCapabilities', {}).get('dragInterruptVersion') == 1 and hello['result'].get('dragInterruptVersion') != 1:

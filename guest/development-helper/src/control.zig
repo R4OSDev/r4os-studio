@@ -3,6 +3,7 @@ const std = @import("std");
 const r4os = @import("r4os");
 const abi = r4os.abi;
 const gesture = @import("gesture.zig");
+const key_plan = @import("key_plan.zig");
 const evidence = @import("desktop_evidence.zig");
 const window_control = @import("window_control.zig");
 pub const Request = struct {
@@ -41,6 +42,9 @@ pub const Request = struct {
     expectedWindowHeight: i32 = 0,
     gestureVersion: u32 = 0,
     gestureId: []const u8 = "",
+    keyPlanVersion: u32 = 0,
+    keyPlanId: []const u8 = "",
+    keySteps: []const key_plan.Step = &.{},
     steps: []const gesture.Step = &.{},
     gestureInterruptVersion: u32 = 0,
     gestureInterrupt: ?gesture.Interrupt = null,
@@ -84,6 +88,12 @@ const State = struct {
     gestureReleaseQueued: bool = true,
     gestureActive: bool = false,
     gestureId: []const u8 = "",
+    keyPlanId: []const u8 = "",
+    keyPlanActive: bool = false,
+    keyPlanAccepted: u32 = 0,
+    keyPlanTimesMilliseconds: []const u32 = &.{},
+    keyPlanLatenessMilliseconds: []const u32 = &.{},
+    keyPlanAborted: ?[]const u8 = null,
     gestureInterruptHeld: bool = false,
     gestureInterruptConfirmed: bool = false,
     gestureInterruptAtMilliseconds: ?u32 = null,
@@ -143,6 +153,13 @@ const Controller = struct {
     gesture_interrupt_started: bool = false,
     gesture_native_request: [512]u8 = undefined,
     gesture_binding: struct { id: i32 = -1, width: i32 = 0, height: i32 = 0 } = .{},
+    key_plan_steps: [32]key_plan.Step = undefined,
+    key_plan_times: [32]u32 = undefined,
+    key_plan_lateness: [32]u32 = undefined,
+    key_plan_count: usize = 0,
+    key_plan_born: u64 = 0,
+    key_plan_id: [36]u8 = undefined,
+    key_plan_binding: struct { id: i32 = -1, width: i32 = 0, height: i32 = 0 } = .{},
     state: State = .{},
     evidence_token: ?evidence.Token = null,
     windows: ?window_control.Controller = null,
@@ -412,6 +429,78 @@ const Controller = struct {
         return true;
     }
 
+    fn abortKeyPlan(self: *Controller, reason: []const u8) void {
+        if (self.state.keyPlanActive) self.state.keyPlanAborted = reason;
+        self.state.keyPlanActive = false;
+    }
+    fn beginKeyPlan(self: *Controller, req: Request) bool {
+        if (req.keyPlanVersion != 1 or req.frameBindingVersion != 1 or
+            req.keyPlanId.len != 36 or std.mem.eql(u8, req.keyPlanId, self.state.keyPlanId) or
+            !key_plan.valid(req.keySteps)) return false;
+        for (req.keyPlanId) |c| if (!(std.ascii.isHex(c) or c == '-')) return false;
+        const current = self.clock();
+        if (current == 0 or current >= self.deadline_ns) return false;
+        @memcpy(&self.key_plan_id, req.keyPlanId);
+        @memcpy(self.key_plan_steps[0..req.keySteps.len], req.keySteps);
+        self.key_plan_count = req.keySteps.len;
+        self.key_plan_born = current;
+        self.key_plan_binding = .{ .id = self.state.windowId, .width = self.state.windowWidth, .height = self.state.windowHeight };
+        self.state.keyPlanId = &self.key_plan_id;
+        self.state.keyPlanAccepted = 0;
+        self.state.inputAccepted = 0;
+        self.state.keyPlanTimesMilliseconds = &.{};
+        self.state.keyPlanLatenessMilliseconds = &.{};
+        self.state.keyPlanAborted = null;
+        self.state.keyPlanActive = true;
+        return true;
+    }
+    fn tickKeyPlan(self: *Controller) void {
+        while (self.state.keyPlanActive) {
+            const relay = self.relay orelse { self.abortKeyPlan("transport_unconfirmed"); return; };
+            var relay_info: abi.ProgramInstanceInfo = .{};
+            if (self.sys.programHandleStatus(&relay, &relay_info) != 0 or
+                relay_info.state == @intFromEnum(abi.ProgramInstanceState.done)) {
+                self.abortKeyPlan("transport_lost"); return;
+            }
+            const current = self.clock();
+            if (current == 0 or current < self.key_plan_born or current - self.key_plan_born > 2_000_000_000 or
+                current >= self.deadline_ns or self.stopped != null or self.sys.programShouldClose()) {
+                self.abortKeyPlan("time_or_control_limit"); return;
+            }
+            const process = self.process orelse { self.abortKeyPlan("process_ended"); return; };
+            switch (process.status()) {
+                .value => |info| if (info.state == @intFromEnum(abi.ProgramInstanceState.done)) {
+                    self.abortKeyPlan("process_ended"); return;
+                },
+                else => { self.abortKeyPlan("process_ended"); return; },
+            }
+            self.windowState();
+            if (self.state.windowActionPending or !self.state.windowVisible or !self.state.windowFocused or
+                self.state.windowId != self.key_plan_binding.id or self.state.windowWidth != self.key_plan_binding.width or
+                self.state.windowHeight != self.key_plan_binding.height) {
+                self.abortKeyPlan("window_changed"); return;
+            }
+            const index: usize = self.state.keyPlanAccepted;
+            const step = self.key_plan_steps[index];
+            const dispatch = self.clock();
+            if (dispatch < current or dispatch - self.key_plan_born > 2_000_000_000 or dispatch >= self.deadline_ns) {
+                self.abortKeyPlan("time_or_control_limit"); return;
+            }
+            if (dispatch - self.key_plan_born < @as(u64, step.atMilliseconds) * 1_000_000) return;
+            var event = abi.GuiEvent{ .kind = @intFromEnum(abi.GuiEventKind.key_down),
+                .window_id = self.key_plan_binding.id, .key = step.value, .tick = self.sys.ticks() };
+            if (self.desk.guiPushEvent(process.raw, &event) < 0) { self.abortKeyPlan("queue_rejected"); return; }
+            const elapsed: u32 = @intCast((dispatch - self.key_plan_born) / 1_000_000);
+            self.key_plan_times[index] = elapsed;
+            self.key_plan_lateness[index] = elapsed - step.atMilliseconds;
+            self.state.keyPlanAccepted = @intCast(index + 1);
+            self.state.inputAccepted = self.state.keyPlanAccepted;
+            self.state.keyPlanTimesMilliseconds = self.key_plan_times[0 .. index + 1];
+            self.state.keyPlanLatenessMilliseconds = self.key_plan_lateness[0 .. index + 1];
+            if (index + 1 == self.key_plan_count) self.state.keyPlanActive = false;
+        }
+    }
+
     // Runs only immediately before the final up. The original native request
     // was prepared and persisted by the host before this gesture was admitted.
     // Pending/lost replies are read by their original operation, never resent.
@@ -534,7 +623,7 @@ const Controller = struct {
     }
     fn input(self: *Controller, req: Request) bool {
         if (self.process == null or self.completed != null or self.state.closeConfirmed or self.stopped != null or
-            self.state.gestureActive or self.mouse_pending or
+            self.state.gestureActive or self.state.keyPlanActive or self.mouse_pending or
             !std.mem.eql(u8, req.generation, self.state.generation) or req.input.len > 1024) return false;
         switch (self.process.?.status()) { .value => {}, else => return false }
         if (self.console_role) {
@@ -551,6 +640,7 @@ const Controller = struct {
         }
         if (self.service_owned) return false;
         if (!self.boundWindow(req)) return false;
+        if (std.mem.eql(u8, req.inputKind, "keyPlan")) return self.beginKeyPlan(req);
         if (std.mem.eql(u8, req.inputKind, "gesture")) return self.beginGesture(req);
         if (std.mem.eql(u8, req.inputKind, "key") or std.mem.eql(u8, req.inputKind, "guiText")) return self.guiEvents(req);
         var event = abi.GuiEvent{ .window_id = self.state.windowId, .tick = self.sys.ticks() };
@@ -583,6 +673,7 @@ const Controller = struct {
     }
 
     fn stop(self: *Controller, reason: []const u8) void {
+        self.abortKeyPlan(reason);
         self.abortGesture(reason);
         if (self.stopped != null or self.completed != null) return;
         self.stopped = reason;
@@ -591,6 +682,7 @@ const Controller = struct {
         if (self.process) |*p| { _ = p.requestClose(); }
     }
     fn cleanup(self: *Controller) void {
+        self.abortKeyPlan("cleanup");
         self.abortGesture("cleanup");
         if (self.process) |*p| {
             if (p.valid() and self.completed == null) {
@@ -651,6 +743,7 @@ const Controller = struct {
     }
     fn observe(self: *Controller) State {
         self.state.outputBase64 = "";
+        self.tickKeyPlan();
         self.tickGesture();
         if (self.state.closeConfirmed) return self.state;
         if (self.process) |*p| {
@@ -817,6 +910,7 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
             }
         }
         controller.tickGesture();
+        controller.tickKeyPlan();
         var line: [4096]u8 = undefined;
         const length = @import("transport.zig").readFile(sys, &request, &line);
         if (length <= 0) { sys.sleepTicks(1); continue; }
@@ -861,6 +955,12 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
                 _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "Gesture cancellation has a different owner." }); continue;
             }
             controller.abortGesture("cancelled");
+        } else if (std.mem.eql(u8, req.operation, "cancel_key_plan")) {
+            if (!std.mem.eql(u8, req.generation, controller.state.generation) or
+                !std.mem.eql(u8, req.keyPlanId, controller.state.keyPlanId)) {
+                _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "Key plan cancellation has a different owner." }); continue;
+            }
+            controller.abortKeyPlan("cancelled");
         } else if (std.mem.eql(u8, req.operation, "finish")) {
             if (controller.started and !controller.state.closeConfirmed) return 78;
             controller.cleanup(); controller.service_owned = !controller.service_removed;

@@ -85,6 +85,7 @@ export function DevelopmentCard({ projectId, jobId, token, desktopAction = true 
       <p>Process console: {executionEvidence.output.state}{executionEvidence.output.bytes !== undefined ? ` · ${executionEvidence.output.bytes.toLocaleString()} bytes retained` : ''}. {executionEvidence.output.reason}</p>
     </div>}
     {job?.package && <p className="development-package"><code>{job.package.relativeDirectory}</code>{job.package.format === 'legacy-c' && <small>Historical C: deployment · Deploy again to use Exchange Build.</small>}</p>}
+    {job?.lastKeyPlan && <p>Key plan: {job.lastKeyPlan.accepted}/{job.lastKeyPlan.expected} queued · {job.lastKeyPlan.active ? 'running' : job.lastKeyPlan.abortedReason ?? 'ended'} · App consumption unconfirmed.</p>}
     {job?.desktopShortcut && <div aria-label="Desktop shortcut receipt">
       <p>Desktop shortcut verified · {job.desktopShortcut.iconEmbedded ? 'Icon embedded' : 'Generic application icon'}</p>
       <p><code>{job.desktopShortcut.path.replace(/^\/C\//, 'C:\\').replaceAll('/', '\\')}</code></p>

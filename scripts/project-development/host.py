@@ -131,6 +131,8 @@ class Host:
                 'reason':'The public native contract does not provide qualified own-link activation with a recoverable original launch receipt.'},
             'editorShortcuts': {'version':1,'keys':['Ctrl+A'],'unsupported':['Ctrl+Home','Ctrl+End'],
                 'delivery':'semantic-codepoint','requiresNewDeployment':True},
+            'keyPlan': {'version':1,'maximumSteps':32,'maximumMilliseconds':2000,'requiresNewDeployment':True,
+                'heldKeys':False,'heldModifiers':False,'delivery':'owned-event-queue'},
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),
@@ -302,8 +304,8 @@ class Host:
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1, 'sessionJobLookup':1},
-                    'version': json.loads((APP / 'shared/version.json').read_text())['version']}
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1, 'sessionJobLookup':1, 'keyPlan':1},
+                    'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
         if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
@@ -327,7 +329,7 @@ class Host:
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
                 elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
-                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20'):
+                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21'):
                     raise DevelopmentFault('This native conversation retains its original deployment schema. Desktop publication requires a new v18 session or the browser action.', 403)
                 if op == 'execution' and request.get('input',{}).get('windowControl') is True:
                     authorize(store,owner,'window',peer_pid)

@@ -19,6 +19,7 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  keyPlan?: { version: 1; maximumSteps: 32; maximumMilliseconds: 2000; requiresNewDeployment: true; heldKeys: false; heldModifiers: false; delivery: 'owned-event-queue' };
   editorShortcuts?: { version: 1; keys: ['Ctrl+A']; unsupported: ['Ctrl+Home', 'Ctrl+End']; delivery: 'semantic-codepoint'; requiresNewDeployment: true };
   desktopLinkActivation?: DevelopmentCapability;
   desktopShortcutVersion?: 1;
@@ -183,6 +184,8 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  lastKeyPlan?: { keyPlanId: string; accepted: number; expected: number; active: boolean; complete: boolean; queuedAtMilliseconds: number[]; latenessMilliseconds: number[]; abortedReason: string | null; consumptionConfirmed: false };
+
   desktopLaunchBudget?: DesktopLaunchBudget;
   outputFiles?: { name: string; state?: 'missing' | 'unstable' | 'unconfirmed' | 'observed-stable'; id?: string;
     sha256?: string; bytes?: number; createdAt?: string; containsExpectedText?: boolean; error?: string }[];

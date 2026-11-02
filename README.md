@@ -1,3 +1,12 @@
+## Short own-client key plans (0.9.7)
+
+New v21 conversations can schedule at most32 normal key/codepoint events over
+2000ms in the original guest helper. Current own-frame/process/focus/geometry
+bindings and input permission remain required. Original receipts retain accepted
+prefix, actual dispatch-call times, lateness and abort reason; no held keys,
+modifiers, global input or automatic replay. Existing profiles remain unchanged.
+No tests, inference or app/VM runs. See [Own-Key-Plans.md](Own-Key-Plans.md).
+
 ## Own-client Select All (0.9.6)
 
 New v20 conversations can send Ctrl+A as one native semantic GUI event with a

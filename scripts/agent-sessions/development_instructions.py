@@ -2,7 +2,7 @@
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill' or not rights.get('studio.read_development_job'): return ''
-    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20')
+    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21')
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
         'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '
@@ -40,13 +40,13 @@ def compose(config):
         'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
         'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
         'app/SDK contract; host Rust builds do not imply a native guest compiler.'
-    ) + presentation + desktop_icons(config) + original_job_references(config) + editor_shortcuts(config)
+    ) + presentation + desktop_icons(config) + original_job_references(config) + editor_shortcuts(config) + key_plans(config)
 
 
 def original_job_references(config):
     import json
     references = config.get('developmentJobReferences')
-    lookup = config.get('engine',{}).get('profile') in ('studio-tools-v19','studio-tools-v20')
+    lookup = config.get('engine',{}).get('profile') in ('studio-tools-v19','studio-tools-v20', 'studio-tools-v21')
     guidance = ('\n\nSTUDIO ORIGINAL JOB REFERENCES: A lost or truncated tool presentation does not prove rejection. '
         'Never repeat a build/deploy/start to recover its job ID. A developmentReference precedes detailed output; '
         'requestId is the original Studio request UUID, not a native DESKRUN key. '
@@ -67,7 +67,7 @@ def original_job_references(config):
 
 
 def desktop_icons(config):
-    current = config.get('engine', {}).get('profile') in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20')
+    current = config.get('engine', {}).get('profile') in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21')
     action = ('For an explicitly requested GUI R4X desktop publication use studio_deploy_project with '
         'desktopShortcut=true and the chosen verified artifactId. Ordinary test deployments omit this option. '
         'It needs Deploy project permission and a current development coordinator; it never starts the app. ') if current else (
@@ -93,10 +93,23 @@ def desktop_icons(config):
 
 
 def editor_shortcuts(config):
-    if config.get('engine',{}).get('profile') != 'studio-tools-v20': return ''
+    if config.get('engine',{}).get('profile') not in ('studio-tools-v20','studio-tools-v21'): return ''
     return ('\n\nSTUDIO EDITOR SHORTCUTS v1: key="Ctrl+A" with repeat omitted or 1 sends the public '
         'native select-all GUI codepoint to the owned focused client. Requires a fresh own frame and a newly '
         'deployed editor-shortcut-v1 helper. This is one semantic event, not a held physical Ctrl key; '
         'no modifier survives the call. Ctrl+Home/End, arbitrary modifiers and clipboard paste are unavailable. '
         'Read the original accepted/expected receipt and observe a new image or app output before claiming '
         'selection/consumption. Normal key repeat remains 1..16. Never replay uncertain input.')
+
+
+def key_plans(config):
+    if config.get('engine',{}).get('profile') != 'studio-tools-v21': return ''
+    return ('\n\nSTUDIO KEY PLANS v1: kind=keyPlan with a fresh focused own frame can schedule 1..32 '
+        'normal key or printable Unicode codepoint steps at monotonic relative atMilliseconds0..2000. Each '
+        'step supplies key OR codepoint, not both. A newly deployed key-plan-v1 helper dispatches the plan '
+        'without host/model roundtrips between steps. No held keys, physical modifiers, clipboard or Ctrl '
+        'shortcuts inside a plan. Stop, original deadline, process/window/focus/geometry or transport loss '
+        'abort the rest. Read accepted prefix, actual enqueue-call times, lateness, active and abortedReason '
+        'on the original receipt; read_development_job also retains lastKeyPlan. Planned time is not actual '
+        'delivery, and enqueue proves neither app consumption nor search/game success. Never change app '
+        'time/rules/inventory or replay an uncertain plan. Observe a new own image/output before conclusions.')

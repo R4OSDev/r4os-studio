@@ -2,7 +2,7 @@
 from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, tools_for
 from copy import deepcopy
 from profile import WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE
-from profile import LOOKUP_PROFILE, EDITOR_PROFILE
+from profile import LOOKUP_PROFILE, EDITOR_PROFILE, KEYPLAN_PROFILE
 
 
 def obj(properties, required=()):
@@ -90,6 +90,20 @@ DEFS['read_environment_notes']=('Read/search bounded session-local reports and f
 DEFS['record_environment_note']=('Record an observed Studio/tool/workflow fault or a fault in an inaccessible dependency, including public APIs/ABI, SDK/Contract, kernel, Desktop or libraries. Also record useful workflow-saving feature requests for APIs, Desktop or libraries even without a failure. Use kind=problem for faults and the separate kind=suggestion for feature requests; category names the affected area. Based on existing evidence, name component/version and expected versus observed behavior for a problem, or the missing capability, use case and benefit for a suggestion. First read current session notes and pass their revision; reuse similar entries unchanged. Exclude bugs and normal compiler/test failures in the user\'s editable project, expected permissions/Stop, corrected misuse and ordinary waits. No quota, extra commands/tests/inference, secrets/private paths/raw logs or deleted-report recreation. Server binds origin and deduplicates this call. No edit/delete or failed-tool retry.',obj({'revision':{'type':'integer','minimum':0,'maximum':9007199254740991},'kind':NOTE_KIND,'category':NOTE_CATEGORY,'title':{'type':'string','minLength':1,'maxLength':160},'description':{'type':'string','minLength':1,'maxLength':4000},**{key:{'type':'string','maxLength':1000} for key in ('impact','workaround','suggestion')}},['revision','kind','category','title','description']))
 
 def specifications(profile=PROFILE):
+    if profile == KEYPLAN_PROFILE:
+        result = deepcopy(specifications(EDITOR_PROFILE))
+        declaration = next(value for value in result if value['name'] == 'studio_send_vm_input')
+        moment = {'type':'integer','minimum':0,'maximum':2000}
+        step = {'oneOf': [obj({'key':{'type':'string','minLength':1,'maxLength':32},'atMilliseconds':moment},['key','atMilliseconds']),
+            obj({'codepoint':{'type':'integer','minimum':32,'maximum':1114111},'atMilliseconds':moment},['codepoint','atMilliseconds'])]}
+        declaration['inputSchema'] = {'oneOf': [declaration['inputSchema'],obj({'jobId':ID,'kind':{'type':'string','enum':['keyPlan']},
+            'frameId':ID,'steps':{'type':'array','minItems':1,'maxItems':32,'items':step}},['jobId','kind','frameId','steps'])]}
+        declaration['description'] += (' kind=keyPlan accepts 1..32 normal key or printable Unicode codepoint steps with '
+            'monotonic atMilliseconds=0..2000, executed by a newly deployed key-plan-v1 helper after a focused own frame. '
+            'No physical holds/modifiers or Ctrl shortcuts in a plan. The original receipt records accepted prefix, actual '
+            'enqueue-call times, lateness and abort reason. Stop, deadline, focus/geometry/process/transport loss abort the '
+            'remaining steps. Delivery is not app consumption or game success. Never repeat a partial/unknown plan.')
+        return result
     if profile == EDITOR_PROFILE:
         result = deepcopy(specifications(LOOKUP_PROFILE))
         declaration = next(value for value in result if value['name'] == 'studio_send_vm_input')
@@ -195,6 +209,8 @@ def specifications(profile=PROFILE):
 
 
 def validate_arguments(name, value, profile=PROFILE):
+    if profile == KEYPLAN_PROFILE and not (name == 'send_vm_input' and value.get('kind') == 'keyPlan'):
+        return validate_arguments(name,value,EDITOR_PROFILE)
     if profile == EDITOR_PROFILE:
         return validate_arguments(name,value,LOOKUP_PROFILE)
     if profile == LOOKUP_PROFILE and not (name == 'read_development_job' and 'lookup' in value):

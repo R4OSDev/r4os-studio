@@ -1,10 +1,10 @@
 """Frozen, session-bound local notes; no original-tool retries or reporting loop."""
 import json
-from profile import NOTES_PROFILE,NOTES_SKILL_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE,DESKTOP_PROFILE,LOOKUP_PROFILE,EDITOR_PROFILE
+from profile import NOTES_PROFILE,NOTES_SKILL_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE,DESKTOP_PROFILE,LOOKUP_PROFILE,EDITOR_PROFILE,KEYPLAN_PROFILE
 from store import ProjectFault
 
 def availability(profile):
-    if profile in (NOTES_PROFILE,NOTES_SKILL_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE,DESKTOP_PROFILE,LOOKUP_PROFILE,EDITOR_PROFILE):return {'available':True}
+    if profile in (NOTES_PROFILE,NOTES_SKILL_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE,DESKTOP_PROFILE,LOOKUP_PROFILE,EDITOR_PROFILE,KEYPLAN_PROFILE):return {'available':True}
     return {'available':False,'reason':'New session required for environment note tools. This conversation keeps its original native profile.'}
 
 def require(worker):

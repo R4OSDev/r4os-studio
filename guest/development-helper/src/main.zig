@@ -40,6 +40,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .guiInput = true,
             .guiInputVersion = @as(u32, 2),
             .editorShortcutVersion = @as(u32, 1),
+            .keyPlanVersion = @as(u32, 1),
             .guiFrameBindingVersion = @as(u32, 1),
             .gestureVersion = @as(u32, 1),
             .dragInterruptVersion = @as(u32, 1),
