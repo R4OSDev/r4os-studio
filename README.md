@@ -1,3 +1,12 @@
+## Message admission in existing and new sessions (0.9.10)
+
+The agent coordinator now loads optional original-job references independently
+of the worker's module search path. Missing reference adapters or storage produce
+an explicit unavailable marker instead of preventing run admission with a generic
+coordinator error. Existing and new sessions keep their profiles and permissions;
+no session recreation is needed. Static checks only; no tests or inference. See
+[Original-Development-Jobs.md](Original-Development-Jobs.md).
+
 ## Original terminal lifetime and deadline (0.9.9)
 
 Terminal replies/items now expose the original start, observed monotonic elapsed

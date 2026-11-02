@@ -33,6 +33,16 @@ block a new run when unavailable. Already frozen or queued captures remain
 unchanged, including captures without a reference index. This release starts
 no conversation, job or VM and does not replace old workers.
 
+Since 0.9.10, the agent coordinator loads the read-only reference reader through
+its fixed release-local file path. The reader depends only on Python's standard
+library; coordinator admission no longer relies on the worker's development
+module search path or imports its runtime. The development API uses the same
+reader and preserves its existing error contract. Optional context capture also
+catches adapter import and storage errors, returning an unavailable marker rather
+than blocking the message before admission. This applies to existing and new
+conversations with the original development-read permission; no profile change
+or new session is required. Queued/frozen context is preserved as before.
+
 The host updater requires the explicit, hash-checked local maintenance script
 `scripts/agent-sessions/install-job-lookup-support.py` before installing the first
 v19 release. Existing v18 compatibility and rollback identities remain intact;
