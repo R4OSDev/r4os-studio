@@ -1,3 +1,15 @@
+## Screenshot binding after native link activation (0.9.22)
+
+Screenshots of apps started through their published link retain the original
+`desktopLinkActivation` receipt, separately from ordinary DESKRUN metadata.
+Before capture, Studio verifies the saved canonical Prepare request, request
+SHA-256, original publication/link and native process generation. Image input
+and completion retain this launch binding alongside the existing boot, process,
+window, geometry/focus and observed-interval checks. Missing proof returns a
+specific capture error. Historical images and launch receipts are preserved.
+This host-side fix needs a new execution worker; it does not alter guest helpers
+or replay any previous launch, input, capture or close request.
+
 ## Original deployment path recovery (0.9.21)
 
 Deployment reconciliation now normalizes both the stored native directory and

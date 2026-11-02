@@ -35,8 +35,15 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
         if (control is None or state is None or not (frame_ready(job, state) or diagnostic)
             or any(type(state.get(k)) is not int or state[k] <= 0 for k in ('windowWidth', 'windowHeight'))):
             raise DevelopmentFault('Desktop capture needs native content readiness or a confirmed own visible, focused process/window generation with bounded geometry. The missing identity was not guessed.', reason_code='desktop_diagnostic_identity_unavailable')
-        native = {'desktopRequest': job['desktopLaunch']['request'], 'desktopContent': job['desktopLaunch']['content'],
-                  'desktopWindow': job['desktopLaunch']['window'], 'windowId': state['windowId']}
+        if job.get('desktopLinkRequested'):
+            from desktop_links import capture_binding
+            native = capture_binding(store, job, state)
+        else:
+            launch = job.get('desktopLaunch') or {}
+            if any(key not in launch for key in ('request', 'content', 'window')):
+                raise DevelopmentFault('The screenshot has no original DESKRUN frame binding. No capture was published.')
+            native = {'desktopRequest': launch['request'], 'desktopContent': launch['content'],
+                      'desktopWindow': launch['window'], 'windowId': state['windowId']}
         if diagnostic: native.update(diagnosticOnly=True, contentUnconfirmed=True, inputReference=False, completionReference=False)
     bound_lease(store,job,lease)
     try: captured = await vm_call(lease, 'capture_running')

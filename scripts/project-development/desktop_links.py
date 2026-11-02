@@ -168,6 +168,35 @@ def bound_original(store,job,original,intent):
         raise DevelopmentFault('The saved native link intent differs from its original job and publication.')
 
 
+def capture_binding(store, job, state):
+    """Read the original link proof locally; never prepare or activate a link."""
+    from copy import deepcopy
+    from recovery import read
+    work = store.root / 'ExecutionWork' / job['id']
+    try:
+        record = read(work / 'link-request.json')
+        original, prepared = record['intent'], record['prepared']
+        bound_original(store, job, original, read(work / 'intent.json'))
+        activation = job['desktopLinkActivation']
+        native = native_receipt({**prepared, **activation['native']}, original, prepared)
+        request_sha = hashlib.sha256(base64.b64decode(prepared['nativeRequest'], validate=True)).hexdigest()
+        if (activation.get('version') != 1 or activation.get('phase') != 'ready'
+                or activation.get('publicationJobId') != original['publication']['jobId']
+                or activation.get('linkPath') != original['nativePath']
+                or activation.get('linkSha256') != original['publication']['sha256']
+                or activation.get('originalRequestSha256') != request_sha
+                or native['result'] != 0 or native['phase'] != 5
+                or activation['native'] != public(native)
+                or native['processId'] != (job.get('process') or {}).get('instanceId')
+                or native['processGeneration'] != (job.get('process') or {}).get('generation')
+                or native['processId'] != state.get('instanceId')
+                or native['processGeneration'] != state.get('generation')):
+            raise ValueError()
+    except (DevelopmentFault, OSError, ValueError, KeyError, TypeError, AttributeError):
+        raise DevelopmentFault('The screenshot has no complete original native link binding. No capture was published.') from None
+    return {'desktopLinkActivation': deepcopy(activation), 'windowId': state['windowId']}
+
+
 class DesktopLinkLaunch:
     def __init__(self, execution, ssh, deployment, lease):
         self.owner,self.ssh,self.deployment,self.lease=execution,ssh,deployment,lease

@@ -158,6 +158,8 @@ export interface DevelopmentEvidence {
   desktopRequest?: string;
   desktopContent?: string;
   desktopWindow?: number;
+  /** Original native link proof; never a synthetic DESKRUN request. */
+  desktopLinkActivation?: DevelopmentJob['desktopLinkActivation'];
   width?: number;
   height?: number;
   guestRevision?: number;

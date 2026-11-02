@@ -1,9 +1,21 @@
-# Native desktop link activation (0.9.11; fixes 0.9.18/0.9.19)
+# Native desktop link activation (0.9.11; fixes through 0.9.22)
 
 Studio can explicitly activate the exact shortcut of a verified GUI deployment
 through the native Desktop R4LNK path. Publication, icon display, native start,
 frame readiness, process completion and cleanup have separate receipts. Viewing
 options, publishing a link and installing Studio never start an application.
+
+## Link-bound screenshots (0.9.22)
+
+A native link job stores `desktopLinkActivation`, independently of ordinary
+DESKRUN's `desktopLaunch`. Capture verifies the original saved canonical Prepare
+request, its SHA-256, publication/link identity and exact native process
+generation before requesting a screen image. The image retains that public link
+activation as its own metadata; it has no invented DESKRUN request or window ID.
+The actual controller window, geometry/focus and boot are observed before and
+after capture. Image input/completion also retain the immutable link binding.
+Missing or mismatching originals return a capture error. The fix is in the host
+execution worker; guest helpers, application pins and historical jobs are kept.
 
 ## Original link request filenames (0.9.18)
 

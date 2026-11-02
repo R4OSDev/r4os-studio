@@ -15,6 +15,18 @@ def current(image, job, state, maximum_age=30, focused=False):
     """Validate a recent observed interval, never claim an atomic guest frame."""
     process = job.get('process') or {}
     observed = image.get('process') or {}
+    if job.get('desktopLinkRequested'):
+        captured = image.get('desktopLinkActivation')
+        original = job.get('desktopLinkActivation')
+        if not isinstance(captured, dict) or not isinstance(original, dict): return False
+        if any(captured.get(k) != original.get(k) for k in
+               ('version', 'publicationJobId', 'linkPath', 'linkSha256', 'originalRequestSha256')): return False
+        a, b = captured.get('native'), original.get('native')
+        if not isinstance(a, dict) or not isinstance(b, dict): return False
+        if any(a.get(k) != b.get(k) for k in ('processId', 'processGeneration', 'desktopId', 'desktopGeneration',
+               'serial', 'ownerId', 'ownerGeneration', 'serviceId', 'serviceGeneration', 'contentGeneration')): return False
+    elif image.get('desktopLinkActivation') is not None:
+        return False
     if (state.get('windowActionPending') or image.get('diagnosticOnly') or image.get('contentUnconfirmed') or image.get('kind') != 'screenshot' or not image.get('bootId')
         or image['bootId'] != (job.get('target') or {}).get('bootId')
         or not process.get('instanceId') or state.get('state') != 'running'
