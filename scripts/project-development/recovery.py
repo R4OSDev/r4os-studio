@@ -77,7 +77,7 @@ def local(store, job):
         normalize = lambda text: re.sub(r'\\+', lambda _: chr(92), text.replace('/', chr(92))).upper()
         if (read(store.root / 'DeployWork' / job['id'] / 'deployment.json') != value
             or value['projectId'] != store.id or value['artifactId'] != job['artifactId'] or value['pins'] != job['pins']
-            or normalize(value['guestDirectory']) != directory or value['packageSha256'] != artifact['packageSha256']
+            or normalize(value['guestDirectory']) != normalize(directory) or value['packageSha256'] != artifact['packageSha256']
             or value['sourceSha256'] != artifact['sourceSha256'] or value['manifestSha256'] != artifact['manifestSha256']
             or value['target']['vmId'] != job['binding']['id'] or value['target']['imageSha256'] != job['binding']['imageSha256']
             or not value['files'] or any(v.get('fullReadbackVerified') is not True for v in value['files'])):

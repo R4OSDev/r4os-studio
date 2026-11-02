@@ -1,3 +1,12 @@
+## Original deployment path recovery (0.9.21)
+
+Deployment reconciliation now normalizes both the stored native directory and
+the directory derived from its original target. A verified Exchange directory
+such as `F:\Build\...` no longer fails because only one side was uppercased.
+Original VM, artifact, pins, full file hashes and publication evidence remain
+required. An already durable publication observation can finish the original
+recovery without another guest operation or publication.
+
 ## Replacing desktop links and reconciling legacy publications (0.9.20)
 
 The private guest helper now accepts the SDK's named checked-delete results:
