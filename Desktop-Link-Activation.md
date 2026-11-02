@@ -1,4 +1,4 @@
-# Native desktop link activation (0.9.11; roadmap 0.9.5)
+# Native desktop link activation (0.9.11; fixes 0.9.18/0.9.19)
 
 Studio can explicitly activate the exact shortcut of a verified GUI deployment
 through the native Desktop R4LNK path. Publication, icon display, native start,
@@ -18,10 +18,13 @@ project pin change is required; old jobs are not retried or rewritten.
 ## Use
 
 Deploy the GUI R4X with **Deploy to desktop** using the current Studio helper.
-On the completed publication choose **Run desktop link**. New v23 project
-conversations can instead call `studio_run_project` with `desktopLink=true` and
-the exact published `deploymentId`, under the existing Run project permission.
-Older conversations retain their declarations; their browser action is available.
+On the completed publication choose **Run desktop link**. Project conversations
+can instead call `studio_run_project` with `desktopLink=true` and the exact
+published `deploymentId`, under the existing Run project permission. New accepted
+runs use the installed tool catalog in the same conversation. Since 0.9.19 the
+development coordinator also removes the two leftover generation checks for
+`desktopShortcut` and `desktopLink`; the original active worker, permissions,
+revision, pins and own-session artifact binding still authorize these requests.
 The compatible guest must already be running and reachable through its assigned
 private SSH transport. Neither action starts or updates a VM automatically.
 

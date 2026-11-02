@@ -333,12 +333,8 @@ class Host:
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
                 elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
-                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23'):
-                    raise DevelopmentFault('This native conversation retains its original deployment schema. Desktop publication requires a new v18 session or the browser action.', 403)
                 if op == 'execution' and request.get('input',{}).get('windowControl') is True:
                     authorize(store,owner,'window',peer_pid)
-                if op == 'execution' and 'desktopLink' in request.get('input',{}) and authorization['engine']['profile'] != 'studio-tools-v23':
-                    raise DevelopmentFault('Native link activation requires its declared v23 run option or the browser action.',403)
                 if op in ('deploy', 'execution'):
                     artifact = store.artifact_metadata(request['input']['artifactId']) if op == 'deploy' else store.deployment_metadata(request['input']['deploymentId'])
                     parent = store.get(artifact['buildId'] if op == 'deploy' else artifact['jobId'])

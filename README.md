@@ -1,3 +1,13 @@
+## Desktop publication and activation without profile gates (0.9.19)
+
+Desktop publication and native link activation now use the existing actual
+project/session/worker authorization without reading a former engine profile.
+Two leftover generation checks could otherwise fail current runs with the
+misleading coordinator-unavailable message before admitting a job. Deploy/Run
+permissions, original artifact/publication bindings and real guest capabilities
+remain required. No old request is automatically resubmitted. Static checks only;
+see [Desktop-Link-Activation.md](Desktop-Link-Activation.md).
+
 ## Native link request transfer (0.9.18)
 
 The verified Exchange path guard now accepts the native link helper's exact
