@@ -12,7 +12,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
 
 from profile import NOTE_TOOLS, REMOTE_TOOLS, ROADMAP_TOOLS, prepare, SANDBOX_MODE, tools_for, DEVELOPMENT_TOOLS, AUTHOR_TOOLS
-from profile import WINDOW_TOOLS
+from profile import WINDOW_TOOLS, write_json
 from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
@@ -467,10 +467,14 @@ class Worker:
             from native_tools import synchronize as synchronize_tools
             try:
                 native_catalog = await asyncio.to_thread(synchronize_tools, self.store, self.session_id, self.run_id, self.config)
+            except Exception:
+                self.error = 'The current tool catalog could not be prepared for this saved conversation. Original history and the refresh journal were preserved; no model turn was started.'
+                raise
+            try:
                 write_json(Path(self.manifest['projects']) / '.studio/agents' / self.run_id / 'tool-catalog.json',
                            {'catalog': self.config.get('toolCatalog'), 'native': native_catalog})
             except Exception:
-                self.error = 'The current tool catalog could not be prepared for this saved conversation. Original history and the refresh journal were preserved; no model turn was started.'
+                self.error = 'The current tool catalog was prepared, but its run receipt could not be saved. The saved conversation was preserved; no model turn was started.'
                 raise
             self.client = CodexRPC(args, self.notify, self.tool)
             from generated_images import GeneratedImages

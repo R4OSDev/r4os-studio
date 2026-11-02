@@ -1,3 +1,12 @@
+## Catalog receipt before conversation resume (0.9.14)
+
+The Codex worker now imports the atomic JSON writer used to save its current
+tool-catalog receipt. A missing import in 0.9.13 aborted runs after the catalog
+comparison, before starting a model turn, even when the saved tools already
+matched. Receipt-write errors now have their own message, distinct from catalog
+refresh errors. Existing conversations continue in the same thread. No tests or
+model turns were used for validation; see [Active-Tools.md](Active-Tools.md).
+
 ## Current tools in every existing conversation (0.9.13)
 
 Sessions now use the installed tool catalog on their next run or continuation.

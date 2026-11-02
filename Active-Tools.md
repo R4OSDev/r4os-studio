@@ -1,5 +1,14 @@
 # Current tools in existing conversations
 
+Studio 0.9.14 fixes a missing `write_json` import in the Codex worker. In 0.9.13,
+the catalog comparison could succeed and then fail while saving the per-run
+`tool-catalog.json` receipt. The generic error incorrectly attributed that
+failure to catalog preparation. The worker now imports the existing atomic
+writer and reports receipt-save failures separately. Both steps still complete
+before the native model process starts. The observed failed runs had identical
+saved/current tools, no refresh intent and no native turn; their rollout was
+not rewritten. No original input is automatically resubmitted by this fix.
+
 Studio 0.9.13 removes session-version tool profiles. The installed
 `shared/agent-tools.json` is the declaration and schema source for app projects
 and skill workspaces. Workspace kind selects the relevant tools; conversation
