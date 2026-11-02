@@ -59,7 +59,13 @@ export interface SessionOptions {
   nativeTools?: { id: 'web_search' | 'image_generation'; defaultEnabled: boolean }[];
   engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
 }
-export interface SessionItem {
+export interface TerminalTimingFields {
+  startedAt: string | null; observedAt: string | null; endedAt: string | null;
+  elapsedMilliseconds: number | null; deadlineAt: string | null; remainingLifetimeMilliseconds: number | null;
+  timing: { version: 1; coverage: string; clock: string | null; limitMilliseconds: number | null; final: boolean | null;
+    measurement?: string; bootBound?: boolean; source?: string };
+}
+export interface SessionItem extends Partial<TerminalTimingFields> {
   apiOrigin?: import('./api-providers.js').ApiResponseOrigin;
   generatedImage?: import('./generated-images.js').GeneratedImage;
   generatedAsset?: import('./generated-images.js').GeneratedAsset;

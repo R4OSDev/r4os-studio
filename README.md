@@ -1,3 +1,11 @@
+## Original terminal lifetime and deadline (0.9.9)
+
+Terminal replies/items now expose the original start, observed monotonic elapsed
+time, immutable deadline and remaining lifetime for pipes and PTYs. Polling never
+extends the budget; final observed duration is frozen and retained. Missing old
+measurements remain explicitly unknown. Existing limits and declarations remain
+unchanged. No tests or inference. See [Terminal-Lifetime.md](Terminal-Lifetime.md).
+
 ## Bound Git inspection and large explicit selections (0.9.8)
 
 New v22 conversations can read paginated own Git status/diffs and original jobs

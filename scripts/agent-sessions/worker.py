@@ -312,6 +312,10 @@ class Worker:
                  'output': result.get('output', ''), 'error': result.get('error')}
         for key in ('remote', 'roadmap', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset'):
             if key in result: value[key] = result[key]
+        if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
+            from terminal_timing import FIELDS as terminal_time_fields
+            for key in ('processId',*terminal_time_fields):
+                if key in result:value[key]=result[key]
         value['truncated'] = bool(result.get('truncated') or result.get('outputTruncated'))
         base_size = len(encode({**value, 'output': ''}).encode())
         value['output'], clipped = bounded_text(str(value['output']), max(2, 261000-base_size))

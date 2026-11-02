@@ -25,6 +25,17 @@ function GitHubReceipt({ value }: { value: unknown }) {
     {typeof ref.commit === 'string' && /^[a-f0-9]{40,64}$/.test(ref.commit) && <div><dt>Commit</dt><dd>{ref.commit.slice(0, 12)}</dd></div>}</dl>;
 }
 
+function TerminalLifetime({ value }: { value: SessionItem }) {
+  if (value.type !== 'terminal' && !(['studio.exec_command', 'studio.write_stdin', 'studio.terminate_process'].includes(value.tool ?? '') && value.timing?.version === 1)) return null;
+  const seconds = (number: number | null | undefined) => typeof number === 'number' && Number.isFinite(number) && number >= 0 ? `${(number / 1000).toFixed(1)} s` : 'Unavailable';
+  const stamp = (text: string | null | undefined) => text && Number.isFinite(Date.parse(text)) ? new Date(text).toLocaleString() : 'Unavailable';
+  if (!value.timing) return <p className="agent-terminal-hint">Lifetime measurement unavailable for this saved process.</p>;
+  return <div aria-label="Original terminal lifetime">
+    <p>Elapsed ({value.timing.final ? 'final observation' : 'observed'}): {seconds(value.elapsedMilliseconds)} · Remaining lifetime: {seconds(value.remainingLifetimeMilliseconds)}</p>
+    <p className="agent-terminal-hint">Started: {stamp(value.startedAt)} · Original deadline: {stamp(value.deadlineAt)}</p>
+  </div>;
+}
+
 function ToolCallBlock({ tools, projectId, sessionId, token }: { tools: ToolEntry[]; projectId: string; sessionId: string; token: string }) {
   const { scope } = useSessionApi();
   const [expanded, setExpanded] = useState(false), [opened, setOpened] = useState<Set<string>>(() => new Set());
@@ -69,6 +80,7 @@ function ToolCallBlock({ tools, projectId, sessionId, token }: { tools: ToolEntr
         {typeof i.skippedFiles === 'number' && i.skippedFiles > 0 && <p>{i.skippedFiles} files were not searched.</p>}
         {i.partialChangesPossible === true && <p>Partial changes may remain.</p>}
         {i.files != null && typeof i.files === 'object' && <CodeBlock text={JSON.stringify(i.files, null, 2)} label="Copy changed files" language="Files" />}
+        <TerminalLifetime value={i} />
         {i.exitCode != null && <p>Exit code {i.exitCode}</p>}{i.error && <p>{i.error}</p>}
         {scope === 'project' && <DevelopmentImage projectId={projectId} value={i.image} />}
         {scope === 'project' && jobId && <DevelopmentCard projectId={projectId} token={token} jobId={jobId} />}

@@ -7,11 +7,13 @@ import os
 from pathlib import Path
 import pty
 import signal
+import sqlite3
 import uuid
 from file_worker import parts
 from run_store import event, item, get_run
 from session_store import encode
 from store import ProjectFault
+from terminal_timing import Timing, retained as retained_timing, unknown as unknown_timing
 
 
 def bounded_text(value, budget, tail=False):
@@ -27,21 +29,43 @@ def bounded_text(value, budget, tail=False):
 
 
 class Process:
-    def __init__(self, manager, ident, proc, master, cmd):
+    def __init__(self, manager, ident, proc, master, cmd, timing=None):
         self.manager = manager; self.id = ident; self.proc = proc; self.master = master
+        self.timing=timing or Timing();self.timing.bind_process(proc)
         self.pending = ''; self.dropped = False; self.bytes = 0; self.reason = None
         self.changed = asyncio.Event(); self.finished = asyncio.Event(); self.readers = []
         self.io_lock = asyncio.Lock()
         self.value = {'id': 'process-' + ident, 'runId': manager.worker.run_id, 'type': 'terminal',
                       'processId': ident, 'tool': 'studio.exec_command', 'arguments': {'cmd': cmd}, 'output': '', 'status': 'running'}
         self.publish()
+        self.exit_observer=asyncio.create_task(self.observe_exit())
 
     def publish(self):
+        self.refresh_timing()
         w = self.manager.worker
         item(w.store, w.session_id, w.run_id, self.value)
 
+    def refresh_timing(self):
+        if self.proc.returncode is not None:self.timing.end()
+        self.value.update(self.timing.public(),terminalTiming=self.timing.proof())
+
+    def timed_error(self,error,output):
+        self.publish()
+        return {'success':False,'error':error,'output':output,'processId':self.id,**self.timing.public()}
+
+    async def observe_exit(self):
+        # A descendant holding a pipe open must not inflate the parent's measured
+        # lifetime. This observes returncode only and changes no watchdog policy.
+        while self.proc.returncode is None and not self.finished.is_set():
+            await asyncio.sleep(.05)
+        if self.proc.returncode is not None:
+            self.timing.end()
+            try:self.publish()
+            except (OSError,sqlite3.Error,ProjectFault):pass  # Normal final/poll publication remains authoritative.
+
     def append(self, text):
         if not text: return
+        self.refresh_timing()
         self.bytes += len(text.encode())
         self.pending += text
         self.pending, clipped = bounded_text(self.pending, 60000, True)
@@ -81,9 +105,13 @@ class Process:
             self.append(self.decoder.decode(b'', final=True)); os.close(self.master); self.master = None
 
     async def watch(self, timeout):
+        self.timing.bind_limit(timeout)
         try:
-            await asyncio.wait_for(asyncio.shield(self.proc.wait()), timeout/1000)
+            if self.proc.returncode is None:
+                await asyncio.wait_for(asyncio.shield(self.proc.wait()), self.timing.remaining_seconds())
+            else:await self.proc.wait()
         except asyncio.TimeoutError: await self.terminate('timeout')
+        if self.proc.returncode is not None:self.timing.end()
         # Namespace descendants keeping a pipe open must not delay cleanup.
         if self.readers:
             try: await asyncio.wait_for(asyncio.gather(*self.readers), 1)
@@ -93,7 +121,10 @@ class Process:
         self.value.update(status='completed' if code == 0 and not self.reason else 'failed', exitCode=code,
                           signal=-code if code is not None and code < 0 else None, reason=self.reason)
         try: self.publish()
-        finally: self.finished.set(); self.changed.set()
+        finally:
+            self.finished.set();self.changed.set()
+            self.exit_observer.cancel()
+            await asyncio.gather(self.exit_observer,return_exceptions=True)
 
     async def terminate(self, reason='terminated'):
         self.reason = self.reason or reason
@@ -105,6 +136,7 @@ class Process:
                 try: self.proc.kill()
                 except ProcessLookupError: pass
                 await self.proc.wait()
+        if self.proc.returncode is not None:self.timing.end()
 
     async def result(self, wait):
         if not self.pending and not self.finished.is_set():
@@ -115,13 +147,15 @@ class Process:
         await asyncio.sleep(0.02)
         text, self.pending = self.pending, ''
         truncated, self.dropped = self.dropped, False
+        self.publish()
         return {'success': True, 'processId': self.id, 'state': 'exited' if self.finished.is_set() else 'running',
                 'output': text, 'outputTruncated': truncated, 'exitCode': self.proc.returncode,
-                'signal': -self.proc.returncode if self.proc.returncode is not None and self.proc.returncode < 0 else None, 'reason': self.reason}
+                'signal': -self.proc.returncode if self.proc.returncode is not None and self.proc.returncode < 0 else None, 'reason': self.reason,
+                **self.timing.public()}
 
     async def input(self, args):
         if self.finished.is_set():
-            if args.get('chars'): return {'success': False, 'error': 'processExited', 'output': 'This process has exited.'}
+            if args.get('chars'): return self.timed_error('processExited','This process has exited.')
             return await self.result(100)
         value = args.get('chars', '').encode()
         if self.master is not None:
@@ -133,13 +167,13 @@ class Process:
                 except BlockingIOError: pass
                 if written == len(value): break
                 await asyncio.sleep(0.01)
-            if written != len(value): return {'success': False, 'error': 'inputLimit', 'output': 'Terminal input was only partially accepted.'}
+            if written != len(value): return self.timed_error('inputLimit','Terminal input was only partially accepted.')
         elif self.proc.stdin and not self.proc.stdin.is_closing():
             try:
                 if value: self.proc.stdin.write(value); await asyncio.wait_for(self.proc.stdin.drain(), 5)
                 if args.get('closeStdin'): self.proc.stdin.close()
             except (BrokenPipeError, ConnectionResetError): pass
-        elif value: return {'success': False, 'error': 'stdinClosed', 'output': 'Process input is closed.'}
+        elif value: return self.timed_error('stdinClosed','Process input is closed.')
         return await self.result(args.get('yield_time_ms', 1000))
 
 
@@ -177,6 +211,7 @@ class Terminals:
                 try:
                     if args.get('tty'):
                         master, slave = pty.openpty(); os.set_blocking(master, False)
+                    timing=Timing(args.get('timeout_ms',120000))
                     proc = await asyncio.create_subprocess_exec(*command,
                         stdin=slave if slave is not None else asyncio.subprocess.PIPE,
                         stdout=slave if slave is not None else asyncio.subprocess.PIPE,
@@ -187,7 +222,7 @@ class Terminals:
                     raise
                 finally:
                     if slave is not None: os.close(slave)
-                ident = str(uuid.uuid4()); process = Process(self, ident, proc, master, args['cmd']); self.processes[ident] = process
+                ident = str(uuid.uuid4()); process = Process(self, ident, proc, master, args['cmd'],timing=timing); self.processes[ident] = process
                 if master is None:
                     process.readers = [asyncio.create_task(process.pipe(stream)) for stream in (proc.stdout, proc.stderr)]
                 else:
@@ -202,13 +237,14 @@ class Terminals:
             row = worker.store.db.execute('SELECT payload FROM items WHERE session_id=? AND run_id=? AND item_id=?',
                 (worker.session_id, worker.run_id, 'process-' + args['processId'])).fetchone()
             value = json.loads(row[0]) if row else {}
-            if (value.get('type') != 'terminal' or value.get('processId') != args['processId']
-                    or value.get('runId') != worker.run_id or value.get('status') not in ('completed', 'failed')):
-                return {'success': False, 'error': 'unknownProcess', 'output': 'This handle does not belong to an active process in this run.'}
+            owned=value.get('type')=='terminal' and value.get('processId')==args['processId'] and value.get('runId')==worker.run_id
+            if not owned or value.get('status') not in ('completed', 'failed'):
+                return {'success': False, 'error': 'unknownProcess', 'output': 'This handle does not belong to an active process in this run.',
+                    **(retained_timing(value) if owned else unknown_timing())}
             if name == 'write_stdin' and args.get('chars'):
-                return {'success': False, 'error': 'processExited', 'output': 'This process has exited.'}
+                return {'success': False, 'error': 'processExited', 'output': 'This process has exited.','processId':args['processId'],**retained_timing(value)}
             return {'success': True, 'processId': args['processId'], 'state': 'exited', 'output': '', 'outputTruncated': False,
-                'exitCode': value.get('exitCode'), 'signal': value.get('signal'), 'reason': value.get('reason')}
+                'exitCode': value.get('exitCode'), 'signal': value.get('signal'), 'reason': value.get('reason'),**retained_timing(value)}
         async with process.io_lock:
             if name == 'write_stdin': return await process.input(args)
             if name == 'terminate_process':

@@ -14,6 +14,18 @@ TERMINAL_TIMING = (
     'another compiler. Prefer the separately permitted studio_build_project for normal project builds; '
     'it waits internally for its original job. A longer budget is not a success guarantee or an instruction to wait unnecessarily.'
 )
+TERMINAL_LIFETIME_RECEIPTS = (
+    'STUDIO TERMINAL LIFETIME RECEIPTS v1: Current exec_command/write_stdin replies report startedAt, '
+    'observedAt, elapsedMilliseconds, original deadlineAt and remainingLifetimeMilliseconds on the same '
+    'process handle. Values in milliseconds use the original host monotonic spawn observation; wallclock '
+    'timestamps are display anchors. Polling never changes or extends the original lifetime budget. '
+    'After exit the observed duration is frozen, including actual termination grace when needed. '
+    'This is host-observed spawn-to-exit lifetime, not CPU time or exact kernel execution time. '
+    'Older/missing measurements are explicitly null/unavailable; do not estimate from file times or '
+    'another boot and do not restart a command to recover timing. A null deadline does not create a '
+    'new budget. Process output, exit code, signal and timeout reason remain separate. No extra shell '
+    'query is needed to inspect these original timing fields.'
+)
 
 
 def base(config):
@@ -63,6 +75,8 @@ def compose(config):
     # guidance without changing their frozen source text/revision/hash.
     if config.get('permissions', {}).get('studio.exec_command') and TERMINAL_TIMING not in text:
         text += '\n\n' + TERMINAL_TIMING
+    if any(config.get('permissions',{}).get(key) for key in ('studio.exec_command','studio.write_stdin')) and TERMINAL_LIFETIME_RECEIPTS not in text:
+        text += '\n\n' + TERMINAL_LIFETIME_RECEIPTS
     from roadmap_instructions import compose as roadmap_instructions
     text += roadmap_instructions(config)
     from development_instructions import compose as development_instructions
