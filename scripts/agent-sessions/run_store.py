@@ -3,6 +3,7 @@ from skill_lifecycle import guarded
 import hashlib
 import json
 import uuid
+import sqlite3
 from session_store import encode, now, identity, validate_settings
 from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
@@ -108,6 +109,17 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
             raise ProjectFault('This conversation has generated-image context or requests image generation. Select an image-capable model; its history was preserved.',409)
         snapshot['imageInputModalities']=selected_model['inputModalities']
     snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
+    if original is not None:
+        for key in ('developmentJobReferences','developmentJobReferencesUnavailable'):
+            if key in original: snapshot[key] = original[key]
+    elif store.owner_type == 'project' and snapshot['permissions'].get('studio.read_development_job'):
+        from session_jobs import listing as job_references
+        from contracts import DevelopmentFault
+        try:
+            snapshot['developmentJobReferences'] = job_references(store.workspace.parent.parent,
+                store.owner_id,session_id,{'limit':6})
+        except (OSError,ValueError,sqlite3.Error,DevelopmentFault):
+            snapshot['developmentJobReferencesUnavailable'] = True
     snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
     if data.get('skillSelection') == 1:
         from skill_application import freeze

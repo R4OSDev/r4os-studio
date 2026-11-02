@@ -298,16 +298,17 @@ class Host:
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1, 'sessionJobLookup':1},
                     'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
+        if op == 'session_jobs': allowed.update(('sessionId','query'))
         if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
         if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'window', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
@@ -322,7 +323,7 @@ class Host:
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
                 elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
-                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] != 'studio-tools-v18':
+                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19'):
                     raise DevelopmentFault('This native conversation retains its original deployment schema. Desktop publication requires a new v18 session or the browser action.', 403)
                 if op == 'execution' and request.get('input',{}).get('windowControl') is True:
                     authorize(store,owner,'window',peer_pid)
@@ -340,6 +341,12 @@ class Host:
                         await systemctl('stop', '--no-block', job_unit(job['id'], job['kind'])); stopped.append(job['id'])
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
+            if op == 'session_jobs':
+                from session_jobs import listing
+                session_id = owner['sessionId'] if owner is not None else request.get('sessionId')
+                if owner is not None and request.get('sessionId') not in (None,session_id):
+                    raise DevelopmentFault('Read only this agent session\'s original jobs.',403)
+                return listing(store.projects,store.id,session_id,request.get('query'))
             if op == 'package_artifact':
                 from update_authorization import parent
                 parent(store,'package',request['id'],owner)

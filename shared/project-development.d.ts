@@ -225,6 +225,7 @@ export interface DevelopmentJob {
   id: string;
   projectId: string;
   kind: DevelopmentJobKind;
+  requestId?: string;
   source: Omit<DevelopmentSource, 'files' | 'directories'> | null;
   state: DevelopmentJobState;
   revision: number;

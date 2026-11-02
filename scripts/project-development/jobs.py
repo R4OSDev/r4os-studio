@@ -79,9 +79,11 @@ class Jobs:
         return {**DEFAULTS, **json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0])}
 
     def get(self, job_id):
-        row = self.db.execute('SELECT payload FROM jobs WHERE id=?', (identity(job_id),)).fetchone()
+        row = self.db.execute('SELECT payload,request_id FROM jobs WHERE id=?', (identity(job_id),)).fetchone()
         if not row: raise DevelopmentFault('Development job not found.', 404)
-        return json.loads(row[0])
+        value = json.loads(row[0])
+        if value.get('requestId') not in (None,row[1]): raise DevelopmentFault('The original job request binding is inconsistent.')
+        return {**value,'requestId':row[1]}
 
     def list(self):
         values = [json.loads(r[0]) for r in self.db.execute('SELECT payload FROM jobs ORDER BY rowid DESC LIMIT 100')]
@@ -162,7 +164,7 @@ class Jobs:
                 wait_ms = min(DEFAULT_WAIT_MS,settings['timeoutSeconds']*1000)
                 launch_budget = calculate(deployment,settings['arguments'],wait_ms)
                 command(deployment,settings['arguments'],wait_ms)  # Reject before admitting any new job.
-            job = {'id': str(uuid.uuid4()), 'projectId': self.id, 'kind': kind, 'state': 'queued',
+            job = {'id': str(uuid.uuid4()), 'requestId': request['requestId'], 'projectId': self.id, 'kind': kind, 'state': 'queued',
                 'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': deployment['id'] if deployment else None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
                 'phase': 'queued', 'check': None, 'createdAt': now(), 'completedAt': None,

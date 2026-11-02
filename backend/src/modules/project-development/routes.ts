@@ -13,6 +13,19 @@ const jobParams = { ...params, required: ['id', 'jobId'], properties: { ...param
 export function developmentRoutes(app: FastifyInstance, security: ProjectSessions) {
   updatePackageRoutes(app, security);
   const base = '/:id/development';
+  app.get<{ Params: { id: string; sessionId: string }; Querystring: Record<string, unknown> }>(base + '/sessions/:sessionId/jobs', {
+    schema: { params: { ...params, required: ['id','sessionId'], properties: { id: identity, sessionId: identity } },
+      querystring: { type: 'object', additionalProperties: false, properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 25 }, before: revision,
+        requestId: identity, originRunId: identity, toolCallId: { type: 'string', minLength: 1, maxLength: 256 },
+        kind: { enum: ['build','package','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery','deploy','execution','vm_start'] },
+      } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    reply.header('Cache-Control','private, no-store');
+    return developmentHost({ operation: 'session_jobs', projectId: request.params.id,
+      sessionId: request.params.sessionId, query: request.query });
+  });
   app.post<{ Params: { id: string; jobId: string }; Body: { requestId: string } }>(base + '/jobs/:jobId/complete', {
     bodyLimit: 1024,
     schema: { params: jobParams, body: { type: 'object', additionalProperties: false,

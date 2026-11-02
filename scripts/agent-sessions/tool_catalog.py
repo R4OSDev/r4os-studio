@@ -2,6 +2,7 @@
 from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, tools_for
 from copy import deepcopy
 from profile import WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE
+from profile import LOOKUP_PROFILE
 
 
 def obj(properties, required=()):
@@ -89,6 +90,21 @@ DEFS['read_environment_notes']=('Read/search bounded session-local reports and f
 DEFS['record_environment_note']=('Record an observed Studio/tool/workflow fault or a fault in an inaccessible dependency, including public APIs/ABI, SDK/Contract, kernel, Desktop or libraries. Also record useful workflow-saving feature requests for APIs, Desktop or libraries even without a failure. Use kind=problem for faults and the separate kind=suggestion for feature requests; category names the affected area. Based on existing evidence, name component/version and expected versus observed behavior for a problem, or the missing capability, use case and benefit for a suggestion. First read current session notes and pass their revision; reuse similar entries unchanged. Exclude bugs and normal compiler/test failures in the user\'s editable project, expected permissions/Stop, corrected misuse and ordinary waits. No quota, extra commands/tests/inference, secrets/private paths/raw logs or deleted-report recreation. Server binds origin and deduplicates this call. No edit/delete or failed-tool retry.',obj({'revision':{'type':'integer','minimum':0,'maximum':9007199254740991},'kind':NOTE_KIND,'category':NOTE_CATEGORY,'title':{'type':'string','minLength':1,'maxLength':160},'description':{'type':'string','minLength':1,'maxLength':4000},**{key:{'type':'string','maxLength':1000} for key in ('impact','workaround','suggestion')}},['revision','kind','category','title','description']))
 
 def specifications(profile=PROFILE):
+    if profile == LOOKUP_PROFILE:
+        result = deepcopy(specifications(DESKTOP_PROFILE))
+        declaration = next(value for value in result if value['name'] == 'studio_read_development_job')
+        declaration['inputSchema'] = {'oneOf': [declaration['inputSchema'], obj({'lookup': obj({
+            'limit': {'type':'integer','minimum':1,'maximum':25},
+            'before': {'type':'integer','minimum':1,'maximum':9007199254740991},
+            'requestId': ID, 'originRunId': ID,
+            'toolCallId': {'type':'string','minLength':1,'maxLength':256},
+            'kind': {'type':'string','enum':['build','package','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery','deploy','execution','vm_start']},
+        })}, ['lookup'])]}
+        declaration['description'] += (' If a tool presentation lost the job ID, use lookup={} to list this session\'s original job references '
+            '(default10/max25; continue lookup.before=nextBefore). Optional requestId is the original Studio UUID, not a DESKRUN key. '
+            'Alternatively supply both original originRunId and toolCallId. Lookup returns metadata only, never starts or replays work. '
+            'Use a found id as jobId for a normal read; do not combine lookup with other top-level fields.')
+        return result
     # The protocol persists dynamic declarations on first thread creation. Keep
     # the known set stable on resume; disabled/unavailable calls fail in the host
     # dispatcher BEFORE execution, even if the model retains their declarations.
@@ -171,6 +187,8 @@ def specifications(profile=PROFILE):
 
 
 def validate_arguments(name, value, profile=PROFILE):
+    if profile == LOOKUP_PROFILE and not (name == 'read_development_job' and 'lookup' in value):
+        return validate_arguments(name,value,DESKTOP_PROFILE)
     definition = next((v for v in specifications(profile) if v['name'] == 'studio_' + name), None)
     if definition is None: raise ValueError('Unknown tool for this session profile.')
     root = definition['inputSchema']

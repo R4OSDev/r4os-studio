@@ -1,3 +1,13 @@
+## Recover original own job references (0.9.4)
+
+New v19 conversations can page or locate their original session jobs by the
+Studio request UUID or original run/toolcall. Existing conversations keep their
+declarations and receive bounded recent references on the next authorized run.
+A small durable request/job reference precedes detailed output; missing output
+never implies rejection or authorizes replay. All lookup paths enforce own-session
+read permission. No tests, inference or app/VM runs. See
+[Original-Development-Jobs.md](Original-Development-Jobs.md).
+
 ## Continue own-client input after a rejected window action (0.9.3)
 
 An immutable native rejection now settles only its matching original window

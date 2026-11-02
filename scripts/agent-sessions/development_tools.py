@@ -8,7 +8,7 @@ import asyncio
 class DevelopmentTools:
     def __init__(self, worker): self.worker = worker
 
-    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18')
+    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19')
 
     def present(self,job,page=None):
         if not self.compact(): return page or {'job':job}
@@ -36,7 +36,13 @@ class DevelopmentTools:
 
     async def native_output(self, result, image_data=None):
         from session_store import encode
-        content = [{'type': 'inputText', 'text': encode(result)}]
+        content = []
+        reference = result.get('development') or result.get('developmentRequest')
+        if reference:
+            # Small original reference comes before presentation text; the
+            # durable job/request/call mapping also survives a lost whole reply.
+            content.append({'type':'inputText','text':encode({'developmentReference':reference,'referenceOnly':True})})
+        content.append({'type': 'inputText', 'text': encode(result)})
         if result.get('image'):
             if not self.image_capable() or not self.worker.config['permissions'].get('studio.capture_vm'):
                 return {'success': False, 'contentItems': [{'type': 'inputText', 'text': 'Image inspection is unavailable for this model or permission.'}]}
@@ -75,7 +81,7 @@ class DevelopmentTools:
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']
                     if 'desktopShortcut' in value:
-                        if self.worker.config['engine']['profile'] != 'studio-tools-v18' or type(value['desktopShortcut']) is not bool:
+                        if self.worker.config['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19') or type(value['desktopShortcut']) is not bool:
                             raise DevelopmentFault('Desktop publication requires its declared v18 deployment option.', 403)
                         if value['desktopShortcut']:
                             from vm_worker import broker_call
@@ -101,6 +107,15 @@ class DevelopmentTools:
                 if name in ('build_project', 'deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
+                if 'lookup' in value:
+                    if self.worker.config['engine']['profile'] != 'studio-tools-v19' or set(value) != {'lookup'}:
+                        raise DevelopmentFault('Job lookup requires its declared v19 read option.',403)
+                    from vm_worker import broker_call
+                    capabilities = await broker_call({'operation':'capabilities'})
+                    if capabilities.get('features',{}).get('sessionJobLookup') != 1:
+                        raise DevelopmentFault('Original job lookup requires the current development coordinator.',503)
+                    references = await self.request('session_jobs',query=value['lookup'])
+                    return {'success':True,'output':encode(references)}
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
                 mode=value.get('view','summary') if self.compact() else 'legacy'
                 if value.get('cursor') and mode not in ('details','inventory'): raise DevelopmentFault('A detail cursor requires its original details/inventory view.',400)
@@ -171,6 +186,9 @@ class DevelopmentTools:
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
+                    **({'developmentRequest': {'requestId':request_id,'originRunId':self.worker.run_id,'toolCallId':call_id,
+                         'receiptState':'unknown' if getattr(error,'uncertain',False) else 'request_error'}}
+                       if job is None and name in ('build_project','deploy_project','run_project','start_project_vm') else {}),
                     **({'development': {'jobId': job['id']}} if job else
                        {'development': {'jobId': value['jobId']}} if name in ('control_app_window','send_vm_input') else {})}
 
@@ -181,7 +199,7 @@ class DevelopmentTools:
         # Publish the durable job link immediately, but hold the native tool
         # response. Codex resumes this turn only after a terminal receipt.
         value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.start_project_vm',
-                 'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id']}}
+                 'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id'],'requestId':job.get('requestId')}}
         worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
         deadline = asyncio.get_running_loop().time() + LIMITS['vmStartTimeoutSeconds'] + 60
         while job['state'] in ACTIVE:
@@ -207,7 +225,7 @@ class DevelopmentTools:
         from run_store import item
         worker = self.worker; operation = {'build_project': 'wait_build', 'deploy_project': 'wait_deploy', 'run_project': 'wait_execution'}[name]
         value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.' + name,
-                 'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id']}}
+                 'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id'],'requestId':job.get('requestId')}}
         worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
         timeout = LIMITS['buildTimeoutSeconds'] + 300 if name == 'build_project' else (660 if name == 'deploy_project' else job['settings']['timeoutSeconds'] + 300)
         deadline = asyncio.get_running_loop().time() + timeout; page = None; legacy_build_wait = False
@@ -283,12 +301,12 @@ class DevelopmentTools:
                         'notice': 'The owned process has ended and its cleanup is confirmed. Its exit status is unavailable; '
                             'the execution remains unknown, not successful. Inspect the saved checks and evidence before continuing. '
                             'Do not repeat the launch merely because its exit code is missing.'}),
-                    'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
+                    'development': {'jobId': job['id'], 'requestId':job.get('requestId'), 'kind': job['kind'], 'state': job['state']}}
         failure = job['state'] in ('failed', 'interrupted', 'unknown')
         if job['state'] == 'running' and (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed':
             return {'success': False, 'error': 'readiness_unknown', 'output': encode(self.present(job,page)),
-                    'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
-        return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(self.present(job,page)), 'development': {'jobId': job['id'], 'kind': job['kind'], 'state': job['state']}}
+                    'development': {'jobId': job['id'], 'requestId':job.get('requestId'), 'kind': job['kind'], 'state': job['state']}}
+        return {'success': not failure, **({'error': job['state']} if failure else {}), 'output': encode(self.present(job,page)), 'development': {'jobId': job['id'], 'requestId':job.get('requestId'), 'kind': job['kind'], 'state': job['state']}}
 
     def closed_without_exit_status(self, job):
         """Attest closure from private originals without changing any job or receipt."""

@@ -2,7 +2,7 @@
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill' or not rights.get('studio.read_development_job'): return ''
-    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18')
+    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19')
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
         'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '
@@ -40,11 +40,34 @@ def compose(config):
         'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
         'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
         'app/SDK contract; host Rust builds do not imply a native guest compiler.'
-    ) + presentation + desktop_icons(config)
+    ) + presentation + desktop_icons(config) + original_job_references(config)
+
+
+def original_job_references(config):
+    import json
+    references = config.get('developmentJobReferences')
+    lookup = config.get('engine',{}).get('profile') == 'studio-tools-v19'
+    guidance = ('\n\nSTUDIO ORIGINAL JOB REFERENCES: A lost or truncated tool presentation does not prove rejection. '
+        'Never repeat a build/deploy/start to recover its job ID. A developmentReference precedes detailed output; '
+        'requestId is the original Studio request UUID, not a native DESKRUN key. '
+        'The bounded references below belong only to this session and are a read-only snapshot, not new effects. '
+        'Use an entry.id as jobId with studio_read_development_job to obtain its current state. '
+        'Missing native admission/end/cleanup remains unknown. ')
+    if lookup:
+        guidance += ('This v19 conversation may also call studio_read_development_job with lookup={} '
+            'or lookup={requestId:...} or lookup={originRunId:...,toolCallId:...}; '
+            'continue before=nextBefore. Do not combine lookup and jobId. ')
+    else:
+        guidance += 'This conversation retains its original arguments; use jobId from the references, never invent a lookup argument. '
+    if references is not None:
+        return guidance + json.dumps(references,ensure_ascii=True,separators=(',',':'))
+    if config.get('developmentJobReferencesUnavailable'):
+        return guidance + 'The original reference index is unavailable; no rejection or missing effect was inferred.'
+    return guidance if lookup else ''
 
 
 def desktop_icons(config):
-    current = config.get('engine', {}).get('profile') == 'studio-tools-v18'
+    current = config.get('engine', {}).get('profile') in ('studio-tools-v18','studio-tools-v19')
     action = ('For an explicitly requested GUI R4X desktop publication use studio_deploy_project with '
         'desktopShortcut=true and the chosen verified artifactId. Ordinary test deployments omit this option. '
         'It needs Deploy project permission and a current development coordinator; it never starts the app. ') if current else (
