@@ -1,4 +1,4 @@
-"""Explicit check completion; observed success never grants implicit stop rights."""
+"""Check completion and retained end observation; no implicit stop rights."""
 import asyncio
 from contracts import DevelopmentFault, hash_value
 from checks import evaluate
@@ -7,20 +7,45 @@ from jobs import now
 from frame_binding import current
 
 
-async def await_original_close(execution, control, state, lease):
+def retained_natural_end(execution, job, state):
+    """Only an acknowledged original native lease qualifies for an end wait."""
+    from desktop_evidence import unpack
+    from recovery import read as read_receipt
+    if state.get('stopReason') is not None or job.get('kind') != 'execution': return False
+    try:
+        record = read_receipt(execution.work / 'desktop-evidence.json')
+        launch = record['launch']; fields = unpack(record['token'])
+        original = job['desktopLaunch']['request']
+        process = job['process']
+        return (record.get('phase') == 4 and record.get('result') in (0, -7)
+            and launch['request'] == original
+            and fields[2:6] == tuple(int(part) for part in original.split(':'))
+            and fields[13] > 0
+            and (fields[6], str(fields[7])) == (process['instanceId'], process['generation'])
+            and (record.get('instanceId'), record.get('generation'), record.get('serial'))
+                == (fields[6], str(fields[7]), str(fields[13]))
+            and (launch['process_id'], launch['process_generation']) == (process['instanceId'], process['generation']))
+    except (DevelopmentFault, OSError, ValueError, KeyError, TypeError): return False
+
+
+async def await_original_close(execution, control, state, lease, *, natural=False):
     """A retained completion can arrive after Desktop detached the process."""
     from vm_worker import guard
     from layout import save
     marker = execution.completion
     job = execution.store.get(execution.job['id'])
     pending = job.get('checkCompletion') or {}
-    if (not marker or pending.get('requestId') != marker.get('requestId') or pending.get('state') != 'closing'
-        or state.get('state') != 'unknown' or state.get('stopReason') != 'user_stop'
-        or state.get('desktopEvidenceRetained') is not True or state.get('closeConfirmed') is True): return state
+    if (state.get('state') != 'unknown' or state.get('desktopEvidenceRetained') is not True
+        or state.get('closeConfirmed') is True): return state
+    if natural:
+        if marker or not retained_natural_end(execution, job, state): return state
+    elif (not marker or pending.get('requestId') != marker.get('requestId')
+        or pending.get('state') != 'closing' or state.get('stopReason') != 'user_stop'): return state
     process = job.get('process') or {}
     if any(state.get(key) != process.get(key) for key in ('instanceId', 'generation')): return state
     loop = asyncio.get_running_loop()
     deadline = loop.time() + 5
+    polls = 0
     while loop.time() < deadline and not execution.stop_requested:
         guard(execution.store, job, lease, allow_stopping=True)
         await asyncio.sleep(min(.1, max(0, deadline - loop.time())))
@@ -29,8 +54,11 @@ async def await_original_close(execution, control, state, lease):
         try: observed = await asyncio.wait_for(control.call('poll'), remaining)
         except asyncio.TimeoutError: break  # Abandon this controller; never submit another close.
         if any(observed.get(key) != process.get(key) for key in ('instanceId', 'generation')): return state
-        save(execution.work / 'completion-close-observation.json', {'schema': 1, 'jobId': job['id'],
-            'requestId': marker['requestId'], 'target': job['target'], 'observedAt': now(), 'state': observed})
+        polls += 1
+        save(execution.work / ('natural-end-observation.json' if natural else 'completion-close-observation.json'),
+            {'schema': 1, 'jobId': job['id'], 'requestId': job['desktopLaunch']['request'] if natural else marker['requestId'],
+                'target': job['target'], 'statusOnly': True, 'maximumWaitMilliseconds': 5000,
+                'polls': polls, 'observedAt': now(), 'state': observed})
         execution.output(observed); observed['outputBase64'] = ''
         state = observed
         if state.get('state') != 'unknown': break

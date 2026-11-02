@@ -1,3 +1,15 @@
+## Natural Desktop completion observation (0.9.1)
+
+When a naturally exiting Desktop app loses its window before its retained end
+receipt arrives, the current worker reads only the original acknowledged lease
+for up to five seconds. Exact original request/token/process matching is required;
+no Q, Close, launch or Goal Play is repeated. Genuine end, actual exit code,
+output completeness and helper cleanup remain separate evidence. Old workers
+and historical unknown jobs are preserved. Source/receipt inspection, Python
+AST, Studio build/TypeScript and lint were used; no tests or application/VM
+runs. Native delayed-completion acceptance still needs original runtime proof.
+See [Natural-Desktop-Completion.md](Natural-Desktop-Completion.md).
+
 ## Publish a project on the VM desktop (0.8.84)
 
 Completed GUI R4X development cards offer **Deploy to desktop**. New profile18

@@ -413,9 +413,9 @@ class Execution:
                                 receipt = finish(store, self.completion['requestId'], {'jobId': job['id'], 'state': terminal, 'closed': True})
                                 if self.completion_future and not self.completion_future.done(): self.completion_future.set_result(receipt)
                             return final
-                        if state['state'] == 'unknown' and self.completion:
+                        if state['state'] == 'unknown':
                             from completion import await_original_close
-                            state = await await_original_close(self, control, state, lease)
+                            state = await await_original_close(self, control, state, lease, natural=not self.completion)
                             self.last = state
                             if state['state'] == 'completed': continue
                         if state['state'] == 'unknown': raise UnconfirmedGuestEffect('The generation-owned process status became unknown.')
