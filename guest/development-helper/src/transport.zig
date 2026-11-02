@@ -1,5 +1,5 @@
-//! SSH is a client of an independent manual watchdog service. Killing the
-//! SSH terminal cannot kill the service which owns the application process.
+//! SSH is a client of an independent console watchdog. An explicit console
+//! host prevents SSH-console inheritance; no SCM registration is required.
 const std = @import("std");
 const r4os = @import("r4os");
 const control = @import("control.zig");
@@ -32,45 +32,63 @@ pub fn publish(sys: r4os.r4sys.Context, path: [*:0]const u8, instance: []const u
     return sys.fileWrite(path, json) >= 0;
 }
 
-fn removeBootstrap(sys: r4os.r4sys.Context, name: [*:0]const u8, path: [*:0]const u8, id: u32) bool {
-    for (0..300) |_| {
-        var detail: abi.ServiceDetail = .{};
-        if (sys.serviceDetailByName(name, &detail) != 0 or detail.info.start_mode != abi.service_start_manual or
-            !std.ascii.eqlIgnoreCase(std.mem.sliceTo(&detail.path, 0), std.mem.sliceTo(path, 0))) return false;
-        if (detail.info.state == abi.service_state_stopped and detail.info.instance_id == 0) return sys.serviceRemove(name) == 0;
-        if (detail.info.instance_id != 0 and detail.info.instance_id != id) return false;
-        sys.sleepTicks(1);
-    }
-    return false;
+fn startupFailure(sys: r4os.r4sys.Context, instance: []const u8, module_path: []const u8,
+    phase: []const u8, raw: i32, cleanup_confirmed: bool, exit_code: i32) i32 {
+    control.emit(sys, instance, 0, false, .{ .startupFailureVersion = @as(u32, 1),
+        .@"error" = "The guest controller could not initialize its independent watchdog.",
+        .phase = phase, .rawCode = raw, .modulePath = module_path,
+        .applicationStarted = false, .startupCleanupConfirmed = cleanup_confirmed });
+    return exit_code;
 }
 
 pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 {
     const sys = app.system();
     var relay_handle: abi.ProgramProcessHandle = .{};
-    if (sys.programOpenHandle(@intCast(app.raw.instance_id), &relay_handle) != 0) return 81;
+    const own_status = sys.programOpenHandle(@intCast(app.raw.instance_id), &relay_handle);
+    if (own_status != 0) return startupFailure(sys, instance, module_path, "relay_identity", own_status, true, 81);
     const slash = std.mem.lastIndexOfScalar(u8, module_path, '\\') orelse return 81;
     const parent = module_path[0..slash];
     var request: [256:0]u8 = .{0} ** 256;
     var response: [256:0]u8 = .{0} ** 256;
     var path: [256:0]u8 = .{0} ** 256;
-    var name: [32:0]u8 = .{0} ** 32;
+    var journal: [256:0]u8 = .{0} ** 256;
     if (!paths(parent, instance, &request, &response)) return 81;
-    _ = std.fmt.bufPrintZ(&path, "{s}\\STWATCH.R4X", .{parent}) catch return 81;
-    name[0] = 'W';
-    var index: usize = 1;
-    for (instance) |c| {
-        if (c != '-' and index < 25) { name[index] = c; index += 1; }
+    _ = std.fmt.bufPrintZ(&path, "{s}\\STHELP.R4X", .{parent}) catch return 81;
+    _ = std.fmt.bufPrintZ(&journal, "{s}\\B{s}.JSN", .{ parent, instance[0..7] }) catch return 81;
+    for ([_][*:0]const u8{ &request, &response, &journal }) |file| {
+        var info: abi.FileInfo = .{};
+        const status = sys.fileInfoRaw(file, &info);
+        if (status < 0) return startupFailure(sys, instance, module_path, "mailbox_identity", status, false, 82);
+        if (status != 0 or info.exists != 0) return startupFailure(sys, instance, module_path, "mailbox_collision", status, false, 82);
     }
-    var existing: abi.ServiceInfo = .{};
-    var scratch: [1]u8 = undefined;
-    if (sys.serviceStatus(&name, &existing) == 0 or sys.fileReadAt(&request, 0, &scratch) >= 0 or
-        sys.fileReadAt(&response, 0, &scratch) >= 0) return 82;
-    var args: [37:0]u8 = .{0} ** 37;
-    @memcpy(args[0..36], instance);
-    var info: abi.ServiceInfo = .{};
-    if (sys.serviceInstall(&name, &path, &args, abi.service_start_manual, "Studio execution watchdog", &info) != 0) return 83;
-    if (sys.serviceStart(&name, &info) != 0) return 84;
-    const watchdog_id = info.instance_id;
+    const desk = app.desktop() orelse return startupFailure(sys, instance, module_path, "watchdog_capability", -1, true, 83);
+    if (!desk.hasFn("program_spawn_with_console_host_handle"))
+        return startupFailure(sys, instance, module_path, "watchdog_capability", -1, true, 83);
+    var relay_generation: [24]u8 = undefined;
+    const relay_generation_text = std.fmt.bufPrint(&relay_generation, "{d}", .{relay_handle.generation}) catch return 81;
+    if (!publish(sys, &journal, instance, 0, true, .{ .startupVersion = @as(u32, 1), .phase = "watchdog_intent",
+        .relayInstanceId = relay_handle.instance_id, .relayGeneration = relay_generation_text,
+        .modulePath = module_path, .applicationStarted = false }))
+        return startupFailure(sys, instance, module_path, "watchdog_intent", -1, true, 83);
+    var args: [43:0]u8 = .{0} ** 43;
+    _ = std.fmt.bufPrintZ(&args, "{s} watch", .{instance}) catch return 81;
+    const resources = r4os.Resources{ .sys = sys };
+    const launched = resources.spawnWithConsoleHost(.{ .ptr = &path,
+        .len = @intCast(std.mem.sliceTo(&path, 0).len) }, &args, .console, .terminal_mode);
+    // The public handle-spawn contract is atomic on failure. Never retry it.
+    const spawned = switch (launched) {
+        .process => |process| process,
+        .failure => |raw| return startupFailure(sys, instance, module_path, "watchdog_spawn", raw, true, 83),
+    };
+    if (!spawned.valid()) return startupFailure(sys, instance, module_path, "watchdog_identity", -1, false, 84);
+    var spawned_generation: [24]u8 = undefined;
+    const spawned_generation_text = std.fmt.bufPrint(&spawned_generation, "{d}", .{spawned.generation}) catch
+        return startupFailure(sys, instance, module_path, "watchdog_identity", -1, false, 84);
+    if (!publish(sys, &journal, instance, 0, true, .{ .startupVersion = @as(u32, 1), .phase = "watchdog_started",
+        .relayInstanceId = relay_handle.instance_id, .relayGeneration = relay_generation_text,
+        .watchdogInstanceId = spawned.raw, .watchdogGeneration = spawned_generation_text,
+        .modulePath = module_path, .applicationStarted = false }))
+        return startupFailure(sys, instance, module_path, "watchdog_journal", -1, false, 84);
     var handshake_ok = false;
     var daemon: abi.ProgramProcessHandle = .{};
     var daemon_generation: [24]u8 = undefined;
@@ -96,7 +114,8 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
                             generation_value != .string or generation_value.string.len > daemon_generation.len) return 85;
                         daemon.instance_id = @intCast(id_value.integer);
                         daemon.generation = std.fmt.parseInt(u64, generation_value.string, 10) catch return 85;
-                        if (daemon.generation == 0) return 85;
+                        if (daemon.instance_id != spawned.raw or daemon.generation != spawned.generation)
+                            return startupFailure(sys, instance, module_path, "watchdog_handshake_identity", -1, false, 85);
                         daemon_generation_len = generation_value.string.len;
                         @memcpy(daemon_generation[0..daemon_generation_len], generation_value.string);
                         handshake_ok = true;
@@ -107,7 +126,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         }
         sys.sleepTicks(1);
     }
-    if (!handshake_ok or !removeBootstrap(sys, &name, &path, watchdog_id)) return 85;
+    if (!handshake_ok) return startupFailure(sys, instance, module_path, "watchdog_handshake", -1, false, 85);
     control.emit(sys, instance, 0, true, .{ .interface = "r4os-studio-guest", .controlVersion = @as(u32, 2),
         .desktopAdoptionVersion = @as(u32, 1),
         .desktopEvidenceVersion = @as(u32, 1),
@@ -121,6 +140,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         .gestureVersion = @as(u32, 1),
         .dragInterruptVersion = @as(u32, 1),
         .watchdogVersion = @as(u32, 1), .bootstrapRemoved = true, .watchdogInstanceId = daemon.instance_id,
+        .watchdogLaunchVersion = @as(u32, 2), .bootstrapUsed = false,
         .watchdogGeneration = daemon_generation[0..daemon_generation_len],
         .receiptFile = std.mem.sliceTo(&response, 0), .modulePath = module_path });
     var line: [4096]u8 = undefined;

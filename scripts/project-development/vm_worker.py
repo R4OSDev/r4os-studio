@@ -259,6 +259,7 @@ async def main():
                      reasonCode=getattr(error, 'reason_code', None),
                      nextStep={'vm_start_required': 'Start the assigned VM with its permitted VM-start tool, or use Virtual Machines, then deploy again.',
                          'exchange_worker_upgrade_required': 'Stop and start the assigned VM in Virtual Machines to adopt its current Exchange worker, then deploy again.',
+                         'deployment_controller_upgrade_required': 'Deploy the existing artifact again with the current guest controller, then submit a new run.',
                          'development_access_unavailable': 'Enable Network and development access in the assigned VM settings before deploying.'}.get(getattr(error, 'reason_code', None)),
                      exitCode=getattr(error, 'exit_code', None))
     finally: store.close()

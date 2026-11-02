@@ -241,6 +241,9 @@ class Execution:
             raise DevelopmentFault('Deploy again with an Exchange-run-capable controller before running.')
         if deployment.get('helperCapabilities', {}).get('controlVersion') != 2 or deployment.get('helperCapabilities', {}).get('watchdogVersion') != 1:
             raise DevelopmentFault('Deploy again with the current guest controller before running.')
+        if deployment.get('helperCapabilities', {}).get('watchdogLaunchVersion') != 2:
+            raise DevelopmentFault('Deploy the artifact again with the current guest controller. Its independent watchdog does not require a free system service slot.',
+                reason_code='deployment_controller_upgrade_required')
         if job['settings'].get('serviceResponseContains') and not deployment.get('helperCapabilities', {}).get('serviceSelfTest'):
             raise DevelopmentFault('Deploy again with a self-test-capable guest helper before running these criteria.')
         if deployment['role'] not in ('terminal', 'desktop', 'service') or deployment['kind'] != 'R4X':
@@ -281,7 +284,7 @@ class Execution:
                         'relativeDirectory': deployment['guestDirectory'][3:].replace(chr(92), '/')})
                 ssh.package_root = owner_path.rsplit('/', 1)[0]
                 entries = await inventory(ssh, target['exchange'])
-                preflight(entries, [16384, 4096], 2, 0, len(job['settings'].get('outputFiles', [])))
+                preflight(entries, [16384, 4096, 4096], 3, 0, len(job['settings'].get('outputFiles', [])))
                 guard(store, job, lease, allow_stopping=True)
                 await download_many(ssh, [(owner_path, self.work / 'project-owner.json', 4096)] + [(item['path'], self.work / ('verify-' + str(index)), item['bytes'])
                     for index, item in enumerate(deployment['files'])])
@@ -319,6 +322,8 @@ class Execution:
                 start_sent = False; hello_ready = False
                 try:
                     hello = await control.open(); hello_ready = True; save(self.work / 'controller.json', hello)
+                    if hello['result'].get('watchdogLaunchVersion') != 2:
+                        raise UnconfirmedGuestEffect('The original controller did not confirm its independent watchdog contract.')
                     self.controller_hello = hello['result']
                     from window_control import enabled as window_enabled
                     self.window_controller = (hello['result'] if desktop and not job.get('desktopLinkRequested') and window_enabled(store,job)
@@ -464,6 +469,13 @@ class Execution:
                                     if not future.done(): future.set_exception(error)
                                     if getattr(error, 'uncertain', False): raise
                 except BaseException as error:
+                    if not start_sent and not hello_ready and control.startup_rejected:
+                        save(self.work / 'closed.json', {**intent, 'state': 'closed', 'applicationStarted': False,
+                            'launchRejected': True, 'error': str(error), 'startupReceipt': control.startup_rejected})
+                        store.update(job['id'], guestState={'state': 'completed', 'exitCode': None,
+                            'closeConfirmed': True, 'outputIncomplete': True, 'applicationStarted': False},
+                            startupReceipt=control.startup_rejected)
+                        release(store.projects, vm['id'], job['id'])
                     if hello_ready and not start_sent and not (self.work / 'closed.json').exists():
                         try:
                             closed = await control.call('finish')

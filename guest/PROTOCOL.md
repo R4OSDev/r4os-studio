@@ -132,3 +132,24 @@ carry the same bound result. The host reads both and the exact link bytes before
 recording success. Lost replies are observed from this original result, never by
 resubmitting the helper. Unknown stages/backups remain protected. The receipt
 does not confirm desktop visibility, app launch or application consumption.
+## Independent watchdog launch v2 (0.9.12)
+
+Qualification and the controller's sequence-zero hello add
+`watchdogLaunchVersion=2`. The relay starts its exact own `STHELP.R4X <UUID> watch`
+using the public generation-bound console-host API with an explicit terminal
+console. Native background publication is the detach boundary; the watchdog does
+not inherit SSH's console. No SCM entry is installed, started or removed. The
+old STWATCH binary remains an immutable compatibility artifact, unused by v2.
+`bootstrapUsed=false` and legacy `bootstrapRemoved=true` mean that no bootstrap
+registration was created. Watchdog heartbeat, timeout, original process binding,
+application cleanup and final watchdog-end confirmation remain unchanged.
+
+Before spawn, a unique own B<UUID-prefix>.JSN journal records intent and relay
+identity; after the one atomic handle spawn it records the exact watchdog handle.
+The normal mailbox hello must match that handle and generation. Q/A/B collisions
+fail without overwrite. A versioned negative startup response identifies the
+original phase, native code and whether no child was created. Only a fully bound
+positive no-child/no-application-start failure may close that startup scope;
+errors after spawn and lost responses remain unconfirmed. Raw initial response,
+bounded SSH stderr and the final local SSH exit are private host diagnostics;
+a host-killed SSH client never supplies an application exit code.

@@ -1,3 +1,19 @@
+## Guest controller without an SCM slot (0.9.12)
+
+The independent watchdog now starts through the public generation-bound console
+host API, with its own console instead of the SSH console. It no longer registers
+a temporary SCM service: a guest whose sixteen service entries are occupied can
+still run desktop and console apps. Native service apps retain the guest's actual
+service capacity limit. Deploy an existing artifact again to obtain the new
+controller; old deployments, sessions, project pins and helper binaries remain
+preserved. Current workers reject the old bootstrap contract before starting it.
+
+Startup saves the original relay/watchdog identities and verifies the returned
+watchdog generation before admitting an application start. Native startup errors,
+bounded first response/stderr and final SSH client status are retained. Only an
+explicit matching no-start/no-child failure releases the execution reservation;
+missing replies and uncertain cleanup remain protected. No tests were run.
+
 ## Activate the original published desktop shortcut (0.9.11)
 
 A verified GUI publication now offers **Run desktop link**. New v23 project

@@ -36,6 +36,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .mode = "qualification",
             .controlVersion = @as(u32, 2),
             .watchdogVersion = @as(u32, 1),
+            .watchdogLaunchVersion = @as(u32, 2),
             .modulePath = path[0..@intCast(count)],
             .processHandles = resources.available(),
             .consoleInput = true,
