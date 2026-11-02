@@ -56,7 +56,7 @@ def binary(r4os, engine):
     return path
 
 
-def selected(r4os, scope):
+def selected(r4os, scope, include_features=True):
     root = Path(r4os).absolute()
     record = json.loads((root / 'Profiles/versions.json').read_text())['defaults']['codex']
     version = record.get('version')
@@ -67,8 +67,9 @@ def selected(r4os, scope):
     if (record.get('id') != version or record.get('binary') != str(path)
             or record.get('binarySha256') != value['sha256']):
         raise ValueError('The selected Codex default does not match its installed component metadata.')
-    return {**value, 'toolScope': scope, 'available': True,
-            'runtimeFeatures': list(feature_names(str(path), value['sha256']))}
+    value.update(toolScope=scope, available=True)
+    if include_features:value['runtimeFeatures']=list(feature_names(str(path), value['sha256']))
+    return value
 
 
 @lru_cache(maxsize=16)
@@ -111,7 +112,9 @@ def supports(engine, feature):
 
 def options(r4os, scope):
     try:
-        return selected(r4os, scope)
+        # Storage reads also run inside the hardened HTTP service. Only the
+        # separate coordinator/worker may execute native runtime inspection.
+        return selected(r4os, scope, include_features=False)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         return {'toolScope': scope, 'version': 'unavailable', 'sha256': '', 'available': False,
                 'reason': 'The selected Codex installation is missing or does not match its component metadata. Review the Codex default in Studio Updates.'}

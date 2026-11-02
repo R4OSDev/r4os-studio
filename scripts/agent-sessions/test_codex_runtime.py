@@ -42,6 +42,13 @@ class CodexRuntimeTests(unittest.TestCase):
         self.choose(self.second)
         self.assertEqual(selected(self.root, 'skill'), {**self.second, 'toolScope': 'skill'})
 
+    def test_public_options_never_execute_codex_feature_probe(self):
+        self.choose(self.second)
+        with patch('codex_runtime.feature_names',side_effect=AssertionError('Storage reads cannot execute Codex')):
+            value=options(self.root,'project')
+        self.assertTrue(value['available']);self.assertEqual(value['version'],'0.166.0')
+        self.assertNotIn('runtimeFeatures',value)
+
     def test_new_input_switches_without_replacing_thread(self):
         self.choose(self.second)
         result = for_input(self.store, self.session)

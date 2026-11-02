@@ -76,8 +76,11 @@ async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bri
             if client:await client.close()
 
 def freeze(session,value):
+    selected=session.get('engine',{});observed=value.get('engine',{}) if isinstance(value,dict) else {}
+    same_runtime=(isinstance(observed,dict) and all(observed.get(key)==selected.get(key)
+                  for key in ('version','sha256','kind','api')))
     if (not isinstance(value,dict) or value.get('schema')!=1 or type(value.get('available')) is not bool
             or value.get('available') and (value.get('state')!='available' or value.get('qualified') is not True)
-            or any(value.get(key)!=session.get(key) for key in ('providerId','model','engine'))):
+            or not same_runtime or any(value.get(key)!=session.get(key) for key in ('providerId','model'))):
         return {'schema':1,'available':False,'qualified':False,'state':'unknown','reason':'No matching native image capability was confirmed for this run.'}
     return value

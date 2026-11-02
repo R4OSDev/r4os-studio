@@ -1,3 +1,20 @@
+## Runtime metadata in the hardened web service (0.9.17)
+
+The final installed HTTP check found that 0.9.16 attempted native feature
+discovery during session storage reads. The web service deliberately cannot
+mount the private `/proc` required by Codex; this incorrectly hid a valid
+default as unavailable. Session options and reads now inspect only installed
+metadata and integrity. The separate coordinator and workers discover native
+features when accepting or executing new work. Service restrictions are kept.
+Image capability receipts match the original runtime identity rather than the
+presence of derived feature fields in a public metadata view. Existing accepted
+receipts remain unchanged. This completes the 0.9.16 roadmap integration;
+published 0.9.15/0.9.16 tags are retained.
+
+32 focused checks, Python AST, product build/TypeScript and lint passed.
+The corrected metadata read was also executed under the actual web service
+mount namespace and unprivileged identity, with its restrictions unchanged.
+
 ## Codex features follow the selected runtime (0.9.16)
 
 Codex sessions no longer depend on a fixed Studio version or binary allowlist
