@@ -19,6 +19,7 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  desktopLinkActivation?: DevelopmentCapability;
   desktopShortcutVersion?: 1;
   windowControlVersion?: 1;
   desktopLaunchBudget?: DesktopArgumentLayout | null;

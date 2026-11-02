@@ -84,6 +84,9 @@ def desktop_icons(config):
         'SSH system-path write protection stays enabled; do not improvise SFTP/shell edits of C:\\R4OS or change VM lifecycle/settings. '
         'A fullReadbackVerified desktopShortcut proves link bytes; iconEmbedded proves the resource inventory only. '
         'consumerVerified/guestVerified remain false until separate real evidence. Visible desktop appearance and launch via that link '
-        'are separate from a normal process/window launch. Existing own-client screenshot/input tools do not grant global Desktop control. '
+        'are separate from a normal process/window launch. Native own-link activation is currently unavailable: the qualified public '
+        'contract has no own-link request with a recoverable native activation/resulting-process receipt. Link resolution followed '
+        'by direct R4X launch does not exercise Desktop link activation. Do not resubmit publication or improvise a global click. '
+        'Existing own-client screenshot/input tools do not grant global Desktop control. '
         'Do not close acceptance merely from publication, wait for taskbar icons, or treat missing window-icon APIs as a blocker. '
         'Taskbar/window icons are separate features.')

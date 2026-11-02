@@ -127,6 +127,8 @@ class Host:
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image,
                     'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget}),
             'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1, 'desktopShortcutVersion':1,
+            'desktopLinkActivation': {'available':False,'reasonCode':'native_link_activation_unqualified',
+                'reason':'The public native contract does not provide qualified own-link activation with a recoverable original launch receipt.'},
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),

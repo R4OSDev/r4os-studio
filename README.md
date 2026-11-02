@@ -1,3 +1,12 @@
+## Desktop link activation boundary (0.9.5)
+
+Development options explicitly report native own-link activation as unavailable.
+The public native contract has no qualified recoverable link-activation receipt;
+directly starting the resolved R4X cannot satisfy that acceptance. Publication
+remains available. UI and agent guidance distinguish these facts and preserve
+original permissions and unknown effects. No tests or guest runs. See
+[Desktop-Link-Activation.md](Desktop-Link-Activation.md).
+
 ## Recover original own job references (0.9.4)
 
 New v19 conversations can page or locate their original session jobs by the
