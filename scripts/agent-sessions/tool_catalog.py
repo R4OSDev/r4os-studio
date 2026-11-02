@@ -2,7 +2,7 @@
 from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, tools_for
 from copy import deepcopy
 from profile import WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE
-from profile import LOOKUP_PROFILE, EDITOR_PROFILE, KEYPLAN_PROFILE, GIT_READ_PROFILE
+from profile import LOOKUP_PROFILE, EDITOR_PROFILE, KEYPLAN_PROFILE, GIT_READ_PROFILE, LINK_PROFILE
 
 
 def obj(properties, required=()):
@@ -90,6 +90,18 @@ DEFS['read_environment_notes']=('Read/search bounded session-local reports and f
 DEFS['record_environment_note']=('Record an observed Studio/tool/workflow fault or a fault in an inaccessible dependency, including public APIs/ABI, SDK/Contract, kernel, Desktop or libraries. Also record useful workflow-saving feature requests for APIs, Desktop or libraries even without a failure. Use kind=problem for faults and the separate kind=suggestion for feature requests; category names the affected area. Based on existing evidence, name component/version and expected versus observed behavior for a problem, or the missing capability, use case and benefit for a suggestion. First read current session notes and pass their revision; reuse similar entries unchanged. Exclude bugs and normal compiler/test failures in the user\'s editable project, expected permissions/Stop, corrected misuse and ordinary waits. No quota, extra commands/tests/inference, secrets/private paths/raw logs or deleted-report recreation. Server binds origin and deduplicates this call. No edit/delete or failed-tool retry.',obj({'revision':{'type':'integer','minimum':0,'maximum':9007199254740991},'kind':NOTE_KIND,'category':NOTE_CATEGORY,'title':{'type':'string','minLength':1,'maxLength':160},'description':{'type':'string','minLength':1,'maxLength':4000},**{key:{'type':'string','maxLength':1000} for key in ('impact','workaround','suggestion')}},['revision','kind','category','title','description']))
 
 def specifications(profile=PROFILE):
+    if profile == LINK_PROFILE:
+        result = deepcopy(specifications(GIT_READ_PROFILE))
+        declaration = next(v for v in result if v['name'] == 'studio_run_project')
+        declaration['inputSchema']['properties']['desktopLink'] = {'type':'boolean'}
+        declaration['description'] += (' Set desktopLink=true only to activate this exact own published desktop shortcut '
+            'through the native R4LNK path, using a new native-link-v1 deployment and compatible R4OS0.89.18 runtime. '
+            'Requires existing Run project permission; link and target bytes are rechecked before admission and Activate. '
+            'Arguments must be empty and windowControl must be omitted/false. Prepare saves a canonical original native '
+            'request before the single Activate; lost responses are recovered only from that request. Never republish, '
+            'direct-start or click globally as a replacement. Native process, readiness, end and cleanup stay separate. '
+            'Older sessions keep their original run schema; the browser can activate a verified published deployment.')
+        return result
     if profile == GIT_READ_PROFILE:
         result=deepcopy(specifications(KEYPLAN_PROFILE))
         opaque={'type':'string','minLength':64,'maxLength':64}

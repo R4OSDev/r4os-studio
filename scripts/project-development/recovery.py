@@ -106,6 +106,9 @@ def local(store, job):
         state = {'state': 'completed', 'exitCode': None, 'closeConfirmed': True, 'outputIncomplete': True, 'stopReason': None if rejected else 'user_stop'}
         outcome, process = ('failed' if rejected else 'interrupted'), None
     else:
+        if job.get('desktopLinkRequested'):
+            from desktop_links import verify_closed
+            verify_closed(store,job)
         started = read(work / 'started.json'); process = started['process']; generation(process['generation'])
         state = value.get('completion') or {}
         if (started.get('executionId') != value['executionId'] or state.get('closeConfirmed') is not True
@@ -166,6 +169,10 @@ async def reconcile(store, job, host=None):
         intent = read(work / 'intent.json') if (work / 'intent.json').exists() else {}
         replaced = bool(intent.get('vmInvocationId') and info['invocationId'] and intent['vmInvocationId'] != info['invocationId'])
         if info['vm']['state'] != 'stopped' and not replaced:
+            if job.get('desktopLinkRequested'):
+                from desktop_links import recover as original_link
+                result = await original_link(store,job,host,vm,lease,info)
+                if result:return result
             from desktop_evidence import recover as retained_completion
             retained = await retained_completion(store, job, host, vm, lease, info)
             if retained: return retained

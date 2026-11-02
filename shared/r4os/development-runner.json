@@ -4,18 +4,18 @@
   "id": "r4os-process-v1",
   "helperPins": {
     "sdk": {
-      "version": "0.64.127",
-      "revision": "fbb5041487441473612d04d3166bcfa21f3d555f",
-      "sha256": "110d6652e5c60268fa0a35399727b02915f5d737e1128e62224f3435d220ea46",
-      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.127/R4OS-SDK-0.64.127-source.tar.gz",
-      "zigPackageHash": "r4os_sdk-0.64.127-NnPzAgQA4AE5LIlg-K_VjZRRpBgi0Y2f4TGsAA5SY6fk"
+      "version": "0.64.134",
+      "revision": "4542a3e558cfd0aa25936f02d722ddc7ea2f7fb1",
+      "sha256": "2955bcf46c23acfa32caf83f0d71fe0c3a3d0a663b781f3df873f25f20e9eca9",
+      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.134/R4OS-SDK-0.64.134-source.tar.gz",
+      "zigPackageHash": "r4os_sdk-0.64.134-NnPzAiPb4QHrdf4dsfzwrqVh3BeOuGQ3yqQ8es5zqFlU"
     },
     "contract": {
-      "version": "0.64.68",
-      "revision": "4c96b21df75662ca6a3af3c8ee332c342e2db185",
-      "sha256": "777212d407d54264119a3899cb90cfbaaeebbaaa747a6ae98e727ab324991d90",
-      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.127/R4OS-Contract-0.64.68-source.tar.gz",
-      "zigPackageHash": "r4os_contract-0.64.68-ELhbYXnULgG8guJL6_WIiw8iFYQutqMNWaC2qaYrnDgy"
+      "version": "0.64.71",
+      "revision": "f825a0877e50335df72aab01e13e256ec1dddd08",
+      "sha256": "c4a41e49f11a168e4532f83ce774902fc210d04bcdc0b565412821e513c6eccf",
+      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.134/R4OS-Contract-0.64.71-source.tar.gz",
+      "zigPackageHash": "r4os_contract-0.64.71-ELhbYSIxMAGsM2yGp5U4FqdeXNDPn6Y_b-_DbqEA6vWe"
     },
     "zig": {
       "version": "0.16.0",
@@ -74,5 +74,16 @@
     "processAdoptionVersion": 1,
     "workingDirectory": "native-desktop",
     "evidenceHandoffVersion": 1
+  },
+  "desktopLinkActivation": {
+    "version": 1,
+    "sdk": "0.64.134",
+    "contract": "0.64.71",
+    "runtime": "0.89.18",
+    "windowService": "0.1.33",
+    "desktop": "0.1.200",
+    "maximumStartMilliseconds": 30000,
+    "retention": "same-native-service-and-boot-epoch",
+    "statusOnlyAfterUncertainActivation": true
   }
 }

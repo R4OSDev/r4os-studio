@@ -57,7 +57,7 @@ export function DesktopDeployment({ projectId, sourceJobId, artifactId, token }:
   }
 
   return <div className="development-desktop-publication">
-    <p>Desktop publication creates the link. Native launch through this link is unavailable until R4OS provides a recoverable activation receipt.</p>
+    <p>Desktop publication creates the link. Run desktop link activates a completed publication through the native Desktop path with its own receipt.</p>
     {!saved?.jobId && <><p>Create or update this project’s desktop shortcut on its assigned VM using this build.</p>
       <button type="button" disabled={busy} onClick={() => void deploy()}>{busy ? 'Submitting…' : saved ? 'Retry same desktop deployment' : 'Deploy to desktop'}</button></>}
     {target && <p>Target: {target}</p>}

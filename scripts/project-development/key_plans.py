@@ -33,7 +33,7 @@ async def execute(execution,message,request,state,control,lease,authorization):
     from authorization import authorize
     from vm_worker import guard
     store=execution.store;job=store.get(execution.job['id']);process=job['process']
-    if authorization and authorization['engine']['profile'] not in ('studio-tools-v21','studio-tools-v22'):
+    if authorization and authorization['engine']['profile'] not in ('studio-tools-v21','studio-tools-v22', 'studio-tools-v23'):
         raise DevelopmentFault('This conversation retains its original input schema. A key-plan-capable session is required.',403)
     deployment=store.deployment(job['deploymentId'])
     if deployment.get('helperCapabilities',{}).get('keyPlanVersion') != 1 or request.get('frameBindingVersion') != 1:

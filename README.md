@@ -1,3 +1,14 @@
+## Activate the original published desktop shortcut (0.9.11)
+
+A verified GUI publication now offers **Run desktop link**. New v23 project
+conversations can use `studio_run_project` with `desktopLink=true`. The coordinator
+and worker recheck exact own-link and target bytes; the original watchdog saves
+the canonical native Prepare request before one Activate. Recovery reads that
+original request without another start. Start, frame readiness, end, output and
+cleanup remain separate. Requires a new deployment and compatible R4OS0.89.18
+runtime; original sessions, pins and deployments are preserved. No tests or guest
+runs. See [Desktop-Link-Activation.md](Desktop-Link-Activation.md).
+
 ## Message admission in existing and new sessions (0.9.10)
 
 The agent coordinator now loads optional original-job references independently
@@ -43,12 +54,12 @@ unchanged. Ctrl+Home/End and clipboard operations are unavailable. Enqueue does
 not prove application consumption. No tests, inference or app/VM runs. See
 [Editor-Shortcuts.md](Editor-Shortcuts.md).
 
-## Desktop link activation boundary (0.9.5)
+## Initial desktop link activation boundary (0.9.5)
 
-Development options explicitly report native own-link activation as unavailable.
-The public native contract has no qualified recoverable link-activation receipt;
-directly starting the resolved R4X cannot satisfy that acceptance. Publication
-remains available. UI and agent guidance distinguish these facts and preserve
+The initial0.9.5 release reported native own-link activation as unavailable.
+The then-qualified native contract had no recoverable link-activation receipt;
+directly starting the resolved R4X cannot satisfy that acceptance. The new native
+contract is integrated in0.9.11 above. UI and agent guidance distinguish these facts and preserve
 original permissions and unknown effects. No tests or guest runs. See
 [Desktop-Link-Activation.md](Desktop-Link-Activation.md).
 

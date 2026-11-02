@@ -3,7 +3,7 @@ def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill': return ''
     if not rights.get('studio.read_development_job'): return git_inspection(config)
-    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22')
+    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
         'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '
@@ -47,7 +47,7 @@ def compose(config):
 def original_job_references(config):
     import json
     references = config.get('developmentJobReferences')
-    lookup = config.get('engine',{}).get('profile') in ('studio-tools-v19','studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22')
+    lookup = config.get('engine',{}).get('profile') in ('studio-tools-v19','studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
     guidance = ('\n\nSTUDIO ORIGINAL JOB REFERENCES: A lost or truncated tool presentation does not prove rejection. '
         'Never repeat a build/deploy/start to recover its job ID. A developmentReference precedes detailed output; '
         'requestId is the original Studio request UUID, not a native DESKRUN key. '
@@ -68,12 +68,18 @@ def original_job_references(config):
 
 
 def desktop_icons(config):
-    current = config.get('engine', {}).get('profile') in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22')
+    current = config.get('engine', {}).get('profile') in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
     action = ('For an explicitly requested GUI R4X desktop publication use studio_deploy_project with '
         'desktopShortcut=true and the chosen verified artifactId. Ordinary test deployments omit this option. '
         'It needs Deploy project permission and a current development coordinator; it never starts the app. ') if current else (
         'This conversation retains its original deploy schema: do not invent a desktopShortcut argument. '
         'The browser offers Deploy to desktop on completed GUI builds/deployments; the agent option needs a new v18 session. ')
+    activation = ('For an explicitly requested native own-link start use studio_run_project with desktopLink=true and '
+        'the exact published deploymentId. It requires Run project permission, empty arguments, no windowControl, a new '
+        'native-link-v1 deployment and the compatible runtime. Prepare/Activate/status keep the original request; after '
+        'uncertainty read the original job, never submit another start. ') if config.get('engine',{}).get('profile') == 'studio-tools-v23' else (
+        'This conversation keeps its original run schema: do not invent desktopLink. The browser offers Run desktop link '
+        'on a verified completed publication; the agent option needs a new v23 conversation. ')
     return ('\n\nSTUDIO DESKTOP ICONS v1: R4OS already supports application desktop icons. '
         'Notepad declares ICON=Assets/Desktop.ico in module.R4MF; the SDK embeds the first ICON as resource type1/index0. '
         'C:\\R4OS\\DESKTOP\\NOTEPAD.LNK uses R4S_FORMAT=1, SCHEMA=R4LNK, TARGET=<R4X>, TITLE=Notepad, POLICY=gui, ICON=INTERNAL. '
@@ -85,16 +91,17 @@ def desktop_icons(config):
         'SSH system-path write protection stays enabled; do not improvise SFTP/shell edits of C:\\R4OS or change VM lifecycle/settings. '
         'A fullReadbackVerified desktopShortcut proves link bytes; iconEmbedded proves the resource inventory only. '
         'consumerVerified/guestVerified remain false until separate real evidence. Visible desktop appearance and launch via that link '
-        'are separate from a normal process/window launch. Native own-link activation is currently unavailable: the qualified public '
-        'contract has no own-link request with a recoverable native activation/resulting-process receipt. Link resolution followed '
-        'by direct R4X launch does not exercise Desktop link activation. Do not resubmit publication or improvise a global click. '
+        'are separate from a normal process/window launch. Native own-link activation uses SDK0.64.134/Contract0.64.71 '
+        'with R4OS0.89.18, Desktop0.1.200 and WINSVC0.1.33; actual scope is checked before effect. '
+        + activation + 'Link resolution followed by direct R4X launch does not exercise Desktop link activation. '
+        'Do not resubmit publication or improvise a global click. '
         'Existing own-client screenshot/input tools do not grant global Desktop control. '
         'Do not close acceptance merely from publication, wait for taskbar icons, or treat missing window-icon APIs as a blocker. '
         'Taskbar/window icons are separate features.')
 
 
 def editor_shortcuts(config):
-    if config.get('engine',{}).get('profile') not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22'): return ''
+    if config.get('engine',{}).get('profile') not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23'): return ''
     return ('\n\nSTUDIO EDITOR SHORTCUTS v1: key="Ctrl+A" with repeat omitted or 1 sends the public '
         'native select-all GUI codepoint to the owned focused client. Requires a fresh own frame and a newly '
         'deployed editor-shortcut-v1 helper. This is one semantic event, not a held physical Ctrl key; '
@@ -104,7 +111,7 @@ def editor_shortcuts(config):
 
 
 def key_plans(config):
-    if config.get('engine',{}).get('profile') not in ('studio-tools-v21','studio-tools-v22'): return ''
+    if config.get('engine',{}).get('profile') not in ('studio-tools-v21','studio-tools-v22', 'studio-tools-v23'): return ''
     return ('\n\nSTUDIO KEY PLANS v1: kind=keyPlan with a fresh focused own frame can schedule 1..32 '
         'normal key or printable Unicode codepoint steps at monotonic relative atMilliseconds0..2000. Each '
         'step supplies key OR codepoint, not both. A newly deployed key-plan-v1 helper dispatches the plan '

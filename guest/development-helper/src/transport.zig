@@ -117,6 +117,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         .guiInputVersion = @as(u32, 2),
         .editorShortcutVersion = @as(u32, 1),
         .keyPlanVersion = @as(u32, 1),
+        .desktopLinkVersion = @as(u32, 1),
         .gestureVersion = @as(u32, 1),
         .dragInterruptVersion = @as(u32, 1),
         .watchdogVersion = @as(u32, 1), .bootstrapRemoved = true, .watchdogInstanceId = daemon.instance_id,

@@ -4,6 +4,7 @@ import { busyRun, projectRequest, projectRequestId, ProjectRequestError } from '
 import { CodeBlock } from './Transcript';
 import { UpdateRecord } from '../projects/UpdateRecord';
 import { DesktopDeployment } from './DesktopDeployment';
+import { DesktopLinkActivation } from './DesktopLinkActivation';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 export function developmentRef(value: unknown): { jobId: string } | null {
   if (!value || typeof value !== 'object') return null;
@@ -89,7 +90,14 @@ export function DevelopmentCard({ projectId, jobId, token, desktopAction = true 
     {job?.desktopShortcut && <div aria-label="Desktop shortcut receipt">
       <p>Desktop shortcut verified · {job.desktopShortcut.iconEmbedded ? 'Icon embedded' : 'Generic application icon'}</p>
       <p><code>{job.desktopShortcut.path.replace(/^\/C\//, 'C:\\').replaceAll('/', '\\')}</code></p>
-      <p>Desktop display and launch from the shortcut remain unconfirmed.</p>
+      <p>Publication confirms link bytes. Desktop appearance and activation have separate receipts.</p>
+    </div>}
+    {desktopAction && job?.state === 'completed' && job.kind === 'deploy' && job.deploymentId && job.desktopShortcut?.fullReadbackVerified
+      && <DesktopLinkActivation projectId={projectId} sourceJobId={jobId} deploymentId={job.deploymentId} token={token} />}
+    {job?.desktopLinkActivation && <div aria-label="Native desktop link activation">
+      <p>Native desktop link · {job.desktopLinkActivation.phase}</p>
+      <p><code>{job.desktopLinkActivation.linkPath}</code></p>
+      {open && <CodeBlock text={JSON.stringify(job.desktopLinkActivation, null, 2)} label="Copy original link activation receipt" language="json" />}
     </div>}
     {desktopAction && job?.state === 'completed' && (job.kind === 'build' || job.kind === 'deploy') && artifact?.kind === 'R4X' && artifact.role === 'desktop'
       && <DesktopDeployment projectId={projectId} sourceJobId={jobId} artifactId={artifact.id} token={token} />}

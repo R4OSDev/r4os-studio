@@ -199,7 +199,7 @@ class Execution:
                 elif kind == 'key':
                     shortcut = value['key'] in SHORTCUTS
                     if shortcut:
-                        if authorization and authorization['engine']['profile'] not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22'):
+                        if authorization and authorization['engine']['profile'] not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23'):
                             raise DevelopmentFault('This conversation retains its original key contract. Use an editor-shortcut-capable session.',403)
                         if (deployment.get('helperCapabilities',{}).get('editorShortcutVersion') != 1
                                 or request.get('frameBindingVersion') != 1 or repeat != 1):
@@ -295,7 +295,7 @@ class Execution:
                     if path.stat().st_size != item['bytes'] or digest(path) != item['sha256']:
                         raise DevelopmentFault('The guest deployment changed. No project process was started.')
                     path.unlink()
-                if desktop:
+                if desktop and not job.get('desktopLinkRequested'):
                     from deskrun import capability, command, launch_budget, DEFAULT_WAIT_MS
                     budget = launch_budget(deployment,job['settings']['arguments'],min(DEFAULT_WAIT_MS,job['settings']['timeoutSeconds']*1000))
                     store.update(job['id'],desktopLaunchBudget=budget)
@@ -319,8 +319,9 @@ class Execution:
                 start_sent = False; hello_ready = False
                 try:
                     hello = await control.open(); hello_ready = True; save(self.work / 'controller.json', hello)
+                    self.controller_hello = hello['result']
                     from window_control import enabled as window_enabled
-                    self.window_controller = (hello['result'] if desktop and window_enabled(store,job)
+                    self.window_controller = (hello['result'] if desktop and not job.get('desktopLinkRequested') and window_enabled(store,job)
                         and deployment.get('helperCapabilities',{}).get('windowControlVersion') == 1
                         and hello['result'].get('windowControlVersion') == 1 else None)
                     if desktop and hello['result'].get('desktopAdoptionVersion') != 1:
@@ -350,8 +351,12 @@ class Execution:
                     start_sent = True
                     launcher = None
                     if desktop:
-                        from deskrun import DesktopLaunch
-                        launcher = DesktopLaunch(self, ssh, deployment, lease)
+                        if job.get('desktopLinkRequested'):
+                            from desktop_links import DesktopLinkLaunch
+                            launcher = DesktopLinkLaunch(self, ssh, deployment, lease)
+                        else:
+                            from deskrun import DesktopLaunch
+                            launcher = DesktopLaunch(self, ssh, deployment, lease)
                         try: state = await launcher.start()
                         except DevelopmentFault as error:
                             if getattr(error, 'launch_not_submitted', False): start_sent = False
@@ -409,6 +414,7 @@ class Execution:
                             from window_control import release as release_window
                             await release_window(self, control)
                             await release_evidence(control, self.work)
+                            if job.get('desktopLinkRequested'): await launcher.release()
                             closed = await control.call('finish')
                             if not closed.get('closed') or not closed.get('serviceRemoved', False) or not closed.get('watchdogRemoved'):
                                 raise UnconfirmedGuestEffect('Owned service cleanup was not confirmed.')
@@ -466,6 +472,8 @@ class Execution:
                                     'launchRejected': bool(getattr(error, 'launch_not_submitted', False)), 'error': str(error), 'cleanupReceipt': closed})
                                 release(store.projects, vm['id'], job['id'])
                         except Exception: pass
+                    if job.get('desktopLinkRequested') and hello_ready and not start_sent and not (self.work / 'closed.json').exists():
+                        raise UnconfirmedGuestEffect('The link start was not submitted or was natively rejected, but original helper cleanup is unconfirmed. Inspect this original job; do not repeat it.') from error
                     if start_sent and not (self.work / 'closed.json').exists():
                         if isinstance(error, UnconfirmedGuestEffect): raise
                         raise UnconfirmedGuestEffect('Guest control ended without a confirmed cleanup receipt. Its watchdog remains responsible; no start was replayed.') from error

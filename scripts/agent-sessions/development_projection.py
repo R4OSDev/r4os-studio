@@ -36,7 +36,7 @@ def output_state(page):
 def summary(job,page=None):
     page=page or {};small=pick(job,('id','projectId','kind','state','phase','revision','artifactId','deploymentId','exitCode','createdAt','completedAt','reasonCode'))
     small['error']=short(job.get('error'),512)
-    for key in ('process','desktopLaunchBudget','desktopLaunchAttempt','windowControl','desktopShortcut','lastKeyPlan'):
+    for key in ('process','desktopLaunchBudget','desktopLaunchAttempt','desktopLinkActivation','windowControl','desktopShortcut','lastKeyPlan'):
         if isinstance(job.get(key),dict):small[key]=job[key]
     if job.get('checkCompletion'):small['checkCompletion']=pick(job['checkCompletion'],('requestId','reason','state','cancelled','closed','completedAt'))
     if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed'))

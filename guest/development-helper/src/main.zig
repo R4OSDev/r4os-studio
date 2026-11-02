@@ -9,7 +9,8 @@ pub fn r4_app_main(app: *r4os.App) i32 {
     const persistent = arguments.len == 42 and std.mem.endsWith(u8, arguments, " serve");
     const recovery = arguments.len == 45 and std.mem.endsWith(u8, arguments, " evidence");
     const shortcut = arguments.len == 45 and std.mem.endsWith(u8, arguments, " shortcut");
-    const instance = if (persistent or watchdog or recovery or shortcut) arguments[0..36] else arguments;
+    const linkread = arguments.len == 45 and std.mem.endsWith(u8, arguments, " linkread");
+    const instance = if (persistent or watchdog or recovery or shortcut or linkread) arguments[0..36] else arguments;
     if (instance.len != 36) return 64;
     for (instance) |c| if (!(std.ascii.isHex(c) or c == '-')) return 64;
     const resources = r4os.Resources{ .sys = sys };
@@ -20,6 +21,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
     const count = sys.programModulePath(&path);
     if (count <= 0) return 66;
     if (recovery) return @import("desktop_evidence.zig").recover(sys, instance, path[0..@intCast(count)]);
+    if (linkread) return @import("links.zig").recover(sys, instance, path[0..@intCast(count)]);
     if (shortcut) return @import("shortcut.zig").run(sys, instance, path[0..@intCast(count)]);
     if (watchdog) return @import("control.zig").watch(app, instance);
     if (persistent) return @import("control.zig").serve(app, instance, path[0..@intCast(count)]);
@@ -41,6 +43,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .guiInputVersion = @as(u32, 2),
             .editorShortcutVersion = @as(u32, 1),
             .keyPlanVersion = @as(u32, 1),
+            .desktopLinkVersion = @as(u32, 1),
             .guiFrameBindingVersion = @as(u32, 1),
             .gestureVersion = @as(u32, 1),
             .dragInterruptVersion = @as(u32, 1),

@@ -91,7 +91,7 @@ class Jobs:
             if value.get('source'): value['source'] = {k: v for k, v in value['source'].items() if k not in ('files', 'directories')}
         return values
 
-    def admit(self, kind, request, owner=None, binding=None):
+    def admit(self, kind, request, owner=None, binding=None, link_publication=None):
         from project_maintenance import pending_git
         if pending_git(self.projects, self.id): raise DevelopmentFault('Reconcile the original Git pull before another development job.', 409)
         if kind in ('update_install', 'update_commit', 'update_verify', 'update_recovery'):
@@ -112,6 +112,9 @@ class Jobs:
             expected.add('windowControl')
             if type(request['windowControl']) is not bool: raise DevelopmentFault('Window control must be a boolean.',400)
         if kind == 'execution' and 'overrides' in request: expected.add('overrides')
+        if kind == 'execution' and 'desktopLink' in request:
+            expected.add('desktopLink')
+            if type(request['desktopLink']) is not bool: raise DevelopmentFault('Desktop link must be a boolean.',400)
         if set(request) != expected:
             raise DevelopmentFault('Unexpected development fields.', 400)
         identity(request['requestId'])
@@ -159,7 +162,13 @@ class Jobs:
                 if artifact['role'] == 'service' and len(settings['arguments'].encode()) > 95:
                     raise DevelopmentFault('Service arguments are limited to 95 UTF-8 bytes.', 400)
             launch_budget = None
-            if deployment and deployment.get('role') == 'desktop':
+            if request.get('desktopLink'):
+                if request.get('windowControl'): raise DevelopmentFault('Window delegation is unavailable for native link activation.',400)
+                from desktop_links import publication
+                current = publication(self,binding,deployment,settings)
+                if link_publication is None or any(link_publication.get(k)!=v for k,v in current.items()):
+                    raise DevelopmentFault('The exact own-link and deployment require a fresh read-only preflight before admission.')
+            elif deployment and deployment.get('role') == 'desktop':
                 from deskrun import command,launch_budget as calculate,DEFAULT_WAIT_MS
                 wait_ms = min(DEFAULT_WAIT_MS,settings['timeoutSeconds']*1000)
                 launch_budget = calculate(deployment,settings['arguments'],wait_ms)
@@ -172,6 +181,8 @@ class Jobs:
                 'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
                 'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
+            if request.get('desktopLink'):
+                job.update(desktopLinkRequested=True,desktopLinkPublication=link_publication)
             if kind == 'deploy' and 'desktopShortcut' in request: job['desktopShortcutRequested'] = request['desktopShortcut']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))

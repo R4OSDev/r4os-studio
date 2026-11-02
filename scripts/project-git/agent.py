@@ -40,7 +40,7 @@ class AgentLease:
         if not row or row[0] not in ('starting', 'running') or row[1] != 1: raise ProjectFault('The agent run is no longer accepting Git effects.', 409)
         config, worker = json.loads(row[2]), json.loads(row[3] or '{}')
         self.frozen = config
-        if (config.get('owner') != {'type': 'project', 'id': self.identity} or config.get('engine', {}).get('profile') not in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22')
+        if (config.get('owner') != {'type': 'project', 'id': self.identity} or config.get('engine', {}).get('profile') not in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
                 or config.get('permissions', {}).get('studio.read_project_git' if self.read_only else 'studio.push_project') is not True
                 or self.read_only and config.get('engine',{}).get('profile') != 'studio-tools-v22'
                 or config.get('revision') != row[4] or row[4] != self.value['revision']

@@ -117,17 +117,25 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     security.mutation(request, reply);
     return reply.code(202).send({ job: await developmentHost<DevelopmentJob>({ operation: 'deploy', projectId: request.params.id, input: request.body }) });
   });
+  app.get<{ Params: { id: string; requestId: string } }>(base + '/jobs/requests/:requestId', {
+    schema: { params: { ...params, required: ['id','requestId'], properties: { ...params.properties, requestId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    reply.header('Cache-Control','private, no-store');
+    return { job: await developmentHost<DevelopmentJob>({ operation: 'job_request', projectId: request.params.id, requestId: request.params.requestId }) };
+  });
   app.post<{ Params: { id: string }; Body: DevelopmentRunInput }>(base + '/executions', {
     bodyLimit: 8192,
     preValidation: async (request) => {
       const value = request.body;
       if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'deploymentId'].includes(key)))
+        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'deploymentId', 'desktopLink'].includes(key))
+        || ('desktopLink' in value && typeof value.desktopLink !== 'boolean'))
         throw new ProjectError('Unexpected deployment fields.', 400);
     },
     schema: { params, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'projectRevision', 'settingsRevision', 'deploymentId'], properties: {
-        requestId: identity, projectRevision: revision, settingsRevision: revision, deploymentId: identity,
+        requestId: identity, projectRevision: revision, settingsRevision: revision, deploymentId: identity, desktopLink: { type: 'boolean' },
       } } },
   }, async (request, reply) => {
     security.mutation(request, reply);

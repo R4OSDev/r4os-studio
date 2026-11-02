@@ -21,7 +21,7 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
 export interface DevelopmentOptions {
   keyPlan?: { version: 1; maximumSteps: 32; maximumMilliseconds: 2000; requiresNewDeployment: true; heldKeys: false; heldModifiers: false; delivery: 'owned-event-queue' };
   editorShortcuts?: { version: 1; keys: ['Ctrl+A']; unsupported: ['Ctrl+Home', 'Ctrl+End']; delivery: 'semantic-codepoint'; requiresNewDeployment: true };
-  desktopLinkActivation?: DevelopmentCapability;
+  desktopLinkActivation?: DevelopmentCapability & { version?: 1; requiresNewDeployment?: boolean };
   desktopShortcutVersion?: 1;
   windowControlVersion?: 1;
   desktopLaunchBudget?: DesktopArgumentLayout | null;
@@ -214,6 +214,9 @@ export interface DevelopmentJob {
       startedAt?: string; observedAt?: string; elapsedMilliseconds?: number; stdoutBytes: number; stderrBytes: number };
   };
   desktopShortcutRequested?: boolean;
+  desktopLinkRequested?: boolean;
+  desktopLinkActivation?: { version: 1; phase: string; publicationJobId: string; linkPath: string; linkSha256: string;
+    originalRequestSha256: string | null; native: Record<string, unknown> | null; checkedAt: string };
   desktopShortcut?: DesktopShortcutReceipt;
   windowControlRequested?: boolean;
   windowControl?: { version: number; available: boolean; operationId?: string; reason?: string; native?: Record<string, unknown> };
@@ -300,4 +303,5 @@ export interface DevelopmentDeployInput extends DevelopmentSubmission {
 }
 export interface DevelopmentRunInput extends DevelopmentSubmission {
   deploymentId: string;
+  desktopLink?: boolean;
 }
