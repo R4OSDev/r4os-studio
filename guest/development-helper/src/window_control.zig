@@ -20,6 +20,23 @@ pub const Controller = struct {
     submitted: bool = false,
     frame_confirmed: bool = false,
     last: ?native.Reply = null,
+    outcome: ?native.Reply = null,
+
+    pub fn settled(self: *const Controller) bool {
+        if (!self.submitted) return true;
+        const expected = self.prepared orelse return false;
+        const reply = self.outcome orelse return false;
+        if (!std.meta.eql(reply.request, expected)) return false;
+        return self.frame_confirmed or
+            (reply.phase == a.desktop_action_phase_rejected and reply.result < 0);
+    }
+
+    fn observeOutcome(self: *Controller, reply: native.Reply) void {
+        const expected = self.prepared orelse return;
+        if (!self.submitted or !std.meta.eql(reply.request, expected)) return;
+        self.outcome = reply;
+        if (native.frameReady(&reply)) self.frame_confirmed = true;
+    }
 
     pub fn bind(self: *Controller, scope: a.DesktopEvidenceToken, grant: u64, process: a.ProgramProcessHandle) native.Call {
         if (self.token != null) return .{ .failure = a.desktop_action_result_invalid };
@@ -40,7 +57,7 @@ pub const Controller = struct {
         const token = self.token orelse return null;
         if (operation == 0) return null;
         if (self.prepared) |old| if (operation == old.operation) return null;
-        if (self.submitted and !self.frame_confirmed) return null;
+        if (!self.settled()) return null;
         const native_kind: u32 = if (std.mem.eql(u8, kind, "resize")) a.desktop_action_kind_resize else
             if (std.mem.eql(u8, kind, "minimize")) a.desktop_action_kind_minimize else
             if (std.mem.eql(u8, kind, "restore")) a.desktop_action_kind_restore else return null;
@@ -67,11 +84,12 @@ pub const Controller = struct {
         if (self.submitted or !std.meta.eql(request, expected)) return .{ .failure = a.desktop_action_result_invalid };
         self.submitted = true;
         self.frame_confirmed = false;
+        self.outcome = null;
         // Clear a previous receipt before an uncertain new transport result.
         self.last = null;
         const client = native.Client{ .sys = self.sys };
         const result = client.command(request);
-        if (result == .reply) { self.last = result.reply; self.frame_confirmed = native.frameReady(&result.reply); }
+        if (result == .reply) { self.last = result.reply; self.observeOutcome(result.reply); }
         return result;
     }
 
@@ -87,14 +105,14 @@ pub const Controller = struct {
         const token = self.token orelse return .{ .failure = a.desktop_action_result_unavailable };
         // Scope status cannot replace the outstanding operation's receipt or
         // unlock another command after an uncertain effect.
-        if (self.submitted and operation == 0) return .{ .failure = a.desktop_action_result_invalid };
+        if (!self.settled() and operation == 0) return .{ .failure = a.desktop_action_result_invalid };
         if (operation != 0 and (self.prepared == null or self.prepared.?.operation != operation))
             return .{ .failure = a.desktop_action_result_invalid };
         const client = native.Client{ .sys = self.sys };
         const result = client.status(token, operation);
         if (result == .reply) {
             self.last = result.reply;
-            if (native.frameReady(&result.reply)) self.frame_confirmed = true;
+            self.observeOutcome(result.reply);
         }
         return result;
     }

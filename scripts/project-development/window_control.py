@@ -44,6 +44,8 @@ def public(value, request_id=None):
     if request_id: result['requestId'] = request_id
     result['appliedConfirmed'] = value.get('phase') == 3 and value.get('result') == 0
     result['confirmed'] = result['appliedConfirmed'] and value.get('frameReady') is True
+    result['terminalRejected'] = value.get('phase') == 4 and type(value.get('result')) is int and value['result'] < 0
+    result['pending'] = not (result['confirmed'] or result['terminalRejected']) and value.get('operationId') not in (None,'0')
     return result
 
 
@@ -137,11 +139,18 @@ async def perform(execution, job, message, state, control, lease, authorization)
     value = public(result,request_id)
     if action == 'status': value['confirmed'] = result.get('result') == 0
     if not value['confirmed']:
-        value['reason'] = ('The original window operation was applied; its fresh composed frame is not confirmed.'
+        value['reason'] = ('The original window operation was rejected. Its rejection is final; use a fresh own frame for further input.'
+            if value['terminalRejected'] else 'The original window operation was applied; its fresh composed frame is not confirmed.'
             if value['appliedConfirmed'] else 'The native window operation is pending, rejected, expired or unavailable; inspect its original receipt.')
     execution.store.update(job['id'],windowControl={'version':1,'available':True,'operationId':operation,'native':value})
     if action != 'status' and result.get('phase') in (2,8):
         raise UnconfirmedGuestEffect('Original window operation ' + operation + ' remains unconfirmed. Read its status without another command.')
+    if value['terminalRejected']:
+        # This is a fresh scope read, not a replacement operation receipt.
+        # Keep the immutable rejection above and qualify only the same own view.
+        view = await control.call('window_status', windowOperation='0')
+        save(execution.work/('window-'+request_id+'.view.json'),
+            {'operationId': operation, 'statusOnly': True, 'native': view, 'observedAt': now()})
     state = await control.call('poll'); execution.output(state); state['outputBase64']=''
     finish(execution.store,request_id,value)
     return state,value

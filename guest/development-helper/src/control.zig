@@ -149,11 +149,17 @@ const Controller = struct {
 
     fn windowView(self: *Controller) void {
         const windows = if (self.windows) |*value| value else return;
+        self.state.windowActionPending = !windows.settled();
         const token = windows.token orelse return;
-        const reply = windows.last orelse return;
-        if (!std.meta.eql(reply.current.window, token.window)) return;
+        const reply = windows.last orelse {
+            if (windows.submitted) self.state.windowActionPending = true;
+            return;
+        };
+        if (!std.meta.eql(reply.current.window, token.window)) {
+            if (windows.submitted) self.state.windowActionPending = true;
+            return;
+        }
         self.state.windowViewRevision = std.fmt.bufPrint(&self.window_view_buffer, "{d}", .{reply.current.view_revision}) catch return;
-        self.state.windowActionPending = windows.submitted and !windows.frame_confirmed;
     }
 
     fn windowRequest(self: *Controller, req: Request, path: [*:0]const u8, instance: []const u8) bool {

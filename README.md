@@ -1,3 +1,13 @@
+## Continue own-client input after a rejected window action (0.9.3)
+
+An immutable native rejection now settles only its matching original window
+operation. It no longer leaves windowActionPending locked merely because no
+applied frame exists. A fresh own view/frame is still required; actual pending,
+unknown or mismatched operations remain protected and resize is never retried.
+The original outcome survives scope reads. New deployments use the corrected
+helper under unchanged private pins; old workers/helpers stay intact. No tests
+or app/VM runs. See [Rejected-Window-Actions.md](Rejected-Window-Actions.md).
+
 ## Preserve original Desktop launch receipts (0.9.2)
 
 A failed control-channel heartbeat no longer discards the already submitted
