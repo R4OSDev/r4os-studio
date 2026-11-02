@@ -17,8 +17,8 @@ def offered(snapshot):
     from profile import CODEX_VERSION,CODEX_SHA256
     if engine.get('version')!=CODEX_VERSION or engine.get('sha256')!=CODEX_SHA256:return {}
     if not snapshot.get('apiProvider'):
-        from image_provider import selection
-        if not selection(engine.get('profile')):return {}
+        from image_provider import PROVIDER
+        if snapshot.get('nativeModelProvider', PROVIDER) != PROVIDER:return {}
     return {'goalRetryProtocol':1,'streamRetryProtocol':2}
 
 

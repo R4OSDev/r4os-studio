@@ -1,4 +1,5 @@
 """Fixed broker calls; VM startup waits in the harness, outside model inference."""
+from tool_catalog import tool_scope
 import json
 from pathlib import Path
 import uuid
@@ -8,7 +9,7 @@ import asyncio
 class DevelopmentTools:
     def __init__(self, worker): self.worker = worker
 
-    def compact(self): return getattr(self.worker,'config',{}).get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
+    def compact(self): return tool_scope(self.worker.config) == 'project'
 
     def present(self,job,page=None):
         if not self.compact(): return page or {'job':job}
@@ -81,7 +82,7 @@ class DevelopmentTools:
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']
                     if 'desktopShortcut' in value:
-                        if self.worker.config['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23') or type(value['desktopShortcut']) is not bool:
+                        if tool_scope(self.worker.config) != 'project' or type(value['desktopShortcut']) is not bool:
                             raise DevelopmentFault('Desktop publication requires its declared v18 deployment option.', 403)
                         if value['desktopShortcut']:
                             from vm_worker import broker_call
@@ -92,8 +93,8 @@ class DevelopmentTools:
                 if name == 'run_project':
                     body['deploymentId'] = value['deploymentId']
                     if 'desktopLink' in value:
-                        if self.worker.config['engine']['profile'] != 'studio-tools-v23' or type(value['desktopLink']) is not bool:
-                            raise DevelopmentFault('Native link activation requires its declared v23 run option.',403)
+                        if tool_scope(self.worker.config) != 'project' or type(value['desktopLink']) is not bool:
+                            raise DevelopmentFault('Native link activation requires a project and a boolean desktopLink option.',403)
                         if value['desktopLink']:
                             from vm_worker import broker_call
                             capability = await broker_call({'operation':'capabilities'})
@@ -117,7 +118,7 @@ class DevelopmentTools:
                 return self.result(job)
             if name == 'read_development_job':
                 if 'lookup' in value:
-                    if self.worker.config['engine']['profile'] not in ('studio-tools-v19','studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23') or set(value) != {'lookup'}:
+                    if tool_scope(self.worker.config) != 'project' or set(value) != {'lookup'}:
                         raise DevelopmentFault('Job lookup requires its declared v19 read option.',403)
                     from vm_worker import broker_call
                     capabilities = await broker_call({'operation':'capabilities'})

@@ -130,7 +130,7 @@ export function sessionEnvironment(options) {
 function binding(value) {
   if (!value || !['providerId', 'studioSessionId', 'nativeSessionId', 'runId', 'requestId', 'ownerId'].every(key => uuid(value[key]))
     || !['project', 'skill'].includes(value.ownerType) || typeof value.model !== 'string' || !value.model || value.model.length > 200
-    || !['studio-tools-v14', 'studio-tools-v15', 'studio-tools-v16', 'studio-skill-tools-v5'].includes(value.toolProfile)) throw Error('Invalid frozen Claude session binding.');
+    || value.toolScope !== value.ownerType) throw Error('Invalid frozen Claude session binding.');
   return Object.freeze(structuredClone(value));
 }
 

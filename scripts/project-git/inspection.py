@@ -22,7 +22,7 @@ def sha(value):
 
 def push_input(value):
     if not isinstance(value,dict) or set(value) != {'selectionId','commitMessage'}:
-        raise ProjectFault('This profile requires an explicit selectionId and commit description.',400)
+        raise ProjectFault('Push requires an explicit selectionId and commit description.',400)
     sha(value['selectionId']);message=value['commitMessage']
     if not isinstance(message,str) or not message.strip() or len(message.encode())>4000 or '\x00' in message:
         raise ProjectFault('Enter a commit description of1..4000 UTF-8 bytes.',400)

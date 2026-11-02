@@ -1,4 +1,5 @@
 """Frozen accepted attachment originals in the existing readonly tool namespace."""
+from tool_catalog import tool_scope
 from image_inputs import file_path, history, namespace
 from profile import tools_for
 from run_store import get_run
@@ -9,7 +10,7 @@ RIGHTS = ('studio.exec_command', 'studio.read_attachment', 'studio.read_file')
 
 
 def permitted(config):
-    return ('read_attachment' in tools_for(config['engine']['profile'])
+    return ('read_attachment' in tools_for(tool_scope(config))
             and all(config['permissions'].get(right) is True for right in RIGHTS))
 
 

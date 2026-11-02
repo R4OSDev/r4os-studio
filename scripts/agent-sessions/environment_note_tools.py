@@ -1,16 +1,15 @@
 """Frozen, session-bound local notes; no original-tool retries or reporting loop."""
+from tool_catalog import tool_scope
 import json
-from profile import NOTES_PROFILE,NOTES_SKILL_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE,DESKTOP_PROFILE,LOOKUP_PROFILE,EDITOR_PROFILE,KEYPLAN_PROFILE,GIT_READ_PROFILE
 from store import ProjectFault
 
 def availability(profile):
-    if profile in (NOTES_PROFILE,NOTES_SKILL_PROFILE,GESTURE_PROFILE,DETAIL_PROFILE,WINDOW_PROFILE,DRAG_PROFILE,DESKTOP_PROFILE,LOOKUP_PROFILE,EDITOR_PROFILE,KEYPLAN_PROFILE,GIT_READ_PROFILE):return {'available':True}
-    return {'available':False,'reason':'New session required for environment note tools. This conversation keeps its original native profile.'}
+    return {'available': tool_scope(profile) in ('project', 'skill')}
 
 def require(worker):
     row=worker.store.db.execute('SELECT session_id,busy,state FROM runs WHERE id=?',(worker.run_id,)).fetchone()
     if (worker.config.get('environmentNotesEnabled') is not True
-            or not availability(worker.config['engine'].get('profile'))['available']):raise ProjectFault('Environment notes are unavailable or disabled for this run.',403)
+            or not availability(tool_scope(worker.config))['available']):raise ProjectFault('Environment notes are unavailable or disabled for this run.',403)
     if (worker.config.get('owner')!={'type':worker.store.owner_type,'id':worker.store.owner_id}
             or not row or row['session_id']!=worker.session_id or not row['busy'] or row['state']!='running' or worker.stopping):raise ProjectFault('Environment note admission is closed for this run.',409)
 
@@ -48,4 +47,4 @@ There is no reporting quota and no requirement to report every error or every ru
 '''
 
 def instructions(config):
-    return '\n\n'+INSTRUCTIONS if config.get('environmentNotesEnabled') is True and availability(config.get('engine',{}).get('profile'))['available'] else ''
+    return '\n\n'+INSTRUCTIONS if config.get('environmentNotesEnabled') is True and availability(tool_scope(config))['available'] else ''

@@ -1,4 +1,5 @@
 """Native paused control outside inference; live commands use the owning worker."""
+from tool_catalog import tool_scope
 import asyncio
 import fcntl
 import json
@@ -8,7 +9,7 @@ from pathlib import Path
 from codex_rpc import CodexRPC
 from goal_contract import save_params
 from goal_store import Goals
-from profile import prepare, PROFILE, SANDBOX_MODE
+from profile import prepare, SANDBOX_MODE
 from owner import open_lock
 from store import ProjectFault
 
@@ -39,7 +40,7 @@ async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
         else:args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
                 Path(providers)/session['providerId'],store.directory/sid/'Codex',
                 json.loads((Path(__file__).parent/'features.json').read_text()),session['model'],session['providerId'],
-                session['engine'].get('profile',PROFILE),goals_enabled=True)
+                tool_scope(session),goals_enabled=True)
         async def notification(method,params):
             # RPC readback is authoritative here. Do not issue another request
             # from the serial notification reader or consume opaque payloads.
@@ -50,7 +51,7 @@ async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
             goals.stage(sid,rid,'thread_materialization');sent=True
             from tool_catalog import specifications
             result=await client.request('thread/start',{'cwd':'/workspace','model':session['model'],'ephemeral':False,
-                'dynamicTools':specifications(session['engine']['profile']), 'sandbox':SANDBOX_MODE,'approvalPolicy':'never',
+                'dynamicTools':specifications(tool_scope(session)), 'sandbox':SANDBOX_MODE,'approvalPolicy':'never',
                 'baseInstructions':'This is a Studio session. Saving a paused Goal grants no permission to start work.'})
             thread=result['thread']['id']
             with store.db: store.db.execute('UPDATE sessions SET thread_id=? WHERE id=? AND thread_id IS NULL',(thread,sid))

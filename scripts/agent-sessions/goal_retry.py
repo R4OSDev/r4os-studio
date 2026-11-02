@@ -4,6 +4,7 @@ The shared ProviderRetry owns the timer and durable claim. This adapter cannot
 create a replacement worker, change a Goal objective or reset native accounting.
 Only complete current native evidence can exclude a model-issued Goal block.
 """
+from tool_catalog import tool_scope
 import asyncio
 import json
 from pathlib import Path
@@ -139,7 +140,7 @@ class GoalRetry:
             raise ValueError('The original Goal budget is exhausted')
         from profile import tools_for
         scope = Scope(self.w.thread_id, turn_id, self.w.config['model'], status,
-                      play['goalBindingSha256'], frozenset('studio_' + name for name in tools_for(self.w.config['engine']['profile'])),
+                      play['goalBindingSha256'], frozenset('studio_' + name for name in tools_for(tool_scope(self.w.config))),
                       failure_code, stream_protocol)
         native = self.original_native(scope)
         self.evidence = {'play': play, 'blocked': blocked, 'native': native, 'scope': scope}

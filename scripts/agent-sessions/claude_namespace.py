@@ -1,4 +1,5 @@
 """Fixed native SDK namespace; project tools never inherit this credential home."""
+from tool_catalog import tool_scope
 import json
 import os
 from pathlib import Path
@@ -35,10 +36,10 @@ def prepare(worker,history,prepared,broker):
     private(home/'Config/projects',directory=True,create=True)
     binding={'providerId':provider['id'],'studioSessionId':worker.session_id,'nativeSessionId':frozen['nativeSessionId'],
         'runId':worker.run_id,'requestId':worker.row['request_id'],'ownerType':worker.store.owner_type,
-        'ownerId':worker.store.owner_id,'model':config['model'],'toolProfile':config['engine']['profile']}
+        'ownerId':worker.store.owner_id,'model':config['model'],'toolScope':tool_scope(config)}
     if binding!=broker.binding:raise ProjectFault('The original native bridge binding changed.',409)
     tools=[{'name':t['name'][7:],'description':t['description'],'inputSchema':t['inputSchema']}
-        for t in specifications(config['engine']['profile'])]
+        for t in specifications(tool_scope(config))]
     goal=getattr(worker,'claude_goal',None)
     live=config.get('claudeGoalPreparation') is True
     if goal or live:

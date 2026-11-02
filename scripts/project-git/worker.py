@@ -41,9 +41,13 @@ def main():
                 action = Operations(config, job); action.agent = agent
                 if agent:
                     if job['kind'] != 'push': raise ProjectFault('Agent Git actions are limited to push.', 403)
+                    from agent import selection_required
+                    from inspection import push_input
+                    if selection_required(agent.frozen):
+                        push_input(job['input'])
                     from pushing import push
                     if 'selectionId' in job['input']:
-                        from inspection import validate_selection,push_input
+                        from inspection import validate_selection
                         push_input(job['input']);selected=validate_selection(action,agent,job['input']['selectionId'])
                         action.progress('agent_selection',selectionId=selected['id'],selectedFiles=len(selected['files']),
                             agentSnapshot=selected['sourceSnapshot'],bindingRevision=selected['binding']['revision'])

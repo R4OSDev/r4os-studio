@@ -1,5 +1,24 @@
 # Read-only Git inspection and explicit large selections (0.9.8)
 
+## Current catalog (0.9.13)
+
+Existing sessions now obtain Git inspection and its argument schemas from the
+installed catalog, independently of their historical profile name. Read and
+Push remain separate permission switches. Current pushes require selectionId
+and commitMessage in both the coordinator and pinned worker. Historical
+accepted runs without the read/selection contract keep their original input;
+their saved permissions and original receipts are not rewritten.
+
+The reported `Agent Git permission, profile or worker binding changed.` failure
+was a local v22-only profile check, before any GitHub request. The correction
+does not reconnect a repository, replace credentials, change rights or replay a
+push. The existing session uses the correction on its next run under the new
+installed release. Accepted active workers retain their immutable code.
+Only static checks were performed; no tests, inference or application-project
+publication was started to validate this correction.
+
+## Original inspection and selection contract
+
 New `studio-tools-v22` conversations have **Read Git status, diff and jobs**,
 separate from **Push project to GitHub**. Existing thread declarations and
 permission choices remain unchanged. New Read permission defaults like other
@@ -33,7 +52,7 @@ Git locks disabled, no credentials, no hooks/external diff/textconv, and a fixed
 read-command allowlist. Per-read temporary output is isolated and removed. A
 frozen preview remains a preview, not a claim that current sources are unchanged.
 
-In v22, `studio_push_project` requires selectionId and a nonempty commitMessage
+In v22 and v23, `studio_push_project` requires selectionId and a nonempty commitMessage
 of at most4000 UTF-8 bytes. There is no default add-all or files argument. The
 coordinator verifies the original selection before admitting a new job; the
 pinned worker verifies it again before staging and checks the original HEAD

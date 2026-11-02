@@ -1,11 +1,12 @@
 """Qualified native image policy. No prompts, turns or provider credential parsing."""
+from tool_catalog import tool_scope
 import asyncio
 import hashlib
 import json
 from pathlib import Path
 import tempfile
 from codex_rpc import CodexRPC
-from profile import CODEX_SHA256,CODEX_VERSION,IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE,prepare
+from profile import CODEX_SHA256, CODEX_VERSION, prepare
 from session_store import provider_models,providers,identity,encode,now
 from store import ProjectFault
 
@@ -17,8 +18,6 @@ def evaluate(session,model,provider,account,engine,bridge=False):
         return finish('unavailable','Native image generation is not qualified for this API model.')
     if engine.get('sha256')!=CODEX_SHA256 or engine.get('version')!=CODEX_VERSION:
         return finish('unavailable','Select the qualified Codex 0.163.0 runtime before using image generation.')
-    if session['engine'].get('profile') not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):
-        return finish('unavailable','New session required for generated-image tools. This conversation keeps its original profile.')
     if not model or model.get('imageInputs')=='unknown':return result
     if model.get('imageInputs')!='supported':return finish('unavailable','The selected model does not support the image modality required by the native image tool.')
     if not isinstance(provider,dict) or type(provider.get('imageGeneration')) is not bool:return result
@@ -59,7 +58,7 @@ async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bri
         client=None
         try:
             args,engine=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',Path(provider_dir)/session['providerId'],Path(temporary),
-                json.loads(Path(__file__).with_name('features.json').read_text()),session['model'],session['providerId'],session['engine']['profile'])
+                json.loads(Path(__file__).with_name('features.json').read_text()),session['model'],session['providerId'],tool_scope(session))
             async def notification(method,params):
                 if method=='turn/started':raise RuntimeError('An image capability read cannot start a turn.')
             async def tool(params):raise RuntimeError('An image capability read cannot execute tools.')

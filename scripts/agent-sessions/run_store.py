@@ -1,7 +1,9 @@
+from tool_catalog import tool_scope
 from skill_lifecycle import guarded
 """Run admission, durable events and tool receipts shared by host and run workers."""
 import hashlib
 import json
+import sqlite3
 import uuid
 from session_store import encode, now, identity, validate_settings
 from store import ProjectFault
@@ -72,7 +74,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     snapshot['contextProtocol'] = 1
     snapshot['inputContractVersion']=1
     from environment_note_tools import availability
-    snapshot['environmentNotesEnabled']=bool(data.get('environmentNotesSettings')==1 and session.get('environmentNotesEnabled',True) and availability(session['engine'].get('profile'))['available'])
+    snapshot['environmentNotesEnabled']=bool(data.get('environmentNotesSettings')==1 and session.get('environmentNotesEnabled',True) and availability(tool_scope(session))['available'])
     if 'liveGoalPreparation' in data:
         from profile import CODEX_VERSION, CODEX_SHA256
         snapshot['nativeGoalPreparation'] = data['liveGoalPreparation']==1 and session['engine'].get('version')==CODEX_VERSION and session['engine'].get('sha256')==CODEX_SHA256
@@ -108,6 +110,19 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
             raise ProjectFault('This conversation has generated-image context or requests image generation. Select an image-capable model; its history was preserved.',409)
         snapshot['imageInputModalities']=selected_model['inputModalities']
     snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
+    from active_tools import snapshot as tool_snapshot
+    snapshot['toolCatalog'] = tool_snapshot(snapshot)
+    if snapshot['engine'].get('kind') != 'claude-code':
+        from native_tools import provider as native_provider
+        try:
+            snapshot['nativeModelProvider'] = native_provider(store, session_id)
+        except (OSError, ValueError, sqlite3.Error):
+            raise ProjectFault('The saved native conversation metadata is unavailable. Its history was preserved; no run was started.', 503) from None
+        if not snapshot['engine'].get('api'):
+            from image_provider import PROVIDER
+            if snapshot['nativeModelProvider'] not in ('openai', PROVIDER):
+                raise ProjectFault('The original native provider route is unavailable.', 409)
+            snapshot['nativeModelProvider'] = PROVIDER
     if original is not None:
         for key in ('developmentJobReferences','developmentJobReferencesUnavailable'):
             if key in original: snapshot[key] = original[key]
@@ -129,7 +144,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         from tool_defaults import repository_binding
         snapshot['githubBinding'] = repository_binding(store)
         from remote_context import snapshot as remote_snapshot
-        snapshot.update(remote_snapshot(store, session['engine']['profile'], data.get('remoteHostTools') == 1))
+        snapshot.update(remote_snapshot(store, tool_scope(session), data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
     from api_models import freeze as freeze_api

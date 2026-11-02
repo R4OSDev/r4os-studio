@@ -1,4 +1,5 @@
 """Native Claude worker; reuses Studio effects without inventing Codex RPCs."""
+from tool_catalog import tool_scope
 import asyncio
 import fcntl
 import hashlib
@@ -343,8 +344,8 @@ class ClaudeWorker(Worker):
             prepared=history.prepare(self.run_id);frozen=prepared['runtime']
             binding={'providerId':self.config['providerId'],'studioSessionId':self.session_id,'nativeSessionId':frozen['nativeSessionId'],
                 'runId':self.run_id,'requestId':self.row['request_id'],'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
-                'model':self.config['model'],'toolProfile':self.config['engine']['profile']}
-            tool_names=tools_for(self.config['engine']['profile'])+(('report_goal',) if self.claude_goal or self.live_control else ())
+                'model':self.config['model'],'toolScope':tool_scope(self.config)}
+            tool_names=tools_for(tool_scope(self.config))+(('report_goal',) if self.claude_goal or self.live_control else ())
             self.broker=ClaudeToolBroker(self.socket_root,binding,tool_names,self.current,self.effect,
                 admit=self.admit_native,retry=self.claude_retry)
             await self.broker.start()

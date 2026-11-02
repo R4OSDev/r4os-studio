@@ -34,12 +34,12 @@ LINK_PROFILE = 'studio-tools-v23'
 WINDOW_TOOLS = ('control_app_window',)
 IMAGE_PROFILES = (IMAGE_PROFILE, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE, LOOKUP_PROFILE, EDITOR_PROFILE, KEYPLAN_PROFILE, GIT_READ_PROFILE, LINK_PROFILE)
 REMOTE_PROFILES = (REMOTE_PROFILE,DOCUMENT_PROFILE,*IMAGE_PROFILES)
-PROFILE = LINK_PROFILE
+PROFILE = 'project'
 SKILL_PROFILE = 'studio-skill-tools-v1'
 AUTHOR_PROFILE = 'studio-skill-tools-v2'
 DOCUMENT_SKILL_PROFILE = 'studio-skill-tools-v3'
 IMAGE_SKILL_PROFILE = 'studio-skill-tools-v4'
-NOTES_SKILL_PROFILE = 'studio-skill-tools-v5'
+NOTES_SKILL_PROFILE = 'skill'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE)
 NOTE_TOOLS = ('read_environment_notes','record_environment_note')
 AUTHOR_TOOLS = ('validate_skill', 'save_skill')
@@ -66,35 +66,7 @@ PRE_IMAGE_TOOLS = PRE_ATTACHMENT_TOOLS + ATTACHMENT_TOOLS
 IMAGE_TOOLS = ('list_generated_images','import_generated_image')
 TOOLS = PRE_IMAGE_TOOLS + IMAGE_TOOLS
 
-def tools_for(profile):
-    if profile == LINK_PROFILE:return tools_for(GIT_READ_PROFILE)
-    if profile == GIT_READ_PROFILE:return tools_for(KEYPLAN_PROFILE) + ('read_project_git',)
-    if profile == KEYPLAN_PROFILE:return tools_for(EDITOR_PROFILE)
-    if profile == EDITOR_PROFILE:return tools_for(LOOKUP_PROFILE)
-    if profile == LOOKUP_PROFILE:return tools_for(DESKTOP_PROFILE)
-    if profile in (WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE):return TOOLS + NOTE_TOOLS + WINDOW_TOOLS
-    if profile in (NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE):return TOOLS + NOTE_TOOLS
-    if profile == NOTES_SKILL_PROFILE:return tools_for(IMAGE_SKILL_PROFILE) + NOTE_TOOLS
-    if profile == SKILL_PROFILE: return LEGACY_TOOLS
-    if profile == AUTHOR_PROFILE: return LEGACY_TOOLS + AUTHOR_TOOLS
-    if profile == DOCUMENT_SKILL_PROFILE:return LEGACY_TOOLS+AUTHOR_TOOLS+ATTACHMENT_TOOLS
-    if profile == IMAGE_SKILL_PROFILE:return LEGACY_TOOLS+AUTHOR_TOOLS+ATTACHMENT_TOOLS+('list_generated_images',)
-    if profile == LEGACY_PROFILE: return LEGACY_TOOLS
-    if profile == DEVELOPMENT_PROFILE: return LEGACY_TOOLS + PREVIOUS_DEVELOPMENT_TOOLS
-    if profile == VM_PROFILE: return LEGACY_TOOLS + VM_TOOLS
-    if profile == COMPLETION_PROFILE: return LEGACY_TOOLS + COMPLETION_TOOLS
-    if profile == UPDATE_PROFILE: return LEGACY_TOOLS + DEVELOPMENT_TOOLS
-    if profile in (GIT_PROFILE, GUI_PROFILE): return PRE_ROADMAP_TOOLS
-    if profile == ROADMAP_PROFILE: return PRE_REMOTE_TOOLS
-    if profile == REMOTE_PROFILE: return PRE_ATTACHMENT_TOOLS
-    if profile == DOCUMENT_PROFILE:return PRE_IMAGE_TOOLS
-    if profile in IMAGE_PROFILES:return TOOLS
-    raise ValueError('This session profile needs compatible Studio host support.')
-
-
-def permission_tools(profile):
-    # Roadmap has one grouped setting, outside the original permission map.
-    return tuple(t for t in tools_for(profile) if t not in (*ROADMAP_TOOLS,*NOTE_TOOLS))
+from tool_catalog import tools_for, permission_tools, tool_scope
 
 
 def digest(path):
@@ -178,9 +150,9 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         if (value.get('shell_type') != 'disabled' or value.get('apply_patch_tool_type') is not None
             or value.get('experimental_supported_tools') or value.get('tool_mode') != 'direct'
             or value.get('multi_agent_version') is not None or value.get('supports_search_tool')):
-            raise ValueError('The agent model tool profile changed.')
+            raise ValueError('The qualified native model tool configuration changed.')
     if model and not any(m['slug'] == model for m in data['models']):
-        raise ValueError('The selected model is unavailable in this session profile.')
+        raise ValueError('The selected model is unavailable in this runtime.')
     if image_modalities is not None and (not model or next(m for m in data['models'] if m['slug']==model).get('input_modalities',['text','image'])!=image_modalities):
         raise ValueError('The selected native image modalities changed before this run. The conversation was preserved.')
     # The feature-name set is a versioned part of the qualified profile. Only
@@ -198,9 +170,8 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
-    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):
-        from image_provider import PROVIDER
-        settings['model_provider']=PROVIDER
+    from image_provider import PROVIDER
+    settings['model_provider']=PROVIDER
     settings['features.fast_mode'] = fast_mode
     settings['features.sqlite'] = True
     settings['features.skip_host_skill_discovery'] = True
@@ -228,7 +199,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
             if not re.fullmatch(r'/attachments/[a-f0-9-]{36}\.(png|jpg|webp)',target) or target in seen:raise ValueError('Invalid native image target.')
             seen.add(target);args+=['--ro-bind',str(regular(source)),target]
     if image_generation_enabled:
-        if selected_profile not in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE) or generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
+        if generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
         generated_root=directory(generated_root)
         directory(provider_home/'generated_images')
     # A native conversation grows across many turns and includes image inputs.
@@ -251,8 +222,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         position=args.index('--chdir');args[position:position]=['--bind',str(generated_root),'/codex/generated_images']
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
-    if selected_profile in (*IMAGE_PROFILES,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE):
-        from image_provider import configuration
-        args+=['-c',configuration()]
-    return args, {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
+    from image_provider import configuration
+    args+=['-c',configuration()]
+    return args, {'toolScope': tool_scope(selected_profile), 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
                   'catalogSha256': digest(catalog)}

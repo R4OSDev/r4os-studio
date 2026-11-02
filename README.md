@@ -1,3 +1,15 @@
+## Current tools in every existing conversation (0.9.13)
+
+Sessions now use the installed tool catalog on their next run or continuation.
+Session creation dates and former v1–v23 profiles no longer restrict tools,
+arguments or settings. Explicit saved switches remain; newly available tools
+receive their normal defaults. Codex resumes the same thread with current tool
+metadata; Claude receives the current MCP catalog. Active calls and original
+receipts retain their immutable bindings. This also corrects the v23 Git denial
+and missing Environment Notes availability. Static checks only; no tests,
+inference or application-repository push for validation. See
+[Active-Tools.md](Active-Tools.md) and [Bound-Git-Selections.md](Bound-Git-Selections.md).
+
 ## Guest controller without an SCM slot (0.9.12)
 
 The independent watchdog now starts through the public generation-bound console

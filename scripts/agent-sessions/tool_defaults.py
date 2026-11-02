@@ -1,4 +1,4 @@
-"""Creation preferences only. Stored sessions and frozen runs never read defaults."""
+"""Current tool defaults; explicit saved choices and accepted runs stay intact."""
 import json
 import os
 from pathlib import Path
@@ -54,3 +54,9 @@ def permissions(store):
     result = {'studio.' + tool: default_enabled(tool) for tool in permission_tools(store.selected_profile)}
     if 'studio.push_project' in result: result['studio.push_project'] = repository_binding(store) is not None
     return result
+
+
+def effective(store, saved):
+    """Add newly available tools while preserving every explicit saved switch."""
+    defaults = permissions(store)
+    return {name: saved.get(name, enabled) for name, enabled in defaults.items()}

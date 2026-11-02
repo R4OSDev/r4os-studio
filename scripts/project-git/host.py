@@ -113,10 +113,10 @@ class Coordinator:
                 raise ProjectFault('Unsupported Git request.', 400)
             identity, project = project_id(data['requestId']), project_id(data['projectId'])
             if agent:
-                from agent import AgentLease
+                from agent import AgentLease, selection_required
                 if data['kind'] != 'push' or not isinstance(data.get('input'), dict) or set(data['input']) - {'commitMessage', 'files','selectionId'}: raise ProjectFault('The agent Git broker supports project push only.', 400)
                 agent_lease=AgentLease(self.config, project, data['agent'], lease_fd, peer_pid);agent_lease.verify()
-                if agent_lease.frozen['engine']['profile']=='studio-tools-v22':
+                if selection_required(agent_lease.frozen):
                     from inspection import push_input
                     push_input(data['input'])
                 elif 'selectionId' in data['input']:raise ProjectFault('This conversation retains its original push contract.',403)

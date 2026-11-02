@@ -16,7 +16,7 @@ from store import ProjectFault
 
 def engine(providers,tool_profile):
     runtime=installed(providers)
-    return {'kind':'claude-code','profile':tool_profile,'version':runtime['version'],
+    return {'kind':'claude-code','toolScope':__import__('tool_catalog').tool_scope(tool_profile),'version':runtime['version'],
         'sha256':runtime['sha256'],'available':True}
 
 

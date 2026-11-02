@@ -1,9 +1,10 @@
 """Current guidance supplements frozen source prompts, without changing declarations."""
+from tool_catalog import tool_scope
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill': return ''
     if not rights.get('studio.read_development_job'): return git_inspection(config)
-    compact = config.get('engine',{}).get('profile') in ('studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
+    compact = tool_scope(config) == 'project'
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
         'snapshot hash/revision protects against mixed records. A stale cursor needs a fresh read, never replaying the effect. '
@@ -47,19 +48,16 @@ def compose(config):
 def original_job_references(config):
     import json
     references = config.get('developmentJobReferences')
-    lookup = config.get('engine',{}).get('profile') in ('studio-tools-v19','studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
+    lookup = tool_scope(config) == 'project'
     guidance = ('\n\nSTUDIO ORIGINAL JOB REFERENCES: A lost or truncated tool presentation does not prove rejection. '
         'Never repeat a build/deploy/start to recover its job ID. A developmentReference precedes detailed output; '
         'requestId is the original Studio request UUID, not a native DESKRUN key. '
         'The bounded references below belong only to this session and are a read-only snapshot, not new effects. '
         'Use an entry.id as jobId with studio_read_development_job to obtain its current state. '
         'Missing native admission/end/cleanup remains unknown. ')
-    if lookup:
-        guidance += ('This v19 conversation may also call studio_read_development_job with lookup={} '
-            'or lookup={requestId:...} or lookup={originRunId:...,toolCallId:...}; '
-            'continue before=nextBefore. Do not combine lookup and jobId. ')
-    else:
-        guidance += 'This conversation retains its original arguments; use jobId from the references, never invent a lookup argument. '
+    guidance += ('The current tool can also call studio_read_development_job with lookup={} '
+        'or lookup={requestId:...} or lookup={originRunId:...,toolCallId:...}; '
+        'continue before=nextBefore. Do not combine lookup and jobId. ')
     if references is not None:
         return guidance + json.dumps(references,ensure_ascii=True,separators=(',',':'))
     if config.get('developmentJobReferencesUnavailable'):
@@ -68,18 +66,14 @@ def original_job_references(config):
 
 
 def desktop_icons(config):
-    current = config.get('engine', {}).get('profile') in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
+    current = tool_scope(config) == 'project'
     action = ('For an explicitly requested GUI R4X desktop publication use studio_deploy_project with '
         'desktopShortcut=true and the chosen verified artifactId. Ordinary test deployments omit this option. '
-        'It needs Deploy project permission and a current development coordinator; it never starts the app. ') if current else (
-        'This conversation retains its original deploy schema: do not invent a desktopShortcut argument. '
-        'The browser offers Deploy to desktop on completed GUI builds/deployments; the agent option needs a new v18 session. ')
+        'It needs Deploy project permission and a current development coordinator; it never starts the app. ')
     activation = ('For an explicitly requested native own-link start use studio_run_project with desktopLink=true and '
         'the exact published deploymentId. It requires Run project permission, empty arguments, no windowControl, a new '
         'native-link-v1 deployment and the compatible runtime. Prepare/Activate/status keep the original request; after '
-        'uncertainty read the original job, never submit another start. ') if config.get('engine',{}).get('profile') == 'studio-tools-v23' else (
-        'This conversation keeps its original run schema: do not invent desktopLink. The browser offers Run desktop link '
-        'on a verified completed publication; the agent option needs a new v23 conversation. ')
+        'uncertainty read the original job, never submit another start. ')
     return ('\n\nSTUDIO DESKTOP ICONS v1: R4OS already supports application desktop icons. '
         'Notepad declares ICON=Assets/Desktop.ico in module.R4MF; the SDK embeds the first ICON as resource type1/index0. '
         'C:\\R4OS\\DESKTOP\\NOTEPAD.LNK uses R4S_FORMAT=1, SCHEMA=R4LNK, TARGET=<R4X>, TITLE=Notepad, POLICY=gui, ICON=INTERNAL. '
@@ -101,7 +95,7 @@ def desktop_icons(config):
 
 
 def editor_shortcuts(config):
-    if config.get('engine',{}).get('profile') not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23'): return ''
+    if tool_scope(config) != 'project': return ''
     return ('\n\nSTUDIO EDITOR SHORTCUTS v1: key="Ctrl+A" with repeat omitted or 1 sends the public '
         'native select-all GUI codepoint to the owned focused client. Requires a fresh own frame and a newly '
         'deployed editor-shortcut-v1 helper. This is one semantic event, not a held physical Ctrl key; '
@@ -111,7 +105,7 @@ def editor_shortcuts(config):
 
 
 def key_plans(config):
-    if config.get('engine',{}).get('profile') not in ('studio-tools-v21','studio-tools-v22', 'studio-tools-v23'): return ''
+    if tool_scope(config) != 'project': return ''
     return ('\n\nSTUDIO KEY PLANS v1: kind=keyPlan with a fresh focused own frame can schedule 1..32 '
         'normal key or printable Unicode codepoint steps at monotonic relative atMilliseconds0..2000. Each '
         'step supplies key OR codepoint, not both. A newly deployed key-plan-v1 helper dispatches the plan '
@@ -124,7 +118,7 @@ def key_plans(config):
 
 
 def git_inspection(config):
-    if config.get('engine',{}).get('profile') != 'studio-tools-v22': return ''
+    if tool_scope(config) != 'project': return ''
     return ('\n\nSTUDIO GIT INSPECTION v1: Read Git status/diff/jobs has a separate permission from Push. '
         'Use studio_read_project_git view=status for the bound own repository; page using the original '
         'snapshotId and nextOffset. Inspect view=diff for chosen paths, continuing UTF-8 byte nextOffset; '
@@ -132,7 +126,7 @@ def git_inspection(config):
         'explicit list of1..512 reviewed changed paths, at most65536 UTF-8 path bytes. Renames require both '
         'old/new paths. View=selection pages the resulting immutable selection. This saves private metadata '
         'only and performs no commit/fetch/pull/push. Total source limits remain10000 files/256MiB/32MiB per '
-        'file/1024 bytes per path. In this profile studio_push_project REQUIRES selectionId and commitMessage; '
+        'file/1024 bytes per path. studio_push_project REQUIRES selectionId and commitMessage; '
         'there is no files argument or add-all default. It separately needs Push permission and rechecks '
         'the original own run/repository/branch/base/status/hashes before admission and staging. Changed '
         'inputs need a new reviewed selection; never split a milestone arbitrarily or enable rights yourself. '

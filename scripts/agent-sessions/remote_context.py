@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sqlite3
 import subprocess
-from profile import REMOTE_PROFILES
+from tool_catalog import tool_scope
 
 
 def context(store, fresh=False):
@@ -33,19 +33,19 @@ def context(store, fresh=False):
 
 
 def availability(store, profile):
-    if profile not in REMOTE_PROFILES:
-        return {'available': False, 'reason': 'New session required for Remote Host tools. This conversation keeps its original native profile and history.'}
+    if tool_scope(profile) != 'project':
+        return {'available': False, 'reason': 'Remote Host tools require an app project.'}
     host, value = context(store)
     return {**value, **({'hostName': host['name']} if host else {})}
 
 
 def freeze(store, profile, enabled):
-    if profile not in REMOTE_PROFILES or not enabled: return None, {'available': False, 'reason': 'This run has no compatible Remote Host tool binding.'}
+    if tool_scope(profile) != 'project' or not enabled: return None, {'available': False, 'reason': 'Remote Host tools are unavailable for this run.'}
     return context(store, fresh=True)
 
 
 def snapshot(store, profile, enabled):
     host, access = context(store, fresh=True)
-    compatible = profile in REMOTE_PROFILES and enabled
+    compatible = tool_scope(profile) == 'project' and enabled
     return {'remoteHostContext': host, 'remoteHostBinding': host if compatible else None,
-            'remoteHostAccess': access if compatible else {**access, 'available': False, 'reason': 'New session or compatible coordinator required for Remote Host tools; this run keeps its original profile.'}}
+            'remoteHostAccess': access if compatible else {**access, 'available': False, 'reason': 'Remote Host tools are unavailable through the active coordinator.'}}

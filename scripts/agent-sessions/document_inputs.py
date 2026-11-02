@@ -1,4 +1,5 @@
 """Actual bounded document input and the owner/session/run-bound readonly broker."""
+from tool_catalog import tool_scope
 import hashlib
 import json
 import os
@@ -40,7 +41,7 @@ def qualify(store,sid,session,records):
         if meta.get('readable') is False:raise ProjectFault(meta.get('limitation','No readable document content is available.'),409)
         text=source_text(store,sid,meta);raw=text.encode('utf-8')
         meta.update(extractedBytes=len(raw),extractedSha256=hashlib.sha256(raw).hexdigest(),readable=True)
-        if len(raw)>INLINE_BYTES and ('read_attachment' not in tools_for(session['engine']['profile'])
+        if len(raw)>INLINE_BYTES and ('read_attachment' not in tools_for(tool_scope(session))
                 or not session['permissions'].get('studio.read_attachment') or not session['permissions'].get('studio.read_file')):
             raise ProjectFault('This document needs enabled Read attachment and Read file tools in a compatible session. Your message and upload were preserved; use a new session or a smaller excerpt.',409)
 
@@ -58,7 +59,7 @@ async def read_attachment(worker,args):
     from image_inputs import history
     from run_store import get_run
     if (not worker.config['permissions'].get('studio.read_attachment') or not worker.config['permissions'].get('studio.read_file')
-            or 'read_attachment' not in tools_for(worker.config['engine']['profile'])):
+            or 'read_attachment' not in tools_for(tool_scope(worker.config))):
         raise ProjectFault('Read attachment and Read file permission are required.',403)
     row=get_run(worker.store,worker.run_id)
     if not row['busy'] or row['state']=='stopping' or worker.lease is None or worker.lease.closed:

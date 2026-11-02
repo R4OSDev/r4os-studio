@@ -15,8 +15,9 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, NOTES_SKILL_PROFILE, SKILL_PROFILES, permission_tools, default_enabled
+from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, NOTES_SKILL_PROFILE, permission_tools, default_enabled
 from owner import owner_type, binding, skill_workspace
+from tool_catalog import tool_scope
 import skill_preferences
 
 TOOL_IDS = tuple('studio.' + name for name in permission_tools(PROFILE))
@@ -130,7 +131,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
             if not any(m.get('available') for m in models):reason='Read the native model catalog in this Claude provider before creating a text session.'
             from claude_selection import engine as claude_engine
             try:provider_engine=claude_engine(provider_dir,selected_profile)
-            except ProjectFault as error:provider_engine={'profile':selected_profile,'available':False,'reason':str(error)};reason=str(error)
+            except ProjectFault as error:provider_engine={'toolScope':tool_scope(selected_profile),'available':False,'reason':str(error)};reason=str(error)
         values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,
             **({'engine':provider_engine} if provider_engine else {}),**({'unavailableReason':reason} if reason else {})})
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
@@ -140,7 +141,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
 
 def engine(r4os, selected_profile=PROFILE):
     from profile import regular, digest
-    value = {'profile': selected_profile, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': False}
+    value = {'toolScope': tool_scope(selected_profile), 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': False}
     try:
         selected = json.loads((Path(r4os) / 'Profiles/versions.json').read_text())['defaults']['codex']
         binary = Path(r4os) / 'Toolchains/Codex' / CODEX_VERSION / 'codex'
@@ -175,7 +176,7 @@ def validate_settings(data, provider_dir):
         raise ProjectFault('Invalid Roadmap setting.', 400)
     if data.get('fastMode', False) and not model['fastModeAvailable']:
         raise ProjectFault('Fast Mode is unavailable for the selected model.', 400)
-    if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in permission_tools(data.get('engine', {}).get('profile', PROFILE))} or any(type(v) is not bool for v in data['permissions'].values()):
+    if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in permission_tools(tool_scope(data))} or any(type(v) is not bool for v in data['permissions'].values()):
         raise ProjectFault('Invalid tool permissions.', 400)
 
 
@@ -273,17 +274,19 @@ PRAGMA user_version=1;
             settings.pop('roadmapEnabled', None)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
+        engine.pop('profile', None)
+        engine['toolScope'] = self.owner_type
+        from tool_defaults import effective
+        settings['permissions'] = effective(self, settings.get('permissions', {}))
         from session_context import read as context_read
         context=context_read(self,row)
         from environment_note_tools import availability
-        settings['environmentNotesAccess'] = availability(engine.get('profile'))
+        settings['environmentNotesAccess'] = availability(self.owner_type)
         if self.owner_type == 'project':
             from roadmap_access import availability
-            settings['roadmapAccess'] = availability(engine.get('profile'))
+            settings['roadmapAccess'] = availability(self.owner_type)
             from remote_context import availability as remote_availability
-            settings['remoteHostAccess'] = remote_availability(self, engine.get('profile'))
-        if self.owner_type == 'skill' and engine.get('profile') not in SKILL_PROFILES:
-            raise ProjectFault('This skill session has an incompatible tool profile. Its history was preserved.', 409)
+            settings['remoteHostAccess'] = remote_availability(self, self.owner_type)
         return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 ('skillId' if self.owner_type == 'skill' else 'projectId'): row['project_id'], 'name': row['name'], **settings,
                 'engine': engine, 'context':context, 'revision': row['revision'],
@@ -328,7 +331,7 @@ PRAGMA user_version=1;
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
             from tool_defaults import permissions as creation_permissions
             settings['permissions'] = creation_permissions(self)
-            validate_settings({**settings, 'name': data['name'], 'engine': {'profile': self.selected_profile}}, provider_dir)
+            validate_settings({**settings, 'name': data['name'], 'owner': {'type': self.owner_type}}, provider_dir)
             ident, created = str(uuid.uuid4()), now()
             selected_engine = engine(self.r4os, self.selected_profile)
             if claude:

@@ -1,10 +1,11 @@
 """Read an existing native Goal without resume, credentials, network or a turn."""
+from tool_catalog import tool_scope
 import asyncio
 import json
 from pathlib import Path
 from codex_rpc import CodexRPC
 from goal_store import Goals
-from profile import prepare, PROFILE
+from profile import prepare
 from store import ProjectFault
 
 
@@ -24,7 +25,7 @@ async def readback(store, sid, rpc_factory=CodexRPC):
     try:
         args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
             state/'ReadbackHome',state,json.loads((Path(__file__).parent/'features.json').read_text()),
-            selected_profile=session['engine'].get('profile',PROFILE),goals_enabled=True)
+            selected_profile=tool_scope(session),goals_enabled=True)
         args.insert(1,'--unshare-net')
         async def notification(method,params):
             if method=='turn/started': raise RuntimeError('A Goal readback cannot start a native turn.')

@@ -1,14 +1,13 @@
 """Current English image workflow; frozen permissions and original pins remain authoritative."""
+from tool_catalog import tool_scope
 from profile import tools_for
 
 ALIAS='__studio_image_recipes__'
 
 def compose(config):
-    profile=config.get('engine',{}).get('profile');permissions=config.get('permissions',{})
+    profile=tool_scope(config);permissions=config.get('permissions',{})
     try:tools=tools_for(profile)
     except ValueError:tools=()
-    if 'list_generated_images' not in tools:
-        return '\n\nSTUDIO IMAGE AVAILABILITY: This conversation keeps its original tool profile. If the task requires native image generation/import, a new compatible session is required; do not claim those tools are present.'
     enabled=config.get('nativeImageGeneration') is True
     reason=config.get('imageGenerationCapability',{}).get('reason','No matching native image capability was confirmed.')
     reason=''.join(c for c in str(reason) if ord(c)>=32)[:400]

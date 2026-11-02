@@ -66,11 +66,11 @@ class ProviderRetry:
         self.goal_mode = False
 
     def eligible(self):
-        from image_provider import selection
+        from image_provider import PROVIDER
         from profile import CODEX_VERSION, CODEX_SHA256
         w = self.w; engine = w.config['engine']
         return (engine.get('version') == CODEX_VERSION and engine.get('sha256') == CODEX_SHA256
-                and bool(w.config.get('apiProvider') or selection(engine.get('profile'))))
+                and bool(w.config.get('apiProvider') or w.config.get('nativeModelProvider', PROVIDER) == PROVIDER))
 
     def identity(self):
         w = self.w; row = get_run(w.store, w.run_id)

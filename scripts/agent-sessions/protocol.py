@@ -8,6 +8,10 @@ PROFILES = ('studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3', 'studio-too
 
 def supported_profiles(root):
     root = Path(root); value = json.loads((root / 'shared/update-host.json').read_text())
+    if value.get('agentToolCatalog') == 1:
+        if not (root / 'shared/agent-tools.json').is_file():
+            raise ValueError('The installed release has no active tool catalog.')
+        return PROFILES
     profiles = value.get('agentToolProfiles')
     if profiles is None:
         # The published 0.3.24 release qualified v2 before this declaration was

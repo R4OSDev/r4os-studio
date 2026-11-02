@@ -9,8 +9,6 @@ import sqlite3
 import stat
 from catalog import CatalogFault, fields, identity
 
-PROFILE = 'studio-tools-v9'  # Activated with the complete declarations in 0.6.19.
-PROFILES = ('studio-tools-v9','studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
 TOOLS = ('get_remote_host', 'run_remote_command', 'remote_files', 'read_remote_job', 'stop_remote_job')
 
 
@@ -52,12 +50,11 @@ class Actor:
                 (self.context['runId'], self.context['sessionId'], self.project_id)).fetchone()
             if not row or (not cleanup and (row[0] not in ('starting', 'running') or row[1] != 1)): raise CatalogFault('This run is no longer accepting remote work.', 403)
             config, worker = json.loads(row[2]), json.loads(row[3] or '{}')
-            if (config.get('owner') != {'type': 'project', 'id': self.project_id} or config.get('engine', {}).get('profile') not in PROFILES
-                    or json.loads(row[5]).get('profile') != config.get('engine',{}).get('profile')
+            if (config.get('owner') != {'type': 'project', 'id': self.project_id}
                     or config.get('revision') != row[4] or row[4] != self.context['revision']
                     or worker.get('pid') != self.context['workerPid'] or worker.get('birth') != self.context['workerBirth']
                     or worker.get('release') != self.context['release'] or process(worker['pid'])[1] != worker['birth']):
-                raise CatalogFault('Remote owner, profile, revision or original worker changed.', 403)
+                raise CatalogFault('Remote owner, revision or original worker changed.', 403)
             if not cleanup:
                 if tool not in TOOLS or config.get('permissions', {}).get('studio.' + tool) is not True:
                     raise CatalogFault('This run’s frozen remote permission is disabled.', 403)

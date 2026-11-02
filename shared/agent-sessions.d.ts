@@ -18,7 +18,7 @@ export interface AgentRun { id: string; sessionId: string; owner?: SessionOwner;
 export interface AgentSession {
   context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
-  permissions: ToolPermissions; engine: { kind?: 'claude-code'; profile: string; version: string; sha256: string; available?: boolean;
+  permissions: ToolPermissions; engine: { kind?: 'claude-code'; toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available?: boolean;
     api?: { providerId: string; baseUrl: string; protocol: 'responses' | 'chat-completions'; server?: 'custom' | 'ollama' | 'lm-studio' } };
   webSearchEnabled?: boolean;
   environmentNotesEnabled?: boolean;
@@ -54,10 +54,10 @@ export interface SessionUpdate {
 export interface SessionOptions {
   skills?: { id: string; name: string; description: string; available: boolean; reason?: string }[];
   development?: import('./project-development.js').DevelopmentOptions;
-  providers: { id: string; name: string; type?: 'openai' | 'api' | 'claude-subscription'; unavailableReason?: string; engine?: { profile: string; version?: string; sha256?: string; available: boolean; reason?: string }; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean; imageInputs?: 'supported' | 'unsupported' | 'unknown'; inputModalities?: ('text' | 'image' | 'audio')[] | null; available?: boolean; unavailableReasons?: string[]; contextWindow?: number | null; source?: { kind: 'manual' | 'metadata'; recordedAt: string; url?: string } | null }[] }[];
+  providers: { id: string; name: string; type?: 'openai' | 'api' | 'claude-subscription'; unavailableReason?: string; engine?: { toolScope?: 'project' | 'skill'; profile?: string; version?: string; sha256?: string; available: boolean; reason?: string }; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean; imageInputs?: 'supported' | 'unsupported' | 'unknown'; inputModalities?: ('text' | 'image' | 'audio')[] | null; available?: boolean; unavailableReasons?: string[]; contextWindow?: number | null; source?: { kind: 'manual' | 'metadata'; recordedAt: string; url?: string } | null }[] }[];
   tools: { id: AgentToolId; defaultEnabled: boolean; defaultReason?:string }[];
   nativeTools?: { id: 'web_search' | 'image_generation'; defaultEnabled: boolean }[];
-  engine: { profile: string; version: string; sha256: string; available: boolean; reason?: string };
+  engine: { toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available: boolean; reason?: string };
 }
 export interface TerminalTimingFields {
   startedAt: string | null; observedAt: string | null; endedAt: string | null;

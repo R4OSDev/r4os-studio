@@ -48,7 +48,7 @@ class ClaudeHistory:
         value=json.loads(row[0]);session=self.store.get(self.sid)
         if (value.get('schema')!=1 or value.get('owner')!={'type':self.store.owner_type,'id':self.store.owner_id}
             or value.get('sessionId')!=self.sid or value.get('providerId')!=session['providerId']
-            or session['engine'].get('kind')!='claude-code' or value.get('toolProfile')!=session['engine']['profile']
+            or session['engine'].get('kind')!='claude-code'
             or session['engine'].get('claude')!=value.get('runtime')):
             raise ProjectFault('The native Claude owner/provider/runtime binding changed. Original history was preserved.',409)
         return value
@@ -63,7 +63,7 @@ class ClaudeHistory:
         native_id=str(uuid.uuid4());frozen=runtime_binding(provider,self.sid,native_id)
         value={'schema':1,'sessionId':self.sid,'owner':{'type':self.store.owner_type,'id':self.store.owner_id},
             'providerId':provider['id'],'accountIdentity':account_identity(provider.get('account')),
-            'toolProfile':session['engine']['profile'],'runtime':frozen,'phase':'allocated',
+            'runtime':frozen,'phase':'allocated',
             'activeRunId':None,'lastReceipt':None,'inventory':{},'updatedAt':now()}
         # SessionStore.create owns its original creation transaction. Never
         # commit that transaction before its request receipt is stored.

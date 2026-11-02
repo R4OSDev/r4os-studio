@@ -57,6 +57,8 @@ def base(config):
 
 def compose(config):
     text = base(config)
+    from active_tools import instructions as current_tool_instructions
+    text += current_tool_instructions(config)
     from environment_note_tools import instructions as environment_instructions
     text += environment_instructions(config)
     from input_instructions import compose as input_instructions
