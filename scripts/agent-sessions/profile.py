@@ -102,7 +102,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None,catalog_data=None):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None,catalog_data=None,expected_engine=None):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
     if type(image_generation_enabled) is not bool:raise ValueError('Invalid native image generation capability.')
@@ -110,8 +110,8 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     if goals_enabled and 'goals' not in features: raise ValueError('This runtime has no qualified Goal feature.')
     tools_for(selected_profile)
     binary = regular(binary)
-    if digest(binary) != CODEX_SHA256:
-        raise ValueError('This Codex version has not been qualified for agent runs.')
+    from codex_runtime import installed
+    runtime = installed(binary, expected_engine)
     provider_home = directory(provider_home)
     state = directory(state)
     # These are empty mount targets in the existing provider home. All native
@@ -224,5 +224,5 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
     from image_provider import configuration
     args+=['-c',configuration()]
-    return args, {'toolScope': tool_scope(selected_profile), 'version': CODEX_VERSION, 'sha256': CODEX_SHA256,
+    return args, {**runtime, 'toolScope': tool_scope(selected_profile),
                   'catalogSha256': digest(catalog)}

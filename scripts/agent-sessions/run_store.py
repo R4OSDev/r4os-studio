@@ -53,6 +53,10 @@ def get_run(store, run_id):
 def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None, original=None):
     """Freeze a complete accepted selection without admitting a concurrent run."""
     session = store.get(session_id)
+    from codex_runtime import for_input
+    try: session = for_input(store, session, original)
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ProjectFault('The selected Codex installation is unavailable or changed. The original input was preserved; review the Codex default in Studio Updates.', 409) from None
     goal_mode = data.get('mode') == 'goal'
     command = goal_command
     captured_goal = json.loads(command['payload'])['_goal'] if command else None

@@ -41,7 +41,7 @@ def metadata_arguments(store,sid,providers,new_thread=False):
     args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/engine['version']/'codex',state/'ApiHome',state,
         json.loads((Path(__file__).parent/'features.json').read_text()),
         session['model'] if new_thread else None,session['providerId'] if new_thread else None,
-        selected_profile=store.owner_type,goals_enabled=True,catalog_data=catalogue)
+        selected_profile=store.owner_type,goals_enabled=True,catalog_data=catalogue,expected_engine=engine)
     args.insert(1,'--unshare-net')
     from api_runtime import provider_name
     provider=provider_name(session['providerId'])

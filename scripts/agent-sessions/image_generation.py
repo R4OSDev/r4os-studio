@@ -58,7 +58,7 @@ async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bri
         client=None
         try:
             args,engine=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',Path(provider_dir)/session['providerId'],Path(temporary),
-                json.loads(Path(__file__).with_name('features.json').read_text()),session['model'],session['providerId'],tool_scope(session))
+                json.loads(Path(__file__).with_name('features.json').read_text()),session['model'],session['providerId'],tool_scope(session),expected_engine=session['engine'])
             async def notification(method,params):
                 if method=='turn/started':raise RuntimeError('An image capability read cannot start a turn.')
             async def tool(params):raise RuntimeError('An image capability read cannot execute tools.')

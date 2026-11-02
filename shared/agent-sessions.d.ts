@@ -14,11 +14,11 @@ export type ToolPermissions = Record<AgentToolId, boolean>;
 export type SessionOwner = { type: 'project'; id: string } | { type: 'skill'; id: string };
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface ProviderRetry { state: 'waiting' | 'submitting' | 'continuing' | 'completed' | 'cancelled' | 'exhausted' | 'unknown'; sequence: number; attempt: number; maxAttempts: number; nextAttempt: number; remainingMs: number; error: string; httpStatusCode: number | null; sampledAt: string }
-export interface AgentRun { id: string; sessionId: string; owner?: SessionOwner; mode?: 'goal'; state: RunState; error: string | null; createdAt: string; completedAt: string | null; threadId?: string | null; turnId?: string | null; messageSupport?: boolean; messageWaitTarget?: import('./agent-messages.js').AfterResponseTarget; goalControlSupport?: boolean; goalActivation?: { requestId: string; state: 'pending' | 'confirmed' | 'failed' | 'unknown' }; providerRetry?: ProviderRetry }
+export interface AgentRun { engine?: { version?: string; sha256?: string }; id: string; sessionId: string; owner?: SessionOwner; mode?: 'goal'; state: RunState; error: string | null; createdAt: string; completedAt: string | null; threadId?: string | null; turnId?: string | null; messageSupport?: boolean; messageWaitTarget?: import('./agent-messages.js').AfterResponseTarget; goalControlSupport?: boolean; goalActivation?: { requestId: string; state: 'pending' | 'confirmed' | 'failed' | 'unknown' }; providerRetry?: ProviderRetry }
 export interface AgentSession {
   context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
-  permissions: ToolPermissions; engine: { kind?: 'claude-code'; toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available?: boolean;
+  permissions: ToolPermissions; engine: { kind?: 'claude-code'; toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available?: boolean; reason?: string;
     api?: { providerId: string; baseUrl: string; protocol: 'responses' | 'chat-completions'; server?: 'custom' | 'ollama' | 'lm-studio' } };
   webSearchEnabled?: boolean;
   environmentNotesEnabled?: boolean;

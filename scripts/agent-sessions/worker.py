@@ -429,14 +429,15 @@ class Worker:
                     self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'))
                 credential=None
                 await self.api_runtime.start()
-            binary = Path(self.manifest['r4os']) / 'Toolchains/Codex' / self.config['engine']['version'] / 'codex'
+            from codex_runtime import binary as runtime_binary
+            binary = runtime_binary(self.manifest['r4os'], self.config['engine'])
             from image_inputs import mounts as image_mounts,native_input
             try:mounts=image_mounts(self.store,self.session_id,self.config)
             except __import__('store').ProjectFault as error:
                 self.error=str(error);raise
             args, runtime = prepare(binary, provider_home, state,
                                     json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], tool_scope(self.config),
-                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'),image_generation_enabled=self.config.get('nativeImageGeneration') is True,generated_root=GeneratedImages(self.store,self.session_id).native_root() if self.config.get('nativeImageGeneration') else None,catalog_data=self.config.get('apiModels'))
+                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'),image_generation_enabled=self.config.get('nativeImageGeneration') is True,generated_root=GeneratedImages(self.store,self.session_id).native_root() if self.config.get('nativeImageGeneration') else None,catalog_data=self.config.get('apiModels'),expected_engine=self.config['engine'])
             if self.api_runtime:args=self.api_runtime.arguments(args)
             from instructions import compose
             instructions = compose(self.config)

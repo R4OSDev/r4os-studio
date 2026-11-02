@@ -15,7 +15,7 @@ import uuid
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect as project_connect, operation as project_operation, ProjectFault
 from layout import workspace, folder
-from profile import CODEX_VERSION, CODEX_SHA256, PROFILE, NOTES_SKILL_PROFILE, permission_tools, default_enabled
+from profile import PROFILE, NOTES_SKILL_PROFILE, permission_tools, default_enabled
 from owner import owner_type, binding, skill_workspace
 from tool_catalog import tool_scope
 import skill_preferences
@@ -140,17 +140,8 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
 
 
 def engine(r4os, selected_profile=PROFILE):
-    from profile import regular, digest
-    value = {'toolScope': tool_scope(selected_profile), 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': False}
-    try:
-        selected = json.loads((Path(r4os) / 'Profiles/versions.json').read_text())['defaults']['codex']
-        binary = Path(r4os) / 'Toolchains/Codex' / CODEX_VERSION / 'codex'
-        if selected['version'] != CODEX_VERSION or Path(selected['binary']) != binary or digest(regular(binary)) != CODEX_SHA256:
-            raise ValueError()
-        value['available'] = True
-    except (OSError, ValueError, KeyError):
-        value['reason'] = 'Select the qualified Codex 0.163.0 installation in Updates before creating an agent session.'
-    return value
+    from codex_runtime import options as runtime_options
+    return runtime_options(r4os, tool_scope(selected_profile))
 
 
 def validate_settings(data, provider_dir):
@@ -274,6 +265,14 @@ PRAGMA user_version=1;
             settings.pop('roadmapEnabled', None)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
+        if engine.get('kind') != 'claude-code':
+            original_api = engine.get('api')
+            if latest and latest['busy']:
+                engine = json.loads(latest['config'])['engine'].copy()
+            else:
+                from codex_runtime import options as runtime_options
+                engine = runtime_options(self.r4os, self.owner_type)
+                if original_api: engine['api'] = original_api
         engine.pop('profile', None)
         engine['toolScope'] = self.owner_type
         from tool_defaults import effective
@@ -439,6 +438,7 @@ PRAGMA user_version=1;
             saved=self.db.execute('SELECT a.request_id,c.state FROM goal_activations a JOIN goal_commands c USING(request_id) WHERE a.run_id=? ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1',(r['id'],)).fetchone()
             if saved: activation={'requestId':saved['request_id'],'state':saved['state']}
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
+                'engine': {key: config['engine'][key] for key in ('version', 'sha256') if key in config.get('engine', {})},
                 **({'providerRetry': retry} if retry else {}),
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,
                 **({'messageWaitTarget':wait_target} if wait_target else {}),

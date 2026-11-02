@@ -40,7 +40,7 @@ async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
         else:args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
                 Path(providers)/session['providerId'],store.directory/sid/'Codex',
                 json.loads((Path(__file__).parent/'features.json').read_text()),session['model'],session['providerId'],
-                tool_scope(session),goals_enabled=True)
+                tool_scope(session),goals_enabled=True,expected_engine=session['engine'])
         async def notification(method,params):
             # RPC readback is authoritative here. Do not issue another request
             # from the serial notification reader or consume opaque payloads.

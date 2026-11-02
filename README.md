@@ -1,3 +1,24 @@
+## Codex follows the Studio default (0.9.15)
+
+New Codex sessions and newly accepted requests in existing conversations use
+the complete local Codex installation selected in Studio Updates. Its version,
+binary path and SHA-256 are frozen with that request. There is no separate
+Studio version approval or requirement to return to Codex 0.163.0. Native
+threads and histories are retained when the default changes.
+
+Already accepted queues and running workers keep their original runtime.
+Binary integrity is checked against the selected installation and the accepted
+request; a missing or changed installation produces a concrete error without
+a silent fallback or replacement conversation. Session settings show the
+runtime selection, and original runs retain their own version and hash.
+Feature-specific version conditions are addressed separately in 0.9.16.
+
+Eight focused runtime-selection checks and an unprivileged native metadata
+check passed: the same isolated thread resumed through 0.163.0 → 0.166.0 →
+0.163.0 with its paused Goal intact and no model turn. Product build,
+TypeScript and lint passed. User sessions, runtime defaults and VMs were not
+changed for these checks.
+
 ## Catalog receipt before conversation resume (0.9.14)
 
 The Codex worker now imports the atomic JSON writer used to save its current

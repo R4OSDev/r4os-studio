@@ -26,7 +26,11 @@ class Sandbox:
             # of the Claude model engine and its native2.x version.
             patch_version=CODEX_VERSION if self.worker.config['engine'].get('kind')=='claude-code' else self.worker.config['engine']['version']
             binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / patch_version / 'codex'
-            if digest(regular(binary)) != CODEX_SHA256: raise ValueError('Unqualified patch engine.')
+            if self.worker.config['engine'].get('kind') == 'claude-code':
+                if digest(regular(binary)) != CODEX_SHA256: raise ValueError('The private Claude patch engine changed.')
+            else:
+                from codex_runtime import binary as runtime_binary
+                binary = runtime_binary(self.worker.manifest['r4os'], self.worker.config['engine'])
             self.binary = binary
             from skill_scripts import bindings
             self.script_roots = await asyncio.to_thread(bindings, self.worker)
