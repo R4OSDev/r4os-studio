@@ -518,8 +518,8 @@ class Worker:
             from message_worker import MessageWorker
             self.message_worker = MessageWorker(self)
             await self.message_worker.start()
-            from profile import CODEX_VERSION, CODEX_SHA256
-            qualified_messages = self.config['engine'].get('version')==CODEX_VERSION and self.config['engine'].get('sha256')==CODEX_SHA256
+            from codex_runtime import native
+            qualified_messages = native(self.config['engine'])
             message_identity = {'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid()),'runtime':runtime,'messageProtocol':1 if qualified_messages else 0,'messageTurnActive':False}
             if self.config.get('nativeGoalPreparation') is True: message_identity.update(liveGoalPreparation=1,liveGoalControl=1,liveGoalOpen=True)
             transition(self.store,self.run_id,'starting',worker=message_identity)

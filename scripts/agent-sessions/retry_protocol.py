@@ -14,8 +14,8 @@ def offered(snapshot):
             and runtime.get('sdkVersion')==pin['sdk']['version'] and runtime.get('sdkArchiveSha256')==pin['sdk']['archiveSha256']):
             return {'claudeRetryProtocol':1}
         return {}
-    from profile import CODEX_VERSION,CODEX_SHA256
-    if engine.get('version')!=CODEX_VERSION or engine.get('sha256')!=CODEX_SHA256:return {}
+    from codex_runtime import native
+    if not native(engine):return {}
     if not snapshot.get('apiProvider'):
         from image_provider import PROVIDER
         if snapshot.get('nativeModelProvider', PROVIDER) != PROVIDER:return {}

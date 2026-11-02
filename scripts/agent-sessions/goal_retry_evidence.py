@@ -16,6 +16,8 @@ import stat
 
 from provider_errors import TRANSPORT_FAILURE_CODES, transport_failure
 
+# Legacy callers retain their original defaults. Live workers pass their own
+# immutable runtime identity; a rollout header records thread creation only.
 RUNTIME_VERSION='0.163.0'
 RUNTIME_SHA256='399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
 MAX_LINE=524288
@@ -41,8 +43,13 @@ class Scope:
     studio_functions:frozenset[str]
     failure_code:str='httpConnectionFailed'
     stream_protocol:int=1
+    runtime_version:str=RUNTIME_VERSION
+    runtime_sha256:str=RUNTIME_SHA256
 
     def validate(self):
+        if (not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',self.runtime_version)
+                or not re.fullmatch(r'[a-f0-9]{64}',self.runtime_sha256)):
+            raise UnqualifiedEvidence('The original execution runtime identity is invalid.')
         for value in (self.thread_id,self.failed_turn_id):
             if not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',value):
                 raise UnqualifiedEvidence('The original native identity is invalid.')
@@ -133,7 +140,9 @@ def inspect_stream(handle,relative_path,scope):
     end=before.st_size
     header=handle.readline(max_line+1);meta=decode(header,max_line)
     if (meta.get('type')!='session_meta' or meta['payload'].get('id')!=scope.thread_id
-        or meta['payload'].get('cli_version')!=RUNTIME_VERSION or meta['payload'].get('cwd')!='/workspace'):
+        or not isinstance(meta['payload'].get('cli_version'),str)
+        or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',meta['payload']['cli_version'])
+        or meta['payload'].get('cwd')!='/workspace'):
         raise UnqualifiedEvidence('The original native session header does not match.')
     offset=max(len(header),end-max_tail);handle.seek(offset)
     if offset>len(header):
@@ -233,7 +242,8 @@ def inspect_stream(handle,relative_path,scope):
         raise UnqualifiedEvidence('The original native evidence changed during the read.')
     if start is None or terminal is None or not contexts or issued!=returned:
         raise UnqualifiedEvidence('The original native turn coverage or function results are incomplete.')
-    proof={'currentNativeEnd':end==before.st_size,'runtimeSha256':RUNTIME_SHA256,'threadId':scope.thread_id,'failedTurnId':scope.failed_turn_id,
+    proof={'currentNativeEnd':end==before.st_size,'runtimeSha256':scope.runtime_sha256,'runtimeVersion':scope.runtime_version,
+        'threadCreationVersion':meta['payload']['cli_version'],'threadId':scope.thread_id,'failedTurnId':scope.failed_turn_id,
         'fileSha256':digest(relative_path),'fileSnapshot':signature(after),'headerSha256':hashlib.sha256(header).hexdigest(),
         'turnStartOffset':start,'terminalOffset':terminal,'lastOrdinal':previous_ordinal,
         'sectionSha256':section.hexdigest(),'goalBindingSha256':scope.goal_binding_sha256,

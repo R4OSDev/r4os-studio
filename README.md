@@ -1,3 +1,27 @@
+## Codex features follow the selected runtime (0.9.16)
+
+Codex sessions no longer depend on a fixed Studio version or binary allowlist
+for tools, Goals, messages, image input/generation, context or usage capture.
+Studio reads active boolean features from the selected binary in an isolated
+namespace without credentials, network access or model calls. Removed aliases
+are excluded; native features start disabled and only the requested Studio
+features are enabled. Real missing capabilities remain specific function errors.
+
+Provider version headers use the actual runtime. Context and usage identify
+the original execution; old totals are neither relabeled nor counted twice.
+Image recovery verifies the original installed pin without starting Codex.
+Retry evidence distinguishes thread creation from the original run version
+and retains strict record coverage, original effects and control checks.
+Accepted queues keep their original runtime and capability snapshots.
+The independent private Claude patch helper keeps its own existing pin.
+
+31 focused checks passed, including changed binary bytes, default changes,
+unchanged queue captures, original-runtime usage, context, image policy/recovery
+and bounded retry evidence. Actual unprivileged checks of 0.163.0 and 0.166.0
+confirm feature discovery, provider capability reads, patch execution and the
+same native thread with its paused Goal across a version change. These checks
+did not start model turns or new provider-side image generations.
+
 ## Codex follows the Studio default (0.9.15)
 
 New Codex sessions and newly accepted requests in existing conversations use

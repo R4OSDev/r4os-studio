@@ -23,10 +23,11 @@ class ImageGeneration(unittest.IsolatedAsyncioTestCase):
         with self.open() as store:
             session=store.get(self.sid);model={'imageInputs':'supported','inputModalities':['text','image']};provider={'imageGeneration':True};account={'account':{'type':'chatgpt','planType':'plus'}}
             self.assertTrue(self.supported(session)['available']);self.assertTrue(self.supported(session,False)['qualified']);self.assertFalse(self.supported(session,False)['available'])
-            for m,p,a,e in (({'imageInputs':'unsupported'},provider,account,session['engine']),(model,{'imageGeneration':False},account,session['engine']),(model,provider,{'account':{'type':'chatgpt','planType':'free'}},session['engine']),(model,provider,{'account':{'type':'apiKey'}},session['engine']),(model,provider,account,{'version':'other','sha256':CODEX_SHA256})):
+            for m,p,a,e in (({'imageInputs':'unsupported'},provider,account,session['engine']),(model,{'imageGeneration':False},account,session['engine']),(model,provider,{'account':{'type':'chatgpt','planType':'free'}},session['engine']),(model,provider,{'account':{'type':'apiKey'}},session['engine']),(model,provider,account,{'version':'../outside','sha256':CODEX_SHA256})):
                 self.assertFalse(evaluate(session,m,p,a,e,True)['available'])
             self.assertEqual(evaluate(session,model,{},account,session['engine'],True)['state'],'unknown')
-            legacy={**session,'engine':{**session['engine'],'profile':'studio-tools-v10'}};self.assertIn('New session required',self.supported(legacy)['reason'])
+            legacy={**session,'engine':{**session['engine'],'profile':'studio-tools-v10'}};self.assertTrue(self.supported(legacy)['available'])
+            newer={**session,'engine':{**session['engine'],'version':'0.166.0','sha256':'b'*64}};self.assertTrue(self.supported(newer)['available'])
             self.assertNotIn('email',encode(self.supported(session)))
             changed=evaluate(session,model,provider,{'account':{'type':'chatgpt','planType':'plus','email':'other@example.invalid'}},session['engine'],True)
             self.assertNotEqual(changed['accountSha256'],self.supported(session)['accountSha256'])

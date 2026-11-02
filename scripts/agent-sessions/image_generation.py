@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 import tempfile
 from codex_rpc import CodexRPC
-from profile import CODEX_SHA256, CODEX_VERSION, prepare
+from profile import prepare
+from codex_runtime import native, supports, for_input
 from session_store import provider_models,providers,identity,encode,now
 from store import ProjectFault
 
@@ -16,8 +17,10 @@ def evaluate(session,model,provider,account,engine,bridge=False):
     def finish(state,reason):result.update(state=state,available=state=='available',reason=reason);return result
     if session['engine'].get('api'):
         return finish('unavailable','Native image generation is not qualified for this API model.')
-    if engine.get('sha256')!=CODEX_SHA256 or engine.get('version')!=CODEX_VERSION:
-        return finish('unavailable','Select the qualified Codex 0.163.0 runtime before using image generation.')
+    if not native(engine):
+        return finish('unavailable','The native image runtime identity is unavailable.')
+    if 'runtimeFeatures' in engine and not supports(engine, 'image_generation'):
+        return finish('unavailable','The selected Codex runtime does not expose native image generation.')
     if not model or model.get('imageInputs')=='unknown':return result
     if model.get('imageInputs')!='supported':return finish('unavailable','The selected model does not support the image modality required by the native image tool.')
     if not isinstance(provider,dict) or type(provider.get('imageGeneration')) is not bool:return result
@@ -35,7 +38,7 @@ def evaluate(session,model,provider,account,engine,bridge=False):
     return finish('available','Native image generation is available for this account, provider and model.')
 
 async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bridge=True):
-    session=store.get(sid);overrides=overrides or {}
+    session=for_input(store,store.get(sid));overrides=overrides or {}
     if set(overrides)-{'providerId','model'}:raise ProjectFault('Unexpected image capability fields.',400)
     session={**session,**overrides};identity(session['providerId'])
     if not any(value['id']==session['providerId'] for value in providers(provider_dir)):raise ProjectFault('Connect the selected provider before checking image capability.',409)

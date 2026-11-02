@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 
 from goal_contract import native_goal
-from goal_retry_evidence import RUNTIME_VERSION, RUNTIME_SHA256, Scope, digest, goal_binding, inspect_original
+from goal_retry_evidence import Scope, digest, goal_binding, inspect_original
+from codex_runtime import native as native_runtime
 from goal_store import Goals
 
 
@@ -120,8 +121,8 @@ class GoalRetry:
     def qualify(self, turn_id, status, failure_code='httpConnectionFailed', stream_protocol=1):
         """Establish a candidate only from a live, original active-to-blocked turn."""
         engine = self.w.config['engine']
-        if engine.get('version') != RUNTIME_VERSION or engine.get('sha256') != RUNTIME_SHA256:
-            raise ValueError('The original Goal evidence runtime is unqualified')
+        if not native_runtime(engine):
+            raise ValueError('The original Goal runtime identity is unavailable')
         worker = self.w.goal_worker
         if not worker or worker.closed or worker.completed_once or self.w.stopping or self.w.done.is_set():
             raise ValueError('The original Goal execution ended or is stopping')
@@ -141,7 +142,7 @@ class GoalRetry:
         from profile import tools_for
         scope = Scope(self.w.thread_id, turn_id, self.w.config['model'], status,
                       play['goalBindingSha256'], frozenset('studio_' + name for name in tools_for(tool_scope(self.w.config))),
-                      failure_code, stream_protocol)
+                      failure_code, stream_protocol, runtime_version=engine['version'], runtime_sha256=engine['sha256'])
         native = self.original_native(scope)
         self.evidence = {'play': play, 'blocked': blocked, 'native': native, 'scope': scope}
         self.started.clear()

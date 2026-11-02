@@ -6,7 +6,8 @@ from pathlib import Path
 import re
 import stat
 from attachment_store import Attachments,MAX_FILES,MAX_RUN
-from profile import regular,CODEX_VERSION,CODEX_SHA256
+from profile import regular
+from codex_runtime import native
 from session_store import encode,identity,provider_models
 from store import ProjectFault
 
@@ -84,8 +85,8 @@ def qualify(store,sid,session,provider_dir,records):
     if engine.get('kind')=='claude-code':
         from claude_inputs import qualify_images
         return qualify_images(store,sid,session,provider_dir,records+history(store,sid))
-    if engine.get('version')!=CODEX_VERSION or engine.get('sha256')!=CODEX_SHA256:
-        raise ProjectFault('Images require the qualified native runtime. The conversation and uploads were preserved.',409)
+    if not native(engine):
+        raise ProjectFault('The native image runtime identity is unavailable. The conversation and uploads were preserved.',409)
     model=next((m for m in provider_models(provider_dir,session['providerId']) if m['id']==session['model']),None)
     if not model or model['imageInputs']!='supported':
         raise ProjectFault('This model cannot confirm image inputs. Select an image-capable model; the message and attachments were preserved.',409)

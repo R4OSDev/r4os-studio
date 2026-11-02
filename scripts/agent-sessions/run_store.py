@@ -80,8 +80,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     from environment_note_tools import availability
     snapshot['environmentNotesEnabled']=bool(data.get('environmentNotesSettings')==1 and session.get('environmentNotesEnabled',True) and availability(tool_scope(session))['available'])
     if 'liveGoalPreparation' in data:
-        from profile import CODEX_VERSION, CODEX_SHA256
-        snapshot['nativeGoalPreparation'] = data['liveGoalPreparation']==1 and session['engine'].get('version')==CODEX_VERSION and session['engine'].get('sha256')==CODEX_SHA256
+        from codex_runtime import supports
+        snapshot['nativeGoalPreparation'] = data['liveGoalPreparation']==1 and supports(session['engine'], 'goals')
         if not goal_mode and session['engine'].get('kind')=='claude-code':
             snapshot['claudeGoalPreparation']=data['liveGoalPreparation']==1
     if 'attachments' in data:snapshot['attachments']=attachments
@@ -102,6 +102,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         if recovery:snapshot['goalRecovery']=recovery
     snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
     from image_generation import freeze as freeze_image_capability
+    if original is not None:image_capability=original.get('imageGenerationCapability')
     snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
     snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
     snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
@@ -153,6 +154,10 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
     from api_models import freeze as freeze_api
     freeze_api(store,session_id,data,provider_dir,snapshot)
+    if original is not None:
+        for key in ('nativeGoalPreparation','apiGoalProtocol'):
+            if key in original:snapshot[key]=original[key]
+            else:snapshot.pop(key,None)
     from claude_selection import freeze as freeze_claude
     freeze_claude(store,session_id,data,provider_dir,snapshot,queue_context=queued_claude)
     from retry_protocol import freeze as freeze_retry

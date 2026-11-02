@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import stat
-from profile import CODEX_VERSION,CODEX_SHA256
+from codex_runtime import native
 from stats_store import Source,hashed,number
 from store import ProjectFault
 
@@ -13,7 +13,7 @@ SNAKE={'total':'total_tokens','input':'input_tokens','output':'output_tokens','c
 MAX_LINE=524288
 BUDGET=4194304
 
-def qualified(engine):return engine.get('version')==CODEX_VERSION and engine.get('sha256')==CODEX_SHA256
+def qualified(engine):return native(engine)
 
 def valid_id(value):return isinstance(value,str) and 0<len(value.encode())<=256 and '\0' not in value
 
@@ -34,7 +34,14 @@ class Usage:
         from api_usage import reported
         api,wire=reported(self.store,self.sid,run_id,response)
         if api:usage=wire;camel=False
-        identity={'source':'codex-response-v1','runtime':CODEX_SHA256,'thread':thread,'response':response}
+        original=self.store.db.execute('SELECT config,turn_id FROM runs WHERE id=? AND session_id=?',(run_id,self.sid)).fetchone() if run_id else None
+        if not original:return False
+        engine=json.loads(original['config']).get('engine',{})
+        if not qualified(engine):return False
+        if original['turn_id']!=turn:
+            if (not self.store.db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_turns'").fetchone()
+                    or not self.store.db.execute('SELECT 1 FROM goal_turns WHERE run_id=? AND turn_id=?',(run_id,turn)).fetchone()):return False
+        identity={'source':'codex-response-v1','runtime':engine['sha256'],'thread':thread,'response':response}
         self.schema();source=Source(self.store)
         if not isinstance(usage,dict):
             source.put(self.sid,'gap',{'missingUsage':identity},{'missing':1});return False

@@ -6,6 +6,8 @@ from pathlib import Path
 import resource
 import stat
 
+# Historical evidence and the independent private Claude patch helper only.
+# Codex sessions resolve their actual installation through codex_runtime.
 CODEX_VERSION = '0.163.0'
 CODEX_SHA256 = '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
 LEGACY_PROFILE = 'studio-tools-v1'
@@ -106,12 +108,18 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
     if type(image_generation_enabled) is not bool:raise ValueError('Invalid native image generation capability.')
-    if image_generation_enabled and 'image_generation' not in features:raise ValueError('This runtime has no qualified native image generation feature.')
-    if goals_enabled and 'goals' not in features: raise ValueError('This runtime has no qualified Goal feature.')
     tools_for(selected_profile)
     binary = regular(binary)
-    from codex_runtime import installed
+    from codex_runtime import installed, feature_names
     runtime = installed(binary, expected_engine)
+    features = list(feature_names(str(binary), runtime['sha256']))
+    runtime['runtimeFeatures'] = features
+    if image_generation_enabled and 'image_generation' not in features:
+        raise ValueError('This Codex runtime does not expose native image generation.')
+    if goals_enabled and 'goals' not in features:
+        raise ValueError('This Codex runtime does not expose native Goal support.')
+    if fast_mode and 'fast_mode' not in features:
+        raise ValueError('This Codex runtime does not expose Fast Mode.')
     provider_home = directory(provider_home)
     state = directory(state)
     # These are empty mount targets in the existing provider home. All native
@@ -172,9 +180,8 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     settings.update({'features.' + name: False for name in features})
     from image_provider import PROVIDER
     settings['model_provider']=PROVIDER
-    settings['features.fast_mode'] = fast_mode
-    settings['features.sqlite'] = True
-    settings['features.skip_host_skill_discovery'] = True
+    for name, enabled in (('fast_mode', fast_mode), ('sqlite', True), ('skip_host_skill_discovery', True)):
+        if name in features: settings['features.' + name] = enabled
     # Only a qualified controller/worker opts in. Ordinary one-turn workers
     # retain the previous feature set until their lifecycle supports Goals.
     if goals_enabled: settings['features.goals'] = True
@@ -223,6 +230,6 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
     from image_provider import configuration
-    args+=['-c',configuration()]
+    args+=['-c',configuration(runtime['version'])]
     return args, {**runtime, 'toolScope': tool_scope(selected_profile),
                   'catalogSha256': digest(catalog)}

@@ -3,7 +3,6 @@ import json
 
 from api_model_info import model_id
 from api_server import server
-from profile import CODEX_SHA256
 from session_store import identity,encode
 from store import ProjectFault
 
@@ -65,7 +64,7 @@ def record(store,sid,key,thread,response,run_id):
     origin={'schema':1,'providerId':identity(binding['id']),'providerKind':binding['kind'],
         'configRevision':binding['revision'],'credentialRevision':binding['credentialRevision'],
         'protocol':binding['protocol'],'server':server(binding.get('server','custom')),
-        'adapter':'studio-chat-v1' if chat else 'studio-responses-v1','runtimeSha256':CODEX_SHA256,
+        'adapter':'studio-chat-v1' if chat else 'studio-responses-v1','runtimeSha256':config['engine']['sha256'],
         'threadId':thread,'responseId':response,'responseIdKind':'local-transport' if chat else 'provider',
         'requestedModel':model_id(config.get('model'))}
     with store.db:

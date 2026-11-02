@@ -3,18 +3,18 @@ import copy
 import json
 from pathlib import Path
 
-from profile import CODEX_SHA256, CODEX_VERSION, prepare
+from profile import prepare
+from codex_runtime import native
 from store import ProjectFault
 
 
 def qualified(engine):
-    return (isinstance(engine.get('api'),dict) and engine.get('version')==CODEX_VERSION
-        and engine.get('sha256')==CODEX_SHA256)
+    return isinstance(engine.get('api'),dict) and native(engine)
 
 
 def require(engine):
     if not qualified(engine):
-        raise ProjectFault('This API session has no qualified native Goal runtime. Its existing conversation was preserved.',409)
+        raise ProjectFault('The native Goal runtime identity is unavailable. The existing conversation was preserved.',409)
 
 
 def metadata_arguments(store,sid,providers,new_thread=False):

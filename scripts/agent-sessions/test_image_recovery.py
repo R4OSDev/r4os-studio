@@ -18,7 +18,7 @@ class Recovery(unittest.TestCase):
 
     def seed(self,store):
         run,_=admit(store,self.sid,self.data,self.providers)
-        config=json.loads(get_run(store,run['id'])['config']);config.update(nativeImageGeneration=True,engine={'version':CODEX_VERSION,'sha256':CODEX_SHA256})
+        config=json.loads(get_run(store,run['id'])['config']);config.update(nativeImageGeneration=True)
         with store.db:
             store.db.execute('UPDATE runs SET config=?,turn_id=? WHERE id=?',(encode(config),'own-turn',run['id']))
             store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?',('own-thread',self.sid))

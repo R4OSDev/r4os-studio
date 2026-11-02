@@ -67,9 +67,9 @@ class ProviderRetry:
 
     def eligible(self):
         from image_provider import PROVIDER
-        from profile import CODEX_VERSION, CODEX_SHA256
+        from codex_runtime import native
         w = self.w; engine = w.config['engine']
-        return (engine.get('version') == CODEX_VERSION and engine.get('sha256') == CODEX_SHA256
+        return (native(engine)
                 and bool(w.config.get('apiProvider') or w.config.get('nativeModelProvider', PROVIDER) == PROVIDER))
 
     def identity(self):

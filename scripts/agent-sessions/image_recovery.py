@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 import re
 from generated_images import GeneratedImages,RPC_IMAGE_LIMIT
-from profile import regular,CODEX_SHA256,CODEX_VERSION
+from profile import regular
+from codex_runtime import native as native_runtime, binary as runtime_binary
 from run_store import item
 from session_store import encode
 from store import ProjectFault
@@ -17,10 +18,15 @@ def reconcile(store,sid,run_id=None,finalizing=False):
     if not thread:
         reconcile_imports(store,sid,run_id);return
     rows=store.db.execute('SELECT * FROM runs WHERE session_id=?'+(' AND id=?' if run_id else ''),(sid,run_id) if run_id else (sid,)).fetchall()
-    allowed={}
+    allowed={};pins={}
     for row in rows:
         config=json.loads(row['config']);engine=config.get('engine',{})
-        if config.get('nativeImageGeneration') is not True or engine.get('sha256')!=CODEX_SHA256 or engine.get('version')!=CODEX_VERSION:continue
+        if config.get('nativeImageGeneration') is not True or not native_runtime(engine):continue
+        pin=(engine['version'],engine['sha256'])
+        if pin not in pins:
+            try:runtime_binary(store.r4os,engine);pins[pin]=True
+            except (OSError,ValueError,KeyError,TypeError):pins[pin]=False
+        if not pins[pin]:continue
         if row['turn_id']:allowed[row['turn_id']]=row['id']
         if config.get('goalExecution') and store.db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_turns'").fetchone():
             for turn in store.db.execute('SELECT turn_id FROM goal_turns WHERE run_id=?',(row['id'],)):allowed[turn[0]]=row['id']
@@ -46,7 +52,9 @@ def reconcile(store,sid,run_id=None,finalizing=False):
                         if len(first_line)>RPC_IMAGE_LIMIT:raise ProjectFault('Native session metadata exceeds its readback bound.',413)
                         first=json.loads(first_line)
                         meta=first.get('payload',{})
-                        if first.get('type')!='session_meta' or meta.get('id')!=thread or meta.get('cli_version')!=CODEX_VERSION:continue
+                        if (first.get('type')!='session_meta' or meta.get('id')!=thread
+                                or not isinstance(meta.get('cli_version'),str)
+                                or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',meta['cli_version'])):continue
                         while line:=stream.readline(RPC_IMAGE_LIMIT+1):
                             if len(line)>RPC_IMAGE_LIMIT:raise ProjectFault('A native image receipt exceeds the readback frame limit. Original history was preserved.',413)
                             try:value=json.loads(line)

@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 import unittest
 import uuid
+import sqlite3
 
 from profile import CODEX_VERSION,CODEX_SHA256
 from run_store import admit,transition
@@ -17,9 +18,15 @@ class SessionContext(unittest.TestCase):
         self.addCleanup(self.fixture.tearDown);self.store=self.enterContext(self.fixture.open())
         self.run,_=admit(self.store,self.fixture.sid,self.fixture.data,self.fixture.providers)
         self.config=json.loads(self.store.db.execute('SELECT config FROM runs WHERE id=?',(self.run['id'],)).fetchone()[0])
-        self.config['engine'].update(version=CODEX_VERSION,sha256=CODEX_SHA256);self.config['contextProtocol']=1
+        self.config['contextProtocol']=1
         self.store.db.execute('UPDATE sessions SET thread_id=?,engine=? WHERE id=?',('owned-thread',encode(self.config['engine']),self.fixture.sid))
         self.store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(self.config),self.run['id']));self.store.db.commit()
+        root=self.store.directory/self.fixture.sid/'Codex'
+        (root/'native').mkdir(parents=True);(root/'state').mkdir()
+        (root/'native/metadata.jsonl').write_text(encode({'type':'session_meta','payload':{'id':'owned-thread','model_provider':'studio_openai_images'}})+'\n')
+        with sqlite3.connect(root/'state/state_5.sqlite') as db:
+            db.execute('CREATE TABLE threads(id TEXT,rollout_path TEXT,model_provider TEXT)')
+            db.execute('INSERT INTO threads VALUES (?,?,?)',('owned-thread','/codex/sessions/metadata.jsonl','studio_openai_images'))
         self.worker=SimpleNamespace(store=self.store,session_id=self.fixture.sid,run_id=self.run['id'],config=self.config,thread_id='owned-thread')
         self.context=Context(self.worker)
         self.context.native({'thread':{'id':'owned-thread'},'model':'actual-native-model','modelProvider':'openai'})
@@ -58,10 +65,22 @@ class SessionContext(unittest.TestCase):
         self.measure(700,turnId='later-turn')
         transition(self.store,self.run['id'],'completed')
         later,_=admit(self.store,self.fixture.sid,{**self.fixture.data,'requestId':str(uuid.uuid4())},self.fixture.providers)
+        legacy=json.loads(self.store.db.execute('SELECT config FROM runs WHERE id=?',(later['id'],)).fetchone()[0]);legacy.pop('contextProtocol',None)
+        with self.store.db:self.store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(legacy),later['id']))
         previous=saved(self.store,self.fixture.sid);self.measure(999,turnId='later-turn')
         self.assertEqual(saved(self.store,self.fixture.sid),previous)
         self.assertEqual(read(self.store,self.store.row(self.fixture.sid))['state'],'stale')  # Older worker protocol.
         self.assertNotEqual(later['id'],self.run['id'])
+
+    def test_context_uses_execution_runtime_without_relabeling_thread_creation(self):
+        original_engine=self.store.row(self.fixture.sid)['engine']
+        self.config['engine'].update(version='0.166.0',sha256='b'*64)
+        with self.store.db:self.store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(self.config),self.run['id']))
+        result=self.measure()
+        self.assertEqual(result['source'],'codex-0.166.0/thread/tokenUsage/updated:last')
+        self.assertEqual(result['engineVersion'],'0.166.0');self.assertEqual(result['engineSha256'],'b'*64)
+        self.assertEqual(self.store.row(self.fixture.sid)['engine'],original_engine)
+        self.assertEqual(read(self.store,self.store.row(self.fixture.sid)),result)
 
     def test_reload_preserves_snapshot_selection_change_never_uses_new_catalog_window(self):
         original=self.measure();row=self.store.row(self.fixture.sid)

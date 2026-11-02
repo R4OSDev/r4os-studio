@@ -4,10 +4,11 @@ import unittest
 from unittest.mock import patch
 import uuid
 import test_runs as fixtures
-from stats_store import Source,read,scope
+from stats_store import Source,read,scope,hashed
 from usage_stats import Usage
 from session_store import encode
 from profile import CODEX_VERSION,CODEX_SHA256
+from run_store import admit,transition
 
 class UsageTests(unittest.TestCase):
     setUp=fixtures.Runs.setUp
@@ -15,7 +16,11 @@ class UsageTests(unittest.TestCase):
     open=fixtures.Runs.open
     def ready(self,store):
         thread=str(uuid.uuid4())
-        with store.db:store.db.execute('UPDATE sessions SET thread_id=?,engine=? WHERE id=?',(thread,encode({'version':CODEX_VERSION,'sha256':CODEX_SHA256}),self.sid))
+        for turn in ('turn1','turn2','own-turn'):
+            run,_=admit(store,self.sid,{**self.data,'requestId':str(uuid.uuid4())},self.providers)
+            transition(store,run['id'],'completed',turn_id=turn)
+        original=json.loads(store.db.execute('SELECT config FROM runs WHERE id=?',(run['id'],)).fetchone()[0])['engine']
+        with store.db:store.db.execute('UPDATE sessions SET thread_id=?,engine=? WHERE id=?',(thread,encode(original),self.sid))
         return thread
     def test_multiple_responses_turns_replays_and_subsets_count_once(self):
         with self.open() as store:
@@ -35,6 +40,20 @@ class UsageTests(unittest.TestCase):
             usage.ingest(thread,'turn1','a',{'totalTokens':10,'inputTokens':7,'outputTokens':3},True)
             self.assertFalse(usage.ingest(thread,'turn1','a',{'totalTokens':99},True));Source(store).flush()
             self.assertEqual(read(self.projects)['tokens']['total'],'10');self.assertTrue(read(self.projects)['coverage']['hasGaps'])
+    def test_usage_binds_original_run_runtime_and_refuses_foreign_turn(self):
+        with self.open() as store:
+            thread=self.ready(store);usage=Usage(store,self.sid)
+            row=store.db.execute("SELECT id,config FROM runs WHERE turn_id='turn1'").fetchone()
+            config=json.loads(row['config']);config['engine'].update(version='0.166.0',sha256='b'*64)
+            with store.db:store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(config),row['id']))
+            values={'totalTokens':10,'inputTokens':7,'outputTokens':3}
+            self.assertTrue(usage.ingest(thread,'turn1','new-response',values,True,row['id']))
+            self.assertTrue(usage.ingest(thread,'turn1','new-response',values,True,row['id']))
+            self.assertFalse(usage.ingest(thread,'turn2','foreign-response',values,True,row['id']))
+            self.assertFalse(usage.ingest(thread,'unbound-turn','unbound-response',values,True))
+            expected=hashed({'source':'codex-response-v1','runtime':'b'*64,'thread':thread,'response':'new-response'})
+            self.assertEqual(store.db.execute('SELECT key FROM statistic_usage').fetchone()[0],expected)
+            Source(store).flush();self.assertEqual(read(self.projects)['tokens']['total'],'10')
     def test_bounded_native_backfill_ignores_snapshots_and_foreign_rollouts(self):
         with self.open() as store:
             thread=self.ready(store);root=store.directory/self.sid/'Codex/native/2026';root.mkdir(parents=True)

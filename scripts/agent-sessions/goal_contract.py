@@ -46,8 +46,9 @@ def save_params(thread_id, text, previous=None):
     return 'thread/goal/set', params
 
 
-def capability():
+def capability(engine=None):
     contract = json.loads((Path(__file__).resolve().parents[2] / 'shared/agent-input-capabilities.json').read_text())
-    return {'contractQualified': True, 'nativeVersion': contract['qualifiedRuntime']['version'],
+    return {'contractQualified': True, 'nativeVersion': engine.get('version') if engine else None,
+            'sourceReferenceVersion': contract['qualifiedRuntime']['version'],
             'maxObjectiveChars': MAX_OBJECTIVE_CHARS, 'statuses': list(STATUSES),
             'budgetControls': False, 'requiresGoalWorker': True}

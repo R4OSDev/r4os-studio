@@ -2,10 +2,12 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 
 from session_store import SessionStore, encode
 from profile import LEGACY_PROFILE, tools_for
@@ -18,6 +20,15 @@ class Runs(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
         self.projects = self.root / 'Projects'; self.r4os = self.root / 'R4OS'
+        runtime=self.r4os/'Toolchains/Codex/0.163.0/codex';runtime.parent.mkdir(parents=True)
+        runtime.write_bytes(b'isolated-runtime-fixture-not-executed')
+        checksum=hashlib.sha256(runtime.read_bytes()).hexdigest()
+        metadata={'id':'0.163.0','version':'0.163.0','binarySha256':checksum}
+        runtime.with_name('.studio-component.json').write_text(json.dumps(metadata))
+        (self.r4os/'Profiles').mkdir()
+        (self.r4os/'Profiles/versions.json').write_text(json.dumps({'defaults':{'codex':{**metadata,'binary':str(runtime)}}}))
+        features=patch('codex_runtime.feature_names',return_value=('goals','image_generation'))
+        features.start();self.addCleanup(features.stop)
         self.pid, self.sid, self.provider = (str(uuid.uuid4()) for _ in range(3))
         with closing(connect(self.projects)) as db, db:
             db.execute("INSERT INTO projects VALUES (?,?,'','C','terminal',?,NULL,'{}','now','now',1,'ready')", (self.pid, 'Fixture', 'fixture'))

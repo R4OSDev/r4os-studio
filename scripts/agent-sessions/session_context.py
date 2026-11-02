@@ -1,16 +1,16 @@
 """Small original-source context snapshots; no transcript scan or inference."""
 import json
 
-from profile import CODEX_VERSION,CODEX_SHA256
+from codex_runtime import native
 from session_store import encode,now
 
-SOURCE='codex-0.163.0/thread/tokenUsage/updated:last'
+def source(engine):return 'codex-'+engine['version']+'/thread/tokenUsage/updated:last'
 FIELDS=('totalTokens','inputTokens','cachedInputTokens','cacheWriteInputTokens','outputTokens','reasoningOutputTokens')
 
 
 def qualified(engine):
     return (not engine.get('api') and engine.get('kind')!='claude-code'
-        and engine.get('version')==CODEX_VERSION and engine.get('sha256')==CODEX_SHA256)
+        and native(engine))
 
 
 def number(value,positive=False):return type(value) is int and (1 if positive else 0)<=value<=2**53-1
@@ -24,6 +24,8 @@ def saved(store,sid):
 
 def empty(store,row):
     engine=json.loads(row['engine']);settings=json.loads(row['settings'])
+    latest=store.db.execute('SELECT config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
+    if latest:engine=json.loads(latest['config'])['engine']
     return {'schema':1,'revision':0,'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':row['id'],
         'engine':'claude-code' if engine.get('kind')=='claude-code' else 'codex',
         'engineVersion':engine.get('version'),'engineSha256':engine.get('sha256'),
@@ -120,7 +122,7 @@ class Context:
             self.invalidate('Compaction is still in progress. Waiting for a measured result.');return
         capacity=data.get('modelContextWindow');valid=number(capacity,True);used=last['totalTokens']
         value=empty(w.store,w.store.row(w.session_id))
-        value.update(source=SOURCE,reportedAt=now(),runId=w.run_id,turnId=self.turn,
+        value.update(source=source(w.config['engine']),reportedAt=now(),runId=w.run_id,turnId=self.turn,
             model=self.model,modelProvider=self.model_provider,state='available' if valid else 'unavailable',
             reason='Last reported native context.' if valid else 'The native effective context window is unknown or invalid.',
             usedTokens=used,capacityTokens=capacity if valid else None,
