@@ -49,6 +49,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .gestureVersion = @as(u32, 1),
             .dragInterruptVersion = @as(u32, 1),
             .desktopShortcutVersion = @as(u32, if (@import("shortcut.zig").available(sys)) 1 else 0),
+            .desktopPublicationDiagnosticsVersion = @as(u32, if (@import("shortcut.zig").available(sys)) 1 else 0),
             .nativeDesktopLaunch = false,
             .desktopAdoptionVersion = @as(u32, 1),
             .desktopEvidenceVersion = @as(u32, 1),

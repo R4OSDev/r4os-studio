@@ -1,4 +1,30 @@
-# Project desktop publication (0.8.84)
+# Project desktop publication (0.8.84; replacement recovery 0.9.20)
+
+Since0.9.20 the private helper interprets checked deletion using the pinned
+SDK0.64.134/Contract0.64.71 constants: deleted is1, not_found is0, negative
+results are errors. It retains the exact native result and failure phase in
+stdout and best-effort create-only DSKERR.JSN after its original intent marker.
+Final link readback and stage/backup absence still precede successful DSKOUT.
+The additive diagnostics handshake is version1; desktopShortcutVersion remains1.
+Future ordinary deployments carry the corrected helper. Previously deployed
+helpers, original receipts and all application component pins are preserved.
+
+The previous helper's hash-bound, positively recorded exit113 is a special
+recovery case when native DSKOUT is absent. **Reconcile receipts** requires the
+same VM revision/image/service invocation, original request and DSKINT bytes,
+full SHA-256 readback of every deployed file including the original helpers,
+exact intended link bytes and absent TMP/BAK. Reads are guarded by a current
+QMP boot observer; a replaced observer does not attest original boot continuity.
+The host saves a separate `original-desktop-current-files` observation and
+publication receipt. It records the missing native completion and original
+helper exit113, with null job exit. It does not fabricate DSKOUT, replay the
+publication, clean up files or start APP.R4X. Other missing/uncertain replies or
+any mismatching evidence stay protected. Original run/tool failures and previous
+job state remain in their original history/recovery journal.
+
+The historical description and initial component qualification below remain
+applicable to their stated versions; the host observation above is an additional
+explicit proof source for the identified legacy helper only.
 
 Completed GUI R4X builds and deployments offer **Deploy to desktop** in their
 development card. The browser submits a normal, revision-bound deployment with

@@ -61,11 +61,11 @@ def local(store, job):
         if not row: return None
         value = store.deployment(row[0], recovering=True)
         if job.get('desktopShortcutRequested'):
-            from desktop_shortcuts import verify_native
+            from desktop_shortcuts import verify_saved
             work = store.root / 'DeployWork' / job['id']
             if not (work / 'desktop-receipt.json').exists(): return None
             original = read(work / 'desktop-receipt.json')
-            verify_native(store, job, value, read(work / 'desktop-intent.json'), original['native'])
+            verify_saved(store, job, value, read(work / 'desktop-intent.json'), original)
             if original['receipt'] != value.get('desktopShortcut'):
                 raise DevelopmentFault('The desktop receipt differs from its original completed deployment.')
         artifact = store.artifact(value['artifactId'])
@@ -82,8 +82,11 @@ def local(store, job):
             or value['target']['vmId'] != job['binding']['id'] or value['target']['imageSha256'] != job['binding']['imageSha256']
             or not value['files'] or any(v.get('fullReadbackVerified') is not True for v in value['files'])):
             raise DevelopmentFault('The deployment publication receipt is incomplete. Guest files were preserved.')
-        return store.recovered(job['id'], 'completed', receipt('committed-deployment-readback', deploymentId=value['id'], historical=True),
-            deploymentId=value['id'], target=value['target'], exitCode=0, error=None,
+        observed = (value.get('desktopShortcut') or {}).get('publicationProof') == 'original-desktop-current-files'
+        proof = ({'originalHelperExitCode': 113, 'nativeCompletionReceiptAvailable': False,
+                  'publicationReadbackConfirmed': True} if observed else {})
+        return store.recovered(job['id'], 'completed', receipt('committed-deployment-readback', deploymentId=value['id'], historical=True, **proof),
+            deploymentId=value['id'], target=value['target'], exitCode=None if observed else 0, error=None,
             **({'desktopShortcut': value['desktopShortcut']} if value.get('desktopShortcut') else {}))
     if job['kind'] != 'execution': return None
     from launch_receipts import original as original_launch

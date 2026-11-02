@@ -53,6 +53,37 @@ pub fn available(sys: Context) bool {
         sys.hasFn("file_stream_begin") and sys.hasFn("file_stream_write") and sys.hasFn("file_stream_finish") and sys.hasFn("file_stream_abort");
 }
 
+const Reporter = struct {
+    sys: Context,
+    allocator: std.mem.Allocator,
+    request: Request,
+    path: [*:0]const u8,
+    link: []const u8,
+    target: []const u8,
+    content: []const u8,
+    intent_created: bool = false,
+    link_replaced: bool = false,
+    readback_verified: bool = false,
+    cleanup_confirmed: bool = false,
+
+    fn fail(self: *Reporter, code: i32, phase: []const u8, native_result: ?i32) i32 {
+        const value = .{
+            .version = @as(u32, 1), .requestId = self.request.requestId,
+            .projectId = self.request.projectId, .deploymentId = self.request.deploymentId,
+            .linkPath = self.link, .target = self.target, .content = self.content,
+            .success = false, .phase = phase, .exitCode = code, .nativeResult = native_result,
+            .mutationMayHaveOccurred = self.intent_created, .linkReplaced = self.link_replaced,
+            .readbackVerified = self.readback_verified, .cleanupConfirmed = self.cleanup_confirmed,
+            .applicationStarted = false,
+        };
+        const output = std.json.Stringify.valueAlloc(self.allocator, value, .{}) catch return code;
+        if (self.intent_created) _ = create(self.sys, self.path, output);
+        self.sys.write(output);
+        self.sys.println("");
+        return code;
+    }
+};
+
 pub fn run(sys: Context, instance: []const u8, module: []const u8) i32 {
     if (!available(sys) or !uuid(instance)) return 100;
     const slash = std.mem.lastIndexOfScalar(u8, module, '\\') orelse return 101;
@@ -64,10 +95,12 @@ pub fn run(sys: Context, instance: []const u8, module: []const u8) i32 {
     var request_path: [256:0]u8 = .{0} ** 256;
     var response_path: [256:0]u8 = .{0} ** 256;
     var intent_path: [256:0]u8 = .{0} ** 256;
+    var error_path: [256:0]u8 = .{0} ** 256;
     var owner_path: [256:0]u8 = .{0} ** 256;
     _ = std.fmt.bufPrintZ(&request_path, "{s}\\DSKIN.JSN", .{parent}) catch return 102;
     _ = std.fmt.bufPrintZ(&response_path, "{s}\\DSKOUT.JSN", .{parent}) catch return 102;
     _ = std.fmt.bufPrintZ(&intent_path, "{s}\\DSKINT.JSN", .{parent}) catch return 102;
+    _ = std.fmt.bufPrintZ(&error_path, "{s}\\DSKERR.JSN", .{parent}) catch return 102;
     _ = std.fmt.bufPrintZ(&owner_path, "{s}\\DEPLOY.JSN", .{parent}) catch return 102;
     var frame: [2048]u8 = undefined;
     var owner_frame: [2048]u8 = undefined;
@@ -103,33 +136,50 @@ pub fn run(sys: Context, instance: []const u8, module: []const u8) i32 {
     const remote = std.fmt.bufPrint(&link_remote, "/C/R4OS/DESKTOP/S{s}.LNK", .{hex[0..7]}) catch return 106;
     var data_buffer: [1024]u8 = undefined;
     const data = std.fmt.bufPrint(&data_buffer, "R4S_FORMAT=1\nSCHEMA=R4LNK\nTARGET={s}\nTITLE={s}\nPOLICY=gui\nICON=INTERNAL\n", .{target_text, request.title}) catch return 106;
+    var reporter = Reporter{ .sys = sys, .allocator = allocator.allocator(), .request = request,
+        .path = &error_path, .link = remote, .target = target_text, .content = data };
     var check_buffer: [1024]u8 = undefined;
     if (request.previous) |old| {
-        const existing = read(sys, &link, &check_buffer) orelse return 107;
-        if (!std.mem.eql(u8, existing, old)) return 107;
-    } else if (!absent(sys, &link)) return 107;
-    if (!absent(sys, &stage) or !absent(sys, &backup) or !absent(sys, &intent_path) or !absent(sys, &response_path)) return 108;
+        const existing = read(sys, &link, &check_buffer) orelse return reporter.fail(107, "previous_link_read", null);
+        if (!std.mem.eql(u8, existing, old)) return reporter.fail(107, "previous_link_compare", null);
+    } else if (!absent(sys, &link)) return reporter.fail(107, "unexpected_link", null);
+    if (!absent(sys, &stage) or !absent(sys, &backup) or !absent(sys, &intent_path) or !absent(sys, &response_path) or !absent(sys, &error_path)) return reporter.fail(108, "existing_stage_or_receipt", null);
     // This create-only marker prevents repeating a partially completed request.
-    if (!create(sys, &intent_path, bytes)) return 109;
-    if (!create(sys, &stage, data)) return 110;
+    if (!create(sys, &intent_path, bytes)) return reporter.fail(109, "intent_create", null);
+    reporter.intent_created = true;
+    if (!create(sys, &stage, data)) return reporter.fail(110, "stage_create", null);
     var flags = r4os.r4sys.file_update_atomic_checked_flag_forward;
     if (request.previous != null) flags |= r4os.r4sys.file_update_atomic_checked_flag_target_existed | r4os.r4sys.file_update_atomic_checked_flag_old_known;
     const old = request.previous orelse "";
     const rc = sys.fileUpdateAtomicChecked(&link, &stage, &backup, data.len, checksum(data), old.len, checksum(old), flags);
-    if (rc != 0) return 111;
-    const actual = read(sys, &link, &check_buffer) orelse return 112;
-    if (!std.mem.eql(u8, data, actual)) return 112;
+    if (rc != r4os.r4sys.file_update_atomic_checked_result_ok) return reporter.fail(111, "atomic_replace", rc);
+    reporter.link_replaced = true;
+    const actual = read(sys, &link, &check_buffer) orelse return reporter.fail(112, "link_readback", null);
+    if (!std.mem.eql(u8, data, actual)) return reporter.fail(112, "link_compare", null);
+    reporter.readback_verified = true;
+    var backup_delete_result: ?i32 = null;
     if (request.previous) |_| {
-        const prior = read(sys, &backup, &check_buffer) orelse return 113;
-        if (!std.mem.eql(u8, prior, old) or sys.fileDeleteIfMatch(&backup, old.len, checksum(old)) != 0) return 113;
+        const prior = read(sys, &backup, &check_buffer) orelse return reporter.fail(113, "backup_readback", null);
+        if (!std.mem.eql(u8, prior, old)) return reporter.fail(113, "backup_compare", null);
+        const deleted = sys.fileDeleteIfMatch(&backup, old.len, checksum(old));
+        backup_delete_result = deleted;
+        switch (deleted) {
+            r4os.r4sys.file_delete_if_match_result_deleted,
+            r4os.r4sys.file_delete_if_match_result_not_found => {},
+            else => return reporter.fail(113, "backup_delete", deleted),
+        }
     }
-    if (!absent(sys, &stage) or !absent(sys, &backup)) return 113;
+    if (!absent(sys, &stage)) return reporter.fail(113, "stage_cleanup", null);
+    if (!absent(sys, &backup)) return reporter.fail(113, "backup_cleanup", null);
+    const final = read(sys, &link, &check_buffer) orelse return reporter.fail(112, "final_link_readback", null);
+    if (!std.mem.eql(u8, data, final)) return reporter.fail(112, "final_link_compare", null);
+    reporter.cleanup_confirmed = true;
     const response = .{ .version = @as(u32, 1), .requestId = instance, .projectId = request.projectId,
         .deploymentId = request.deploymentId, .linkPath = remote, .target = target_text, .content = data,
         .success = true, .readbackVerified = true, .cleanupConfirmed = true,
-        .applicationStarted = false, .atomicResult = rc };
-    const output = std.json.Stringify.valueAlloc(allocator.allocator(), response, .{}) catch return 114;
-    if (!create(sys, &response_path, output)) return 114;
+        .applicationStarted = false, .atomicResult = rc, .backupDeleteResult = backup_delete_result };
+    const output = std.json.Stringify.valueAlloc(allocator.allocator(), response, .{}) catch return reporter.fail(114, "response_encode", null);
+    if (!create(sys, &response_path, output)) return reporter.fail(114, "response_create", null);
     sys.write(output); sys.println("");
     return 0;
 }

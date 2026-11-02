@@ -104,6 +104,10 @@ export interface DesktopShortcutReceipt {
   state: 'published'; projectId: string; vmId: string; jobId: string;
   deploymentId: string; artifactId: string; path: string; content: string; sha256: string;
   fullReadbackVerified: true; iconEmbedded: boolean;
+  /** A current file observation does not replace a missing native completion. */
+  publicationProof?: 'original-desktop-current-files';
+  nativeCompletionReceiptAvailable?: false;
+  originalHelperExitCode?: 113;
   consumerVerified: false; guestVerified: false; applicationStarted: false; checkedAt: string;
 }
 export interface GuestProcessIdentity {
@@ -228,7 +232,8 @@ export interface DevelopmentJob {
   };
   readiness?: DevelopmentReadiness;
   guestState?: { closeConfirmed?: boolean; [key: string]: unknown };
-  recovery?: { id: string; source: string; reason?: string; replayed: false; guestEndConfirmed?: boolean };
+  recovery?: { id: string; source: string; reason?: string; replayed: false; guestEndConfirmed?: boolean;
+    publicationReadbackConfirmed?: true; nativeCompletionReceiptAvailable?: false; originalHelperExitCode?: 113 };
   settingsRevision: number;
   id: string;
   projectId: string;

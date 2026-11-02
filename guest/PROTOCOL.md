@@ -132,6 +132,34 @@ carry the same bound result. The host reads both and the exact link bytes before
 recording success. Lost replies are observed from this original result, never by
 resubmitting the helper. Unknown stages/backups remain protected. The receipt
 does not confirm desktop visibility, app launch or application consumption.
+
+### Replacement results and failure diagnostics (0.9.20)
+
+The helper uses SDK0.64.134/Contract0.64.71's named checked-delete constants:
+`file_delete_if_match_result_deleted=1` and `_not_found=0`. Negative results
+fail. Backup bytes are checked before deletion; final link bytes and absent
+TMP/BAK are checked afterward. Successful DSKOUT adds `backupDeleteResult`
+(null for first publication) without changing desktopShortcutVersion1.
+
+The additive handshake `desktopPublicationDiagnosticsVersion=1` identifies
+bound failure diagnostics. After validating the request/deployment, errors emit
+phase, actual helper exit, nullable native result, mutation/readback/cleanup
+flags and original identity/content. Once the request marker exists, the same
+JSON is best-effort create-only DSKERR.JSN beside the helper, as well as stdout.
+Host recovery may read this diagnostic without repeating the command; a failure
+diagnostic never grants success or cleanup. Early unbound validation failures
+retain their exit code. Existing deployments are not patched in place.
+
+A narrowly qualified legacy exit113 can instead be reconciled from current
+original files. This is a separate host observation, not a generated DSKOUT or
+native success receipt: it preserves original helper/intent/transport hashes,
+the original and observed boot identities, all deployed file SHA-256 values,
+exact intended link and absent TMP/BAK. VM service invocation must match; the
+current QMP observer guards reset changes during all reads. A coordinator update
+may replace that observer, so this proves the current files, not uninterrupted
+original-boot execution. Native completion remains unavailable, original exit113
+is retained, job exit remains null and no application is launched.
+
 ## Independent watchdog launch v2 (0.9.12)
 
 Qualification and the controller's sequence-zero hello add

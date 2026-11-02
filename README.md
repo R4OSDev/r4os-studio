@@ -1,3 +1,21 @@
+## Replacing desktop links and reconciling legacy publications (0.9.20)
+
+The private guest helper now accepts the SDK's named checked-delete results:
+`deleted=1` and `not_found=0`. Negative results remain failures. Replacement
+still requires the original backup bytes, exact final link readback and absent
+stage/backup files. Bound failures retain their phase and native return value in
+create-only `DSKERR.JSN` and stdout. New deployments obtain the corrected helper;
+existing deployed binaries and project component pins remain unchanged.
+
+For the identified older helper's recorded exit113, **Reconcile receipts** can
+confirm the current publication from the original intent marker, every original
+deployment file's full SHA-256, exact new link bytes and absent TMP/BAK, under the
+same VM service identity and a current reset observer. The separate host file
+observation records `nativeCompletionReceiptAvailable=false` and preserves the
+original exit113; the reconciled job has no invented exit0. It never republishes
+the link or starts the application. Missing or differing evidence stays unknown.
+See [Desktop-Shortcuts.md](Desktop-Shortcuts.md).
+
 ## Desktop publication and activation without profile gates (0.9.19)
 
 Desktop publication and native link activation now use the existing actual

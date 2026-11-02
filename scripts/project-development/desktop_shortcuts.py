@@ -88,8 +88,17 @@ def verify_native(store, job, deployment, pending, native):
         raise UnconfirmedGuestEffect('The desktop publication has no complete matching native receipt. No write was replayed.')
 
 
-def accept(store, job, deployment, pending, native):
-    verify_native(store, job, deployment, pending, native)
+def verify_saved(store, job, deployment, pending, original):
+    if 'native' in original:
+        verify_native(store, job, deployment, pending, original['native'])
+    elif 'observation' in original:
+        from desktop_publication_recovery import verify
+        verify(store, job, deployment, pending, original['observation'])
+    else:
+        raise DevelopmentFault('The original desktop publication has no matching receipt or observation.')
+
+
+def commit_receipt(store, job, deployment, pending, proof):
     inventory = store.artifact_metadata(job['artifactId']).get('resourceInventory') or {}
     icon = next((entry for entry in inventory.get('entries', []) if entry['kind'] == 'icon' and entry['index'] == 0), None)
     receipt = {key: pending[key] for key in ('projectId', 'vmId', 'imageSha256', 'systemGeneration', 'path', 'content')}
@@ -97,9 +106,40 @@ def accept(store, job, deployment, pending, native):
         sha256=hashlib.sha256(pending['content'].encode()).hexdigest(), fullReadbackVerified=True,
         iconEmbedded=inventory.get('embeddedVerified') is True and icon is not None,
         consumerVerified=False, guestVerified=False, applicationStarted=False, checkedAt=now())
-    save(store.root / 'DeployWork' / job['id'] / 'desktop-receipt.json', {'receipt': receipt, 'native': native})
+    if 'observation' in proof:
+        receipt.update(publicationProof='original-desktop-current-files', nativeCompletionReceiptAvailable=False,
+                       originalHelperExitCode=113)
+    save(store.root / 'DeployWork' / job['id'] / 'desktop-receipt.json', {'receipt': receipt, **proof})
     record_pending(store, job['binding'], receipt)
     return receipt
+
+
+def accept(store, job, deployment, pending, native):
+    verify_native(store, job, deployment, pending, native)
+    return commit_receipt(store, job, deployment, pending, {'native': native})
+
+
+def failure_detail(store, job, deployment, pending, result, saved=None):
+    """Retain a bound helper error without treating it as no-effect or success."""
+    try: value = json.loads(result['output'] if saved is None else saved)
+    except (ValueError, TypeError, KeyError): return None
+    required = {'version': 1, 'requestId': job['id'], 'projectId': store.id, 'deploymentId': deployment['id'],
+        'linkPath': pending['path'], 'target': deployment['guestDirectory'] + '\\APP.R4X',
+        'content': pending['content'], 'success': False, 'applicationStarted': False}
+    phases = ('previous_link_read', 'previous_link_compare', 'unexpected_link', 'existing_stage_or_receipt',
+        'intent_create', 'stage_create', 'atomic_replace', 'link_readback', 'link_compare', 'backup_readback',
+        'backup_compare', 'backup_delete', 'stage_cleanup', 'backup_cleanup', 'final_link_readback',
+        'final_link_compare', 'response_encode', 'response_create')
+    if (not isinstance(value, dict) or value.get('phase') not in phases
+            or any(type(value.get(k)) is not type(v) or value.get(k) != v for k, v in required.items())
+            or type(value.get('exitCode')) is not int or not 107 <= value['exitCode'] <= 114
+            or not result.get('transportUncertain') and value['exitCode'] != result.get('exitCode')
+            or value.get('nativeResult') is not None and type(value['nativeResult']) is not int): return None
+    save(store.root / 'DeployWork' / job['id'] / 'desktop-error.json', {
+        'source': 'stdout' if saved is None else 'original-DSKERR.JSN', 'native': value,
+        'transportExitCode': result.get('exitCode'), 'transportUncertain': result.get('transportUncertain') is True})
+    native = '' if value.get('nativeResult') is None else ', native result ' + str(value['nativeResult'])
+    return 'Desktop publication stopped in ' + value['phase'] + ' (helper exit ' + str(value['exitCode']) + native + '). Original effects remain unconfirmed; reconcile this job without replay.'
 
 
 async def publish(worker, ssh, lease, deployment):
@@ -137,7 +177,11 @@ async def publish(worker, ssh, lease, deployment):
     try:
         result = await ssh.exec(command, timeout=30, complete=True, limit=4096)
         save(worker.work / 'desktop-transport.json', result)
-        if result.get('transportUncertain') or result['exitCode'] != 0: raise ValueError()
+        if result.get('transportUncertain'): raise ValueError()
+        if result['exitCode'] != 0:
+            detail = failure_detail(store, job, deployment, pending, result)
+            if detail: raise UnconfirmedGuestEffect(detail)
+            raise ValueError()
         native = json.loads(result['output'])
         async with DesktopRead(ssh, [path, guest + '/DSKOUT.JSN'], check) as reader:
             saved = await reader.text(guest + '/DSKOUT.JSN')
@@ -149,7 +193,7 @@ async def publish(worker, ssh, lease, deployment):
 
 
 async def reconcile(store, job, host):
-    """Only read the original native result; never run the helper again."""
+    """Read original results or the narrowly bound legacy files; never replay."""
     from recovery import read, local
     work = store.root / 'DeployWork' / job['id']
     if not (work / 'desktop-intent.json').exists():
@@ -158,6 +202,8 @@ async def reconcile(store, job, host):
     request = read(work / 'DSKIN.JSN')
     if (pending.get('jobId') != job['id'] or pending.get('projectId') != store.id
             or pending.get('vmId') != job['binding']['id'] or pending.get('deploymentId') != deployment['id']
+            or pending.get('imageSha256') != job['binding']['imageSha256']
+            or pending.get('systemGeneration') != job['binding'].get('systemGeneration')
             or request.get('version') != 1 or request.get('requestId') != job['id'] or request.get('projectId') != store.id
             or request.get('deploymentId') != deployment['id'] or not isinstance(request.get('title'), str)
             or request.get('previous') != pending.get('previous')
@@ -169,7 +215,7 @@ async def reconcile(store, job, host):
         raise DevelopmentFault('This original desktop operation no longer owns its publication record.')
     if (work / 'desktop-receipt.json').exists():
         original = read(work / 'desktop-receipt.json')
-        verify_native(store, job, deployment, pending, original['native'])
+        verify_saved(store, job, deployment, pending, original)
         result = original['receipt']
         if (result.get('jobId') != job['id'] or result.get('content') != pending['content']
                 or result.get('deploymentId') != deployment['id'] or result.get('sha256') != hashlib.sha256(pending['content'].encode()).hexdigest()
@@ -181,26 +227,49 @@ async def reconcile(store, job, host):
         from lease import VmLease, inspect
         from vm_client import vm_call
         vm = vm_config(store.r4os, job['binding']['id'])
-        if vm['revision'] != job['binding']['revision']:
+        if any(vm.get(k) != job['binding'].get(k) for k in ('id', 'revision', 'imageId', 'imageSha256', 'systemGeneration')):
             raise DevelopmentFault('The VM identity changed; the old desktop command was not repeated.')
         scope = {'kind': 'recovery', 'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256']}
+        from desktop_publication_recovery import originals, observe
+        legacy = False
+        try:
+            originals(store, job, deployment, pending)
+            legacy = True
+        except DevelopmentFault:
+            pass  # Other missing/uncertain effects still require their original result.
         with VmLease(store.projects, vm['id'], scope) as lease:
             info = await vm_call(lease, 'info')
             if info['vm']['state'] != 'running' or not pending.get('vmInvocationId') or info['invocationId'] != pending['vmInvocationId']:
                 raise DevelopmentFault('The original VM process is unavailable. No VM or publication was started.')
+            if legacy:
+                # A coordinator update can replace its QMP observer identity.
+                # Guard this current file observation, without claiming that
+                # the original guest boot or native completion was retained.
+                boot = await host.boots.ensure(vm, info['invocationId'])
+                scope['bootId'] = boot['bootId']
+                save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
             guest = '/' + deployment['guestDirectory'][0] + '/' + deployment['guestDirectory'][3:].replace('\\', '/')
-            response_path = guest + '/DSKOUT.JSN'; path = pending['path']
+            response_path = guest + '/DSKOUT.JSN'; error_path = guest + '/DSKERR.JSN'; path = pending['path']
             check = lambda: inspect(store.projects, lease.id, lease.token)
             async with SshTransport(Access(store.projects, store.r4os, None), vm, lease) as ssh:
-                async with DesktopRead(ssh, [response_path, path, path[:-4] + '.TMP', path[:-4] + '.BAK'], check) as reader:
+                async with DesktopRead(ssh, [response_path, error_path, path, path[:-4] + '.TMP', path[:-4] + '.BAK'], check) as reader:
                     response = await reader.text(response_path)
-                    if response is None: raise DevelopmentFault('The original desktop result is still unavailable. No command was repeated.')
-                    native = json.loads(response)
-                    verify_native(store, job, deployment, pending, native)
-                    if (await reader.text(path) != pending['content'] or await reader.stat(path[:-4] + '.TMP') is not None
-                            or await reader.stat(path[:-4] + '.BAK') is not None):
-                        raise DevelopmentFault('The current desktop files do not match the original completed publication.')
-                result = accept(store, job, deployment, pending, native)
+                    if response is None:
+                        if not legacy:
+                            error = await reader.text(error_path)
+                            transport = read(work / 'desktop-transport.json') if (work / 'desktop-transport.json').exists() else {'transportUncertain': True}
+                            detail = failure_detail(store, job, deployment, pending, transport, saved=error) if error is not None else None
+                            raise DevelopmentFault(detail or 'The original desktop result is still unavailable. No command was repeated.')
+                        observation = await observe(store, job, deployment, pending, reader, info, scope['bootId'])
+                        save(work / 'desktop-observation.json', observation)
+                        result = commit_receipt(store, job, deployment, pending, {'observation': observation})
+                    else:
+                        native = json.loads(response)
+                        verify_native(store, job, deployment, pending, native)
+                        if (await reader.text(path) != pending['content'] or await reader.stat(path[:-4] + '.TMP') is not None
+                                or await reader.stat(path[:-4] + '.BAK') is not None):
+                            raise DevelopmentFault('The current desktop files do not match the original completed publication.')
+                        result = accept(store, job, deployment, pending, native)
     deployment = {**deployment, 'desktopShortcut': result}
     path = work / 'deployment.json'
     if path.exists():

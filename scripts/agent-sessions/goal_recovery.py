@@ -114,6 +114,17 @@ def development(store, sid, tool):
             if window: value.update(windowAction=True, effectConfirmed=False)
             if completion: value.update(checkCompletion=True, effectConfirmed=False)
             recovery = job.get('recovery') or {}
+            if (job['kind'] == 'deploy' and job['state'] == 'completed' and job.get('exitCode') is None
+                    and recovery.get('schema') == 1 and recovery.get('source') == 'committed-deployment-readback'
+                    and recovery.get('replayed') is False and recovery.get('publicationReadbackConfirmed') is True
+                    and recovery.get('nativeCompletionReceiptAvailable') is False
+                    and type(recovery.get('originalHelperExitCode')) is int and recovery['originalHelperExitCode'] == 113
+                    and (job.get('desktopShortcut') or {}).get('publicationProof') == 'original-desktop-current-files'):
+                proof = db.execute('SELECT substr(receipt,1,8193) FROM recoveries WHERE id=? AND job_id=?',
+                    (str(uuid.UUID(recovery['id'])), job_id)).fetchone()
+                if proof and len(proof[0].encode()) <= 8192 and json.loads(proof[0]) == recovery:
+                    value['recovery'] = {k: recovery[k] for k in ('id', 'source', 'replayed',
+                        'publicationReadbackConfirmed', 'nativeCompletionReceiptAvailable', 'originalHelperExitCode')}
             if (job['kind'] == 'execution' and job['state'] in ('completed', 'failed', 'interrupted', 'unknown')
                     and type(recovery.get('schema')) is int and recovery['schema'] == 1
                     and str(uuid.UUID(recovery['id'])) == recovery['id'] and recovery.get('guestEndConfirmed') is True
@@ -155,6 +166,9 @@ def instructions(config):
         'Its historical run/tool may remain unknown and its application test/exit status may still be unavailable. '
         'Do not treat that historical flag as an unresolved live process or ask for an already supplied job ID. '
         'A readOnly reference identifies a status read, not another application start. '
+        'A matching development.recovery.publicationReadbackConfirmed=true confirms the original desktop publication '
+        'from its current bound files. Its native completion receipt is still unavailable and originalHelperExitCode '
+        'retains the helper failure. Do not replay that publication or infer an app launch, visible icon or passed test. '
         'A launchReceipt is host correlation metadata, not proof of native admission, process end or cleanup. '
         'Its hostAttemptId is not a DESKRUN request. If nativeRequestKnown is false, a lost SSH response cannot '
         'establish that the original start was rejected; keep that effect unknown and never start a replacement. '
