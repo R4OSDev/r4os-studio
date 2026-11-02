@@ -293,7 +293,7 @@ class Execution:
                     save(self.work / 'desktop-capability.json', native_capability)
                 if self.stop_requested or store.get(job['id'])['state'] == 'stopping':
                     return store.update(job['id'], 'interrupted', phase='stopped', error='Stopped before guest launch.')
-                execution_id = str(uuid.uuid4()); control = GuestControl(ssh, deployment, execution_id); self.control = control
+                execution_id = str(uuid.uuid4()); control = GuestControl(ssh, deployment, execution_id, self.work); self.control = control
                 intent = {'schema': 1, 'executionId': execution_id, 'jobId': job['id'], 'deploymentId': deployment['id'],
                     'target': target, 'vmInvocationId': invocation_id, 'role': deployment['role'], 'settings': job['settings'], 'state': 'intent', 'createdAt': now()}
                 save(self.work / 'intent.json', intent)

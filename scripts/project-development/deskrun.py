@@ -7,6 +7,7 @@ import asyncio
 import base64
 import json
 import re
+import uuid
 from contracts import DevelopmentFault, UnconfirmedGuestEffect
 from jobs import now
 from layout import save
@@ -123,6 +124,7 @@ def command(deployment, arguments, wait_ms, controller=None):
 
 async def exchange(ssh, text, timeout):
     """Keep partial stdout even when SSH loses its exit status or deadline."""
+    started = now(); clock = asyncio.get_running_loop().time()
     try:
         process = await asyncio.create_subprocess_exec(*ssh.argv(), ssh.record['username'] + '@127.0.0.1', text,
             stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -144,6 +146,8 @@ async def exchange(ssh, text, timeout):
         await asyncio.gather(*readers, return_exceptions=True)
         ssh.processes.discard(process)
     return {'stdout': bytes(out), 'stderr': bytes(error), 'sshExitCode': process.returncode,
+            'localSshProcessId': process.pid, 'startedAt': started, 'observedAt': now(),
+            'elapsedMilliseconds': max(0, int((asyncio.get_running_loop().time() - clock) * 1000)),
             'transportUncertain': incomplete or process.returncode == 255 or process.returncode < 0}
 
 
@@ -195,6 +199,30 @@ class DesktopLaunch:
         self.deadline = None; self.next_status = 0; self.status_expired = False
         self.force_status = False; self.heartbeat_done = asyncio.Event()
         self.evidence_launch = None
+        self.attempt = None
+
+    def record_attempt(self, phase, response=None, native=None, control_lost=False):
+        """A host correlation ID is never presented as a native request key."""
+        if self.attempt is None:
+            intent = self.owner.intent
+            self.attempt = {'schema': 1, 'hostAttemptId': str(uuid.uuid5(uuid.UUID(intent['executionId']), 'desktop-launch')),
+                'jobId': self.job['id'], 'projectId': self.store.id, 'executionId': intent['executionId'],
+                'deploymentId': self.deployment['id'], 'target': intent['target'],
+                'vmInvocationId': intent['vmInvocationId'], 'createdAt': now(),
+                'nativeRequest': None, 'nativeRequestConfirmed': False}
+        self.attempt.update(phase=phase, observedAt=now())
+        if control_lost: self.attempt['controlChannelLost'] = True
+        if response is not None:
+            self.attempt['transport'] = {k: response[k] for k in ('sshExitCode','transportUncertain',
+                'localSshProcessId','startedAt','observedAt','elapsedMilliseconds') if k in response}
+            self.attempt['transport'].update(stdoutBytes=len(response['stdout']), stderrBytes=len(response['stderr']))
+        if native is not None and native.get('phase') != 'before_submit':
+            self.attempt.update(nativeRequest=native['request'], nativeRequestConfirmed=True,
+                nativePhase=native['phase'], nativeErrorlevel=native['errorlevel'],
+                process={'instanceId': native['process_id'], 'generation': native['process_generation']} if native['process_id'] else None)
+        save(self.owner.work / 'desktop-launch-attempt.json', self.attempt)
+        public = {k:v for k,v in self.attempt.items() if k not in ('target','vmInvocationId')}
+        self.store.update(self.job['id'], desktopLaunchAttempt=public)
 
     def guard(self, stopping=False):
         from vm_worker import guard
@@ -205,21 +233,27 @@ class DesktopLaunch:
         self.index += 1
         root = self.owner.work / ('deskrun-' + str(self.index))
         save(root.with_suffix('.intent.json'), {'operation': 'start' if starting else 'status', 'request': self.key, 'command': text, 'createdAt': now()})
+        if starting: self.record_attempt('submission_unknown')
         try: response = await exchange(self.ssh, text, timeout)
         except NotSubmitted:
-            if starting: raise
+            if starting:
+                self.record_attempt('not_submitted')
+                raise
             return None
         save(root.with_suffix('.transport.json'), {k: base64.b64encode(v).decode() if isinstance(v, bytes) else v for k, v in response.items()})
         try: value = receipt(response['stdout'])
         except (ValueError, UnicodeError):
             if starting:
+                self.record_attempt('native_receipt_unknown', response=response)
                 raise UnconfirmedGuestEffect('Launch outcome unknown: SSH returned no valid DESKRUN request identity. No launch was repeated.') from None
             return None
         save(root.with_suffix('.receipt.json'), value)
         if starting and value.get('evidence_scope_available'):
             self.evidence_launch = value.copy()
         if value['phase'] == 'before_submit':
-            if starting: raise NotSubmitted('DESKRUN rejected the launch before submission: ' + value['error'] + '.')
+            if starting:
+                self.record_attempt('not_submitted', response=response)
+                raise NotSubmitted('DESKRUN rejected the launch before submission: ' + value['error'] + '.')
             if self.value:
                 self.store.update(self.job['id'], desktopLaunch={**self.value, 'statusError': value['error'], 'statusErrorlevel': value['errorlevel'], 'checkedAt': now()})
             return None  # A failed STATUS query says nothing about the launch.
@@ -239,6 +273,7 @@ class DesktopLaunch:
             return None  # Retain the last confirmed progress; keep raw history.
         self.value = {**value, 'adapter': 'DESKRUN', 'contract': '0.1.1', 'checkedAt': now(), 'sshExitCode': response['sshExitCode'], 'transportUncertain': response['transportUncertain']}
         self.store.update(self.job['id'], desktopLaunch=self.value, phase='desktop_' + value['phase'])
+        if self.attempt is not None: self.record_attempt('native_request_confirmed', response=response, native=value)
         return self.value
 
     async def heartbeat(self):
@@ -257,12 +292,22 @@ class DesktopLaunch:
         text = command(self.deployment, self.job['settings']['arguments'], wait_ms, controller)
         if controller:
             self.store.update(self.job['id'], desktopLaunchBudget=launch_budget(self.deployment,self.job['settings']['arguments'],wait_ms,controller))
+        self.record_attempt('prepared')
         heartbeat = asyncio.create_task(self.heartbeat())
         launch = asyncio.create_task(self.query(text, wait_ms / 1000 + 5, starting=True))
         try:
             done, _ = await asyncio.wait((heartbeat, launch), return_when=asyncio.FIRST_COMPLETED)
-            if heartbeat in done: await heartbeat
+            control_error = None
+            if heartbeat in done:
+                try: await heartbeat
+                except DevelopmentFault as error:
+                    control_error = error
+                    self.record_attempt('control_channel_lost', control_lost=True)
+            # Keep collecting this one already submitted response within its
+            # existing timeout even if the independent control channel failed.
+            # Cancelling it here used to discard the only native request key.
             value = await launch
+            if control_error is not None: raise control_error
         finally:
             # Do not cancel a sequenced controller call half way through a
             # response: the next call must never consume its predecessor's ACK.
@@ -280,6 +325,7 @@ class DesktopLaunch:
             # broker/Desktop pipeline. Timeout/transport/lost service never
             # qualify as a rejection, even when no process ACK was received.
             if value and value['terminal'] and value['errorlevel'] in (2, 3, 4, 5, 6, 7):
+                self.record_attempt('not_submitted', native=value)
                 raise NotSubmitted('DESKRUN rejected the application start: ' + value['error'] + '.')
             if self.status_expired or loop.time() >= self.status_deadline:
                 raise UnconfirmedGuestEffect('Launch outcome unknown: DESKRUN did not confirm an exact process identity. No launch was repeated.')

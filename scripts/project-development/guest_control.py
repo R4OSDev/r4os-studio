@@ -5,9 +5,20 @@ import re
 from contracts import DevelopmentFault, UnconfirmedGuestEffect, encode
 
 class GuestControl:
-    def __init__(self, ssh, deployment, execution_id):
+    def __init__(self, ssh, deployment, execution_id, work=None):
         self.ssh, self.deployment, self.id = ssh, deployment, execution_id
         self.sequence = 0; self.process = None; self.lock = asyncio.Lock(); self.error_task = None
+        self.work = work; self.pending_operation = 'open'
+
+    def lost(self, phase):
+        if self.work is None: return
+        from layout import save
+        from jobs import now
+        save(self.work / 'guest-control-loss.json', {'schema': 1, 'executionId': self.id,
+            'sequence': self.sequence, 'operation': self.pending_operation, 'phase': phase,
+            'channel': 'ssh-stdio', 'observedAt': now(),
+            'localSshProcessId': self.process.pid if self.process else None,
+            'sshExitCode': self.process.returncode if self.process else None})
 
     async def open(self):
         command = self.deployment['guestDirectory'] + chr(92) + 'STHELP.R4X ' + self.id + ' serve'
@@ -37,16 +48,20 @@ class GuestControl:
             if not value.get('success'): raise DevelopmentFault(value.get('result', {}).get('error', 'The guest request failed.'))
             return value
         except (asyncio.TimeoutError, OSError, ValueError):
+            self.lost('read')
             raise UnconfirmedGuestEffect('The guest control receipt was lost. No start or input was replayed.') from None
 
     async def call(self, operation, **input):
         async with self.lock:
+            self.pending_operation = operation
             self.sequence += 1
             message = encode({'version': 1, 'instance': self.id, 'sequence': self.sequence, 'operation': operation, **input}) + '\n'
             if len(message.encode()) > 4096: raise DevelopmentFault('Guest request exceeds the frame limit.', 400)
             try:
                 self.process.stdin.write(message.encode()); await self.process.stdin.drain()
-            except (OSError, ConnectionError): raise UnconfirmedGuestEffect('The guest control channel closed without a receipt.') from None
+            except (OSError, ConnectionError):
+                self.lost('write')
+                raise UnconfirmedGuestEffect('The guest control channel closed without a receipt.') from None
             result = (await self.read())['result']
             if 'state' in result: result['controllerSequence'] = self.sequence
             return result

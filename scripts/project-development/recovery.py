@@ -86,6 +86,12 @@ def local(store, job):
             deploymentId=value['id'], target=value['target'], exitCode=0, error=None,
             **({'desktopShortcut': value['desktopShortcut']} if value.get('desktopShortcut') else {}))
     if job['kind'] != 'execution': return None
+    from launch_receipts import original as original_launch
+    launch = original_launch(store, job)
+    if launch:
+        # Metadata from the original saved transport is not a new start,
+        # process adoption, terminal receipt or proof of cleanup.
+        job = store.update(job['id'], **launch)
     work = store.root / 'ExecutionWork' / job['id']; closed = work / 'closed.json'
     if not closed.exists(): return None
     value = read(closed); intent = read(work / 'intent.json')

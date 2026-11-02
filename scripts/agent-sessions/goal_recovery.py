@@ -97,6 +97,19 @@ def development(store, sid, tool):
             elif not reading and (job.get('agentRunId') != tool['run_id'] or row[0] != request
                     or job['kind'] != DEVELOPMENT[tool['tool']]): return None
             value = {'jobId': job_id, 'kind': job['kind'], 'state': job['state'], 'readOnly': reading}
+            attempt = job.get('desktopLaunchAttempt')
+            if job['kind'] == 'execution' and isinstance(attempt, dict):
+                execution_id = str(uuid.UUID(attempt['executionId']))
+                expected_attempt = str(uuid.uuid5(uuid.UUID(execution_id), 'desktop-launch'))
+                if (attempt.get('hostAttemptId') == expected_attempt and attempt.get('jobId') == job_id
+                    and attempt.get('projectId') == store.owner_id and attempt.get('deploymentId') == job.get('deploymentId')
+                    and isinstance(attempt.get('phase'), str) and len(attempt['phase']) <= 64):
+                    transport = attempt.get('transport') or {}
+                    value['launchReceipt'] = {'hostAttemptId': expected_attempt, 'phase': attempt['phase'],
+                        'nativeRequestKnown': bool(attempt.get('nativeRequestConfirmed') is True
+                            and attempt.get('nativeRequest') and attempt['nativeRequest'] == (job.get('desktopLaunch') or {}).get('request')),
+                        'controlChannelLost': attempt.get('controlChannelLost') is True,
+                        'transportUncertain': transport.get('transportUncertain') is True}
             if annotation: value.update(visualAssessment=True, effectConfirmed=True)
             if window: value.update(windowAction=True, effectConfirmed=False)
             if completion: value.update(checkCompletion=True, effectConfirmed=False)
@@ -142,6 +155,9 @@ def instructions(config):
         'Its historical run/tool may remain unknown and its application test/exit status may still be unavailable. '
         'Do not treat that historical flag as an unresolved live process or ask for an already supplied job ID. '
         'A readOnly reference identifies a status read, not another application start. '
+        'A launchReceipt is host correlation metadata, not proof of native admission, process end or cleanup. '
+        'Its hostAttemptId is not a DESKRUN request. If nativeRequestKnown is false, a lost SSH response cannot '
+        'establish that the original start was rejected; keep that effect unknown and never start a replacement. '
         'A visualAssessment reference with effectConfirmed=true identifies the committed original host image judgment; '
         'it did not start, stop or send input to the app. Its linked guest completion is a separate receipt. '
         'A windowAction reference identifies the original admitted own-window request, not a confirmed successful action. '

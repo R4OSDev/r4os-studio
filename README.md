@@ -1,3 +1,13 @@
+## Preserve original Desktop launch receipts (0.9.2)
+
+A failed control-channel heartbeat no longer discards the already submitted
+DESKRUN response. New launches persist an original host correlation receipt and
+bounded transport diagnostics; valid original saved responses can be read back
+without replay. Host UUIDs are never native request keys, and an empty lost ACK
+remains unknown pending qualified native correlation. Source/receipt inspection,
+AST and Studio static checks only; no tests or app/VM runs. See
+[Desktop-Launch-Receipts.md](Desktop-Launch-Receipts.md).
+
 ## Natural Desktop completion observation (0.9.1)
 
 When a naturally exiting Desktop app loses its window before its retained end

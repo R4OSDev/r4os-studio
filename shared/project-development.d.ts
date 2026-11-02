@@ -198,6 +198,16 @@ export interface DevelopmentJob {
   nextStep?: string | null;
   checkCompletion?: { requestId: string; reason: 'criteria_complete'; state: 'closing' | 'completed' | 'failed'; closed?: boolean; completedAt?: string };
   desktopLaunch?: DesktopLaunchReceipt;
+  desktopLaunchAttempt?: {
+    schema: 1; hostAttemptId: string; jobId: string; projectId: string; executionId: string;
+    deploymentId: string; phase: string; createdAt: string; observedAt: string;
+    nativeRequest: string | null; nativeRequestConfirmed: boolean;
+    source?: 'original-deskrun-transport'; statusOnly?: boolean;
+    controlChannelLost?: boolean; nativePhase?: string; nativeErrorlevel?: number;
+    process?: { instanceId: number; generation: string } | null;
+    transport?: { sshExitCode: number | null; transportUncertain: boolean; localSshProcessId?: number;
+      startedAt?: string; observedAt?: string; elapsedMilliseconds?: number; stdoutBytes: number; stderrBytes: number };
+  };
   desktopShortcutRequested?: boolean;
   desktopShortcut?: DesktopShortcutReceipt;
   windowControlRequested?: boolean;
