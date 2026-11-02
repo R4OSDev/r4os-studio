@@ -2,7 +2,7 @@
 from profile import PROFILE, GUI_PROFILE, ROADMAP_PROFILE, REMOTE_PROFILES, SKILL_PROFILES, CONTRACT_PROFILE, NOTES_PROFILE, GESTURE_PROFILE, DETAIL_PROFILE, tools_for
 from copy import deepcopy
 from profile import WINDOW_PROFILE, DRAG_PROFILE, DESKTOP_PROFILE
-from profile import LOOKUP_PROFILE, EDITOR_PROFILE, KEYPLAN_PROFILE
+from profile import LOOKUP_PROFILE, EDITOR_PROFILE, KEYPLAN_PROFILE, GIT_READ_PROFILE
 
 
 def obj(properties, required=()):
@@ -90,6 +90,35 @@ DEFS['read_environment_notes']=('Read/search bounded session-local reports and f
 DEFS['record_environment_note']=('Record an observed Studio/tool/workflow fault or a fault in an inaccessible dependency, including public APIs/ABI, SDK/Contract, kernel, Desktop or libraries. Also record useful workflow-saving feature requests for APIs, Desktop or libraries even without a failure. Use kind=problem for faults and the separate kind=suggestion for feature requests; category names the affected area. Based on existing evidence, name component/version and expected versus observed behavior for a problem, or the missing capability, use case and benefit for a suggestion. First read current session notes and pass their revision; reuse similar entries unchanged. Exclude bugs and normal compiler/test failures in the user\'s editable project, expected permissions/Stop, corrected misuse and ordinary waits. No quota, extra commands/tests/inference, secrets/private paths/raw logs or deleted-report recreation. Server binds origin and deduplicates this call. No edit/delete or failed-tool retry.',obj({'revision':{'type':'integer','minimum':0,'maximum':9007199254740991},'kind':NOTE_KIND,'category':NOTE_CATEGORY,'title':{'type':'string','minLength':1,'maxLength':160},'description':{'type':'string','minLength':1,'maxLength':4000},**{key:{'type':'string','maxLength':1000} for key in ('impact','workaround','suggestion')}},['revision','kind','category','title','description']))
 
 def specifications(profile=PROFILE):
+    if profile == GIT_READ_PROFILE:
+        result=deepcopy(specifications(KEYPLAN_PROFILE))
+        opaque={'type':'string','minLength':64,'maxLength':64}
+        offset={'type':'integer','minimum':0,'maximum':131072}
+        limit={'type':'integer','minimum':1,'maximum':25}
+        result.append({'name':'studio_read_project_git',
+            'description':('Read this project session/run’s bound Git status/diff or original own Git job without commit/fetch/pull/push. '
+                'status returns immutable snapshotId and at most25 entries; page with the same snapshotId/nextOffset. '
+                'Diff uses snapshotId/path and UTF-8 byte offsets; maximum capture128KiB, page6KiB serialized text. '
+                'select requires snapshotId and an explicit list of1..512 reviewed changed files, at most65536 total UTF-8 path bytes, '
+                'and returns immutable selectionId; view=selection pages that exact selection. Renames require both old/new paths. '
+                'Source limits remain10000 files/256MiB total/32MiB per file/1024 path bytes. Selection stores private metadata only; '
+                'changed base/branch/bytes require fresh review. View=job reads the original requestId only, including unknown state; '
+                'never repeat a push to recover its response. Read permission is separate from Push permission.'),
+            'inputSchema':{'oneOf':[
+                obj({'view':{'type':'string','enum':['status']},'snapshotId':opaque,'offset':offset,'limit':limit},['view']),
+                obj({'view':{'type':'string','enum':['diff']},'snapshotId':opaque,'path':PATH,'offset':offset},['view','snapshotId','path']),
+                obj({'view':{'type':'string','enum':['select']},'snapshotId':opaque,'files':{'type':'array','minItems':1,'maxItems':512,'items':PATH}},['view','snapshotId','files']),
+                obj({'view':{'type':'string','enum':['selection']},'selectionId':opaque,'offset':offset,'limit':limit},['view','selectionId']),
+                obj({'view':{'type':'string','enum':['job']},'requestId':ID},['view','requestId'])]}})
+        declaration=next(v for v in result if v['name']=='studio_push_project')
+        declaration['inputSchema']=obj({'selectionId':opaque,'commitMessage':{'type':'string','minLength':1,'maxLength':4000}},['selectionId','commitMessage'])
+        declaration['description']=('Publish exactly one explicit immutable selection from studio_read_project_git view=select. '
+            'Requires separate Push project permission and a commit description. All512-file/65536-path-byte selection limits '
+            'and existing source quotas apply. Admission and the worker recheck original own run, repository/branch/base, file '
+            'states and hashes; changed inputs require a fresh reviewed selection. No add-all default, force push, automatic '
+            'splitting or permission change. Pending items preserve the original requestId. If the response is lost/unknown, '
+            'read view=job for that original requestId; never push again to recover a receipt.')
+        return result
     if profile == KEYPLAN_PROFILE:
         result = deepcopy(specifications(EDITOR_PROFILE))
         declaration = next(value for value in result if value['name'] == 'studio_send_vm_input')
@@ -209,6 +238,8 @@ def specifications(profile=PROFILE):
 
 
 def validate_arguments(name, value, profile=PROFILE):
+    if profile == GIT_READ_PROFILE and name not in ('read_project_git','push_project'):
+        return validate_arguments(name,value,KEYPLAN_PROFILE)
     if profile == KEYPLAN_PROFILE and not (name == 'send_vm_input' and value.get('kind') == 'keyPlan'):
         return validate_arguments(name,value,EDITOR_PROFILE)
     if profile == EDITOR_PROFILE:

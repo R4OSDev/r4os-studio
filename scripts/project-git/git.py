@@ -40,15 +40,16 @@ def credentials(base, token):
 
 
 class Git:
-    def __init__(self, root, workspace, temporary, token=None):
+    def __init__(self, root, workspace, temporary, token=None, read_only=False):
         self.root, self.workspace, self.temporary, self.token = folder(root), folder(workspace), folder(temporary), token
+        self.read_only = read_only
         self.empty = self.temporary / 'empty'; self.empty.mkdir(mode=0o700, exist_ok=True)
 
     def command(self, args, auth=None):
         helper = Path(__file__).with_name('askpass.py')
         command = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-all', '--share-net',
                    '--ro-bind', '/usr', '/usr', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/home',
-                   '--bind', str(self.root), '/repo', '--ro-bind', str(self.workspace), '/workspace', '--ro-bind', str(self.empty), '/empty', '--chdir', '/workspace']
+                   '--ro-bind' if self.read_only else '--bind', str(self.root), '/repo', '--ro-bind', str(self.workspace), '/workspace', '--ro-bind', str(self.empty), '/empty', '--chdir', '/workspace']
         for item in ('/lib', '/lib64', '/etc/ssl', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group'):
             if Path(item).exists(): command += ['--ro-bind', item, item]
         if auth: command += ['--ro-bind', str(auth), '/credential.sock', '--ro-bind', str(helper), '/askpass.py']
@@ -64,6 +65,7 @@ class Git:
         env = {'PATH': '/usr/bin:/bin', 'HOME': '/home', 'LANG': 'C.UTF-8', 'GIT_CONFIG_NOSYSTEM': '1',
                'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TEMPLATE_DIR': '/empty', 'GIT_TERMINAL_PROMPT': '0', 'GIT_LITERAL_PATHSPECS': '1',
                'GIT_ALLOW_PROTOCOL': 'https', 'GIT_PROTOCOL_FROM_USER': '0', 'GIT_ASKPASS': '/askpass.py'}
+        if self.read_only: env['GIT_OPTIONAL_LOCKS'] = '0'
         out, err = self.temporary / 'stdout', self.temporary / 'stderr'
         with out.open('wb') as stdout, err.open('wb') as stderr:
             process = subprocess.Popen(self.command(args, auth), stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
@@ -94,6 +96,8 @@ class Git:
         return result, process.returncode
 
     def run(self, *args, data=None, allow=(0,), timeout=60):
+        if self.read_only and (not args or args[0] not in ('rev-parse','symbolic-ref','rev-list','ls-files','status','diff') or data is not None):
+            raise ProjectFault('This Git inspection permits fixed read-only commands only.',403)
         if self.token:
             with credentials(self.temporary, self.token) as auth: return self._run(list(args), auth, data, allow, timeout)
         return self._run(list(args), None, data, allow, timeout)

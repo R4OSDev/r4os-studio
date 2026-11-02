@@ -15,8 +15,9 @@ def process(pid):
 
 
 class AgentLease:
-    def __init__(self, config, identity, value, descriptor, peer_pid=None):
+    def __init__(self, config, identity, value, descriptor, peer_pid=None, read_only=False):
         self.projects, self.identity, self.value, self.fd = Path(config['projects']), project_id(identity), value, descriptor
+        self.read_only = read_only
         if (not isinstance(value, dict) or set(value) != {'sessionId', 'runId', 'workerPid', 'workerBirth', 'revision', 'callId'}
                 or type(descriptor) is not int or type(value.get('workerPid')) is not int or value['workerPid'] <= 0
                 or type(value.get('revision')) is not int or value['revision'] < 1 or not isinstance(value.get('callId'), str) or not 1 <= len(value['callId']) <= 256):
@@ -38,11 +39,14 @@ class AgentLease:
                 WHERE r.id=? AND s.id=? AND s.project_id=?''', (self.value['runId'], self.value['sessionId'], self.identity)).fetchone()
         if not row or row[0] not in ('starting', 'running') or row[1] != 1: raise ProjectFault('The agent run is no longer accepting Git effects.', 409)
         config, worker = json.loads(row[2]), json.loads(row[3] or '{}')
-        if (config.get('owner') != {'type': 'project', 'id': self.identity} or config.get('engine', {}).get('profile') not in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21')
-                or config.get('permissions', {}).get('studio.push_project') is not True or config.get('revision') != row[4] or row[4] != self.value['revision']
+        self.frozen = config
+        if (config.get('owner') != {'type': 'project', 'id': self.identity} or config.get('engine', {}).get('profile') not in ('studio-tools-v6', 'studio-tools-v7', 'studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22')
+                or config.get('permissions', {}).get('studio.read_project_git' if self.read_only else 'studio.push_project') is not True
+                or self.read_only and config.get('engine',{}).get('profile') != 'studio-tools-v22'
+                or config.get('revision') != row[4] or row[4] != self.value['revision']
                 or worker.get('pid') != self.value['workerPid'] or worker.get('birth') != self.value['workerBirth'] or process(self.value['workerPid'])[1] != self.value['workerBirth']):
             raise ProjectFault('Agent Git permission, profile or worker binding changed.', 403)
-        if 'githubBinding' in config:
+        if 'githubBinding' in config and not self.read_only:
             if not isinstance(config['githubBinding'], dict):
                 raise ProjectFault('This run has no confirmed repository binding. Keep publication open; connecting a repository does not grant this run a destination.', 409)
             current = binding(self.projects, self.identity)
@@ -52,6 +56,7 @@ class AgentLease:
                 raise ProjectFault('The repository or branch differs from this run’s frozen binding. Keep publication open and begin a deliberately authorized new run after reconciling the original operation.', 409)
         from project_maintenance import project, pending_git, pending_update
         if config.get('projectPins') != project(self.projects, self.identity)['pins']: raise ProjectFault('The active agent project pins changed.', 409)
+        if self.read_only: return
         if pending_git(self.projects, self.identity) or pending_update(self.projects, self.identity): raise ProjectFault('Resolve project recovery before an agent push.', 409)
         development = self.projects / self.identity / 'Development/Development.sqlite'
         if development.exists():

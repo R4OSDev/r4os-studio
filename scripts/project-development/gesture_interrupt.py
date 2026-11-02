@@ -29,7 +29,7 @@ async def prepare(execution, message, plan, request, lease, authorization):
     from authorization import authorize
     from vm_worker import guard
     value = validate(message['input']['interrupt'], plan)
-    if not authorization or authorization['engine']['profile'] not in ('studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21'):
+    if not authorization or authorization['engine']['profile'] not in ('studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22'):
         raise DevelopmentFault('Drag interrupts require a new v17 session; this conversation keeps its original tools.', 403)
     store = execution.store; job = store.get(execution.job['id'])
     deployment = store.deployment(job['deploymentId'])

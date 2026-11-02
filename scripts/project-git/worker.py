@@ -42,9 +42,19 @@ def main():
                 if agent:
                     if job['kind'] != 'push': raise ProjectFault('Agent Git actions are limited to push.', 403)
                     from pushing import push
-                    state = action.status()
-                    action.progress('agent_snapshot', agentSnapshot=state['snapshot'], bindingRevision=action.bound['revision'] if action.bound else None)
-                    result = push(action, {**job['input'], 'bindingRevision': action.bound['revision'] if action.bound else None, 'snapshot': state['snapshot']})
+                    if 'selectionId' in job['input']:
+                        from inspection import validate_selection,push_input
+                        push_input(job['input']);selected=validate_selection(action,agent,job['input']['selectionId'])
+                        action.progress('agent_selection',selectionId=selected['id'],selectedFiles=len(selected['files']),
+                            agentSnapshot=selected['sourceSnapshot'],bindingRevision=selected['binding']['revision'])
+                        result=push(action,{'commitMessage':job['input']['commitMessage'],'files':selected['files'],
+                            'bindingRevision':selected['binding']['revision'],'snapshot':selected['sourceSnapshot'],
+                            'expectedHead':selected['head'],'changesHash':selected['changesHash']})
+                        result.update(selectionId=selected['id'],selectedFiles=len(selected['files']))
+                    else:
+                        state = action.status()
+                        action.progress('agent_snapshot', agentSnapshot=state['snapshot'], bindingRevision=action.bound['revision'] if action.bound else None)
+                        result = push(action, {**job['input'], 'bindingRevision': action.bound['revision'] if action.bound else None, 'snapshot': state['snapshot']})
                 else: result = action.execute()
         job.update(state='completed', phase='complete', result=result, updatedAt=now())
     except ProjectFault as error:

@@ -21,7 +21,7 @@ from store import ProjectFault
 READ_ONLY = {'studio_list_directory','studio_read_file','studio_search','studio_read_attachment',
     'studio_read_development_job','studio_get_remote_host','studio_read_remote_job',
     'studio_read_roadmap','studio_read_update_package','studio_list_generated_images',
-    'studio_read_environment_notes'}
+    'studio_read_environment_notes','studio_read_project_git'}
 KEEP = {'session_deletions', 'retired_session_requests'}
 
 

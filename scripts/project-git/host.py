@@ -62,7 +62,19 @@ class Coordinator:
                 manifest = document(Path(self.release()) / 'shared/project-git.json')
                 if manifest.get('protocol') != 1 or any(v not in KINDS for v in manifest.get('actions', [])):
                     raise ProjectFault('Git release capabilities are incompatible.', 503)
-                return {'available': True, 'protocol': 1, 'maxJobs': 2, 'kinds': manifest['actions'], 'limits': manifest['limits']}
+                return {'available': True, 'protocol': 1, 'maxJobs': 2, 'kinds': manifest['actions'], 'limits': manifest['limits'],
+                    'agentReadVersion':1,'agentSelectionVersion':1}
+            if operation == 'agent_inspect':
+                if set(data) != {'operation','projectId','agent','input'} or lease_fd is None:
+                    raise ProjectFault('Invalid own Git inspection request.',400)
+                from agent import AgentLease
+                from inspection import inspect
+                project=project_id(data['projectId'])
+                owner=AgentLease(self.config,project,data['agent'],lease_fd,peer_pid,read_only=True);owner.verify()
+                with locks(self.config['projects'],project,mutate=False):
+                    result=inspect(self.config,project,owner,data['input'])
+                    owner.verify()
+                    return result
             if operation == 'last_job':
                 project = project_id(data.get('projectId'))
                 matches = [document(path / 'job.json') for path in self.base.iterdir()]
@@ -102,8 +114,12 @@ class Coordinator:
             identity, project = project_id(data['requestId']), project_id(data['projectId'])
             if agent:
                 from agent import AgentLease
-                if data['kind'] != 'push' or not isinstance(data.get('input'), dict) or set(data['input']) - {'commitMessage', 'files'}: raise ProjectFault('The agent Git broker supports project push only.', 400)
-                AgentLease(self.config, project, data['agent'], lease_fd, peer_pid).verify()
+                if data['kind'] != 'push' or not isinstance(data.get('input'), dict) or set(data['input']) - {'commitMessage', 'files','selectionId'}: raise ProjectFault('The agent Git broker supports project push only.', 400)
+                agent_lease=AgentLease(self.config, project, data['agent'], lease_fd, peer_pid);agent_lease.verify()
+                if agent_lease.frozen['engine']['profile']=='studio-tools-v22':
+                    from inspection import push_input
+                    push_input(data['input'])
+                elif 'selectionId' in data['input']:raise ProjectFault('This conversation retains its original push contract.',403)
             elif lease_fd is not None: raise ProjectFault('Unexpected inherited Git lease.', 400)
             if data['kind'] not in KINDS or not isinstance(data['input'], dict): raise ProjectFault('Invalid Git job kind.', 400)
             fingerprint = digest(data)
@@ -112,6 +128,12 @@ class Coordinator:
                 old = document(path)
                 if old['hash'] != fingerprint: raise ProjectFault('This Git request ID belongs to different input.', 409)
                 return self.public(old)
+            if agent and 'selectionId' in data['input']:
+                from inspection import operation,validate_selection
+                with locks(self.config['projects'],project,mutate=False):
+                    with operation(self.config,project,agent_lease) as action:
+                        validate_selection(action,agent_lease,data['input']['selectionId'])
+                agent_lease.verify()
             check_binding = None
             if data['kind'] == 'check':
                 if set(data['input']) - {'bindingRevision'}: raise ProjectFault('Invalid remote check fields.', 400)

@@ -1,5 +1,5 @@
 """One explicit saved-source commit and a non-forced single-ref push with readback."""
-from common import ProjectFault, document, binding, source_path, save, now
+from common import ProjectFault, document, binding, source_path, save, now, digest
 
 
 def receipt(action, result):
@@ -11,12 +11,14 @@ def receipt(action, result):
 
 
 def push(action, data):
-    if set(data) - {'bindingRevision', 'snapshot', 'commitMessage', 'files'} or not isinstance(data.get('commitMessage'), str) or not data['commitMessage'].strip() or len(data['commitMessage'].encode()) > 4000 or '\x00' in data['commitMessage']:
+    if set(data) - {'bindingRevision', 'snapshot', 'commitMessage', 'files','expectedHead','changesHash'} or not isinstance(data.get('commitMessage'), str) or not data['commitMessage'].strip() or len(data['commitMessage'].encode()) > 4000 or '\x00' in data['commitMessage']:
         raise ProjectFault('Enter a commit description (1–4,000 UTF-8 bytes).', 400)
     if not action.bound or data.get('bindingRevision') != action.bound['revision']: raise ProjectFault('Repository binding changed. Refresh before pushing.', 409)
     old_remote = document(action.base / 'remote.json') if (action.base / 'remote.json').exists() else {}
     action.progress('checking_push')
     state = action.status(True)
+    if 'expectedHead' in data and (state['head'] != data['expectedHead'] or digest(state['changes']) != data['changesHash']):
+        raise ProjectFault('The reviewed base or file states changed before staging. Create a fresh selection.',409)
     if action.remote['archived']: raise ProjectFault('Archived repositories cannot accept a push.', 409)
     if state['snapshot'] != data.get('snapshot'): raise ProjectFault('Saved source files changed. Refresh and review them before pushing.', 409)
     if state['state'] in ('behind', 'diverged', 'remote_only') or (state['state'] == 'branch_missing' and old_remote.get('head')):
@@ -37,6 +39,8 @@ def push(action, data):
     if selected:
         action.git.run('add', '--all', '--pathspec-from-file=-', '--pathspec-file-nul', data=('\x00'.join(selected) + '\x00').encode())
     tree = action.git.text('write-tree')
+    if 'expectedHead' in data and action.git.head() != data['expectedHead']:
+        raise ProjectFault('The original local base changed during staging. No commit was published.',409)
     if action.status()['snapshot'] != state['snapshot']: raise ProjectFault('Sources changed during commit preparation. Review them again.', 409)
     old_tree = action.git.text('rev-parse', head + '^{tree}') if head else None
     if selected and tree != old_tree:

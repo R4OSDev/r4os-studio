@@ -19,6 +19,7 @@ export const permissionToolLabels: Record<AgentToolId, string> = {
   'studio.control_app_window': 'Control app window',
   'studio.start_project_vm': 'Start project VM',
   'studio.push_project': 'Push project to GitHub',
+  'studio.read_project_git': 'Read Git status, diff and jobs',
   'studio.get_remote_host': 'Remote Host information', 'studio.run_remote_command': 'Run remote command',
   'studio.remote_files': 'Remote files', 'studio.read_remote_job': 'Read remote job', 'studio.stop_remote_job': 'Stop remote job',
   'studio.read_update_package': 'Read update packages', 'studio.plan_update_package': 'Plan update package',

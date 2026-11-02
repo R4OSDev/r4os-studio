@@ -1,3 +1,13 @@
+## Bound Git inspection and large explicit selections (0.9.8)
+
+New v22 conversations can read paginated own Git status/diffs and original jobs
+under a separate read permission. Push requires a reviewed immutable selection
+and commit description, with up to512 files /65536 path bytes. Original branch,
+base, statuses and hashes are rechecked before admission and staging; existing
+source quotas and independent Push permission remain. No add-all default or
+replay on a lost response. No tests or application-repository writes for validation. See
+[Bound-Git-Selections.md](Bound-Git-Selections.md).
+
 ## Short own-client key plans (0.9.7)
 
 New v21 conversations can schedule at most32 normal key/codepoint events over

@@ -3,7 +3,7 @@ export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio
   | 'studio.list_directory' | 'studio.read_file' | 'studio.search' | 'studio.write_file'
   | 'studio.apply_patch' | 'studio.create_directory'
   | 'studio.validate_skill' | 'studio.save_skill'
-  | 'studio.push_project'
+  | 'studio.push_project' | 'studio.read_project_git'
   | 'studio.get_remote_host' | 'studio.run_remote_command' | 'studio.remote_files' | 'studio.read_remote_job' | 'studio.stop_remote_job'
   | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
   | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm' | 'studio.control_app_window'

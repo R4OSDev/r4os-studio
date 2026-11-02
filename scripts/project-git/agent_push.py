@@ -12,10 +12,10 @@ from common import ProjectFault, document, project_id
 from agent import AgentLease, process
 
 
-def rpc(value, descriptor=None):
+def rpc(value, descriptor=None, timeout=15):
     raw = (json.dumps(value) + '\n').encode()
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(15); client.connect('/run/r4os-studio-git/control.sock')
+        client.settimeout(timeout); client.connect('/run/r4os-studio-git/control.sock')
         if descriptor is not None:
             written = client.sendmsg([raw], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, struct.pack('i', descriptor))])
             if written < len(raw): client.sendall(raw[written:])
@@ -39,7 +39,7 @@ def main():
     raw = sys.stdin.buffer.read(131073)
     if len(raw) > 131072: raise ProjectFault('Project push arguments exceeded their limit.', 400)
     data = json.loads(raw)
-    if not isinstance(data, dict) or set(data) - {'callId', 'commitMessage', 'files'} or not isinstance(data.get('callId'), str): raise ProjectFault('Invalid project push arguments.', 400)
+    if not isinstance(data, dict) or set(data) - {'callId', 'commitMessage', 'files','selectionId'} or not isinstance(data.get('callId'), str): raise ProjectFault('Invalid project push arguments.', 400)
     parent = os.getppid()
     import sqlite3
     from contextlib import closing
@@ -50,7 +50,7 @@ def main():
     lease = {'sessionId': session, 'runId': run, 'workerPid': parent, 'workerBirth': process(parent)[1], 'revision': frozen['revision'], 'callId': data['callId']}
     AgentLease(config, identity, lease, descriptor).verify()
     request_id = str(uuid.uuid5(uuid.UUID(run), 'github:' + data['callId']))
-    value = rpc({'operation': 'agent_submit', 'requestId': request_id, 'projectId': identity, 'kind': 'push', 'agent': lease, 'input': {k: v for k, v in data.items() if k != 'callId'}}, descriptor)
+    value = rpc({'operation': 'agent_submit', 'requestId': request_id, 'projectId': identity, 'kind': 'push', 'agent': lease, 'input': {k: v for k, v in data.items() if k != 'callId'}}, descriptor, timeout=120 if 'selectionId' in data else 15)
     deadline = time.monotonic() + 330
     while value['state'] in ('queued', 'running'):
         if time.monotonic() > deadline: raise ProjectFault('The original project push remains unconfirmed.', 503)

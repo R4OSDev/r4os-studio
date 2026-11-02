@@ -199,7 +199,7 @@ class Execution:
                 elif kind == 'key':
                     shortcut = value['key'] in SHORTCUTS
                     if shortcut:
-                        if authorization and authorization['engine']['profile'] not in ('studio-tools-v20','studio-tools-v21'):
+                        if authorization and authorization['engine']['profile'] not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22'):
                             raise DevelopmentFault('This conversation retains its original key contract. Use an editor-shortcut-capable session.',403)
                         if (deployment.get('helperCapabilities',{}).get('editorShortcutVersion') != 1
                                 or request.get('frameBindingVersion') != 1 or repeat != 1):

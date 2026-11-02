@@ -329,7 +329,7 @@ class Host:
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
                 elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
-                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21'):
+                if op == 'deploy' and 'desktopShortcut' in request.get('input', {}) and authorization['engine']['profile'] not in ('studio-tools-v18','studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22'):
                     raise DevelopmentFault('This native conversation retains its original deployment schema. Desktop publication requires a new v18 session or the browser action.', 403)
                 if op == 'execution' and request.get('input',{}).get('windowControl') is True:
                     authorize(store,owner,'window',peer_pid)

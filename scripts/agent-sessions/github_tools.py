@@ -23,6 +23,8 @@ def publication_receipt(job, request_id, project_id):
     pushed = job.get('state') == 'completed' and result.get('pushed') is True and commit_known and remote_known
     nothing = job.get('state') == 'completed' and result.get('nothingToPush') is True and result.get('pushed') is not True and commit == remote and (commit_known or commit is None)
     github.update(state=job.get('state'), phase=job.get('phase'), commit=commit, remoteHead=remote, pushed=pushed, nothingToPush=nothing)
+    if isinstance(result.get('selectionId'),str) and re.fullmatch('[a-f0-9]{64}',result['selectionId']):
+        github.update(selectionId=result['selectionId'],selectedFiles=result.get('selectedFiles'))
     success = pushed or nothing
     unconfirmed = job.get('state') == 'unknown' or (result.get('pushed') is True and not pushed)
     output = 'Push confirmed.' if pushed else 'Nothing to push. No empty commit was created.' if nothing else 'No commit or push was published. Review the original Git job.' if result.get('notPublished') else job.get('error') or 'Publication remains unconfirmed. Review the original Git job before another push.'
@@ -32,6 +34,27 @@ def publication_receipt(job, request_id, project_id):
 
 class GitHubTools:
     def __init__(self, worker): self.worker = worker
+
+    async def inspect(self,arguments,call_id):
+        worker=self.worker
+        async with worker.terminals.lock:
+            async with worker.sandbox.lock:
+                if arguments.get('view')!='job' and any(not p.finished.is_set() for p in worker.terminals.processes.values()):
+                    return {'success':False,'error':'busy','output':'Finish the current terminal processes before capturing/selecting Git sources.'}
+                if worker.lease is None or worker.lease.closed:raise ValueError('The own workspace lease is unavailable.')
+                helper=Path(__file__).resolve().parents[1]/'project-git/agent_inspect.py';descriptor=worker.lease.fileno()
+                process=await asyncio.create_subprocess_exec('/usr/bin/python3','-B',str(helper),str(worker.store.projects),
+                    worker.store.project_id,worker.session_id,worker.run_id,str(descriptor),stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,pass_fds=(descriptor,),
+                    env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},limit=131072)
+                try:
+                    raw,_=await asyncio.wait_for(process.communicate(encode({'callId':call_id,'input':arguments}).encode()),125)
+                    if len(raw)>12288:raise ValueError('The Git read response exceeded its bound.')
+                    response=json.loads(raw)
+                    if response.get('error'):return {'success':False,'error':'unavailable','output':response['error']}
+                    return {'success':True,'output':encode(response['result'])}
+                finally:
+                    if process.returncode is None:process.kill();await process.wait()
 
     async def call(self, arguments, call_id):
         worker = self.worker

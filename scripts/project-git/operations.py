@@ -6,18 +6,22 @@ from github import GitHub
 
 
 class Operations:
-    def __init__(self, config, job):
+    def __init__(self, config, job, read_only=False, temporary=None):
         self.config, self.job = config, job
         self.projects = Path(config['projects']); self.id = project_id(job['projectId'])
         self.base = storage(self.projects, self.id)
-        self.repo = self.base / 'Repo'; self.repo.mkdir(mode=0o700, exist_ok=True)
+        self.read_only = read_only
+        self.repo = self.base / 'Repo'
+        if not read_only: self.repo.mkdir(mode=0o700, exist_ok=True)
         self.temporary = self.base / 'Temp'; self.temporary.mkdir(mode=0o700, exist_ok=True)
+        if temporary is not None: self.temporary = Path(temporary)
         self.workspace = self.projects / self.id / 'Workspace'
-        self.git = Git(self.repo, self.workspace, self.temporary)
+        self.git = Git(self.repo, self.workspace, self.temporary, read_only=read_only)
         self.bound = binding(self.projects, self.id)
         self.agent = None
 
     def progress(self, phase, **extra):
+        if self.read_only: raise ProjectFault('Read-only Git inspection cannot admit or progress a Git effect.',403)
         if self.agent is not None: self.agent.verify(self.projects, self.id)
         self.job.update(phase=phase, updatedAt=now(), **extra)
         save(Path(self.config['projects']) / '.studio/github/Jobs' / self.job['id'] / 'job.json', self.job)
@@ -135,7 +139,10 @@ class Operations:
         return self.git.text('rev-parse', '--verify', 'FETCH_HEAD')
 
     def status(self, refresh=False):
-        self.git.init(self.bound['branch'] if self.bound else 'main')
+        if self.read_only:
+            if refresh: raise ProjectFault('This inspection never fetches or updates Git metadata.',403)
+            if not (self.repo/'HEAD').is_file(): raise ProjectFault('Initialize the bound repository before inspecting it.',409)
+        else: self.git.init(self.bound['branch'] if self.bound else 'main')
         remote_head = self.fetch() if refresh and self.bound else None
         checked_at = now() if refresh and self.bound else None
         if refresh and self.bound: save(self.base / 'remote.json', {'head': remote_head, 'checkedAt': checked_at, 'bindingRevision': self.bound['revision']})
@@ -154,9 +161,10 @@ class Operations:
         files = self.git.run('ls-files', '--cached', '--others', '--exclude-standard', '-z')[0].decode('utf8').split('\0')
         if len(files) > 10001: raise ProjectFault('Git source file count exceeded its limit.', 409)
         source = inventory(self.workspace, only=set(files) - {''})
+        self.source = source
         changes_raw = self.git.run('status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all')[0]
         # Renames are intentionally shown as deletion/addition to keep path parsing exact.
-        changes = []; chunks = changes_raw.split(b'\0'); index = 0
+        changes = []; chunks = changes_raw.split(b'\0'); index = 0; self.renames = {}
         while index < len(chunks):
             item = chunks[index]; index += 1
             if not item: continue
@@ -164,12 +172,13 @@ class Operations:
             if any(c in status for c in 'RC'):
                 if index >= len(chunks): raise ProjectFault('Invalid Git status.', 503)
                 old = chunks[index].decode('utf8'); index += 1
+                if 'R' in status: self.renames[path] = old
                 changes.append({'path': old, 'status': 'D'})
             if path in source or 'D' in status: changes.append({'path': path, 'status': status.strip()})
             if len(changes) > 10000: raise ProjectFault('Git status exceeds its file limit.', 409)
         result = {'binding': self.bound, 'head': head, 'remoteHead': remote_head, 'ahead': ahead, 'behind': behind,
                   'state': state, 'changes': changes, 'snapshot': digest(source), 'checkedAt': checked_at, 'fresh': bool(refresh and self.bound)}
-        save(self.base / 'status.json', result)
+        if not self.read_only: save(self.base / 'status.json', result)
         return result
 
     def diff(self, data):
