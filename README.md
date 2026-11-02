@@ -1,3 +1,16 @@
+## Bounded execution mailbox cleanup (0.9.23)
+
+Closing an execution now resolves queued and already dequeued action responses,
+allows a short error-delivery interval and closes its own connections before
+waiting for the server to finish. All connection cleanup waits are bounded.
+Requests not admitted to execution are distinguished from unconfirmed original
+guest effects. Unexpected action failures settle their original response
+immediately and preserve a bounded first-cause diagnostic before cleanup, with
+the exception type, optional missing metadata field and original action binding.
+Tool arguments and credentials are excluded. A socket closing is never proof
+of application completion or guest cleanup. Existing unknown jobs remain
+protected; no launch, input, screenshot or close request is replayed.
+
 ## Screenshot binding after native link activation (0.9.22)
 
 Screenshots of apps started through their published link retain the original

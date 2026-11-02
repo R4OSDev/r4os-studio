@@ -60,6 +60,27 @@ class Execution:
                 self.output_observation = observation
         return bool(fresh)
 
+    def record_failure(self, error, action=None):
+        """Keep the first host cause before cleanup; never store tool arguments."""
+        try:
+            path = self.work / 'execution-error.json'
+            if path.exists(): return
+            current = self.store.get(self.job['id'])
+            value = {'schema': 1, 'jobId': self.job['id'], 'projectId': self.store.id,
+                'executionId': current.get('executionId'), 'recordedAt': now(),
+                'errorType': type(error).__name__[:80], 'phase': current.get('phase'),
+                'controllerOperation': getattr(self.control, 'pending_operation', None),
+                'controllerSequence': getattr(self.control, 'sequence', None)}
+            if action is not None:
+                value['action'] = {k: action[k] for k in ('operation', 'requestId')}
+            if (isinstance(error, KeyError) and len(error.args) == 1
+                    and isinstance(error.args[0], str) and len(error.args[0]) <= 80
+                    and error.args[0].isascii() and error.args[0].isidentifier()):
+                value['missingField'] = error.args[0]
+            save(path, value)
+        except Exception:
+            pass  # A diagnostic write cannot replace the original failure.
+
     async def observe_files(self, state, control, lease, force=False):
         from live_output_files import INTERVAL_SECONDS, owned, read_registered, publish_observation
         from vm_worker import guard
@@ -467,8 +488,18 @@ class Execution:
                                     elif not future.done(): future.set_result(result)
                                 except DevelopmentFault as error:
                                     if not future.done(): future.set_exception(error)
-                                    if getattr(error, 'uncertain', False): raise
+                                    if getattr(error, 'uncertain', False):
+                                        self.record_failure(error, message)
+                                        raise
+                                except BaseException as error:
+                                    self.record_failure(error, message)
+                                    if not future.done():
+                                        future.set_exception(UnconfirmedGuestEffect(
+                                            'Execution action failed (' + type(error).__name__ + '). '
+                                            'Original guest effects remain unconfirmed; inspect its saved receipt without replay.'))
+                                    raise
                 except BaseException as error:
+                    self.record_failure(error)
                     if not start_sent and not hello_ready and control.startup_rejected:
                         save(self.work / 'closed.json', {**intent, 'state': 'closed', 'applicationStarted': False,
                             'launchRejected': True, 'error': str(error), 'startupReceipt': control.startup_rejected})
