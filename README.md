@@ -1,3 +1,13 @@
+## Native link request transfer (0.9.18)
+
+The verified Exchange path guard now accepts the native link helper's exact
+short request filename derived from its original lowercase execution UUID.
+Previously a valid native Prepare could be followed by a local path rejection
+before Activate. The request name, guest recovery contract, package-root binding
+and full byte/hash readback remain unchanged. No guest-helper rebuild or project
+pin update is needed. Static checks only; no test or guest activation was run.
+See [Desktop-Link-Activation.md](Desktop-Link-Activation.md).
+
 ## Runtime metadata in the hardened web service (0.9.17)
 
 The final installed HTTP check found that 0.9.16 attempted native feature

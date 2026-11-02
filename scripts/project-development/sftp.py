@@ -8,6 +8,10 @@ import uuid
 
 from contracts import DevelopmentFault, UnconfirmedGuestEffect, LIMITS, digest
 
+# The native link recovery helper derives this exact short filename from the
+# original lowercase execution UUID. Preserve its case and the existing roots.
+EXCHANGE_FILENAME = r'(?:[A-Z0-9_-]{1,8}(?:\.[A-Z0-9]{1,3})?|L[0-9a-f]{7}\.BIN)'
+
 
 def quote(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
 
@@ -15,7 +19,7 @@ def quote(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\
 def remote(path, ssh=None):
     if ssh is not None and getattr(ssh, 'exchange_target', None):
         root = getattr(ssh, 'package_root', None)
-        if not root or not path.startswith(root + '/') or not re.fullmatch(r'/[A-Z]/Build/P[A-F0-9]{7}/(?:D[A-F0-9]{7}/)?[A-Z0-9_-]{1,8}(?:\.[A-Z0-9]{1,3})?', path):
+        if not root or not path.startswith(root + '/') or not re.fullmatch(r'/[A-Z]/Build/P[A-F0-9]{7}/(?:D[A-F0-9]{7}/)?' + EXCHANGE_FILENAME, path):
             raise DevelopmentFault('The guest path is outside the verified Exchange package.', 400)
     elif not re.fullmatch(r'/C/(?:[A-Z0-9_-]{1,8}/)*(?:[A-Z0-9_-]{1,8})(?:\.[A-Z0-9]{1,3})?', path):
         raise DevelopmentFault('Invalid owned guest package path.', 400)

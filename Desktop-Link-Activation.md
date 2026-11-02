@@ -5,6 +5,16 @@ through the native Desktop R4LNK path. Publication, icon display, native start,
 frame readiness, process completion and cleanup have separate receipts. Viewing
 options, publishing a link and installing Studio never start an application.
 
+## Original link request filenames (0.9.18)
+
+The Exchange transfer guard accepts the native recovery helper's exact
+`L[0-9a-f]{7}.BIN` filename inside the already verified package root. Both host
+and guest retain the original execution UUID's lettercase. The former uppercase
+filename rule rejected this internal file after a successful native Prepare,
+before any Activate. Existing short filename rules, root binding, create-only
+transfer and complete size/hash readback remain in force. No guest-helper or
+project pin change is required; old jobs are not retried or rewritten.
+
 ## Use
 
 Deploy the GUI R4X with **Deploy to desktop** using the current Studio helper.
