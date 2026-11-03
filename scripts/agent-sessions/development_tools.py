@@ -24,7 +24,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'ssh', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -66,19 +66,24 @@ class DevelopmentTools:
         request_id = str(uuid.uuid5(uuid.UUID(self.worker.run_id), 'development:' + call_id))
         job = None
         try:
-            if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm'):
+            if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm', 'run_vm_command'):
                 if name == 'start_project_vm':
                     from vm_worker import broker_call
                     capabilities = await broker_call({'operation': 'capabilities'})
                     if capabilities.get('features', {}).get('vmStart') != 1:
                         raise DevelopmentFault('VM start support requires development host maintenance.', 503)
+                if name == 'run_vm_command':
+                    from vm_worker import broker_call
+                    capability = await broker_call({'operation':'capabilities'})
+                    if capability.get('features',{}).get('projectSsh') != 1:
+                        raise DevelopmentFault('Project SSH requires the current coordinator and SSH worker support. No command was admitted.', 503)
                 settings = await self.request('settings')
                 from jobs import Jobs
                 store = Jobs(self.worker.manifest['projects'], self.worker.manifest['r4os'], self.worker.manifest['projectId'])
                 try: revision = store.project['revision']
                 finally: store.close()
                 body = {'requestId': request_id, 'projectRevision': revision, 'settingsRevision': settings['revision']}
-                operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start'}[name]
+                operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start', 'run_vm_command': 'ssh'}[name]
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']
                     if 'desktopShortcut' in value:
@@ -112,7 +117,12 @@ class DevelopmentTools:
                     overrides = {k: value[k] for k in ('arguments', 'timeoutSeconds') if k in value}
                     overrides.update(value.get('criteria', {}))
                     if overrides: body['overrides'] = overrides
+                if name == 'run_vm_command': body['command'] = value['command']
                 job = await self.request(operation, input=body)
+                if name == 'run_vm_command':
+                    # Admission returns the durable original immediately; no model
+                    # tool-wait deadline is a guest completion claim.
+                    return self.result(job)
                 if name == 'start_project_vm': return await self.wait_for_vm(job, call_id, value)
                 if name in ('build_project', 'deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
@@ -128,8 +138,9 @@ class DevelopmentTools:
                     return {'success':True,'output':encode(references)}
                 await asyncio.sleep(value.get('waitMilliseconds', 0) / 1000)
                 mode=value.get('view','summary') if self.compact() else 'legacy'
+                if value.get('channel') and mode != 'output': raise DevelopmentFault('A stdout/stderr channel requires view=output.',400)
                 if value.get('cursor') and mode not in ('details','inventory'): raise DevelopmentFault('A detail cursor requires its original details/inventory view.',400)
-                page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0), **({'metadataOnly':True} if mode!='output' and self.compact() else {}))
+                page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0), **({'channel':value['channel']} if value.get('channel') else {}), **({'metadataOnly':True} if mode!='output' and self.compact() else {}))
                 if not self.compact() or mode=='inventory':page=await self.with_artifact(page['job'],page)
                 result=self.result(page['job'],page)
                 if mode in ('details','inventory','output'):

@@ -55,7 +55,7 @@ COMPLETION_TOOLS = VM_TOOLS + ('complete_development_job',)
 UPDATE_TOOLS = ('read_update_package', 'plan_update_package', 'build_update_package', 'check_update_vm',
     'upload_update_package', 'install_update_package', 'commit_update', 'verify_update', 'resume_update',
     'abort_update', 'rollback_update', 'cleanup_update_transport')
-DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS
+DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS + ('run_vm_command',)
 GIT_TOOLS = ('push_project',)
 def default_enabled(tool): return tool != 'push_project'  # Push also needs trusted owner/repository context.
 ROADMAP_TOOLS = ('read_roadmap', 'update_roadmap', 'cleanup_roadmap')

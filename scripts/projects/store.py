@@ -159,7 +159,7 @@ def operation(db, request, root):
                 from urllib.parse import quote
                 jobs = sqlite3.connect('file:' + quote(str(development)) + '?mode=ro', uri=True, timeout=5)
                 try:
-                    if jobs.execute("SELECT id FROM jobs WHERE busy=1 AND kind IN ('deploy','execution','vm_start','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery') LIMIT 1").fetchone():
+                    if jobs.execute("SELECT id FROM jobs WHERE busy=1 AND kind IN ('deploy','execution','vm_start','ssh','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery') LIMIT 1").fetchone():
                         raise ProjectFault('Stop this project\'s VM development job before changing its assigned VM.')
                 finally: jobs.close()
             check_vm(root, value['vmId'])

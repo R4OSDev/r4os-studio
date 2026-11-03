@@ -185,7 +185,7 @@ async def inspect(host, store, sid):
     additional, jobs = external(store, sid); blockers.extend(additional)
     units=[]
     for job_id, kind in jobs.items():
-        unit = ('r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + job_id + '.service'
+        unit = ('r4os-studio-development-ssh@' if kind == 'ssh' else 'r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + job_id + '.service'
         units.append(unit)
     if await unit_states(units): blockers.append('An original development worker unit is still active.')
     tree = hashlib.sha256(); tree.update(encode(sorted(runs)).encode())

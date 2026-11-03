@@ -6,7 +6,7 @@ export type AgentToolId = 'studio.exec_command' | 'studio.write_stdin' | 'studio
   | 'studio.push_project' | 'studio.read_project_git'
   | 'studio.get_remote_host' | 'studio.run_remote_command' | 'studio.remote_files' | 'studio.read_remote_job' | 'studio.stop_remote_job'
   | 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project' | 'studio.read_development_job'
-  | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm' | 'studio.control_app_window'
+  | 'studio.stop_development_job' | 'studio.complete_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm' | 'studio.run_vm_command' | 'studio.control_app_window'
   | 'studio.read_update_package' | 'studio.plan_update_package' | 'studio.build_update_package' | 'studio.check_update_vm'
   | 'studio.upload_update_package' | 'studio.install_update_package' | 'studio.commit_update' | 'studio.verify_update'
   | 'studio.resume_update' | 'studio.abort_update' | 'studio.rollback_update' | 'studio.cleanup_update_transport';

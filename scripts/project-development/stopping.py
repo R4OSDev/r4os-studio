@@ -8,6 +8,15 @@ def receipt(store, job, requested, worker_active):
     result = {'version': 1, 'jobId': job['id'], 'requested': requested, 'confirmed': False,
         'outcome': 'unconfirmed', 'scope': 'worker', 'jobState': job['state'], 'recordedAt': now(),
         'reason': 'The original job has no confirmed stop receipt. Inspect it; do not repeat an unknown action.'}
+    if job['kind'] == 'ssh':
+        result['scope'] = 'ssh-client'
+        if not worker_active and (job.get('ssh') or {}).get('sshClientEndConfirmed') is True:
+            result.update(confirmed=True, outcome='stopped' if requested else 'already-ended',
+                guestEffectsMayRemain=not (job.get('ssh') or {}).get('commandReturnConfirmed'),
+                reason='The local SSH client ended. Guest command return is a separate original receipt; detached descendants are not tracked.')
+        elif not worker_active and not (store.root / 'SshWork' / job['id'] / 'intent.json').exists():
+            result.update(confirmed=True, outcome='not-started', reason='No SSH command intent was admitted.')
+        return result
     if worker_active or job['state'] in ('queued', 'starting', 'running', 'stopping', 'unknown'): return result
     if job['kind'] != 'execution':
         result.update(confirmed=True, outcome='stopped' if requested else 'already-ended',

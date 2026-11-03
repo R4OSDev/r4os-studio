@@ -213,6 +213,9 @@ async def main():
             from vm_start import VmStart
             try: await asyncio.wait_for(VmStart(store, job).run(), LIMITS['vmStartTimeoutSeconds'])
             except asyncio.TimeoutError: raise DevelopmentFault('VM start and SSH readiness exceeded the host deadline. Inspect the saved job before retrying.') from None
+        elif job['kind'] == 'ssh':
+            from project_ssh import SshCommand
+            await SshCommand(store, job).run()
         elif job['kind'] == 'update_recovery':
             from update_recovery import Recovery
             await asyncio.wait_for(Recovery(store,job).run(), 540)

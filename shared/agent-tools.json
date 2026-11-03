@@ -425,6 +425,14 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 512
+              },
+              "channel": {
+                "type": "string",
+                "enum": [
+                  "stdout",
+                  "stderr"
+                ],
+                "description": "For SSH output only; omit for the combined log. Each channel has its own byte offsets."
               }
             },
             "required": [
@@ -476,7 +484,8 @@
                       "update_recovery",
                       "deploy",
                       "execution",
-                      "vm_start"
+                      "vm_start",
+                      "ssh"
                     ]
                   }
                 },
@@ -829,6 +838,25 @@
         "type": "object",
         "properties": {},
         "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_run_vm_command",
+      "description": "Run one free R4OS SSH command on this project's currently assigned VM. Studio keeps target, login and host key private. No build/deployment/desktop receipt needed. Returns the durable original job immediately; read_development_job observes output/status and stop_development_job stops only the SSH client. No interactive stdin/PTY, POSIX shell or automatic VM start. Never repeat a command after a lost response: use the original session job lookup.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 112,
+            "description": "One R4OS command, at most 112 UTF-8 bytes including all paths, spaces and arguments. No control characters or silent shortening."
+          }
+        },
+        "required": [
+          "command"
+        ],
         "additionalProperties": false
       }
     },

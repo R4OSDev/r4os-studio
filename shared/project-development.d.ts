@@ -1,12 +1,12 @@
 import type { ProjectPins, ProjectTemplate } from './projects.js';
 
 /** Studio contracts; these are not R4OS ABI or SDK interfaces. */
-export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'update_transfer' | 'update_install' | 'update_commit' | 'update_verify' | 'update_recovery' | 'deploy' | 'execution' | 'vm_start';
+export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'update_transfer' | 'update_install' | 'update_commit' | 'update_verify' | 'update_recovery' | 'deploy' | 'execution' | 'vm_start' | 'ssh';
 export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
   | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
 export type DevelopmentToolId = 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project'
-  | 'studio.complete_development_job' | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm';
+  | 'studio.complete_development_job' | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm' | 'studio.run_vm_command';
 
 export interface DevelopmentCapability {
   reasonCode?: string | null;
@@ -36,6 +36,7 @@ export interface DevelopmentOptions {
   capture: DevelopmentCapability;
   input: DevelopmentCapability;
   startVm?: DevelopmentCapability;
+  ssh?: DevelopmentCapability & {commandLimitBytes:number;channelLimitBytes:number;interactive:false};
   profileId: string | null;
   assignedVm: { id: string; name: string; imageId: string; ready: boolean } | null;
 }
@@ -178,7 +179,7 @@ export interface DevelopmentEvidence {
 export interface DevelopmentStopReceipt {
   version: 1; jobId: string; requested: boolean; confirmed: boolean;
   outcome: 'stopped' | 'already-ended' | 'not-started' | 'unconfirmed';
-  scope: 'worker' | 'owned-process'; jobState: DevelopmentJobState; recordedAt: string; reason: string;
+  scope: 'worker' | 'owned-process' | 'ssh-client'; jobState: DevelopmentJobState; recordedAt: string; reason: string;
   guestEffectsMayRemain?: boolean; source?: string; receiptSha256?: string;
 }
 export interface DevelopmentCheck {
@@ -190,6 +191,11 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  sshCommand?: string;
+  ssh?: {version:1;command:string;commandBytes:number;commandLimitBytes:number;channelLimitBytes:number;
+    sshExitCode:number|null;commandExitCode:number|null;commandReturnConfirmed:boolean;sshClientEndConfirmed:boolean;
+    guestProcessEndConfirmed:boolean;guestDescendantsEndConfirmed:false;outputComplete:boolean;startedAt?:string;endedAt?:string;
+    channels:Record<'stdout'|'stderr',{bytesReceived:number;bytesCaptured:number;truncated:boolean}>};
   lastKeyPlan?: { keyPlanId: string; accepted: number; expected: number; active: boolean; complete: boolean; queuedAtMilliseconds: number[]; latenessMilliseconds: number[]; abortedReason: string | null; consumptionConfirmed: false };
 
   desktopLaunchBudget?: DesktopLaunchBudget;

@@ -103,8 +103,13 @@ class Jobs:
         if kind == 'package':
             from package_jobs import admit
             return admit(self, request, owner)
-        if kind not in ('build', 'deploy', 'execution', 'vm_start'): raise DevelopmentFault('This development operation is not available.', 400)
+        if kind not in ('build', 'deploy', 'execution', 'vm_start', 'ssh'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
+        if kind == 'ssh':
+            expected.add('command')
+            from project_ssh import command
+            command(request.get('command'))
+            if not owner or not owner.get('agentRunId'): raise DevelopmentFault('Project SSH requires an active agent owner.', 403)
         if kind == 'deploy' and 'desktopShortcut' in request:
             expected.add('desktopShortcut')
             if type(request['desktopShortcut']) is not bool: raise DevelopmentFault('Desktop shortcut must be a boolean.', 400)
@@ -180,6 +185,7 @@ class Jobs:
                 'source': None, 'projectRevision': self.project['revision'],
                 'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
                 'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
+            if kind == 'ssh': job['sshCommand'] = request['command']
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
             if request.get('desktopLink'):
                 job.update(desktopLinkRequested=True,desktopLinkPublication=link_publication)
@@ -229,7 +235,7 @@ class Jobs:
             self.db.commit(); return job
         except BaseException: self.db.rollback(); raise
 
-    def page(self, job_id, offset=0, metadata_only=False):
+    def page(self, job_id, offset=0, metadata_only=False, channel=None):
         job = self.get(job_id)
         # Presentation-only projection for historical records; never migrate a saved deployment.
         if not job.get('package') and job.get('deploymentId'):
@@ -251,7 +257,9 @@ class Jobs:
         if job.get('source'): job['source'] = {k: v for k, v in job['source'].items() if k not in ('files', 'directories')}
         if type(offset) != int or offset < 0 or offset > LIMITS['outputBytes']:
             raise DevelopmentFault('Invalid development output offset.', 400)
-        path = self.root / 'Evidence' / job_id / 'output.log'
+        if channel is not None and (job['kind'] != 'ssh' or channel not in ('stdout', 'stderr')):
+            raise DevelopmentFault('Choose stdout/stderr only for an original SSH job.', 400)
+        path = self.root / 'Evidence' / job_id / ((channel + '.log') if channel else 'output.log')
         if type(metadata_only) is not bool: raise DevelopmentFault('Invalid metadata page mode.', 400)
         data = b''; size = path.stat().st_size if path.exists() else 0
         if path.exists() or path.is_symlink():
@@ -287,7 +295,7 @@ class Jobs:
             except DevelopmentFault:artifact_summary={'artifactUnavailable':'Original artifact receipt unavailable.'}
         from evidence import list_for
         from execution_evidence import describe
-        return {'job': job,**artifact_summary, 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
+        return {'job': job,**artifact_summary, **({'channel': channel} if channel else {}), 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
                 'totalBytes':size,'hasMore':offset+len(data)<size,'captureLimitReached':size>=LIMITS['outputBytes'],
                 'captureTruncated':job.get('captureTruncated'),'nextOffset': offset + len(data),
                 'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],

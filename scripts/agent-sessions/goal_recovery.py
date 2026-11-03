@@ -7,7 +7,7 @@ from contextlib import closing
 
 
 DEVELOPMENT = {'studio_build_project': 'build', 'studio_deploy_project': 'deploy',
-    'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_read_development_job': None,
+    'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_run_vm_command': 'ssh', 'studio_read_development_job': None,
     'studio_capture_vm': 'execution', 'studio_control_app_window': 'execution',
     'studio_complete_development_job': 'execution'}
 
@@ -87,7 +87,7 @@ def development(store, sid, tool):
             if (str(uuid.UUID(job_id)) != job_id or (reference is not None and job_id != reference)
                     or job.get('projectId') != store.owner_id or job.get('sessionId') != sid
                     or job.get('state') not in ('queued', 'starting', 'running', 'stopping', 'completed', 'failed', 'interrupted', 'unknown')
-                    or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start')): return None
+                    or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start', 'ssh')): return None
             if window or completion:
                 if (job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution'
                     or not execution_action_receipt(store, db, job, tool, request, sid)): return None
@@ -114,6 +114,13 @@ def development(store, sid, tool):
             if window: value.update(windowAction=True, effectConfirmed=False)
             if completion: value.update(checkCompletion=True, effectConfirmed=False)
             recovery = job.get('recovery') or {}
+            if (job['kind'] == 'ssh' and recovery.get('guestEndConfirmed') is True
+                    and recovery.get('replayed') is False and recovery.get('schema') == 1
+                    and recovery.get('source') in ('original-ssh-result', 'ssh-vm-ended')):
+                proof = db.execute('SELECT substr(receipt,1,8193) FROM recoveries WHERE id=? AND job_id=?',
+                    (str(uuid.UUID(recovery['id'])), job_id)).fetchone()
+                if proof and len(proof[0].encode()) <= 8192 and json.loads(proof[0]) == recovery:
+                    value['recovery'] = {k: recovery[k] for k in ('id', 'source', 'guestEndConfirmed', 'replayed')}
             if (job['kind'] == 'deploy' and job['state'] == 'completed' and job.get('exitCode') is None
                     and recovery.get('schema') == 1 and recovery.get('source') == 'committed-deployment-readback'
                     and recovery.get('replayed') is False and recovery.get('publicationReadbackConfirmed') is True

@@ -3,7 +3,7 @@ from tool_catalog import tool_scope
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill': return ''
-    if not rights.get('studio.read_development_job'): return git_inspection(config)
+    if not rights.get('studio.read_development_job'): return git_inspection(config) + project_ssh(config)
     compact = tool_scope(config) == 'project'
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
@@ -42,7 +42,7 @@ def compose(config):
         'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
         'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
         'app/SDK contract; host Rust builds do not imply a native guest compiler.'
-    ) + presentation + desktop_icons(config) + original_job_references(config) + editor_shortcuts(config) + key_plans(config) + git_inspection(config)
+    ) + presentation + desktop_icons(config) + original_job_references(config) + editor_shortcuts(config) + key_plans(config) + git_inspection(config) + project_ssh(config)
 
 
 def original_job_references(config):
@@ -132,3 +132,21 @@ def git_inspection(config):
         'inputs need a new reviewed selection; never split a milestone arbitrarily or enable rights yourself. '
         'A lost push response is not permission to push again. The pending github.id is the original requestId; '
         'read view=job for that exact ID, even when the original effect is unknown. No automatic reconcile or replay.')
+
+
+def project_ssh(config):
+    if config.get('owner', {}).get('type') != 'project' or not config.get('permissions', {}).get('studio.run_vm_command'): return ''
+    return ('\n\nSTUDIO PROJECT VM SSH v1: studio_run_vm_command executes one free R4OS guest command on the currently assigned VM, '
+        'without a build or deployment. Studio manages the private SSH connection; the local terminal still has no network. '
+        'Separately assigned Remote Hosts use their own tools. The VM must already run with Network and development access enabled; '
+        'start it only through the separately permitted VM-start tool or user action. Commands use the native R4OS Terminal, '
+        'not a POSIX shell: no invented sh/heredoc/chaining syntax, interactive stdin or PTY. Maximum112 UTF-8 bytes per command; '
+        'normal guest permissions and native SSHD restrictions apply. Admission returns the original durable development job immediately; '
+        'queued/running is not completion. Read it with studio_read_development_job; view=output optionally selects channel=stdout or stderr, '
+        'using that channel\'s nextOffset. Each channel captures at most1MiB and continues draining after truncation. '
+        'Only a confirmed commandReturnConfirmed gives the shell exit status; detached descendants are not tracked. '
+        'SSH255, loss of transport or stopping the local SSH client may leave guest effects unknown. Inspect the same original job, '
+        'use lookup={} to recover a lost reference, and never repeat a command merely to recover its response. '
+        'An unresolved guest effect protects the VM until original evidence or an explicit VM end resolves it. '
+        'Use studio_stop_development_job to stop the local client; it does not prove the guest process ended. '
+        'Do not claim an unsupported file write, successful application or complete output from truncated diagnostics.')

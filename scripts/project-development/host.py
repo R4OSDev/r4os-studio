@@ -18,9 +18,10 @@ from store import ProjectFault, connect
 
 UNIT = 'r4os-studio-development@{}.service'
 VM_UNIT = 'r4os-studio-development-vm@{}.service'
+SSH_UNIT = 'r4os-studio-development-ssh@{}.service'
 
 
-def job_unit(job_id, kind='build'): return (UNIT if kind in ('build', 'package') else VM_UNIT).format(identity(job_id))
+def job_unit(job_id, kind='build'): return (SSH_UNIT if kind == 'ssh' else UNIT if kind in ('build', 'package') else VM_UNIT).format(identity(job_id))
 
 
 async def systemctl(*args):
@@ -94,10 +95,10 @@ class Host:
             try: store.update(job_id, 'unknown', phase='recovery', error='The worker ended without a confirmed result. It was not restarted.')
             finally: store.close()
             self.active.pop(job_id, None)
-        raw = await systemctl('list-units', '--all', '--state=active,activating,deactivating,reloading', '--plain', '--no-legend', '--no-pager', 'r4os-studio-development@*.service', 'r4os-studio-development-vm@*.service')
+        raw = await systemctl('list-units', '--all', '--state=active,activating,deactivating,reloading', '--plain', '--no-legend', '--no-pager', 'r4os-studio-development@*.service', 'r4os-studio-development-vm@*.service', 'r4os-studio-development-ssh@*.service')
         units = set()
         for line in raw.splitlines():
-            match = re.match(r'^r4os-studio-development(?:-vm)?@([a-f0-9-]{36})\.service\s', line.strip())
+            match = re.match(r'^r4os-studio-development(?:-vm|-ssh)?@([a-f0-9-]{36})\.service\s', line.strip())
             if match: units.add(identity(match[1]))
         self.unbound = units - set(self.active)
 
@@ -124,6 +125,8 @@ class Host:
         evidence_capabilities = runner().get('evidenceCapabilities', {}).get(project['template'])
         from desktop_budget import options as desktop_budget
         launch_budget = desktop_budget(store,vm)
+        from project_ssh import supported as ssh_supported
+        ssh_ready = ssh_supported()
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image,
                     'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget}),
             'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1, 'desktopShortcutVersion':1,
@@ -134,6 +137,9 @@ class Host:
                 'delivery':'semantic-codepoint','requiresNewDeployment':True},
             'keyPlan': {'version':1,'maximumSteps':32,'maximumMilliseconds':2000,'requiresNewDeployment':True,
                 'heldKeys':False,'heldModifiers':False,'delivery':'owned-event-queue'},
+            'ssh': ({'available': bool(access and access['available'] and ssh_ready),
+                'reason': 'Project SSH worker host maintenance is required.' if not ssh_ready else access['reason'] if access else 'Assign an available virtual machine.',
+                'commandLimitBytes':112, 'channelLimitBytes':LIMITS['outputBytes']//2, 'interactive':False}),
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
             'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),
@@ -247,7 +253,7 @@ class Host:
                 store.update(job['id'], target=target)
                 return {'target': target, 'vmInvocationId': info['invocationId'], 'exchangeInfo': {key: info.get(key) for key in ('exchange', 'exchangeWorker')}} if op == 'bind_execution' else target
             finally: store.close()
-        if op == 'bind_update_target':
+        if op in ('bind_update_target', 'bind_ssh_target'):
             if set(request) != {'operation', 'projectId', 'jobId', 'leaseId', 'token'}:
                 raise DevelopmentFault('Invalid update target binding.', 400)
             from lease import inspect
@@ -260,7 +266,8 @@ class Host:
             store = self.store(request['projectId'])
             try:
                 job = store.get(request['jobId']); vm = vm_config(self.config['r4os'], lease['vmId'])
-                if job['kind'] not in ('update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery') or job['state'] != 'running' or job['binding']['id'] != vm['id']:
+                kinds = ('ssh',) if op == 'bind_ssh_target' else ('update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery')
+                if job['kind'] not in kinds or job['state'] != 'running' or job['binding']['id'] != vm['id']:
                     raise DevelopmentFault('This job has no active update target admission.')
                 info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
                 if info['vm']['state'] != 'running': raise DevelopmentFault('Start the assigned VM explicitly before checking updates.')
@@ -304,26 +311,27 @@ class Host:
             finally:store.close()
         if op == 'capabilities' and set(request) == {'operation'}:
             from package_support import available
+            from project_ssh import supported as ssh_supported
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1, 'desktopLink':1, 'sessionJobLookup':1, 'keyPlan':1},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1, 'desktopLink':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
                     'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
         if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'job_request': allowed.add('requestId')
         if op == 'evidence_history': allowed.add('before')
-        if op == 'read_job': allowed.update(('offset', 'metadataOnly'))
-        if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start'): allowed.update(('input', 'owner'))
+        if op == 'read_job': allowed.update(('offset', 'metadataOnly', 'channel'))
+        if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'ssh'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'window', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'ssh', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         store = self.store(identity(request['projectId']))
         try:
             owner = request.get('owner'); authorization = None
             if op == 'job_request' and owner is not None:
                 raise DevelopmentFault('Use the original own-session job lookup for agent requests.',403)
-            if op == 'vm_start' and owner is None: raise DevelopmentFault('VM start requires an active agent owner.', 403)
+            if op in ('vm_start', 'ssh') and owner is None: raise DevelopmentFault('VM start and project SSH require an active agent owner.', 403)
             if op == 'execution' and request.get('input',{}).get('windowControl') is True and owner is None:
                 raise DevelopmentFault('Window delegation requires its explicit active session owner.',403)
             if owner is not None:
@@ -429,7 +437,7 @@ class Host:
                 from settings import update
                 return update(store, request['input'])
             if op == 'jobs': return store.list()
-            if op == 'read_job': return store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False))
+            if op == 'read_job': return store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False), channel=request.get('channel'))
             if op == 'artifact': return store.artifact(request['id'])
             if op == 'deployment': return store.deployment(request['id'])
             if op == 'assess':
@@ -518,6 +526,10 @@ class Host:
                 previous = store.db.execute('SELECT id FROM jobs WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
                 if owner is not None: authorize(store, owner, op, peer_pid, recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
                 if not previous:
+                    if op == 'ssh':
+                        from project_ssh import supported, command
+                        if not supported(): raise DevelopmentFault('Project SSH worker host maintenance is required.', 503)
+                        command(request['input'].get('command'))
                     if op in ('update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery'):
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if not all((target / ('scripts/project-development/' + name + '.py')).is_file() for name in (('update_probe', 'update_transfer', 'inbox_sftp', 'update_install', 'update_state', 'update_jobs', 'update_verify', 'installed_sftp', 'update_epoch', 'update_recovery') if op != 'update_probe' else ('update_probe',))):
@@ -530,7 +542,7 @@ class Host:
                     if len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None
-                if op in ('deploy', 'execution', 'vm_start', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery') and not previous:
+                if op in ('deploy', 'execution', 'vm_start', 'ssh', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery') and not previous:
                     from access import vm_config
                     if not store.project['vmId']: raise DevelopmentFault('Assign a VM in Project settings first.')
                     from lease import maintenance_active
@@ -543,7 +555,7 @@ class Host:
                         deployed = store.deployment_metadata(request['input'].get('deploymentId'))
                         if deployed.get('helperCapabilities', {}).get('controlVersion') != 2 or deployed.get('helperCapabilities', {}).get('watchdogVersion') != 1:
                             raise DevelopmentFault('This deployment has an older guest helper. Deploy the artifact again before running.')
-                    if op in ('deploy', 'execution', 'vm_start', 'update_transfer', 'update_install'):
+                    if op in ('deploy', 'execution', 'vm_start', 'ssh', 'update_transfer', 'update_install'):
                         from update_state import idle
                         idle(store.projects, binding['id'])
                     for active_id, meta in self.active.items():

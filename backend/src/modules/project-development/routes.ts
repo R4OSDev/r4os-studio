@@ -18,7 +18,7 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
       querystring: { type: 'object', additionalProperties: false, properties: {
         limit: { type: 'integer', minimum: 1, maximum: 25 }, before: revision,
         requestId: identity, originRunId: identity, toolCallId: { type: 'string', minLength: 1, maxLength: 256 },
-        kind: { enum: ['build','package','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery','deploy','execution','vm_start'] },
+        kind: { enum: ['build','package','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery','deploy','execution','vm_start','ssh'] },
       } } },
   }, async (request, reply) => {
     security.session(request, reply);
@@ -147,12 +147,12 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     security.session(request, reply);
     return { deployment: await developmentHost({ operation: 'deployment', projectId: request.params.id, id: request.params.deploymentId }) };
   });
-  app.get<{ Params: { id: string; jobId: string }; Querystring: { offset?: number; metadataOnly?: boolean } }>(base + '/jobs/:jobId', {
+  app.get<{ Params: { id: string; jobId: string }; Querystring: { offset?: number; metadataOnly?: boolean; channel?: 'stdout' | 'stderr' } }>(base + '/jobs/:jobId', {
     schema: { params: jobParams, querystring: { type: 'object', additionalProperties: false,
-      properties: { offset: { type: 'integer', minimum: 0, maximum: 2097152 }, metadataOnly: { type: 'boolean' } } } },
+      properties: { offset: { type: 'integer', minimum: 0, maximum: 2097152 }, metadataOnly: { type: 'boolean' }, channel: { enum: ['stdout','stderr'] } } } },
   }, async (request, reply) => {
     security.session(request, reply);
-    const read = { operation: 'read_job', projectId: request.params.id, id: request.params.jobId, offset: request.query.offset ?? 0 };
+    const read = { operation: 'read_job', projectId: request.params.id, id: request.params.jobId, offset: request.query.offset ?? 0, ...(request.query.channel ? {channel:request.query.channel} : {}) };
     if (!request.query.metadataOnly) return developmentHost<DevelopmentJobPage>(read);
     try { return await developmentHost<DevelopmentJobPage>({ ...read, metadataOnly: true }); }
     catch (error) {

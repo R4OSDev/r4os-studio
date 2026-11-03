@@ -29,14 +29,14 @@ def fragment(text):
 
 
 def output_state(page):
-    return {**pick(page,('startOffset','nextOffset','pageBytes','totalBytes','hasMore','outputKind','outputEncoding','truncated','captureLimitReached','captureTruncated')),
+    return {**pick(page,('startOffset','nextOffset','pageBytes','totalBytes','hasMore','outputKind','outputEncoding','truncated','captureLimitReached','captureTruncated','channel')),
         'nativeOutputComplete': ((page.get('executionEvidence') or {}).get('output',{}).get('state')=='complete') if (page.get('job') or {}).get('kind')=='execution' else None}
 
 
 def summary(job,page=None):
     page=page or {};small=pick(job,('id','projectId','kind','state','phase','revision','artifactId','deploymentId','exitCode','createdAt','completedAt','reasonCode'))
     small['error']=short(job.get('error'),512)
-    for key in ('process','desktopLaunchBudget','desktopLaunchAttempt','desktopLinkActivation','windowControl','desktopShortcut','lastKeyPlan'):
+    for key in ('process','desktopLaunchBudget','desktopLaunchAttempt','desktopLinkActivation','windowControl','desktopShortcut','lastKeyPlan','ssh'):
         if isinstance(job.get(key),dict):small[key]=job[key]
     if job.get('checkCompletion'):small['checkCompletion']=pick(job['checkCompletion'],('requestId','reason','state','cancelled','closed','completedAt'))
     if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed'))

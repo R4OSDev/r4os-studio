@@ -7,7 +7,7 @@ from update_authorization import PERMISSIONS as UPDATE_PERMISSIONS, permission a
 
 PERMISSIONS = {'build': 'build_project', 'deploy': 'deploy_project', 'execution': 'run_project',
     'wait_build': 'build_project', 'wait_deploy': 'deploy_project', 'wait_execution': 'run_project',
-    'vm_start': 'start_project_vm', 'wait_vm_start': 'start_project_vm',
+    'ssh': 'run_vm_command', 'vm_start': 'start_project_vm', 'wait_vm_start': 'start_project_vm',
     'read_job': 'read_development_job', 'artifact': 'read_development_job', 'deployment': 'read_development_job',
     'evidence': 'capture_vm', 'evidence_history': 'capture_vm', 'capture': 'capture_vm', 'assess': 'capture_vm',
     'input': 'send_vm_input', 'stop_job': 'stop_development_job', 'complete_check': 'complete_development_job'}

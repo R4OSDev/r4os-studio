@@ -17,7 +17,7 @@ def identity(value):
     return str(uuid.UUID(value))
 
 KINDS = ('build','package','update_probe','update_transfer','update_install','update_commit',
-    'update_verify','update_recovery','deploy','execution','vm_start')
+    'update_verify','update_recovery','deploy','execution','vm_start','ssh')
 
 
 def validate(query):

@@ -37,7 +37,7 @@ def rows(path, table, columns='*'):
 
 def worker_check(runs, jobs, action='deleting'):
     units = ['r4os-studio-agent@' + value + '.service' for value in runs]
-    units += [('r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + value + '.service' for value, kind in jobs.items()]
+    units += [('r4os-studio-development-ssh@' if kind == 'ssh' else 'r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + value + '.service' for value, kind in jobs.items()]
     for start in range(0, len(units), 128):
         result = subprocess.run(['/usr/bin/systemctl', 'show', *units[start:start+128], '--property=ActiveState', '--value'],
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=False)

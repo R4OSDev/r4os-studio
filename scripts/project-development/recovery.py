@@ -36,6 +36,9 @@ def local(store, job):
     """Only already committed, privately attested results may become final."""
     if job['state'] != 'unknown': return None
     if (job.get('recovery') or {}).get('guestEndConfirmed'): return job
+    if job['kind'] == 'ssh':
+        from project_ssh import local as ssh_result
+        return ssh_result(store, job)
     if job['kind'] == 'build':
         row = store.db.execute('SELECT id FROM artifacts WHERE build_id=?', (job['id'],)).fetchone()
         if not row: return None
@@ -138,6 +141,9 @@ def local(store, job):
 
 
 async def reconcile(store, job, host=None):
+    if job['kind'] == 'ssh':
+        from project_ssh import reconcile as ssh_reconcile
+        return await ssh_reconcile(store, job)
     if job['kind'] == 'deploy' and job.get('desktopShortcutRequested'):
         from desktop_shortcuts import reconcile as desktop_reconcile
         return await desktop_reconcile(store, job, host)
