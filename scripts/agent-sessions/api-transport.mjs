@@ -8,6 +8,7 @@ import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin
 import { serverProfile, localRequest } from './api_local.mjs';
 import { reportedUsage, ResponsesUsage } from './api_usage.mjs';
 import { ReasoningStore } from './api_reasoning_store.mjs';
+import { zaiHeaders, ZAI_BASE } from './api_zai.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
@@ -53,7 +54,7 @@ const configuration = await new Promise((resolve, reject) => {
   process.stdin.on('data', read);
 }).catch(() => { process.stdout.write('{"error":"API transport bootstrap unavailable"}\n'); process.exit(1); });
 
-const { binding, addresses, key, relayToken, chatPolicy, reasoningStore } = configuration;
+const { binding, addresses, key, relayToken, chatPolicy, reasoningStore, zaiClient } = configuration;
 let target, router = null, history = null, requestOrdinal = 0, profile = 'custom';
 try {
   target = new URL(binding.baseUrl);
@@ -70,7 +71,13 @@ try {
       || chatPolicy?.reasoning !== 'none' && chatPolicy?.schema !== 2) throw Error();
     router = routerSettings(binding.openrouter ?? {});
     if (chatPolicy?.schema === 2) history = new ReasoningStore(reasoningStore);
-  } else profile = serverProfile(binding.server);
+  } else {
+    profile = serverProfile(binding.server);
+    if (binding.kind === 'zai-coding-plan') {
+      if (binding.baseUrl !== ZAI_BASE || binding.protocol !== 'chat-completions' || binding.auth !== 'bearer' || profile !== 'custom') throw Error();
+      zaiHeaders(zaiClient);
+    }
+  }
 } catch { process.stdout.write('{"error":"API transport binding unavailable"}\n'); process.exit(1); }
 
 function fail(response, status, code = 'provider_error') {
@@ -119,6 +126,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
       'Content-Length': String(body.length), 'User-Agent': 'R4OS-Studio-Model-Transport', Connection: 'close' };
     if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
     if (router) Object.assign(headers, routerHeaders(router, true));
+    if (binding.kind === 'zai-coding-plan') Object.assign(headers, zaiHeaders(zaiClient));
     const origin = router ? new RouterOrigin(binding.model, router, key) : null;
     const ordinal = ++requestOrdinal; let originReported = false, usageReported = false;
     const reportUsage = (responseId, usage) => {

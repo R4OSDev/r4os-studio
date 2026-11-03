@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "referenceVersion": "1.19.5",
+  "referenceCommit": "810c0eba1a7348036f8bdf61e6632d0c36c6876c",
+  "referenceSource": "https://github.com/anomalyco/opencode/blob/v1.19.5/packages/opencode/src/session/llm/request.ts",
+  "userAgent": "opencode/1.19.5"
+}

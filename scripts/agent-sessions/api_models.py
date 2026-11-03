@@ -104,6 +104,9 @@ def freeze(store,sid,data,providers,snapshot):
     snapshot['apiProvider']={key:provider[key] for key in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
     if provider['kind']=='openrouter':snapshot['apiProvider']['openrouter']=copy.deepcopy(provider['openrouter'])
     else:snapshot['apiProvider']['server']=provider.get('server','custom')
+    if provider['kind']=='zai-coding-plan':
+        from zai_client import freeze as freeze_client
+        snapshot['apiZaiClient']=freeze_client(store,sid,provider)
     snapshot['apiModels']={'models':[model]};snapshot['apiRunId']=future_run_id(store,sid,data['requestId'])
     if qualified(snapshot['engine']):snapshot['apiGoalProtocol']=1
     else:snapshot['nativeGoalPreparation']=False

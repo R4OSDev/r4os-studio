@@ -434,7 +434,7 @@ class Worker:
                         'origin':{'configRevision':self.config['apiProvider']['revision'],
                             'credentialRevision':self.config['apiProvider']['credentialRevision'],'engineSha256':self.config['engine']['sha256']}}
                 self.api_runtime=ApiRuntime(self.config['apiProvider'],self.config['model'],credential,
-                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'),reasoning=reasoning)
+                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'),reasoning=reasoning,client=self.config.get('apiZaiClient'))
                 credential=None
                 await self.api_runtime.start()
             from codex_runtime import binary as runtime_binary

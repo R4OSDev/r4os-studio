@@ -14,3 +14,14 @@ transport integration; this release only delivers connection management.
 
 The browser handles connection forms. The host owns keys and all transport.
 Existing providers, sessions, model histories and SDK bindings are preserved.
+
+0.9.40 adds the explicitly authorized OpenCode identity, frozen per original
+session. A fresh upstream check found stable **v1.19.5**, commit
+`810c0eba1a7348036f8bdf61e6632d0c36c6876c`. Its non-OpenCode-provider branch
+sends `User-Agent: opencode/1.19.5`, `x-opencode-session-id`, `x-session-affinity`
+and `X-Session-Id`. It does not send `x-opencode-client` or project attribution
+for Z.AI. This stable original supersedes the development checkout's different
+four-part User-Agent described in planning. Own opaque session aliases remain
+stable across workers; no foreign identity or host path is copied. Only Z.AI
+model requests get these headers. The monitor uses its separate native auth
+contract, and internal native engine/provenance records remain unchanged.
