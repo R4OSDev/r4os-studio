@@ -17,8 +17,10 @@ test('OpenRouter fixed documented wire, explicit route/attribution and preserved
   assert.equal(Object.hasOwn(wire, 'store'), false); assert.equal(Object.hasOwn(wire, 'client_metadata'), false);
   assert.equal(Object.hasOwn(wire, 'include'), false); assert.equal(Object.hasOwn(wire, 'models'), false);
   assert.equal(wire[CHAT_NATIVE_METADATA].private, 'native-envelope');
-  assert.equal(wire.model, 'owned/requested-alias'); assert.equal(wire.service_tier, 'default');
-  assert.equal(wire.prompt_cache_key, 'owned'); assert.deepEqual(wire.messages, native.messages);
+  assert.equal(wire.model, 'owned/requested-alias'); assert.equal(wire.service_tier, undefined);
+  assert.equal(wire.prompt_cache_key, undefined); assert.equal(wire.parallel_tool_calls, undefined);
+  assert.throws(() => routerRequest({...native,parallel_tool_calls:false},settings,policy),ChatFault);
+  assert.deepEqual(wire.messages, native.messages);
   assert.deepEqual(wire.provider, { require_parameters: true, allow_fallbacks: false, order: ['owned/provider'], only: ['owned/provider'] });
   assert.deepEqual(routerHeaders(settings, true), { 'X-OpenRouter-Metadata': 'enabled', 'HTTP-Referer': 'https://example.test/owned-app', 'X-OpenRouter-Title': 'Owned fixture' });
   assert.deepEqual(routerHeaders(routerSettings()), {});

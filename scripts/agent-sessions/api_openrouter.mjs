@@ -37,6 +37,13 @@ export function routerRequest(chat, settings, policy) {
   // full-history input and does not document this field; never forward it as
   // an arbitrary provider parameter or pretend it controls provider logging.
   const request = { ...chat }; delete request.store;
+  // Native's default tier and cache key are transport hints, not a request for
+  // a model-specific OpenRouter service tier/cache API. Explicit Fast tiers
+  // are already unavailable. Parallel true means allowed (Chat's default),
+  // never forced; do not turn that default into an endpoint filter. An
+  // explicit prohibition cannot be preserved by this model-neutral contract.
+  if (chat.parallel_tool_calls !== true || chat.service_tier != null && chat.service_tier !== 'default') bad();
+  delete request.parallel_tool_calls; delete request.service_tier; delete request.prompt_cache_key;
   if (policy.schema === 2) {
     if (chat.reasoning_effort !== undefined) request.reasoning = { effort: chat.reasoning_effort };
     delete request.reasoning_effort;

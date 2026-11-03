@@ -4,6 +4,8 @@ import json
 import os
 import unittest
 import asyncio
+import sqlite3
+from contextlib import closing
 from types import SimpleNamespace
 
 from api_provider_store import ApiProviders
@@ -27,6 +29,15 @@ class ApiGoals(unittest.TestCase):
 
     def prepared(self,store):
         self.ready(store,'responses')
+        # Current admission binds the native provider to its original thread
+        # metadata even for a fixture that never launches a model process.
+        from api_runtime import provider_name
+        root=store.directory/self.sid/'Codex'
+        (root/'state').mkdir(parents=True);(root/'native').mkdir()
+        (root/'native'/('owned-'+self.thread+'.jsonl')).write_text(encode({'type':'session_meta','payload':{'id':self.thread}})+'\n')
+        with closing(sqlite3.connect(root/'state/state_5.sqlite')) as native, native:
+            native.execute('CREATE TABLE threads(id TEXT PRIMARY KEY,rollout_path TEXT,model_provider TEXT)')
+            native.execute('INSERT INTO threads VALUES (?,?,?)',(self.thread,'/codex/sessions/owned-'+self.thread+'.jsonl',provider_name(self.connection['id'])))
         Catalogs(self.providers).save_model(self.connection['id'],{'requestId':request(),'providerRevision':1,
             'catalogRevision':0,'model':{'id':'owned/exact-model','contextWindow':8192,
                 'capabilities':{'text':'supported','functionTools':'supported','streaming':'supported','reasoning':'unsupported'}}})
@@ -56,13 +67,14 @@ class ApiGoals(unittest.TestCase):
             self.assertEqual(config['goalExecution']['captureSha256'],hashlib.sha256(encode(Goals(store).snapshot(self.sid)['goal']).encode()).hexdigest())
             self.api.release(run['id'],'project',self.pid,self.sid,play['requestId'],config,meta)
 
-    def test_unqualified_api_runtime_cannot_accept_a_goal_intent(self):
+    def test_api_goal_uses_current_default_instead_of_an_obsolete_session_pin(self):
         with self.open() as store:
-            self.ready(store);engine=json.loads(store.row(self.sid)['engine']);engine['sha256']='0'*64
+            self.ready(store);engine=json.loads(store.row(self.sid)['engine']);engine['sha256']='invalid-checksum'
             with store.db:store.db.execute('UPDATE sessions SET engine=? WHERE id=?',(encode(engine),self.sid))
-            with self.assertRaises(ProjectFault):
-                Goals(store).accept(self.sid,{'requestId':request(),'revision':0,'action':'save','objective':'Own text'})
-            self.assertFalse(exists(store))
+            current=store.get(self.sid)['engine']
+            self.assertNotEqual(current['sha256'],engine['sha256'])
+            receipt,_=Goals(store).accept(self.sid,{'requestId':request(),'revision':0,'action':'save','objective':'Own text'})
+            self.assertEqual(receipt['state'],'pending');self.assertTrue(exists(store))
             with self.api.connect() as db:self.assertEqual(db.execute('SELECT count(*) FROM leases').fetchone()[0],0)
 
     def test_existing_api_run_is_not_upgraded_or_rewritten_into_goal_preparation(self):

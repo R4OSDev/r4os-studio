@@ -1,5 +1,33 @@
 # OpenRouter reasoning
 
+## 0.9.38: strict routing and actual Crouton access
+
+Native default tier/cache hints stay local. The OpenRouter wire omits these
+endpoint-specific hints and an explicitly true parallel-call permission;
+parallel calls remain allowed, rather than required. An explicit false control
+is refused instead of being silently dropped. `require_parameters:true`, the
+chosen backend order/allowlist and the saved fallback choice remain unchanged.
+This avoids filtering out an endpoint for unsupported native default hints.
+
+On03.11.2026 the existing Crouton manual entry was updated through regular
+metadata refresh and versioned model save: `mandatory=true`, six documented
+levels including `max`, no `none`, and the existing explicit default `minimal`
+preserved. Normal session creation is available with the current Studio Codex
+default. Connection/key/routing settings were retained.
+
+The real acceptance remains open: the original0.9.37 request received HTTP404
+without tool effects. Subsequent owned candidate requests reached Stealth but
+received HTTP502, `Provider returned error`, with raw detail `ERROR`. A minimal
+plain text request without tools or reasoning parameters received the same
+provider error. These failures establish no successful model output, reasoning
+roundtrip, file action or Crouton GOAL result. No substitute model is used to
+close that acceptance and no account/privacy/routing setting is changed.
+
+The old Goal/usage regression fixtures now supply current original thread/run
+metadata and follow the current Studio runtime default. They no longer assert
+the removed fixed runtime-pin gate. Actual original-run and spending bindings
+remain required.
+
 ## 0.9.37: complete original history
 
 OpenRouter reasoning uses the existing native Codex session, tool broker and

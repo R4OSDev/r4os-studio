@@ -106,7 +106,14 @@ class ApiUsageTests(unittest.TestCase):
     def test_existing_subscription_receipts_and_schema_remain_provider_independent(self):
         with self.open() as store:
             thread=request()
-            with store.db:store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?',(thread,self.sid))
-            Usage(store,self.sid).ingest(thread,'owned-turn','subscription-response',{'totalTokens':7},True)
+            from codex_runtime import selected
+            # Spending needs the original frozen run/turn identity, never a
+            # free-standing cumulative/session token observation.
+            run=request();engine=selected(self.r4os,'project',include_features=False)
+            with store.db:
+                store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?',(thread,self.sid))
+                store.db.execute("INSERT INTO runs VALUES (?,?,?,'hash','completed',0,?,?,'{}',NULL,'now','now')",
+                    (run,self.sid,request(),encode({'engine':engine}),'owned-turn'))
+            Usage(store,self.sid).ingest(thread,'owned-turn','subscription-response',{'totalTokens':7},True,run)
             Source(store).flush();self.assertEqual(read(self.projects)['tokens']['total'],'7')
             self.assertIsNone(store.db.execute("SELECT 1 FROM sqlite_master WHERE name='statistic_api_origins'").fetchone())
