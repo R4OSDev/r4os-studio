@@ -9,8 +9,8 @@ This product uses only `https://api.z.ai/api/coding/paas/v4` with Chat
 Completions and Bearer auth. General prepaid API endpoints, other regions,
 other protocols and local server presets are rejected. No paid fallback or
 extra-usage option is enabled. Actual account rights are not established by
-saving a connection. Model inference becomes available with the later GLM
-transport integration; this release only delivers connection management.
+saving a connection. Model inference is available through the native GLM
+transport added in 0.9.41.
 
 The browser handles connection forms. The host owns keys and all transport.
 Existing providers, sessions, model histories and SDK bindings are preserved.
@@ -79,3 +79,15 @@ The global endpoint publishes both address families. Z.AI selects a validated
 IPv4 address first on dual-stack DNS, before opening credential transport. The
 full DNS answer still passes the network-scope check; TLS retains api.z.ai,
 and one admitted request still makes exactly one HTTP attempt.
+
+## Subscription display (0.9.44)
+
+Provider settings and Z.AI project/skill sessions display the same private
+account observation: plan, distinct native windows, units, used/remaining/maximum,
+observation time and only reported resets. Reported, stale, unknown and confirmed
+holds are distinct. Credit allowances never become session token estimates.
+Refresh is explicit; visible views reread the local projection every 15 seconds.
+Original refresh IDs/revisions survive reload without keys or request replay.
+During a running original request, a later credential change cannot substitute
+the new account's limits for its frozen scope. Original receipts remain readable.
+The session's normal statistics continue to report actual run usage separately.

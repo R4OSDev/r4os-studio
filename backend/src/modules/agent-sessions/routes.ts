@@ -86,6 +86,27 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     security.session(request, reply);
     return agentHost({ operation: 'session_claude_limits', ...owner(request.params.id), sessionId: request.params.sessionId });
   });
+  app.get<{ Params: SessionParams }>(route + '/:sessionId/zai-limits', { schema: { params } }, async (request, reply) => {
+    security.session(request, reply);
+    return agentHost({ operation: 'session_zai_limits', ...owner(request.params.id), sessionId: request.params.sessionId });
+  });
+  app.post<{ Params: SessionParams; Body: { requestId: string; providerRevision: number } }>(route + '/:sessionId/zai-limits/check', {
+    bodyLimit: 1024,
+    preValidation: async request => {
+      if (request.body && Object.keys(request.body).some(key => !['requestId', 'providerRevision'].includes(key))) throw new ProjectError('Invalid subscription check fields.', 400);
+    },
+    schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'providerRevision'],
+      properties: { requestId: identity, providerRevision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER } } } },
+  }, async (request, reply) => {
+    security.mutation(request, reply);
+    return agentHost({ operation: 'session_zai_limit_refresh', ...owner(request.params.id), sessionId: request.params.sessionId, input: request.body });
+  });
+  app.get<{ Params: SessionParams & { requestId: string } }>(route + '/:sessionId/zai-limit-requests/:requestId', {
+    schema: { params: { ...params, required: [...params.required, 'requestId'], properties: { ...params.properties, requestId: identity } } },
+  }, async (request, reply) => {
+    security.session(request, reply);
+    return agentHost({ operation: 'session_zai_limit_receipt', ...owner(request.params.id), sessionId: request.params.sessionId, requestId: request.params.requestId });
+  });
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     preValidation: async (request) => {
       if (request.body && Object.hasOwn(request.body, 'environmentNotesEnabled') && typeof request.body.environmentNotesEnabled !== 'boolean') throw new ProjectError('Environment notes must be a boolean setting.',400);

@@ -67,6 +67,7 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
       </fieldset>
       {!options && !error && <p className="project-dialog-status" role="status">Loading…</p>}
       {provider?.type === 'claude-subscription' && <p className="field-help">Claude subscription · Text, documents and Studio tools. {chosen?.imageInputs === 'supported' ? 'PNG/JPEG/WebP images are qualified for this model (4 MiB each, 8 MiB per send).' : 'Image input is not qualified for this model.'} Each send checks the native account and included usage. Fast Mode is unavailable.</p>}
+      {provider?.kind === 'zai-coding-plan' && <p className="field-help">Uses your Z.AI GLM Coding Plan allowance. Subscription limits are available in the session and provider settings. Model access is confirmed by Z.AI when you send a message.</p>}
       {selectedEngine?.available && provider?.type !== 'claude-subscription' && <p className="field-help">Codex {selectedEngine.version} · Studio default. Existing conversations also use this default for new requests.</p>}
       {selectedEngine && !selectedEngine.available && <p className="project-dialog-error" role="alert">{selectedEngine.reason}</p>}
       {options && !options.providers.some((p) => availableModels(p).length) && <p className="project-dialog-error">Connect a provider and configure an available model in System settings.</p>}

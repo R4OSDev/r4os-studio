@@ -6,6 +6,7 @@ import { ApiConnectionForm, apiKinds } from './ApiConnectionForm';
 import type { LeaveGuard } from './ApiConnectionForm';
 import { ApiModels } from './ApiModels';
 import { Icon } from '../../../app/Icon';
+import { ZaiProviderLimits } from './ZaiProviderLimits';
 
 export function ApiProviderDetails({ initial, api, removed, setLeaveGuard }: { initial: ApiProvider; api: ProviderApi; removed: () => void; setLeaveGuard?: LeaveGuard }) {
   const [provider, setProvider] = useState(initial), [error, setError] = useState('');
@@ -25,6 +26,7 @@ export function ApiProviderDetails({ initial, api, removed, setLeaveGuard }: { i
     {error && <p className="provider-alert" role="alert">{error}<button type="button" onClick={() => void reload()}>Reload connection</button></p>}
     <button type="button" className="button-secondary" onClick={() => { if (Object.values(guards.current).every(guard => !guard || guard())) void reload(); }}>Reload saved connection</button>
     <ApiConnectionForm key={provider.revision} initial={provider} kind={provider.kind} api={api} saved={() => void reload()} setLeaveGuard={connectionGuard} />
+    {provider.kind === 'zai-coding-plan' && <ZaiProviderLimits key={'quota-' + provider.revision} provider={provider} api={api} />}
     <ApiModels key={`models-${provider.revision}`} provider={provider} api={api} setLeaveGuard={modelGuard} />
   </div>;
 }

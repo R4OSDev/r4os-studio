@@ -258,6 +258,11 @@ class Host:
                 async with self.claude_probe_lock:
                     return await probe(self.config['providers'],self.root,request.get('requestId'))
             raise ProjectFault('Unsupported Claude provider operation.',400)
+        if op in ('session_zai_limits','session_zai_limit_refresh','session_zai_limit_receipt'):
+            from zai_session_limits import dispatch
+            kind,ident=binding(request);store=self.store(ident,kind)
+            try:return await dispatch(self,store,request['sessionId'],op,request.get('input'),request.get('requestId'))
+            finally:store.close()
         if op=='session_claude_limits':
             kind,ident=binding(request);store=self.store(ident,kind)
             try:

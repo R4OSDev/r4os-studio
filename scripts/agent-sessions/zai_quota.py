@@ -75,11 +75,17 @@ class Quota(Catalogs):
             if row['operation']!='quota_refresh':raise ProjectFault('This original request is not a subscription check.',409)
             return json.loads(row['result']) if row['result'] else {'requestId':rid,'providerId':ident,'state':'pending'}
 
-    def listing(self,ident):
+    def listing(self,ident,model=None):
         with self.api.connect() as db:
             provider=self.api.current(db,ident);require(provider)
             row=db.execute('SELECT * FROM zai_quota WHERE provider_id=?',(ident,)).fetchone() if has(db,'zai_quota') else None
             exact=row and row['config_revision']==provider['revision'] and row['credential_revision']==provider['credentialRevision']
+            account=scope(db,provider);holds=[]
+            if account and has(db,'zai_holds'):
+                from zai_limits import expired
+                for held in db.execute('SELECT * FROM zai_holds WHERE scope_id=? ORDER BY observed_at DESC',(account,)):
+                    if not expired(held['reset_at']) and (model is None or not held['model'] or model==held['model']):
+                        holds.append({'model':held['model'] or None,'reason':held['reason'],'resetAt':held['reset_at'],'observedAt':held['observed_at']})
             value=json.loads(row['data']) if exact and row['data'] else {'level':None,'limits':[]}
             current=False
             if exact and row['checked_at'] and not row['error']:
@@ -87,8 +93,8 @@ class Quota(Catalogs):
                 except ValueError:pass
             return {'providerId':ident,'configRevision':provider['revision'],'credentialRevision':provider['credentialRevision'],
                 'state':'current' if current else 'stale' if exact and row['data'] else 'unknown',
-                'scopeId':row['scope_id'] if exact else None,'checkedAt':row['checked_at'] if exact else None,
-                'error':ERRORS.get(row['error'],ERRORS['service']) if exact and row['error'] else None,**value}
+                'scopeId':account,'checkedAt':row['checked_at'] if exact else None,
+                'error':ERRORS.get(row['error'],ERRORS['service']) if exact and row['error'] else None,'holds':holds,**value}
 
     def start_refresh(self,ident,data,allowed=True):
         self.api.get(ident)

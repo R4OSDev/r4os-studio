@@ -8,14 +8,15 @@ import unittest
 from types import SimpleNamespace
 from attachment_store import birth
 from provider_errors import describe
-from test_zai_quota import ZaiQuota,body,rid
+from test_zai_quota import body,rid
+import test_zai_quota as quota_fixtures
 from zai_limits import refresh,state,observe
 from zai_quota import normalize
 from store import ProjectFault
 
 
 class ZaiLimits(unittest.TestCase):
-    setUp=ZaiQuota.setUp
+    setUp=quota_fixtures.ZaiQuota.setUp
 
     def original(self,provider=None,kind='project',model='glm-5.3'):
         provider=provider or self.provider

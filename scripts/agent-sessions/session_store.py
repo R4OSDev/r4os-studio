@@ -135,6 +135,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
             try:provider_engine=claude_engine(provider_dir,selected_profile)
             except ProjectFault as error:provider_engine={'toolScope':tool_scope(selected_profile),'available':False,'reason':str(error)};reason=str(error)
         values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,
+            **({'kind':v['kind']} if v.get('type')=='api' else {}),
             **({'engine':provider_engine} if provider_engine else {}),**({'unavailableReason':reason} if reason else {})})
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
             'nativeTools': [{'id': 'web_search', 'defaultEnabled': True},{'id':'image_generation','defaultEnabled':True}],
@@ -338,7 +339,7 @@ PRAGMA user_version=1;
             if claude:
                 from claude_selection import engine as claude_engine
                 selected_engine=claude_engine(provider_dir,self.selected_profile)
-            if api:selected_engine['api']={'providerId':api['id'],'baseUrl':api['baseUrl'],'protocol':api['protocol'],
+            if api:selected_engine['api']={'providerId':api['id'],'kind':api['kind'],'baseUrl':api['baseUrl'],'protocol':api['protocol'],
                 'server':api.get('server','custom')}
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
