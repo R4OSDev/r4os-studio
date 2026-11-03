@@ -79,7 +79,7 @@ class Deployment:
             access = Access(store.projects, store.r4os, None)
             if not vm.get('networkEnabled') or not access.record(vm['id'])['enabled']:
                 raise DevelopmentFault('Enable Network and development access for the assigned VM before deploying.', reason_code='development_access_unavailable')
-            self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile); guard(store, job, lease)
+            self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile, job['pins']); guard(store, job, lease)
             target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],
                 'leaseId': lease.id, 'token': lease.token, 'helperSha256': helper['sha256']})
             scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)

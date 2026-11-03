@@ -1,4 +1,4 @@
-"""Build and identify the Studio guest adapter in its private pinned SDK project."""
+"""Build private guest adapters with the accepted project's SDK authority."""
 import asyncio
 import json
 import fcntl
@@ -13,13 +13,18 @@ from builder import Builder
 from store import connect
 
 
-async def prepare_helper(projects, r4os, execution_profile):
-    client = await prepare_one(projects, r4os, execution_profile, False)
-    client['watchdog'] = await prepare_one(projects, r4os, execution_profile, True)
+async def prepare_helper(projects, r4os, execution_profile, project_pins):
+    from sdk import profile, validate
+    selected = {name: project_pins[name] for name in ('sdk', 'contract', 'libraries', 'zig') if name in project_pins}
+    context = await asyncio.to_thread(profile, r4os, projects, resolve_rust=False, selected=selected)
+    await asyncio.to_thread(validate, context, APP / 'guest/development-helper')
+    pins = context['pins']
+    client = await prepare_one(projects, r4os, execution_profile, False, pins)
+    client['watchdog'] = await prepare_one(projects, r4os, execution_profile, True, pins)
     return client
 
 
-async def prepare_one(projects, r4os, execution_profile, watcher):
+async def prepare_one(projects, r4os, execution_profile, watcher, pins):
     source = APP / 'guest/development-helper'
     content = {str(p.relative_to(source)): p.read_bytes() for p in sorted(source.rglob('*'))
                if p.is_file() and not p.is_symlink()}
@@ -27,7 +32,6 @@ async def prepare_one(projects, r4os, execution_profile, watcher):
         content['module.R4MF'] = content['module.R4MF'].replace(b'NAME=STHELP', b'NAME=STWATCH').replace(b'APP_CLASS=console', b'APP_CLASS=service')
         content['src/main.zig'] = b'const r4os=@import("r4os"); pub fn r4_app_main(app:*r4os.App)i32{return @import("bootstrap.zig").run(app);}'
     files = [{'path': path, 'sha256': hashlib.sha256(data).hexdigest()} for path, data in sorted(content.items())]
-    pins = execution_profile['helperPins']
     key = hash_value({'source': files, 'pins': pins, 'protocol': 1})
     root = folder(Path(projects) / '.studio/development/Helpers' / key)
     with (root / 'build.lock').open('a') as lock:

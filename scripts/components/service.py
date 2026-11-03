@@ -183,9 +183,21 @@ class Manager:
                 pass
         return sorted(records, key=lambda record: tuple(map(int, record['version'].split('.'))), reverse=True)
 
+    def refresh_profile(self):
+        """Observe an explicitly journalled local migration without a restart."""
+        if self.busy:
+            return
+        from sdk_sets import regular_json
+        actual = regular_json(self.profile, 16 * 1024**2)
+        if actual.get('schema') != 1 or not isinstance(actual.get('defaults'), dict):
+            raise ValueError('The component defaults need recovery; no legacy profile was selected.')
+        if actual != self.state:
+            self.state = actual
+
     def status(self):
         from sdk_sets import profile_revision, summary
         with self.lock:
+            self.refresh_profile()
             components = {}
             inventories = {}; packer_error = None
             for kind in KINDS:
@@ -214,8 +226,9 @@ class Manager:
                 value = self.sdk_sets.get(record['id'], {'state': 'unresolved', 'reason': 'Check SDK versions to resolve the matching packages.'})
                 record['sdkSet'] = summary(value, inventories, self.state['defaults'])
             return {'enabled': True, 'components': components, 'job': copy.deepcopy(self.job),
-                    'features': {'sdkSets': 1, 'sdkSelection': 1, 'sdkProfiles': 1}, 'profileRevision': profile_revision(self.state),
-                    'message': 'Downloads and active defaults are managed independently.'}
+                    'features': {'sdkSets': 1, 'sdkSelection': 1, 'sdkProfiles': 1, 'sdkMigration': 1}, 'profileRevision': profile_revision(self.state),
+                    'message': ('Explicit SDK maintenance is pending.' if (self.root / 'Profiles/sdk-host-maintenance.json').exists()
+                                else 'Downloads and active defaults are managed independently.')}
 
     def progress(self, message, **values):
         with self.lock:
@@ -357,6 +370,7 @@ class Handler(socketserver.StreamRequestHandler):
             command = request.get('command')
             manager = self.server.manager
             with manager.lock:
+                manager.refresh_profile()
                 if command != 'status' and (manager.root / 'Profiles/sdk-host-maintenance.json').exists():
                     raise ValueError('SDK host maintenance is in progress. Retry after it completes.')
                 if command == 'status' and set(request) == {'command'}:

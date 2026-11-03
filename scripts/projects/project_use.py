@@ -14,6 +14,8 @@ def project_id(value):
 
 
 def acquire(projects, identity, exclusive=False, pins_recovery=False):
+    from sdk_migration_guard import check
+    check(projects)
     project_id(identity)
     parent = Path(projects).absolute() / '.studio/project-use'
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)

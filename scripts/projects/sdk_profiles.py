@@ -28,6 +28,8 @@ def identity(record, kind):
 
 def profile(root, projects, pinned=None, resolve_rust=True, verify_components=True, selected=None):
     root, projects = Path(root), Path(projects)
+    from sdk_migration_guard import check
+    check(projects)
     defaults = pinned or selected or package.decode(package.regular_bytes(root / 'Profiles/versions.json'))['defaults']
     revision = defaults.get('sdk', {}).get('revision')
     if pinned and not pinned.get('sdkProfile'):

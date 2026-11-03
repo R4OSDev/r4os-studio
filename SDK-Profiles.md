@@ -188,3 +188,37 @@ SDK/system-library changes or generate replacement tool exports.
 SDK use. Studio build workers clear ambient environment and pass the selected
 receipt as a parameter. Neither its absence nor a validation failure activates
 the old SDK system.
+
+
+## Explicit whole-project migration
+
+`scripts/projects/migrate-sdk.py --apply` coordinates the cutover with a stable
+request ID, exact installed SDK revision and previously successful staged build
+qualifications. It gates project and component admission, requires idle projects
+and workers, and holds every original project lifetime/workspace lease. It never
+starts or stops a session, goal, model run, guest command or VM.
+
+Each project keeps a durable pin-change journal. Immutable no-follow source
+capture precedes SDK `Sync-ComponentPins.ps1` and SDK-selected offline Cargo lock
+synchronization. A Zig SDK dependency changes only when its original URL/hash
+matches the old or selected SDK identity. User source changes after preparation
+block publication. Generated files, portable metadata and catalog pins publish
+under their original gate; a partial publication rolls forward from the same
+receipts without rerunning SDK maintenance or incrementing the revision twice.
+
+The operator verifies that successful staged artifacts used exactly the proposed
+source bytes and new pins. It prepares both private guest helpers and the packer,
+publishes every project, then activates the original durable SDK default request.
+Global gates remain until the final inventory agrees. A failed or interrupted
+migration stays pending for its original request; no old SDK fallback is chosen.
+
+Private guest helpers derive pins from the accepted project's SDK, including
+its Libraries and native module profile. They use the SDK manifest build driver;
+obsolete private direct-build files no longer select an older SDK. R4UPack retains
+the independent Distribution source identity while its SDK source, Zig compiler,
+host profile and optimization come from the selected SDK package. Its actual
+native build proof and binary SHA-256 are bound to its installation marker.
+
+`setup-r4os.py` now prepares a complete official SDK through the existing
+component host. It has no legacy archive/minimal-profile installer and does not
+change project pins or activate a different standard automatically.

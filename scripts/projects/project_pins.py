@@ -102,7 +102,7 @@ def gate_path(projects, identity):
 def original(base, identity, request_id):
     path = base / 'Requests' / (request_id + '.json')
     if not path.exists() and not path.is_symlink(): return None
-    value = json.loads(read(path, 262144))
+    value = json.loads(read(path, 8 * 1024**2))
     if value.get('schema') != 1 or value.get('projectId') != identity or value.get('requestId') != request_id:
         raise ProjectFault('The original pin-change receipt is invalid.', 503)
     return value
@@ -146,12 +146,17 @@ def publish(projects, identity, base, value):
     old = base64.b64decode(value['oldMetadata']) if value['oldMetadata'] is not None else None
     new = base64.b64decode(value['newMetadata'])
     if raw not in (old, new): raise ProjectFault('Portable project metadata changed. The original pin change was preserved.', 409)
+    if value.get('sourceBefore'):
+        from sdk_migration_files import verify_live
+        verify_live(work, value['sourceBefore'], value.get('sdkFiles', []))
     with closing(connect(projects)) as db:
         db.execute('BEGIN IMMEDIATE')
         current = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (identity,)).fetchone(), db)
         before = current['revision'] == value['revision'] and current['pins'] == value['oldPins']
         after = current['revision'] == value['revision'] + 1 and current['pins'] == value['newPins']
         if not (before or after): raise ProjectFault('The original project revision changed. Pin-change data was preserved.', 409)
+        from sdk_migration_files import publish_files
+        publish_files(work, base, value.get('sdkFiles', []))
         if raw != new:
             tmp = base / 'metadata.new'
             fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
@@ -176,64 +181,75 @@ def apply(projects, root, identity, data, hosts):
         raise ProjectFault('Supply a current installed SDK selection.', 400)
     request_id = project_id(data['requestId'])
     with acquire(projects, identity, exclusive=True, pins_recovery=True):
-        base = storage(projects, identity, create=True)
-        value = original(base, identity, request_id)
-        if value and value['input'] != data: raise ProjectFault('This request ID belongs to another pin change.', 409)
-        if value and value.get('result'):
-            gate = gate_path(projects, identity)
-            if gate.exists() and json.loads(read(gate)).get('requestId') == request_id:
-                gate.unlink(); sync(gate.parent)
-            return value['result']
-        previous = pending(base, projects, identity)
-        if previous and previous != request_id: raise ProjectFault('Finish the original pin change before selecting another SDK.', 409)
-        require_idle(projects, identity)
-        from remote_binding import assert_change_safe
-        assert_change_safe(projects, identity)
-        from clear_cache import worker_admission
-        worker_admission(projects, identity, hosts, 'changing project pins')
-        if value is None:
-            current = project(projects, identity)
-            if current['revision'] != data['revision']: raise ProjectFault('Project settings changed. Reload Pins before applying.', 409)
-            choice = next((v for v in choices(root, current) if v['sdkId'] == data['sdkId']), None)
-            if not choice or not choice['available'] or choice['selectionId'] != data['selectionId']:
-                raise ProjectFault('The installed SDK selection changed or is unavailable. Reload Pins.', 409)
-            from sdk import profile
-            context = profile(root, projects, resolve_rust=current['language'] == 'Rust', selected=choice['components'])
-            if context['pins'].get('sdkTools', {}).get('releaseSha256') != choice['releaseSha256']:
-                raise ProjectFault('The SDK release metadata changed. Refresh its installed set in System → Updates before applying.', 409)
-            for kind in ('sdk', 'contract', 'zig'):
-                if any(context['pins'][kind].get(key) != expected for key, expected in choice['components'][kind].items()):
-                    raise ProjectFault('Installed component metadata changed during verification. Reload Pins.', 409)
-            if current['language'] == 'Rust':
-                if not context.get('rust'): raise ProjectFault('The SDK-compatible Rust toolchain is unavailable.', 409)
-                context['pins']['rust'] = context['rust']['pin']
-            from github_import import manifest
-            work = folder(project_directory(projects, identity) / 'Workspace')
-            manifest(context, work, current['language'], current['template'], current['moduleName'])
-            from sdk import validate
-            validate(context, work)
-            parent = work / '.r4os-studio'
-            if not parent.exists(): parent.mkdir(mode=0o700); sync(work)
-            folder(parent); target = parent / 'project.json'
-            raw = read(target) if target.exists() or target.is_symlink() else None
-            from git_metadata import portable
-            metadata = json.loads(raw) if raw is not None else portable(current)
-            if not isinstance(metadata, dict) or any(metadata.get(k) != v for k, v in portable(current).items()):
-                raise ProjectFault('Portable project pins differ from the catalog. Reconcile .r4os-studio/project.json before changing pins.', 409)
-            metadata['pins'] = context['pins']
-            updated = (json.dumps(metadata, indent=2) + '\n').encode()
-            if len(updated) > 65536: raise ProjectFault('Portable project metadata exceeds the pin-change limit.', 409)
-            value = {'schema': 1, 'projectId': identity, 'requestId': request_id, 'input': data,
-                     'revision': current['revision'], 'oldPins': current['pins'], 'newPins': context['pins'],
-                     'oldMetadata': base64.b64encode(raw).decode() if raw is not None else None,
-                     'newMetadata': base64.b64encode(updated).decode(),
-                     'workspaceIdentity': [work.stat().st_dev, work.stat().st_ino, parent.stat().st_ino],
-                     'updatedAt': datetime.now(timezone.utc).isoformat()}
-            save(base / 'Requests' / (request_id + '.json'), value)
+        return apply_locked(projects, root, identity, data, hosts)
+
+
+def apply_locked(projects, root, identity, data, hosts, prepare_only=False):
+    """The caller holds the original exclusive project lifetime lease."""
+    request_id = project_id(data['requestId'])
+    base = storage(projects, identity, create=True)
+    value = original(base, identity, request_id)
+    if value and value['input'] != data: raise ProjectFault('This request ID belongs to another pin change.', 409)
+    if value and value.get('result'):
         gate = gate_path(projects, identity)
-        gate.parent.mkdir(mode=0o700, exist_ok=True); folder(gate.parent); sync(gate.parent.parent)
-        save(gate, {'projectId': identity, 'requestId': request_id})
-        return publish(projects, identity, base, value)
+        if gate.exists() and json.loads(read(gate)).get('requestId') == request_id:
+            gate.unlink(); sync(gate.parent)
+        return value['result']
+    previous = pending(base, projects, identity)
+    if previous and previous != request_id: raise ProjectFault('Finish the original pin change before selecting another SDK.', 409)
+    require_idle(projects, identity)
+    from remote_binding import assert_change_safe
+    assert_change_safe(projects, identity)
+    from clear_cache import worker_admission
+    worker_admission(projects, identity, hosts, 'changing project pins')
+    if value is None:
+        current = project(projects, identity)
+        if current['revision'] != data['revision']: raise ProjectFault('Project settings changed. Reload Pins before applying.', 409)
+        choice = next((v for v in choices(root, current) if v['sdkId'] == data['sdkId']), None)
+        if not choice or not choice['available'] or choice['selectionId'] != data['selectionId']:
+            raise ProjectFault('The installed SDK selection changed or is unavailable. Reload Pins.', 409)
+        from sdk import profile
+        context = profile(root, projects, resolve_rust=current['language'] == 'Rust', selected=choice['components'])
+        if context['pins'].get('sdkTools', {}).get('releaseSha256') != choice['releaseSha256']:
+            raise ProjectFault('The SDK release metadata changed. Refresh its installed set in System → Updates before applying.', 409)
+        for kind in ('sdk', 'contract', 'zig'):
+            if any(context['pins'][kind].get(key) != expected for key, expected in choice['components'][kind].items()):
+                raise ProjectFault('Installed component metadata changed during verification. Reload Pins.', 409)
+        if current['language'] == 'Rust':
+            if not context.get('rust'): raise ProjectFault('The SDK-compatible Rust toolchain is unavailable.', 409)
+            context['pins']['rust'] = context['rust']['pin']
+        work = folder(project_directory(projects, identity) / 'Workspace')
+        parent = work / '.r4os-studio'
+        if not parent.exists(): parent.mkdir(mode=0o700); sync(work)
+        folder(parent); target = parent / 'project.json'
+        from sdk_migration_files import stage
+        prepared = stage(context, work, base / 'Staging' / request_id, request_id, current['pins'])
+        from github_import import manifest
+        manifest(context, prepared['workspace'], current['language'], current['template'], current['moduleName'])
+        from sdk import validate
+        validate(context, prepared['workspace'])
+        raw = read(target) if target.exists() or target.is_symlink() else None
+        from git_metadata import portable
+        metadata = json.loads(raw) if raw is not None else portable(current)
+        if not isinstance(metadata, dict) or any(metadata.get(k) != v for k, v in portable(current).items()):
+            raise ProjectFault('Portable project pins differ from the catalog. Reconcile .r4os-studio/project.json before changing pins.', 409)
+        metadata['pins'] = context['pins']
+        updated = (json.dumps(metadata, indent=2) + '\n').encode()
+        if len(updated) > 65536: raise ProjectFault('Portable project metadata exceeds the pin-change limit.', 409)
+        value = {'schema': 1, 'projectId': identity, 'requestId': request_id, 'input': data,
+                 'revision': current['revision'], 'oldPins': current['pins'], 'newPins': context['pins'],
+                 'oldMetadata': base64.b64encode(raw).decode() if raw is not None else None,
+                 'newMetadata': base64.b64encode(updated).decode(),
+                 'sdkFiles': prepared['changes'], 'sourceBefore': prepared['source'], 'sdkSynchronization': prepared['native'],
+                 'workspaceIdentity': [work.stat().st_dev, work.stat().st_ino, parent.stat().st_ino],
+                 'updatedAt': datetime.now(timezone.utc).isoformat()}
+        save(base / 'Requests' / (request_id + '.json'), value)
+    if prepare_only:
+        return value
+    gate = gate_path(projects, identity)
+    gate.parent.mkdir(mode=0o700, exist_ok=True); folder(gate.parent); sync(gate.parent.parent)
+    save(gate, {'projectId': identity, 'requestId': request_id})
+    return publish(projects, identity, base, value)
 
 
 def main():

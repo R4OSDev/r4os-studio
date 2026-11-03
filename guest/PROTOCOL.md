@@ -3,7 +3,7 @@
 Current STHELP/STWATCH sources omit desktop publication, linkread and link_*
 commands, their capabilities and native link controller. General DESKRUN process
 adoption, evidence, window control, input, key plans and watchdog cleanup remain.
-New private helper builds use unchanged SDK0.64.134/Contract0.64.71/Zig0.16.0.
+New private helper builds derive their complete SDK/Contract/Libraries/compiler set from the accepted project SDK package and its three original profiles. Historical helper receipts keep their original identities.
 Old deployed bytes and historical receipts remain immutable. No guest files are
 changed by this removal. Free project VM SSH needs no private guest helper.
 

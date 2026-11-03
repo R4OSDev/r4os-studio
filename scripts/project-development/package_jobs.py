@@ -67,7 +67,7 @@ def program(store, job):
                 or value['planSha256'] != job['updatePlan']['sha256']
                 or {key: value[key] for key in PACKER_KEYS} != job['updatePlan']['packer']): raise ValueError()
         from r4upack import verify
-        verified = verify(value['directory'], value['binary'])
+        verified = verify(value['directory'], value['binary'], root=store.r4os)
         if any(verified[key] != value[key] for key in PACKER_KEYS if key != 'id'): raise ValueError()
         return value
     except (OSError, ValueError, KeyError, TypeError):

@@ -1,126 +1,75 @@
 #!/usr/bin/env python3
-"""Install the pinned Linux app-build profile under App/Data (no emulator)."""
-
+"""Prepare a complete SDK through Studio's regular component host."""
 import argparse
-import fcntl
-import hashlib
 import json
-import os
-import platform
 from pathlib import Path
-import shutil
-import subprocess
+import socket
 import sys
-import tarfile
-import tempfile
-import urllib.request
+import time
+import uuid
+
+def request(value):
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(15)
+        client.connect('/run/r4os-studio-components/control.sock')
+        client.sendall((json.dumps(value) + '\n').encode())
+        raw = b''
+        while b'\n' not in raw:
+            block = client.recv(65536)
+            if not block or len(raw) + len(block) > 4 * 1024**2:
+                raise ValueError('The original component response could not be confirmed.')
+            raw += block
+    result = json.loads(raw.split(b'\n')[0])
+    if result.get('error'):
+        raise ValueError(result['error'])
+    return result['status']
 
 
-APP = Path(__file__).resolve().parent.parent
-PROFILE_FILE = APP / "shared/r4os/minimal-profile.json"
-
-
-def digest(path):
-    with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
-
-
-def install_component(root, name, component, archive_dir):
-    destination = root / component["path"]
-    marker = destination / ".studio-component.json"
-    if destination.exists():
-        if not marker.is_file() or json.loads(marker.read_text()) != component:
-            raise RuntimeError(f"Existing {destination} has a different or missing installation record; refusing to overwrite it.")
-        print(f"Already installed: {name} {component['version']}", flush=True)
-        return
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".setup-", dir=root) as staging:
-        staging = Path(staging)
-        # Optional local archives are still checked against the pinned SHA-256.
-        archive = archive_dir / f"{name}.tar" if archive_dir else staging / "download.tar"
-        if archive_dir:
-            if not archive.is_file():
-                raise RuntimeError(f"Missing local archive: {archive}")
-        else:
-            print(f"Downloading: {name} {component['version']}", flush=True)
-            request = urllib.request.Request(component["url"], headers={"User-Agent": "R4OS-Studio-Setup"})
-            with urllib.request.urlopen(request, timeout=60) as source, archive.open("wb") as target:
-                shutil.copyfileobj(source, target)
-        if digest(archive) != component["sha256"]:
-            raise RuntimeError(f"SHA-256 mismatch for {name}; package will not be installed.")
-
-        unpacked = staging / "unpacked"
-        unpacked.mkdir()
-        with tarfile.open(archive, "r:*") as package:
-            package.extractall(unpacked, filter="data")
-        entries = list(unpacked.iterdir())
-        if len(entries) != 1 or not entries[0].is_dir():
-            raise RuntimeError(f"Unexpected archive layout for {name}.")
-        package_root = entries[0]
-        required = "zig" if name == "zig" else "build.zig.zon"
-        if not (package_root / required).is_file():
-            raise RuntimeError(f"Missing {required} in {name} archive.")
-        (package_root / ".studio-component.json").write_text(json.dumps(component, indent=2) + "\n")
-        package_root.rename(destination)
-    print(f"Installed: {destination}", flush=True)
+def wait_original():
+    while True:
+        status = request({'command': 'status'})
+        job = status.get('job') or {}
+        if job.get('phase') != 'working':
+            if job.get('error') or job.get('phase') == 'failed':
+                raise ValueError(job.get('error') or 'The original SDK preparation failed.')
+            return status
+        time.sleep(.5)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--archive-dir", type=Path, help="Use local zig.tar, sdk.tar, contract.tar archives instead of downloading.")
+    parser.add_argument('--sdk-id', help='An exact SDK revision from the official component catalog; default: latest stable.')
     args = parser.parse_args()
-    if sys.version_info < (3, 12):
-        parser.error("Python 3.12 or newer is required.")
-    if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
-        parser.error("The pinned profile supports Linux x86_64 only.")
-    os.umask(0o077)
-    profile = json.loads(PROFILE_FILE.read_text())
-    root = APP / "Data/R4OS"
-    root.mkdir(parents=True, exist_ok=True)
-    # Serialize setup attempts; never replace an existing installation in place.
-    with (root / ".setup.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        for directory in ("Toolchains/Zig", "SDK", "Contract", "Libraries", "Images", "Instances", "Profiles"):
-            (root / directory).mkdir(parents=True, exist_ok=True)
-        (APP / "Data/Projects").mkdir(exist_ok=True)
-        for name, component in profile["components"].items():
-            install_component(root, name, component, args.archive_dir.resolve() if args.archive_dir else None)
-
-        zig = root / profile["components"]["zig"]["path"] / "zig"
-        version = subprocess.check_output([str(zig), "version"], text=True).strip()
-        if version != profile["components"]["zig"]["version"]:
-            raise RuntimeError(f"Unexpected Zig version: {version}")
-        # Check the extracted package contents, including on repeated runs.
-        # Keep fetch's working directory outside the package being checked:
-        # Zig may stage a local package in cwd/zig-pkg before hashing it.
-        with tempfile.TemporaryDirectory(prefix=".verify-", dir=root) as verification:
-            verification = Path(verification)
-            (verification / "build.zig").write_text('pub fn build(_: *@import("std").Build) void {}\n')
-            environment = os.environ.copy()
-            environment["ZIG_GLOBAL_CACHE_DIR"] = str(verification / "cache")
-            for name in ("sdk", "contract"):
-                component = profile["components"][name]
-                result = subprocess.run([str(zig), "fetch", "--global-cache-dir", str(verification / "cache"),
-                                         str(root / component["path"])], cwd=verification,
-                                        env=environment, capture_output=True, text=True, check=True)
-                package_hash = (result.stdout.strip() or result.stderr.strip())
-                if package_hash != component["zigPackageHash"]:
-                    raise RuntimeError(f"Package hash mismatch for {name}: {package_hash}")
-                print(f"Verified package hash: {name}", flush=True)
-
-        target = root / "Profiles/minimal.json"
-        with tempfile.NamedTemporaryFile(mode="w", dir=target.parent, prefix=".minimal-", delete=False) as temporary:
-            temporary.write(json.dumps(profile, indent=2) + "\n")
-        Path(temporary.name).replace(target)
-        print(f"Ready: {target} (Zig {version}; no emulator installed)", flush=True)
+    status = request({'command': 'status'})
+    if status.get('features', {}).get('sdkProfiles') != 1:
+        raise ValueError('Install current SDK profile component-host support first. No legacy setup is available.')
+    if (status.get('job') or {}).get('phase') == 'working':
+        raise ValueError('An original component operation is running. Observe it before a new setup request.')
+    request({'command': 'check', 'kind': 'sdk'})
+    status = wait_original()
+    component = status['components']['sdk']
+    ident = args.sdk_id or component['latestId']
+    selected = next((item for item in component['available'] + component['installed'] if item['id'] == ident), None)
+    if selected is None:
+        raise ValueError('Select an exact SDK revision from the current official catalog.')
+    original = {'command': 'download', 'kind': 'sdk', 'id': ident, 'requestId': str(uuid.uuid4()),
+                'expectedProfileRevision': status['profileRevision']}
+    print(json.dumps({'sdkId': ident, 'requestId': original['requestId'], 'action': 'download'}), flush=True)
+    # If submission loses its response, only observe the durable original.
+    try:
+        request(original)
+    except (OSError, TimeoutError):
+        print('Submission response lost; observing the original request. No second download was submitted.', flush=True)
+    status = wait_original()
+    job = status.get('job') or {}
+    if job.get('requestId') != original['requestId'] or job.get('phase') != 'complete':
+        raise ValueError('The original SDK preparation is unconfirmed. Inspect its request ID in System updates.')
+    print('Complete SDK package and SDK-owned host tools prepared. Activate through explicit SDK migration or System updates.', flush=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         main()
-    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, tarfile.TarError) as error:
-        print(f"R4OS setup failed: {error}", file=sys.stderr)
-        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
-            print(error.stderr.strip(), file=sys.stderr)
+    except (OSError, ValueError, KeyError) as error:
+        print('SDK setup failed: ' + str(error), file=sys.stderr)
         sys.exit(1)

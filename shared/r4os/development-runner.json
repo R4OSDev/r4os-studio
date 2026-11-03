@@ -2,28 +2,6 @@
   "schema": 1,
   "interface": "r4os-studio-development-runner",
   "id": "r4os-process-v1",
-  "helperPins": {
-    "sdk": {
-      "version": "0.64.134",
-      "revision": "4542a3e558cfd0aa25936f02d722ddc7ea2f7fb1",
-      "sha256": "2955bcf46c23acfa32caf83f0d71fe0c3a3d0a663b781f3df873f25f20e9eca9",
-      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.134/R4OS-SDK-0.64.134-source.tar.gz",
-      "zigPackageHash": "r4os_sdk-0.64.134-NnPzAiPb4QHrdf4dsfzwrqVh3BeOuGQ3yqQ8es5zqFlU"
-    },
-    "contract": {
-      "version": "0.64.71",
-      "revision": "f825a0877e50335df72aab01e13e256ec1dddd08",
-      "sha256": "c4a41e49f11a168e4532f83ce774902fc210d04bcdc0b565412821e513c6eccf",
-      "url": "https://github.com/R4OSDev/r4os-sdk/releases/download/v0.64.134/R4OS-Contract-0.64.71-source.tar.gz",
-      "zigPackageHash": "r4os_contract-0.64.71-ELhbYSIxMAGsM2yGp5U4FqdeXNDPn6Y_b-_DbqEA6vWe"
-    },
-    "zig": {
-      "version": "0.16.0",
-      "sha256": "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
-      "url": "https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz",
-      "binarySha256": "2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c"
-    }
-  },
   "roles": [
     "terminal",
     "desktop",
@@ -74,5 +52,6 @@
     "processAdoptionVersion": 1,
     "workingDirectory": "native-desktop",
     "evidenceHandoffVersion": 1
-  }
+  },
+  "helperSdk": "accepted-project-sdk-package"
 }
