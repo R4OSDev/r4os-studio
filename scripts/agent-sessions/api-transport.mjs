@@ -7,6 +7,7 @@ import { chatRequest, ChatStream, ChatFault } from './api_chat.mjs';
 import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin } from './api_openrouter.mjs';
 import { serverProfile, localRequest } from './api_local.mjs';
 import { reportedUsage, ResponsesUsage } from './api_usage.mjs';
+import { ReasoningStore } from './api_reasoning_store.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
@@ -26,6 +27,7 @@ const ERROR_CODES = new Map([
   ['api_access_denied', 'The API account cannot access this model.'],
   ['api_service_unavailable', 'The API model service is temporarily unavailable.'],
   ['api_server_semantics_unavailable', 'The configured server adapter cannot preserve this model operation.'],
+  ['openrouter_reasoning_history_unavailable', 'The original OpenRouter reasoning history is missing, changed or exceeds its private storage limit. Existing evidence was preserved.'],
 ]);
 const sockets = new Set(), upstreams = new Set();
 let server, stopped = false;
@@ -51,8 +53,8 @@ const configuration = await new Promise((resolve, reject) => {
   process.stdin.on('data', read);
 }).catch(() => { process.stdout.write('{"error":"API transport bootstrap unavailable"}\n'); process.exit(1); });
 
-const { binding, addresses, key, relayToken, chatPolicy } = configuration;
-let target, router = null, requestOrdinal = 0, profile = 'custom';
+const { binding, addresses, key, relayToken, chatPolicy, reasoningStore } = configuration;
+let target, router = null, history = null, requestOrdinal = 0, profile = 'custom';
 try {
   target = new URL(binding.baseUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash
@@ -64,8 +66,10 @@ try {
   const literal = target.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(literal) && !addresses.includes(literal)) throw Error();
   if (binding.kind === 'openrouter') {
-    if (binding.protocol !== 'chat-completions' || binding.auth !== 'bearer' || chatPolicy?.reasoning !== 'none') throw Error();
+    if (binding.protocol !== 'chat-completions' || binding.auth !== 'bearer'
+      || chatPolicy?.reasoning !== 'none' && chatPolicy?.schema !== 2) throw Error();
     router = routerSettings(binding.openrouter ?? {});
+    if (chatPolicy?.schema === 2) history = new ReasoningStore(reasoningStore);
   } else profile = serverProfile(binding.server);
 } catch { process.stdout.write('{"error":"API transport binding unavailable"}\n'); process.exit(1); }
 
@@ -101,7 +105,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         || (value.previous_response_id !== undefined && value.previous_response_id !== null && value.previous_response_id !== '')
         || value.conversation || !Array.isArray(value.tools) || value.tools.some(tool => tool.type !== 'function')) throw Error();
       if (binding.protocol === 'chat-completions') {
-        chat = profile === 'custom' ? chatRequest(value, chatPolicy) : localRequest(value, profile, binding.protocol);
+        chat = profile === 'custom' ? chatRequest(value, chatPolicy, history) : localRequest(value, profile, binding.protocol);
         if (router) chat = routerRequest(chat, router, chatPolicy);
         body = Buffer.from(JSON.stringify(chat));
         if (body.length > MAX_REQUEST) throw new ChatFault('chat_semantics_unavailable');
@@ -167,11 +171,16 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         if (emitted > MAX_RESPONSE) throw new ChatFault('chat_protocol_error');
         if (!response.write(encoded)) incoming.pause();
       };
-      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), errorCode: routerError } : {}) : null;
+      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), errorCode: routerError,
+        ...(history ? { reasoning: (payload, parser, assistant, state) => history.capture(payload, parser, assistant, state) } : {}) } : {}) : null;
       const observedUsage = chat ? null : new ResponsesUsage(reportUsage);
       const broken = error => {
         if (failed || response.destroyed || response.writableEnded) return;
         failed = true;
+        if (history && parser.reasoning?.present) {
+          try { history.capture(parser.reasoning.payload(false), parser, { content: parser.text || null, tool_calls: [] }, 'unconfirmed'); }
+          catch { /* Preserve the original failure; no tool item was released. */ }
+        }
         const code = error instanceof ChatFault && ERROR_CODES.has(error.code) ? error.code : 'chat_stream_incomplete';
         const envelope = { error: { code, message: ERROR_CODES.get(code) } };
         response.end('event: response.failed\ndata: ' + JSON.stringify({ type: 'response.failed',

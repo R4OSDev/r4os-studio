@@ -34,7 +34,8 @@ def catalog(providers,provider):
                     or model.get('input_modalities')!=['text']):raise ValueError()
             seen.add(slug)
         models=copy.deepcopy(value['models'])
-        if provider['kind']=='openrouter':models=[model for model in models if model.get('studio_chat',{}).get('reasoning')=='none']
+        if provider['kind']=='openrouter':models=[model for model in models if model.get('studio_chat',{}).get('reasoning')=='none'
+            or model.get('studio_chat',{}).get('schema')==2 and isinstance(model.get('studio_chat',{}).get('reasoningFacts'),dict)]
         if provider.get('server','custom')!='custom':
             models=[model for model in models if model.get('default_reasoning_level')=='none'
                 and model.get('supported_reasoning_levels')==[{'effort':'none','description':'None'}]
@@ -61,15 +62,26 @@ def future_run_id(store,sid,request_id):
 
 def chat_policy(model,effort):
     policy=model.get('studio_chat')
-    if (not isinstance(policy,dict) or set(policy)!={'schema','systemRole','reasoning','functionTools','streaming'}
-            or type(policy['schema']) is not int or policy['schema']!=1 or policy['systemRole'] not in ('system','developer')
+    schema=policy.get('schema') if isinstance(policy,dict) else None
+    fields={'schema','systemRole','reasoning','functionTools','streaming'}
+    if schema==2:fields|={'reasoningFacts','efforts'}
+    if (not isinstance(policy,dict) or set(policy)!=fields
+            or type(schema) is not int or schema not in (1,2) or policy['systemRole'] not in ('system','developer')
             or policy['reasoning'] not in ('none','effort') or policy['functionTools'] is not True or policy['streaming'] is not True
             or model.get('supports_reasoning_summary_parameter') is not False or model.get('default_reasoning_summary') not in (None,'none')
             or model.get('support_verbosity') is not False or model.get('default_verbosity') is not None
             or type(model.get('context_window')) is not int or model['context_window']<=0
             or policy['reasoning']=='none' and effort!='none'):
         raise ProjectFault('This Chat Completions model lacks qualified text/function streaming, context or reasoning semantics. Select a qualified model; no request was started.',409)
-    return copy.deepcopy(policy)
+    result=copy.deepcopy(policy)
+    if schema==2:
+        from api_model_info import reasoning_facts,reasoning_choices
+        facts=reasoning_facts(policy['reasoningFacts']);choices=reasoning_choices(facts)
+        if (not isinstance(policy['efforts'],list) or effort not in policy['efforts']
+                or any(v and v not in choices for v in policy['efforts']) or facts.get('mandatory') is True and effort=='none'):
+            raise ProjectFault('Select a documented reasoning level; mandatory reasoning cannot be disabled.',409)
+        result['selectedEffort']=effort
+    return result
 
 
 def freeze(store,sid,data,providers,snapshot):

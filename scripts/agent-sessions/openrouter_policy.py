@@ -45,10 +45,10 @@ def policy(value=None):
 
 
 def unavailable(provider,model=None):
-    """Chosen OpenRouter contract: plain streamed Chat with exact function history."""
+    """OpenRouter Chat with complete original reasoning/function history."""
     reasons=[]
     if provider['protocol']!='chat-completions':reasons.append('Use a new OpenRouter connection with Chat Completions; Responses is not qualified for this provider.')
     if provider['auth']!='bearer':reasons.append('OpenRouter requires its own bearer API key.')
-    if model is not None and model['capabilities']['reasoning']!='unsupported':
-        reasons.append('OpenRouter reasoning tool-history is not qualified. Choose an explicitly nonreasoning model.')
+    if model is not None and model['capabilities']['reasoning']=='supported' and not isinstance(model.get('reasoning'),dict):
+        reasons.append('Refresh and apply this model’s documented reasoning metadata before starting a reasoning session.')
     return reasons

@@ -1,3 +1,15 @@
+# Current reasoning support (0.9.37)
+
+OpenRouter Chat Completions supports documented reasoning metadata and complete
+original reasoning history through the existing native sessions and GOAL.
+Refresh model metadata and apply current reasoning facts for an older manual
+entry. Valid explicit defaults are preserved. Details and actual storage,
+streaming and failure boundaries: [API-Reasoning.md](API-Reasoning.md).
+
+The following original delivery report documents the earlier0.8.15 contract;
+its blanket nonreasoning/GOAL restrictions are historical.
+
+
 # OpenRouter provider (0.8.15)
 
 New Provider → OpenRouter starts with `https://openrouter.ai/api/v1`, its own

@@ -62,3 +62,22 @@ export function modelFacts(entry, binding, key) {
   }
   return model(entry);
 }
+
+/** Retain explicitly configured IDs even when the public catalog is truncated. */
+export function modelCatalog(entries, binding, key, modelIds = []) {
+  if (!Array.isArray(entries) || !Array.isArray(modelIds) || modelIds.length > 320
+    || modelIds.some(value => typeof value !== 'string' || value.length > 200)) throw Error('Invalid model catalog');
+  const wanted = new Set(modelIds), preferred = [], remaining = [];
+  for (const entry of entries) {
+    if (wanted.has(entry?.id)) preferred.push(entry);
+    else if (remaining.length < 256) remaining.push(entry);
+    if (preferred.length > 320) throw Error('Duplicate configured model');
+  }
+  const seen = new Set(), models = [];
+  for (const entry of [...preferred, ...remaining].slice(0,256)) {
+    const current = modelFacts(entry,binding,key); if (!current) continue;
+    if (seen.has(current.id)) throw Error('Duplicate model');
+    seen.add(current.id); models.push(current);
+  }
+  return { models, truncated: entries.length > 256 };
+}

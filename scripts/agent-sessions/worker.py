@@ -425,8 +425,16 @@ class Worker:
                 # the exact credential revision reserved at admission.
                 state.mkdir(mode=0o700,parents=True,exist_ok=True);private(state,directory=True)
                 provider_home=state/'ApiHome';provider_home.mkdir(mode=0o700,exist_ok=True);private(provider_home,directory=True)
+                reasoning=None
+                if self.config.get('apiChat',{}).get('schema')==2:
+                    history=state/'OpenRouterReasoning';history.mkdir(mode=0o700,exist_ok=True);private(history,directory=True)
+                    reasoning={'directory':str(history),'scope':{'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
+                        'sessionId':self.session_id,'providerId':self.config['providerId'],'model':self.config['model'],
+                        'baseUrl':self.config['apiProvider']['baseUrl'],'protocol':self.config['apiProvider']['protocol']},
+                        'origin':{'configRevision':self.config['apiProvider']['revision'],
+                            'credentialRevision':self.config['apiProvider']['credentialRevision'],'engineSha256':self.config['engine']['sha256']}}
                 self.api_runtime=ApiRuntime(self.config['apiProvider'],self.config['model'],credential,
-                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'))
+                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'),reasoning=reasoning)
                 credential=None
                 await self.api_runtime.start()
             from codex_runtime import binary as runtime_binary
@@ -502,12 +510,12 @@ class Worker:
             if self.api_runtime:native_provider=self.api_runtime.selection()
             if self.thread_id:
                 try:
-                    response=await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})}})
+                    response=await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})}})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {**native_provider,'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
-                           'ephemeral': False, 'dynamicTools': specifications(tool_scope(self.config)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker else {})},
+                           'ephemeral': False, 'dynamicTools': specifications(tool_scope(self.config)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})},
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
                 with self.store.db:
@@ -532,7 +540,7 @@ class Worker:
             try:
                 result = await self.client.request('turn/start', {'threadId': self.thread_id,
                              'clientUserMessageId': self.row['request_id'], 'input': native_input(self.store,self.run_id,self.config),
-                             'model': self.config['model'], 'effort': self.config['effort'], 'serviceTier': service_tier})
+                             'model': self.config['model'], 'effort': self.config['effort'] or None, 'serviceTier': service_tier})
                 if not self.turn_id:
                     self.turn_id = result['turn']['id']
                     message_identity['messageTurnActive'] = True

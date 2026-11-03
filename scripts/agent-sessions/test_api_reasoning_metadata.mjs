@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { modelFacts } from './api_model_metadata.mjs';
+import { modelFacts, modelCatalog } from './api_model_metadata.mjs';
 
 const binding = { kind: 'openrouter' };
 const entry = reasoning => ({ id: 'owned/reasoner', context_length: 1048576,
@@ -32,4 +32,11 @@ test('invalid or contradictory facts never establish an available model', () => 
     { mandatory: true, default_enabled: false }, { supported_efforts: ['max', 'max'] }, { supported_efforts: ['invented'] }]) {
     assert.equal(modelFacts(entry(reasoning), binding), null);
   }
+});
+test('configured exact IDs receive metadata beyond the bounded public catalog', () => {
+  const target = { ...entry({mandatory:true,supported_efforts:['max'],default_effort:'max'}), id:'owned/beyond-bound' };
+  const entries = [...Array.from({length:300},(_,i)=>({...entry(undefined),id:'owned/'+i})),target];
+  const result = modelCatalog(entries,binding,undefined,[target.id]);
+  assert.equal(result.models.length,256); assert.equal(result.truncated,true);
+  assert.equal(result.models[0].id,target.id); assert.equal(result.models[0].defaultEffort,'max');
 });

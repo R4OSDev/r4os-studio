@@ -2,10 +2,10 @@
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
-import { modelFacts } from './api_model_metadata.mjs';
+import { modelCatalog } from './api_model_metadata.mjs';
 import { routerSettings, routerHeaders } from './api_openrouter.mjs';
 
-const MAX_BODY = 4 * 1024 * 1024, MAX_MODELS = 256;
+const MAX_BODY = 4 * 1024 * 1024;
 let request, socket, finished = false;
 function finish(value) {
   if (finished) return; finished = true;
@@ -19,7 +19,7 @@ const input = await new Promise((resolve, reject) => {
   let data = Buffer.alloc(0); const timer = setTimeout(() => reject(Error()), 5000);
   const read = chunk => {
     data = Buffer.concat([data, chunk]);
-    if (data.length > 65536) { clearTimeout(timer); process.stdin.off('data', read); reject(Error()); return; }
+    if (data.length > 131072) { clearTimeout(timer); process.stdin.off('data', read); reject(Error()); return; }
     const line = data.indexOf(10); if (line < 0) return;
     clearTimeout(timer); process.stdin.off('data', read);
     try { resolve(JSON.parse(data.subarray(0, line).toString('utf8'))); } catch { reject(Error()); }
@@ -63,12 +63,7 @@ request = (target.protocol === 'https:' ? https : http).request({ protocol: targ
     try {
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
       if (!value || !Array.isArray(value.data)) { fail('format'); return; }
-      const seen = new Set(), values = [];
-      for (const entry of value.data.slice(0, MAX_MODELS)) {
-        const current = modelFacts(entry, binding, key); if (!current) continue;
-        if (seen.has(current.id)) { fail('duplicate'); return; } seen.add(current.id); values.push(current);
-      }
-      finish({ ok: true, models: values, truncated: value.data.length > MAX_MODELS });
+      finish({ ok: true, ...modelCatalog(value.data, binding, key, input.modelIds) });
     } catch { fail('format'); }
   });
 });

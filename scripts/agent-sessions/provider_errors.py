@@ -20,6 +20,7 @@ MESSAGES = {
     'apiInvalidToolArguments': 'The model sent invalid or incomplete tool arguments.',
     'apiProtocolError': 'The model response does not match the qualified Chat Completions protocol.',
     'apiStreamIncomplete': 'The model response stream ended before completing.',
+    'apiReasoningHistoryUnavailable': 'The original OpenRouter reasoning history is missing, changed or exceeds its private storage limit. Existing evidence was preserved.',
     'apiOutputLimit': 'The model reached its output limit before completion.',
     'apiContentFilter': 'The model service blocked this response.',
     'apiAccountRequired': 'The API account needs credits or billing attention (HTTP402).',
@@ -87,6 +88,7 @@ def describe(error,api=False):
                 'chat_semantics_unavailable':'apiProtocolUnsupported','chat_invalid_tool_arguments':'apiInvalidToolArguments',
                 'api_server_semantics_unavailable':'apiProtocolUnsupported',
                 'chat_protocol_error':'apiProtocolError','chat_stream_incomplete':'apiStreamIncomplete',
+                'openrouter_reasoning_history_unavailable':'apiReasoningHistoryUnavailable',
                 'api_account_required':'apiAccountRequired','api_access_denied':'apiAccessDenied','api_service_unavailable':'apiServiceUnavailable'}.get(candidate,code) if isinstance(candidate,str) else code
         except (ValueError,TypeError):pass
     transient = code in ('httpConnectionFailed', 'responseStreamConnectionFailed') and status in (502, 503, 504)

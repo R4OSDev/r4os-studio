@@ -1,4 +1,4 @@
-/** OpenRouter's chosen plain Chat contract, explicit routing and bounded origin. */
+/** OpenRouter Chat, original reasoning history, explicit routing and origin. */
 import { ChatFault } from './api_chat.mjs';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const bad = () => { throw new ChatFault('chat_semantics_unavailable'); };
@@ -32,11 +32,15 @@ export function routerHeaders(settings, metadata = false) {
 }
 
 export function routerRequest(chat, settings, policy) {
-  if (policy?.reasoning !== 'none') bad();
+  if (policy?.reasoning !== 'none' && (policy?.schema !== 2 || !object(policy.reasoningFacts))) bad();
   // Native's store:false is a Responses retention directive. Chat is stateless
   // full-history input and does not document this field; never forward it as
   // an arbitrary provider parameter or pretend it controls provider logging.
   const request = { ...chat }; delete request.store;
+  if (policy.schema === 2) {
+    if (chat.reasoning_effort !== undefined) request.reasoning = { effort: chat.reasoning_effort };
+    delete request.reasoning_effort;
+  }
   request.provider = { require_parameters: true, allow_fallbacks: settings.allowFallbacks,
     ...(settings.order.length ? { order: settings.order } : {}), ...(settings.only.length ? { only: settings.only } : {}) };
   return request;

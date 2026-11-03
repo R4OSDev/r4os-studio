@@ -33,9 +33,10 @@ async def resolve_binding(binding):
 
 
 class ApiRuntime:
-    def __init__(self,binding,model,credential,runtime,chat=None):
+    def __init__(self,binding,model,credential,runtime,chat=None,reasoning=None):
         self.binding=dict(binding);self.model=model;self.credential=credential
         self.chat=chat
+        self.reasoning=reasoning
         self.runtime=Path(runtime).absolute();self.child=None;self.port=None;self.key_file=None;self.key_inode=None
         identity(self.binding['id'])
         self.provider=provider_name(self.binding['id'])
@@ -56,7 +57,8 @@ class ApiRuntime:
             self.child=await asyncio.create_subprocess_exec('/usr/bin/node',str(Path(__file__).with_name('api-transport.mjs')),
                 stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,limit=65536)
             data={'binding':{key:self.binding[key] for key in ('baseUrl','protocol','auth','kind')}|{'model':self.model},
-                'addresses':addresses,'key':self.credential,'relayToken':self.token,'chatPolicy':self.chat}
+                'addresses':addresses,'key':self.credential,'relayToken':self.token,'chatPolicy':self.chat,
+                'reasoningStore':self.reasoning}
             if self.binding['kind']=='openrouter':data['binding']['openrouter']=self.binding.get('openrouter')
             else:data['binding']['server']=self.binding.get('server','custom')
             self.child.stdin.write(json.dumps(data,separators=(',',':')).encode()+b'\n');await self.child.stdin.drain()

@@ -1,13 +1,13 @@
 /** Bounded wire translation only: no context controller, agent or tool executor. */
 import { randomUUID } from 'node:crypto';
+import { ChatFault } from './api_chat_fault.mjs';
+import { ReasoningStream, REASONING_RECORD } from './api_reasoning.mjs';
+export { ChatFault } from './api_chat_fault.mjs';
 
 const MAX_TEXT = 196608, MAX_ARGS = 131072, MAX_EVENT = 524288, MAX_CALLS = 32;
 const PROVIDER_ERRORS = new Set(['context_length_exceeded', 'usage_limit_exceeded', 'insufficient_quota',
   'rate_limit_exceeded', 'invalid_api_key', 'model_not_found', 'api_account_required', 'api_access_denied', 'api_service_unavailable']);
 export const CHAT_NATIVE_METADATA = Symbol('private native transport metadata');
-export class ChatFault extends Error {
-  constructor(code = 'chat_protocol_error') { super(code); this.code = code; }
-}
 const bad = (code = 'chat_semantics_unavailable') => { throw new ChatFault(code); };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const bytes = value => Buffer.byteLength(value, 'utf8');
@@ -45,8 +45,8 @@ function argumentsObject(value) {
   }
   return value;
 }
-export function chatRequest(value, policy) {
-  if (!object(policy) || policy.schema !== 1 || !['system', 'developer'].includes(policy.systemRole)
+export function chatRequest(value, policy, history) {
+  if (!object(policy) || ![1,2].includes(policy.schema) || !['system', 'developer'].includes(policy.systemRole)
     || !['none', 'effort'].includes(policy.reasoning) || policy.functionTools !== true || policy.streaming !== true) bad();
   const allowed = new Set(['model', 'input', 'tools', 'tool_choice', 'parallel_tool_calls', 'reasoning', 'store', 'stream',
     'include', 'service_tier', 'prompt_cache_key', 'client_metadata', 'text']);
@@ -68,7 +68,14 @@ export function chatRequest(value, policy) {
   const reasoning = value.reasoning ?? {};
   if (!object(reasoning) || Object.keys(reasoning).some(key => key !== 'effort')) bad();
   let effort;
-  if (policy.reasoning === 'none') {
+  if (policy.schema === 2) {
+    if (!history || !object(policy.reasoningFacts) || !Array.isArray(policy.efforts)
+      || !policy.efforts.includes(policy.selectedEffort) || policy.reasoningFacts.mandatory === true && policy.selectedEffort === 'none') bad();
+    if (policy.selectedEffort) {
+      if (reasoning.effort !== policy.selectedEffort) bad();
+      effort = policy.selectedEffort;
+    }
+  } else if (policy.reasoning === 'none') {
     if (reasoning.effort != null && reasoning.effort !== 'none') bad();
   } else {
     if (!['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(reasoning.effort)) bad();
@@ -78,10 +85,17 @@ export function chatRequest(value, policy) {
     && value.input.some(item => item.role === 'developer')) bad(); // Do not collapse distinct priorities.
   const messages = [], pending = new Set();
   for (const item of value.input) {
+    if (object(item) && item.type === 'reasoning' && policy.schema === 2 && !pending.size) {
+      const record = history.restore(item);
+      messages.push({ role: 'assistant', content: null, ...structuredClone(record.payload), [REASONING_RECORD]: record });
+      continue;
+    }
     if (!object(item) || item.encrypted_content || item.encrypted_function_args || item.namespace) bad();
     if (item.type === 'message') {
       if (!['system', 'developer', 'user', 'assistant'].includes(item.role) || pending.size) bad();
-      messages.push({ role: item.role === 'developer' ? policy.systemRole : item.role, content: parts(item.content) });
+      const previous = messages.at(-1);
+      if (item.role === 'assistant' && previous?.[REASONING_RECORD] && previous.content === null && !previous.tool_calls) previous.content = parts(item.content);
+      else messages.push({ role: item.role === 'developer' ? policy.systemRole : item.role, content: parts(item.content) });
     } else if (item.type === 'function_call') {
       if (!identifier(item.call_id) || !identifier(item.name) || pending.has(item.call_id)) bad();
       let previous = messages.at(-1);
@@ -96,6 +110,7 @@ export function chatRequest(value, policy) {
     } else bad();
   }
   if (pending.size || !messages.length) bad();
+  if (policy.schema === 2) history.verify(messages);
   if (value.client_metadata != null && (!object(value.client_metadata) || Object.keys(value.client_metadata).length > 64
     || Object.entries(value.client_metadata).some(([key, data]) => key.length > 256 || typeof data !== 'string' || bytes(data) > 16384)
     || bytes(JSON.stringify(value.client_metadata)) > 65536)) bad();
@@ -140,6 +155,8 @@ export class ChatStream {
     this.eventSize = 0; this.started = false; this.done = false; this.finishReason = null; this.used = undefined;
     this.calls = new Map(); this.text = ''; this.messageStarted = false; this.providerId = undefined;
     this.pendingSurrogate = '';
+    this.reasoning = observer.reasoning ? new ReasoningStream() : null;
+    this.messageIndex = this.reasoning ? 1 : 0;
     // This is explicitly a local transport identity, never a provider receipt.
     this.id = 'studio_chat_' + randomUUID(); this.messageId = this.id + '_message'; this.sequence = 0;
   }
@@ -199,9 +216,11 @@ export class ChatStream {
     const choice = value.choices[0]; if (!object(choice)) bad('chat_protocol_error');
     const delta = choice.delta;
     if (!object(choice) || choice.index !== 0 || !object(delta) || delta.role != null && delta.role !== 'assistant'
-      || Object.entries(delta).some(([key, data]) => !['role', 'content', 'tool_calls'].includes(key) && data != null && data !== '')) bad();
-    const substantive = delta.content != null && delta.content !== '' || delta.tool_calls?.length;
+      || Object.entries(delta).some(([key, data]) => !['role', 'content', 'tool_calls', ...(this.reasoning ? ['reasoning','reasoning_content','reasoning_details'] : [])].includes(key) && data != null && data !== '')) bad();
+    const substantive = delta.content != null && delta.content !== '' || delta.tool_calls?.length
+      || delta.reasoning || delta.reasoning_content || delta.reasoning_details?.length;
     if (this.finishReason && substantive) bad('chat_protocol_error');
+    this.reasoning?.push(delta);
     if (delta.content != null && delta.content !== '') {
       let content = this.pendingSurrogate + text(delta.content, MAX_TEXT, true); this.pendingSurrogate = '';
       const last = content.charCodeAt(content.length - 1);
@@ -210,9 +229,9 @@ export class ChatStream {
       if (bytes(this.text) > MAX_TEXT) bad('chat_protocol_error');
       if (!this.messageStarted) {
         this.messageStarted = true;
-        this.send('response.output_item.added', { output_index: 0, item: { type: 'message', id: this.messageId, role: 'assistant', content: [] } });
+        this.send('response.output_item.added', { output_index: this.messageIndex, item: { type: 'message', id: this.messageId, role: 'assistant', content: [] } });
       }
-      this.send('response.output_text.delta', { item_id: this.messageId, output_index: 0, content_index: 0, delta: content });
+      this.send('response.output_text.delta', { item_id: this.messageId, output_index: this.messageIndex, content_index: 0, delta: content });
     }
     if (delta.tool_calls != null) {
       if (!Array.isArray(delta.tool_calls) || delta.tool_calls.length > MAX_CALLS) bad('chat_protocol_error');
@@ -240,6 +259,7 @@ export class ChatStream {
   complete() {
     if (!this.started || !this.finishReason || this.pendingSurrogate) bad('chat_stream_incomplete');
     if (this.finishReason === 'length' || this.finishReason === 'content_filter') {
+      if (this.reasoning?.present) this.observer.reasoning(this.reasoning.payload(), this, { content: this.text || null, tool_calls: [] }, 'incomplete');
       this.send('response.incomplete', { response: this.response({ status: 'incomplete',
         // Codex treats the literal content_filter as a separate retry category.
         // Keep this adapter's refusal terminal, with reported usage preserved.
@@ -255,12 +275,17 @@ export class ChatStream {
       ids.add(call.id); argumentsObject(call.arguments);
       output.push({ type: 'function_call', id: this.id + '_tool_' + index, call_id: call.id, name: call.name, arguments: call.arguments });
     }
+    if (this.reasoning?.present) {
+      const item = this.observer.reasoning(this.reasoning.payload(), this, { content: this.messageStarted ? this.text : null,
+        tool_calls: output.map(call => ({ id: call.call_id, type: 'function', function: { name: call.name, arguments: call.arguments } })) }, 'complete');
+      this.send('response.output_item.done', { output_index: 0, item });
+    }
     if (this.messageStarted) {
-      this.send('response.output_item.done', { output_index: 0, item: { type: 'message', id: this.messageId,
+      this.send('response.output_item.done', { output_index: this.messageIndex, item: { type: 'message', id: this.messageId,
         role: 'assistant', content: [{ type: 'output_text', text: this.text }] } });
     }
     for (let index = 0; index < output.length; index++) {
-      this.send('response.output_item.done', { output_index: index + (this.messageStarted ? 1 : 0), item: output[index] });
+      this.send('response.output_item.done', { output_index: index + this.messageIndex + (this.messageStarted ? 1 : 0), item: output[index] });
     }
     this.send('response.completed', { response: this.response({ status: 'completed', ...(this.used === undefined ? {} : { usage: this.used }) }) });
     this.done = true;
