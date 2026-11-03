@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { zaiHeaders, zaiRequest, zaiFailure } from './api_zai.mjs';
+import { zaiHeaders, zaiRequest, zaiFailure, ZAI_FILE_GUIDE } from './api_zai.mjs';
 
 test('native limit classes preserve reset evidence and never infer a window', () => {
   assert.equal(zaiFailure({ error: { code: '1308' } }, 429).safeCode, 'zai_subscription_exhausted');
@@ -49,4 +49,18 @@ test('only explicitly image-capable user input accepts bounded embedded images',
   assert.equal(chatRequest(input, policy).messages[0].content[1].type, 'image_url');
   assert.throws(() => chatRequest(input, { ...policy, imageInput: false }));
   assert.throws(() => chatRequest({ ...input, input: [{ ...input.input[0], content: [{ type: 'input_image', image_url: 'https://foreign.invalid/image' }] }] }, policy));
+});
+
+test('the offered file tools receive a concise guide without changing schemas, history or arguments', () => {
+  const source = { model: 'glm-5.3', parallel_tool_calls: true, tools: ['studio_apply_patch','studio_write_file'].map(name => ({ type: 'function', function: { name, parameters: { type: 'object' } } })),
+    messages: [{ role: 'system', content: [{ type: 'text', text: 'Original own instructions' }] }, { role: 'user', content: 'Own input' }] };
+  const original = structuredClone(source), policy = { reasoning: 'effort' };
+  const request = zaiRequest(source, policy);
+  assert.deepEqual(source, original);
+  assert.equal(request.messages[0].content.at(-1).text, ZAI_FILE_GUIDE);
+  assert.deepEqual(request.tools, original.tools);
+  const repeated = zaiRequest({ ...request, parallel_tool_calls: true }, policy);
+  assert.equal(repeated.messages[0].content.filter(part => part.text === ZAI_FILE_GUIDE).length, 1);
+  const withoutPatch = zaiRequest({ ...source, tools: [source.tools[1]] }, policy);
+  assert.deepEqual(withoutPatch.messages, original.messages);
 });

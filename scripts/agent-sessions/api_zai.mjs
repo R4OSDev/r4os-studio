@@ -37,6 +37,7 @@ export function zaiFailure(value, status = null, retryAfter = null, observedAt =
   return { code, resetAt, httpStatus: status, safeCode: ZAI_ERRORS[code] };
 }
 const bad = () => { throw new ChatFault('chat_semantics_unavailable'); };
+export const ZAI_FILE_GUIDE = 'Z.AI Studio file tools: For new workspace files prefer studio_apply_patch with an Add File patch. For replacing an existing file with studio_write_file, read it first and use its exact SHA256. JSON null and the string "null" are different; never invent or coerce a file precondition. Preserve original tool receipts and do not repeat unconfirmed effects.';
 export function zaiHeaders(client) {
   if (!client || client.schema !== 1 || !/^\d+\.\d+\.\d+$/.test(client.referenceVersion)
     || !/^[a-f0-9]{40}$/.test(client.referenceCommit)
@@ -54,6 +55,15 @@ export function zaiRequest(chat, policy) {
     const definition = { ...tool.function }; delete definition.strict;
     return { type: 'function', function: definition };
   });
+  const names = new Set(request.tools.map(tool => tool.function.name));
+  if (names.has('studio_apply_patch') && names.has('studio_write_file')) {
+    request.messages = chat.messages.map(message => ({ ...message }));
+    const first = request.messages.find(message => ['system','developer'].includes(message.role));
+    if (!first) request.messages.unshift({ role: policy.systemRole ?? 'system', content: ZAI_FILE_GUIDE });
+    else if (typeof first.content === 'string') {
+      if (!first.content.includes(ZAI_FILE_GUIDE)) first.content += '\n\n' + ZAI_FILE_GUIDE;
+    } else if (Array.isArray(first.content) && !first.content.some(part => part.text === ZAI_FILE_GUIDE)) first.content = [...first.content, { type: 'text', text: ZAI_FILE_GUIDE }];
+  }
   request.thinking = { type: policy.reasoning === 'none' || policy.selectedEffort === 'none' ? 'disabled' : 'enabled', clear_thinking: false };
   if (policy.reasoningFacts?.mandatory && request.thinking.type === 'disabled') bad();
   const family = /(?:^|\/)glm-(\d+)(?:\.(\d+))?(?:-|$)/i.exec(request.model);

@@ -1,3 +1,16 @@
+## Z.AI GLM Coding Plan (0.9.39–0.9.45)
+
+Connect **Z.AI · GLM Coding Plan** in LLM Provider settings with your plan API
+key, then select its model in a normal project or skill session. Studio uses
+your Coding Plan endpoint and the current Codex default, with the authorized
+OpenCode client identity. There is no paid standard-API or model fallback.
+
+Provider settings and sessions show original account-wide credit windows,
+remaining allowance, reported resets and confirmed limit reasons. Refresh
+updates those observations without starting or resuming work. Session token
+statistics stay separate. Keys remain private and write-only. See
+[ZAI-Coding-Plan.md](ZAI-Coding-Plan.md) for behavior and qualification boundaries.
+
 ## SDK-owned profiles and complete migration (0.9.28–0.9.35)
 
 Select one complete official SDK package in **System → Updates** or the project's

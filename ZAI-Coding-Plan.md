@@ -91,3 +91,24 @@ Original refresh IDs/revisions survive reload without keys or request replay.
 During a running original request, a later credential change cannot substitute
 the new account's limits for its frozen scope. Original receipts remain readable.
 The session's normal statistics continue to report actual run usage separately.
+
+## Real subscription qualification (0.9.45)
+
+The implementation is exercised with a user-connected Coding Plan through the
+normal private credential lease and current native Studio engine. Real GLM-5.3
+tool rounds, original file updates/readbacks, thread continuation, a small native
+Goal and original account limits are distinct from the isolated TLS fixtures.
+
+An observed provider response encoded a new file's `expectedSha256` as the
+string `"null"`, although the original schema allows JSON null. Studio preserves
+and checks the actual arguments. It never coerces that string into permission
+to write. When both file tools are offered, a short model guide recommends the
+existing Add File patch operation for new files and the actual read SHA256 for
+existing-file replacements. Schemas, arguments, rights and original receipts
+remain unchanged. Unsuccessful provider operations stay visible in history.
+
+The qualification does not exhaust real quota or test paid extra usage. Credit
+snapshots may include account use outside Studio; no delta is attributed solely
+to these runs without its original evidence. Existing user projects, sessions,
+providers, SDK defaults and VM identities are preserved. Only owned temporary
+qualification resources are removed after their original work has ended.
