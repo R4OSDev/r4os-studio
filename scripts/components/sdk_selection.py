@@ -151,12 +151,12 @@ def work(manager, path, receipt):
         atomic(path, receipt)
         with manager.lock:
             manager.sdk_sets[selected['id']] = resolved
-        compiler = compiler_for(manager, selected.get('minZigVersion'))
-        records = {kind: ensure_package(manager, kind, resolved['components'][kind], selected) for kind in PARTS}
-        library = records['libraries']
-        minimum = library.get('minZigVersion')
-        if minimum and tuple(map(int, minimum.split('.'))) > tuple(map(int, compiler['version'].split('.'))):
-            raise ValueError('The Libraries require a newer compiler than the SDK profile.')
+        from sdk_provision import prepare, paths
+        records = prepare(manager, selected)
+        base, bundle, document, package_paths = paths(manager.root, selected['id'])
+        compiler = {**bundle['zig'], 'id': bundle['zig']['version'],
+                    'directory': str(package_paths['install'] / 'Toolchains/Zig'),
+                    'binary': str(package_paths['install'] / 'Toolchains/Zig/zig')}
         if request['action'] == 'default':
             with manager.lock:
                 if profile_revision(manager.state) != request['expectedRevision']:
@@ -171,8 +171,8 @@ def work(manager, path, receipt):
                 manager.state = state
         receipt.update(phase='complete', completedAt=now())
         atomic(path, receipt)
-        manager.progress('SDK, Contract and Libraries are now the default.' if request['action'] == 'default'
-                         else 'SDK, Contract and Libraries downloaded and verified. Defaults were kept.', phase='complete')
+        manager.progress('The verified SDK package is now the default.' if request['action'] == 'default'
+                         else 'The complete SDK package and host tools are verified. Defaults were kept.', phase='complete')
     except Exception as error:
         # A directory fsync may fail after the atomic profile replacement.
         # Inspect that publication before deciding whether a retry may commit.

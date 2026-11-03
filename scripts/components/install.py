@@ -19,7 +19,7 @@ def main():
     config = json.loads(config_file.read_text())
     root = Path(config['dataDirectory']) / 'R4OS'
     user = pwd.getpwnam('r4os-studio')
-    for suffix in ('Profiles', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains/Zig', 'Toolchains/Rust', 'Toolchains/QEMU', 'Toolchains/Codex', 'Toolchains/R4UPack'):
+    for suffix in ('Profiles', 'Packages', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains/PowerShell', 'Toolchains/Zig', 'Toolchains/Rust', 'Toolchains/QEMU', 'Toolchains/Codex', 'Toolchains/R4UPack'):
         path = root / suffix
         path.mkdir(parents=True, exist_ok=True)
         os.chown(path, user.pw_uid, user.pw_gid)
@@ -54,7 +54,7 @@ def main():
     escaped = lambda value: '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
     unit = '[Unit]\nDescription=R4OS Studio component downloads\nAfter=network-online.target\n\n[Service]\nUser=r4os-studio\nGroup=r4os-studio\nExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/components-launch.py\nRuntimeDirectory=r4os-studio-components\nRuntimeDirectoryMode=0700\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nRestrictSUIDSGID=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\nCapabilityBoundingSet=\nUMask=0077\nRestart=on-failure\nTimeoutStopSec=15\n'
     unit += 'CPUQuota=800%\nMemoryMax=8G\nTasksMax=512\n'
-    for suffix in ('Profiles', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains'):
+    for suffix in ('Profiles', 'Packages', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains'):
         unit += 'ReadWritePaths=' + escaped(root / suffix) + '\n'
     for suffix in ('LLMProvider', 'Projects', 'R4OS/Instances'):
         unit += 'InaccessiblePaths=-' + escaped(Path(config['dataDirectory']) / suffix) + '\n'

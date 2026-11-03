@@ -211,7 +211,7 @@ class Manager:
                 value = self.sdk_sets.get(record['id'], {'state': 'unresolved', 'reason': 'Check SDK versions to resolve the matching packages.'})
                 record['sdkSet'] = summary(value, inventories, self.state['defaults'])
             return {'enabled': True, 'components': components, 'job': copy.deepcopy(self.job),
-                    'features': {'sdkSets': 1, 'sdkSelection': 1}, 'profileRevision': profile_revision(self.state),
+                    'features': {'sdkSets': 1, 'sdkSelection': 1, 'sdkProfiles': 1}, 'profileRevision': profile_revision(self.state),
                     'message': 'Downloads and active defaults are managed independently.'}
 
     def progress(self, message, **values):
@@ -351,25 +351,28 @@ class Handler(socketserver.StreamRequestHandler):
                 raise ValueError('Unsupported component request.')
             command = request.get('command')
             manager = self.server.manager
-            if command == 'status' and set(request) == {'command'}:
-                result = manager.status()
-            elif command in ('default', 'download') and request.get('kind') == 'sdk':
-                if not {'command', 'kind', 'id'} <= set(request) or 'older' in request:
-                    raise ValueError('Unsupported SDK operation.')
-                from sdk_selection import start
-                result = start(manager, command, request['id'], request.get('requestId'),
-                               request.get('expectedProfileRevision'), request.get('manifestSha256'))
-            elif command == 'default' and set(request) == {'command', 'kind', 'id'}:
-                result = manager.set_default(request['kind'], request['id'])
-            elif command in ('check', 'download') and request.get('kind') in KINDS:
-                if command == 'check' and set(request) <= {'command', 'kind', 'older'} and isinstance(request.get('older', False), bool):
-                    result = manager.start(request['kind'], command, older=request.get('older', False))
-                elif command == 'download' and set(request) == {'command', 'kind', 'id'} and isinstance(request.get('id'), str):
-                    result = manager.start(request['kind'], command, request['id'])
+            with manager.lock:
+                if command != 'status' and (manager.root / 'Profiles/sdk-host-maintenance.json').exists():
+                    raise ValueError('SDK host maintenance is in progress. Retry after it completes.')
+                if command == 'status' and set(request) == {'command'}:
+                    result = manager.status()
+                elif command in ('default', 'download') and request.get('kind') == 'sdk':
+                    if not {'command', 'kind', 'id'} <= set(request) or 'older' in request:
+                        raise ValueError('Unsupported SDK operation.')
+                    from sdk_selection import start
+                    result = start(manager, command, request['id'], request.get('requestId'),
+                                   request.get('expectedProfileRevision'), request.get('manifestSha256'))
+                elif command == 'default' and set(request) == {'command', 'kind', 'id'}:
+                    result = manager.set_default(request['kind'], request['id'])
+                elif command in ('check', 'download') and request.get('kind') in KINDS:
+                    if command == 'check' and set(request) <= {'command', 'kind', 'older'} and isinstance(request.get('older', False), bool):
+                        result = manager.start(request['kind'], command, older=request.get('older', False))
+                    elif command == 'download' and set(request) == {'command', 'kind', 'id'} and isinstance(request.get('id'), str):
+                        result = manager.start(request['kind'], command, request['id'])
+                    else:
+                        raise ValueError('Unsupported component request.')
                 else:
-                    raise ValueError('Unsupported component request.')
-            else:
-                raise ValueError('Unsupported component command.')
+                    raise ValueError('Unsupported component command.')
             response = {'status': result}
         except (ValueError, TypeError) as error:
             response = {'error': str(error), 'code': 409}

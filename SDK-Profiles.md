@@ -26,3 +26,29 @@ validation. Package provisioning, project migration, the final cutover and
 removal of old installed SDKs follow as separate roadmap steps. Historical
 receipts retain their original identities. New SDK selection never falls back
 to the retired `r4os-sdk-release`/DevKit metadata interface.
+
+## Complete package provisioning
+
+The component service downloads every asset from one selected official SDK
+release, verifies archive identities and validates the complete source/tool set
+with `Package.ps1 Verify`. Archive prefixes determine local roots. SDK sources,
+Contract and Libraries retain their exact component identities; matching
+Recovery snapshots and the matched tool export belong to the same package.
+
+SDK `Setup.ps1` provisions and checks Zig; SDK `Rust.ps1 --profile sdk` provisions
+and checks the private normal Rust toolchain. Optional kernel, graphics, boot
+and VM tools are not required just to compile an ordinary application. Neither
+global Rustup defaults nor running virtual machines are changed. Fully prepared
+compiler files and links have a separate integrity inventory.
+
+PowerShell 7 is a verified standalone host prerequisite, configured by the host
+administrator in `Profiles/sdk-host.json`. Its original file hashes remain
+bound; no SDK or compiler selection is inferred from that prerequisite. Existing
+component hosts need the narrow `install-sdk-profile-support.py` maintenance
+step to enable only their new package storage. The web process receives no
+compiler, shell or additional root rights.
+
+An interrupted preparation does not publish ready component markers. An explicit
+retry checks the same package identity and existing bytes. Defaults commit only
+after the complete package and required host tools have verified; a lost reply
+does not initiate another activation.

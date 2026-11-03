@@ -37,8 +37,8 @@ def unique_object(pairs):
     return result
 
 
-def decode(raw):
-    if len(raw) > MAX_METADATA:
+def decode(raw, limit=MAX_METADATA):
+    if len(raw) > limit:
         fail('metadata exceeds the size limit.')
     def invalid_constant(_):
         fail('contains a non-JSON number.')

@@ -116,5 +116,7 @@ def summary(value, installed, defaults):
         active = defaults.get(kind, {})
         part['active'] = active.get('id') == part['revision'] and active.get('version') == part['version']
     result['complete'] = all(part['installed'] for part in result['components'].values())
+    sdk = next((record for record in installed['sdk'] if record['id'] == result['components']['sdk']['revision']), {})
+    result['complete'] = result['complete'] and sdk.get('sdkPackage', {}).get('manifestSha256') == result['manifestSha256']
     result['active'] = result['complete'] and all(part['active'] for part in result['components'].values())
     return result
