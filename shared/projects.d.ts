@@ -20,9 +20,12 @@ export interface ProjectActivity {
 export type ProjectLanguage = 'Rust' | 'Zig' | 'C';
 export type ProjectTemplate = 'terminal' | 'desktop' | 'service' | 'driver' | 'protocol' | 'library' | 'subsystem';
 export interface ProjectPins {
+  sdkProfile?: { schema: 1; interface: 'r4os-sdk-package'; id?: string; templateId?: string;
+    hashes: Record<'Build' | 'Tools' | 'Components', string>; manifestSha256: string; technical: boolean };
   sdkTools?: { url: string; releaseSha256: string; archiveSha256: string; profileSha256: string; capabilitiesSha256: string };
   sdk: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
   contract: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
+  libraries?: { version: string; revision: string; sha256: string; zigPackageHash: string; url: string };
   zig: { version: string; sha256: string; binarySha256: string; url: string };
   rust?: { id: string; version: string; cargoVersion: string; sha256: string;
     toolProfileSha256: string; binarySha256: string; cargoSha256: string; linkerSha256: string;
@@ -30,7 +33,7 @@ export interface ProjectPins {
     rustupVersion: string; powershellVersion: string; target: string; codegenProfile: string;
     codegenSha256: string; cpuBaselineSha256: string;
     release: { url: string; sha256: string; sdkRevision: string; contractRevision: string;
-      devkitRevision: string; capabilitiesSha256: string } };
+      devkitRevision?: string; capabilitiesSha256: string } };
 }
 export interface ProjectOptions {
   revision: string; profile: ProjectPins;
@@ -65,7 +68,7 @@ export interface ProjectBuildCacheCleared { requestId: string; cleared: boolean;
 
 export interface ProjectPinChoice {
   sdkId: string; version?: string; available: boolean; isDefault: boolean; reason?: string; selectionId?: string; releaseSha256?: string;
-  components?: Pick<ProjectPins, 'sdk' | 'contract'> & {
+  components?: Pick<ProjectPins, 'sdk' | 'contract' | 'libraries'> & {
     zig: Omit<ProjectPins['zig'], 'binarySha256'> & { binarySha256?: string };
     rust?: { id: string; version: string };
   };

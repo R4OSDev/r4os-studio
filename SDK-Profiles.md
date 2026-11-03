@@ -52,3 +52,30 @@ An interrupted preparation does not publish ready component markers. An explicit
 retry checks the same package identity and existing bytes. Defaults commit only
 after the complete package and required host tools have verified; a lost reply
 does not initiate another activation.
+
+## Projects and SDK selection
+
+New projects and imports consume supported host templates from the SDK's
+capability catalog. The official `New-Project.ps1` selects policy from the
+template; Studio never adds a free `-Profile` switch to the creator or builder.
+The SDK manifest plan and native profile resolver supply the effective profile
+ID. That ID, the original three hashes and the template identity are retained
+with the ready project and its portable metadata. Preparation and publication
+share the existing recoverable creation journal.
+
+Project settings select a complete SDK package. Compiler, Contract, Libraries
+and matched tools are derived read-only values, including for imported projects.
+Legacy portable pins require explicit migration. Old data can be inspected but
+does not select a legacy runtime when a new package is unavailable.
+
+Project hosts keep shared SDK packages read-only. SDK helpers receive a private
+exact copy of the matched tool export because they prepare executable modes in
+`ToolsRoot`. Source verification runs in private project work directories.
+An unchanged-input signature reuses the original native package verification;
+changed inputs return to the SDK verifier. It does not normalize sources or
+resolve policy in Studio. Compiler file and link inventories remain separately
+bound, and actual module resolution remains native SDK work.
+
+Component publication stages each extraction inside its destination directory.
+This preserves atomic rename with separate systemd `ReadWritePaths` mounts.
+An explicitly retried failed SDK operation retains its original failure history.

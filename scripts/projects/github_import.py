@@ -24,7 +24,7 @@ files = importlib.util.module_from_spec(spec); spec.loader.exec_module(files)
 def checked_profile(root, projects, metadata, fallback):
     if metadata:
         language, template, pinned = metadata.get('language'), metadata.get('template'), metadata.get('pins')
-        if not isinstance(pinned, dict) or set(pinned) - {'sdk', 'contract', 'zig', 'rust', 'sdkTools'}:
+        if not isinstance(pinned, dict) or set(pinned) - {'sdk', 'contract', 'libraries', 'zig', 'rust', 'sdkTools', 'sdkProfile'}:
             raise ProjectFault('Portable component pins are invalid.', 409)
         if language == 'Rust' and not pinned.get('rust'): raise ProjectFault('Portable Rust projects require their original Rust pins.', 409)
     else:
@@ -35,22 +35,6 @@ def checked_profile(root, projects, metadata, fallback):
         raise ProjectFault('Unsupported imported project language or module type.', 409)
     # Import never downloads missing SDK tools. The user installs components in
     # Updates before retrying; an absent pin is never replaced by a default.
-    selected = pinned or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
-    primary = {k: v for k, v in selected.items() if k in ('sdk', 'contract', 'zig')}
-    if not pinned:
-        primary = {}
-        try:
-            paths = {'sdk': root / 'SDK' / selected['sdk']['revision'], 'contract': root / 'Contract' / selected['contract']['revision'], 'zig': root / 'Toolchains/Zig' / selected['zig']['version']}
-            for kind, path in paths.items():
-                record = files.document(path / '.studio-component.json')
-                primary[kind] = {k: record[k] for k in ('version', 'revision', 'sha256', 'url') if k in record}
-                primary[kind]['url'] = record.get('url') or record['archiveUrl']
-                if kind == 'zig': primary[kind]['binarySha256'] = record.get('binarySha256') or hashlib.sha256((path / 'zig').read_bytes()).hexdigest()
-                else: primary[kind]['zigPackageHash'] = record.get('zigPackageHash') or record.get('packageHash')
-        except (KeyError, OSError): raise ProjectFault('The selected local SDK profile is unavailable.', 409) from None
-    cache = projects / '.studio/tools' / hashlib.sha256(json.dumps(primary, sort_keys=True).encode()).hexdigest()
-    if (not pinned or pinned.get('sdkTools')) and not all((cache / v).exists() for v in ('sdk-tools', 'SDK-Release.json', 'sdk-capabilities.json')):
-        raise ProjectFault('The exact SDK tools are not installed locally. Prepare this SDK in Updates before importing.', 409)
     try: context = profile(root, projects, pinned, resolve_rust=language == 'Rust')
     except (OSError, ValueError, KeyError): raise ProjectFault('The imported SDK, Contract or compiler pins are unavailable or changed. Install the exact components before retrying.', 409) from None
     if metadata and context['pins'] != pinned: raise ProjectFault('The imported component pins changed.', 409)
@@ -116,6 +100,8 @@ def register(db, projects, root, identity, data):
     metadata = receipt['metadata']
     context, language, template = checked_profile(root, projects, metadata, data.get('fallback'))
     module = manifest(context, source_stage / 'Workspace', language, template, metadata.get('moduleName') if metadata else None)
+    from sdk import validate
+    validate(context, source_stage / 'Workspace')
     if files.digest(files.inventory(source_stage / 'Workspace')) != data['snapshot']: raise ProjectFault('The imported source changed during validation.', 409)
     if (projects / identity).exists(): raise ProjectFault('The project destination already exists. Existing files were preserved.', 409)
     sync_tree(source_stage)

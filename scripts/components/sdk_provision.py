@@ -42,7 +42,7 @@ def paths(root, revision):
     return base, saved, document, result
 
 
-def verify(root, revision, *, sources=True):
+def verify(root, revision, *, sources=True, work=None):
     base, saved, document, roots = paths(root, revision)
     capability = package.regular_bytes(base / package.asset(document, 'capabilities')['path'])
     profiles = package.profiles(roots['sdk'], document, capability)
@@ -60,12 +60,47 @@ def verify(root, revision, *, sources=True):
                 raise ValueError('An SDK host tool link changed: ' + name)
     runner = sdk_host.powershell(root)
     if sources:
-        receipt = package.decode(sdk_host.invoke(runner, roots['sdk'], 'Profile.ps1',
-            ['-Action', 'Validate'], base / 'Work'))
-        if receipt.get('valid') is not True or receipt.get('hashes') != package.profile_hashes(document):
-            raise ValueError('The native SDK profile receipt changed.')
+        expected_roots = {'contract': str(roots['contract']), 'libraries': str(roots['libraries']),
+                          'recovery-sdk': str(roots['recovery'] / 'Platform/SDK'),
+                          'recovery-contract': str(roots['recovery'] / 'Platform/Contract'),
+                          'recovery-libraries': str(roots['recovery'] / 'Legal/Sources/Libraries.zip')}
+        if package.decode(package.regular_bytes(base / 'roots.json')) != expected_roots:
+            raise ValueError('The SDK package source roots changed.')
+        # The SDK already verified these immutable inputs when publishing the
+        # bundle. A filesystem signature only decides whether that original
+        # validation still applies; changed inputs go back to the SDK verifier.
+        if saved.get('sourceSignature') != source_signature(base, document, roots):
+            receipt = package.decode(sdk_host.invoke(runner, roots['sdk'], 'Package.ps1',
+                ['-Action', 'Verify', '-PayloadRoot', base, '-Manifest', base / 'SDK-Release.json',
+                 '-RootsFile', base / 'roots.json', '-ToolsRoot', roots['tools']], Path(work) if work else base / 'Work'))
+            if receipt.get('valid') is not True or receipt.get('hashes') != package.profile_hashes(document):
+                raise ValueError('The native SDK profile receipt changed.')
     return {'base': base, 'record': saved, 'manifest': document, 'paths': roots,
             'profiles': profiles, 'capabilities': package.decode(capability), 'runner': runner}
+
+
+def source_signature(base, document, roots):
+    """Detect changes to already SDK-verified inputs; never resolve policy."""
+    groups = [('sdk', roots['sdk'], document['sdk_source']['files'])]
+    source_roots = {'contract': roots['contract'], 'libraries': roots['libraries'],
+                    'recovery-sdk': roots['recovery'] / 'Platform/SDK',
+                    'recovery-contract': roots['recovery'] / 'Platform/Contract'}
+    for name, root in source_roots.items():
+        groups.append((name, root, document['sources'][name]['tree']['files']))
+    projection = package.decode(package.regular_bytes(roots['tools'] / 'RustToolsProfile.json'))
+    groups.append(('tools', roots['tools'], [item['path'] for item in projection['files']] + ['RustToolsProfile.json']))
+    groups.append(('assets', base, [item['path'] for item in document['assets']]))
+    groups.append(('recovery-archive', roots['recovery'], ['Legal/Sources/Libraries.zip']))
+    entries = []
+    for name, root, files in groups:
+        for relative in files:
+            file = root / package.relative(relative)
+            if file.resolve(strict=True) != file.absolute() or not file.is_file():
+                raise ValueError('An SDK-verified source path changed.')
+            info = file.stat()
+            entries.append([name, relative, info.st_dev, info.st_ino, info.st_size,
+                            info.st_mode, info.st_uid, info.st_gid, info.st_mtime_ns, info.st_ctime_ns])
+    return package.sha256(json.dumps(entries, sort_keys=True).encode())
 
 
 def extract(archive, destination, prefix):
@@ -97,6 +132,42 @@ def collect_host_files(base):
     return result, links
 
 
+def host_records(root, kind):
+    """Display prepared SDK-owned compilers without independent selectors."""
+    if kind not in ('zig', 'rust'):
+        return []
+    result = []
+    directory = Path(root) / 'Packages'
+    if not directory.is_dir():
+        return result
+    for entry in directory.iterdir():
+        if not package.COMMIT.fullmatch(entry.name) or not (entry / 'bundle.json').is_file():
+            continue
+        try:
+            base, saved, document, roots = paths(root, entry.name)
+            marker = package.decode(package.regular_bytes(roots['sdk'] / '.studio-component.json'))
+            if marker.get('sdkPackage', {}).get('manifestSha256') != saved['manifestSha256']:
+                continue
+            common = {'id': 'sdk-' + saved['version'], 'sdkVersion': saved['version'], 'sdkRevision': entry.name,
+                      'toolchainProfile': 'SDK-owned', 'installationMethod': 'r4os-sdk-profiles',
+                      'manifestSha256': saved['profileSources']['Tools'], 'installedAt': saved['verifiedAt']}
+            if kind == 'zig':
+                result.append({**common, **saved['zig'], 'binary': str(roots['install'] / 'Toolchains/Zig/zig'),
+                               'directory': str(roots['install'] / 'Toolchains/Zig')})
+            else:
+                rust = saved['rust']
+                compiler = Path(rust['toolchain']) / 'bin/rustc'
+                if not compiler.is_relative_to(roots['install']):
+                    raise ValueError('The SDK Rust compiler root changed.')
+                result.append({**common, 'version': rust['rust_version'], 'cargoVersion': rust['cargo_version'],
+                               'sha256': saved['hostFiles'][str(compiler.relative_to(base))],
+                               'host': rust['host'], 'targets': [rust['kernel_target']],
+                               'binary': str(compiler), 'directory': str(roots['install'])})
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return result
+
+
 def prepare(manager, selected):
     """Ready is published only after all archives, sources and tools verify."""
     from sdk_sets import manifest_url, resolve
@@ -113,6 +184,10 @@ def prepare(manager, selected):
             marker = context['paths'][kind] / '.studio-component.json'
             if not marker.exists():
                 atomic(marker, records[kind])
+        if not context['record'].get('sourceSignature'):
+            saved = context['record']
+            saved['sourceSignature'] = source_signature(base, context['manifest'], context['paths'])
+            atomic(base / 'bundle.json', saved)
         return records
     url = manifest_url(selected)
     raw = read_url(url, package.MAX_METADATA)
@@ -160,7 +235,11 @@ def prepare(manager, selected):
                 if destination.is_symlink() or destination.resolve() != destination.absolute():
                     raise ValueError('An SDK source path is indirect.')
                 continue
-            with tempfile.TemporaryDirectory(prefix='.extract-', dir=base) as name:
+            # ProtectSystem/ReadWritePaths may create a separate bind mount for
+            # each component directory, even on the same underlying filesystem.
+            # Rename only within the destination's own publication mount.
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix='.sdk-extract-', dir=destination.parent) as name:
                 extracted = extract(target, Path(name), item['prefix'])
                 publish(extracted, destination)
     roots = {'contract': str(targets['contract-source']), 'libraries': str(targets['libraries-source']),
@@ -177,6 +256,12 @@ def prepare(manager, selected):
     if result.get('valid') is not True or result.get('technical') is not False or result.get('hashes') != package.profile_hashes(document):
         raise ValueError('The SDK package did not produce a complete native verification receipt.')
     package.profiles(targets['sdk-source'], document, package.regular_bytes(base / package.asset(document, 'capabilities')['path']))
+    projection = package.decode(package.regular_bytes(targets['tools'] / 'RustToolsProfile.json'))
+    for name in ('catalog', 'packager', 'r4l_contract_generator'):
+        executable = targets['tools'] / package.relative(projection['hosts']['Linux'][name])
+        if executable.resolve(strict=True) != executable.absolute():
+            raise ValueError('The SDK executable path is indirect.')
+        executable.chmod(0o755)
     manager.progress('Provisioning SDK-selected Zig and Rust host tools…')
     install = base / 'Install'
     sdk_host.invoke(runner, targets['sdk-source'], 'Setup.ps1', ['-InstallRoot', install, '-Tools', 'zig'],
@@ -229,6 +314,7 @@ def prepare(manager, selected):
                                   'sha256': expected_zig['hosts']['Linux']['sha256'],
                                   'binarySha256': host_files['Install/Toolchains/Zig/zig']},
               'verifiedAt': now(), 'technical': False, 'verification': result}
+    record['sourceSignature'] = source_signature(base, document, {key: manager.root / path for key, path in all_paths.items()})
     atomic(base / 'bundle.json', record)
     for kind, role in package.SOURCE_ROLES.items():
         atomic(targets[role] / '.studio-component.json', records[kind])

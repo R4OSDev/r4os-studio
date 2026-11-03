@@ -52,43 +52,30 @@ def component(value, kind):
 
 
 def choices(root, current):
+    from sdk_provision import verify
+    from sdk_profiles import identity
     defaults = regular_json(root / 'Profiles/versions.json', 4 * 1024**2)['defaults']
     result = []
     for path in sorted((root / 'SDK').iterdir()):
-        if not re.fullmatch('[a-f0-9]{40}', path.name): continue
+        if not re.fullmatch('[a-f0-9]{40}', path.name):
+            continue
         item = {'sdkId': path.name, 'available': False, 'isDefault': path.name == defaults.get('sdk', {}).get('revision')}
         try:
-            sdk = marker(path); item['version'] = sdk['version']
-            selection = resolve(SimpleNamespace(root=root), {**sdk, 'id': path.name}, fetch=False)
-            if selection['state'] != 'ready': raise ValueError(selection['reason'])
-            contract_id = selection['components']['contract']['revision']
-            contract = marker(root / 'Contract' / contract_id)
-            if contract.get('revision') != contract_id: raise ValueError('The installed Contract identity changed.')
-            zig_version = sdk['minZigVersion']; zig = marker(root / 'Toolchains/Zig' / zig_version)
-            if zig['version'] != zig_version: raise ValueError('The installed Zig identity changed.')
-            if sdk.get('revision') != path.name: raise ValueError('The installed SDK identity changed.')
-            selected = {'sdk': component(sdk, 'sdk'), 'contract': component(contract, 'contract'), 'zig': component(zig, 'zig')}
-            # Candidate identities stay bound to installed metadata, including Rust's full file inventory.
-            identities = [sdk, contract, zig]
+            installed = marker(path)
+            item['version'] = installed['version']
+            context = verify(root, path.name, sources=False)
+            bundle = context['record']
+            selected = {kind: identity(bundle['components'][kind], kind) for kind in ('sdk', 'contract', 'libraries')}
+            selected['zig'] = bundle['zig'].copy()
             if current['language'] == 'Rust':
-                saved = regular_json(root / 'Profiles/SDK-Sets' / (path.name + '.json'), 6 * 1024**2)
-                release = json.loads(base64.b64decode(saved['body'], validate=True))
-                requirement = release['devkit']
-                preferred = [current['pins'].get('rust', {}).get('id'), defaults.get('rust', {}).get('id')]
-                installations = sorted((root / 'Toolchains/Rust').iterdir(), key=lambda p: (preferred.index(p.name) if p.name in preferred else len(preferred), p.name))
-                for installed in installations:
-                    record = marker(installed)
-                    if record.get('version') == requirement['rust_version'] and record.get('cargoVersion') == requirement['cargo_version']:
-                        selected['rust'] = {'id': installed.name, 'version': record['version']}
-                        identities.append(record); break
-                if 'rust' not in selected: raise ValueError('Install the SDK-compatible Rust toolchain in System → Updates → Components.')
-            item.update(available=True, components=selected, releaseSha256=selection['manifestSha256'],
-                        selectionId=hashed({'project': current['id'], 'revision': current['revision'], 'pins': current['pins'],
-                                            'manifest': selection['manifestSha256'], 'components': identities}))
-        except FileNotFoundError:
-            item['reason'] = 'Matching installed Contract or compiler is missing. Prepare this SDK in System → Updates → Components.'
+                selected['rust'] = {'id': 'sdk-' + bundle['version'], 'version': bundle['rust']['rust_version']}
+            bundle_hash = hashed(bundle)
+            item.update(available=True, components=selected, releaseSha256=bundle['manifestSha256'],
+                        selectionId=hashed({'project': current['id'], 'revision': current['revision'],
+                                            'pins': current['pins'], 'bundle': bundle_hash}))
         except (ValueError, KeyError, OSError, ProjectFault) as error:
-            item['reason'] = str(error) if isinstance(error, (ValueError, ProjectFault)) else 'The installed SDK set is incomplete. Check System → Updates → Components.'
+            item['reason'] = ('This installed SDK needs migration to SDK-owned profiles or complete package preparation.'
+                              if isinstance(error, FileNotFoundError) else str(error))
         result.append(item)
     def version_key(value):
         version = value.get('version', '')
@@ -223,6 +210,8 @@ def apply(projects, root, identity, data, hosts):
             from github_import import manifest
             work = folder(project_directory(projects, identity) / 'Workspace')
             manifest(context, work, current['language'], current['template'], current['moduleName'])
+            from sdk import validate
+            validate(context, work)
             parent = work / '.r4os-studio'
             if not parent.exists(): parent.mkdir(mode=0o700); sync(work)
             folder(parent); target = parent / 'project.json'

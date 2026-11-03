@@ -170,6 +170,9 @@ class Manager:
                     records.append(record)
                 except (OSError, ValueError, KeyError):
                     continue
+        if kind in ('zig', 'rust'):
+            from sdk_provision import host_records
+            records.extend(host_records(self.root, kind))
         if kind in self.external:
             record = self.external[kind]
             try:
@@ -296,6 +299,8 @@ class Manager:
         with self.lock:
             if self.busy:
                 raise ValueError('Wait for the current component operation to finish.')
+            if kind in ('zig', 'rust') and self.state['defaults'].get('sdk'):
+                raise ValueError('Choose the SDK to select its compiler and tools. Independent compiler defaults are unavailable.')
             record = next((value for value in self.installed(kind) if value['id'] == identity), None)
             if not record:
                 raise ValueError('Only a complete local installation can be selected as default.')

@@ -46,87 +46,8 @@ def selection_revision(root, defaults, template):
 
 
 def profile(root, projects, pinned=None, resolve_rust=True, verify_components=True, selected=None):
-    defaults = pinned or selected or json.loads((root / 'Profiles/versions.json').read_text())['defaults']
-    sdk_id = defaults['sdk'].get('revision')
-    contract_id = defaults['contract'].get('revision')
-    zig_id = defaults['zig'].get('version')
-    if not all(isinstance(v, str) and re.fullmatch('[a-f0-9]{40}', v) for v in (sdk_id, contract_id)) or not re.fullmatch(r'\d+\.\d+\.\d+', zig_id or ''):
-        raise ValueError('Select installed SDK, Contract and Zig components.')
-    paths = {'sdk': root / 'SDK' / sdk_id, 'contract': root / 'Contract' / contract_id,
-             'zig': root / 'Toolchains/Zig' / zig_id}
-    pins = {}; records = {}
-    for kind, path in paths.items():
-        if path.resolve(strict=True) != path.absolute():
-            raise ValueError('Invalid component path.')
-        marker = path / '.studio-component.json'
-        record = json.loads(marker.read_text()); records[kind] = record
-        if not re.fullmatch('[a-f0-9]{64}', record.get('sha256', '')):
-            raise ValueError('Missing component checksum.')
-        pins[kind] = {key: record[key] for key in ('version', 'revision', 'sha256', 'url') if key in record}
-        pins[kind]['url'] = record.get('url') or record['archiveUrl']
-        if kind != 'zig':
-            pins[kind]['zigPackageHash'] = record.get('zigPackageHash') or record.get('packageHash')
-    expected_binary = records['zig'].get('binarySha256')
-    pins['zig']['binarySha256'] = digest(paths['zig'] / 'zig') if verify_components or not expected_binary else expected_binary
-    if records['zig'].get('binarySha256', pins['zig']['binarySha256']) != pins['zig']['binarySha256']:
-        raise ValueError('Compiler checksum does not match its installed metadata.')
-    if pinned and pins != {key: value for key, value in pinned.items() if key not in ('rust', 'sdkTools')}:
-        raise ValueError('Pinned project components changed.')
-    from service import parse_package_info
-    dependency = parse_package_info((paths['sdk'] / 'build.zig.zon').read_text())['dependencies']['contract']
-    if not (pinned or {}).get('rust') and (dependency['revision'] != contract_id or dependency['packageHash'] != pins['contract']['zigPackageHash']):
-        raise ValueError('The selected Contract differs from the selected SDK dependency. Select its matching Contract in Updates.')
-    key = hashlib.sha256(json.dumps(pins, sort_keys=True).encode()).hexdigest()
-    cache = projects / '.studio/tools' / key
-    cache.mkdir(parents=True, exist_ok=True, mode=0o700)
-    env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(cache),
-           'ZIG_LOCAL_CACHE_DIR': str(cache / 'local'), 'ZIG_GLOBAL_CACHE_DIR': str(cache / 'global')}
-    if verify_components:
-        (cache / 'build.zig').write_text('pub fn build(b: *@import("std").Build) void { _ = b; }\n')
-    zig = paths['zig'] / 'zig'
-    if verify_components:
-        with (cache / 'lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            if run([zig, 'version'], env) != zig_id:
-                raise ValueError('Compiler version does not match the selected profile.')
-            for kind in ('sdk', 'contract'):
-                if run([zig, 'fetch', paths[kind]], env) != pins[kind]['zigPackageHash']:
-                    raise ValueError('Component package checksum changed.')
-    revision = template_revision(pins)
-    context = {'pins': pins, 'revision': revision, 'templateRevision': revision,
-               'paths': paths, 'cache': cache, 'env': env}
-    from rust_projects import local, runner
-    from toolset import prepare as prepare_tools
-    with (cache / 'lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        # Older project records retain their original source/pin format. New
-        # records bind the SDK's published toolset without a revision registry.
-        if not pinned or pinned.get('sdkTools'):
-            tools = prepare_tools(context, (pinned or {}).get('sdkTools'), verify_components=verify_components)
-            context.update(sdkTools=tools, capabilities=tools['capabilities'], tool=tools['catalog'])
-            context['pins']['sdkTools'] = tools['pin']
-        else:
-            tool = cache / 'module-catalog'; marker = cache / 'tool.json'
-            if not tool.is_file() or not marker.is_file() or digest(tool) != json.loads(marker.read_text()).get('sha256'):
-                run([zig, 'build-exe', '-OReleaseSafe', '--dep', 'contract_bundle',
-                     '-Mroot=' + str(paths['sdk'] / 'Tools/ModuleCatalog/src/main.zig'), '--dep', 'r4os_contract',
-                     '-Mcontract_bundle=' + str(paths['sdk'] / 'r4os/r4cp_convert.zig'),
-                     '-Mr4os_contract=' + str(paths['contract'] / 'Generated/SDK/Zig/package.zig'), '-femit-bin=' + str(tool)], env)
-                marker.write_text(json.dumps({'sha256': digest(tool)}))
-            context['tool'] = tool
-        if resolve_rust:
-            try: context['rust'] = local(root, defaults, context, (pinned or {}).get('rust'), check_files=verify_components)
-            except (OSError, ValueError, KeyError) as error:
-                if (pinned or {}).get('rust'): raise ValueError('Pinned project Rust tools changed: ' + str(error)) from error
-                context['rustError'] = str(error)
-        # A fully verified Rust installation already includes its PowerShell
-        # files. Other languages need only the runner, not the Rust toolchain.
-        context['runner'] = (context['rust']['prefix'] / 'PowerShell/pwsh' if context.get('rust')
-                             else runner(root, defaults, check_files=verify_components))
-        if (pinned or {}).get('rust'): context['pins']['rust'] = context['rust']['pin']
-    context['templateRevision'] = template_revision(context['pins'])
-    context['revision'] = selection_revision(root, defaults, context['templateRevision'])
-    return context
+    from sdk_profiles import profile as sdk_owned_profile
+    return sdk_owned_profile(root, projects, pinned, resolve_rust, verify_components, selected)
 
 
 def options(context):
@@ -155,9 +76,11 @@ def validate(context, directory):
     catalog = json.loads(run([tool, 'catalog', '--root', directory], context['env']))
     if len(catalog['entries']) != 1:
         raise ValueError('Expected one project manifest.')
-    plan = json.loads(run([tool, 'plan', '--manifest', directory / 'module.R4MF'], context['env'])) if catalog['entries'][0]['kind'] == 'R4X' else None
-    contract_plan = run([tool, 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if plan else None
-    return {'catalog': catalog, 'plan': plan, 'contractPlan': contract_plan}
+    plan = json.loads(run([tool, 'plan', '--manifest', directory / 'module.R4MF'], context['env']))
+    from sdk_profiles import bind_manifest
+    resolved = bind_manifest(context, directory, plan['plan'])
+    contract_plan = run([tool, 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if catalog['entries'][0]['kind'] == 'R4X' else None
+    return {'catalog': catalog, 'plan': plan, 'contractPlan': contract_plan, 'sdkProfile': resolved}
 
 
 def main():

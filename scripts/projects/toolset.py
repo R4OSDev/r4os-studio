@@ -21,75 +21,10 @@ def digest(path):
 
 
 def prepare(context, pinned=None, verify_components=True):
-    base = context['cache']; version = context['pins']['sdk']['version']
-    url = 'https://github.com/R4OSDev/r4os-sdk/releases/download/v' + version + '/SDK-Release.json'
-    saved = base / 'SDK-Release.json'
-    if saved.is_symlink(): raise ValueError('Invalid SDK release metadata path.')
-    raw = saved.read_bytes() if saved.exists() else read_url(url, 2 * 1024**2)
-    checksum = hashlib.sha256(raw).hexdigest(); release = json.loads(raw)
-    if pinned and (pinned['releaseSha256'] != checksum or pinned['url'] != url):
-        raise ValueError('Pinned SDK tools metadata changed.')
-    if release.get('schema') != 1 or release.get('interface') != 'r4os-sdk-release':
-        raise ValueError('The SDK release metadata format is not supported.')
-    for kind in ('sdk', 'contract'):
-        if release[kind]['source_commit'] != context['pins'][kind]['revision']:
-            raise ValueError('The selected ' + kind.upper() + ' does not match the SDK release metadata.')
-    devkit = release['devkit']; package = devkit['package']; capability = capabilities_package(release, url)
-    for item in (package, capability):
-        if not item['url'].startswith(url.rsplit('/', 1)[0] + '/'):
-            raise ValueError('The SDK tools archive must belong to its selected SDK release.')
-    pin = {'url': url, 'releaseSha256': checksum, 'archiveSha256': package['sha256'],
-           'profileSha256': devkit['profile_sha256'], 'capabilitiesSha256': capability['sha256']}
-    if pinned and pin != pinned: raise ValueError('Pinned SDK tools changed.')
-    target = base / 'sdk-tools'
-    if target.is_symlink(): raise ValueError('Invalid SDK tool storage.')
-    tools_verified = False
-    if not target.exists():
-        with tempfile.TemporaryDirectory(prefix='.sdk-tools-', dir=base) as temporary:
-            work = Path(temporary); archive = work / 'tools.tar.gz'
-            download(Download(), package['url'], archive, package['sha256'], limit=64 * 1024**2)
-            source = unpack(archive, work / 'unpacked', limit=256 * 1024**2)
-            if digest(source / 'RustToolsProfile.json') != pin['profileSha256']:
-                raise ValueError('The SDK tool profile checksum changed.')
-            if verify_components:
-                profile = json.loads((source / 'RustToolsProfile.json').read_text())
-                verify_files(source, {v['path']: v['sha256'] for v in profile['files']})
-                tools_verified = True
-            source.rename(target)
-    if digest(target / 'RustToolsProfile.json') != pin['profileSha256']:
-        raise ValueError('The SDK tool profile checksum changed.')
-    profile = json.loads((target / 'RustToolsProfile.json').read_text())
-    if verify_components:
-        if not tools_verified:
-            verify_files(target, {v['path']: v['sha256'] for v in profile['files']})
-        for kind in ('sdk', 'contract'):
-            verify_files(context['paths'][kind], {v['path']: v['sha256'] for v in profile[kind]['inputs']})
-    zig = json.loads((target / 'Profile/ZigToolchain.json').read_text())
-    if (zig['version'] != context['pins']['zig']['version']
-        or zig['hosts']['Linux']['sha256'] != context['pins']['zig']['sha256']):
-        raise ValueError('The selected compiler differs from the SDK toolchain requirement: Zig ' + zig['version'] + '.')
-    catalog = target / profile['hosts']['Linux']['catalog']
-    # Check the exact published catalog bytes separately from JSON serialization.
-    cap_path = base / 'sdk-capabilities.json'
-    if not cap_path.exists():
-        data = read_url(capability['url'], 2 * 1024**2)
-        if len(data) != capability['bytes']: raise ValueError('The SDK capability size changed.')
-        if hashlib.sha256(data).hexdigest() != pin['capabilitiesSha256']:
-            raise ValueError('The SDK capability checksum changed.')
-        cap_path.write_bytes(data)
-    if cap_path.is_symlink() or digest(cap_path) != pin['capabilitiesSha256']:
-        raise ValueError('The SDK capability catalog changed.')
-    capabilities = json.loads(cap_path.read_text())
-    if verify_components:
-        catalog.chmod(0o755)
-        actual = json.loads(command([catalog, 'capabilities', '--json', '--profile', target / 'RustToolsProfile.json'],
-                                    {'PATH': '', 'HOME': str(base)}, base))
-        if actual != capabilities: raise ValueError('The SDK capability catalog changed.')
-    if capabilities.get('schema') not in (2, 3) or capabilities.get('interface') != 'r4os-sdk-capabilities' or capabilities.get('technical'):
-        raise ValueError('The SDK capability format is not supported.')
-    if not saved.exists(): saved.write_bytes(raw)
-    return {'tools': target, 'profile': profile, 'pin': pin, 'catalog': catalog,
-            'capabilities': capabilities, 'release': release}
+    tools = context.get('sdkTools')
+    if not tools or pinned and tools['pin'] != pinned:
+        raise ValueError('The project needs its verified SDK package. No legacy tool fallback is available.')
+    return tools
 
 
 def combination(context, template, language):
@@ -117,6 +52,7 @@ def render(context, directory, project, template):
             '-TemplateId', match['template']['id'], '-Directory', directory, '-ProjectName', project['moduleName'],
             '-SdkRoot', context['paths']['sdk'], '-ContractRoot', context['paths']['contract'], '-ToolsRoot', context['sdkTools']['tools']]
     if context.get('rust'): args += ['-InstallRoot', context['rust']['prefix'] / 'Install', '-CacheRoot', context['cache'] / 'rust-create']
+    context['pins']['sdkProfile']['templateId'] = match['template']['id']
     command(args, {'PATH': str(runner.parent) + ':/usr/bin:/bin', 'HOME': str(context['cache']),
                    'LANG': 'C.UTF-8', 'POWERSHELL_TELEMETRY_OPTOUT': '1'}, context['cache'])
     if project['template'] == 'subsystem':

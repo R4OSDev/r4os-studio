@@ -52,7 +52,7 @@ export function SdkUpdatesPanel() {
   const selectedId = selection || inventory?.activeId || inventory?.latestId || versions[0]?.id || '';
   const selected = versions.find((value) => value.id === selectedId);
   const active = inventory?.installed.find((value) => value.id === inventory.activeId);
-  const capable = status?.enabled && status.features?.sdkSelection === 1;
+  const capable = status?.enabled && status.features?.sdkSelection === 1 && status.features?.sdkProfiles === 1;
   const busy = requesting || status?.job?.phase === 'working';
   const blocked = !capable || busy || !!pending;
 
@@ -88,7 +88,7 @@ export function SdkUpdatesPanel() {
   const sdkSet = selected?.sdkSet;
   return <section className="updates-content" aria-label="SDK updates"><div className="updates-card">
     <div className="updates-title"><h2>SDK</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
-    <p className="updates-help">Contract and Libraries follow the selected SDK. Existing projects keep their pinned versions.</p>
+    <p className="updates-help">The SDK determines build profiles, tools, Contract and system libraries. Existing projects require an explicit SDK migration.</p>
     {!status && !error && <p role="status">Loading SDK versions…</p>}
     {status && !status.enabled && <p className="updates-alert">{status.message}</p>}
     {status?.enabled && !capable && <p className="updates-alert">The component service is switching releases. Retry shortly.</p>}
@@ -116,6 +116,12 @@ export function SdkUpdatesPanel() {
           <span className="component-label">{part.installed ? 'Installed' : 'Not installed'}</span></div>;
       })}
     </div> : sdkSet && <p className={sdkSet.state === 'unavailable' ? 'updates-alert' : 'updates-help'} role="status">{sdkSet.reason}</p>}
+    {sdkSet?.profileSources && <details className="project-pin-details"><summary>SDK profile sources</summary>
+      <dl>{Object.entries(sdkSet.profileSources).map(([name, hash]) => <div key={name}>
+        <dt>{`Profiles/${name}.json`}</dt><dd><code>{hash}</code></dd>
+      </div>)}</dl>
+      <p className="updates-help">These original files in the selected SDK own the build policy. Values are read-only.</p>
+    </details>}
     {active?.sdkSet?.state === 'ready' && !active.sdkSet.active && <p className="updates-help">The default SDK set is incomplete. Select it and use it as default to complete the set.</p>}
     <div className="component-version-list">{versions.map((value) => <div className="component-version" key={value.id}>
       <div><strong>{value.version}</strong>{value.id === inventory?.latestId && <span className="component-label">Latest</span>}

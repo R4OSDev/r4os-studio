@@ -33,6 +33,7 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
   const active = inventory?.installed.find((value) => value.id === inventory.activeId);
   const selected = selection || inventory?.activeId || inventory?.installed[0]?.id || '';
   const busy = requesting || status?.job?.phase === 'working';
+  const sdkOwned = (kind === 'zig' || kind === 'rust') && status?.features?.sdkProfiles === 1;
   async function action(command: 'check' | 'download' | 'default', id?: string, older = false) {
     if (!status) return;
     setRequesting(true); setError('');
@@ -51,11 +52,11 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
   return <section className="updates-content" aria-label={`${componentNames[viewKind]} updates`}>
     <div className="updates-card">
       <div className="updates-title"><h2>{componentNames[viewKind]}</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
-      <p className="updates-help">{kind === 'r4upack' ? 'Build the qualified native packer separately, then choose its active profile. Existing project SDK and compiler pins stay in place.' : 'Download versions and choose which installed version to use by default. Projects can use their own versions when project profiles are available.'}</p>
+      <p className="updates-help">{sdkOwned ? 'The selected SDK determines this compiler. Select a complete SDK package to change its tools.' : kind === 'r4upack' ? 'Build the qualified native packer separately, then choose its active profile. Existing project SDK and compiler pins stay in place.' : 'Download versions and choose which installed version to use by default. Projects can use their own versions when project profiles are available.'}</p>
       {kind === 'r4upack' && <p className="updates-help">The displayed version identifies Distribution sources; profile IDs, source revisions and SHA-256 identify the tool. The packer option --version sets package metadata. Building does not select a profile or package a project.</p>}
       {viewKind === 'c' && <p className="updates-help">C uses the C compiler included with Zig. Downloads and the active default are shared with Zig.</p>}
       {kind === 'codex' && <p className="updates-help">Only the latest Codex version is available to download. Previously installed versions remain selectable.</p>}
-      {kind === 'rust' && <p className="updates-help">SDK profiles include the required compiler and build tools. Choose the profile matching your SDK for Rust projects.</p>}
+      {kind === 'rust' && <p className="updates-help">Compiler and build tools follow the SDK's original tool profile.</p>}
       {kind === 'r4os' && <p className="updates-help">The default is used for new virtual machines. Existing virtual machines keep their selected release.</p>}
       {!loaded && !error && <p role="status">Loading component versions…</p>}
       {status && !status.enabled && <p className="updates-alert">{status.message}</p>}
@@ -65,14 +66,14 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
           {status.job.total ? ` (${Math.min(100, Math.round((status.job.received ?? 0) / status.job.total * 100))}%)` : ''}</span>
       </div>}
       <div className="updates-actions"><button type="button" disabled={!status?.enabled || busy} onClick={() => void action('check')}>{kind === 'r4upack' ? 'Check qualified profiles' : 'Check for updates'}</button></div>
-      <div className="component-default">
+      {!sdkOwned && <div className="component-default">
         <label htmlFor={`default-${kind}`}>Active default</label>
         <select id={`default-${kind}`} value={selected} disabled={!status?.enabled || busy || !inventory?.installed.length} onChange={(event) => setSelection(event.target.value)}>
           {!inventory?.installed.length && <option value="">No installed versions</option>}
           {inventory?.installed.map((value) => <option key={value.id} value={value.id}>{value.version}{value.sdkVersion ? ` · SDK ${value.sdkVersion}` : ''}{value.revision ? ` · ${value.revision.slice(0, 8)}` : ''}{value.external ? ' · system installation' : ''}</option>)}
         </select>
         <button type="button" disabled={!status?.enabled || busy || !selected || selected === inventory?.activeId} onClick={() => void action('default', selected)}>Use as default</button>
-      </div>
+      </div>}
       <div className="component-version-list">
         {versions.map((value) => {
           const installed = inventory?.installed.some((local) => local.id === value.id);

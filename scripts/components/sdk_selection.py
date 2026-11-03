@@ -33,7 +33,7 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
     with manager.lock:
         request_id = request_id or str(uuid.uuid4())
         path = receipt_path(manager, request_id)
-        previous = regular_json(path, 65536) if path.exists() or path.is_symlink() else None
+        previous = regular_json(path, 512 * 1024) if path.exists() or path.is_symlink() else None
         expected_revision = expected_revision or profile_revision(manager.state)
         request = {'id': identity, 'action': action, 'expectedRevision': expected_revision, 'manifestSha256': manifest_hash}
         if previous and (previous.get('schema') != 1 or previous.get('request') != request):
@@ -60,6 +60,13 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
         if releases is not None:
             selected = {**selected, 'sdkRelease': releases.get(identity, {'published': False})}
         receipt = previous or {'schema': 1, 'requestId': request_id, 'request': request, 'selected': selected, 'createdAt': now()}
+        if previous and previous.get('phase') == 'failed':
+            history = list(previous.get('history', []))
+            history.append({'phase': 'failed', 'error': previous.get('error'), 'observedAt': now()})
+            if len(history) > 16:
+                receipt['previousFailuresOmitted'] = receipt.get('previousFailuresOmitted', 0) + len(history) - 16
+                history = [history[0], *history[-15:]]
+            receipt['history'] = history
         receipt.update(phase='working', error=None)
         atomic(path, receipt)
         manager.busy = True
@@ -154,7 +161,7 @@ def work(manager, path, receipt):
         from sdk_provision import prepare, paths
         records = prepare(manager, selected)
         base, bundle, document, package_paths = paths(manager.root, selected['id'])
-        compiler = {**bundle['zig'], 'id': bundle['zig']['version'],
+        compiler = {**bundle['zig'], 'id': 'sdk-' + bundle['version'],
                     'directory': str(package_paths['install'] / 'Toolchains/Zig'),
                     'binary': str(package_paths['install'] / 'Toolchains/Zig/zig')}
         if request['action'] == 'default':
@@ -164,6 +171,9 @@ def work(manager, path, receipt):
                 defaults = copy.deepcopy(manager.state['defaults'])
                 defaults.update(records)
                 defaults['zig'] = compiler
+                from sdk_provision import host_records
+                defaults['rust'] = next(record for record in host_records(manager.root, 'rust')
+                                        if record['sdkRevision'] == selected['id'])
                 state = {**manager.state, 'schema': 1, 'defaults': defaults, 'updatedAt': now(),
                          'sdkSelection': {'requestId': receipt['requestId'], 'id': selected['id'],
                                           'manifestSha256': resolved['manifestSha256']}}

@@ -21,6 +21,7 @@ function PinList({ pins }: { pins: Components }) {
   return <dl className="project-pin-list">
     <div><dt>SDK</dt><dd>{pins.sdk.version}</dd></div>
     <div><dt>Contract</dt><dd>{pins.contract.version}</dd></div>
+    {pins.libraries && <div><dt>Libraries</dt><dd>{pins.libraries.version}</dd></div>}
     <div><dt>Zig</dt><dd>{pins.zig.version}</dd></div>
     {pins.rust && <div><dt>Rust</dt><dd>{pins.rust.version}<small>{pins.rust.id}</small></dd></div>}
   </dl>;
@@ -121,7 +122,7 @@ export function ProjectPinsSettings({ id, token, dirtyChanged, busyChanged }: {
   return <section className="project-settings project-pins-settings" aria-label="Project Pins settings" aria-busy={busy}>
     <div className="project-pins-heading"><h2>Pins</h2><button type="button" className="project-reload" disabled={busy}
       onClick={() => { if (!changed || pending || window.confirm('Discard the selected SDK and reload Pins?')) void reload(); }}>Refresh</button></div>
-    <p className="project-message">Choose an installed SDK for this project. Contract and compiler versions are selected to match.</p>
+    <p className="project-message">Choose a complete installed SDK package. Its profiles determine tools, Contract and system libraries.</p>
     {!options && !error && <p className="project-message" role="status">Loading project pins…</p>}
     {options && <div className="project-pins-columns">
       <section className="project-pin-card" aria-label="Current project pins"><h3>Current pins</h3><PinList pins={options.project.pins} /><PinDetails pins={options.project.pins} /></section>
