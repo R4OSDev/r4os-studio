@@ -242,6 +242,8 @@ class Jobs:
         if channel is not None and (job['kind'] != 'ssh' or channel not in ('stdout', 'stderr')):
             raise DevelopmentFault('Choose stdout/stderr only for an original SSH job.', 400)
         path = self.root / 'Evidence' / job_id / ((channel + '.log') if channel else 'output.log')
+        channel_state = ((job.get('ssh') or {}).get('channels') or {}).get(channel, {}) if channel else {}
+        capture_limit = LIMITS['outputBytes'] // 2 if channel else LIMITS['outputBytes']
         if type(metadata_only) is not bool: raise DevelopmentFault('Invalid metadata page mode.', 400)
         data = b''; size = path.stat().st_size if path.exists() else 0
         if path.exists() or path.is_symlink():
@@ -278,9 +280,9 @@ class Jobs:
         from evidence import list_for
         from execution_evidence import describe
         return {'job': job,**artifact_summary, **({'channel': channel} if channel else {}), 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
-                'totalBytes':size,'hasMore':offset+len(data)<size,'captureLimitReached':size>=LIMITS['outputBytes'],
-                'captureTruncated':job.get('captureTruncated'),'nextOffset': offset + len(data),
-                'truncated': path.exists() and path.stat().st_size >= LIMITS['outputBytes'],
+                'totalBytes':size,'hasMore':offset+len(data)<size,'captureLimitReached':size>=capture_limit,
+                'captureTruncated':channel_state.get('truncated') if channel else job.get('captureTruncated'),'nextOffset': offset + len(data),
+                'truncated':channel_state.get('truncated', False) if channel else path.exists() and path.stat().st_size >= capture_limit,
                 'outputKind': 'build' if job['kind'] == 'build' else 'console' if job['kind'] == 'execution' else 'diagnostic',
                 'evidence': list_for(self, job_id),
                 **({'executionEvidence': describe(self, job)} if job['kind'] == 'execution' else {})}

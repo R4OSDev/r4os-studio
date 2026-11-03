@@ -85,6 +85,8 @@ def compose(config):
     text += development_instructions(config)
     from remote_instructions import compose as remote_instructions
     text += remote_instructions(config)
+    from shortcut_instructions import compose as shortcut_instructions
+    text = shortcut_instructions(config, text)
     if 'skillAccess' not in config: return text
     from skill_application import catalog_text
     return text + catalog_text(config['skillAccess'])

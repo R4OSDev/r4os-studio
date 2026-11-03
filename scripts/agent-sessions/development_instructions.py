@@ -3,7 +3,7 @@ from tool_catalog import tool_scope
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill': return ''
-    if not rights.get('studio.read_development_job'): return git_inspection(config) + project_ssh(config) + desktop_icons(config)
+    if not rights.get('studio.read_development_job'): return git_inspection(config) + project_ssh(config)
     compact = tool_scope(config) == 'project'
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
@@ -42,7 +42,7 @@ def compose(config):
         'choosing arguments; an oversized launch is rejected before admission/controller/quarantine. Never '
         'truncate, split, wrap or retry arguments automatically. Argument-file alternatives require an explicit '
         'app/SDK contract; host Rust builds do not imply a native guest compiler.'
-    ) + presentation + desktop_icons(config) + original_job_references(config) + editor_shortcuts(config) + key_plans(config) + git_inspection(config) + project_ssh(config)
+    ) + presentation + original_job_references(config) + editor_shortcuts(config) + key_plans(config) + git_inspection(config) + project_ssh(config)
 
 
 def original_job_references(config):
@@ -63,15 +63,6 @@ def original_job_references(config):
     if config.get('developmentJobReferencesUnavailable'):
         return guidance + 'The original reference index is unavailable; no rejection or missing effect was inferred.'
     return guidance if lookup else ''
-
-
-def desktop_icons(config):
-    return ('\n\nSTUDIO DESKTOP AUTOMATION REMOVED (0.9.26): This current contract replaces older Studio desktop '
-        'publication/link-start guidance in this conversation. Studio no longer creates or owns desktop links; '
-        'old jobs and guest files are historical and unchanged. Ordinary deploy/run need no desktop ownership. '
-        'For a user-requested shortcut use the separately enabled project VM SSH tool and its short native guide. '
-        'Do not replay a former publication, activate a saved managed-link request or change native write protection. '
-        'ICON=INTERNAL reads the first ICON embedded in the R4X; icon embedding remains supported and needs no window/taskbar icon API.')
 
 
 def editor_shortcuts(config):

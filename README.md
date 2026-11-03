@@ -1,3 +1,16 @@
+## Short native SSH shortcut guide (0.9.27)
+
+The default system prompt and effective project instructions now carry one short
+SSH guide for a user-requested desktop link. It gives the six R4LNK fields,
+actual target-path substitution, separate ECHO/TYPE commands, native byte/right
+limits and the embedded-icon meaning. The guide is conditional on the declared,
+enabled VM SSH tool; unavailable tools receive a short retirement notice instead.
+Custom saved text and accepted prompt snapshots keep their original hashes and
+revisions. The next normal run in the same session receives the current guide,
+without a new thread. Skill Manager instructions receive no guest guidance.
+See [Project-VM-SSH.md](Project-VM-SSH.md) and
+[shared/project-vm-shortcuts.txt](shared/project-vm-shortcuts.txt).
+
 ## Project VM SSH and retirement of desktop automation (0.9.25–0.9.26)
 
 Project agents can run free native guest commands using **Run VM SSH command**.

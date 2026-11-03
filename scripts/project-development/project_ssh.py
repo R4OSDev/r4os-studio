@@ -45,11 +45,14 @@ class SshCommand:
         self.claimed = False
         self.stats = {key: {'bytesReceived': 0, 'bytesCaptured': 0, 'truncated': False}
             for key in ('stdout', 'stderr')}
+        self.scan_tail = {key: b'' for key in self.stats}
         self.value = {'version': 1, 'command': job['sshCommand'], 'commandBytes': len(job['sshCommand'].encode()),
             'commandLimitBytes': COMMAND_BYTES, 'channelLimitBytes': CHANNEL_BYTES,
             'sshExitCode': None, 'commandExitCode': None, 'commandReturnConfirmed': False,
             'sshClientEndConfirmed': False, 'guestProcessEndConfirmed': False,
-            'guestDescendantsEndConfirmed': False, 'outputComplete': False, 'channels': self.stats}
+            'guestDescendantsEndConfirmed': False, 'outputComplete': False,
+            'outputCompletenessScope': 'received-ssh-streams', 'nativeOutputComplete': None,
+            'nativeOutputLossReported': False, 'channels': self.stats}
 
     def persist(self, **fields):
         self.value.update(fields)
@@ -121,7 +124,7 @@ class SshCommand:
                         self.value.update(sshExitCode=code, sshClientEndConfirmed=True, endedAt=now(),
                             commandReturnConfirmed=code >= 0 and code != 255,
                             commandExitCode=code if code >= 0 and code != 255 else None,
-                            outputComplete=not any(v['truncated'] for v in self.stats.values()))
+                            outputComplete=not any(v['truncated'] for v in self.stats.values()) and not self.value['nativeOutputLossReported'])
                         self.value['guestProcessEndConfirmed'] = self.value['commandReturnConfirmed']
                         # SSH returns the command-shell status. It attests neither
                         # detached child completion nor successful app behavior.
@@ -154,6 +157,10 @@ class SshCommand:
         with (self.evidence / (channel + '.log')).open('xb') as original:
             while data := await stream.read(8192):
                 stats['bytesReceived'] += len(data)
+                observed = self.scan_tail[channel] + data
+                if b'SSHD: console output lost ' in observed:
+                    self.value.update(nativeOutputLossReported=True, nativeOutputComplete=False)
+                self.scan_tail[channel] = observed[-256:]
                 captured = data[:max(0, CHANNEL_BYTES - stats['bytesCaptured'])]
                 original.write(captured); original.flush()
                 stats['bytesCaptured'] += len(captured)

@@ -15,3 +15,29 @@ SSH and ordinary development jobs share the project admission lock, cross-proces
 Host setup, once: `python3 scripts/project-development/install-ssh-support.py` as root. This adds only the fixed SSH worker template and its narrow start/stop Polkit rule, then reloads unit definitions. It does not reinitialize bootstrap or restart any running service, worker or VM. Regular release installation remains through Studio Updates.
 
 Validation for this release is source/AST, product build, TypeScript and lint plus installed readback. No test suite, fixture, project/VM test, model inference or guest command was run. Positive native SSH usage and transport-loss behavior remain open runtime acceptances.
+
+## Requested desktop links (0.9.27)
+
+The bundled short guide lives in `shared/project-vm-shortcuts.txt` and is also
+part of the default `shared/system-prompt.json`. Effective project instruction
+composition removes only exact duplicate bundled blocks and supplies one copy
+when the frozen declared catalog and permission include the SSH tool. Otherwise
+it supplies a retirement notice, with no guest-write capability claim. It works
+independently of Read development job permission. No stored custom text, prompt
+revision/hash, accepted run, existing thread or Skill Manager source is changed.
+
+The source contract is R4OS0.89.18's Terminal8bd47792a3a6c3585bce8d5c0bed4d9c2e743179
+and SSHDdba200989d635f0ba0c7657ad80c369a6fc87d32: builtin ECHO redirection uses
+fileWrite/fileAppend, TYPE uses fileReadAt; SSHD's direct SFTP/SCP system-path
+guards do not gate the Terminal exec path. Native filesystem errors remain
+authoritative. This source qualification is not a live permission or desktop
+appearance/activation test. No native protection is disabled and no guest
+commands were executed for this guide.
+
+Output metadata clarification (0.9.27): each selected channel reports its own
+1 MiB limit and actual truncation. `ssh.outputComplete` describes received SSH
+streams, with `outputCompletenessScope=received-ssh-streams`; it never attests
+full native process output. `nativeOutputComplete` stays null unless SSHD
+explicitly reports lost console bytes, in which case it is false and
+`nativeOutputLossReported=true`. The original command is included even in the
+initial compact acceptance result. No terminal receipt or guest effect changes.

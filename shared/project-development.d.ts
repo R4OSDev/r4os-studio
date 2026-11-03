@@ -193,6 +193,7 @@ export interface DevelopmentJob {
   ssh?: {version:1;command:string;commandBytes:number;commandLimitBytes:number;channelLimitBytes:number;
     sshExitCode:number|null;commandExitCode:number|null;commandReturnConfirmed:boolean;sshClientEndConfirmed:boolean;
     guestProcessEndConfirmed:boolean;guestDescendantsEndConfirmed:false;outputComplete:boolean;startedAt?:string;endedAt?:string;
+    outputCompletenessScope?:'received-ssh-streams';nativeOutputComplete?:false|null;nativeOutputLossReported?:boolean;
     channels:Record<'stdout'|'stderr',{bytesReceived:number;bytesCaptured:number;truncated:boolean}>};
   lastKeyPlan?: { keyPlanId: string; accepted: number; expected: number; active: boolean; complete: boolean; queuedAtMilliseconds: number[]; latenessMilliseconds: number[]; abortedReason: string | null; consumptionConfirmed: false };
 
