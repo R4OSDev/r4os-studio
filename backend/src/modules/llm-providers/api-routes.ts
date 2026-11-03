@@ -131,7 +131,7 @@ export function apiProviderRoutes(app: FastifyInstance, sessions: ProviderSessio
     bodyLimit: 16384,
     preValidation: async request => input(request.body, [...Object.keys(fields), 'kind', 'key']),
     schema: { body: { type: 'object', additionalProperties: false, required: ['requestId','name','kind','baseUrl','protocol','auth'], properties: {
-      ...fields, kind: { type: 'string', enum: ['openrouter','openai-compatible','local'] }, key: { type: 'string', minLength: 1, maxLength: 8192 },
+      ...fields, kind: { type: 'string', enum: ['openrouter','openai-compatible','local','zai-coding-plan'] }, key: { type: 'string', minLength: 1, maxLength: 8192 },
     } } },
   }, async (request, reply) => {
     sessions.mutation(request, reply);

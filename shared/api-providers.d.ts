@@ -1,5 +1,5 @@
 /** Additive API connections; existing OpenAI subscription Provider is unchanged. */
-export type ApiProviderKind = 'openrouter' | 'openai-compatible' | 'local';
+export type ApiProviderKind = 'openrouter' | 'openai-compatible' | 'local' | 'zai-coding-plan';
 export type ApiProtocol = 'responses' | 'chat-completions';
 export type ApiAuth = 'none' | 'bearer';
 export type ApiServer = 'custom' | 'ollama' | 'lm-studio';

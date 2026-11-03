@@ -56,7 +56,7 @@ def record(store,sid,key,thread,response,run_id):
             or selected.get('providerId')!=binding.get('id') or selected.get('baseUrl')!=binding.get('baseUrl')
             or selected.get('protocol')!=binding.get('protocol')
             or selected.get('server','custom')!=binding.get('server','custom')
-            or binding.get('kind') not in ('openrouter','openai-compatible','local')
+            or binding.get('kind') not in ('openrouter','openai-compatible','local','zai-coding-plan')
             or binding.get('protocol') not in ('responses','chat-completions')
             or any(type(binding.get(k)) is not int or binding[k]<minimum for k,minimum in (('revision',1),('credentialRevision',0)))):
         raise ProjectFault('The original API usage provenance is unconfirmed; existing numeric receipts were preserved.',409)

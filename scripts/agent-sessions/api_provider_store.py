@@ -19,7 +19,7 @@ from store import ProjectFault
 
 FIELDS = ('id','type','kind','name','baseUrl','protocol','auth','revision','credentialRevision',
           'keyConfigured','enabled','status','createdAt','updatedAt','runtime')
-KINDS = ('openrouter','openai-compatible','local')
+KINDS = ('openrouter','openai-compatible','local','zai-coding-plan')
 PROTOCOLS = ('responses','chat-completions')
 
 
@@ -128,6 +128,9 @@ class ApiProviders:
             from api_server import server
             try:value['server']=server(value.get('server','custom'))
             except ProjectFault:raise ProjectFault('The original API server contract is unavailable. Existing data was preserved.',503) from None
+        if value['kind']=='zai-coding-plan':
+            from zai_policy import require
+            require(value)
         return value
 
     def listing(self):
@@ -165,6 +168,9 @@ class ApiProviders:
         elif operation in ('disconnect','delete'):allowed={'requestId','revision'}
         else:raise ProjectFault('Invalid API provider operation.',400)
         if set(data)-allowed:raise ProjectFault('Unexpected API provider fields.',400)
+        if operation=='create' and data.get('kind')=='zai-coding-plan':
+            from zai_policy import require
+            require({**data,'baseUrl':endpoint(data.get('baseUrl'),'zai-coding-plan')['baseUrl']})
         try:fingerprint=hashlib.sha256(encode({'operation':operation,'id':ident,'input':data}).encode()).hexdigest()
         except UnicodeError:raise ProjectFault('API provider input contains invalid Unicode.',400) from None
         with self.connect(write=True) as db:
@@ -233,6 +239,9 @@ class ApiProviders:
                 if value['auth']=='bearer' and not value['keyConfigured']:
                     if data.get('enabled') is True:raise ProjectFault('Configure a bearer key before enabling this provider.',400)
                     value['enabled']=False
+                if value['kind']=='zai-coding-plan':
+                    from zai_policy import require
+                    require(value)
                 self.cleanup(db,value);self.save(db,value)
             result={'requestId':rid,'state':'complete','provider':value}
             if original:db.execute("UPDATE requests SET result=?,phase='complete' WHERE id=?",(encode(result),rid))

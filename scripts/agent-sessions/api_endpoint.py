@@ -50,6 +50,9 @@ def endpoint(value, kind):
         authority='['+host+']' if ':' in host else host
         if port!=(443 if parsed.scheme=='https' else 80):authority+=':'+str(port)
         origin=parsed.scheme+'://'+authority
+        if kind=='zai-coding-plan':
+            from zai_policy import BASE_URL
+            if origin+path!=BASE_URL:raise ValueError()
         return {'baseUrl':urlunsplit((parsed.scheme,authority,path,'','')),'origin':origin,'local':local}
     except (ValueError,UnicodeError):
         raise ProjectFault('Use HTTPS for public APIs or an explicit local IP/localhost model endpoint. Credentials, metadata/control targets and noncanonical paths are not allowed.',400) from None

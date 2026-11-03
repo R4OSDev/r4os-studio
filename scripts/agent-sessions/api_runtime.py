@@ -44,6 +44,8 @@ class ApiRuntime:
         self.reader=None;self.origins=[];self.usages=[];self.origin_error=False
 
     async def start(self):
+        if self.binding['kind']=='zai-coding-plan':
+            raise ProjectFault('The Z.AI subscription connection is saved. Its model transport is not yet available in this release.',409)
         if self.binding['protocol'] not in ('responses','chat-completions') or self.binding['protocol']=='chat-completions' and not isinstance(self.chat,dict):
             raise ProjectFault('The selected API protocol has no qualified transport binding.',409)
         addresses=await resolve_binding(self.binding)

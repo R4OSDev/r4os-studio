@@ -5,13 +5,14 @@ import type { ProviderApi } from '../useProviders';
 import { useApiMutation } from '../useApiMutation';
 import { OpenRouterFields, routerDraft, routerSettings } from './OpenRouterFields';
 
-export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API' };
+export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API', 'zai-coding-plan': 'Z.AI · GLM Coding Plan' };
+const defaultUrl = (kind: ApiProviderKind) => kind === 'zai-coding-plan' ? 'https://api.z.ai/api/coding/paas/v4' : kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : '';
 export type LeaveGuard = (guard: () => boolean) => void;
 export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: {
   api: ProviderApi; initial?: ApiProvider; kind: ApiProviderKind; saved: (id: string) => void; setLeaveGuard?: LeaveGuard;
 }) {
   const [name, setName] = useState(initial?.name ?? apiKinds[kind]);
-  const [baseUrl, setUrl] = useState(initial?.baseUrl ?? (kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : ''));
+  const [baseUrl, setUrl] = useState(initial?.baseUrl ?? defaultUrl(kind));
   const [protocol, setProtocol] = useState<ApiProtocol>(initial?.protocol ?? 'chat-completions');
   const [auth, setAuth] = useState<ApiAuth>(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
   const [enabled, setEnabled] = useState(initial?.enabled ?? true), [secret, setSecret] = useState('');
@@ -20,7 +21,8 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   const [server, setServer] = useState<ApiServer>(initial?.server ?? 'custom');
   const mutation = useApiMutation(api, initial?.id ?? null), field = useRef<HTMLInputElement>(null);
   const retryConfig = mutation.notFound && !!mutation.pending && ['create', 'update'].includes(mutation.pending.operation);
-  const dirty = name !== (initial?.name ?? apiKinds[kind]) || baseUrl !== (initial?.baseUrl ?? (kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : ''))
+  const subscription = kind === 'zai-coding-plan';
+  const dirty = name !== (initial?.name ?? apiKinds[kind]) || baseUrl !== (initial?.baseUrl ?? defaultUrl(kind))
     || protocol !== (initial?.protocol ?? 'chat-completions') || auth !== (initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'))
     || enabled !== (initial?.enabled ?? true) || !!secret || !!initial && keyAction !== 'keep'
     || kind === 'openrouter' && JSON.stringify(routing) !== JSON.stringify(routerDraft(initial?.openrouter));
@@ -44,7 +46,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
     await accept(await mutation.send(initial ? 'update' : 'create', data, !!mutation.pending) as ApiProviderMutation | undefined);
   }
   function cancel() {
-    setSecret(''); setName(initial?.name ?? apiKinds[kind]); setUrl(initial?.baseUrl ?? (kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : ''));
+    setSecret(''); setName(initial?.name ?? apiKinds[kind]); setUrl(initial?.baseUrl ?? defaultUrl(kind));
     setProtocol(initial?.protocol ?? 'chat-completions'); setAuth(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
     setEnabled(initial?.enabled ?? true); setKeyAction(initial ? 'keep' : 'replace'); setRouting(routerDraft(initial?.openrouter));
     setServer(initial?.server ?? 'custom');
@@ -52,14 +54,15 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   return <form className="provider-form api-connection-form" onSubmit={event => void submit(event)} aria-label="API connection">
     <fieldset disabled={mutation.busy || !!mutation.pending && !retryConfig}>
       <label htmlFor="api-name">Display name</label><input id="api-name" value={name} required maxLength={80} autoComplete="off" onChange={event => setName(event.target.value)} />
-      {kind !== 'openrouter' && <><label htmlFor="api-server">Server software</label><select id="api-server" value={server} onChange={event => setServer(event.target.value as ApiServer)}><option value="custom">Custom OpenAI-compatible server</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option></select>
+      {subscription && <p className="field-help">Use your Z.AI GLM Coding Plan API key. Requests use your subscription allowance. There is no paid API fallback.</p>}
+      {kind !== 'openrouter' && !subscription && <><label htmlFor="api-server">Server software</label><select id="api-server" value={server} onChange={event => setServer(event.target.value as ApiServer)}><option value="custom">Custom OpenAI-compatible server</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option></select>
         {server !== 'custom' && <><p className="field-help">{server === 'ollama' ? 'Responses requires Ollama 0.13.3 or later and is stateless.' : 'Responses requires LM Studio 0.3.29 or later; API tokens require 0.4.0 or later.'} Confirm your server version and exact nonreasoning model facts. A preset does not verify compatibility.</p>
           {kind === 'local' && <button type="button" className="button-secondary" onClick={() => { setUrl(server === 'ollama' ? 'http://127.0.0.1:11434/v1' : 'http://127.0.0.1:1234/v1'); setProtocol('chat-completions'); setAuth('none'); setSecret(''); if (initial) setKeyAction('clear'); }}>Use {server === 'ollama' ? 'Ollama' : 'LM Studio'} local defaults</button>}</>}</>}
-      <label htmlFor="api-url">Base URL</label><input id="api-url" value={baseUrl} required maxLength={2048} autoComplete="off" placeholder={kind === 'local' ? 'http://127.0.0.1:11434/v1' : 'https://api.example.com/v1'} onChange={event => setUrl(event.target.value)} />
+      {!subscription && <><label htmlFor="api-url">Base URL</label><input id="api-url" value={baseUrl} required maxLength={2048} autoComplete="off" placeholder={kind === 'local' ? 'http://127.0.0.1:11434/v1' : 'https://api.example.com/v1'} onChange={event => setUrl(event.target.value)} />
       <p className="field-help">Localhost / 127.0.0.1 means the Studio host, not your browser device. Use Local API for an explicit LAN IP and port. Include the full API prefix, without a model route or query. No network discovery is performed.</p>
-      <label htmlFor="api-protocol">Protocol</label><select id="api-protocol" value={protocol} onChange={event => setProtocol(event.target.value as ApiProtocol)}><option value="chat-completions">Chat Completions</option><option value="responses" disabled={kind === 'openrouter'}>Responses{kind === 'openrouter' ? ' · unavailable for OpenRouter' : ''}</option></select>
+      <label htmlFor="api-protocol">Protocol</label><select id="api-protocol" value={protocol} onChange={event => setProtocol(event.target.value as ApiProtocol)}><option value="chat-completions">Chat Completions</option><option value="responses" disabled={kind === 'openrouter'}>Responses{kind === 'openrouter' ? ' · unavailable for OpenRouter' : ''}</option></select></>}
       {kind === 'openrouter' && <p className="field-help">Streamed text and function tools use Chat Completions. Reasoning tool-history, Responses and hosted web/images are currently unavailable for this provider.</p>}
-      <label htmlFor="api-auth">Authentication</label><select id="api-auth" value={auth} onChange={event => { setAuth(event.target.value as ApiAuth); setSecret(''); }}><option value="bearer">Bearer API key</option><option value="none" disabled={kind === 'openrouter'}>No authentication</option></select>
+      {!subscription && <><label htmlFor="api-auth">Authentication</label><select id="api-auth" value={auth} onChange={event => { setAuth(event.target.value as ApiAuth); setSecret(''); }}><option value="bearer">Bearer API key</option><option value="none" disabled={kind === 'openrouter'}>No authentication</option></select></>}
       {auth === 'bearer' && <div className="api-key-editor">
         <p className="field-help">{initial?.keyConfigured ? 'A key is configured. Its value cannot be read back.' : 'No key is configured. You can save now and add it later.'}</p>
         {initial && <div className="provider-actions"><button type="button" className="button-secondary" onClick={() => { setKeyAction('replace'); requestAnimationFrame(() => field.current?.focus()); }}>Replace key</button><button type="button" className="button-secondary" onClick={() => { setSecret(''); setKeyAction('clear'); }}>Clear key</button></div>}
