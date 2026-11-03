@@ -42,3 +42,18 @@ OpenRouter records and their original reference format remain unchanged.
 Native-only tier/cache/store hints and unsupported strict-provider hints stay
 local; the host still validates every tool argument and permission. The Z.AI
 tool-stream opt-in follows the documented GLM family contract.
+
+0.9.42 adds original subscription monitoring through the host. The fixed
+`/api/monitor/usage/quota/limit` GET uses the native raw `Authorization` token
+documented by the official Z.AI plugin, separate from model Bearer auth. No
+browser or tool receives either credential. Original requests, helper PID/birth,
+credential leases and confirmed shutdown use the existing metadata lifecycle.
+Rotation/disconnect retains unconfirmed original transports.
+
+Limits keep their native credit/token/request units and independent windows.
+Unknown values and absent resets remain unknown; cache failures retain stale
+observations and do not establish an inference failure. Exact key rotation
+invalidates the previous projection. Connections with the identical private
+credential share an opaque scope; different keys are never merged merely by
+name or plan tier. Z.AI still enforces account-wide limits across other tools.
+Native quota originals stay private and never change numeric Run/Lifetime usage.

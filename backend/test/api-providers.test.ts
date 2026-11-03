@@ -79,6 +79,18 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:serverUpdate})).statusCode,200);
     assert.deepEqual(calls.at(-1)?.input,serverUpdate);
     const beforeInvalid=calls.length;
+    assert.equal((await app.inject(base+'/'+id+'/subscription-limits')).statusCode,403);
+    assert.equal((await app.inject({url:base+'/'+id+'/subscription-limits',headers})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'zai_quota');
+    const quotaCheck={requestId,providerRevision:1};
+    assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/subscription-limits/check',headers:{cookie:headers.cookie},payload:quotaCheck})).statusCode,403);
+    assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/subscription-limits/check',headers,payload:quotaCheck})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'zai_quota_refresh');
+    assert.deepEqual(calls.at(-1)?.input,quotaCheck);
+    assert.equal((await app.inject({url:base+'/'+id+'/subscription-limit-requests/'+requestId,headers})).statusCode,200);
+    assert.equal(calls.at(-1)?.action,'zai_quota_receipt');
+    const afterQuota=calls.length;
+    assert.equal(afterQuota,beforeInvalid+3);
     for(const server of [true,123,{},'Ollama','unknown']) {
       assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:{requestId,revision:1,server}})).statusCode,400);
     }
@@ -89,13 +101,13 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
       ['/models',{...manual,model:{...model,unexpected:secret}}]]) {
       assert.equal((await app.inject({method:'POST',url:base+'/'+id+path,headers,payload})).statusCode,400);
     }
-    assert.equal(calls.length,beforeInvalid);
+    assert.equal(calls.length,afterQuota);
     for(const openrouter of [{...routing,allowFallbacks:'false'},{...routing,headers:{Authorization:secret}},
       {...routing,only:[2]},{...routing,attribution:{...routing.attribution,title:4}},
       {...routing,order:Array.from({length:17},(_,i)=>'owned/'+i)}]) {
       assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:{requestId,revision:1,openrouter}})).statusCode,400);
     }
-    assert.equal(calls.length,beforeInvalid);
+    assert.equal(calls.length,afterQuota);
     assert.equal((await app.inject({url:base+'/'+id+'/model-requests/'+requestId,headers})).statusCode,200);
     assert.equal(calls.at(-1)?.action,'catalog_receipt');
     assert.ok(calls.every(call=>call.operation==='api_provider'));

@@ -197,6 +197,13 @@ class Host:
             if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
             if action=='receipt':return await asyncio.to_thread(store.receipt,request.get('id'),request.get('requestId'))
             if action=='creation_receipt':return await asyncio.to_thread(store.creation_receipt,request.get('requestId'))
+            if action in ('zai_quota','zai_quota_receipt','zai_quota_refresh'):
+                from zai_quota import Quota
+                ident=identity(request.get('id'));quota=Quota(self.config['providers'])
+                if action=='zai_quota':return quota.listing(ident)
+                if action=='zai_quota_receipt':return quota.receipt(ident,request.get('requestId'))
+                from zai_quota_host import start as check_quota
+                return await check_quota(self,ident,request.get('input'))
             if action in ('models','model_save','catalog_receipt','catalog_refresh'):
                 from api_catalog import Catalogs
                 catalogs=Catalogs(self.config['providers']);ident=identity(request.get('id'))

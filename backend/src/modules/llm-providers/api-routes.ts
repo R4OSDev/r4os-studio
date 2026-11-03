@@ -99,6 +99,21 @@ export function apiProviderRoutes(app: FastifyInstance, sessions: ProviderSessio
     sessions.get(request, reply);
     return agentHost<ApiModelCatalog>({ operation: 'api_provider', action: 'models', id: request.params.id });
   });
+  app.get<{ Params: { id: string } }>(base + '/:id/subscription-limits', { schema: { params } }, async (request, reply) => {
+    sessions.get(request, reply);
+    return agentHost({ operation: 'api_provider', action: 'zai_quota', id: request.params.id });
+  });
+  app.post<{ Params: { id: string }; Body: { requestId: string; providerRevision: number } }>(base + '/:id/subscription-limits/check', {
+    bodyLimit: 1024, preValidation: async request => modelInput(request.body, false),
+    schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'providerRevision'], properties: { requestId: uuid, providerRevision: revision } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return agentHost({ operation: 'api_provider', action: 'zai_quota_refresh', id: request.params.id, input: request.body });
+  });
+  app.get<{ Params: { id: string; requestId: string } }>(base + '/:id/subscription-limit-requests/:requestId', { schema: { params: originalParams } }, async (request, reply) => {
+    sessions.get(request, reply);
+    return agentHost({ operation: 'api_provider', action: 'zai_quota_receipt', id: request.params.id, requestId: request.params.requestId });
+  });
   app.post<{ Params: { id: string }; Body: { requestId: string; providerRevision: number } }>(base + '/:id/models/check', {
     bodyLimit: 1024, preValidation: async request => modelInput(request.body, false),
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'providerRevision'], properties: { requestId: uuid, providerRevision: revision } } },

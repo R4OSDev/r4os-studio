@@ -94,5 +94,8 @@ async def recover(host,ident=None):
                     if not store.alive(proof):break
                     await asyncio.sleep(.1)
                 if store.alive(proof):raise ValueError()
-            store.finish(row['provider_id'],rid,error=ERRORS['cancelled'],child=proof)
+            if row['operation']=='quota_refresh':
+                from zai_quota import Quota
+                Quota(host.config['providers']).finish(row['provider_id'],rid,error='cancelled',child=proof)
+            else:store.finish(row['provider_id'],rid,error=ERRORS['cancelled'],child=proof)
         except Exception:store.unknown(row['provider_id'],rid)
