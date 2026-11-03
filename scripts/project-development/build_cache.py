@@ -16,6 +16,7 @@ class BuildCache:
     def __init__(self, store, job):
         self.lock = None
         identity = {'schema': 1, 'projectId': store.id, 'pins': job['pins'],
+                    'sourceSha256': (store.get(job['id']).get('source') or {}).get('sha256'),
                     'language': store.project['language'], 'role': store.project['template'],
                     'moduleName': store.project['moduleName'], 'host': [sys.platform, platform.machine()],
                     'builderSha256': digest(Path(__file__).with_name('builder.py')),

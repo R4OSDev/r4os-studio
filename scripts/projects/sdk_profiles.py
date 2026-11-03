@@ -111,6 +111,13 @@ def profile(root, projects, pinned=None, resolve_rust=True, verify_components=Tr
     result['paths']['zig'] = paths['install'] / 'Toolchains/Zig'
     if verify_components:
         from sdk import run
+        with (cache / 'package-cache.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            (cache / 'build.zig').write_text('pub fn build(_: *@import("std").Build) void {}\n')
+            for kind in ('sdk', 'contract', 'libraries'):
+                actual_hash = run([result['paths']['zig'] / 'zig', 'fetch', paths[kind]], env)
+                if actual_hash != pins[kind]['zigPackageHash']:
+                    raise ValueError('The SDK-selected ' + kind + ' package contents changed.')
         actual = package.decode(run([catalog, 'capabilities', '--json', '--profile', projection_path], env).encode())
         if actual != result['capabilities']:
             raise ValueError('The SDK native capability catalog differs from its published bytes.')

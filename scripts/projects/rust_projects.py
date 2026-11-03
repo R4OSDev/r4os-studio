@@ -84,12 +84,11 @@ def local(root, defaults, context, pinned=None, check_files=True):
 
 
 def build(context, directory, output=None):
-    rust = context['rust']
     output = output or directory / 'build'
-    args = [rust['prefix'] / 'PowerShell/pwsh', '-NoLogo', '-NoProfile', '-File',
-                    context['paths']['sdk'] / 'Tools/Build-RustModule.ps1', '-ProjectRoot', directory,
-                    '-SdkRoot', context['paths']['sdk'], '-ContractRoot', context['paths']['contract'],
-                    '-ToolsRoot', rust['tools'], '-InstallRoot', rust['prefix'] / 'Install',
-                    '-CacheRoot', context['cache'] / 'rust-build-cache', '-OutputRoot', output]
-    if context.get('sdkTools'): args += ['-ZigRoot', context['paths']['zig']]
-    return command(args, rust['env'], context['cache'], timeout=180)
+    args = [context['runner'], '-NoLogo', '-NoProfile', '-File',
+            context['paths']['sdk'] / context['capabilities']['project_creation']['rust_builder'], '-ProjectRoot', directory,
+            '-SdkRoot', context['paths']['sdk'], '-ContractRoot', context['paths']['contract'],
+            '-LibrariesRoot', context['paths']['libraries'], '-ToolsRoot', context['sdkTools']['tools'],
+            '-InstallRoot', context['paths']['install'], '-ZigRoot', context['paths']['zig'],
+            '-CacheRoot', context['cache'] / 'rust-build-cache', '-OutputRoot', output]
+    return command(args, context['env'], context['cache'], timeout=600)

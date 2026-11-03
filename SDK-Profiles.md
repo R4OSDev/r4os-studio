@@ -79,3 +79,25 @@ bound, and actual module resolution remains native SDK work.
 Component publication stages each extraction inside its destination directory.
 This preserves atomic rename with separate systemd `ReadWritePaths` mounts.
 An explicitly retried failed SDK operation retains its original failure history.
+
+## Isolated builds
+
+Zig, C and Rust use the host build drivers declared by the selected SDK's
+capability catalog: `Build-Project.ps1` for C/Zig and `Build-RustModule.ps1`
+for Rust. Studio freezes
+the source snapshot and SDK bindings, asks the native catalog and resolver to
+validate the module profile, and runs the SDK driver in the existing networkless
+worker namespace. There is no retry through a direct Zig builder, old SDK or
+independently selected compiler.
+
+Every successful artifact has a fresh native `Output/build.json` receipt. Studio
+checks success, module identity, effective profile ID, all three original hashes,
+SDK/Contract source commits and actual artifact bytes/SHA-256. Rust also binds
+the captured Cargo lock. Failed builds never publish an older artifact as a new
+success. Compiler cache identity includes the exact captured source hash.
+
+SDK catalog and container inspection use the verified matched tool export.
+The optional Studio update-identity adapter uses the SDK's own host-tool profile
+and optimization policy. Agent tool namespaces expose the same SDK, Libraries,
+private matched tools and install root; a retired global Rustup alias does not
+choose a compiler.

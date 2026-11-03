@@ -91,10 +91,17 @@ class Sandbox:
                  '--ro-bind', str(self.binary), '/runner/codex', '--chdir', workdir, '--clearenv',
                  '--setenv', 'HOME', '/cache/home', '--setenv', 'PATH', tool_path,
                  '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'SDK_ROOT', '/sdk', '--setenv', 'CONTRACT_ROOT', '/contract',
-                 '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_TOOLCHAIN', 'studio-pinned',
+                 '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_AUTO_INSTALL', '0',
                  '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig',
                  '--setenv', 'CARGO_HOME', '/cache/cargo', '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1',
                  '--setenv', 'POWERSHELL_TELEMETRY_OPTOUT', '1']
+        if self.worker.store.owner_type == 'project':
+            args += ['--setenv', 'LIBRARIES_ROOT', '/libraries', '--setenv', 'SDK_TOOLS_ROOT', '/tools',
+                     '--setenv', 'SDK_INSTALL_ROOT', '/install']
+            if self.context.get('rust'):
+                selected = self.context['package']['record']['rust']
+                args += ['--setenv', 'RUSTUP_HOME', '/install/Toolchains/Rust/rustup',
+                         '--setenv', 'RUSTUP_TOOLCHAIN', Path(selected['toolchain']).name]
         # Keep the existing tool file bound even when native history is allowed
         # to grow. Tools cannot raise this separate hard bound from their shell.
         return ['/usr/bin/prlimit', '--fsize=268435456:268435456', '--', *args, *command]

@@ -12,7 +12,6 @@ from contracts import DevelopmentFault, LIMITS, digest, hash_value, relative
 from jobs import folder, now
 from layout import save, sync
 from sdk import profile, run
-from templates import BUILD
 from build_cache import BuildCache
 
 
@@ -50,19 +49,11 @@ class Builder:
             if path.is_file(): path.chmod(0o600)
         for name in ('home', 'zig', 'zig-local', 'output', 'tools', 'cargo', 'rust-build'): folder(self.root / name)
         self.cache = BuildCache(self.store, self.job)
-        # SDK build scripts are trusted, pinned component files. User build.zig,
-        # Build.ps1 and package URLs do not select a different SDK/compiler.
-        if self.context.get('rust'):
-            shutil.copytree(self.context['rust']['tools'], self.root / 'tools', dirs_exist_ok=True)
-        self.inspector = self.context['cache'] / 'r4m-inspector'
-        marker = self.inspector.with_suffix('.json')
-        import fcntl
-        with (self.context['cache'] / 'lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            if not self.inspector.is_file() or not marker.is_file() or digest(self.inspector) != json.loads(marker.read_text()).get('sha256'):
-                await asyncio.to_thread(run, [self.context['paths']['zig'] / 'zig', 'build-exe', '-OReleaseSafe',
-                    self.context['paths']['sdk'] / 'Tools/R4XBuilder/src/main.zig', '-femit-bin=' + str(self.inspector)], self.context['env'])
-                save(marker, {'sha256': digest(self.inspector)})
+        # Only this job's exact tool copy is writable. Shared SDK sources and
+        # SDK-selected vendor tools remain readonly in the build namespace.
+        shutil.copytree(self.context['sdkTools']['tools'], self.root / 'tools', dirs_exist_ok=True)
+        native = self.context['sdkTools']['profile']['hosts']['Linux']
+        self.inspector = self.context['sdkTools']['tools'] / relative(native['packager'])
 
     async def update_identity(self, binary, manifest):
         """An optional package capability; ordinary builds retain their behavior."""
@@ -72,7 +63,17 @@ class Builder:
         target = manifest.get('target')
         if not isinstance(target, str): return {'available': False, 'reason': 'The SDK catalogue has no installation target.'}
         kind = {'library': 'system-library', 'driver': 'driver', 'protocol': 'protocol', 'service': 'service'}.get(self.store.project['template'], 'software')
-        key = hash_value({'source': digest(source), 'sdk': self.job['pins']['sdk'], 'zig': self.job['pins']['zig']})
+        data = self.context['package']['profiles']['Build']
+        profiles = [(ident, value) for ident, value in data['profiles'].items()
+                    if value['language'] == 'Zig' and value['role'] == 'host']
+        if len(profiles) != 1:
+            return {'available': False, 'reason': 'The SDK does not identify one host-tool profile.'}
+        host_id, selected = profiles[0]
+        policy = data['codegen'][selected['codegen']]
+        if policy.get('optimize') not in policy.get('allowed_optimize_modes', []):
+            return {'available': False, 'reason': 'The SDK host-tool optimization policy is unavailable.'}
+        key = hash_value({'source': digest(source), 'sdk': self.job['pins']['sdk'], 'zig': self.job['pins']['zig'],
+                          'sdkProfiles': self.job['pins']['sdkProfile'], 'hostProfile': host_id, 'codegen': policy})
         inspector = self.context['cache'] / ('r4u-identity-' + key)
         marker = inspector.with_suffix('.json')
         import fcntl
@@ -80,10 +81,19 @@ class Builder:
             with (self.context['cache'] / 'lock').open('a') as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 if not inspector.is_file() or not marker.is_file() or digest(inspector) != json.loads(marker.read_text()).get('sha256'):
-                    await asyncio.to_thread(run, [self.context['paths']['zig'] / 'zig', 'build-exe', '-OReleaseSafe', '-fstrip',
+                    from sdk_host import invoke
+                    from sdk_package import decode
+                    resolved = decode(await asyncio.to_thread(invoke, self.context['runner'], self.context['paths']['sdk'],
+                        'Profile.ps1', ['-Action', 'Resolve', '-Profile', host_id,
+                        '-ContractRoot', self.context['paths']['contract'], '-LibrariesRoot', self.context['paths']['libraries']],
+                        self.context['cache']))
+                    if resolved.get('hashes') != self.job['pins']['sdkProfile']['hashes'] or resolved.get('profile') != host_id:
+                        raise DevelopmentFault('The SDK host-tool profile binding changed.')
+                    await asyncio.to_thread(run, [self.context['paths']['zig'] / 'zig', 'build-exe', '-O' + policy['optimize'],
                         '--dep', 'r4u_artifact', '-Mroot=' + str(source), '-Mr4u_artifact=' + str(sdk_source),
                         '-femit-bin=' + str(inspector)], self.context['env'])
-                    save(marker, {'sha256': digest(inspector), 'adapterSha256': digest(source)})
+                    save(marker, {'sha256': digest(inspector), 'adapterSha256': digest(source),
+                                   'sdkProfile': host_id, 'profileHashes': resolved['hashes']})
             # Existing non-networked build namespace, separate readonly inspector bind.
             self.update_inspector = inspector
             value = json.loads(await self.execute(['/update-inspector', '/output/' + str(binary.relative_to(self.root / 'output')), target, kind], 'both'))
@@ -93,7 +103,8 @@ class Builder:
                 raise DevelopmentFault('Native update identity differs from the SDK manifest.')
             return {'available': True, 'identity': value, 'payloadKind': kind, 'manifest': manifest,
                     'inspectorSha256': digest(inspector), 'adapterSha256': digest(source),
-                    'sdkRevision': self.job['pins']['sdk']['revision']}
+                    'sdkRevision': self.job['pins']['sdk']['revision'], 'sdkHostProfile': host_id,
+                    'profileHashes': self.job['pins']['sdkProfile']['hashes']}
         except (OSError, ValueError, DevelopmentFault):
             self.append(b'Native update identity unavailable; ordinary build result is preserved.\n')
             return {'available': False, 'reason': 'This artifact has no qualified native update identity. Use a compatible SDK build.'}
@@ -116,16 +127,13 @@ class Builder:
             if Path(path).exists(): args += ['--ro-bind', path, path]
         if getattr(self, 'update_inspector', None): args += ['--ro-bind', str(self.update_inspector), '/update-inspector']
         for name, path in context['paths'].items(): args += ['--ro-bind', str(path), '/' + name]
-        rust_bin = '/rust/Install/Rust/1.99.0/bin'
-        if context.get('rust'):
-            rust_bin = '/rust/' + str(context['rust']['compiler'].parent)
-            args += ['--ro-bind', str(context['rust']['prefix']), '/rust',
-                     '--bind', str(self.root / 'tools'), '/tools']
+        args += ['--ro-bind', str(self.context['runner'].parent), '/powershell',
+                 '--bind', str(self.root / 'tools'), '/tools']
         args += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/cache/home',
-            '--setenv', 'PATH', '/zig:' + rust_bin + ':/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8',
+            '--setenv', 'PATH', '/powershell:/zig:/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8',
             '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig', '--setenv', 'ZIG_LOCAL_CACHE_DIR', '/cache/zig-local',
             '--setenv', 'CARGO_HOME', '/cache/cargo',
-            '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_TOOLCHAIN', 'studio-pinned',
+            '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_AUTO_INSTALL', '0',
             '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1', '--setenv', 'POWERSHELL_TELEMETRY_OPTOUT', '1']
         return args + command
 
@@ -165,9 +173,7 @@ class Builder:
     async def build_locked(self, source):
         await self.prepare(source)
         rust = self.store.project['language'] == 'Rust'
-        catalog = '/tools/ModuleCatalog' if rust else '/catalog'
-        if rust:
-            catalog = '/tools/' + self.context['rust']['profile']['hosts']['Linux']['catalog']
+        catalog = '/tools/' + self.context['sdkTools']['profile']['hosts']['Linux']['catalog']
         # Catalog discovery already parses manifests and validates their source
         # paths. The R4X plan below supplies the remaining startup/role checks.
         declared = json.loads(await self.execute([catalog, 'catalog', '--root', '/workspace'], True))
@@ -179,29 +185,24 @@ class Builder:
         if entry['kind'] != expected_kind: raise DevelopmentFault('The manifest kind differs from the project role.')
         from resource_inputs import collect as collect_resource_inputs
         resource_inputs=collect_resource_inputs(entry,self.store.get(self.job['id'])['source'])
-        plan = None
+        exported = json.loads(await self.execute([catalog, 'plan', '--manifest', '/workspace/module.R4MF'], True))
+        if exported.get('schema') != 1 or not isinstance(exported.get('plan'), dict):
+            raise DevelopmentFault('The SDK semantic plan schema is not supported.')
+        plan = exported['plan']
+        from sdk_profiles import bind_manifest
+        await asyncio.to_thread(bind_manifest, self.context, source, plan)
         if expected_kind == 'R4X':
-            exported = json.loads(await self.execute([catalog, 'plan', '--manifest', '/workspace/module.R4MF'], True))
-            if exported.get('schema') != 1 or not isinstance(exported.get('plan'), dict):
-                raise DevelopmentFault('The SDK semantic plan schema is not supported.')
-            plan = exported['plan']
             app_class = {'terminal': 'console', 'desktop': 'gui', 'service': 'service', 'subsystem': 'gui'}[self.store.project['template']]
             if plan.get('app_class') != app_class or (self.store.project['template'] == 'subsystem') != (plan.get('module_role') == 'subsystem'):
                 raise DevelopmentFault('The manifest application class differs from the project role.')
             await self.execute([catalog, 'contract-plan', '--manifest', '/workspace/module.R4MF'])
-        if rust:
-            command = ['/rust/PowerShell/pwsh', '-NoLogo', '-NoProfile', '-File', '/sdk/Tools/Build-RustModule.ps1',
-                '-ProjectRoot', '/workspace', '-SdkRoot', '/sdk', '-ContractRoot', '/contract', '-ToolsRoot', '/tools',
-                '-InstallRoot', '/rust/Install', '-CacheRoot', '/cache/rust-build', '-OutputRoot', '/output']
-            if self.context.get('sdkTools'): command += ['-ZigRoot', '/zig']
-        else:
-            (self.root / 'source/build.zig').write_text(BUILD)
-            pin = self.job['pins']['sdk']
-            (self.root / 'source/build.zig.zon').write_text('.{ .name = .r4os_studio_project, .version = "0.1.0", '
-                '.fingerprint = 0x17b105fe7653a449, .minimum_zig_version = "0.16.0", .dependencies = .{ .r4os_sdk = .{ '
-                '.url = "https://github.com/R4OSDev/r4os-sdk/archive/' + pin['revision'] + '.tar.gz", .hash = "' + pin['zigPackageHash'] + '" } }, .paths = .{""} }\n')
-            command = ['/zig/zig', 'build', '--cache-dir', '/cache/zig-local',
-                       '--global-cache-dir', '/cache/zig', '--prefix', '/output', '--summary', 'all']
+        driver = relative(self.context['capabilities']['project_creation']['rust_builder' if rust else 'c_zig_builder'])
+        if not driver.startswith('Tools/'):
+            raise DevelopmentFault('The SDK does not declare a host build driver.')
+        command = ['/powershell/pwsh', '-NoLogo', '-NoProfile', '-File', '/sdk/' + driver,
+            '-ProjectRoot', '/workspace', '-SdkRoot', '/sdk', '-ContractRoot', '/contract',
+            '-LibrariesRoot', '/libraries', '-ToolsRoot', '/tools', '-ZigRoot', '/zig',
+            '-InstallRoot', '/install', '-CacheRoot', '/cache/rust-build', '-OutputRoot', '/output']
         self.store.update(self.job['id'], phase='compiling')
         await self.execute(command)
         name = self.store.project['moduleName'] + '.' + expected_kind
@@ -223,24 +224,25 @@ class Builder:
         artifact_id = str(uuid.uuid4()); parent = folder(self.store.root / 'Artifacts'); stage = folder(parent / (artifact_id + '.new'))
         shutil.copyfile(binary, stage / name); (stage / name).chmod(0o400)
         files = [{'path': name, 'bytes': binary.stat().st_size, 'sha256': digest(stage / name)}]
-        if rust:
-            proof_path = self.root / 'output/build.json'
-            if proof_path.stat().st_size > 2 * 1024 * 1024: raise DevelopmentFault('The SDK build receipt exceeds the limit.')
-            proof = json.loads(proof_path.read_text())
-            if (proof.get('schema') not in (1, 2) or proof.get('status') != 'success' or proof.get('technical') is not False
-                or proof['module']['name'] != self.store.project['moduleName']
-                or proof['artifact']['sha256'] != files[0]['sha256']
-                or proof['sdk']['source']['commit'] != self.job['pins']['sdk']['revision']
-                or proof['contract']['source']['commit'] != self.job['pins']['contract']['revision']
-                or proof['cargo']['lock_sha256'] != digest(source / 'Cargo.lock')):
-                raise DevelopmentFault('The SDK build receipt does not match this artifact and its pinned inputs.')
-            proof_format = 'r4os-sdk-rust-build-v1'
-        else:
-            proof = {'schema': 1, 'interface': 'r4os-studio-sdk-build', 'status': 'success',
-                'manifest': entry, 'plan': plan, 'pins': self.job['pins'], 'command': command,
-                'containerInspection': result.decode('utf-8', errors='replace'),
-                'artifact': files[0], 'sourceSha256': self.store.get(self.job['id'])['source']['sha256']}
-            proof_format = 'r4os-studio-sdk-build-v1'
+        proof_path = self.root / 'output/build.json'
+        if (not proof_path.is_file() or proof_path.is_symlink()
+                or proof_path.stat().st_size > 2 * 1024 * 1024):
+            raise DevelopmentFault('The SDK did not produce a bounded native build receipt.')
+        proof = json.loads(proof_path.read_text())
+        profile = proof.get('sdk_profile', {})
+        expected_profile = self.job['pins'].get('sdkProfile', {})
+        if (proof.get('schema') not in (1, 2) or proof.get('status') != 'success'
+                or proof.get('technical') is not False or profile.get('technical') is not False
+                or profile.get('id') != expected_profile.get('id') or profile.get('hashes') != expected_profile.get('hashes')
+                or proof.get('module', {}).get('name') != self.store.project['moduleName']
+                or proof.get('artifact', {}).get('sha256') != files[0]['sha256']
+                or proof.get('artifact', {}).get('bytes') != files[0]['bytes']
+                or proof.get('sdk', {}).get('source', {}).get('commit') != self.job['pins']['sdk']['revision']
+                or proof.get('contract', {}).get('source', {}).get('commit') != self.job['pins']['contract']['revision']):
+            raise DevelopmentFault('The native SDK receipt does not match this profile, artifact and source set.')
+        if rust and proof.get('cargo', {}).get('lock_sha256') != digest(source / 'Cargo.lock'):
+            raise DevelopmentFault('The SDK Cargo lock receipt differs from the captured project input.')
+        proof_format = 'r4os-sdk-profile-build-v1'
         proof['studioResourceInputs']=resource_inputs
         proof['studioResourceInventory']=resource_inventory
         save(stage / 'build-proof.json', proof)
@@ -253,6 +255,7 @@ class Builder:
             'manifestSha256': self.store.get(self.job['id'])['source']['manifestSha256'],
             'packageSha256': hash_value(files), 'kind': expected_kind, 'role': self.store.project['template'],
             'entry': name, 'files': files, 'createdAt': now(), 'pins': self.job['pins'],
+            'sdkProfile': proof['sdk_profile'],
             'plan': plan, 'resourceInputs':resource_inputs, 'resourceInventory':resource_inventory, 'updateMetadata': update_metadata, 'inspectorSha256': digest(self.inspector), 'buildProof': build_proof}
         save(stage / 'artifact.json', record)
         with (stage / name).open('rb') as stream: os.fsync(stream.fileno())
