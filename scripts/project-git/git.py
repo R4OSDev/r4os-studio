@@ -107,6 +107,15 @@ class Git:
     def init(self, branch_name='main'):
         if not (self.root / 'HEAD').exists():
             self.run('init', '--bare', '--template=/empty', '--initial-branch=' + branch_name, '/repo')
+        # Retain the local exclusion even when a remote .gitignore changes.
+        info = self.root / 'info'; info.mkdir(mode=0o700, exist_ok=True); folder(info)
+        exclude = info / 'exclude'
+        if exclude.is_symlink() or (exclude.exists() and not exclude.is_file()):
+            raise ProjectFault('Invalid local Git exclusion file.', 503)
+        existing = exclude.read_bytes() if exclude.exists() else b''
+        if b'/ExFiles/' not in existing.splitlines():
+            with exclude.open('ab') as stream:
+                stream.write((b'\n' if existing and not existing.endswith(b'\n') else b'') + b'/ExFiles/\n')
 
     def head(self):
         out, code = self.run('rev-parse', '--verify', 'HEAD', allow=(0, 128))

@@ -4,6 +4,7 @@ from common import ProjectFault, project_id, folder, name, branch, document, sav
 from github import GitHub
 from git import Git
 from trees import materialize
+from git_metadata import ensure_exfiles
 
 
 def prepare(config, job):
@@ -30,7 +31,9 @@ def prepare(config, job):
     if not git.text('ls-remote', '--heads', url, 'refs/heads/' + target_branch): raise ProjectFault('This branch is empty or unavailable. Select a nonempty branch.', 409)
     git.run('fetch', '--no-tags', '--no-recurse-submodules', url, 'refs/heads/' + target_branch, timeout=120)
     commit = git.text('rev-parse', '--verify', 'FETCH_HEAD')
-    progress('checking_import_files'); snapshot = materialize(git, commit, source)
+    progress('checking_import_files'); materialize(git, commit, source)
+    ensure_exfiles(source)
+    snapshot = digest(inventory(source))
     if not (source / 'module.R4MF').is_file(): raise ProjectFault('Import requires one supported R4OS app with module.R4MF at the repository root.', 409)
     metadata = document(source / '.r4os-studio/project.json', 65536) if (source / '.r4os-studio/project.json').exists() else None
     if metadata is not None and (metadata.get('schema') != 1 or set(metadata) != {'schema', 'language', 'template', 'moduleName', 'pins'}):

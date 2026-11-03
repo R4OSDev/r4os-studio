@@ -3,7 +3,21 @@ export interface Skill {
   activeRevision: number; activeHash: string | null; createdAt: string; updatedAt: string;
 }
 export interface SkillFile { path: string; sha256: string; bytes: number; executable: boolean }
-export interface SkillDetail { skill: Skill; files: SkillFile[]; draftHash: string }
+export interface SkillSourceConfiguration {
+  repository: string; ref: string; skillPath: string; recipe: 'rea' | null; connectionId: string | null;
+}
+export interface SkillSource {
+  configuration: SkillSourceConfiguration; revision: number; status: string; commit: string | null;
+  active: { commit: string; packageHash: string; runtimeHash?: string; repository: string } | null;
+  lastRequestId: string | null; updatedAt: string;
+}
+export interface SkillSourceJob {
+  requestId: string; skillId: string; action: 'activate' | 'update'; phase: string;
+  sourceRevision: number; skillRevision: number; draftHash: string;
+  configuration: SkillSourceConfiguration; commit: string | null; pid: number | null;
+  result: Record<string, unknown> | null; error: string | null; createdAt: string; updatedAt: string;
+}
+export interface SkillDetail { skill: Skill; files: SkillFile[]; draftHash: string; source?: SkillSource | null }
 export interface SkillFileContent extends SkillFile { encoding: 'utf8' | 'base64'; content: string }
 export interface SkillValidation { valid: boolean; errors: string[]; metadata?: { name: string; description: string }; draftHash: string }
 export interface SkillList { skills: Skill[]; csrfToken: string }

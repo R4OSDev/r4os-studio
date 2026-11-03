@@ -54,6 +54,25 @@ export async function skillRoutes(app: FastifyInstance, { directory, providerDir
   app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     sessions.session(request, reply); return skillStore<SkillDetail>(directory, { operation: 'get', id: request.params.id });
   });
+  app.put<{ Params: { id: string } }>('/:id/source', { bodyLimit: 4096, schema: { params: deletionParams } }, async (request) => {
+    const input = body(request.body);
+    if (Object.hasOwn(input, 'id')) throw new ProjectError('Unexpected skill fields.', 400);
+    return skillStore<SkillDetail>(directory, { operation: 'source_configure', input: { ...input, id: request.params.id } });
+  });
+  for (const action of ['activate', 'update'] as const) {
+    app.post<{ Params: { id: string } }>('/:id/source/' + action, { bodyLimit: 4096, schema: { params: deletionParams } }, async (request, reply) => {
+      const input = body(request.body);
+      if (Object.hasOwn(input, 'id') || Object.hasOwn(input, 'action')) throw new ProjectError('Unexpected source fields.', 400);
+      const job = await skillStore<{ phase: string }>(directory, { operation: 'source_prepare', input: { ...input, id: request.params.id, action } });
+      return reply.code(job.phase === 'complete' ? 200 : 202).send(job);
+    });
+  }
+  app.get<{ Params: { id: string; requestId: string } }>('/:id/source/requests/:requestId', {
+    schema: { params: { ...deletionParams, required: ['id', 'requestId'], properties: { id: identity, requestId: identity } } },
+  }, async (request, reply) => {
+    sessions.session(request, reply);
+    return skillStore(directory, { operation: 'source_job', id: request.params.id, requestId: request.params.requestId });
+  });
   app.get<{ Params: { id: string }; Querystring: { path: string } }>('/:id/file', async (request, reply) => {
     sessions.session(request, reply); return skillStore<SkillFileContent>(directory, { operation: 'read', id: request.params.id, path: request.query.path });
   });

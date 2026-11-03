@@ -19,6 +19,8 @@ import uuid
 
 spec_lifecycle=importlib.util.spec_from_file_location('studio_skill_lifecycle',Path(__file__).with_name('lifecycle.py'))
 lifecycle=importlib.util.module_from_spec(spec_lifecycle);spec_lifecycle.loader.exec_module(lifecycle)
+spec_sources=importlib.util.spec_from_file_location('studio_skill_sources',Path(__file__).with_name('source_spec.py'))
+sources=importlib.util.module_from_spec(spec_sources);spec_sources.loader.exec_module(sources)
 
 MAX_FILE = 1024 * 1024
 MAX_TOTAL = 8 * MAX_FILE
@@ -210,7 +212,7 @@ def detail(db, root, ident):
     row = db.execute("SELECT * FROM skills WHERE id=? AND state='ready'", (ident,)).fetchone()
     value = summary(row)
     files, _, tree_hash = inventory(folder(root / ident) / 'Workspace')
-    return {'skill': value, 'files': files, 'draftHash': tree_hash}
+    return {'skill': value, 'files': files, 'draftHash': tree_hash, 'source': sources.read(db, ident)}
 
 
 def create(db, root, data):
@@ -362,6 +364,13 @@ def main():
         elif operation == 'list' and set(request) == {'operation'}:
             result = [summary(row) for row in db.execute("SELECT * FROM skills WHERE state='ready' ORDER BY created_at,id") if not lifecycle.deleted(root,row['id'])]
         elif operation == 'create' and set(request) == {'operation', 'input'}: result = create(db, root, request['input'])
+        elif operation == 'source_configure' and set(request) == {'operation', 'input'}:
+            result = sources.configure(db, root, request['input'], sys.modules[__name__])
+        elif operation == 'source_prepare' and set(request) == {'operation', 'input'}:
+            result = sources.prepare(db, root, request['input'], sys.modules[__name__])
+        elif operation == 'source_job' and set(request) == {'operation', 'id', 'requestId'}:
+            detail(db, root, request['id'])
+            result = sources.read_job(db, request['id'], request['requestId'], sys.modules[__name__])
         elif operation in ('get', 'validate') and set(request) == {'operation', 'id'}:
             ident = identity(request['id']); result = detail(db, root, ident)
             if operation == 'validate':

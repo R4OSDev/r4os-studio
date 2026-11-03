@@ -1,3 +1,15 @@
+## Local project files
+
+Every project workspace has an initially empty `ExFiles/` directory for local
+archives and other external data. Its entire contents, including subdirectories,
+are excluded by `/ExFiles/` in the project `.gitignore`. New projects and GitHub
+imports create the directory automatically. The private Git repository also
+keeps this local exclusion if a later pull changes `.gitignore`.
+
+Project sessions can access these files as `ExFiles/...` through their existing
+file tools, or `/workspace/ExFiles/...` through **Run command**. Git exclusion
+does not make the directory read-only or include its files in a built app.
+
 ## Z.AI GLM Coding Plan (0.9.39–0.9.45)
 
 Connect **Z.AI · GLM Coding Plan** in LLM Provider settings with your plan API
