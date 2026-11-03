@@ -25,7 +25,12 @@ const params = { type: 'object', required: ['id'], additionalProperties: false, 
 const retiring = { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'revision'], properties: { requestId: uuid, revision } } };
 const originalParams = { type: 'object', required: ['id', 'requestId'], additionalProperties: false, properties: { id: uuid, requestId: uuid } };
 const tokenLimit = { anyOf: [{ type: 'integer', minimum: 1, maximum: 2147483647 }, { type: 'null' }] };
-const efforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+const efforts = ['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const reasoning = { type: 'object', additionalProperties: false, properties: {
+  mandatory: { type: 'boolean' }, default_enabled: { type: 'boolean' },
+  supported_efforts: { anyOf: [{ type: 'null' }, { type: 'array', maxItems: 7, uniqueItems: true, items: { type: 'string', enum: efforts.filter(Boolean) } }] },
+  default_effort: { anyOf: [{ type: 'null' }, { type: 'string', enum: efforts.filter(Boolean) }] },
+} };
 const capabilityNames = ['text', 'functionTools', 'streaming', 'imageInput', 'reasoning', 'webSearch', 'imageGeneration', 'goals'];
 function modelInput(value: unknown, manual: boolean) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProviderError('Invalid model input.');
@@ -39,6 +44,13 @@ function modelInput(value: unknown, manual: boolean) {
   const model = body.model;
   if (!model || typeof model !== 'object' || Array.isArray(model)) throw new ProviderError('Invalid model facts.');
   for (const [key, item] of Object.entries(model)) {
+    if (key === 'reasoning') {
+      if (!item || typeof item !== 'object' || Array.isArray(item)
+        || Object.entries(item).some(([field, entry]) => ['mandatory', 'default_enabled'].includes(field) ? typeof entry !== 'boolean'
+          : field === 'supported_efforts' ? entry !== null && (!Array.isArray(entry) || entry.some(v => typeof v !== 'string'))
+            : field === 'default_effort' ? entry !== null && typeof entry !== 'string' : true)) throw new ProviderError('Invalid reasoning facts.');
+      continue;
+    }
     if (['id', 'name', 'defaultEffort'].includes(key) ? typeof item !== 'string' && !(key === 'defaultEffort' && item === null)
       : ['contextWindow', 'maxOutputTokens'].includes(key) ? item !== null && (typeof item !== 'number' || !Number.isSafeInteger(item))
         : key === 'efforts' ? !Array.isArray(item) || item.some(v => typeof v !== 'string')
@@ -102,8 +114,9 @@ export function apiProviderRoutes(app: FastifyInstance, sessions: ProviderSessio
         id: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 },
         contextWindow: tokenLimit, maxOutputTokens: tokenLimit,
         capabilities: { type: 'object', additionalProperties: false, required: capabilityNames, properties: Object.fromEntries(capabilityNames.map(key => [key, { type: 'string', enum: ['supported', 'unsupported', 'unknown'] }])) },
-        efforts: { type: 'array', maxItems: 6, uniqueItems: true, items: { type: 'string', enum: efforts } },
+        efforts: { type: 'array', maxItems: efforts.length, uniqueItems: true, items: { type: 'string', enum: efforts } },
         defaultEffort: { anyOf: [{ type: 'string', enum: efforts }, { type: 'null' }] },
+        reasoning,
       } },
     } } },
   }, async (request, reply) => {

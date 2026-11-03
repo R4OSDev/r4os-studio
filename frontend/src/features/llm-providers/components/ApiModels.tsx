@@ -6,7 +6,8 @@ import { useApiMutation } from '../useApiMutation';
 import type { LeaveGuard } from './ApiConnectionForm';
 
 const labels = { text: 'Text', functionTools: 'Function tools', streaming: 'Streaming', reasoning: 'Reasoning', imageInput: 'Image input', webSearch: 'Web search', imageGeneration: 'Image generation', goals: 'Goal' };
-const efforts: ApiEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+const efforts: ApiEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const effortLabel = (value: ApiEffort) => value || 'Provider default';
 const empty = (): ApiModelFacts => ({ id: '', name: '', contextWindow: null, maxOutputTokens: null,
   capabilities: { text: 'unknown', functionTools: 'unknown', streaming: 'unknown', reasoning: 'unknown', imageInput: 'unknown', webSearch: 'unknown', imageGeneration: 'unknown', goals: 'unknown' }, efforts: [], defaultEffort: null });
 
@@ -37,10 +38,20 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
     window.addEventListener('beforeunload', warn);
     return () => { setLeaveGuard(() => true); window.removeEventListener('beforeunload', warn); };
   }, [draft, mutation.busy, setLeaveGuard]);
-  function edit(model?: ApiModel) {
+  function edit(model?: ApiModel, applyMetadata = false) {
     if (draft && !window.confirm('Discard unsaved model facts?')) return;
-    setDraft(model ? { id: model.id, name: model.name, contextWindow: model.contextWindow, maxOutputTokens: model.maxOutputTokens,
-      capabilities: { ...model.declaredCapabilities }, efforts: [...model.efforts], defaultEffort: model.defaultEffort } : empty());
+    const next = model ? { id: model.id, name: model.name, contextWindow: model.contextWindow, maxOutputTokens: model.maxOutputTokens,
+      capabilities: { ...model.declaredCapabilities }, efforts: [...model.efforts], defaultEffort: model.defaultEffort,
+      ...(model.reasoning ? { reasoning: { ...model.reasoning } } : {}) } : empty();
+    if (applyMetadata && model?.reasoningMetadata) {
+      const facts = model.reasoningMetadata.facts;
+      const choices = (facts.supported_efforts === null ? efforts : facts.supported_efforts ?? []).filter(value => value !== 'none' || facts.mandatory !== true);
+      const selected = next.defaultEffort && choices.includes(next.defaultEffort) ? next.defaultEffort
+        : facts.default_enabled !== false && facts.default_effort && choices.includes(facts.default_effort) ? facts.default_effort : '';
+      next.reasoning = { ...facts }; next.efforts = selected ? choices : ['', ...choices]; next.defaultEffort = selected;
+      next.capabilities.reasoning = 'supported';
+    }
+    setDraft(next);
     setNotice('');
   }
   async function save(event: FormEvent) {
@@ -68,10 +79,12 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
       <summary><span><strong>{model.name}</strong><code>{model.id}</code></span><span className="provider-status">{catalog.stale ? 'Stale' : model.available ? 'Configured' : 'Needs model facts'}</span></summary>
       <p className="field-help">Source: {model.source?.kind === 'manual' ? 'Explicit manual configuration' : model.source?.kind === 'metadata' ? 'Models API metadata' : 'Unknown'}{model.source?.recordedAt ? ` · ${new Date(model.source.recordedAt).toLocaleString()}` : ''}</p>
       {model.source?.url && <p className="field-help api-model-source">{model.source.url}</p>}
-      <dl className="provider-properties"><div><dt>Context / output</dt><dd>{model.contextWindow ?? 'Unknown'} / {model.maxOutputTokens ?? 'Unknown'} tokens</dd></div><div><dt>Reasoning levels</dt><dd>{model.efforts.length ? model.efforts.join(', ') : 'Unknown'} · Default: {model.defaultEffort ?? 'Unknown'}</dd></div>
+      <dl className="provider-properties"><div><dt>Context / output</dt><dd>{model.contextWindow ?? 'Unknown'} / {model.maxOutputTokens ?? 'Unknown'} tokens</dd></div><div><dt>Reasoning levels</dt><dd>{model.efforts.length ? model.efforts.map(effortLabel).join(', ') : 'Unknown'} · Default: {model.defaultEffort === null ? 'Unknown' : effortLabel(model.defaultEffort)}</dd></div>
+        {model.reasoning && <div><dt>Reasoning requirement</dt><dd>{model.reasoning.mandatory === true ? 'Required · cannot be disabled' : model.reasoning.mandatory === false ? 'Optional' : 'Not specified'}</dd></div>}
         {Object.entries(labels).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{model.capabilities[key as keyof typeof labels]}{model.capabilities[key as keyof typeof labels] !== model.declaredCapabilities[key as keyof typeof labels] ? ` · model: ${model.declaredCapabilities[key as keyof typeof labels]}; unavailable in this adapter` : ''}</dd></div>)}</dl>
       {!!model.unavailableReasons.length && <p className="field-help">{model.unavailableReasons.join(' ')}</p>}
       <button type="button" className="button-secondary" disabled={mutation.busy || !!pending} onClick={() => edit(model)}>Edit model facts</button>
+      {model.reasoningMetadata && <button type="button" className="button-secondary" disabled={mutation.busy || !!pending} onClick={() => edit(model, true)}>Apply latest reasoning metadata</button>}
     </details>)}</div>
     {catalog && !catalog.models.length && <p className="field-help">No cached models. Check metadata or add an exact model ID.</p>}
     <p className="field-help">GOAL is provided by Studio when text, streaming and function tools are confirmed. It starts only after Play. Image input, hosted web search, image generation and Fast Mode are unavailable through these API adapters.</p>
@@ -83,11 +96,13 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
           <label htmlFor="api-model-name">Display name</label><input id="api-model-name" value={draft.name} required maxLength={200} onChange={event => patch({ name: event.target.value })} />
           <div className="api-model-limits">{(['contextWindow', 'maxOutputTokens'] as const).map(key => <div key={key}><label htmlFor={`api-model-${key}`}>{key === 'contextWindow' ? 'Context window' : 'Maximum output tokens'}</label><input id={`api-model-${key}`} type="number" min={1} max={2147483647} step={1} placeholder="Unknown" value={draft[key] ?? ''} onChange={event => patch({ [key]: event.target.value ? Number(event.target.value) : null })} /></div>)}</div>
           {(['text', 'functionTools', 'streaming', 'reasoning', 'imageInput'] as const).map(key => <div key={key}><label htmlFor={`api-model-${key}`}>{labels[key]}</label><select id={`api-model-${key}`} value={draft.capabilities[key]} onChange={event => {
-            const value = event.target.value as ApiCapability; patch({ capabilities: { ...draft.capabilities, [key]: value }, ...(key === 'reasoning' ? { efforts: value === 'unsupported' ? ['none'] : [], defaultEffort: value === 'unsupported' ? 'none' : null } : {}) });
+            const value = event.target.value as ApiCapability; patch({ capabilities: { ...draft.capabilities, [key]: value }, ...(key === 'reasoning' ? { efforts: value === 'unsupported' ? ['none'] : [], defaultEffort: value === 'unsupported' ? 'none' : null, reasoning: undefined } : {}) });
           }}><option value="unknown">Unknown</option><option value="supported">Supported</option><option value="unsupported">Unsupported</option></select></div>)}
-          {draft.capabilities.reasoning === 'supported' && <><fieldset className="api-efforts"><legend>Documented reasoning levels</legend>{efforts.map(effort => <label key={effort}><input type="checkbox" checked={draft.efforts.includes(effort)} onChange={event => {
-            const chosen = event.target.checked ? [...draft.efforts, effort] : draft.efforts.filter(value => value !== effort); patch({ efforts: chosen, defaultEffort: draft.defaultEffort && chosen.includes(draft.defaultEffort) ? draft.defaultEffort : null });
-          }} />{effort}</label>)}</fieldset><label htmlFor="api-default-effort">Default reasoning level</label><select id="api-default-effort" required value={draft.defaultEffort ?? ''} onChange={event => patch({ defaultEffort: event.target.value as ApiEffort })}><option value="" disabled>Select documented default</option>{draft.efforts.map(value => <option key={value}>{value}</option>)}</select></>}
+          {draft.capabilities.reasoning === 'supported' && <>
+            {draft.reasoning && <p className="field-help">{draft.reasoning.mandatory ? 'Reasoning is required. none cannot be selected.' : 'Reasoning follows the documented model options.'} Provider default: {draft.reasoning.default_enabled === undefined ? 'not specified' : draft.reasoning.default_enabled ? 'enabled' : 'disabled'}. Applying metadata keeps a valid explicit default; changes take effect after Save.</p>}
+            <fieldset className="api-efforts"><legend>Documented reasoning levels</legend>{(draft.reasoning ? ['', ...(draft.reasoning.supported_efforts === null ? efforts : draft.reasoning.supported_efforts ?? [])] as ApiEffort[] : efforts).filter(value => value !== 'none' || draft.reasoning?.mandatory !== true).map(effort => <label key={effort}><input type="checkbox" checked={draft.efforts.includes(effort)} onChange={event => {
+            const chosen = event.target.checked ? [...draft.efforts, effort] : draft.efforts.filter(value => value !== effort); patch({ efforts: chosen, defaultEffort: draft.defaultEffort !== null && chosen.includes(draft.defaultEffort) ? draft.defaultEffort : null });
+          }} />{effortLabel(effort)}</label>)}</fieldset><label htmlFor="api-default-effort">Default reasoning level</label><select id="api-default-effort" required={!draft.efforts.includes('')} value={draft.defaultEffort ?? '__unknown'} onChange={event => patch({ defaultEffort: event.target.value as ApiEffort })}><option value="__unknown" disabled>Select documented default</option>{draft.efforts.map(value => <option key={value} value={value}>{effortLabel(value)}</option>)}</select></>}
         </fieldset>
         <div className="provider-actions"><button className="button-primary" disabled={mutation.busy || !!pending && !mutation.notFound}>{pending ? 'Retry original model save' : 'Save model facts'}</button><button type="button" className="button-secondary" disabled={mutation.busy || !!pending} onClick={() => setDraft(null)}>Cancel model changes</button></div>
       </form>}

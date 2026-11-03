@@ -40,6 +40,7 @@ class Catalogs:
             from openrouter_policy import unavailable
             result['unavailableReasons']+=unavailable(provider,value)
         result['available']=not result['unavailableReasons']
+        result['capabilities']['goals']='supported' if result['available'] else 'unsupported'
         return result
 
     def listing(self,ident):
@@ -92,6 +93,7 @@ class Catalogs:
             value=normalized(data['model']);value['source']={'kind':'manual','recordedAt':now()}
             if catalog['configRevision']!=provider['revision']:catalog['models']=[]
             previous=next((v for v in catalog['models'] if v['id']==value['id']),None)
+            if previous and previous.get('reasoningMetadata'):value['reasoningMetadata']=previous['reasoningMetadata']
             if previous:catalog['models'][catalog['models'].index(previous)]=value
             else:
                 if len(catalog['models'])>=MAX_MODELS:raise ProjectFault('The bounded model catalog is full.',409)
@@ -101,7 +103,8 @@ class Catalogs:
             result={'requestId':rid,'providerId':ident,'state':'complete','catalogRevision':revision+1,'modelId':value['id']}
             db.execute('INSERT INTO model_catalogs VALUES (?,?,?) ON CONFLICT(provider_id) DO UPDATE SET revision=excluded.revision,data=excluded.data',
                 (ident,revision+1,encode(catalog)))
-            db.execute("INSERT INTO catalog_requests VALUES (?,?,?,?,?,'complete',0,NULL,?,?)",(rid,ident,'save_model',fingerprint,'{}',encode(result),now()))
+            db.execute("INSERT INTO catalog_requests VALUES (?,?,?,?,?,'complete',0,NULL,?,?)",(rid,ident,'save_model',fingerprint,
+                encode({'previousModel':previous,'model':value}),encode(result),now()))
             return result
 
     def start_refresh(self,ident,data,allowed=True):
@@ -166,6 +169,12 @@ class Catalogs:
                 # Explicit model contracts survive a metadata refresh, including
                 # exact manual IDs not advertised by this metadata endpoint.
                 manual=[v for v in catalog['models'] if catalog['configRevision']==provider['revision'] and v.get('source',{}).get('kind')=='manual']
+                metadata={v['id']:v for v in values}
+                for value in manual:
+                    current=metadata.get(value['id'])
+                    if current and 'reasoning' in current:
+                        value['reasoningMetadata']={'facts':current['reasoning'],'recordedAt':current['source']['recordedAt'],
+                            'url':current['source']['url']}
                 manual_ids={v['id'] for v in manual};values=[v for v in values if v['id'] not in manual_ids]
                 if len(values)+len(manual)>MAX_MODELS:values=values[:MAX_MODELS-len(manual)];truncated=True
                 values+=manual

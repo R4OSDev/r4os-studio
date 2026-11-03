@@ -37,17 +37,24 @@ export interface ApiProviderBinding {
 
 /** Missing provider metadata stays unknown until a specific model is qualified. */
 export type ApiCapability = 'supported' | 'unsupported' | 'unknown';
-export type ApiEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+/** Empty selects the documented provider default, without sending an effort. */
+export type ApiEffort = '' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export interface ApiReasoningFacts {
+  mandatory?: boolean; supported_efforts?: Exclude<ApiEffort, ''>[] | null;
+  default_effort?: Exclude<ApiEffort, ''> | null; default_enabled?: boolean;
+}
 export interface ApiModelFacts {
   id: string; name: string; contextWindow: number | null;
   maxOutputTokens: number | null;
   capabilities: Record<'text' | 'functionTools' | 'streaming' | 'imageInput' | 'reasoning' | 'webSearch' | 'imageGeneration' | 'goals', ApiCapability>;
   efforts: ApiEffort[]; defaultEffort: ApiEffort | null;
+  reasoning?: ApiReasoningFacts;
 }
 export interface ApiModel extends ApiModelFacts {
   declaredCapabilities: ApiModelFacts['capabilities'];
   available: boolean; unavailableReasons: string[];
   source: { kind: 'metadata' | 'manual'; recordedAt: string; url?: string } | null;
+  reasoningMetadata?: { facts: ApiReasoningFacts; recordedAt: string; url: string };
 }
 export interface ApiModelCatalog {
   providerId: string; revision: number; configRevision: number; stale: boolean;

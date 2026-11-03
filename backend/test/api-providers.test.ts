@@ -66,6 +66,11 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     const manual={requestId,providerRevision:1,catalogRevision:0,model};
     assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/models',headers,payload:manual})).statusCode,200);
     assert.equal(calls.at(-1)?.action,'model_save');
+    const reasoner={...model,capabilities:{...model.capabilities,reasoning:'supported'},
+      efforts:['max','xhigh','high','medium','low','minimal'],defaultEffort:'max',
+      reasoning:{mandatory:true,supported_efforts:['max','xhigh','high','medium','low','minimal'],default_effort:'max'}};
+    assert.equal((await app.inject({method:'POST',url:base+'/'+id+'/models',headers,payload:{...manual,model:reasoner}})).statusCode,200);
+    assert.deepEqual((calls.at(-1)?.input as {model:unknown}).model,reasoner);
     const routing={order:['owned/provider'],only:['owned/provider'],allowFallbacks:false,attribution:{url:'https://example.test/owned-app',title:'Owned app'}};
     const routingUpdate={requestId,revision:1,openrouter:routing};
     assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:routingUpdate})).statusCode,200);
@@ -79,6 +84,8 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     }
     for(const [path,payload] of [['/models/check',{...check,providerRevision:'1'}],['/models',{...manual,catalogRevision:'0'}],
       ['/models',{...manual,model:{...model,contextWindow:'8192'}}],['/models',{...manual,model:{...model,capabilities:{...model.capabilities,text:true}}}],
+      ['/models',{...manual,model:{...reasoner,reasoning:{mandatory:'true'}}}],
+      ['/models',{...manual,model:{...reasoner,reasoning:{supported_efforts:['bogus']}}}],
       ['/models',{...manual,model:{...model,unexpected:secret}}]]) {
       assert.equal((await app.inject({method:'POST',url:base+'/'+id+path,headers,payload})).statusCode,400);
     }

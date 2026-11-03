@@ -71,7 +71,7 @@ export function chatRequest(value, policy) {
   if (policy.reasoning === 'none') {
     if (reasoning.effort != null && reasoning.effort !== 'none') bad();
   } else {
-    if (!['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(reasoning.effort)) bad();
+    if (!['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(reasoning.effort)) bad();
     effort = reasoning.effort;
   }
   if (policy.systemRole === 'system' && value.input.some(item => item.role === 'system')

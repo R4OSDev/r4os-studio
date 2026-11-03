@@ -9,7 +9,31 @@ from store import ProjectFault
 
 CAPABILITIES=('text','functionTools','streaming','imageInput','reasoning','webSearch','imageGeneration','goals')
 STATES=('supported','unsupported','unknown')
-EFFORTS=('none','minimal','low','medium','high','xhigh')
+EFFORTS=('none','minimal','low','medium','high','xhigh','max')
+
+
+def reasoning_facts(value):
+    if (not isinstance(value,dict) or set(value)-{'mandatory','supported_efforts','default_effort','default_enabled'}
+            or any(type(value[k]) is not bool for k in ('mandatory','default_enabled') if k in value)):
+        raise ProjectFault('Invalid documented reasoning metadata.',400)
+    if 'supported_efforts' in value:
+        levels=value['supported_efforts']
+        if levels is not None and (not isinstance(levels,list) or len(levels)>len(EFFORTS)
+                or any(not isinstance(v,str) or v not in EFFORTS for v in levels) or len(set(levels))!=len(levels)):
+            raise ProjectFault('Invalid documented reasoning levels.',400)
+    default=value.get('default_effort')
+    if default is not None and (not isinstance(default,str) or default not in EFFORTS):
+        raise ProjectFault('Invalid documented reasoning default.',400)
+    if value.get('mandatory') is True and (default=='none' or value.get('default_enabled') is False):
+        raise ProjectFault('Mandatory reasoning cannot be disabled.',400)
+    return copy.deepcopy(value)
+
+
+def reasoning_choices(facts):
+    """Omitted means no selector, null accepts all gateway levels."""
+    choices=facts.get('supported_efforts',[])
+    choices=list(EFFORTS) if choices is None else list(choices)
+    return [level for level in choices if level!='none' or facts.get('mandatory') is not True]
 
 
 def model_id(value):
@@ -27,7 +51,7 @@ def limit(value):
 
 
 def normalized(value):
-    if not isinstance(value,dict) or set(value)-{'id','name','contextWindow','maxOutputTokens','capabilities','efforts','defaultEffort'}:
+    if not isinstance(value,dict) or set(value)-{'id','name','contextWindow','maxOutputTokens','capabilities','efforts','defaultEffort','reasoning'}:
         raise ProjectFault('Invalid API model settings.',400)
     ident=model_id(value.get('id'));name=value.get('name',ident)
     if (not isinstance(name,str) or not 1<=len(name.strip())<=200
@@ -38,7 +62,9 @@ def normalized(value):
         raise ProjectFault('Choose supported, unsupported or unknown model capabilities.',400)
     caps={key:caps.get(key,'unknown') for key in CAPABILITIES}
     efforts=value.get('efforts',[]);default=value.get('defaultEffort')
-    if (not isinstance(efforts,list) or len(efforts)>6 or any(not isinstance(v,str) or v not in EFFORTS for v in efforts)
+    facts=reasoning_facts(value['reasoning']) if 'reasoning' in value else None
+    allowed=EFFORTS if facts is None else ('',*reasoning_choices(facts))
+    if (not isinstance(efforts,list) or len(efforts)>len(EFFORTS)+1 or any(not isinstance(v,str) or v not in allowed for v in efforts)
             or len(set(efforts))!=len(efforts) or default is not None and default not in efforts):
         raise ProjectFault('Choose only documented reasoning levels and an explicit supported default.',400)
     if caps['reasoning']=='unsupported':
@@ -47,13 +73,16 @@ def normalized(value):
         efforts=['none'];default='none'
     elif caps['reasoning']=='unknown' and (efforts or default is not None):
         raise ProjectFault('Confirm the reasoning contract before setting effort levels.',400)
+    if facts is not None and caps['reasoning']!='supported':
+        raise ProjectFault('Documented reasoning metadata requires reasoning support.',400)
     return {'id':ident,'name':name.strip(),'contextWindow':limit(value.get('contextWindow')),
-        'maxOutputTokens':limit(value.get('maxOutputTokens')),'capabilities':caps,'efforts':list(efforts),'defaultEffort':default}
+        'maxOutputTokens':limit(value.get('maxOutputTokens')),'capabilities':caps,'efforts':list(efforts),'defaultEffort':default,
+        **({'reasoning':facts} if facts is not None else {})}
 
 
 def present(value,protocol):
     if not isinstance(value,dict):raise ProjectFault('Invalid stored API model metadata.',503)
-    declared=normalized({k:v for k,v in value.items() if k not in ('source',)})
+    declared=normalized({k:v for k,v in value.items() if k not in ('source','reasoningMetadata')})
     effective=copy.deepcopy(declared['capabilities']);reasons=[]
     for key in ('text','functionTools','streaming'):
         if declared['capabilities'][key]!='supported':reasons.append({'text':'Text input','functionTools':'Function tools','streaming':'Streaming'}[key]+' is not confirmed.')
@@ -63,8 +92,15 @@ def present(value,protocol):
     # GOAL is a Studio/native lifecycle over the existing function contract,
     # not a hosted provider endpoint or a model capability guessed from its ID.
     effective['goals']='supported' if not reasons else 'unsupported'
+    metadata=value.get('reasoningMetadata')
+    if metadata:
+        facts=reasoning_facts(metadata['facts']);allowed=reasoning_choices(facts)
+        if any(v and v not in allowed for v in declared['efforts']) or declared.get('reasoning')!=facts:
+            reasons.append('Saved reasoning facts differ from current model metadata. Apply its reasoning metadata in the model editor.')
+    effective['goals']='supported' if not reasons else 'unsupported'
     return {**declared,'declaredCapabilities':declared['capabilities'],'capabilities':effective,
-        'available':not reasons,'unavailableReasons':reasons,'source':copy.deepcopy(value.get('source'))}
+        'available':not reasons,'unavailableReasons':reasons,'source':copy.deepcopy(value.get('source')),
+        **({'reasoningMetadata':copy.deepcopy(metadata)} if metadata else {})}
 
 
 def native(value,protocol):
@@ -77,8 +113,8 @@ def native(value,protocol):
         # The shipped binary requires this catalog template even when Studio
         # supplies the current explicit baseInstructions at thread start/resume.
         'base_instructions':'Follow the current R4OS Studio instructions and use only the declared tools.',
-        'default_reasoning_level':public['defaultEffort'],
-        'supported_reasoning_levels':[{'effort':v,'description':v.title()} for v in public['efforts']],
+        'default_reasoning_level':public['defaultEffort'] or None,
+        'supported_reasoning_levels':[{'effort':v,'description':v.title()} for v in public['efforts'] if v],
         'shell_type':'disabled','visibility':'list','supported_in_api':True,'priority':99,
         'additional_speed_tiers':[],'service_tiers':[],'default_service_tier':None,
         'available_access_programs':None,'availability_nux':None,'upgrade':None,'model_messages':None,
@@ -93,4 +129,6 @@ def native(value,protocol):
         'auto_review_model_override':None,'model_specialty':None,'tool_mode':'direct','multi_agent_version':None,'multi_agent_reasoning_effort':None}
     if protocol=='chat-completions':result['studio_chat']={'schema':1,'systemRole':'system',
         'reasoning':'none' if public['declaredCapabilities']['reasoning']=='unsupported' else 'effort','functionTools':True,'streaming':True}
+    if protocol=='chat-completions' and 'reasoning' in public:
+        result['studio_chat'].update(schema=2,reasoningFacts=public['reasoning'],efforts=public['efforts'])
     return result

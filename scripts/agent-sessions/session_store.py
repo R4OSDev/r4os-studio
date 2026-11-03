@@ -99,6 +99,7 @@ def provider_models(directory, provider_id):
     for m in sorted(values, key=lambda m: m.get('priority', 999)):
         if m.get('visibility') != 'list': continue
         efforts = [x['effort'] for x in m.get('supported_reasoning_levels', [])]
+        if m.get('studio_chat',{}).get('schema')==2:efforts=list(m['studio_chat']['efforts'])
         if not efforts: efforts = [m.get('default_reasoning_level', 'low')]
         result.append({'id': m['slug'], 'name': m.get('display_name') or m['slug'],
                        'imageInputs': model_images(m),

@@ -2,6 +2,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { modelFacts } from './api_model_metadata.mjs';
 import { routerSettings, routerHeaders } from './api_openrouter.mjs';
 
 const MAX_BODY = 4 * 1024 * 1024, MAX_MODELS = 256;
@@ -38,38 +39,6 @@ try {
   if (net.isIP(literal) && !addresses.includes(literal)) throw Error();
 } catch { fail('binding'); }
 
-function safeString(value, maximum) {
-  if (typeof value !== 'string' || !value.length || value.length > maximum || /[\ud800-\udfff]/u.test(value)) return null;
-  for (const char of value) if (char.codePointAt(0) < 32 || char.codePointAt(0) === 127) return null;
-  if (typeof key === 'string' && value.includes(key)) return null;
-  return value;
-}
-const tokens = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647 ? value : null;
-function model(entry) {
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-  const id = safeString(entry.id, 200); if (!id || [...id].some(char => /\s/u.test(char))) return null;
-  const capabilities = Object.fromEntries(['text', 'functionTools', 'streaming', 'imageInput', 'reasoning', 'webSearch', 'imageGeneration', 'goals'].map(field => [field, 'unknown']));
-  let contextWindow = null, maxOutputTokens = null, name = id;
-  // OpenRouter's published model schema supplies these facts. Generic Models
-  // IDs alone establish no context/tool/reasoning or modality capabilities.
-  if (binding.kind === 'openrouter') {
-    name = safeString(entry.name, 200) ?? id;
-    contextWindow = tokens(entry.context_length); maxOutputTokens = tokens(entry.top_provider?.max_completion_tokens);
-    const modalities = entry.architecture?.input_modalities, outputs = entry.architecture?.output_modalities;
-    if (Array.isArray(modalities) && modalities.every(value => typeof value === 'string')) {
-      if (Array.isArray(outputs) && outputs.every(value => typeof value === 'string')) capabilities.text = modalities.includes('text') && outputs.includes('text') ? 'supported' : 'unsupported';
-      capabilities.imageInput = modalities.includes('image') ? 'supported' : 'unsupported';
-    }
-    const parameters = entry.supported_parameters;
-    if (Array.isArray(parameters) && parameters.length <= 128 && parameters.every(value => typeof value === 'string')) {
-      capabilities.functionTools = parameters.includes('tools') && parameters.includes('tool_choice') ? 'supported' : 'unsupported';
-      capabilities.reasoning = parameters.some(value => ['reasoning', 'reasoning_effort', 'include_reasoning'].includes(value)) ? 'supported' : 'unsupported';
-    }
-    if (entry.reasoning != null) capabilities.reasoning = typeof entry.reasoning === 'object' && !Array.isArray(entry.reasoning) ? 'supported' : 'unknown';
-    capabilities.streaming = 'supported'; // Published endpoint-level streaming contract.
-  }
-  return { id, name, contextWindow, maxOutputTokens, capabilities, efforts: [], defaultEffort: null };
-}
 const host = target.hostname.replace(/^\[|\]$/g, ''), address = addresses[0];
 const headers = { Accept: 'application/json', 'Accept-Encoding': 'identity', 'User-Agent': 'R4OS-Studio-Model-Metadata', Connection: 'close' };
 if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
@@ -96,7 +65,7 @@ request = (target.protocol === 'https:' ? https : http).request({ protocol: targ
       if (!value || !Array.isArray(value.data)) { fail('format'); return; }
       const seen = new Set(), values = [];
       for (const entry of value.data.slice(0, MAX_MODELS)) {
-        const current = model(entry); if (!current) continue;
+        const current = modelFacts(entry, binding, key); if (!current) continue;
         if (seen.has(current.id)) { fail('duplicate'); return; } seen.add(current.id); values.push(current);
       }
       finish({ ok: true, models: values, truncated: value.data.length > MAX_MODELS });

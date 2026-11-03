@@ -65,6 +65,32 @@ class Catalog(unittest.TestCase):
         self.assertEqual(self.api.creation_receipt(rid)['provider']['id'],self.ident)
         self.assertNotIn(self.secret,json.dumps(self.api.creation_receipt(rid)))
 
+    def test_reasoning_metadata_manual_correction_keeps_default_and_original_facts(self):
+        from api_model_info import normalized
+        original=facts(True);original['capabilities']['reasoning']='supported'
+        original.update(efforts=['none','minimal','low','medium','high','xhigh'],defaultEffort='minimal')
+        self.store.save_model(self.ident,self.save(original))
+        metadata={**original,'reasoning':{'mandatory':True,'supported_efforts':['max','xhigh','high','medium','low','minimal'],'default_effort':'max'},
+            'efforts':['max','xhigh','high','medium','low','minimal'],'defaultEffort':'max'}
+        data=self.check();self.store.start_refresh(self.ident,data);self.store.finish(self.ident,data['requestId'],[metadata])
+        model=self.store.listing(self.ident)['models'][0]
+        self.assertEqual(model['defaultEffort'],'minimal');self.assertIn('none',model['efforts'])
+        self.assertFalse(model['available']);self.assertEqual(model['capabilities']['goals'],'unsupported')
+        self.assertEqual(model['reasoningMetadata']['facts'],metadata['reasoning'])
+        corrected={**metadata,'defaultEffort':'minimal'};request_data=self.save(corrected)
+        receipt=self.store.save_model(self.ident,request_data)
+        self.assertEqual(self.store.save_model(self.ident,request_data),receipt)
+        self.assertEqual(self.store.listing(self.ident)['models'][0]['defaultEffort'],'minimal')
+        with self.api.connect() as db:
+            history=json.loads(db.execute('SELECT binding FROM catalog_requests WHERE id=?',(request_data['requestId'],)).fetchone()[0])
+        self.assertEqual(history['previousModel']['efforts'],original['efforts'])
+        self.assertEqual(history['model']['defaultEffort'],'minimal')
+        self.assertEqual(native(corrected,'chat-completions')['supported_reasoning_levels'][0]['effort'],'max')
+        with self.assertRaises(ProjectFault):normalized({**metadata,'efforts':['none'],'defaultEffort':'none'})
+        implicit={**metadata,'reasoning':{'mandatory':True},'efforts':[''],'defaultEffort':''}
+        self.assertTrue(present(implicit,'chat-completions')['available'])
+        self.assertIsNone(native(implicit,'chat-completions')['default_reasoning_level'])
+
     def test_original_metadata_intake_capacity_and_boot_never_replays(self):
         data=self.check();result,fresh=self.store.start_refresh(self.ident,data)
         self.assertTrue(fresh);self.assertEqual(self.store.start_refresh(self.ident,data,False),(result,False))
