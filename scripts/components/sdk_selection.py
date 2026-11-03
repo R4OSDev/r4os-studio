@@ -4,13 +4,11 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import tempfile
 import threading
 import uuid
 
-from common import download, publish, unpack
-from sdk_sets import PARTS, SHA256, profile_revision, regular_json, resolve
-from service import FOLDERS, atomic, now, package_info, run
+from sdk_sets import SHA256, profile_revision, regular_json, resolve
+from service import atomic, now
 
 
 def receipt_path(manager, request_id):
@@ -75,76 +73,6 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
         threading.Thread(target=work, args=(manager, path, receipt), daemon=True).start()
         return manager.status()
 
-
-def compiler_for(manager, version):
-    compiler = next((value for value in manager.installed('zig') if value['version'] == version), None)
-    if not compiler:
-        raise ValueError(f'Download Zig {version} before verifying this SDK set.')
-    return compiler
-
-
-def verify_contents(manager, kind, source, expected, selected, temporary, installed=None):
-    info = package_info(source)
-    if info['version'] != expected['version']:
-        raise ValueError(f'The {kind} package version contradicts the SDK release.')
-    metadata_hash = hashlib.sha256((source / 'build.zig.zon').read_text().strip().encode()).hexdigest()
-    if installed and installed.get('metadataHash') and installed['metadataHash'] != metadata_hash:
-        raise ValueError(f'The installed {kind} package metadata has changed.')
-    if kind == 'sdk' and (info != {key: selected[key] for key in ('version', 'minZigVersion', 'dependencies') if key in selected}
-                          or selected.get('metadataHash') and selected['metadataHash'] != metadata_hash):
-        raise ValueError('SDK archive contents contradict the selected official source metadata.')
-    pin = info.get('dependencies', {}).get('contract')
-    contract = manager.sdk_sets[selected['id']]['components']['contract']
-    if pin and (pin.get('revision') != contract['revision'] or pin.get('packageHash') != contract['packageHash']):
-        raise ValueError(f'The {kind} package requires a different Contract identity.')
-    compiler = compiler_for(manager, info.get('minZigVersion') or selected.get('minZigVersion'))
-    verification = temporary / 'verify'
-    verification.mkdir()
-    (verification / 'build.zig').write_text('pub fn build(_: *@import("std").Build) void {}\n')
-    manager.progress(f'Verifying {kind} package contents…', received=0, total=0)
-    hashed = run([compiler['binary'], 'fetch', '--global-cache-dir', str(verification / 'cache'), str(source)],
-                 cwd=verification, timeout=180)
-    if not re.fullmatch('[A-Za-z0-9_.+-]+', hashed):
-        raise ValueError('The compiler returned an invalid package hash.')
-    previous_hash = (installed.get('zigPackageHash') or installed.get('packageHash')) if installed else None
-    if installed and (not previous_hash or hashed != previous_hash):
-        raise ValueError(f'The installed {kind} package contents no longer match their recorded hash.')
-    if expected.get('packageHash') and hashed != expected['packageHash']:
-        raise ValueError(f'The {kind} package contents contradict the SDK package pin.')
-    return {**info, 'metadataHash': metadata_hash, 'packageHash': hashed}
-
-
-def ensure_package(manager, kind, expected, selected):
-    root = manager.root / FOLDERS[kind]
-    if root.is_symlink() or root.resolve() != root:
-        raise ValueError('Invalid component directory.')
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / expected['revision']
-    installed = next((value for value in manager.installed(kind) if value['id'] == expected['revision']), None)
-    with tempfile.TemporaryDirectory(prefix='.sdk-set-', dir=root) as name:
-        temporary = Path(name)
-        if installed:
-            if (target.is_symlink() or target.resolve() != target or installed.get('revision') != expected['revision']
-                    or installed['version'] != expected['version'] or installed.get('sourceUrl') != expected['sourceUrl']):
-                raise ValueError(f'The installed {kind} identity does not match the SDK release.')
-            verify_contents(manager, kind, target, expected, selected, temporary, installed)
-            # Preserve the archive origin and checksum of the existing layout.
-            return installed
-        if target.exists() or target.is_symlink():
-            raise ValueError(f'An incomplete {kind} installation exists and will not be overwritten.')
-        archive = temporary / 'package.tar.gz'
-        manager.progress(f'Downloading SDK component: {kind}…', received=0, total=expected['bytes'])
-        archive_hash = download(manager, expected['url'], archive, expected['sha256'], limit=expected['bytes'])
-        if archive.stat().st_size != expected['bytes']:
-            raise ValueError(f'The {kind} archive size contradicts the SDK release.')
-        source = unpack(archive, temporary / 'unpacked')
-        info = verify_contents(manager, kind, source, expected, selected, temporary)
-        record = {**info, 'id': expected['revision'], 'revision': expected['revision'],
-                  'sourceUrl': expected['sourceUrl'], 'archiveUrl': expected['url'], 'sha256': archive_hash,
-                  'sdkReleaseManifestSha256': manager.sdk_sets[selected['id']]['manifestSha256'], 'installedAt': now()}
-        (source / '.studio-component.json').write_text(json.dumps(record, indent=2) + '\n')
-        publish(source, target)
-        return {**record, 'directory': str(target)}
 
 
 def work(manager, path, receipt):

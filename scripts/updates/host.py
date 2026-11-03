@@ -88,12 +88,27 @@ GIT_READ_COMPATIBILITY = {**KEYPLAN_COMPATIBILITY, 'agentToolProfiles': KEYPLAN_
 LINK_COMPATIBILITY = {**GIT_READ_COMPATIBILITY, 'agentToolProfiles': GIT_READ_COMPATIBILITY['agentToolProfiles'] + ['studio-tools-v23']}
 
 ACTIVE_TOOLS_COMPATIBILITY = {**{key: value for key, value in LINK_COMPATIBILITY.items() if key != 'agentToolProfiles'}, 'agentToolCatalog': 1}
+SDK_PROFILES_COMPATIBILITY = {**ACTIVE_TOOLS_COMPATIBILITY, 'sdkProfilesOnly': 1}
 
 def compatible(value):
     # Legacy releases remain valid rollback targets. New agent protocols require
     # this explicit host maintenance, never a downloaded privileged installer.
     previous = {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2']}
-    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY, SKILL_COMPATIBILITY, AUTHOR_COMPATIBILITY, UPDATE_COMPATIBILITY, GIT_COMPATIBILITY, INPUT_COMPATIBILITY, ROADMAP_COMPATIBILITY, REMOTE_COMPATIBILITY, DOCUMENT_COMPATIBILITY,IMAGE_COMPATIBILITY,CONTRACT_COMPATIBILITY,NOTES_COMPATIBILITY,GESTURE_COMPATIBILITY,RESULT_COMPATIBILITY,WINDOW_COMPATIBILITY,DRAG_COMPATIBILITY,DESKTOP_COMPATIBILITY,LOOKUP_COMPATIBILITY,EDITOR_COMPATIBILITY,KEYPLAN_COMPATIBILITY,GIT_READ_COMPATIBILITY,LINK_COMPATIBILITY,ACTIVE_TOOLS_COMPATIBILITY)
+    return value in (COMPATIBILITY, {**COMPATIBILITY, **AGENT_COMPATIBILITY}, previous, {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2', 'studio-tools-v3']}, DEVELOPMENT_COMPATIBILITY, SKILL_COMPATIBILITY, AUTHOR_COMPATIBILITY, UPDATE_COMPATIBILITY, GIT_COMPATIBILITY, INPUT_COMPATIBILITY, ROADMAP_COMPATIBILITY, REMOTE_COMPATIBILITY, DOCUMENT_COMPATIBILITY,IMAGE_COMPATIBILITY,CONTRACT_COMPATIBILITY,NOTES_COMPATIBILITY,GESTURE_COMPATIBILITY,RESULT_COMPATIBILITY,WINDOW_COMPATIBILITY,DRAG_COMPATIBILITY,DESKTOP_COMPATIBILITY,LOOKUP_COMPATIBILITY,EDITOR_COMPATIBILITY,KEYPLAN_COMPATIBILITY,GIT_READ_COMPATIBILITY,LINK_COMPATIBILITY,ACTIVE_TOOLS_COMPATIBILITY,SDK_PROFILES_COMPATIBILITY)
+
+
+def sdk_compatible_release(source, config):
+    marker = Path(config['dataDirectory']) / 'R4OS/Profiles/sdk-retirement.json'
+    if not marker.exists() and not marker.is_symlink():
+        return
+    if marker.is_symlink() or not marker.is_file() or marker.stat().st_size > 65536:
+        raise RuntimeError('SDK retirement compatibility metadata needs review.')
+    value = read_json(marker)
+    if value.get('schema') != 1 or value.get('sdkProfilesOnly') != 1:
+        raise RuntimeError('SDK retirement compatibility metadata is unsupported.')
+    target = read_json(Path(source) / 'shared/update-host.json')
+    if target.get('sdkProfilesOnly') != 1:
+        raise RuntimeError('This data uses SDK-owned profiles with retired legacy sources. The selected release cannot reactivate the old SDK system.')
 
 
 def now():
@@ -261,6 +276,7 @@ class Updater:
         run(['/usr/bin/systemctl', 'restart', STUDIO_UNIT], timeout=60)
 
     def activate(self, destination):
+        sdk_compatible_release(destination, self.config)
         previous = (BASE / 'current').resolve()
         manifest = read_json(destination / 'release.json')
         atomic_json(STATE / 'transaction.json', {'previous': str(previous), 'next': str(destination)}, 0o600)
@@ -270,6 +286,7 @@ class Updater:
             self.restart()
             self.healthy(manifest)
         except Exception as original:
+            sdk_compatible_release(previous, self.config)
             switch(previous)
             self.restart()
             try:
@@ -292,6 +309,7 @@ class Updater:
             previous = Path(value['previous']).resolve()
             if not previous.is_relative_to(BASE / 'releases') or not (previous / 'release.json').is_file():
                 raise RuntimeError('Invalid recovery release; host intervention is required.')
+            sdk_compatible_release(previous, self.config)
             self.change(phase='recovering', message='Recovering an interrupted update.')
             switch(previous)
             self.restart()
@@ -334,6 +352,7 @@ class Updater:
         if source.is_symlink() or not source.resolve().is_relative_to(build.resolve()):
             raise RuntimeError('Invalid build output directory.')
         version = read_json(source / 'shared/version.json')['version']
+        sdk_compatible_release(source, self.config)
         if not compatible(read_json(source / 'shared/update-host.json')):
             raise RuntimeError('This release requires host support or a data migration. Manual maintenance is required.')
         if version != latest['version'] or not (source / 'backend/dist/server.js').is_file() or not (source / 'frontend/dist/index.html').is_file():

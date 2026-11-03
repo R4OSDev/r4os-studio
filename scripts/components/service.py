@@ -98,19 +98,7 @@ class Manager:
         if self.state.get('schema') != 1:
             raise ValueError('Unsupported component profile schema.')
         if not self.profile.exists():
-            minimal = self.root / 'Profiles/minimal.json'
-            pins = json.loads(minimal.read_text()).get('components', {}) if minimal.is_file() else {}
-            for kind in KINDS:
-                if kind == 'r4upack': continue
-                installed = self.installed(kind)
-                if installed:
-                    pin = pins.get(kind, {})
-                    identity = Path(pin['path']).name if pin.get('path') else None
-                    preferred = next((value for value in installed if value['id'] == identity), None)
-                    preferred = preferred or self.external.get(kind)
-                    if kind in ('libraries', 'rust') and not pin:
-                        continue
-                    self.state['defaults'][kind] = preferred or installed[0]
+            # A fresh installation has no implicit SDK/compiler/component set.
             atomic(self.profile, self.state)
         from sdk_sets import resolve
         for selected in self.installed('sdk'):
@@ -153,10 +141,8 @@ class Manager:
                         record['binary'] = str(path / 'zig')
                     elif kind == 'rust':
                         if record.get('installationMethod') == 'r4os-sdk-profile':
-                            from rust_sdk import compiler_path
-                            binary = path / compiler_path(path)
-                        else:
-                            binary = path / 'bin/rustc'
+                            continue  # Retired SDK-specific installation; never executable inventory.
+                        binary = path / 'bin/rustc'
                         if not binary.is_file() or not record.get('fileHashes'):
                             continue
                         record['binary'] = str(binary)
@@ -232,9 +218,13 @@ class Manager:
 
     def progress(self, message, **values):
         with self.lock:
+            if self.job is None:
+                self.job = {'kind': 'sdk', 'action': 'maintenance', 'phase': 'working', 'error': None}
             self.job.update(message=message, **values)
 
     def start(self, kind, action, identity=None, older=False):
+        if kind in ('contract', 'libraries', 'zig', 'rust'):
+            raise ValueError('Select the SDK to provision its components, compiler and tools together.')
         if kind == 'sdk' and action == 'download':
             from sdk_selection import start
             return start(self, action, identity)
@@ -307,6 +297,8 @@ class Manager:
         if kind == 'sdk':
             from sdk_selection import start
             return start(self, 'default', identity)
+        if kind in ('contract', 'libraries', 'zig', 'rust'):
+            raise ValueError('SDK-owned component and compiler defaults cannot be selected independently.')
         if kind not in KINDS or not IDENTITY.fullmatch(identity):
             raise ValueError('Invalid component version.')
         with self.lock:
@@ -321,12 +313,6 @@ class Manager:
                 if self.state['defaults'].get(kind, {}).get('id') == identity:
                     return self.status()
                 raise ValueError('Select the SDK to change its Contract and Libraries together.')
-            if kind == 'rust':
-                if record.get('installationMethod') == 'r4os-sdk-profile':
-                    from rust_sdk import verify as verify_installation
-                else:
-                    from rust import verify_installation
-                verify_installation(self.root / FOLDERS[kind] / identity, record)
             defaults = copy.deepcopy(self.state['defaults'])
             defaults[kind] = record
             sdk = defaults.get('sdk', {})

@@ -8,7 +8,7 @@ import tempfile
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'components'))
 from common import read_url, download, unpack
-from rust_sdk import verify_files, command
+from sdk_host import command
 from sdk_metadata import capabilities_package
 
 

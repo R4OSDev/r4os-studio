@@ -8,5 +8,6 @@
   "developmentHostProtocol": 1,
   "developmentWorkerProtocol": 1,
   "developmentDataSchema": 1,
-  "agentToolCatalog": 1
+  "agentToolCatalog": 1,
+  "sdkProfilesOnly": 1
 }

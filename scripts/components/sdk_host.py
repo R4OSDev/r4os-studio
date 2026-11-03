@@ -50,3 +50,11 @@ def rust_check(runner, sdk, install, home, log=None):
     if value.get('installed') is not True or value.get('profile') != 'sdk':
         raise ValueError('The SDK Rust toolchain is not ready: ' + str(value.get('reason', 'missing receipt')))
     return value
+
+
+def command(arguments, env, cwd, timeout=120):
+    result = subprocess.run([str(value) for value in arguments], cwd=cwd, env=env,
+                            capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise ValueError('The selected SDK command failed: ' + (result.stderr or result.stdout)[-1600:])
+    return result.stdout.strip()

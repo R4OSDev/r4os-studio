@@ -1,9 +1,11 @@
 """SDK updates come from published releases, never unreleased package history."""
 import json
 import re
+import os
 
 from common import read_url
-from packages import git, record, source_repository
+from service import run
+from sdk_sets import resolve
 
 REPOSITORY = 'https://github.com/R4OSDev/r4os-sdk'
 API = 'https://api.github.com/repos/R4OSDev/r4os-sdk/releases'
@@ -47,34 +49,39 @@ class SdkReleases:
         releases = published()
         if not releases:
             return {'versions': [], 'latestId': None, 'hasMore': False, 'sdkReleases': {}}
-        repository = source_repository(manager, 'sdk', fetch_main=False)
         manager.progress('Reading published SDK release tags…')
-        # One remote tag read covers lightweight and annotated/peeled tags.
-        # target_commitish may be a moving branch and is never a source pin.
+        environment = {**os.environ, 'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null',
+                       'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '/bin/false'}
+        # Only refs are read. No retained SDK Git history can restore retired
+        # source revisions or become another package/SDK policy authority.
+        output = run(['/usr/bin/git', '-c', 'credential.helper=', '-c', 'core.hooksPath=/dev/null',
+                      '-c', 'protocol.file.allow=never', 'ls-remote', '--tags', REPOSITORY + '.git'], env=environment)
         refs = {}
-        for line in git(repository, 'ls-remote', '--tags', 'origin').splitlines():
+        for line in output.splitlines():
             match = re.fullmatch(r'([a-f0-9]{40})\s+refs/tags/(v\d+\.\d+\.\d+)(\^\{\})?', line)
             if match:
                 refs[match[2] + ('^{}' if match[3] else '')] = match[1]
         previous = manager.catalogs.get('sdk', {}).get('versions', [])
         limit = min(len(previous) + 10 if older else 10, 200)
         values, metadata = [], {}
-        for release in releases:
+        for release in releases[:limit + 1]:
             tag = release['tag']
             revision = refs.get(tag + '^{}') or refs.get(tag)
             if not revision:
                 raise ValueError('The published SDK release tag could not be resolved: ' + tag)
-            metadata[revision] = release
-            if len(values) >= limit + 1:
+            metadata[revision] = release.copy()
+            if not release['manifestPublished']:
+                metadata[revision]['reason'] = 'This release has no SDK package manifest.'
                 continue
-            # Releases on another branch may not be present in the main cache.
+            selected = {'id': revision, 'revision': revision, 'version': release['version'],
+                        'sourceUrl': REPOSITORY + '/tree/' + revision, 'sdkRelease': release}
             try:
-                git(repository, 'cat-file', '-e', revision + '^{commit}')
-            except ValueError:
-                git(repository, 'fetch', '--filter=blob:none', 'origin', 'refs/tags/' + tag)
-            value = record(repository, 'sdk', revision)
-            if value['version'] != release['version']:
-                raise ValueError('The SDK release tag contradicts its package version: ' + tag)
-            values.append(value)
+                resolved = resolve(manager, selected)
+            except (ValueError, KeyError, TypeError) as error:
+                metadata[revision]['reason'] = str(error)[:500]
+                continue
+            part = resolved['components']['sdk']
+            selected.update(archiveUrl=part['url'], sha256=part['sha256'])
+            values.append(selected)
         return {'versions': values[:limit], 'latestId': values[0]['id'] if values else None,
-                'hasMore': len(values) > limit, 'sdkReleases': metadata}
+                'hasMore': len(releases) > limit, 'sdkReleases': metadata}

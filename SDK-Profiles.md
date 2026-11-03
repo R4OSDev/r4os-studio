@@ -222,3 +222,33 @@ native build proof and binary SHA-256 are bound to its installation marker.
 `setup-r4os.py` now prepares a complete official SDK through the existing
 component host. It has no legacy archive/minimal-profile installer and does not
 change project pins or activate a different standard automatically.
+
+
+## Legacy retirement
+
+After a confirmed whole-project migration, `scripts/projects/retire-sdk.py`
+consumes an explicit path inventory. Its preview verifies file identities,
+ownership, counts and live process access. Deletion requires the installed SDK
+only release, the updater retirement guard, idle original hosts and every
+project's matching migrated pins. The durable original journal records each
+removed path and its byte/file counts. Resume observes completed deletions and
+never restores an old SDK archive or chooses an older toolchain.
+
+Retirement preserves current verified packages and their SDK-owned Recovery
+sources, user workspaces, original job/session records, confirmed artifacts,
+deployments and VM data. It removes obsolete SDK installations, matched export
+copies, SDK-specific Rust installations, old release/source archives and
+operational source caches. Historical source identities remain historical.
+Independent Contract/Libraries/compiler operations, the minimal bootstrap,
+DevKit/Rust SDK legacy loaders and retained SDK Git history are gone. Read-only
+SDK-derived component displays direct selection back to the SDK package.
+
+`Profiles/sdk-retirement.json` marks the required SDK-only updater capability.
+The narrow host maintenance `install-sdk-profile-compatibility.py` adds that
+guard to the existing reviewed updater without resetting configuration or VMs.
+Activation and startup recovery reject releases that would reactivate the old
+SDK system after retirement. A missing/corrupt new SDK is an explicit failure.
+
+The local migration manager also initializes its progress state during explicit
+maintenance. This corrects the first 0.9.33 operator attempt before any project
+pin publication; the same durable request completed with that correction.
