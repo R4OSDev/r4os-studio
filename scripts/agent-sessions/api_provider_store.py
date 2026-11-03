@@ -272,6 +272,9 @@ class ApiProviders:
                         or json.loads(previous['binding'])!=binding):
                     raise ProjectFault('The original API reservation has changed. It was not replaced.',409)
                 return
+            if value['kind']=='zai-coding-plan':
+                from zai_limits import require_admission
+                require_admission(db,selected,snapshot.get('model',''))
             db.execute("INSERT INTO leases VALUES (?,?,?,?,'reserved',?)",(run_id,value['id'],value['revision'],value['credentialRevision'],encode(binding)))
 
     def claim(self,run_id,owner_type,owner_id,sid,rid,snapshot,worker):
@@ -288,6 +291,9 @@ class ApiProviders:
                     or json.loads(row['binding'])!=binding):
                 raise ProjectFault('The original API admission is no longer available. No replacement request was started.',409)
             credential=None
+            if value['kind']=='zai-coding-plan':
+                from zai_limits import require_admission
+                require_admission(db,selected,snapshot.get('model',''))
             if selected['auth']=='bearer':
                 secret=db.execute('SELECT value FROM secrets.credentials WHERE provider_id=? AND revision=?',
                     (selected['id'],selected['credentialRevision'])).fetchone()

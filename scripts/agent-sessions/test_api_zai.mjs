@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { zaiHeaders, zaiRequest } from './api_zai.mjs';
+import { zaiHeaders, zaiRequest, zaiFailure } from './api_zai.mjs';
+
+test('native limit classes preserve reset evidence and never infer a window', () => {
+  assert.equal(zaiFailure({ error: { code: '1308' } }, 429).safeCode, 'zai_subscription_exhausted');
+  assert.equal(zaiFailure({ error: { code: 1302 } }, 429).safeCode, 'rate_limit_exceeded');
+  assert.equal(zaiFailure({ error: { code: '1305' } }, 429).safeCode, 'api_service_unavailable');
+  assert.equal(zaiFailure({ error: { code: '1311' } }).safeCode, 'zai_model_unavailable');
+  assert.equal(zaiFailure({ error: { code: '1310' } }).resetAt, null);
+  assert.equal(zaiFailure({ error: { code: 'unknown' } }), null);
+  assert.equal(zaiFailure({ error: { code: '1308', nextResetTime: 1793830124999 } }).resetAt, new Date(1793830124999).toISOString());
+  assert.equal(zaiFailure({ error: { code: '1310', next_flush_time: '2026-11-04T00:00:00' } }).resetAt, null);
+  assert.equal(zaiFailure({ error: { code: '1302' } }, 429, '30', 100000).resetAt, new Date(130000).toISOString());
+});
 import { chatRequest } from './api_chat.mjs';
 
 test('the verified stable OpenCode branch sets only its actual Z.AI identity and affinity headers', () => {

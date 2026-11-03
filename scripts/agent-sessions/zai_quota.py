@@ -129,6 +129,9 @@ class Quota(Catalogs):
             if error and previous and previous['config_revision']==binding['revision'] and previous['credential_revision']==binding['credentialRevision']:
                 value=json.loads(previous['data']) if previous['data'] else None;observed=previous['checked_at']
             account=scope(db,binding,create=True) if row['held'] else scope(db,binding)
+            if not error:
+                from zai_limits import refresh
+                refresh(db,binding,value,observed)
             db.execute('INSERT INTO zai_quota VALUES (?,?,?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET config_revision=excluded.config_revision,credential_revision=excluded.credential_revision,scope_id=excluded.scope_id,checked_at=excluded.checked_at,data=excluded.data,error=excluded.error',
                 (ident,binding['revision'],binding['credentialRevision'],account,observed,encode(value) if value is not None else None,error))
             # Original native response remains private in this completed request,

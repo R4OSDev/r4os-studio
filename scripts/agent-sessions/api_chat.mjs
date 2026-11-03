@@ -6,7 +6,8 @@ export { ChatFault } from './api_chat_fault.mjs';
 
 const MAX_TEXT = 196608, MAX_ARGS = 131072, MAX_EVENT = 524288, MAX_CALLS = 32;
 const PROVIDER_ERRORS = new Set(['context_length_exceeded', 'usage_limit_exceeded', 'insufficient_quota',
-  'rate_limit_exceeded', 'invalid_api_key', 'model_not_found', 'api_account_required', 'api_access_denied', 'api_service_unavailable']);
+  'rate_limit_exceeded', 'invalid_api_key', 'model_not_found', 'api_account_required', 'api_access_denied', 'api_service_unavailable',
+  'zai_subscription_exhausted','zai_subscription_expired','zai_model_unavailable','zai_subscription_restricted','zai_subscription_key_type']);
 export const CHAT_NATIVE_METADATA = Symbol('private native transport metadata');
 const bad = (code = 'chat_semantics_unavailable') => { throw new ChatFault(code); };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -205,7 +206,7 @@ export class ChatStream {
     let value; try { value = JSON.parse(raw); } catch { bad('chat_protocol_error'); }
     if (!object(value)) bad('chat_protocol_error');
     if (value.error) {
-      const code = object(value.error) ? this.observer.errorCode?.(value.error.code) ?? value.error.code : null;
+      const code = object(value.error) ? this.observer.errorCode?.(value.error.code, value) ?? value.error.code : null;
       bad(PROVIDER_ERRORS.has(code) ? code : 'provider_error');
     }
     this.observer.observe?.(value);

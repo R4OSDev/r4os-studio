@@ -54,7 +54,7 @@ class Worker:
         self.turn_requested = False
         self.uncertain_effect = False
         self.items = {}; self.lease = None
-        self.api_runtime=None;self.api_worker=None
+        self.api_runtime=None;self.api_worker=None;self.zai_watch=None
         self.generated_started=set();self.stop_task=None;self.interrupt_tasks={};self.closing=False
         self.sandbox = Sandbox(self)
         from skill_resources import SkillResources
@@ -90,7 +90,7 @@ class Worker:
             return  # A duplicate old boundary cannot finish the current continuation.
         if method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed' and not self.error:
             from provider_errors import describe
-            if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'],api=bool(self.config.get('apiProvider')))['text']
+            if isinstance(params['turn'].get('error'), dict): self.error = describe(params['turn']['error'],api=bool(self.config.get('apiProvider')),subscription=self.api_runtime)['text']
         self.usage_stats.notify(method,params)
         self.context.notify(method,params)
         if self.message_worker: self.message_worker.observe(method, params)
@@ -113,7 +113,7 @@ class Worker:
             self.done.set()
         elif method == 'error':
             from provider_errors import describe
-            description = describe(params.get('error'),api=bool(self.config.get('apiProvider'))); retrying = params.get('willRetry') is True
+            description = describe(params.get('error'),api=bool(self.config.get('apiProvider')),subscription=self.api_runtime); retrying = params.get('willRetry') is True
             event(self.store, self.session_id, self.run_id, 'notice', {'text': description['text'], 'retrying': retrying,
                 'providerError': {key: value for key, value in description.items() if key != 'text'}})
             if not retrying: self.error = description['text']
@@ -434,9 +434,13 @@ class Worker:
                         'origin':{'configRevision':self.config['apiProvider']['revision'],
                             'credentialRevision':self.config['apiProvider']['credentialRevision'],'engineSha256':self.config['engine']['sha256']}}
                 self.api_runtime=ApiRuntime(self.config['apiProvider'],self.config['model'],credential,
-                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'),reasoning=reasoning,client=self.config.get('apiZaiClient'))
+                    self.store.directory/self.session_id/'ApiTransport'/self.run_id,chat=self.config.get('apiChat'),reasoning=reasoning,client=self.config.get('apiZaiClient'),
+                    limit_observer=(lambda value:__import__('zai_limits').observe(self.manifest['providers'],self.config['apiProvider'],self.config['model'],self.run_id,value)) if self.config['apiProvider']['kind']=='zai-coding-plan' else None)
                 credential=None
                 await self.api_runtime.start()
+                if self.config['apiProvider']['kind']=='zai-coding-plan':
+                    from zai_limit_guard import watch
+                    self.zai_watch=asyncio.create_task(watch(self))
             from codex_runtime import binary as runtime_binary
             binary = runtime_binary(self.manifest['r4os'], self.config['engine'])
             from image_inputs import mounts as image_mounts,native_input
@@ -580,6 +584,8 @@ class Worker:
             finally:
                 if self.config.get('apiProvider'):
                     try:
+                        if self.zai_watch:
+                            self.zai_watch.cancel();await asyncio.gather(self.zai_watch,return_exceptions=True)
                         if self.api_runtime:await self.api_runtime.close()
                         if self.client and self.client.child and self.client.child.returncode is None:raise RuntimeError('Native process closure is unconfirmed.')
                         from api_provider_store import ApiProviders

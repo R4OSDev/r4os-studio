@@ -26,18 +26,25 @@ async def resolve_binding(binding):
         except ValueError:
             values=await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo,host,port,type=socket.SOCK_STREAM),10)
             addresses=[value[4][0] for value in values]
-        return resolved_addresses(checked,addresses)
+        validated=resolved_addresses(checked,addresses)
+        if binding['kind']=='zai-coding-plan':
+            # The global service publishes A and AAAA. Lexicographic ordering
+            # selected IPv6 first even on IPv4-only hosts. Choose a validated
+            # IPv4 address before any credential transport, with no HTTP retry.
+            validated.sort(key=lambda address:ipaddress.ip_address(address).version)
+        return validated
     except ProjectFault:raise
     except (OSError,ValueError,asyncio.TimeoutError):
         raise ProjectFault('The configured model endpoint could not be resolved safely.',503) from None
 
 
 class ApiRuntime:
-    def __init__(self,binding,model,credential,runtime,chat=None,reasoning=None,client=None):
+    def __init__(self,binding,model,credential,runtime,chat=None,reasoning=None,client=None,limit_observer=None):
         self.binding=dict(binding);self.model=model;self.credential=credential
         self.chat=chat
         self.reasoning=reasoning
         self.client=client
+        self.limit_observer=limit_observer;self.limits=[];self.subscription_blocked=False
         self.runtime=Path(runtime).absolute();self.child=None;self.port=None;self.key_file=None;self.key_inode=None
         identity(self.binding['id'])
         self.provider=provider_name(self.binding['id'])
@@ -83,6 +90,20 @@ class ApiRuntime:
             while raw:=await self.child.stdout.readline():
                 if len(raw)>8192:raise ValueError()
                 value=json.loads(raw)
+                if isinstance(value,dict) and value.get('event')=='zai-limit':
+                    if (self.binding['kind']!='zai-coding-plan' or set(value)!={'event','ordinal','code','resetAt','httpStatus'}
+                            or type(value['ordinal']) is not int or not 1<=value['ordinal']<=256
+                            or not isinstance(value['code'],str) or not value['code'].isdigit() or len(value['code'])!=4
+                            or value['httpStatus'] is not None and (type(value['httpStatus']) is not int or not 400<=value['httpStatus']<=599)):
+                        raise ValueError()
+                    if value['resetAt'] is not None:
+                        from datetime import datetime
+                        if not isinstance(value['resetAt'],str) or len(value['resetAt'])>40 or datetime.fromisoformat(value['resetAt']).tzinfo is None:raise ValueError()
+                    if len(self.limits)<256:self.limits.append(value)
+                    if self.limit_observer:
+                        try:await asyncio.to_thread(self.limit_observer,value)
+                        except Exception:self.origin_error=True
+                    continue
                 if isinstance(value,dict) and value.get('event')=='usage':
                     if len(self.usages)>=256:
                         # Long Goal runs can outlive the bounded observation
@@ -144,6 +165,11 @@ class ApiRuntime:
         for key,value in settings.items():pairs.append(key+'='+wire.dumps(value,separators=(',',':')))
         args+=['-c','model_provider='+wire.dumps(self.provider),'-c','model_providers.'+self.provider+'={'+','.join(pairs)+'}']
         return args
+
+    async def block_subscription(self):
+        if self.subscription_blocked or not self.child or self.child.returncode is not None:return
+        self.subscription_blocked=True
+        self.child.stdin.write(b'{"quotaBlocked":true}\n');await self.child.stdin.drain()
 
     async def close(self):
         if self.child:

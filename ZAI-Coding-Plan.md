@@ -57,3 +57,25 @@ invalidates the previous projection. Connections with the identical private
 credential share an opaque scope; different keys are never merged merely by
 name or plan tier. Z.AI still enforces account-wide limits across other tools.
 Native quota originals stay private and never change numeric Run/Lifetime usage.
+# Shared subscription limits (0.9.43)
+
+Only a successful native quota observation or an original model error can hold
+the associated subscription scope. Identical private keys share an opaque scope;
+different keys are not merged from account names or plan labels. A model-access
+error holds that selected model. Weekly exhaustion remains independent of a
+free 5-hour allowance. Missing monitoring or reset data never means zero usage
+or a new estimated reset.
+
+Admission and credential claim both check confirmed holds. A hold observed
+during a run blocks subsequent model calls while preserving the original
+in-flight response, confirmed tool receipts, Goal and queue contracts. A native
+reset or a fresh successful positive quota check can permit another explicit
+attempt; neither starts or resumes work. Native 1302/1305 overload/rate errors
+remain separate from 1308/1310 exhaustion, expired plans and model restrictions.
+The existing retry policy remains authoritative; no provider/model fallback or
+paid extra usage is enabled.
+
+The global endpoint publishes both address families. Z.AI selects a validated
+IPv4 address first on dual-stack DNS, before opening credential transport. The
+full DNS answer still passes the network-scope check; TLS retains api.z.ai,
+and one admitted request still makes exactly one HTTP attempt.

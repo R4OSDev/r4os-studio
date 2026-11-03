@@ -192,7 +192,7 @@ class ProviderRetry:
             with w.store.db: self.write('completed')
         elif method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed':
             from provider_errors import describe, transport_failure
-            turn = params['turn']; failure = describe(turn.get('error'), api=bool(w.config.get('apiProvider')))
+            turn = params['turn']; failure = describe(turn.get('error'), api=bool(w.config.get('apiProvider')),subscription=getattr(w,'api_runtime',None))
             if turn.get('id') != w.turn_id: return False
             error = turn.get('error')
             info = error.get('codexErrorInfo') if isinstance(error, dict) else None

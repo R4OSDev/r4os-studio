@@ -8,11 +8,12 @@ import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin
 import { serverProfile, localRequest } from './api_local.mjs';
 import { reportedUsage, ResponsesUsage } from './api_usage.mjs';
 import { ReasoningStore } from './api_reasoning_store.mjs';
-import { zaiHeaders, zaiRequest, ZAI_BASE } from './api_zai.mjs';
+import { zaiHeaders, zaiRequest, zaiFailure, ZAI_MESSAGES, ZAI_BASE } from './api_zai.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
 const ERROR_CODES = new Map([
+  ...Object.entries(ZAI_MESSAGES),
   ['provider_error', 'The configured model service could not complete this request.'],
   ['context_length_exceeded', 'The maximum model context length was exceeded.'],
   ['usage_limit_exceeded', 'The model usage limit was reached.'],
@@ -32,7 +33,7 @@ const ERROR_CODES = new Map([
   ['zai_reasoning_history_unavailable', 'The original Z.AI reasoning history is missing, changed or exceeds its private storage limit. Existing evidence was preserved.'],
 ]);
 const sockets = new Set(), upstreams = new Set();
-let server, stopped = false;
+let server, stopped = false, quotaBlocked = false;
 function stop() {
   if (stopped) return; stopped = true;
   for (const value of upstreams) value.destroy();
@@ -82,6 +83,22 @@ try {
   }
 } catch { process.stdout.write('{"error":"API transport binding unavailable"}\n'); process.exit(1); }
 
+// Only the owning host can write this private pipe. A hold affects subsequent
+// calls; the original in-flight response and confirmed tool effects survive.
+let control = '';
+process.stdin.on('data', chunk => {
+  control += chunk;
+  if (Buffer.byteLength(control) > 1024) { stop(); return; }
+  while (control.includes('\n')) {
+    const position = control.indexOf('\n'), line = control.slice(0, position); control = control.slice(position + 1);
+    try {
+      const value = JSON.parse(line);
+      if (binding.kind !== 'zai-coding-plan' || Object.keys(value).length !== 1 || value.quotaBlocked !== true) throw Error();
+      quotaBlocked = true;
+    } catch { stop(); return; }
+  }
+});
+
 function fail(response, status, code = 'provider_error') {
   if (response.destroyed) return;
   if (response.headersSent) { response.destroy(); return; }
@@ -96,6 +113,7 @@ function authenticated(value) {
 
 server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, requestTimeout: 300000 }, (request, response) => {
   if (stopped || !authenticated(request.headers.authorization)) { fail(response, 403); request.resume(); return; }
+  if (quotaBlocked) { fail(response, 429, 'zai_subscription_exhausted'); request.resume(); return; }
   if (request.method !== 'POST' || request.url !== '/v1/responses' || request.headers['content-encoding']
     || !String(request.headers['content-type'] ?? '').startsWith('application/json')) { fail(response, 400); request.resume(); return; }
   let size = 0; const chunks = [];
@@ -131,7 +149,19 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
     if (router) Object.assign(headers, routerHeaders(router, true));
     if (binding.kind === 'zai-coding-plan') Object.assign(headers, zaiHeaders(zaiClient));
     const origin = router || binding.kind === 'zai-coding-plan' ? new RouterOrigin(binding.model, router ?? {}, key) : null;
-    const ordinal = ++requestOrdinal; let originReported = false, usageReported = false;
+    const ordinal = ++requestOrdinal; let originReported = false, usageReported = false, limitReported = false;
+    const reportLimit = (value, status = null, retryAfter = null) => {
+      if (binding.kind !== 'zai-coding-plan') return null;
+      const native = zaiFailure(value, status, retryAfter);
+      if (!native) return null;
+      if (!limitReported && ordinal <= 256) {
+        limitReported = true;
+        const { code, resetAt, httpStatus } = native;
+        process.stdout.write(JSON.stringify({ event: 'zai-limit', ordinal, code, resetAt, httpStatus }) + '\n');
+      }
+      if (Object.hasOwn(ZAI_MESSAGES, native.safeCode)) quotaBlocked = true;
+      return native.safeCode;
+    };
     const reportUsage = (responseId, usage) => {
       if (usageReported || ordinal > 256) return; usageReported = true;
       process.stdout.write(JSON.stringify({ event: 'usage', ordinal, responseId, usage }) + '\n');
@@ -159,7 +189,11 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         incoming.on('data', chunk => { count += chunk.length; if (count <= MAX_ERROR) errors.push(chunk); else incoming.destroy(); });
         const finish = () => {
           let code = 'provider_error';
-          try { const name = JSON.parse(Buffer.concat(errors).toString('utf8')).error?.code; if (ERROR_CODES.has(name)) code = name; } catch { /* Safe generic failure. */ }
+          try {
+            const original = JSON.parse(Buffer.concat(errors).toString('utf8'));
+            const name = original.error?.code; if (ERROR_CODES.has(name)) code = name;
+            code = reportLimit(original, status, incoming.headers['retry-after']) ?? code;
+          } catch { /* Safe generic failure. */ }
           if (router) code = routerError(status) ?? code;
           fail(response, status >= 400 && status <= 599 ? status : 502, code);
         };
@@ -182,7 +216,15 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         if (emitted > MAX_RESPONSE) throw new ChatFault('chat_protocol_error');
         if (!response.write(encoded)) incoming.pause();
       };
-      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), ...(router ? { errorCode: routerError } : {}),
+      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => {
+        if (binding.kind === 'zai-coding-plan') {
+          for (const choice of value.choices ?? []) {
+            const code = reportLimit({ error: { code: choice.finish_reason }, nextResetTime: value.nextResetTime, next_flush_time: value.next_flush_time });
+            if (code) throw new ChatFault(code);
+          }
+        }
+        origin.observe(value);
+      }, ...(router ? { errorCode: routerError } : binding.kind === 'zai-coding-plan' ? { errorCode: (_code, value) => reportLimit(value) } : {}),
         reasoningError: binding.kind === 'zai-coding-plan' ? 'zai_reasoning_history_unavailable' : 'openrouter_reasoning_history_unavailable',
         ...(history ? { reasoning: (payload, parser, assistant, state) => history.capture(payload, parser, assistant, state) } : {}) } : {}) : null;
       const observedUsage = chat ? null : new ResponsesUsage(reportUsage);
