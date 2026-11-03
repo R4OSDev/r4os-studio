@@ -74,12 +74,13 @@ def validate(context, directory):
         tool = context['tool']
     run([tool, 'validate', '--manifest', directory / 'module.R4MF'], context['env'])
     catalog = json.loads(run([tool, 'catalog', '--root', directory], context['env']))
-    if len(catalog['entries']) != 1:
+    entries = [item for item in catalog['entries'] if item['path'] == str(directory / 'module.R4MF')]
+    if len(entries) != 1:
         raise ValueError('Expected one project manifest.')
     plan = json.loads(run([tool, 'plan', '--manifest', directory / 'module.R4MF'], context['env']))
     from sdk_profiles import bind_manifest
     resolved = bind_manifest(context, directory, plan['plan'])
-    contract_plan = run([tool, 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if catalog['entries'][0]['kind'] == 'R4X' else None
+    contract_plan = run([tool, 'contract-plan', '--manifest', directory / 'module.R4MF'], context['env']) if entries[0]['kind'] == 'R4X' else None
     return {'catalog': catalog, 'plan': plan, 'contractPlan': contract_plan, 'sdkProfile': resolved}
 
 

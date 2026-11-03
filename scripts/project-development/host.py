@@ -127,8 +127,11 @@ class Host:
         launch_budget = desktop_budget(store,vm)
         from project_ssh import supported as ssh_supported
         ssh_ready = ssh_supported()
+        from sdk_inputs import summary as sdk_input_summary
+        sdk_inputs = sdk_input_summary(store.workspace)
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image,
-                    'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget}),
+                    'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'sdkInputs': sdk_inputs}),
+            'sdkInputs': sdk_inputs,
             'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1,
             'editorShortcuts': {'version':1,'keys':['Ctrl+A'],'unsupported':['Ctrl+Home','Ctrl+End'],
                 'delivery':'semantic-codepoint','requiresNewDeployment':True},
@@ -139,7 +142,7 @@ class Host:
                 'commandLimitBytes':112, 'channelLimitBytes':LIMITS['outputBytes']//2, 'interactive':False}),
             'startVm': ({'available': True} if image and access and access['available'] else
                 {'available': False, 'reason': access['reason'] if access else 'Assign an available virtual machine.'}),
-            'build': {'available': True}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),
+            'build': {'available': True} if sdk_inputs['available'] else {'available': False, 'reason': sdk_inputs['reason']}, 'deploy': deploy, 'execute': ({'available': True} if match['available'] and deploy['available'] else {'available': False, 'reason': match.get('reason') or deploy.get('reason'), 'reasonCode': match.get('reasonCode')}),
             'capture': deploy, 'input': ({'available': True} if match['available'] and deploy['available'] and project['template'] in ('terminal', 'desktop') else {'available': False, 'reason': match.get('reason') or 'This module has no interactive target adapter.'}), 'profileId': match['profileId'],
             'runner': match, 'transport': {'available': bool(access and access['available']),
                 'ready': bool(access and access['ready']), 'reason': access['reason'] if access else 'Assign an available virtual machine.'},

@@ -19,6 +19,8 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
 export interface DevelopmentOptions {
+  sdkInputs?: { available: boolean; path: string; reason?: string; technical?: boolean;
+    configSha256?: string | null; additionalLibraries?: string[]; developmentProfile?: string | null };
   keyPlan?: { version: 1; maximumSteps: 32; maximumMilliseconds: 2000; requiresNewDeployment: true; heldKeys: false; heldModifiers: false; delivery: 'owned-event-queue' };
   editorShortcuts?: { version: 1; keys: ['Ctrl+A']; unsupported: ['Ctrl+Home', 'Ctrl+End']; delivery: 'semantic-codepoint'; requiresNewDeployment: true };
   windowControlVersion?: 1;
@@ -39,7 +41,7 @@ export interface DevelopmentOptions {
   assignedVm: { id: string; name: string; imageId: string; ready: boolean } | null;
 }
 
-export interface SourceFileIdentity { path: string; sha256: string; bytes: number }
+export interface SourceFileIdentity { path: string; sha256: string; bytes: number; executable?: boolean }
 export interface DevelopmentSource {
   id: string;
   sha256: string;
@@ -50,6 +52,8 @@ export interface DevelopmentSource {
 }
 export interface ResourceInputReport { schema: 1; available: boolean; stage: 'Registered' | 'Unknown'; reason?: string; sourceSha256?: string; manifestSha256?: string; entries?: { kind: 'icon' | 'help' | 'file'; index: number; name?: string; path: string; bytes: number; sha256: string }[]; unregisteredAssets?: string[]; unregisteredCount?: number; consumerVerified?: boolean; embeddedVerified?: boolean; guestVerified?: boolean }
 export interface DevelopmentArtifact {
+  sdkProfile?: { id: string; hashes: Record<string, string>; technical: boolean };
+  sdkInputs?: DevelopmentSdkInputs;
   resourceInputs?: ResourceInputReport;
   resourceInventory?: { schema: 1; available: boolean; stage: 'Embedded' | 'Unknown'; artifactSha256?: string; sourceSha256?: string; manifestSha256?: string; container?: string; reader?: string; inspectorSha256?: string; entries?: { kind: 'icon' | 'help' | 'file'; index: number; name?: string; path: string; bytes: number; sha256: string; sourceSha256: string; transform?: string }[]; embeddedVerified?: boolean; consumerVerified?: boolean; guestVerified: boolean; reason?: string };
   updateMetadata?: { available: boolean; reason?: string; identity?: import('./update-packages.js').NativeUpdateIdentity; payloadKind?: string; inspectorSha256?: string; adapterSha256?: string; sdkRevision?: string; manifest?: Record<string, unknown> };
@@ -189,6 +193,9 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  sdkInputs?: DevelopmentSdkInputs;
+  sdkResolution?: Record<string, unknown>;
+  sdkDevelopment?: { sha256: string; sdkSource: Record<string, unknown> } | null;
   sshCommand?: string;
   ssh?: {version:1;command:string;commandBytes:number;commandLimitBytes:number;channelLimitBytes:number;
     sshExitCode:number|null;commandExitCode:number|null;commandReturnConfirmed:boolean;sshClientEndConfirmed:boolean;
@@ -285,6 +292,13 @@ export interface DevelopmentExecutionEvidence {
   exitCode: number | null;
   exitStatusReason?: string;
   output: { state: 'complete' | 'incomplete' | 'unconfirmed'; reason: string; bytes?: number; sha256?: string };
+}
+export interface DevelopmentSdkInputs {
+  schema: 1;
+  technical: boolean;
+  configSha256: string | null;
+  additionalLibraries: { id: string; root: string; path?: string; commit?: string; tree?: { algorithm: string; files: string[]; sha256: string } }[];
+  development: { sdkRoot: string; contractRoot?: string; librariesRoot?: string; profile: string } | null;
 }
 export interface DevelopmentSettings {
   revision: number;

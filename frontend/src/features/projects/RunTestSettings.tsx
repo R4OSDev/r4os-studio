@@ -51,6 +51,12 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
   return <><form className="project-settings run-test-settings" aria-label="Run and test settings" onSubmit={(e) => void submit(e)}>
     <h2>Run &amp; Test</h2>
     {options && project && <dl className="development-target"><div><dt>Entry</dt><dd>Project module · {project.template}</dd></div><div><dt>Build</dt><dd>{project.language} · SDK {project.pins.sdk.version} · Zig {project.pins.zig.version}</dd></div><div><dt>Target</dt><dd>{options.assignedVm ? `${options.assignedVm.name} · R4OS ${options.assignedVm.imageId.replace('-full', '')}` : 'No VM assigned'}</dd></div></dl>}
+    {options?.sdkInputs && <section aria-label="SDK build inputs"><h3>SDK build inputs</h3>
+      <p>{options.sdkInputs.available ? options.sdkInputs.technical ? 'Technical Development build' : 'Regular SDK profile' : options.sdkInputs.reason}</p>
+      {!!options.sdkInputs.additionalLibraries?.length && <p>Additional libraries: {options.sdkInputs.additionalLibraries.join(', ')}</p>}
+      {options.sdkInputs.developmentProfile && <p>Selected Development receipt: <code>{options.sdkInputs.developmentProfile}</code></p>}
+      <p>Select own libraries or an explicitly created Development receipt in <code>{options.sdkInputs.path}</code> using Files. Builds freeze this selection with their sources. Changed Development sources require a new explicit receipt.</p>
+    </section>}
     {options && !options.execute.available && <p className="project-message">{options.execute.reason}</p>}
     {!draft && !error && <p role="status">Loading settings…</p>}
     {draft && <fieldset className="project-fields" disabled={busy}>

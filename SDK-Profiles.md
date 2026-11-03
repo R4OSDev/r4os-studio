@@ -21,8 +21,8 @@ not imply a guest compiler or a VM test adapter. SDK build profiles are also
 independent of Studio session tool permissions. Distribution profiles such as
 Slim, Full and Test do not select an application build policy.
 
-The first migration release adds the new package contract and metadata
-validation. Package provisioning, project migration, the final cutover and
+Package provisioning, project creation and isolated builds use the new package
+contract. Existing project migration, the final cutover and
 removal of old installed SDKs follow as separate roadmap steps. Historical
 receipts retain their original identities. New SDK selection never falls back
 to the retired `r4os-sdk-release`/DevKit metadata interface.
@@ -101,3 +101,90 @@ The optional Studio update-identity adapter uses the SDK's own host-tool profile
 and optimization policy. Agent tool namespaces expose the same SDK, Libraries,
 private matched tools and install root; a retired global Rustup alias does not
 choose a compiler.
+
+## Own libraries
+
+Select explicit additional inputs in `.studio/sdk-inputs.json` in the project
+workspace. Its schema is 1. `additionalLibraries` is an array of the SDK's own
+records, with workspace-relative `root` paths:
+
+```json
+{
+  "schema": 1,
+  "additionalLibraries": [
+    {"id": "my-library", "root": "vendor/my-library", "commit": "FULL_40_CHARACTER_GIT_COMMIT"}
+  ]
+}
+```
+
+A record may instead contain the SDK vendored `tree` identity: algorithm
+`r4os-files-sha256-lf-v1`, complete relative `files` and `sha256`. Use the selected
+SDK's `Get-R4SdkTreeDigest` helper to create that identity; Studio does not
+implement another source normalizer. An optional `path` selects a subdirectory
+inside the pinned root. Source paths must be real directories inside this
+workspace. Git inputs require standalone checkouts. Selected Git object/index
+metadata is captured without config, hooks, logs or alternate object stores;
+executable source modes are preserved. Symlinks, hardlinks, missing files and
+incomplete vendored inventories fail before compilation.
+
+Source pins do not add an import or a Cargo dependency. Declare those edges in
+the actual project manifests and Cargo lock, including all transitive sources.
+Rust path libraries inside the application directory must be excluded from the
+application's Cargo workspace: the SDK requires exactly one application member.
+For example, use `exclude = ["vendor/my-library"]` under `[workspace]`.
+Studio passes actual `DependencyRootsJson` as a JSON array string to the SDK.
+The native SDK validates reserved provider IDs, aliases and the real offline
+Cargo graph. A source pin alone never becomes evidence of a linked library.
+
+Build admission freezes the exact selection. Capture binds all bytes and source
+permissions to its receipt. A changed selection requires a new build request;
+repeating an old request does not select new sources. The compiler cache includes
+the complete snapshot identity. Run & Test shows the selected libraries and
+source mode; each job exposes its original native source resolution.
+
+## Explicit Development profiles
+
+Development uses a real standalone SDK Git checkout in this workspace and an
+explicitly generated native receipt. In the existing project Terminal namespace,
+for example:
+
+```sh
+pwsh -NoLogo -NoProfile -File /workspace/development/SDK/Tools/Profile.ps1 \
+  -Action Develop -SdkRoot /workspace/development/SDK \
+  -Profile r4os-rust-r4x-v2 -ContractRoot /contract -LibrariesRoot /libraries \
+  -Output /workspace/.studio/development-rust.json
+```
+
+Select the module's actual SDK profile ID. `Develop` requires a new output file;
+Studio never invokes it to repair a stale receipt. Select that receipt explicitly:
+
+```json
+{
+  "schema": 1,
+  "development": {
+    "sdkRoot": "development/SDK",
+    "profile": ".studio/development-rust.json"
+  }
+}
+```
+
+Optional `contractRoot` and `librariesRoot` are also workspace-relative. Without
+them the SDK package's exact `/contract` and `/libraries` sources are used.
+Generate the receipt with the same stable namespace roots used by Terminal and
+builds. If needed, run only the selected SDK's `Sync-ComponentPins.ps1` explicitly
+to update generated Zig component pins; no independent historical compiler or
+optimization choices are written by Studio.
+
+The SDK validates the selected receipt, current Git commit, source tree and all
+three profile hashes before compilation. A changed source, commit or profile
+fails as stale. Builds pass `DevelopmentProfile` and `Technical` explicitly and
+remain technical in the API, job card and artifact proof. The original receipt,
+its SHA-256, native resolution and actual compiler graph remain bound. Such
+artifacts receive no regular qualified update identity. Matched-tool source and
+profile checks still apply; selecting Development does not qualify arbitrary
+SDK/system-library changes or generate replacement tool exports.
+
+`R4OS_SDK_DEVELOPMENT_PROFILE` may name an explicitly selected receipt in direct
+SDK use. Studio build workers clear ambient environment and pass the selected
+receipt as a parameter. Neither its absence nor a validation failure activates
+the old SDK system.

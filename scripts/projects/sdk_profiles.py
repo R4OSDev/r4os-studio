@@ -158,8 +158,8 @@ def profile(root, projects, pinned=None, resolve_rust=True, verify_components=Tr
     return result
 
 
-def bind_manifest(context, directory, facts):
-    """Record the profile selected by SDK facts, then ask the SDK to resolve it."""
+def manifest_profile(context, facts):
+    """Read the SDK's manifest plan; Studio has no independent profile choice."""
     manifest = context['package']['manifest']
     if facts['language'] == 'Rust':
         ident = facts['rust_project']['profile']
@@ -175,6 +175,12 @@ def bind_manifest(context, directory, facts):
     expected = context['pins']['sdkProfile'].get('id')
     if expected and expected != ident:
         raise ValueError('The manifest selects a different SDK profile. Explicitly update its project binding.')
+    return ident
+
+
+def bind_manifest(context, directory, facts):
+    """Record the profile selected by SDK facts, then ask the SDK to resolve it."""
+    ident = manifest_profile(context, facts)
     raw = sdk_host.invoke(context['runner'], context['paths']['sdk'], 'Profile.ps1',
         ['-Action', 'Resolve', '-Profile', ident, '-ContractRoot', context['paths']['contract'],
          '-LibrariesRoot', context['paths']['libraries']], context['cache'])

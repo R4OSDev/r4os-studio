@@ -12,13 +12,18 @@ from layout import save, sync
 EXCLUDED = {'.git', '.zig-cache', 'zig-out', 'zig-pkg', 'target', 'build', '.R4OSRust', 'node_modules'}
 
 
-def signature(info): return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+def signature(info): return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_mode)
 
 
-def inventory(root):
+def inventory(root, inputs=None):
+    from sdk_inputs import read, git_roots, git_metadata
+    roots = git_roots(inputs if inputs is not None else read(root))
     result = {}; total = 0; folders = []
     for base, directories, files, fd in os.fwalk(root, follow_symlinks=False):
-        directories[:] = sorted(name for name in directories if name not in EXCLUDED)
+        def included(name):
+            path = str((Path(base) / name).relative_to(root))
+            return (name not in EXCLUDED or name == '.git') and git_metadata(path, roots)
+        directories[:] = sorted(name for name in directories if included(name))
         for name in directories:
             if not stat.S_ISDIR(os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode):
                 raise DevelopmentFault('Linked project directories cannot be captured.')
@@ -28,6 +33,8 @@ def inventory(root):
             folders.append(path)
         for name in sorted(files):
             path = relative(str((Path(base) / name).relative_to(root)))
+            if not git_metadata(path, roots):
+                continue
             if len(path.encode()) > 240: raise DevelopmentFault('A project input path exceeds 240 UTF-8 bytes.')
             info = os.stat(name, dir_fd=fd, follow_symlinks=False)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
@@ -41,7 +48,11 @@ def inventory(root):
 
 
 def capture(store, job):
-    before, directories = inventory(store.workspace)
+    from sdk_inputs import read, verify_inventory
+    inputs = read(store.workspace)
+    if job.get('sdkInputs') != inputs:
+        raise DevelopmentFault('SDK input selection changed after this build was accepted. Start a new build explicitly.')
+    before, directories = inventory(store.workspace, inputs)
     parent = folder(store.root / 'Inputs'); final = parent / job['id']; temp = parent / (job['id'] + '.new')
     if final.exists() or temp.exists(): raise DevelopmentFault('This build input already exists; it was preserved.')
     folder(temp); files = []
@@ -69,11 +80,13 @@ def capture(store, job):
                         dst.flush(); os.fsync(dst.fileno())
                     if signature(os.fstat(src.fileno())) != expected or target.stat().st_size != expected[2]:
                         raise DevelopmentFault('Project changed while its build input was captured. Retry explicitly.')
-                    files.append({'path': path, 'bytes': expected[2], 'sha256': checksum.hexdigest()})
-                    target.chmod(0o400)
+                    executable = bool(expected[5] & 0o111)
+                    files.append({'path': path, 'bytes': expected[2], 'sha256': checksum.hexdigest(), 'executable': executable})
+                    target.chmod(0o500 if executable else 0o400)
             finally:
                 for fd in reversed(descriptors): os.close(fd)
-        if inventory(store.workspace) != (before, directories): raise DevelopmentFault('Project changed while its build input was captured. Retry explicitly.')
+        if inventory(store.workspace, inputs) != (before, directories): raise DevelopmentFault('Project changed while its build input was captured. Retry explicitly.')
+        verify_inventory(inputs, files)
         value = {'id': job['id'], 'sha256': hash_value({'files': files, 'directories': directories}),
                  'manifestSha256': next(item['sha256'] for item in files if item['path'] == 'module.R4MF'),
                  'files': files, 'directories': directories, 'pins': job['pins']}

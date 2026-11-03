@@ -61,8 +61,9 @@ def manifest(context, source, language, template, expected_name):
         return result.stdout
     run('validate', '--manifest', '/workspace/module.R4MF')
     declared = json.loads(run('catalog', '--root', '/workspace'))
-    if len(declared.get('entries', [])) != 1: raise ProjectFault('Import supports exactly one R4OS app manifest at the repository root.', 409)
-    entry = declared['entries'][0]; module = entry.get('name')
+    entries = [item for item in declared.get('entries', []) if item.get('path') == '/workspace/module.R4MF']
+    if len(entries) != 1: raise ProjectFault('Import requires one R4OS project manifest at the repository root.', 409)
+    entry = entries[0]; module = entry.get('name')
     if not isinstance(module, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,95}', module): raise ProjectFault('Unsupported imported module identity.', 409)
     expected_kind = {'library': 'R4L', 'driver': 'R4D', 'protocol': 'R4P'}.get(template, 'R4X')
     if entry.get('language') != language or entry.get('kind') != expected_kind or (expected_name is not None and module != expected_name):

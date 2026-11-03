@@ -170,6 +170,9 @@ class Jobs:
                 'source': None, 'projectRevision': self.project['revision'],
                 'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
                 'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
+            if kind == 'build':
+                from sdk_inputs import read
+                job['sdkInputs'] = read(self.workspace)
             if kind == 'ssh': job['sshCommand'] = request['command']
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
