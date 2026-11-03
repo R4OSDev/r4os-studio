@@ -114,7 +114,7 @@ class Execution:
         from vm_worker import guard
         authorization = None
         if message.get('owner') is not None:
-            from authorization import authorize
+            from authorization import authorize, permits
             authorization = authorize(self.store, message['owner'], message['operation'], message['peerPid'], self.store.get(self.job['id']))
         operation = message.get('operation')
         if self.completion and operation != 'complete_check': raise DevelopmentFault('This execution is completing its checks; no further input or capture is admitted.')
@@ -220,8 +220,8 @@ class Execution:
                 elif kind == 'key':
                     shortcut = value['key'] in SHORTCUTS
                     if shortcut:
-                        if authorization and authorization['engine']['profile'] not in ('studio-tools-v20','studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23'):
-                            raise DevelopmentFault('This conversation retains its original key contract. Use an editor-shortcut-capable session.',403)
+                        if authorization and not permits(authorization, self.store.id, 'send_vm_input'):
+                            raise DevelopmentFault('Editor shortcuts require this project run\'s explicit input permission.',403)
                         if (deployment.get('helperCapabilities',{}).get('editorShortcutVersion') != 1
                                 or request.get('frameBindingVersion') != 1 or repeat != 1):
                             raise DevelopmentFault('Ctrl+A requires a new editor-shortcut-v1 helper, a focused frame and repeat=1.',400)

@@ -47,7 +47,7 @@ class AuthorLease:
         config, worker = json.loads(row[2]), json.loads(row[3] or '{}')
         parent = os.getppid()
         birth = (Path('/proc') / str(parent) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
-        if (config.get('owner') != {'type': 'skill', 'id': ident} or config.get('engine', {}).get('profile') != 'studio-skill-tools-v2'
+        if (config.get('owner') != {'type': 'skill', 'id': ident}
                 or config.get('revision') != row[4] or config.get('permissions', {}).get('studio.' + self.tool) is not True
                 or worker.get('pid') != parent or worker.get('birth') != birth):
             raise packages.SkillFault('The author tool permission or worker binding changed.', 403)

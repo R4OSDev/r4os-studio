@@ -55,10 +55,10 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
         parent = os.getppid(); birth = (Path('/proc') / str(parent) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
         fingerprint = hashlib.sha256(encode({'tool': 'studio_' + tool, 'arguments': arguments}).encode()).hexdigest()
         if (config.get('owner') != {'type': 'project', 'id': project_id}
-                or config.get('roadmapEnabled') is not True or config.get('engine', {}).get('profile') not in ('studio-tools-v8', 'studio-tools-v9', 'studio-tools-v10','studio-tools-v11','studio-tools-v12','studio-tools-v13','studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23')
+                or config.get('roadmapEnabled') is not True
                 or config.get('revision') != row[4] or worker.get('pid') != parent or worker.get('birth') != birth
                 or worker.get('release') != release or row[5] != 'studio_' + tool or row[6] != fingerprint):
-            raise ProjectFault('Roadmap permission, profile, worker or original call binding changed.', 403)
+            raise ProjectFault('Roadmap permission, worker or original call binding changed.', 403)
         def contexts():
             from human_context import contexts as human_contexts
             yield from human_contexts(db,session_id,run_id,{'type':'project','id':project_id})
@@ -168,7 +168,7 @@ def main():
     from tool_catalog import validate_arguments
     if request['tool'] not in ('read_roadmap', 'update_roadmap', 'cleanup_roadmap'):
         raise ProjectFault('Unsupported Roadmap tool.', 400)
-    validate_arguments(request['tool'], request['arguments'], 'studio-tools-v8')
+    validate_arguments(request['tool'], request['arguments'], 'project')
     bound = {'tool': request['tool'], 'call_id': request['callId'], 'arguments': request['arguments']}
     with authorize(projects, project_id, session_id, run_id, descriptor, release, **bound) as actor:
         def check():

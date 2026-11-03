@@ -1,3 +1,17 @@
+## Roadmap and remaining sidecar profile checks (0.9.24)
+
+The Roadmap sidecar now uses the actual project owner, enabled Roadmap setting,
+original tool intent, inherited workspace lease and exact worker identity.
+A leftover list of former profile names had denied Roadmap reads in every new
+conversation even though its current tool catalog allowed them. Skill authoring
+and GUI window, gesture, drag interrupt, key-plan and editor-shortcut paths also
+use their explicit frozen owner/permissions instead of obsolete profile names.
+Native helper capabilities, own-process/window grants and fresh frame checks
+remain required. Historical receipts and active workers keep their original
+bindings. The fix applies on the next normal run in the same session; it does
+not require another conversation or replay a failed call. No tests or guest
+runs were executed. See [Active-Tools.md](Active-Tools.md).
+
 ## Bounded execution mailbox cleanup (0.9.23)
 
 Closing an execution now resolves queued and already dequeued action responses,

@@ -1,5 +1,18 @@
 # Current tools in existing conversations
 
+Studio 0.9.24 removes remaining profile-name conditions in delegated Roadmap
+and skill-author sidecars and in GUI window/input operations. New sessions have
+`toolScope` rather than `engine.profile`; the Roadmap sidecar's old v8-v23 list
+therefore denied every new session before reading the shared roadmap. It now
+checks the exact original project, enabled setting, revision, tool/argument hash,
+worker PID/birth/release and inherited workspace lease without that list.
+Skill authoring retains its skill/worker/permission checks. GUI paths use the
+frozen project owner and explicit input or window/run permissions; actual guest
+helper capabilities, native grants, process/frame identity and bounded inputs
+remain required. Existing sessions can use the correction on their next normal
+run. An active worker keeps its original release; no old call is replayed and
+no native history, saved switch or component pin is rewritten.
+
 Studio 0.9.14 fixes a missing `write_json` import in the Codex worker. In 0.9.13,
 the catalog comparison could succeed and then fail while saving the per-run
 `tool-catalog.json` receipt. The generic error incorrectly attributed that

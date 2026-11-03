@@ -38,10 +38,10 @@ async def execute(execution, message, request, state, control, lease, process, a
     """One admitted gesture, observed by polling its ID; never resubmit its plan."""
     from vm_worker import guard
     from observation import capture
-    from authorization import authorize
+    from authorization import authorize, permits
     store = execution.store; job = store.get(execution.job['id']); value = message['input']
-    if authorization and authorization['engine']['profile'] not in ('studio-tools-v14','studio-tools-v15','studio-tools-v16','studio-tools-v17','studio-tools-v18', 'studio-tools-v19', 'studio-tools-v20', 'studio-tools-v21', 'studio-tools-v22', 'studio-tools-v23'):
-        raise DevelopmentFault('This conversation retains its original input schema. A new gesture-capable session is required.')
+    if authorization and not permits(authorization, store.id, 'send_vm_input'):
+        raise DevelopmentFault('Gestures require this project run\'s explicit input permission.', 403)
     deployment = store.deployment(job['deploymentId'])
     if deployment.get('helperCapabilities', {}).get('gestureVersion') != 1 or request.get('frameBindingVersion') != 1:
         raise DevelopmentFault('Deploy again with a gesture-v1 helper and capture its focused window before using gestures.')

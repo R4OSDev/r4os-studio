@@ -16,6 +16,13 @@ PERMISSIONS['session_jobs'] = 'read_development_job'
 
 PERMISSIONS.update(UPDATE_PERMISSIONS)
 
+
+def permits(config, project_id, *tools):
+    """Frozen owner and explicit permissions, independent of former profiles."""
+    return (isinstance(config, dict) and config.get('owner') == {'type': 'project', 'id': project_id}
+        and all(config.get('permissions', {}).get('studio.' + tool) is True for tool in tools))
+
+
 def authorize(store, owner, operation, peer_pid, job=None, stopping=False, recovery_action=None):
     if operation not in (*PERMISSIONS, 'options', 'settings', 'cancel_owned'):
         raise DevelopmentFault('This operation is not available to agent tools.', 403)
