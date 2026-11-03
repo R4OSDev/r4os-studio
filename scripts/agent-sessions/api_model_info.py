@@ -80,7 +80,7 @@ def normalized(value):
         **({'reasoning':facts} if facts is not None else {})}
 
 
-def present(value,protocol):
+def present(value,protocol,kind=None):
     if not isinstance(value,dict):raise ProjectFault('Invalid stored API model metadata.',503)
     declared=normalized({k:v for k,v in value.items() if k not in ('source','reasoningMetadata')})
     effective=copy.deepcopy(declared['capabilities']);reasons=[]
@@ -88,7 +88,8 @@ def present(value,protocol):
         if declared['capabilities'][key]!='supported':reasons.append({'text':'Text input','functionTools':'Function tools','streaming':'Streaming'}[key]+' is not confirmed.')
     if not declared['efforts'] or declared['defaultEffort'] is None:reasons.append('The reasoning/default-effort contract is not confirmed.')
     if protocol=='chat-completions' and declared['contextWindow'] is None:reasons.append('Chat Completions needs a confirmed context window.')
-    for key in ('imageInput','webSearch','imageGeneration'):effective[key]='unsupported'
+    for key in ('imageInput','webSearch','imageGeneration'):
+        if key!='imageInput' or kind!='zai-coding-plan':effective[key]='unsupported'
     # GOAL is a Studio/native lifecycle over the existing function contract,
     # not a hosted provider endpoint or a model capability guessed from its ID.
     effective['goals']='supported' if not reasons else 'unsupported'
@@ -103,8 +104,8 @@ def present(value,protocol):
         **({'reasoningMetadata':copy.deepcopy(metadata)} if metadata else {})}
 
 
-def native(value,protocol):
-    public=present(value,protocol)
+def native(value,protocol,kind=None):
+    public=present(value,protocol,kind)
     if not public['available']:return None
     window=public['contextWindow']
     # Required fields follow the public pinned ModelInfo constructor, with
@@ -131,4 +132,8 @@ def native(value,protocol):
         'reasoning':'none' if public['declaredCapabilities']['reasoning']=='unsupported' else 'effort','functionTools':True,'streaming':True}
     if protocol=='chat-completions' and 'reasoning' in public:
         result['studio_chat'].update(schema=2,reasoningFacts=public['reasoning'],efforts=public['efforts'])
+    if kind=='zai-coding-plan':
+        image=public['capabilities']['imageInput']=='supported'
+        result['input_modalities']=['text','image'] if image else ['text']
+        result['studio_chat'].update(provider=kind,imageInput=image,maxOutputTokens=public['maxOutputTokens'])
     return result

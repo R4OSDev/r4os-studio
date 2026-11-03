@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-03T22:09:12.388047+00:00",
+  "note": "Documented conservative decimal 1M/128K bounds; not account entitlement or an allowlist. Additional exact manual models are supported.",
+  "models": [
+    {
+      "url": "https://docs.z.ai/guides/llm/glm-5.3",
+      "facts": {
+        "id": "glm-5.3",
+        "name": "GLM-5.3",
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "capabilities": {
+          "text": "supported",
+          "functionTools": "supported",
+          "streaming": "supported",
+          "reasoning": "supported",
+          "imageInput": "unsupported",
+          "webSearch": "unsupported",
+          "imageGeneration": "unsupported",
+          "goals": "unknown"
+        },
+        "reasoning": {
+          "mandatory": true,
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ],
+          "default_effort": "max",
+          "default_enabled": true
+        },
+        "efforts": [
+          "",
+          "low",
+          "high",
+          "max"
+        ],
+        "defaultEffort": "max"
+      }
+    },
+    {
+      "url": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+      "facts": {
+        "id": "glm-5.3-flash",
+        "name": "GLM-5.3-FLASH",
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "capabilities": {
+          "text": "supported",
+          "functionTools": "supported",
+          "streaming": "supported",
+          "reasoning": "supported",
+          "imageInput": "supported",
+          "webSearch": "unsupported",
+          "imageGeneration": "unsupported",
+          "goals": "unknown"
+        },
+        "reasoning": {
+          "mandatory": true,
+          "supported_efforts": [
+            "low",
+            "high",
+            "max"
+          ],
+          "default_effort": "max",
+          "default_enabled": true
+        },
+        "efforts": [
+          "",
+          "low",
+          "high",
+          "max"
+        ],
+        "defaultEffort": "max"
+      }
+    }
+  ]
+}

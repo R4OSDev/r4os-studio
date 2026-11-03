@@ -123,7 +123,8 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
                 catalog={'models':[]};models=[];reason='This API model catalog is unavailable. Review this connection in System settings.'
             if catalog['models']:
                 models=[{'id':m['id'],'name':m['name'],'efforts':m['efforts'],'defaultEffort':m['defaultEffort'] or '',
-                    'fastModeAvailable':False,'imageInputs':'unsupported','inputModalities':['text'],
+                    'fastModeAvailable':False,'imageInputs':m['capabilities']['imageInput'],
+                    'inputModalities':['text','image'] if m['capabilities']['imageInput']=='supported' else ['text'],
                     'available':m['available'] and not catalog['stale'],
                     'unavailableReasons':['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
                     'contextWindow':m['contextWindow'],'source':m['source']} for m in catalog['models']]

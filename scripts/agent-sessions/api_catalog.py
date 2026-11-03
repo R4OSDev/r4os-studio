@@ -29,14 +29,18 @@ class Catalogs:
 
     def raw(self,db,provider):
         row=db.execute('SELECT * FROM model_catalogs WHERE provider_id=?',(provider['id'],)).fetchone() if has(db,'model_catalogs') else None
-        return (row['revision'],json.loads(row['data'])) if row else (0,{'configRevision':provider['revision'],'models':[],
+        models=[]
+        if not row and provider['kind']=='zai-coding-plan':
+            from zai_models import documented
+            models=documented()
+        return (row['revision'],json.loads(row['data'])) if row else (0,{'configRevision':provider['revision'],'models':models,
             'checkedAt':None,'checkedConfigRevision':None,'checkedCredentialRevision':None,'truncated':False})
 
     def public_model(self,provider,value):
-        result=present(value,provider['protocol'])
+        result=present(value,provider['protocol'],provider['kind'])
         from api_server import unavailable as server_unavailable
         result['unavailableReasons']+=server_unavailable(provider,value)
-        if provider['kind']!='openrouter' and 'reasoning' in value:
+        if provider['kind'] not in ('openrouter','zai-coding-plan') and 'reasoning' in value:
             result['unavailableReasons'].append('This documented reasoning-history contract requires the OpenRouter Chat Completions adapter.')
         if provider['kind']=='openrouter':
             from openrouter_policy import unavailable
@@ -57,10 +61,10 @@ class Catalogs:
     def native_models(self,ident):
         with self.api.connect() as db:
             provider=self.api.current(db,ident)
-            if not has(db,'model_catalogs') or not db.execute('SELECT 1 FROM model_catalogs WHERE provider_id=?',(ident,)).fetchone():return None
+            if provider['kind']!='zai-coding-plan' and (not has(db,'model_catalogs') or not db.execute('SELECT 1 FROM model_catalogs WHERE provider_id=?',(ident,)).fetchone()):return None
             _,data=self.raw(db,provider)
             if data['configRevision']!=provider['revision']:return []
-            return [model for value in data['models'] if self.public_model(provider,value)['available'] and (model:=native(value,provider['protocol'])) is not None]
+            return [model for value in data['models'] if self.public_model(provider,value)['available'] and (model:=native(value,provider['protocol'],provider['kind'])) is not None]
 
     def request(self,db,ident,rid):
         row=db.execute('SELECT * FROM catalog_requests WHERE id=? AND provider_id=?',(identity(rid),identity(ident))).fetchone() if has(db,'catalog_requests') else None
@@ -168,6 +172,10 @@ class Catalogs:
                     value=normalized(entry)
                     if value['id'] in seen:raise ProjectFault('The model metadata contains duplicate IDs.',503)
                     seen.add(value['id']);value['source']={'kind':'metadata','recordedAt':now(),'url':binding['baseUrl']+'/models'};values.append(value)
+                    if provider['kind']=='zai-coding-plan':
+                        from zai_models import documented
+                        source=next((v['source'] for v in documented() if v['id']==value['id']),None)
+                        if source:value['source']=source
                 # Explicit model contracts survive a metadata refresh, including
                 # exact manual IDs not advertised by this metadata endpoint.
                 manual=[v for v in catalog['models'] if catalog['configRevision']==provider['revision'] and v.get('source',{}).get('kind')=='manual']

@@ -8,7 +8,7 @@ import { routerSettings, routerHeaders, routerRequest, routerError, RouterOrigin
 import { serverProfile, localRequest } from './api_local.mjs';
 import { reportedUsage, ResponsesUsage } from './api_usage.mjs';
 import { ReasoningStore } from './api_reasoning_store.mjs';
-import { zaiHeaders, ZAI_BASE } from './api_zai.mjs';
+import { zaiHeaders, zaiRequest, ZAI_BASE } from './api_zai.mjs';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024, MAX_ERROR = 65536;
 const MODEL_REQUEST_DEADLINE = 900000;
@@ -29,6 +29,7 @@ const ERROR_CODES = new Map([
   ['api_service_unavailable', 'The API model service is temporarily unavailable.'],
   ['api_server_semantics_unavailable', 'The configured server adapter cannot preserve this model operation.'],
   ['openrouter_reasoning_history_unavailable', 'The original OpenRouter reasoning history is missing, changed or exceeds its private storage limit. Existing evidence was preserved.'],
+  ['zai_reasoning_history_unavailable', 'The original Z.AI reasoning history is missing, changed or exceeds its private storage limit. Existing evidence was preserved.'],
 ]);
 const sockets = new Set(), upstreams = new Set();
 let server, stopped = false;
@@ -76,6 +77,7 @@ try {
     if (binding.kind === 'zai-coding-plan') {
       if (binding.baseUrl !== ZAI_BASE || binding.protocol !== 'chat-completions' || binding.auth !== 'bearer' || profile !== 'custom') throw Error();
       zaiHeaders(zaiClient);
+      if (chatPolicy?.schema === 2) history = new ReasoningStore(reasoningStore);
     }
   }
 } catch { process.stdout.write('{"error":"API transport binding unavailable"}\n'); process.exit(1); }
@@ -114,6 +116,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
       if (binding.protocol === 'chat-completions') {
         chat = profile === 'custom' ? chatRequest(value, chatPolicy, history) : localRequest(value, profile, binding.protocol);
         if (router) chat = routerRequest(chat, router, chatPolicy);
+        if (binding.kind === 'zai-coding-plan') chat = zaiRequest(chat, chatPolicy);
         body = Buffer.from(JSON.stringify(chat));
         if (body.length > MAX_REQUEST) throw new ChatFault('chat_semantics_unavailable');
       } else if (profile !== 'custom') {
@@ -127,7 +130,7 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
     if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
     if (router) Object.assign(headers, routerHeaders(router, true));
     if (binding.kind === 'zai-coding-plan') Object.assign(headers, zaiHeaders(zaiClient));
-    const origin = router ? new RouterOrigin(binding.model, router, key) : null;
+    const origin = router || binding.kind === 'zai-coding-plan' ? new RouterOrigin(binding.model, router ?? {}, key) : null;
     const ordinal = ++requestOrdinal; let originReported = false, usageReported = false;
     const reportUsage = (responseId, usage) => {
       if (usageReported || ordinal > 256) return; usageReported = true;
@@ -179,7 +182,8 @@ server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, reques
         if (emitted > MAX_RESPONSE) throw new ChatFault('chat_protocol_error');
         if (!response.write(encoded)) incoming.pause();
       };
-      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), errorCode: routerError,
+      const parser = chat ? new ChatStream(chat, emit, origin ? { observe: value => origin.observe(value), ...(router ? { errorCode: routerError } : {}),
+        reasoningError: binding.kind === 'zai-coding-plan' ? 'zai_reasoning_history_unavailable' : 'openrouter_reasoning_history_unavailable',
         ...(history ? { reasoning: (payload, parser, assistant, state) => history.capture(payload, parser, assistant, state) } : {}) } : {}) : null;
       const observedUsage = chat ? null : new ResponsesUsage(reportUsage);
       const broken = error => {

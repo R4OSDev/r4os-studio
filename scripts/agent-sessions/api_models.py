@@ -65,6 +65,11 @@ def chat_policy(model,effort):
     schema=policy.get('schema') if isinstance(policy,dict) else None
     fields={'schema','systemRole','reasoning','functionTools','streaming'}
     if schema==2:fields|={'reasoningFacts','efforts'}
+    if isinstance(policy,dict) and policy.get('provider')=='zai-coding-plan':
+        fields|={'provider','imageInput','maxOutputTokens'}
+        if type(policy.get('imageInput')) is not bool or policy.get('maxOutputTokens') is not None and (
+                type(policy['maxOutputTokens']) is not int or policy['maxOutputTokens']<=0):
+            raise ProjectFault('The original Z.AI model capabilities are unavailable.',409)
     if (not isinstance(policy,dict) or set(policy)!=fields
             or type(schema) is not int or schema not in (1,2) or policy['systemRole'] not in ('system','developer')
             or policy['reasoning'] not in ('none','effort') or policy['functionTools'] is not True or policy['streaming'] is not True

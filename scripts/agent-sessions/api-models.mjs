@@ -4,6 +4,8 @@ import https from 'node:https';
 import net from 'node:net';
 import { modelCatalog } from './api_model_metadata.mjs';
 import { routerSettings, routerHeaders } from './api_openrouter.mjs';
+import { readFileSync } from 'node:fs';
+import { ZAI_BASE } from './api_zai.mjs';
 
 const MAX_BODY = 4 * 1024 * 1024;
 let request, socket, finished = false;
@@ -37,12 +39,14 @@ try {
     || !Array.isArray(addresses) || !addresses.length || addresses.length > 64 || addresses.some(value => !net.isIP(value))) throw Error();
   const literal = target.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(literal) && !addresses.includes(literal)) throw Error();
+  if (binding.kind === 'zai-coding-plan' && (binding.baseUrl !== ZAI_BASE || binding.auth !== 'bearer' || binding.protocol !== 'chat-completions')) throw Error();
 } catch { fail('binding'); }
 
 const host = target.hostname.replace(/^\[|\]$/g, ''), address = addresses[0];
 const headers = { Accept: 'application/json', 'Accept-Encoding': 'identity', 'User-Agent': 'R4OS-Studio-Model-Metadata', Connection: 'close' };
 if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
 if (binding.kind === 'openrouter') Object.assign(headers, routerHeaders(routerSettings(binding.openrouter ?? {})));
+if (binding.kind === 'zai-coding-plan') headers['User-Agent'] = JSON.parse(readFileSync(new URL('../../shared/zai-client.json', import.meta.url))).userAgent;
 request = (target.protocol === 'https:' ? https : http).request({ protocol: target.protocol, hostname: host,
   port: target.port || undefined, path: target.pathname.replace(/\/$/, '') + '/models', method: 'GET', headers,
   agent: false, maxHeaderSize: 16384, autoSelectFamily: false, family: net.isIP(address),

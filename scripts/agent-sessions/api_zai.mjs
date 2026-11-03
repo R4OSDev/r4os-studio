@@ -13,3 +13,19 @@ export function zaiHeaders(client) {
   return { 'User-Agent': client.userAgent, 'x-opencode-session-id': client.sessionId,
     'x-session-affinity': client.sessionId, 'X-Session-Id': client.sessionId };
 }
+
+/** Keep provider defaults and complete thinking history; strip native-only hints. */
+export function zaiRequest(chat, policy) {
+  if (chat.tools.length && chat.parallel_tool_calls !== true || chat.service_tier != null && chat.service_tier !== 'default') bad();
+  const request = { ...chat };
+  for (const key of ['store','parallel_tool_calls','service_tier','prompt_cache_key']) delete request[key];
+  request.tools = chat.tools.map(tool => {
+    const definition = { ...tool.function }; delete definition.strict;
+    return { type: 'function', function: definition };
+  });
+  request.thinking = { type: policy.reasoning === 'none' || policy.selectedEffort === 'none' ? 'disabled' : 'enabled', clear_thinking: false };
+  if (policy.reasoningFacts?.mandatory && request.thinking.type === 'disabled') bad();
+  const family = /(?:^|\/)glm-(\d+)(?:\.(\d+))?(?:-|$)/i.exec(request.model);
+  if (request.tools.length && family && (Number(family[1]) > 4 || Number(family[1]) === 4 && Number(family[2] ?? 0) >= 6)) request.tool_stream = true;
+  return request;
+}

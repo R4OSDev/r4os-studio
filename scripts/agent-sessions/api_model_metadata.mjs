@@ -1,4 +1,6 @@
 /** Bounded public model facts; no inference and no capability guesses from IDs. */
+import { readFileSync } from 'node:fs';
+const zaiDocuments = JSON.parse(readFileSync(new URL('../../shared/zai-models.json', import.meta.url), 'utf8'));
 export function modelFacts(entry, binding, key) {
   function safeString(value, maximum) {
     if (typeof value !== 'string' || !value.length || value.length > maximum || /[\ud800-\udfff]/u.test(value)) return null;
@@ -10,6 +12,10 @@ export function modelFacts(entry, binding, key) {
   function model(entry) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     const id = safeString(entry.id, 200); if (!id || [...id].some(char => /\s/u.test(char))) return null;
+    if (binding.kind === 'zai-coding-plan') {
+      const documented = zaiDocuments.models.find(model => model.facts.id === id);
+      if (documented) return structuredClone(documented.facts);
+    }
     const capabilities = Object.fromEntries(['text', 'functionTools', 'streaming', 'imageInput', 'reasoning', 'webSearch', 'imageGeneration', 'goals'].map(field => [field, 'unknown']));
     let contextWindow = null, maxOutputTokens = null, name = id;
     let reasoning, efforts = [], defaultEffort = null;

@@ -20,8 +20,16 @@ function text(value, maximum, partial = false) {
     || !partial && /[\ud800-\udfff]/u.test(value)) bad();
   return value;
 }
-function parts(value) {
+function parts(value, images = false) {
   if (typeof value === 'string') return value;
+  if (images && Array.isArray(value)) return value.map(part => {
+    if (object(part) && part.type === 'input_image' && typeof part.image_url === 'string'
+      && /^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(part.image_url)
+      && Buffer.byteLength(part.image_url) <= 6 * 1024 * 1024
+      && Object.keys(part).every(key => ['type','image_url','detail'].includes(key))
+      && [undefined,'auto','low','high','original'].includes(part.detail)) return { type: 'image_url', image_url: { url: part.image_url } };
+    return parts([part])[0];
+  });
   if (!Array.isArray(value) || value.some(part => !object(part)
     || !['input_text', 'output_text'].includes(part.type) || typeof part.text !== 'string'
     || part.annotations?.length || part.logprobs?.length)) bad();
@@ -95,7 +103,7 @@ export function chatRequest(value, policy, history) {
       if (!['system', 'developer', 'user', 'assistant'].includes(item.role) || pending.size) bad();
       const previous = messages.at(-1);
       if (item.role === 'assistant' && previous?.[REASONING_RECORD] && previous.content === null && !previous.tool_calls) previous.content = parts(item.content);
-      else messages.push({ role: item.role === 'developer' ? policy.systemRole : item.role, content: parts(item.content) });
+      else messages.push({ role: item.role === 'developer' ? policy.systemRole : item.role, content: parts(item.content, policy.imageInput === true && item.role === 'user') });
     } else if (item.type === 'function_call') {
       if (!identifier(item.call_id) || !identifier(item.name) || pending.has(item.call_id)) bad();
       let previous = messages.at(-1);
@@ -155,7 +163,7 @@ export class ChatStream {
     this.eventSize = 0; this.started = false; this.done = false; this.finishReason = null; this.used = undefined;
     this.calls = new Map(); this.text = ''; this.messageStarted = false; this.providerId = undefined;
     this.pendingSurrogate = '';
-    this.reasoning = observer.reasoning ? new ReasoningStream() : null;
+    this.reasoning = observer.reasoning ? new ReasoningStream(observer.reasoningError) : null;
     this.messageIndex = this.reasoning ? 1 : 0;
     // This is explicitly a local transport identity, never a provider receipt.
     this.id = 'studio_chat_' + randomUUID(); this.messageId = this.id + '_message'; this.sequence = 0;

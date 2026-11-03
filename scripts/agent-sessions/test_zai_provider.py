@@ -43,5 +43,21 @@ class ZaiProvider(unittest.TestCase):
         self.assertEqual(self.store.mutate('disconnect',ident,request,finish=True)['state'],'complete')
         self.assertFalse(self.store.get(ident)['keyConfigured'])
 
+    def test_documented_models_keep_provenance_and_allow_explicit_additions(self):
+        from api_catalog import Catalogs
+        provider=self.store.mutate('create',None,self.data)['provider']
+        catalogs=Catalogs(self.store.parent);listed=catalogs.listing(provider['id'])
+        self.assertFalse(listed['metadataCurrent'])
+        self.assertEqual([m['id'] for m in listed['models']],['glm-5.3','glm-5.3-flash'])
+        self.assertTrue(all(m['available'] and 'docs.z.ai' in m['source']['url'] for m in listed['models']))
+        native=catalogs.native_models(provider['id'])
+        self.assertEqual(native[0]['input_modalities'],['text'])
+        self.assertEqual(native[1]['input_modalities'],['text','image'])
+        self.assertTrue(native[1]['studio_chat']['imageInput'])
+        extra={k:v for k,v in listed['models'][0].items() if k in ('id','name','contextWindow','maxOutputTokens','capabilities','reasoning','efforts','defaultEffort')}
+        extra['id']='future-explicit-fixture'
+        catalogs.save_model(provider['id'],{'requestId':str(uuid.uuid4()),'providerRevision':1,'catalogRevision':0,'model':extra})
+        self.assertTrue(any(m['slug']=='future-explicit-fixture' for m in catalogs.native_models(provider['id'])))
+
 
 if __name__=='__main__':unittest.main()

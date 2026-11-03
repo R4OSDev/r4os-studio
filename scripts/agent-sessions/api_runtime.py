@@ -46,7 +46,8 @@ class ApiRuntime:
 
     async def start(self):
         if self.binding['kind']=='zai-coding-plan':
-            raise ProjectFault('The Z.AI subscription connection is saved. Its model transport is not yet available in this release.',409)
+            from zai_policy import require
+            require(self.binding)
         if self.binding['protocol'] not in ('responses','chat-completions') or self.binding['protocol']=='chat-completions' and not isinstance(self.chat,dict):
             raise ProjectFault('The selected API protocol has no qualified transport binding.',409)
         addresses=await resolve_binding(self.binding)
@@ -99,7 +100,7 @@ class ApiRuntime:
                             or set(usage)-{'input_tokens','output_tokens','total_tokens','cached_input_tokens','reasoning_output_tokens'}
                             or any(type(v) is not int or not 0<=v<=9007199254740991 for v in usage.values())):raise ValueError()
                     self.usages.append(value);continue
-                if self.binding['kind']!='openrouter':raise ValueError()
+                if self.binding['kind'] not in ('openrouter','zai-coding-plan'):raise ValueError()
                 if len(self.origins)>=256:
                     self.origin_error=True;continue
                 if (not isinstance(value,dict) or set(value)!=fields or value['event']!='origin'

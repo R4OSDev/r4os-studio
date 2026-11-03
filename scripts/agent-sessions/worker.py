@@ -427,8 +427,8 @@ class Worker:
                 provider_home=state/'ApiHome';provider_home.mkdir(mode=0o700,exist_ok=True);private(provider_home,directory=True)
                 reasoning=None
                 if self.config.get('apiChat',{}).get('schema')==2:
-                    history=state/'OpenRouterReasoning';history.mkdir(mode=0o700,exist_ok=True);private(history,directory=True)
-                    reasoning={'directory':str(history),'scope':{'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
+                    history=state/('ZaiReasoning' if self.config['apiProvider']['kind']=='zai-coding-plan' else 'OpenRouterReasoning');history.mkdir(mode=0o700,exist_ok=True);private(history,directory=True)
+                    reasoning={'directory':str(history),'providerKind':self.config['apiProvider']['kind'],'scope':{'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
                         'sessionId':self.session_id,'providerId':self.config['providerId'],'model':self.config['model'],
                         'baseUrl':self.config['apiProvider']['baseUrl'],'protocol':self.config['apiProvider']['protocol']},
                         'origin':{'configRevision':self.config['apiProvider']['revision'],
@@ -589,13 +589,14 @@ class Worker:
                         self.outcome='unknown';self.uncertain_effect=True
                         self.error=self.error or 'The original API transport closure is unconfirmed. Credentials and history were preserved.'
             self.usage_stats.finalize()
-            if self.api_runtime and self.config['apiProvider']['kind']=='openrouter':
+            if self.api_runtime and self.config['apiProvider']['kind'] in ('openrouter','zai-coding-plan'):
                 # Observations belong to this original run, not the model input,
                 # a tool receipt or an invented billing/generation identity.
                 for origin in self.api_runtime.origins:
                     try:
                         detail={'providerId':self.config['providerId'],'configRevision':self.config['apiProvider']['revision'],**origin}
-                        label=('OpenRouter · selected: '+origin['requestedModel']+' · reported model: '+(origin['reportedModel'] or 'Unknown')
+                        brand='Z.AI Coding Plan' if self.config['apiProvider']['kind']=='zai-coding-plan' else 'OpenRouter'
+                        label=(brand+' · selected: '+origin['requestedModel']+' · reported model: '+(origin['reportedModel'] or 'Unknown')
                             +' · backend: '+(origin['reportedBackend'] or origin['endpointBackend'] or 'Unknown'))
                         if origin['endpointModel'] and origin['endpointModel']!=origin['reportedModel']:label+=' · endpoint model: '+origin['endpointModel']
                         with self.store.db:

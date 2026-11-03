@@ -25,3 +25,20 @@ four-part User-Agent described in planning. Own opaque session aliases remain
 stable across workers; no foreign identity or host path is copied. Only Z.AI
 model requests get these headers. The monitor uses its separate native auth
 contract, and internal native engine/provenance records remain unchanged.
+
+0.9.41 adds GLM Chat translation and the existing native project/skill/Goal
+runtime. Documented GLM-5.3 and GLM-5.3-Flash defaults use conservative decimal
+1M context / 128K output limits, mandatory thinking and low/high/max effort;
+omission retains the provider default. These are documented defaults, not an
+account entitlement check or an allowlist: exact additional models can still
+be saved with explicit facts. Metadata refresh preserves the documentation
+provenance. Flash image input uses the existing original attachment/capture
+bindings and bounded embedded images; it does not enable hosted MCP extras.
+
+Thinking is preserved privately in `Codex/ZaiReasoning`, as exact originals
+with hash-bound opaque native references. Tool rounds, worker restart and
+native compaction reuse the same thread and original call ledger. Existing
+OpenRouter records and their original reference format remain unchanged.
+Native-only tier/cache/store hints and unsupported strict-provider hints stay
+local; the host still validates every tool argument and permission. The Z.AI
+tool-stream opt-in follows the documented GLM family contract.
