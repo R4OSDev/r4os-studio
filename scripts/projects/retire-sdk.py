@@ -103,7 +103,7 @@ def main():
         path = Path(item['path'])
         if not path.is_absolute() or not any(path.is_relative_to(base) and path != base for base in allowed):
             raise ProjectFault('An SDK retirement path is outside its managed roots.', 409)
-        if path.is_relative_to(context['base']) or path == context['paths']['sdk']:
+        if path.is_relative_to(context['base']) or path.is_relative_to(context['paths']['sdk']):
             raise ProjectFault('The active SDK package cannot be retired.', 409)
         if path.is_relative_to(projects):
             parts = path.relative_to(projects).parts

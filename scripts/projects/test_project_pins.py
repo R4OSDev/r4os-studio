@@ -19,8 +19,8 @@ class PinTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.projects = Path(self.temp.name) / 'Projects'; self.root = Path(self.temp.name) / 'R4OS'
         self.id = str(uuid.uuid4()); self.request = str(uuid.uuid4())
-        self.old = {'sdk': {'version': '0.64.92', 'revision': '1' * 40}, 'contract': {}, 'zig': {}}
-        self.new = {'sdk': {'version': '0.64.127', 'revision': '2' * 40}, 'contract': {}, 'zig': {}, 'sdkTools': {'releaseSha256':'f' * 64}}
+        self.old = {'sdk': {'version': '1.0.0', 'revision': '1' * 40}, 'contract': {}, 'zig': {}}
+        self.new = {'sdk': {'version': '2.0.0', 'revision': '2' * 40}, 'contract': {}, 'zig': {}, 'sdkTools': {'releaseSha256':'f' * 64}}
         with closing(connect(self.projects)) as db, db:
             db.execute("INSERT INTO projects VALUES (?,?, '', 'Zig','terminal','APP',NULL,?,'before','before',1,'ready')", (self.id, 'Own QA', json.dumps(self.old)))
         self.work = self.projects / self.id / 'Workspace'; (self.work / '.r4os-studio').mkdir(parents=True)
@@ -32,7 +32,9 @@ class PinTests(unittest.TestCase):
         self.hosts = {'agents': True, 'development': True, 'unsafe': False}
         self.choice = {'sdkId': '2' * 40, 'available': True, 'selectionId': 'a' * 64, 'components': self.new, 'releaseSha256': 'f' * 64}
         for target, result in [('project_pins.choices', [self.choice]), ('sdk.profile', {'pins': self.new}),
-                               ('github_import.manifest', 'APP'), ('clear_cache.worker_admission', None)]:
+                               ('github_import.manifest', 'APP'), ('sdk.validate', {}),
+                               ('sdk_migration_files.stage', {'workspace': self.work, 'changes': [], 'source': None, 'native': {}}),
+                               ('clear_cache.worker_admission', None)]:
             mock = patch(target, return_value=result); mock.start(); self.addCleanup(mock.stop)
 
     def apply(self, data=None): return pins.apply(self.projects, self.root, self.id, data or self.input, self.hosts)

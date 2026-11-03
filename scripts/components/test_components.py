@@ -1,115 +1,21 @@
-"""Focused checks for profile atomicity and the component service trust boundary."""
-import json
-import hashlib
+"""The SDK-only component boundary; retired independent loaders have no tests."""
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 
 from common import safe_url
-from service import Manager, atomic
-from service import digest
-from rust import HOST, TARGET, manifest
-from rust_sdk import SPEC, install as install_sdk
+from service import Manager
 
 
 class ComponentTests(unittest.TestCase):
-    def test_sdk_rust_catalog_uses_selected_release_and_rejects_changed_capabilities(self):
-        from rust_sdk import for_sdk, record
-        capability = json.dumps({'tools': {'rust_version': '99.2.3'}}).encode()
-        release = {'schema': 1, 'interface': 'r4os-sdk-release',
-                   'sdk': {'source_commit': 'f' * 40, 'package_version': '99.1.0'},
-                   'devkit': {'profile_sha256': 'a' * 64},
-                   'capabilities': {'package': {'url': 'https://github.com/R4OSDev/r4os-sdk/releases/download/v99.1.0/cap.json',
-                                              'sha256': hashlib.sha256(capability).hexdigest()}}}
-        raw = json.dumps(release).encode(); sdk = {'version': '99.1.0', 'revision': 'f' * 40}
-        with patch('rust_sdk.read_url', side_effect=[raw, capability]):
-            selected = record(for_sdk(sdk))
-        self.assertEqual(selected['id'], 'sdk-99.1.0')
-        self.assertEqual(selected['version'], '99.2.3')
-        self.assertEqual(selected['sdkRevision'], 'f' * 40)
-        with patch('rust_sdk.read_url', side_effect=[raw, capability + b'changed']):
-            with self.assertRaisesRegex(ValueError, 'checksum changed'): for_sdk(sdk)
-        with patch('rust_sdk.read_url', return_value=raw):
-            with self.assertRaisesRegex(ValueError, 'differs from its selected sources'): for_sdk({**sdk, 'revision': 'e' * 40})
-
-    def test_interrupted_sdk_install_is_preserved_for_retry_and_foreign_directories_are_not_replaced(self):
+    def test_sdk_owned_components_cannot_be_selected_independently(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            target = root / 'Toolchains/Rust' / SPEC['id']
-            target.mkdir(parents=True)
-            pending = {'schema': 1, 'owner': 'R4OS Studio', 'id': SPEC['id'], 'releaseSha256': SPEC['releaseSha256']}
-            atomic(target / '.studio-installing.json', pending)
-            (target / 'keep.txt').write_text('Preserve interrupted files')
-            manager = Manager(root)
-            raw = b'published manifest fixture'
-            with patch('rust_sdk.read_url', return_value=raw), patch.dict(SPEC, {'releaseSha256': hashlib.sha256(raw).hexdigest()}):
-                pending['releaseSha256'] = SPEC['releaseSha256']
-                atomic(target / '.studio-installing.json', pending)
-                with patch('rust_sdk.download', side_effect=ValueError('Network interrupted')):
-                    with self.assertRaisesRegex(ValueError, 'Network interrupted'):
-                        install_sdk(manager)
-                retained = list(target.parent.glob('.incomplete-*'))
-                self.assertEqual(len(retained), 1)
-                self.assertEqual((retained[0] / 'keep.txt').read_text(), 'Preserve interrupted files')
-                target.mkdir()
-                (target / 'foreign.txt').write_text('Existing data')
-                with self.assertRaisesRegex(ValueError, 'preserved'):
-                    install_sdk(manager)
-                self.assertEqual((target / 'foreign.txt').read_text(), 'Existing data')
-                self.assertNotIn('rust', manager.state['defaults'])
-
-    def test_rust_manifest_checksum_is_required_before_any_archive_is_trusted(self):
-        with patch('rust.read_url', side_effect=[b'altered manifest', b'0' * 64 + b'  channel.toml\n']):
-            with self.assertRaisesRegex(ValueError, 'manifest SHA-256'):
-                manifest('1.99.1')
-
-    def test_rust_default_requires_verified_components_and_does_not_activate_on_discovery(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            prefix = root / 'Toolchains/Rust/1.99.1'
-            files = ['bin/rustc', 'bin/cargo', f'lib/rustlib/{HOST}/bin/rust-lld', f'lib/rustlib/{TARGET}/lib/libcore-fixture.rlib', 'release/channel.toml']
-            for relative in files:
-                path = prefix / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(relative)
-            atomic(prefix / '.studio-component.json', {'version': '1.99.1', 'linker': files[2],
-                   'sha256': digest(prefix / files[4]), 'manifestSha256': digest(prefix / files[4]),
-                   'fileHashes': {relative: digest(prefix / relative) for relative in files}})
-            manager = Manager(root)
-            self.assertNotIn('rust', manager.state['defaults'])
-            manager.set_default('rust', '1.99.1')
-            self.assertEqual(manager.state['defaults']['rust']['id'], '1.99.1')
-            before = manager.profile.read_bytes()
-            (prefix / 'bin/rustc').write_text('changed compiler')
-            with self.assertRaisesRegex(ValueError, 'checksum changed'):
-                manager.set_default('rust', '1.99.1')
-            self.assertEqual(manager.profile.read_bytes(), before)
-
-    def test_defaults_require_local_versions_and_preserve_profile_after_failure(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            path = root / 'Toolchains/Zig/0.16.0'
-            path.mkdir(parents=True)
-            (path / 'zig').write_text('compiler fixture')
-            atomic(path / '.studio-component.json', {'version': '0.16.0', 'sha256': 'a' * 64})
-            newer = root / 'Toolchains/Zig/0.17.0'
-            newer.mkdir()
-            (newer / 'zig').write_text('newer compiler fixture')
-            atomic(newer / '.studio-component.json', {'version': '0.17.0', 'sha256': 'b' * 64})
-            (root / 'Profiles').mkdir()
-            atomic(root / 'Profiles/minimal.json', {'components': {'zig': {'path': 'Toolchains/Zig/0.16.0'}}})
-            manager = Manager(root)
-            self.assertEqual(manager.state['defaults']['zig']['version'], '0.16.0')
-            before = manager.profile.read_bytes()
-            with self.assertRaises(ValueError):
-                manager.set_default('zig', '../../outside')
-            with self.assertRaises(ValueError):
-                manager.set_default('zig', 'not-installed')
-            self.assertEqual(manager.profile.read_bytes(), before)
-            manager.set_default('zig', '0.16.0')
-            self.assertEqual(Manager(root).status()['components']['zig']['activeId'], '0.16.0')
-            self.assertEqual(json.loads(manager.profile.read_text())['defaults']['zig']['binary'], str(path / 'zig'))
+            manager = Manager(Path(temporary))
+            self.assertEqual(manager.state['defaults'], {})
+            for kind in ('contract', 'libraries', 'zig', 'rust'):
+                with self.subTest(kind=kind), self.assertRaises(ValueError):
+                    manager.set_default(kind, 'unavailable')
+            self.assertEqual(manager.state['defaults'], {})
 
     def test_source_urls_reject_credentials_untrusted_hosts_and_local_network(self):
         for value in ('http://github.com/x', 'https://github.com.evil.test/x', 'https://127.0.0.1/',
@@ -119,23 +25,5 @@ class ComponentTests(unittest.TestCase):
         self.assertEqual(safe_url('https://codeload.github.com/R4OSDev/r4os-sdk/tar.gz/' + 'a' * 40),
                          'https://codeload.github.com/R4OSDev/r4os-sdk/tar.gz/' + 'a' * 40)
 
-    def test_library_default_checks_its_compiler_requirement_before_writing(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            compiler = root / 'Toolchains/Zig/0.16.0'
-            compiler.mkdir(parents=True)
-            (compiler / 'zig').write_text('compiler fixture')
-            atomic(compiler / '.studio-component.json', {'version': '0.16.0'})
-            manager = Manager(root)
-            library = root / 'Libraries/example'
-            library.mkdir(parents=True)
-            (library / 'build.zig.zon').write_text('.{ .version = "1.0.0", .minimum_zig_version = "0.17.0" }')
-            atomic(library / '.studio-component.json', {'version': '1.0.0'})
-            before = manager.profile.read_bytes()
-            with self.assertRaisesRegex(ValueError, 'Libraries require Zig'):
-                manager.set_default('libraries', 'example')
-            self.assertEqual(manager.profile.read_bytes(), before)
 
-
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == '__main__': unittest.main()

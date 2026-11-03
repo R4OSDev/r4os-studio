@@ -1,3 +1,20 @@
+## SDK-owned profiles and complete migration (0.9.28–0.9.35)
+
+Select one complete official SDK package in **System → Updates** or the project's
+**Settings → Pins**. Its original Build, Tools and Components profiles determine
+compiler and system libraries. New/imported projects and isolated offline builds
+use that SDK's native catalog and drivers. Missing, changed or legacy pins produce
+an explicit error. Own libraries need real dependency edges; Development builds
+require an explicit technical receipt.
+
+The installed projects and internal helpers were migrated together to SDK
+0.64.145. Old installed SDKs, operational source/tool caches and SDK archives were
+then deleted. The updater prevents reactivation of the retired system. Existing
+user source, session histories, original jobs, confirmed artifacts and VMs retain
+their identities. Read [SDK-Profiles.md](SDK-Profiles.md) for operation and
+[SDK-Qualification.md](SDK-Qualification.md) for exact native evidence and limits.
+Older version entries below record historical behavior.
+
 ## Short native SSH shortcut guide (0.9.27)
 
 The default system prompt and effective project instructions now carry one short

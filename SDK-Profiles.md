@@ -21,10 +21,9 @@ not imply a guest compiler or a VM test adapter. SDK build profiles are also
 independent of Studio session tool permissions. Distribution profiles such as
 Slim, Full and Test do not select an application build policy.
 
-Package provisioning, project creation and isolated builds use the new package
-contract. Existing project migration, the final cutover and
-removal of old installed SDKs follow as separate roadmap steps. Historical
-receipts retain their original identities. New SDK selection never falls back
+Package provisioning, project creation, isolated builds, coordinated migration
+and legacy retirement use the new package contract. Historical receipts retain
+their original identities. New SDK selection never falls back
 to the retired `r4os-sdk-release`/DevKit metadata interface.
 
 ## Complete package provisioning
@@ -252,3 +251,16 @@ SDK system after retirement. A missing/corrupt new SDK is an explicit failure.
 The local migration manager also initializes its progress state during explicit
 maintenance. This corrects the first 0.9.33 operator attempt before any project
 pin publication; the same durable request completed with that correction.
+
+## Agent instructions and qualification
+
+The default prompt and effective project instructions explain the three original
+profile authorities, SDK-declared drivers, real own-library dependency edges
+and explicit technical Development receipts. The paragraph occurs once per
+effective project prompt. Saved custom text, original revisions, accepted
+snapshots and Skill Manager instructions retain their existing contents.
+The next normal project run receives current guidance in the same session.
+
+See [SDK-Qualification.md](SDK-Qualification.md) for this host's actual migration,
+retirement inventory, Linux build evidence and platform limits. SDK upstream
+qualification and Studio's own native host runs are separate evidence.

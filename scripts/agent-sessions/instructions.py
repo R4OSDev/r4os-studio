@@ -1,8 +1,11 @@
 """Compose frozen global and project sources without native file discovery."""
 import hashlib
+from pathlib import Path
 from store import ProjectFault
 from system_prompt import validate_text
 from project_agents import NAME, validate
+
+SDK_PROFILE_GUIDE = (Path(__file__).resolve().parents[2] / 'shared/project-sdk-profiles.txt').read_text().strip()
 
 TERMINAL_TIMING = (
     'STUDIO TERMINAL TIMING: For authorized compiler commands, use timeout_ms=120000 normally; '
@@ -83,6 +86,10 @@ def compose(config):
     text += roadmap_instructions(config)
     from development_instructions import compose as development_instructions
     text += development_instructions(config)
+    if config.get('owner', {}).get('type') == 'project':
+        # Supplement the next normal run without rewriting saved prompt sources
+        # or an accepted snapshot; copied defaults contain this paragraph once.
+        text = text.replace(SDK_PROFILE_GUIDE, '').rstrip() + '\n\n' + SDK_PROFILE_GUIDE
     from remote_instructions import compose as remote_instructions
     text += remote_instructions(config)
     from shortcut_instructions import compose as shortcut_instructions
