@@ -6,6 +6,11 @@ export interface SdkSetPart {
 export interface SdkSet {
   state: 'unresolved' | 'unavailable' | 'ready'; reason?: string;
   manifestUrl?: string; manifestSha256?: string; complete?: boolean; active?: boolean;
+  interface?: 'r4os-sdk-package';
+  profileSources?: Record<'Build' | 'Tools' | 'Components', string>;
+  buildProfiles?: Record<string, { language: string; role: string; codegen: string; toolset: string; components: string; cpu?: string }>;
+  toolsets?: Record<string, { tools: string[] }>;
+  componentSets?: Record<string, { contract: string; system_libraries: string[] }>;
   components?: Record<'sdk' | 'contract' | 'libraries', SdkSetPart>;
 }
 export interface ComponentVersion {
