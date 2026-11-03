@@ -91,7 +91,9 @@ class Jobs:
             if value.get('source'): value['source'] = {k: v for k, v in value['source'].items() if k not in ('files', 'directories')}
         return values
 
-    def admit(self, kind, request, owner=None, binding=None, link_publication=None):
+    def admit(self, kind, request, owner=None, binding=None):
+        from retired_desktop import request as reject_retired
+        reject_retired(request)
         from project_maintenance import pending_git
         if pending_git(self.projects, self.id): raise DevelopmentFault('Reconcile the original Git pull before another development job.', 409)
         if kind in ('update_install', 'update_commit', 'update_verify', 'update_recovery'):
@@ -110,16 +112,10 @@ class Jobs:
             from project_ssh import command
             command(request.get('command'))
             if not owner or not owner.get('agentRunId'): raise DevelopmentFault('Project SSH requires an active agent owner.', 403)
-        if kind == 'deploy' and 'desktopShortcut' in request:
-            expected.add('desktopShortcut')
-            if type(request['desktopShortcut']) is not bool: raise DevelopmentFault('Desktop shortcut must be a boolean.', 400)
         if kind == 'execution' and 'windowControl' in request:
             expected.add('windowControl')
             if type(request['windowControl']) is not bool: raise DevelopmentFault('Window control must be a boolean.',400)
         if kind == 'execution' and 'overrides' in request: expected.add('overrides')
-        if kind == 'execution' and 'desktopLink' in request:
-            expected.add('desktopLink')
-            if type(request['desktopLink']) is not bool: raise DevelopmentFault('Desktop link must be a boolean.',400)
         if set(request) != expected:
             raise DevelopmentFault('Unexpected development fields.', 400)
         identity(request['requestId'])
@@ -145,11 +141,6 @@ class Jobs:
                 raise DevelopmentFault('Only the deployment directory is a qualified R4OS working directory.')
             if artifact and artifact.get('pins') != self.project['pins']:
                 raise DevelopmentFault('The artifact pins differ from the current project identity.')
-            if kind == 'deploy' and request.get('desktopShortcut'):
-                if artifact['kind'] != 'R4X' or artifact['role'] != 'desktop':
-                    raise DevelopmentFault('Desktop shortcuts are available for GUI R4X applications only.', 400)
-                from desktop_shortcuts import previous
-                previous(self, binding)
             settings = self.settings()
             if 'overrides' in request:
                 from settings import validate
@@ -167,17 +158,11 @@ class Jobs:
                 if artifact['role'] == 'service' and len(settings['arguments'].encode()) > 95:
                     raise DevelopmentFault('Service arguments are limited to 95 UTF-8 bytes.', 400)
             launch_budget = None
-            if request.get('desktopLink'):
-                if request.get('windowControl'): raise DevelopmentFault('Window delegation is unavailable for native link activation.',400)
-                from desktop_links import publication
-                current = publication(self,binding,deployment,settings)
-                if link_publication is None or any(link_publication.get(k)!=v for k,v in current.items()):
-                    raise DevelopmentFault('The exact own-link and deployment require a fresh read-only preflight before admission.')
-            elif deployment and deployment.get('role') == 'desktop':
+            if deployment and deployment.get('role') == 'desktop':
                 from deskrun import command,launch_budget as calculate,DEFAULT_WAIT_MS
                 wait_ms = min(DEFAULT_WAIT_MS,settings['timeoutSeconds']*1000)
                 launch_budget = calculate(deployment,settings['arguments'],wait_ms)
-                command(deployment,settings['arguments'],wait_ms)  # Reject before admitting any new job.
+                command(deployment,settings['arguments'],wait_ms)
             job = {'id': str(uuid.uuid4()), 'requestId': request['requestId'], 'projectId': self.id, 'kind': kind, 'state': 'queued',
                 'revision': 1, **owner, 'artifactId': artifact['id'] if artifact else None, 'deploymentId': deployment['id'] if deployment else None,
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
@@ -187,9 +172,6 @@ class Jobs:
                 'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
             if kind == 'ssh': job['sshCommand'] = request['command']
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
-            if request.get('desktopLink'):
-                job.update(desktopLinkRequested=True,desktopLinkPublication=link_publication)
-            if kind == 'deploy' and 'desktopShortcut' in request: job['desktopShortcutRequested'] = request['desktopShortcut']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))
             self.db.commit(); return job, True
@@ -341,8 +323,7 @@ class Jobs:
 
     def publish_deployment(self, job_id, record):
         with self.db: self.db.execute('INSERT INTO deployments VALUES(?,?,?)', (record['id'], job_id, encode(record)))
-        return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], readiness=record.get('readiness'), exitCode=0,
-            **({'desktopShortcut': record['desktopShortcut']} if record.get('desktopShortcut') else {}))
+        return self.update(job_id, 'completed', phase='completed', deploymentId=record['id'], target=record['target'], readiness=record.get('readiness'), exitCode=0)
 
     def deployment_metadata(self, deployment_id, recovering=False):
         """Private ownership lookup without reading an artifact's bytes."""

@@ -3,7 +3,7 @@ from tool_catalog import tool_scope
 def compose(config):
     rights = config.get('permissions', {})
     if config.get('owner', {}).get('type') == 'skill': return ''
-    if not rights.get('studio.read_development_job'): return git_inspection(config) + project_ssh(config)
+    if not rights.get('studio.read_development_job'): return git_inspection(config) + project_ssh(config) + desktop_icons(config)
     compact = tool_scope(config) == 'project'
     presentation = ('\n\nSTUDIO DEVELOPMENT RESULTS v15: Standard development results are compact and bounded to 12 KiB. '
         'Read view=details or inventory on the same original job and follow nextCursor to reconstruct the complete UTF-8 JSON snapshot; '
@@ -66,32 +66,12 @@ def original_job_references(config):
 
 
 def desktop_icons(config):
-    current = tool_scope(config) == 'project'
-    action = ('For an explicitly requested GUI R4X desktop publication use studio_deploy_project with '
-        'desktopShortcut=true and the chosen verified artifactId. Ordinary test deployments omit this option. '
-        'It needs Deploy project permission and a current development coordinator; it never starts the app. ')
-    activation = ('For an explicitly requested native own-link start use studio_run_project with desktopLink=true and '
-        'the exact published deploymentId. It requires Run project permission, empty arguments, no windowControl, a new '
-        'native-link-v1 deployment and the compatible runtime. Prepare/Activate/status keep the original request; after '
-        'uncertainty read the original job, never submit another start. ')
-    return ('\n\nSTUDIO DESKTOP ICONS v1: R4OS already supports application desktop icons. '
-        'Notepad declares ICON=Assets/Desktop.ico in module.R4MF; the SDK embeds the first ICON as resource type1/index0. '
-        'C:\\R4OS\\DESKTOP\\NOTEPAD.LNK uses R4S_FORMAT=1, SCHEMA=R4LNK, TARGET=<R4X>, TITLE=Notepad, POLICY=gui, ICON=INTERNAL. '
-        'Desktop reads the embedded icon directly without running the app. No window-icon setter API is required for this case. '
-        'Use a supported bitmap ICO; the reviewed decoder supports uncompressed DIB 8/32-bit, displayed at32x32. '
-        'Inspect the actual artifact resourceInventory for icon/index0 and embeddedVerified; a source asset alone is insufficient. '
-        + action + 'The publication owns one exact link per project/VM, preserves foreign or edited links, checks old bytes, '
-        'and retains the original intent/backup. After uncertainty only original receipt reconciliation is allowed, never another native write. '
-        'SSH system-path write protection stays enabled; do not improvise SFTP/shell edits of C:\\R4OS or change VM lifecycle/settings. '
-        'A fullReadbackVerified desktopShortcut proves link bytes; iconEmbedded proves the resource inventory only. '
-        'consumerVerified/guestVerified remain false until separate real evidence. Visible desktop appearance and launch via that link '
-        'are separate from a normal process/window launch. Native own-link activation uses SDK0.64.134/Contract0.64.71 '
-        'with R4OS0.89.18, Desktop0.1.200 and WINSVC0.1.33; actual scope is checked before effect. '
-        + activation + 'Link resolution followed by direct R4X launch does not exercise Desktop link activation. '
-        'Do not resubmit publication or improvise a global click. '
-        'Existing own-client screenshot/input tools do not grant global Desktop control. '
-        'Do not close acceptance merely from publication, wait for taskbar icons, or treat missing window-icon APIs as a blocker. '
-        'Taskbar/window icons are separate features.')
+    return ('\n\nSTUDIO DESKTOP AUTOMATION REMOVED (0.9.26): This current contract replaces older Studio desktop '
+        'publication/link-start guidance in this conversation. Studio no longer creates or owns desktop links; '
+        'old jobs and guest files are historical and unchanged. Ordinary deploy/run need no desktop ownership. '
+        'For a user-requested shortcut use the separately enabled project VM SSH tool and its short native guide. '
+        'Do not replay a former publication, activate a saved managed-link request or change native write protection. '
+        'ICON=INTERNAL reads the first ICON embedded in the R4X; icon embedding remains supported and needs no window/taskbar icon API.')
 
 
 def editor_shortcuts(config):

@@ -129,10 +129,7 @@ class Host:
         ssh_ready = ssh_supported()
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image,
                     'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget}),
-            'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1, 'desktopShortcutVersion':1,
-            'desktopLinkActivation': {'available':bool(project['template']=='desktop' and deploy['available'] and match['available']),
-                'reasonCode':'native_link_runtime_required','version':1,'requiresNewDeployment':True,
-                'reason':'Native link activation requires a published exact GUI deployment with a native-link-v1 helper. Runtime scope is checked before activation; R4OS0.89.18, Desktop0.1.200 and WINSVC0.1.33 provide the qualified contract.'},
+            'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1,
             'editorShortcuts': {'version':1,'keys':['Ctrl+A'],'unsupported':['Ctrl+Home','Ctrl+End'],
                 'delivery':'semantic-codepoint','requiresNewDeployment':True},
             'keyPlan': {'version':1,'maximumSteps':32,'maximumMilliseconds':2000,'requiresNewDeployment':True,
@@ -313,7 +310,7 @@ class Host:
             from package_support import available
             from project_ssh import supported as ssh_supported
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'desktopShortcut':1, 'desktopLink':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
                     'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
@@ -326,6 +323,9 @@ class Host:
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
         if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_build', 'wait_deploy', 'wait_execution', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'ssh', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
+        if op in ('deploy', 'execution'):
+            from retired_desktop import request as reject_retired
+            reject_retired(request.get('input'))
         store = self.store(identity(request['projectId']))
         try:
             owner = request.get('owner'); authorization = None
@@ -568,16 +568,7 @@ class Host:
                             raise DevelopmentFault('Wait for the existing VM job to finish before another update/VM mutation.')
                     status = self.access.public(binding['id'])
                     if not status['available']: raise DevelopmentFault(status['reason'])
-                link_publication = None
-                if op == 'execution' and request['input'].get('desktopLink') is True and not previous:
-                    from desktop_links import preflight
-                    settings = store.settings()
-                    if 'overrides' in request['input']:
-                        from settings import validate
-                        settings = validate({**settings,**request['input']['overrides']})
-                    deployed = store.deployment_metadata(request['input']['deploymentId'])
-                    link_publication = await preflight(store,binding,deployed,settings,self.access)
-                job, fresh = store.admit(op, request['input'], owner, binding, link_publication)
+                job, fresh = store.admit(op, request['input'], owner, binding)
                 if not fresh: return job
                 try:
                     release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)

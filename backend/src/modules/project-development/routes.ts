@@ -87,6 +87,8 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     bodyLimit: 8192,
     preValidation: async (request) => {
       const value = request.body;
+      if (value && typeof value === 'object' && ('desktopShortcut' in value || 'desktopLink' in value))
+        throw new ProjectError('Studio desktop publication and managed link activation were removed. Use normal deploy/run or project VM SSH.', 410);
       if (!value || typeof value !== 'object' || Array.isArray(value)
         || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision'].includes(key))) {
         throw new ProjectError('Unexpected development fields.', 400);
@@ -104,14 +106,15 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     bodyLimit: 8192,
     preValidation: async (request) => {
       const value = request.body;
+      if (value && typeof value === 'object' && ('desktopShortcut' in value || 'desktopLink' in value))
+        throw new ProjectError('Studio desktop publication and managed link activation were removed. Use normal deploy/run or project VM SSH.', 410);
       if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'artifactId', 'desktopShortcut'].includes(key))
-        || ('desktopShortcut' in value && typeof value.desktopShortcut !== 'boolean'))
+        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'artifactId'].includes(key)))
         throw new ProjectError('Unexpected deployment fields.', 400);
     },
     schema: { params, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'projectRevision', 'settingsRevision', 'artifactId'], properties: {
-        requestId: identity, projectRevision: revision, settingsRevision: revision, artifactId: identity, desktopShortcut: { type: 'boolean' },
+        requestId: identity, projectRevision: revision, settingsRevision: revision, artifactId: identity,
       } } },
   }, async (request, reply) => {
     security.mutation(request, reply);
@@ -128,14 +131,15 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     bodyLimit: 8192,
     preValidation: async (request) => {
       const value = request.body;
+      if (value && typeof value === 'object' && ('desktopShortcut' in value || 'desktopLink' in value))
+        throw new ProjectError('Studio desktop publication and managed link activation were removed. Use normal deploy/run or project VM SSH.', 410);
       if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'deploymentId', 'desktopLink'].includes(key))
-        || ('desktopLink' in value && typeof value.desktopLink !== 'boolean'))
+        || Object.keys(value).some((key) => !['requestId', 'projectRevision', 'settingsRevision', 'deploymentId'].includes(key)))
         throw new ProjectError('Unexpected deployment fields.', 400);
     },
     schema: { params, body: { type: 'object', additionalProperties: false,
       required: ['requestId', 'projectRevision', 'settingsRevision', 'deploymentId'], properties: {
-        requestId: identity, projectRevision: revision, settingsRevision: revision, deploymentId: identity, desktopLink: { type: 'boolean' },
+        requestId: identity, projectRevision: revision, settingsRevision: revision, deploymentId: identity,
       } } },
   }, async (request, reply) => {
     security.mutation(request, reply);

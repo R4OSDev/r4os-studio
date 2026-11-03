@@ -1,3 +1,9 @@
+Current Studio0.9.26: desktop publication and managed link activation have been
+removed. Ordinary development operations remain. A user-requested guest shortcut
+uses the separately enabled project VM SSH tool and the short native guide.
+SSH does not need a build/deployment/desktop ownership receipt. Existing guest
+files and original evidence remain. R4X icon embedding is unchanged.
+
 ## Desktop icons and project publication (0.8.84)
 
 Desktop icons already use manifest ICON (first resource, type1/index0) and a

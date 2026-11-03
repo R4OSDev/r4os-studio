@@ -1,3 +1,20 @@
+## Project VM SSH and retirement of desktop automation (0.9.25–0.9.26)
+
+Project agents can run free native guest commands using **Run VM SSH command**.
+Studio derives the assigned VM and keeps SSH credentials/host trust private.
+Commands return durable original jobs, with output, actual shell exit receipts
+and client-only Stop semantics. See [Project-VM-SSH.md](Project-VM-SSH.md).
+
+Studio no longer publishes desktop shortcuts or activates managed links. The
+old buttons, request options, publication/ownership code and specialized guest
+helper commands are removed. Obsolete requests receive a specific removed
+feature error before guest effects. Ordinary build/deploy/run, capture, input,
+window controls and R4X icon embedding remain available. Existing guest links,
+original jobs and immutable releases are preserved. Historical desktop records
+are read-only; no automatic recovery publication or replacement launch occurs.
+A shortcut may be created by an agent over project VM SSH only when requested;
+the short native guide is supplied with the next regular project run.
+
 ## Roadmap and remaining sidecar profile checks (0.9.24)
 
 The Roadmap sidecar now uses the actual project owner, enabled Roadmap setting,
@@ -25,7 +42,9 @@ Tool arguments and credentials are excluded. A socket closing is never proof
 of application completion or guest cleanup. Existing unknown jobs remain
 protected; no launch, input, screenshot or close request is replayed.
 
-## Screenshot binding after native link activation (0.9.22)
+## Historical: Screenshot binding after native link activation (0.9.22)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 Screenshots of apps started through their published link retain the original
 `desktopLinkActivation` receipt, separately from ordinary DESKRUN metadata.
@@ -46,7 +65,9 @@ Original VM, artifact, pins, full file hashes and publication evidence remain
 required. An already durable publication observation can finish the original
 recovery without another guest operation or publication.
 
-## Replacing desktop links and reconciling legacy publications (0.9.20)
+## Historical: Replacing desktop links and reconciling legacy publications (0.9.20)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 The private guest helper now accepts the SDK's named checked-delete results:
 `deleted=1` and `not_found=0`. Negative results remain failures. Replacement
@@ -64,7 +85,9 @@ original exit113; the reconciled job has no invented exit0. It never republishes
 the link or starts the application. Missing or differing evidence stays unknown.
 See [Desktop-Shortcuts.md](Desktop-Shortcuts.md).
 
-## Desktop publication and activation without profile gates (0.9.19)
+## Historical: Desktop publication and activation without profile gates (0.9.19)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 Desktop publication and native link activation now use the existing actual
 project/session/worker authorization without reading a former engine profile.
@@ -74,7 +97,9 @@ permissions, original artifact/publication bindings and real guest capabilities
 remain required. No old request is automatically resubmitted. Static checks only;
 see [Desktop-Link-Activation.md](Desktop-Link-Activation.md).
 
-## Native link request transfer (0.9.18)
+## Historical: Native link request transfer (0.9.18)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 The verified Exchange path guard now accepts the native link helper's exact
 short request filename derived from its original lowercase execution UUID.
@@ -183,7 +208,9 @@ bounded first response/stderr and final SSH client status are retained. Only an
 explicit matching no-start/no-child failure releases the execution reservation;
 missing replies and uncertain cleanup remain protected. No tests were run.
 
-## Activate the original published desktop shortcut (0.9.11)
+## Historical: Activate the original published desktop shortcut (0.9.11)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 A verified GUI publication now offers **Run desktop link**. New v23 project
 conversations can use `studio_run_project` with `desktopLink=true`. The coordinator
@@ -239,7 +266,9 @@ unchanged. Ctrl+Home/End and clipboard operations are unavailable. Enqueue does
 not prove application consumption. No tests, inference or app/VM runs. See
 [Editor-Shortcuts.md](Editor-Shortcuts.md).
 
-## Initial desktop link activation boundary (0.9.5)
+## Historical: Initial desktop link activation boundary (0.9.5)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 The initial0.9.5 release reported native own-link activation as unavailable.
 The then-qualified native contract had no recoverable link-activation receipt;
@@ -290,7 +319,9 @@ AST, Studio build/TypeScript and lint were used; no tests or application/VM
 runs. Native delayed-completion acceptance still needs original runtime proof.
 See [Natural-Desktop-Completion.md](Natural-Desktop-Completion.md).
 
-## Publish a project on the VM desktop (0.8.84)
+## Historical: Publish a project on the VM desktop (0.8.84)
+
+Removed in 0.9.26. The following records the earlier implementation only.
 
 Completed GUI R4X development cards offer **Deploy to desktop**. New profile18
 agent sessions can set `desktopShortcut=true` on `studio_deploy_project` under

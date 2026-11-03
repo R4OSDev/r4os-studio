@@ -61,6 +61,8 @@ class Deployment:
         self.store.update(self.job['id'], phase=phase); self.note(phase.replace('_', ' ').capitalize())
 
     async def run(self):
+        from retired_desktop import job as reject_retired
+        reject_retired(self.job)
         store, job = self.store, self.job; artifact = store.artifact(job['artifactId']); vm = job['binding']
         profile = transport_profile()
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
@@ -113,9 +115,8 @@ class Deployment:
         project_dir = directory(target, project_name); ssh.package_root = project_dir
         project_relative = 'build/' + project_name.lower()
         project_exists = any(item['path'].lower() == project_relative and item['directory'] for item in entries)
-        desktop_files = [2048, 2048, 4096] if job.get('desktopShortcutRequested') else []
-        preflight(entries, [artifact['files'][0]['bytes'], helper['bytes'], helper['watchdog']['bytes'], *desktop_files],
-                  5 + len(desktop_files) + (0 if project_exists else 1), 1 + (0 if project_exists else 1) + (0 if build else 1), len(job['settings'].get('outputFiles', [])))
+        preflight(entries, [artifact['files'][0]['bytes'], helper['bytes'], helper['watchdog']['bytes']],
+                  5 + (0 if project_exists else 1), 1 + (0 if project_exists else 1) + (0 if build else 1), len(job['settings'].get('outputFiles', [])))
         if not build:
             guard(store, job, lease); await batch(ssh, ['mkdir ' + quote('/' + exchange['drive'] + '/Build')])
         expected = {'schema': 1, 'interface': 'r4os-studio-project', 'projectId': store.id, 'exchangeGeneration': exchange['generation']}
@@ -179,13 +180,6 @@ class Deployment:
             'guestDirectory': guest_path, 'entry': 'APP.' + artifact['kind'], 'helper': 'STHELP.R4X',
             'helperCapabilities': hello['result'], 'helperSourceSha256': helper['sourceSha256'],
             'files': receipts, 'pins': job['pins'], 'createdAt': now()}
-        if job.get('desktopShortcutRequested'):
-            from desktop_shortcuts import publish
-            if hello['result'].get('desktopShortcutVersion') != 1:
-                raise DevelopmentFault('This guest does not expose the native desktop publication contract. No shortcut was changed.')
-            save(self.work / 'deployment-pending.json', record)
-            record['desktopShortcut'] = await publish(self, ssh, lease, record)
-            store.update(job['id'], desktopShortcut=record['desktopShortcut'])
         save(self.work / 'deployment.json', record)
         self.note('Deployment verified. No project application was started.')
         return store.publish_deployment(job['id'], record)

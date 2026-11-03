@@ -270,7 +270,7 @@
     },
     {
       "name": "studio_deploy_project",
-      "description": "Transfer this session's verified artifact to its already running, SSH-ready assigned VM and verify every byte. First use the separately permitted start_project_vm tool when available and wait for its readiness receipt. Never starts the VM or app and never changes Network/image/settings. This call waits in the harness for the original verified deployment or terminal error; use its deploymentId without polling or resubmitting. Set desktopShortcut=true only to explicitly publish this GUI R4X on the assigned VM desktop. The private helper creates or updates one project-owned R4LNK using ICON=INTERNAL and this exact verified deployment. Ordinary test deployments leave the existing desktop target unchanged. Foreign/edited links are preserved. No app is launched. The receipt proves link bytes, not visible icon consumption or a successful desktop launch. After uncertainty, inspect/reconcile the original job; never repeat publication blindly.",
+      "description": "Transfer this session's verified artifact to its already running, SSH-ready assigned VM and verify every byte. First use the separately permitted start_project_vm tool when available and wait for its readiness receipt. Never starts the VM or app and never changes Network/image/settings. This call waits in the harness for the original verified deployment or terminal error; use its deploymentId without polling or resubmitting. Desktop shortcuts are created by the agent over project VM SSH only when requested; Studio does not publish them.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -278,9 +278,6 @@
             "type": "string",
             "maxLength": 36,
             "description": "Opaque Studio UUID from a confirmed tool result."
-          },
-          "desktopShortcut": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -291,7 +288,7 @@
     },
     {
       "name": "studio_run_project",
-      "description": "Start this session's verified deployment once with its qualified role. Optional arguments/time/criteria override only this job, not saved project settings. Background execution remains bounded after this agent turn. Poll actual output/status/check; an accepted start/window alone is not a test pass. Set windowControl=true only when this run needs resize/minimize/restore; it requires Control app window permission and delegates this original launch to the helper. It consumes the existing SSH command budget. Ordinary runs keep their original budget. Set desktopLink=true only to activate this exact own published desktop shortcut through the native R4LNK path, using a new native-link-v1 deployment and compatible R4OS0.89.18 runtime. Requires existing Run project permission; link and target bytes are rechecked before admission and Activate. Arguments must be empty and windowControl must be omitted/false. Prepare saves a canonical original native request before the single Activate; lost responses are recovered only from that request. Never republish, direct-start or click globally as a replacement. Native process, readiness, end and cleanup stay separate. Older sessions keep their original run schema; the browser can activate a verified published deployment.",
+      "description": "Start this session's verified deployment once with its qualified role. Optional arguments/time/criteria override only this job, not saved project settings. Background execution remains bounded after this agent turn. Poll actual output/status/check; an accepted start/window alone is not a test pass. Set windowControl=true only when this run needs resize/minimize/restore; it requires Control app window permission and delegates this original launch to the helper. It consumes the existing SSH command budget. Ordinary runs keep their original budget. This is a normal app launch; Studio no longer offers managed desktop link activation.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -377,9 +374,6 @@
             "additionalProperties": false
           },
           "windowControl": {
-            "type": "boolean"
-          },
-          "desktopLink": {
             "type": "boolean"
           }
         },

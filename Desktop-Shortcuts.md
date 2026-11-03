@@ -1,3 +1,10 @@
+# Historical implementation — retired in 0.9.26
+
+Studio no longer publishes or owns desktop links or offers managed link activation.
+Only original receipts and immutable old releases remain. Do not execute the
+following historical workflow. Use [Project-VM-SSH.md](Project-VM-SSH.md) and
+the current short project guide for a user-requested guest shortcut.
+
 # Project desktop publication (0.8.84; replacement recovery 0.9.20)
 
 Since0.9.20 the private helper interprets checked deletion using the pinned

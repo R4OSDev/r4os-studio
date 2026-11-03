@@ -1,3 +1,9 @@
+Project VM SSH was added in0.9.25 to the current project catalog, with its own
+normal Tools switch.0.9.26 removes desktop publication/managed-link fields from
+the current catalog and rejects obsolete inputs before effect. Existing accepted
+worker contexts retain their original immutable release. No new profile or
+session is required. See [Project-VM-SSH.md](Project-VM-SSH.md).
+
 # Current tools in existing conversations
 
 Studio 0.9.24 removes remaining profile-name conditions in delegated Roadmap

@@ -6,7 +6,6 @@ const gesture = @import("gesture.zig");
 const key_plan = @import("key_plan.zig");
 const evidence = @import("desktop_evidence.zig");
 const window_control = @import("window_control.zig");
-const links = @import("links.zig");
 pub const Request = struct {
     version: u32 = 1,
     instance: []const u8,
@@ -29,9 +28,6 @@ pub const Request = struct {
     windowWidth: i32 = 0,
     windowHeight: i32 = 0,
     nativeRequest: []const u8 = "",
-    linkIntent: []const u8 = "",
-    linkPath: []const u8 = "",
-    linkContent: []const u8 = "",
     serviceName: []const u8 = "",
     inputKind: []const u8 = "text",
     key: u32 = 0,
@@ -168,65 +164,8 @@ const Controller = struct {
     evidence_token: ?evidence.Token = null,
     windows: ?window_control.Controller = null,
     window_view_buffer: [24]u8 = undefined,
-    link: ?links.Controller = null,
 
-    fn linkRequest(self: *Controller, req: Request, path: [*:0]const u8, instance: []const u8) bool {
-        const original = if (self.link) |*value| value else return false;
-        if (std.mem.eql(u8, req.operation, "link_scope")) {
-            const client = r4os.desktop_links.Client{ .sys = self.sys };
-            return links.respond(self.sys, path, instance, req.sequence, client.scope());
-        }
-        if (std.mem.eql(u8, req.operation, "link_prepare")) {
-            if (self.started or req.arguments.len != 0 or !std.mem.eql(u8, req.linkIntent, instance)) return false;
-            return links.respond(self.sys, path, instance, req.sequence, original.prepare(req.linkIntent, req.linkPath, req.linkContent));
-        }
-        if (!original.matches(req.nativeRequest)) return false;
-        if (std.mem.eql(u8, req.operation, "link_activate")) {
-            if (self.started or original.submitted or req.timeoutSeconds < 1 or req.timeoutSeconds > 300) return false;
-            self.started = true;
-            self.started_ns = self.clock();
-            self.deadline_ns = self.started_ns + @as(u64, req.timeoutSeconds) * 1_000_000_000;
-            const result = original.activate(req.nativeRequest);
-            if (result == .reply and (result.reply.phase == abi.desktop_link_phase_rejected or result.reply.phase == abi.desktop_link_phase_expired) and
-                result.reply.result < 0 and result.reply.process.instance_id == 0) self.started = false;
-            return links.respond(self.sys, path, instance, req.sequence, result);
-        }
-        if (std.mem.eql(u8, req.operation, "link_status"))
-            return links.respond(self.sys, path, instance, req.sequence, original.status());
-        if (std.mem.eql(u8, req.operation, "link_release"))
-            return links.respond(self.sys, path, instance, req.sequence, original.release());
-        return false;
-    }
 
-    fn observeLink(self: *Controller) void {
-        if (self.state.closeConfirmed) return;
-        const original = if (self.link) |*value| value else return;
-        if (!original.submitted) return;
-        const result = original.status();
-        if (result == .reply and (result.reply.phase == abi.desktop_link_phase_rejected or result.reply.phase == abi.desktop_link_phase_expired) and
-            result.reply.result < 0 and result.reply.process.instance_id == 0) { self.started = false; return; }
-        if (result != .reply or result.reply.result != 0) { self.state.state = "unknown"; return; }
-        const reply = result.reply;
-        if (reply.process.instance_id != 0 and reply.process.generation != 0) {
-            if (self.process) |process| {
-                if (process.raw != reply.process.instance_id or process.generation != reply.process.generation) {
-                    self.state.state = "unknown"; return;
-                }
-            } else {
-                self.process = .{ .sys = self.sys, .raw = reply.process.instance_id, .generation = reply.process.generation };
-                // Window snapshots are served by WINSVC, not by the Desktop
-                // process that consumed this link.
-                self.desktop_broker = .{ .sys = self.sys, .raw = reply.request.token.service.instance_id, .generation = reply.request.token.service.generation };
-                self.state.instanceId = reply.process.instance_id;
-                self.state.generation = std.fmt.bufPrint(&self.generation_buf, "{d}", .{reply.process.generation}) catch return;
-                if (self.stopped != null) { _ = self.process.?.requestClose(); }
-            }
-            self.state.state = "running";
-        }
-        if (reply.flags & abi.desktop_link_flag_ended != 0 and reply.completion.sequence != 0 and
-            reply.completion.handle.instance_id == reply.process.instance_id and
-            reply.completion.handle.generation == reply.process.generation) self.completed = reply.completion;
-    }
 
     fn windowView(self: *Controller) void {
         const windows = if (self.windows) |*value| value else return;
@@ -300,7 +239,6 @@ const Controller = struct {
     fn start(self: *Controller, req: Request) bool {
         if (self.started or req.arguments.len > 127 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300 or
             std.mem.indexOfScalar(u8, req.arguments, 0) != null) return false;
-        if (self.link != null and (self.link.?.prepared != null or self.link.?.submitted)) return false;
         const is_service = std.mem.eql(u8, req.role, "service");
         if (!is_service and !std.mem.eql(u8, req.role, "terminal")) return false;
         var args: [1025:0]u8 = .{0} ** 1025;
@@ -340,7 +278,6 @@ const Controller = struct {
     }
     fn adoptDesktop(self: *Controller, req: Request) bool {
         if (self.started or req.instanceId == 0 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300) return false;
-        if (self.link != null and (self.link.?.prepared != null or self.link.?.submitted)) return false;
         const generation = std.fmt.parseInt(u64, req.generation, 10) catch return false;
         if (generation == 0) return false;
         const process = r4os.app_resources.ProcessHandle{ .sys = self.sys, .raw = req.instanceId, .generation = generation };
@@ -749,12 +686,6 @@ const Controller = struct {
     fn cleanup(self: *Controller) void {
         self.abortKeyPlan("cleanup");
         self.abortGesture("cleanup");
-        if (self.link) |*original| {
-            if (original.prepared != null and (!original.submitted or self.state.closeConfirmed) and
-                (original.last == null or original.last.?.flags & abi.desktop_link_flag_released == 0)) {
-                _ = original.release();
-            }
-        }
         if (self.process) |*p| {
             if (p.valid() and self.completed == null) {
                 _ = p.requestClose();
@@ -813,7 +744,6 @@ const Controller = struct {
         }
     }
     fn observe(self: *Controller) State {
-        self.observeLink();
         self.state.outputBase64 = "";
         self.tickKeyPlan();
         self.tickGesture();
@@ -838,10 +768,6 @@ const Controller = struct {
                     .would_block, .timed_out => {},
                     .failure => |code| {
                         self.incomplete = true;
-                        if (self.link != null and self.link.?.submitted) {
-                            self.state.state = "unknown";
-                            return self.state;
-                        }
                         if (code == abi.program_handle_error_not_found or code == abi.program_handle_error_stale) {
                             self.state.state = "completed";
                             self.state.closeConfirmed = true;
@@ -858,7 +784,7 @@ const Controller = struct {
                 self.state.completionObserved = true;
                 self.state.completionFlags = completion.flags;
                 if (completion.flags & abi.program_completion_flag_output_incomplete != 0) self.incomplete = true;
-                if ((self.evidence_token != null or (self.link != null and self.link.?.submitted)) and
+                if (self.evidence_token != null and
                     completion.flags & abi.program_completion_flag_output_available == 0) self.incomplete = true;
                 if (!self.completion_initialized) {
                     // Completion retains a bounded tail, not an ever-growing
@@ -933,15 +859,6 @@ const Controller = struct {
                 }
             }
         }
-        if (self.link) |original| {
-            if (original.submitted and self.state.closeConfirmed) {
-                const latest = original.last;
-                if (latest == null or latest.?.flags & abi.desktop_link_flag_reaped == 0) {
-                    self.state.closeConfirmed = false;
-                    self.state.state = "running";
-                }
-            }
-        }
         return self.state;
     }
 };
@@ -971,7 +888,6 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
     var own_handle: abi.ProgramProcessHandle = .{};
     if (sys.programOpenHandle(@intCast(app.raw.instance_id), &own_handle) != 0) return 73;
     controller.windows = .{ .sys = sys, .own = own_handle };
-    controller.link = .{ .sys = sys, .own = own_handle };
     var generation: [24]u8 = undefined;
     const generation_text = std.fmt.bufPrint(&generation, "{d}", .{own_handle.generation}) catch return 73;
     if (!publish(sys, &response, instance, 0, true, .{ .ready = true, .daemonInstanceId = own_handle.instance_id,
@@ -983,15 +899,12 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         const current = sys.monotonicNanoseconds() orelse return 73;
         if (current - heartbeat > 15_000_000_000 or current - born > 310_000_000_000 or sys.programShouldClose()) {
             controller.stop("control_lost");
-            const cleanup_ticks: usize = if (controller.link != null and controller.link.?.submitted) 3500 else 350;
+            const cleanup_ticks: usize = 350;
             const cleanup_deadline = controller.clock() +| @as(u64, @intCast(cleanup_ticks)) * 10_000_000;
             for (0..cleanup_ticks) |_| {
                 if (controller.clock() >= cleanup_deadline) break;
                 const state = controller.observe();
                 if (state.closeConfirmed) {
-                    if (controller.link) |*original| {
-                        if (original.prepared != null) { _ = original.release(); }
-                    }
                     _ = publish(sys, &response, instance, sequence, true, state); break;
                 }
                 sys.sleepTicks(1);
@@ -1028,11 +941,6 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
         sequence = req.sequence; heartbeat = current;
         if (std.mem.eql(u8, req.operation, "start")) {
             if (!controller.start(req)) { _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The owned role could not be started." }); return 77; }
-        } else if (std.mem.startsWith(u8, req.operation, "link_")) {
-            if (!controller.linkRequest(req, &response, instance)) {
-                _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The original native link operation is unavailable or changed." });
-            }
-            continue;
         } else if (std.mem.startsWith(u8, req.operation, "window_")) {
             if (!controller.windowRequest(req, &response, instance)) {
                 _ = publish(sys, &response, instance, sequence, false, .{ .@"error" = "The own window binding, command or live process is unavailable." });
@@ -1063,14 +971,6 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
             controller.abortKeyPlan("cancelled");
         } else if (std.mem.eql(u8, req.operation, "finish")) {
             if (controller.started and !controller.state.closeConfirmed) return 78;
-            if (controller.link) |*original| {
-                if (original.prepared != null) {
-                    if (original.last == null or original.last.?.flags & abi.desktop_link_flag_released == 0) {
-                        const released = original.release();
-                        if (released != .reply or released.reply.flags & abi.desktop_link_flag_released == 0) return 78;
-                    }
-                }
-            }
             controller.cleanup(); controller.service_owned = !controller.service_removed;
             _ = publish(sys, &response, instance, sequence, controller.service_removed, .{ .closed = true, .serviceRemoved = controller.service_removed });
             return 0;

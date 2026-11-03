@@ -66,6 +66,9 @@ class DevelopmentTools:
         request_id = str(uuid.uuid5(uuid.UUID(self.worker.run_id), 'development:' + call_id))
         job = None
         try:
+            if name in ('deploy_project', 'run_project'):
+                from retired_desktop import request as reject_retired
+                reject_retired(value)
             if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm', 'run_vm_command'):
                 if name == 'start_project_vm':
                     from vm_worker import broker_call
@@ -86,26 +89,8 @@ class DevelopmentTools:
                 operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start', 'run_vm_command': 'ssh'}[name]
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']
-                    if 'desktopShortcut' in value:
-                        if tool_scope(self.worker.config) != 'project' or type(value['desktopShortcut']) is not bool:
-                            raise DevelopmentFault('Desktop publication requires its declared v18 deployment option.', 403)
-                        if value['desktopShortcut']:
-                            from vm_worker import broker_call
-                            capabilities = await broker_call({'operation': 'capabilities'})
-                            if capabilities.get('features', {}).get('desktopShortcut') != 1:
-                                raise DevelopmentFault('Desktop publication requires the current development coordinator. No deployment was started.', 503)
-                        body['desktopShortcut'] = value['desktopShortcut']
                 if name == 'run_project':
                     body['deploymentId'] = value['deploymentId']
-                    if 'desktopLink' in value:
-                        if tool_scope(self.worker.config) != 'project' or type(value['desktopLink']) is not bool:
-                            raise DevelopmentFault('Native link activation requires a project and a boolean desktopLink option.',403)
-                        if value['desktopLink']:
-                            from vm_worker import broker_call
-                            capability = await broker_call({'operation':'capabilities'})
-                            if capability.get('features',{}).get('desktopLink') != 1:
-                                raise DevelopmentFault('The current development coordinator cannot preserve native link requests.',503)
-                        body['desktopLink'] = value['desktopLink']
                     if 'windowControl' in value:
                         if type(value['windowControl']) is not bool: raise DevelopmentFault('Window control must be a boolean.',400)
                         if value['windowControl']:

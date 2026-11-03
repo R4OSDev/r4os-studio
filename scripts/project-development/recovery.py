@@ -35,6 +35,7 @@ def complete_files(store, job):
 def local(store, job):
     """Only already committed, privately attested results may become final."""
     if job['state'] != 'unknown': return None
+    if job.get('desktopShortcutRequested') or job.get('desktopLinkRequested'): return None
     if (job.get('recovery') or {}).get('guestEndConfirmed'): return job
     if job['kind'] == 'ssh':
         from project_ssh import local as ssh_result
@@ -63,14 +64,6 @@ def local(store, job):
         row = store.db.execute('SELECT id FROM deployments WHERE job_id=?', (job['id'],)).fetchone()
         if not row: return None
         value = store.deployment(row[0], recovering=True)
-        if job.get('desktopShortcutRequested'):
-            from desktop_shortcuts import verify_saved
-            work = store.root / 'DeployWork' / job['id']
-            if not (work / 'desktop-receipt.json').exists(): return None
-            original = read(work / 'desktop-receipt.json')
-            verify_saved(store, job, value, read(work / 'desktop-intent.json'), original)
-            if original['receipt'] != value.get('desktopShortcut'):
-                raise DevelopmentFault('The desktop receipt differs from its original completed deployment.')
         artifact = store.artifact(value['artifactId'])
         directory = 'C:\\P' + hashlib.sha256(store.id.encode()).hexdigest()[:7].upper() + '\\D' + identity(value['id']).replace('-', '')[:7].upper()
         if value.get('format') == 'exchange-build-v1':
@@ -112,9 +105,6 @@ def local(store, job):
         state = {'state': 'completed', 'exitCode': None, 'closeConfirmed': True, 'outputIncomplete': True, 'stopReason': None if rejected else 'user_stop'}
         outcome, process = ('failed' if rejected else 'interrupted'), None
     else:
-        if job.get('desktopLinkRequested'):
-            from desktop_links import verify_closed
-            verify_closed(store,job)
         started = read(work / 'started.json'); process = started['process']; generation(process['generation'])
         state = value.get('completion') or {}
         if (started.get('executionId') != value['executionId'] or state.get('closeConfirmed') is not True
@@ -144,9 +134,8 @@ async def reconcile(store, job, host=None):
     if job['kind'] == 'ssh':
         from project_ssh import reconcile as ssh_reconcile
         return await ssh_reconcile(store, job)
-    if job['kind'] == 'deploy' and job.get('desktopShortcutRequested'):
-        from desktop_shortcuts import reconcile as desktop_reconcile
-        return await desktop_reconcile(store, job, host)
+    from retired_desktop import job as reject_retired
+    reject_retired(job)
     if job['kind'] in ('update_install','update_commit','update_verify','update_recovery'):
         if host is None:raise DevelopmentFault('Current update observation support is required.')
         from update_recovery import reconcile as update_reconcile
@@ -178,10 +167,6 @@ async def reconcile(store, job, host=None):
         intent = read(work / 'intent.json') if (work / 'intent.json').exists() else {}
         replaced = bool(intent.get('vmInvocationId') and info['invocationId'] and intent['vmInvocationId'] != info['invocationId'])
         if info['vm']['state'] != 'stopped' and not replaced:
-            if job.get('desktopLinkRequested'):
-                from desktop_links import recover as original_link
-                result = await original_link(store,job,host,vm,lease,info)
-                if result:return result
             from desktop_evidence import recover as retained_completion
             retained = await retained_completion(store, job, host, vm, lease, info)
             if retained: return retained

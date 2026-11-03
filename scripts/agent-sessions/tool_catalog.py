@@ -42,6 +42,8 @@ def permission_tools(scope='project'):
 
 
 def validate_arguments(name,value,scope='project'):
+    if name in ('deploy_project','run_project') and isinstance(value,dict) and any(key in value for key in ('desktopShortcut','desktopLink')):
+        raise ValueError('Studio desktop automation was removed. Use normal deploy/run or the project VM SSH tool for a requested guest shortcut.')
     definition=next((item for item in catalog()[tool_scope(scope)] if item['name']=='studio_'+name),None)
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root=definition['inputSchema']

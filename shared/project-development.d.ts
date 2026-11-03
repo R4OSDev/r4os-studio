@@ -21,8 +21,6 @@ export type DesktopArgumentLayout = {available:false;reason:string} | {available
 export interface DevelopmentOptions {
   keyPlan?: { version: 1; maximumSteps: 32; maximumMilliseconds: 2000; requiresNewDeployment: true; heldKeys: false; heldModifiers: false; delivery: 'owned-event-queue' };
   editorShortcuts?: { version: 1; keys: ['Ctrl+A']; unsupported: ['Ctrl+Home', 'Ctrl+End']; delivery: 'semantic-codepoint'; requiresNewDeployment: true };
-  desktopLinkActivation?: DevelopmentCapability & { version?: 1; requiresNewDeployment?: boolean };
-  desktopShortcutVersion?: 1;
   windowControlVersion?: 1;
   desktopLaunchBudget?: DesktopArgumentLayout | null;
   evidenceCapabilities?: {
@@ -312,9 +310,7 @@ export interface DevelopmentBuildInput extends DevelopmentSubmission {
 }
 export interface DevelopmentDeployInput extends DevelopmentSubmission {
   artifactId: string;
-  desktopShortcut?: boolean;
 }
 export interface DevelopmentRunInput extends DevelopmentSubmission {
   deploymentId: string;
-  desktopLink?: boolean;
 }

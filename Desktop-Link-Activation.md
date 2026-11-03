@@ -1,3 +1,10 @@
+# Historical implementation — retired in 0.9.26
+
+Studio no longer publishes or owns desktop links or offers managed link activation.
+Only original receipts and immutable old releases remain. Do not execute the
+following historical workflow. Use [Project-VM-SSH.md](Project-VM-SSH.md) and
+the current short project guide for a user-requested guest shortcut.
+
 # Native desktop link activation (0.9.11; fixes through 0.9.22)
 
 Studio can explicitly activate the exact shortcut of a verified GUI deployment

@@ -165,12 +165,7 @@ async def capability(ssh):
 
 
 def frame_ready(job, state):
-    if job.get('desktopLinkRequested'):
-        value = (job.get('desktopLinkActivation') or {}).get('native') or {}
-        return (value.get('result') == 0 and value.get('phase') in (5,6,7)
-            and int(value.get('readyTick','0')) > 0 and int(value.get('contentGeneration','0')) > 0
-            and value.get('processId') == state.get('instanceId') and value.get('processGeneration') == state.get('generation')
-            and state.get('state') == 'running' and state.get('windowVisible') is True and not state.get('closeConfirmed'))
+    if job.get('desktopLinkRequested'): return False  # Historical managed-link jobs are read-only.
     value = job.get('desktopLaunch') or {}
     return (value.get('phase') == 'content' and value.get('errorlevel') in (0, 9) and int(value.get('content', '0')) > 0
         and value.get('process_id') == state.get('instanceId') and value.get('process_generation') == state.get('generation')

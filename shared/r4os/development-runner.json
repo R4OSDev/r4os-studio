@@ -74,16 +74,5 @@
     "processAdoptionVersion": 1,
     "workingDirectory": "native-desktop",
     "evidenceHandoffVersion": 1
-  },
-  "desktopLinkActivation": {
-    "version": 1,
-    "sdk": "0.64.134",
-    "contract": "0.64.71",
-    "runtime": "0.89.18",
-    "windowService": "0.1.33",
-    "desktop": "0.1.200",
-    "maximumStartMilliseconds": 30000,
-    "retention": "same-native-service-and-boot-epoch",
-    "statusOnlyAfterUncertainActivation": true
   }
 }

@@ -8,9 +8,7 @@ import uuid
 
 from contracts import DevelopmentFault, UnconfirmedGuestEffect, LIMITS, digest
 
-# The native link recovery helper derives this exact short filename from the
-# original lowercase execution UUID. Preserve its case and the existing roots.
-EXCHANGE_FILENAME = r'(?:[A-Z0-9_-]{1,8}(?:\.[A-Z0-9]{1,3})?|L[0-9a-f]{7}\.BIN)'
+EXCHANGE_FILENAME = r'[A-Z0-9_-]{1,8}(?:\.[A-Z0-9]{1,3})?'
 
 
 def quote(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
