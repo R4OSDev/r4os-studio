@@ -9,7 +9,7 @@ from claude_auth import auth_home
 from claude_auth_store import AuthStore
 from claude_runtime import installed
 from session_store import identity
-from tool_catalog import specifications
+from tool_catalog import native_specifications
 from store import ProjectFault
 
 
@@ -39,7 +39,7 @@ def prepare(worker,history,prepared,broker):
         'ownerId':worker.store.owner_id,'model':config['model'],'toolScope':tool_scope(config)}
     if binding!=broker.binding:raise ProjectFault('The original native bridge binding changed.',409)
     tools=[{'name':t['name'][7:],'description':t['description'],'inputSchema':t['inputSchema']}
-        for t in specifications(tool_scope(config))]
+        for t in native_specifications(tool_scope(config))]
     goal=getattr(worker,'claude_goal',None)
     live=config.get('claudeGoalPreparation') is True
     if goal or live:

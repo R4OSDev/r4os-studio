@@ -23,6 +23,19 @@ const projectParams = { type: 'object', required: ['id'], properties: { id: iden
 type SessionParams = { id: string; sessionId: string };
 
 export function agentSessionRoutes(app: FastifyInstance, directory: string, security: ProjectSessions, providers?: string, ownerType: 'project' | 'skill' = 'project') {
+  app.get('/web-service', async (request, reply) => {
+    security.session(request, reply); reply.header('Cache-Control','private, no-store');
+    return agentHost({operation:'web_service'});
+  });
+  app.put<{Body:{requestId:string;revision:number;searchEndpoint:string|null}}>('/web-service', {
+    bodyLimit:4096,schema:{body:{type:'object',additionalProperties:false,required:['requestId','revision','searchEndpoint'],properties:{
+      requestId:identity,revision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER},
+      searchEndpoint:{anyOf:[{type:'string',maxLength:2048},{type:'null'}]},
+    }}},
+  },async(request,reply)=>{
+    security.mutation(request,reply);reply.header('Cache-Control','private, no-store');
+    return agentHost({operation:'set_web_service',input:request.body});
+  });
   environmentNoteRoutes(app, security, ownerType);
   sessionDeletionRoutes(app, security, ownerType);
   attachmentRoutes(app, directory, security, ownerType, providers);

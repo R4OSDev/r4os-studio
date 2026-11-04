@@ -25,11 +25,12 @@ def public(meta,sid):
         if result['sessionId']!=sid or any(identity(result[key])!=result[key] for key in ('id','sessionId','runId')):raise ValueError()
         if any(not isinstance(result[key],str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}',result[key]) for key in ('threadId','itemId')):raise ValueError()
         if (not re.fullmatch('[a-f0-9]{64}',result['sha256']) or type(result['size']) is not int or not 0<result['size']<=MAX_IMAGE
-                or result['mediaType']!='image/png' or type(result['transparent']) is not bool
+                or result['mediaType'] not in ('image/png','image/jpeg','image/webp') or type(result['transparent']) is not bool
                 or any(type(result[key]) is not int or not 0<result[key]<=16384 for key in ('width','height'))
                 or result['width']*result['height']>40_000_000 or not isinstance(result['createdAt'],str) or len(result['createdAt'])>64):raise ValueError()
         reference='studio-generated-image:'+result['id']
-        result['presentation']={'reference':reference,'markdown':'![Generated image]('+reference+')'}
+        if meta.get('source'):result['source']=meta['source']
+        result['presentation']={'reference':reference,'markdown':('![Tool image](' if meta.get('source') else '![Generated image](')+reference+')'}
         return result
     except (KeyError,TypeError,ValueError):raise ProjectFault('The generated-image metadata needs review. Original data was preserved.',503) from None
 
@@ -102,7 +103,7 @@ class GeneratedImages:
         all_rows=self.store.db.execute('SELECT metadata FROM generated_images').fetchall() if self.exists() else []
         if sum(json.loads(row[0])['size'] for row in all_rows)>=MAX_OWNER:raise ProjectFault('Owner image storage is full.',413)
         return own,sum(json.loads(row[0])['size'] for row in all_rows)
-    def accept(self,run_id,thread_id,native):
+    def accept(self,run_id,thread_id,native,source=None):
         ident=native.get('id')
         if not isinstance(ident,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}',ident) or not isinstance(thread_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}',thread_id):raise ProjectFault('Invalid native image item identity.',400)
         row=self.store.db.execute('SELECT session_id FROM runs WHERE id=?',(run_id,)).fetchone()
@@ -135,10 +136,12 @@ class GeneratedImages:
                     os.fchmod(file.fileno(),0o600);file.write(data);file.flush();os.fsync(file.fileno())
             decoded=decode_image(temporary)
             # The qualified native image tool returns a PNG, never an executable or polyglot extension.
-            if decoded['mediaType']!='image/png':raise ProjectFault('The native image output is not a validated PNG.',400)
+            if (source is None and decoded['mediaType']!='image/png'
+                    or source is not None and decoded['mediaType']!=source['mediaType']):raise ProjectFault('The image output does not match its declared raster format.',400)
             meta={'id':image_id,'sessionId':self.sid,'runId':run_id,'threadId':thread_id,'itemId':ident,
                 'sha256':hashed,'size':len(data),'mediaType':decoded['mediaType'],'width':decoded['width'],'height':decoded['height'],
                 'transparent':decoded.get('transparent',False),'createdAt':now()}
+            if source is not None:meta['source']=source
             if path.exists():
                 if regular(path).stat().st_nlink!=1 or path.read_bytes()!=data:raise ProjectFault('The original published image requires review.',409)
                 temporary.unlink()
@@ -151,6 +154,14 @@ class GeneratedImages:
             # A fully published orphan is retained for read-only reconciliation, never regenerated.
             if created_temporary and temporary.exists():temporary.unlink()
             raise
+
+    def accept_tool(self,run_id,thread_id,receipt,index,block):
+        row=self.store.db.execute('SELECT state,result FROM tools WHERE run_id=? AND call_id=?',(run_id,receipt)).fetchone()
+        if not row or row['state']!='completed' or not row['result'] or not json.loads(row['result']).get('success'):
+            raise ProjectFault('An image requires its confirmed original tool receipt.',409)
+        if block.get('mimeType') not in ('image/png','image/jpeg','image/webp'):raise ProjectFault('Unsupported tool image format.',400)
+        return self.accept(run_id,thread_id,{'id':receipt+'-image-'+str(index),'result':block.get('data')},
+            source={'kind':'studio-tool','receiptId':receipt,'mediaType':block['mimeType']})
 
 def presentation(worker,native,completed):
     ident=native.get('id')

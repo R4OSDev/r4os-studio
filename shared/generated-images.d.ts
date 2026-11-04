@@ -1,6 +1,7 @@
 export interface GeneratedImage {
   id: string; sessionId: string; runId: string; threadId: string; itemId: string;
-  sha256: string; size: number; mediaType: 'image/png'; width: number; height: number;
+  sha256: string; size: number; mediaType: 'image/png' | 'image/jpeg' | 'image/webp'; width: number; height: number;
+  source?: { kind: 'studio-tool'; receiptId: string; mediaType: string };
   transparent: boolean; createdAt: string; presentation: { reference: string; markdown: string };
 }
 export interface GeneratedAsset {

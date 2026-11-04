@@ -1,6 +1,7 @@
 """One Studio-owned model/tool loop for every direct wire protocol."""
 import asyncio
 import fcntl
+from http.client import HTTPException
 import hashlib
 import json
 import os
@@ -27,6 +28,10 @@ class StudioWorker(Worker):
         self.round = 0
         from model_operations import Operations
         self.operations=Operations(self.store)
+        from studio_media import Media
+        self.media=Media(self)
+        from studio_web import Web
+        self.web=Web(self)
         from studio_context import StudioContext
         self.context = StudioContext(self)
         from studio_goal import StudioGoal
@@ -34,6 +39,7 @@ class StudioWorker(Worker):
 
     def declarations(self):
         def allowed(name):
+            if name in __import__('tool_catalog').WEB_TOOLS:return self.config.get('webSearchEnabled',False)
             if name == 'get_goal': return True
             if name == 'update_goal': return self.goal_worker.active
             if name in NOTE_TOOLS:
@@ -64,18 +70,62 @@ class StudioWorker(Worker):
 
     async def _stop(self):
         self.stopping = True
+        await self.web.close()
         if self.operation and not self.operation.done(): self.operation.cancel()
         await super()._stop()
 
-    async def tool_result(self, result, image_data=None):
-        # Image bytes remain private/transient. Delivery is added by the common
-        # attachment path, never by a protocol-specific tool runner.
-        return result
+    async def tool_result(self, result, image_data=None, call_id=None):
+        if not result.get('success') or not call_id:return result
+        images=self.skill_mcp.images(result)
+        if image_data:
+            import base64
+            meta=result.get('image')
+            if (not isinstance(image_data,dict) or image_data.get('metadata')!=meta or not meta
+                    or meta.get('projectId')!=self.manifest.get('projectId') or meta.get('kind')!='screenshot'
+                    or hashlib.sha256(base64.b64decode(image_data.get('base64',''),validate=True)).hexdigest()!=meta.get('sha256')):
+                raise ProjectFault('The original screenshot reference changed.',409)
+            images.append({'data':image_data['base64'],'mimeType':'image/png'})
+        declared=result.get('skillMcp',{}).get('imageCount',len(images))
+        if not images:return {**result,'imageErrors':['Original service images are retained but unavailable for this image transport.']} if declared else result
+        from generated_images import GeneratedImages
+        registered=[];errors=[]
+        for index,block in enumerate(images):
+            try:registered.append(GeneratedImages(self.store,self.session_id).accept_tool(self.run_id,self.thread_id,call_id,index,block))
+            except ProjectFault as error:errors.append(str(error))
+        value={**result,'images':registered}
+        value['imageDelivery']='pixels' if self.config.get('apiModel',{}).get('imageInput')=='supported' else 'reference-only'
+        if len(images)<declared:errors.append('Additional original images remain in the retained service result; they were not visually inspected.')
+        if errors:value['imageErrors']=errors
+        if registered or errors:
+            saved=self.store.db.execute('SELECT payload FROM items WHERE run_id=? AND item_id=?',(self.run_id,call_id)).fetchone()
+            if saved:
+                public=json.loads(saved['payload']);public['generatedImages']=registered;public['imageErrors']=errors
+                public['imageDelivery']=value['imageDelivery']
+                item(self.store,self.session_id,self.run_id,public)
+        return value
 
     async def execute(self,name,arguments,call_id):
+        if name in __import__('tool_catalog').WEB_TOOLS:
+            try:return await self.web.call(arguments,call_id)
+            except (ProjectFault,OSError,ValueError,HTTPException) as error:
+                return {'success':False,'error':'webUnavailable','output':str(error) if isinstance(error,ProjectFault) else 'The original web response could not be confirmed. No alternate service was used.'}
         if name in __import__('tool_catalog').GOAL_TOOLS:
             return await self.goal_worker.tool(name,arguments)
-        return await super().execute(name,arguments,call_id)
+        result=await super().execute(name,arguments,call_id)
+        reference=result.get('skillMcp',{})
+        if reference.get('imageCount'):
+            entry=self.skill_mcp.entry(reference['skillId']);_,raw=self.skill_mcp.retained(entry,reference['reference'])
+            original=json.loads(raw)
+            text='\n'.join(p['text'] for p in original.get('content',[]) if isinstance(p,dict) and p.get('type')=='text' and isinstance(p.get('text'),str))
+            from terminal import bounded_text
+            preview,clipped=bounded_text(text,8192)
+            result['output']=encode({'kind':'untrusted_tool_media','originalResultReference':reference['reference'],
+                'imageCount':reference['imageCount'],'textPreview':preview,'textTruncated':clipped,'fullOriginalRetained':True})
+        return result
+
+    async def cleanup(self):
+        await self.web.close()
+        await super().cleanup()
 
     def active(self):
         row = get_run(self.store, self.run_id)
@@ -94,9 +144,11 @@ class StudioWorker(Worker):
             values.extend(page); cursor = page[-1]['sequence']
 
     def transport(self):
-        return ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
+        model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
             chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
+        model.media_resolver=self.media.resolve
+        return model
 
     async def infer(self,messages,instructions,tools,on_text=None):
         while True:
@@ -242,11 +294,13 @@ class StudioWorker(Worker):
                               'output':'The original run stopped before this tool was admitted.'}}],{'admissionOnly':True})
                     break
                 bound_id = self.receipt_id(call['callId'])
-                self.operation = asyncio.create_task(self.bound_tool(call['name'], call['arguments'], bound_id, self.tool_result))
+                from functools import partial
+                self.operation = asyncio.create_task(self.bound_tool(call['name'], call['arguments'], bound_id, partial(self.tool_result,call_id=bound_id)))
                 result = await self.operation
                 reply = {**result,'studioReceiptId':bound_id}
+                media=[{'type':'image','reference':value['presentation']['reference']} for value in result.get('images',[])] if self.config.get('apiModel',{}).get('imageInput')=='supported' else []
                 self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
-                    [{'type': 'tool_result', 'callId': call['callId'], 'result': reply}],
+                    [{'type': 'tool_result', 'callId': call['callId'], 'result': reply},*media],
                     {'toolReceiptId': bound_id, 'turnId': self.turn_id})
                 if result.get('error') == 'unknown' or result.get('partialChangesPossible') and result.get('error') == 'interrupted':
                     self.unconfirmed()
@@ -276,8 +330,9 @@ class StudioWorker(Worker):
             worker=json.loads(get_run(self.store,self.run_id)['worker']);worker.update(messageProtocol=1,messageTurnActive=True)
             transition(self.store,self.run_id,'starting',worker=worker)
             human = self.config['goalExecution']['objective'] if self.config.get('goalExecution') else request_text(self.store, self.run_id)
+            from studio_media import user_content
             self.conversation.append(self.run_id, 'user-' + self.row['request_id'], 'user',
-                [{'type': 'text', 'text': human}], {'requestId': self.row['request_id'], **({'kind':'humanGoalPlay'} if self.config.get('goalExecution') else {})})
+                user_content(self.config,human), {'requestId': self.row['request_id'], **({'kind':'humanGoalPlay'} if self.config.get('goalExecution') else {})})
             await self.cycle()
         except GoalHalted:
             self.outcome='unknown' if self.uncertain_effect else 'interrupted' if self.stopping else 'completed'

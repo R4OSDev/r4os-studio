@@ -62,8 +62,11 @@ function ToolCallBlock({ tools, projectId, sessionId, token }: { tools: ToolEntr
       {tools.map(({ item: i, jobId }) => <details key={itemKey(i)} className={`agent-tool ${i.status ?? ''}`}
         onToggle={(event) => { const active = event.currentTarget.open; setOpened(previous => { const next = new Set(previous); if (active) next.add(itemKey(i)); else next.delete(itemKey(i)); return next; }); if (active) { follow.current = false; setExpanded(true); } }}>
         <summary><span title={toolLabel(i)}>{toolLabel(i)}</span><span className="agent-tool-status">{i.status}</span></summary>
-        {i.tool === 'web_search' ? <WebSearchCard value={i.webSearch} /> : <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />}
+        {i.tool === 'web_search' || i.tool === 'studio.web_search' ? <WebSearchCard value={i.webSearch} /> : <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />}
         {opened.has(itemKey(i)) && (i.tool === 'image_gen.imagegen' || i.generatedAsset) && <GeneratedCard value={i.generatedImage} asset={i.generatedAsset} projectId={projectId} sessionId={sessionId} status={i.status} />}
+        {opened.has(itemKey(i)) && i.generatedImages?.map(image => <GeneratedCard key={image.id} value={image} asset={null} projectId={projectId} sessionId={sessionId} status={i.status} />)}
+        {opened.has(itemKey(i)) && i.imageErrors?.map((error,index) => <p key={index} role="status">{error}</p>)}
+        {opened.has(itemKey(i)) && !!i.generatedImages?.length && i.imageDelivery === 'reference-only' && <p>This model received the image reference. It did not receive the image pixels.</p>}
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}

@@ -201,6 +201,11 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
+        if op in ('web_service','set_web_service'):
+            from studio_web import settings as web_settings
+            expected={'operation'} if op=='web_service' else {'operation','input'}
+            if set(request)!=expected:raise ProjectFault('Invalid web service request.',400)
+            return web_settings(self.config['projects'],request.get('input'))
         if op == 'skill_source_start':
             if set(request) != {'operation', 'ownerId', 'requestId'}:
                 raise ProjectFault('Invalid source operation.', 400)

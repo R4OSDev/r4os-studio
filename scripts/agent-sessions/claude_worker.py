@@ -16,6 +16,7 @@ from run_store import get_run,transition,item,event,request_text
 from session_store import encode
 from owner import open_lock
 from profile import tools_for
+from tool_catalog import native_specifications
 from store import ProjectFault
 
 
@@ -350,7 +351,7 @@ class ClaudeWorker(Worker):
             binding={'providerId':self.config['providerId'],'studioSessionId':self.session_id,'nativeSessionId':frozen['nativeSessionId'],
                 'runId':self.run_id,'requestId':self.row['request_id'],'ownerType':self.store.owner_type,'ownerId':self.store.owner_id,
                 'model':self.config['model'],'toolScope':tool_scope(self.config)}
-            tool_names=tools_for(tool_scope(self.config))+(('report_goal',) if self.claude_goal or self.live_control else ())
+            tool_names=tuple(t['name'][7:] for t in native_specifications(tool_scope(self.config)))+(('report_goal',) if self.claude_goal or self.live_control else ())
             self.broker=ClaudeToolBroker(self.socket_root,binding,tool_names,self.current,self.effect,
                 admit=self.admit_native,retry=self.claude_retry)
             await self.broker.start()

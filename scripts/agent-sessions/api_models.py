@@ -142,6 +142,7 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
     else: snapshot['apiProvider']['server'] = provider.get('server','custom')
     snapshot['apiModel'] = {key:copy.deepcopy(model[key]) for key in ('contextWindow','maxOutputTokens')}
     snapshot['apiModel']['reasoning'] = model['declaredCapabilities']['reasoning']
+    snapshot['apiModel']['imageInput'] = model['capabilities']['imageInput']
     if model.get('messages'): snapshot['apiModel']['messages'] = copy.deepcopy(model['messages'])
     if snapshot['apiModel']['maxOutputTokens'] is None: snapshot['apiModel'].pop('maxOutputTokens')
     if provider['protocol'] == 'chat-completions':

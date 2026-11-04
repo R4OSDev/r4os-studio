@@ -71,6 +71,9 @@ export interface TerminalTimingFields {
 export interface SessionItem extends Partial<TerminalTimingFields> {
   apiOrigin?: import('./api-providers.js').ApiResponseOrigin;
   generatedImage?: import('./generated-images.js').GeneratedImage;
+  generatedImages?: import('./generated-images.js').GeneratedImage[];
+  imageErrors?: string[];
+  imageDelivery?: 'pixels' | 'reference-only';
   generatedAsset?: import('./generated-images.js').GeneratedAsset;
   attachments?: import('./agent-inputs.js').FrozenAttachment[];
   id: string; runId: string; turnId?: string; type: string; text?: string; tool?: string; status?: string;

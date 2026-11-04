@@ -63,7 +63,8 @@ class StudioContext(Context):
         # A planning estimate, never a reported token balance or tokenizer claim.
         body, _ = self.w.transport().prepare(active, instructions, tools, self.w.config['effort'])
         size = len(dumps(body).encode())
-        return math.ceil(size / 4), size
+        has_media=any(p['type']=='image' for m in active for p in m['content'])
+        return None if has_media else math.ceil(size / 4), size
 
     def report(self, instructions, tools, state=None, reason=None):
         w = self.w; active, records, checkpoint = self.history()
@@ -106,7 +107,7 @@ class StudioContext(Context):
         _, size = self.estimate(active, instructions, tools)
         latest = self.latest(records)
         fresh = latest and (not checkpoint or latest['sequence'] > checkpoint['sequence'])
-        pressure = (capacity is not None and (estimate >= capacity*0.8 or fresh and measured is not None and measured >= capacity*0.8)) or size >= 6*1024*1024
+        pressure = (capacity is not None and (estimate is not None and estimate >= capacity*0.8 or fresh and measured is not None and measured >= capacity*0.8)) or size >= 6*1024*1024
         if not pressure: return active
         pending = set(); through = None
         for record in active:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One systemd-owned run; independent of the web app and host coordinator."""
-from tool_catalog import tool_scope
+from tool_catalog import tool_scope,WEB_TOOLS,GOAL_TOOLS,native_specifications
 import asyncio
 import fcntl
 import json
@@ -20,6 +20,7 @@ from tool_catalog import specifications, validate_arguments
 from sandbox import Sandbox
 from terminal import Terminals, bounded_text
 from system_prompt import snapshot as prompt_snapshot
+from store import ProjectFault
 from owner import binding, open_lock
 
 class Worker:
@@ -243,15 +244,16 @@ class Worker:
         except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
         if name[7:] in NOTE_TOOLS:
             from environment_note_tools import require
-            from store import ProjectFault
             try:require(self)
             except ProjectFault as error:return await output({'success':False,'error':'disabled','output':str(error)})
         roadmap_denial = None
         if name[7:] in ROADMAP_TOOLS:
             from roadmap_access import require
-            from store import ProjectFault
             try: require(self)
             except ProjectFault as error: roadmap_denial = str(error)
+        if name[7:] in WEB_TOOLS:
+            try:__import__('studio_web').require(self)
+            except ProjectFault as error:roadmap_denial=str(error)
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
         previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
@@ -301,7 +303,7 @@ class Worker:
             result = admission_error
         elif roadmap_denial:
             result = {'success': False, 'error': 'disabled', 'output': roadmap_denial}
-        elif (name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS)
+        elif (name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS,*WEB_TOOLS)
                 and not (self.config['engine'].get('kind')=='studio' and name[7:] in __import__('tool_catalog').GOAL_TOOLS)
                 and not self.config['permissions'].get(tool_id, False)):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
@@ -328,7 +330,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('remote', 'roadmap', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'skillMcp', 'skillMcpRequest'):
+        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'skillMcp', 'skillMcpRequest'):
             if key in result: value[key] = result[key]
         if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
             from terminal_timing import FIELDS as terminal_time_fields
@@ -514,7 +516,7 @@ class Worker:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {**native_provider,'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
-                           'ephemeral': False, 'dynamicTools': specifications(tool_scope(self.config)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})},
+                           'ephemeral': False, 'dynamicTools': native_specifications(tool_scope(self.config)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})},
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
                 with self.store.db:

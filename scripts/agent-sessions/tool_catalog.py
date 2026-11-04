@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 GOAL_TOOLS = ('get_goal', 'update_goal')
+WEB_TOOLS = ('web_search',)
 
 
 def tool_scope(value='project'):
@@ -34,12 +35,16 @@ def specifications(scope='project'):
     return deepcopy(catalog()[tool_scope(scope)])
 
 
+def native_specifications(scope='project'):
+    return [t for t in specifications(scope) if t['name'][7:] not in (*GOAL_TOOLS,*WEB_TOOLS)]
+
+
 def tools_for(scope='project'):
     return tuple(item['name'][7:] for item in catalog()[tool_scope(scope)])
 
 
 def permission_tools(scope='project'):
-    grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note',*GOAL_TOOLS}
+    grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note',*GOAL_TOOLS,*WEB_TOOLS}
     return tuple(name for name in tools_for(scope) if name not in grouped)+('skill_network',)
 
 

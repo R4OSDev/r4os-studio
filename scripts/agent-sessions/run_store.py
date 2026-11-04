@@ -101,6 +101,9 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         recovery=recovery_snapshot(store,session_id)
         if recovery:snapshot['goalRecovery']=recovery
     snapshot['webSearchEnabled'] = session['webSearchEnabled'] if data.get('nativeWebSearch') == 1 else False
+    if snapshot['engine'].get('kind')=='studio' and snapshot['webSearchEnabled']:
+        from studio_web import settings as web_settings
+        snapshot['webService']=original['webService'] if original and 'webService' in original else web_settings(store.projects)
     from image_generation import freeze as freeze_image_capability
     if original is not None:image_capability=original.get('imageGenerationCapability')
     snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
@@ -108,7 +111,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
     from generated_images import GeneratedImages
     generated_history=bool(GeneratedImages(store,session_id).rows())
-    if snapshot['nativeImageGeneration'] or generated_history:
+    if snapshot['nativeImageGeneration'] or generated_history and snapshot['engine'].get('kind')!='studio':
         from session_store import provider_models
         selected_model=next((v for v in provider_models(provider_dir,session['providerId']) if v['id']==session['model']),None)
         if not selected_model or selected_model.get('imageInputs')!='supported':

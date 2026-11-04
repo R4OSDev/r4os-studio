@@ -99,8 +99,7 @@ def present(value,protocol,kind=None):
         if declared['capabilities'][key]!='supported':reasons.append({'text':'Text input','functionTools':'Function tools','streaming':'Streaming'}[key]+' is not confirmed.')
     if not declared['efforts'] or declared['defaultEffort'] is None:reasons.append('The reasoning/default-effort contract is not confirmed.')
     if protocol=='chat-completions' and declared['contextWindow'] is None:reasons.append('Chat Completions needs a confirmed context window.')
-    for key in ('imageInput','webSearch','imageGeneration'):
-        if key!='imageInput' or kind!='zai-coding-plan':effective[key]='unsupported'
+    for key in ('webSearch','imageGeneration'):effective[key]='unsupported'
     # GOAL is a Studio/native lifecycle over the existing function contract,
     # not a hosted provider endpoint or a model capability guessed from its ID.
     effective['goals']='supported' if not reasons else 'unsupported'

@@ -36,7 +36,7 @@ export const permissionToolIds=Object.keys(permissionToolLabels) as AgentToolId[
 // They are deliberately separate from independently saved permission keys.
 export const toolLabels:Record<string,string>={...permissionToolLabels,
   'studio.read_environment_notes':'Read environment notes','studio.record_environment_note':'Record environment note',
-  'image_gen.imagegen':'Generate image'};
+  'image_gen.imagegen':'Generate image','studio.web_search':'Web access'};
 
 export const SessionScope = createContext<'project' | 'skill'>('project');
 export function useSessionApi() {

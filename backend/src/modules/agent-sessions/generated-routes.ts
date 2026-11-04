@@ -27,12 +27,12 @@ export function generatedRoutes(app: FastifyInstance, directory: string, securit
     if (streams.size >= 8) throw new ProjectError('Too many generated image reads are open.', 429);
     streams.add(request); request.raw.once('aborted', () => streams.delete(request));
     const result = await attachmentStore<{ path: string; image: GeneratedImage }>(directory, { operation: 'generated_access', ...owner(request.params.id), sessionId: request.params.sessionId, imageId: request.params.imageId });
-    if (result.image.sessionId !== request.params.sessionId || result.image.id !== request.params.imageId || result.image.mediaType !== 'image/png'
+    if (result.image.sessionId !== request.params.sessionId || result.image.id !== request.params.imageId || !['image/png','image/jpeg','image/webp'].includes(result.image.mediaType)
       || !Number.isSafeInteger(result.image.size) || result.image.size < 1 || result.image.size > 16 * 1024 * 1024)
       throw new ProjectError('This reference is not a confirmed generated image in this session.', 403);
     return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
       .header('Content-Security-Policy', "default-src 'none'; sandbox")
-      .header('Content-Disposition', `${mode === 'preview' ? 'inline' : 'attachment'}; filename="generated-image-${result.image.id}.png"`)
-      .type('image/png').send(createReadStream(result.path, { highWaterMark: 65536 }));
+      .header('Content-Disposition', `${mode === 'preview' ? 'inline' : 'attachment'}; filename="image-${result.image.id}.${result.image.mediaType === 'image/jpeg' ? 'jpg' : result.image.mediaType === 'image/webp' ? 'webp' : 'png'}"`)
+      .type(result.image.mediaType).send(createReadStream(result.path, { highWaterMark: 65536 }));
   });
 }

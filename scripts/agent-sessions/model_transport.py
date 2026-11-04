@@ -124,8 +124,12 @@ class ModelTransport:
         self.process_observer = None
         self.event_observer = None
         self.request_sha256 = None
+        self.media_resolver = None
 
     def prepare(self, messages, instructions, tools, effort=''):
+        if any(p['type'] in ('image','document') for m in messages for p in m['content']):
+            from studio_media import resolve
+            messages=resolve(messages,self.media_resolver)
         if self.binding['protocol'] == 'responses':
             from model_responses import request, Responses
             body = request(self.binding, messages, instructions, tools, effort)

@@ -30,6 +30,7 @@ class DevelopmentTools:
 
     def image_capable(self):
         worker = self.worker
+        if worker.config['engine'].get('kind')=='studio':return worker.config.get('apiModel',{}).get('imageInput')=='supported'
         try:
             models = json.loads((worker.store.directory / worker.session_id / 'Codex/models.json').read_text())['models']
             return 'image' in next(v for v in models if v['slug'] == worker.config['model']).get('input_modalities', [])

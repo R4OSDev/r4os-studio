@@ -85,8 +85,19 @@ def qualify(store,sid,session,provider_dir,records):
     if engine.get('kind')=='claude-code':
         from claude_inputs import qualify_images
         return qualify_images(store,sid,session,provider_dir,records+history(store,sid))
+    if engine.get('kind')=='studio':
+        from api_catalog import Catalogs
+        catalog=Catalogs(provider_dir).listing(session['providerId'])
+        model=next((m for m in catalog['models'] if m['id']==session['model']),None)
+        if catalog['stale'] or not model or model['capabilities']['imageInput']!='supported':raise ProjectFault('The selected model has no confirmed image input support. Original uploads were preserved.',409)
+        return ['text','image']
     if not native(engine):
         raise ProjectFault('The native image runtime identity is unavailable. The conversation and uploads were preserved.',409)
+    if engine.get('api'):
+        from api_models import connection
+        provider=connection(provider_dir,session['providerId'])
+        if not provider or provider['kind']!='zai-coding-plan':
+            raise ProjectFault('This historical native API runtime has no qualified image transport. Migrate explicitly to the Studio core; uploads and history were preserved.',409)
     model=next((m for m in provider_models(provider_dir,session['providerId']) if m['id']==session['model']),None)
     if not model or model['imageInputs']!='supported':
         raise ProjectFault('This model cannot confirm image inputs. Select an image-capable model; the message and attachments were preserved.',409)

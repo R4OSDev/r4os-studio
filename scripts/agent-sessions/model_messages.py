@@ -5,6 +5,7 @@ from model_transport import ModelFault, dumps, loads, text_fragment, unicode_tex
 
 def request(binding, messages, instructions, tools, effort):
     wire = []; pending = set()
+    from studio_media import image
     for message in messages:
         originals = [p for p in message['content'] if p['type'] == 'provider']
         if originals:
@@ -33,6 +34,13 @@ def request(binding, messages, instructions, tools, effort):
                 pending.remove(part['callId'])
                 content.append({'type': 'tool_result', 'tool_use_id': part['callId'], 'content': dumps(part['result']),
                                 'is_error': part['result'].get('success') is False})
+            elif part['type']=='image':
+                if message['role']=='tool' and content and content[-1]['type']=='tool_result':
+                    original=content[-1]['content']
+                    if isinstance(original,str):content[-1]['content']=[{'type':'text','text':original}]
+                    content[-1]['content'].append(image(part,'messages'))
+                elif role=='user' and not pending:content.append(image(part,'messages'))
+                else:raise ModelFault('model_context_unpaired')
             else:
                 raise ModelFault('model_content_unavailable')
         if wire and wire[-1]['role'] == role: wire[-1]['content'].extend(content)

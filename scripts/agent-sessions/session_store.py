@@ -154,7 +154,7 @@ def validate_settings(data, provider_dir):
     text(data['name'], 120)
     candidate = next((v for v in providers(provider_dir) if v['id'] == data['providerId']), None)
     if candidate is None: raise ProjectFault('Connect the selected provider before saving these settings.', 409)
-    if candidate.get('type')=='api' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
+    if candidate.get('type')=='api' and (data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
         raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model.',409)
     if candidate.get('type')=='claude-subscription' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
         raise ProjectFault('Hosted web/image generation and Fast Mode are unavailable for this native Claude adapter.',409)

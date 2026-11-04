@@ -388,3 +388,11 @@ Runs und bereits reservierte Queue-Eingänge behalten ihre originalen Fakten,
 Credentialrevisionen und vollständigen Confighashes. Nur neue Eingänge verwenden
 die aktuelle Konfiguration. Disconnect schließt weiterhin die Zulassung. Alte
 Secrets bleiben bis zum bestätigten Ende aller eigenen Referenzen geschützt.
+
+### 0.10.13: shared web and media
+
+Studio web access uses `studio_web_search` and the existing frozen feature switch and tool receipt. Search requires an explicitly configured SearXNG JSON endpoint; public page fetch works independently. Reads retain private originals and hashes, bounded untrusted text and source links. Targets are DNS-pinned, redirects rechecked, and no provider credential, ambient cookie or proxy is forwarded. Opening settings performs no service probe. Saving service configuration affects future accepted inputs only. Stop closes and observes the original owned operation.
+
+Ready attachments become durable session references; the transport resolves their verified bytes only for the outgoing request. PNG/JPEG/WebP require confirmed model image support. Document text is explicitly identified as an untrusted extraction, including the existing truncation/layout limitations. Image context token estimates remain unknown rather than treating image bytes as text tokens.
+
+Selected MCP image services publish through the existing GeneratedImages registry with their original tool receipt, prompt/argument/result records and Stop lifecycle. Confirmed tool pictures are rendered and downloaded in their original raster format; nonvisual conversation models receive references only. Responses/Chat image observations follow the complete tool-result batch; Messages nests images in the original result. Native hosted ChatGPT image generation remains a limited legacy capability because no equivalent independent AI image service is configured. No AI image generation or complete native replacement is claimed by fixture qualification.

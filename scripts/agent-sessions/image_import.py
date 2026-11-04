@@ -131,6 +131,7 @@ def canonical_target(workspace,path):
 async def import_image(worker,args,call_id):
     path,fmt,options,expected=validate(args);check_worker(worker)
     images=GeneratedImages(worker.store,worker.session_id);source=images.path(args['imageId']);original=images.get(args['imageId'])
+    if fmt=='original' and original['mediaType']!='image/png':raise ProjectFault('Use explicit PNG conversion for a PNG asset path, or download this original image in its own format.',409)
     if not isinstance(call_id,str) or not 1<=len(call_id)<=256:raise ProjectFault('Invalid original image import call.',400)
     token=hashlib.sha256((worker.run_id+':'+call_id).encode()).hexdigest();base=directory(images.root()/'Imports')
     journal=base/(token+'.json')
