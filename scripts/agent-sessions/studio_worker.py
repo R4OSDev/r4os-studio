@@ -158,6 +158,11 @@ class StudioWorker(Worker):
 
     async def infer_once(self,messages,instructions,tools,on_text=None):
         self.validate_lease()
+        if self.config['apiProvider']['kind']=='chatgpt-plan':
+            from chatgpt_plan import Plan
+            self.credential=await asyncio.to_thread(Plan(self.manifest['providers']).credential,self.config['apiProvider'],self.config['apiPlanGrant'])
+            self.validate_lease()
+            if not self.active():raise asyncio.CancelledError()
         if self.config['apiProvider']['kind']=='zai-coding-plan':
             from zai_limits import state
             if state(self.manifest['providers'],self.config['apiProvider'],self.config['model']):

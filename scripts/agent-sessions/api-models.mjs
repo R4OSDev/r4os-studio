@@ -66,8 +66,9 @@ request = (target.protocol === 'https:' ? https : http).request({ protocol: targ
     if (finished) return;
     try {
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
-      if (!value || !Array.isArray(value.data)) { fail('format'); return; }
-      finish({ ok: true, ...modelCatalog(value.data, binding, key, input.modelIds) });
+      const entries=binding.kind==='chatgpt-plan'?value?.models:value?.data;
+      if (!value || !Array.isArray(entries)) { fail('format'); return; }
+      finish({ ok: true, ...modelCatalog(entries, binding, key, input.modelIds) });
     } catch { fail('format'); }
   });
 });

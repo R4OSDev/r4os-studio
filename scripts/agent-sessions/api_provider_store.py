@@ -19,7 +19,7 @@ from store import ProjectFault
 
 FIELDS = ('id','type','kind','name','baseUrl','protocol','auth','revision','credentialRevision',
           'keyConfigured','enabled','status','createdAt','updatedAt','runtime')
-KINDS = ('openrouter','openai-compatible','local','zai-coding-plan')
+KINDS = ('openrouter','openai-compatible','local','zai-coding-plan','chatgpt-plan')
 PROTOCOLS = ('responses','chat-completions','messages')
 
 
@@ -131,6 +131,9 @@ class ApiProviders:
         if value['kind']=='zai-coding-plan':
             from zai_policy import require
             require(value)
+        if value['kind']=='chatgpt-plan':
+            from chatgpt_plan import require
+            require(value)
         return value
 
     def listing(self):
@@ -160,8 +163,9 @@ class ApiProviders:
             args+=(value['id'],)
         db.execute("DELETE FROM secrets.credentials WHERE provider_id=? AND revision!=? AND revision NOT IN (SELECT credential_revision FROM leases WHERE provider_id=? AND state!='released')"+extra,args)
 
-    def mutate(self,operation,ident,data,finish=False):
+    def mutate(self,operation,ident,data,finish=False,plan=False):
         if not isinstance(data,dict):raise ProjectFault('Invalid API provider input.',400)
+        if operation=='create' and data.get('kind')=='chatgpt-plan' and not plan:raise ProjectFault('Use the verified Studio ChatGPT sign-in flow.',400)
         rid=identity(data.get('requestId'));ident=identity(ident) if ident else None
         if operation=='create':allowed={'requestId','name','kind','baseUrl','protocol','auth','key','openrouter','server'}
         elif operation=='update':allowed={'requestId','revision','name','baseUrl','protocol','auth','key','enabled','openrouter','server'}
@@ -189,6 +193,8 @@ class ApiProviders:
                     'enabled':data['auth']=='none','status':'disconnected','createdAt':stamp,'updatedAt':stamp,'runtime':'not-qualified'}
             else:
                 value=self.current(db,ident)
+                if value['kind']=='chatgpt-plan' and operation=='update' and not plan and set(data)-{'requestId','revision','name','enabled'}:
+                    raise ProjectFault('ChatGPT plan endpoint and credentials are managed by its verified sign-in.',400)
                 if not original:
                     if type(data.get('revision')) is not int or data['revision']!=value['revision']:
                         raise ProjectFault('API provider settings changed. Reload before saving.',409)

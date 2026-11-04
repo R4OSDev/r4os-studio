@@ -22,10 +22,15 @@ class ModelFault(ProjectFault):
         self.http_status = http_status
         self.not_dispatched=not_dispatched;self.details=details
         self.category=('connection' if not_dispatched and http_status is None else 'authentication' if http_status==401 else 'access' if http_status in (403,404)
-            else 'billing' if http_status==402 else 'quota' if str(code) in ('insufficient_quota','quota_exceeded','zai_subscription_exhausted')
+            else 'billing' if http_status==402 else 'quota' if str(code) in ('insufficient_quota','quota_exceeded','zai_subscription_exhausted','subscription_sharing_usage_limit_exceeded')
             else 'rate' if http_status==429 else 'context' if http_status==413 or code in ('context_length_exceeded','context_window_exceeded','prompt_too_long','model_input_limit')
             else 'outputLimit' if code=='model_output_limit' else 'service' if http_status and http_status>=500 or code in ('overloaded_error','server_error')
             else 'incomplete' if code in ('model_stream_incomplete','model_response_incomplete','model_transport_timeout','model_connection_error','model_transport_error') else 'protocol')
+        if code in ('subscription_sharing_usage_unavailable','subscription_sharing_user_unavailable'):self.category='service'
+        if code=='subscription_sharing_invalid_user':self.category='authentication'
+        if code in ('subscription_sharing_user_not_eligible','subscription_sharing_route_not_supported','chatpass_v2_scope_not_authorized','chatpass_v2_invalid_authorization_context'):self.category='access'
+        if str(code).startswith('subscription_sharing_'):
+            self.args=('ChatGPT plan use was not confirmed. Review this connection and its actual ChatGPT usage settings; no alternate billing route was used.',)
         if self.category=='context':self.args=('The selected model rejected the context size. Original history was preserved.',)
         if self.category=='connection':self.args=('The connection failed before the model request was sent.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'

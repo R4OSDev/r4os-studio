@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { projectRequestId } from '../projects/api';
 import { useSessionApi } from './api';
 import { ProjectField } from '../projects/ProjectField';
 
@@ -19,7 +20,7 @@ export function WebServiceSettings({ token }: { token: string }) {
     if (!current || busy) return;
     setBusy(true); setError('');
     try {
-      const original = pending ?? { requestId: crypto.randomUUID(), revision: current.revision, searchEndpoint: endpoint.trim() || null };
+      const original = pending ?? { requestId: projectRequestId(), revision: current.revision, searchEndpoint: endpoint.trim() || null };
       setPending(original);
       const value = await request<Settings>('/web-service', token, 'PUT', original);
       setPending(null); setCurrent(value); setEndpoint(value.searchEndpoint ?? '');

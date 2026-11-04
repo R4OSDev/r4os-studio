@@ -3,6 +3,7 @@ import { ProviderManager } from './service.js';
 import type { ProviderOptions } from './service.js';
 import { ProviderSessions } from './sessions.js';
 import type { ResetRequest } from '../../../../shared/llm-providers.js';
+import { chatgptPlanRoutes } from './chatgpt-plan-routes.js';
 import { apiProviderRoutes } from './api-routes.js';
 import { claudeProviderRoutes } from './claude-routes.js';
 
@@ -12,6 +13,7 @@ export async function providerRoutes(app: FastifyInstance, options: ProviderOpti
   const sessions = new ProviderSessions();
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
   apiProviderRoutes(app, sessions);
+  chatgptPlanRoutes(app, sessions);
   claudeProviderRoutes(app, sessions);
 
   app.get('/', async (request, reply) => {

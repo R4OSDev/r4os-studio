@@ -5,7 +5,7 @@ import type { ProviderApi } from '../useProviders';
 import { useApiMutation } from '../useApiMutation';
 import { OpenRouterFields, routerDraft, routerSettings } from './OpenRouterFields';
 
-export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API', 'zai-coding-plan': 'Z.AI · GLM Coding Plan' };
+export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API', 'zai-coding-plan': 'Z.AI · GLM Coding Plan', 'chatgpt-plan':'ChatGPT plan' };
 const defaultUrl = (kind: ApiProviderKind) => kind === 'zai-coding-plan' ? 'https://api.z.ai/api/coding/paas/v4' : kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : '';
 export type LeaveGuard = (guard: () => boolean) => void;
 export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: {

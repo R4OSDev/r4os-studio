@@ -21,6 +21,23 @@ export function modelFacts(entry, binding, key) {
     let reasoning, efforts = [], defaultEffort = null;
     // OpenRouter's published model schema supplies these facts. Generic Models
     // IDs alone establish no context/tool/reasoning or modality capabilities.
+    if (binding.kind === 'chatgpt-plan') {
+      if (entry.visibility !== 'list' || entry.supported_in_api !== true) return null;
+      name = safeString(entry.display_name, 200) ?? id;
+      contextWindow = tokens(entry.context_window); maxOutputTokens = tokens(entry.max_output_tokens);
+      // The documented SIWC Responses contract supports text, streamed output
+      // and custom function tools. Display/account eligibility comes from this
+      // account's own catalog; no ID or local binary selects a model.
+      capabilities.text = capabilities.functionTools = capabilities.streaming = 'supported';
+      if (Array.isArray(entry.input_modalities)) capabilities.imageInput = entry.input_modalities.includes('image') ? 'supported' : 'unsupported';
+      const levels = entry.supported_reasoning_levels;
+      if (Array.isArray(levels) && levels.every(v => v && ['none','minimal','low','medium','high','xhigh','max'].includes(v.effort))) {
+        efforts = [...new Set(levels.map(v=>v.effort))];
+        defaultEffort = efforts.includes(entry.default_reasoning_level) ? entry.default_reasoning_level : null;
+        capabilities.reasoning = efforts.some(v=>v!=='none') ? 'supported' : 'unsupported';
+        if (capabilities.reasoning === 'unsupported' && !efforts.length) { efforts=['none'];defaultEffort='none'; }
+      }
+    }
     if (binding.kind === 'openrouter') {
       name = safeString(entry.name, 200) ?? id;
       contextWindow = tokens(entry.context_length); maxOutputTokens = tokens(entry.top_provider?.max_completion_tokens);
@@ -73,6 +90,7 @@ export function modelFacts(entry, binding, key) {
 export function modelCatalog(entries, binding, key, modelIds = []) {
   if (!Array.isArray(entries) || !Array.isArray(modelIds) || modelIds.length > 320
     || modelIds.some(value => typeof value !== 'string' || value.length > 200)) throw Error('Invalid model catalog');
+  if(binding.kind==='chatgpt-plan')entries=entries.map(v=>({...v,id:v.slug}));
   const wanted = new Set(modelIds), preferred = [], remaining = [];
   for (const entry of entries) {
     if (wanted.has(entry?.id)) preferred.push(entry);

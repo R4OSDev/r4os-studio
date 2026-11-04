@@ -47,6 +47,8 @@ class Host:
         self.claude_probe_lock=asyncio.Lock()
         from claude_auth import ClaudeAuth
         self.claude_auth=ClaudeAuth(config['providers'])
+        from chatgpt_plan import Login
+        self.plan_login=Login(config['providers'])
         self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -223,6 +225,19 @@ class Host:
         if op == 'project_activity':
             from project_activity import snapshot
             return await snapshot(self)
+        if op == 'chatgpt_plan':
+            action=request.get('action');plan=self.plan_login.plan;browser_owner=request.get('ownerId')
+            self.plan_login.owner(browser_owner)
+            if action=='list':return plan.listing(browser_owner)
+            if action=='prepare':
+                identity(request.get('requestId'));return {'hostId':plan.host(),'importDirectory':str(plan.folder('Imports'))}
+            if action=='start':
+                if request.get('localBrowser') is not True:raise ProjectFault('This browser is on another computer. Use the local Studio sign-in helper and protected SSH transfer; a host loopback cannot receive this browser callback.',409)
+                return await self.plan_login.start(request.get('input'),browser_owner)
+            if action=='cancel':return await self.plan_login.cancel(request.get('requestId'),browser_owner)
+            if action=='finish':return await self.plan_login.finish(request.get('requestId'),browser_owner)
+            if action=='import':return await self.plan_login.import_record(request.get('input'),browser_owner)
+            raise ProjectFault('Invalid ChatGPT account operation.',400)
         if op == 'api_provider':
             from api_provider_store import ApiProviders
             store=ApiProviders(self.config['providers']);action=request.get('action')
@@ -247,12 +262,17 @@ class Host:
                 return await start(self,ident,request.get('input'))
             if action not in ('create','update','disconnect','delete'):raise ProjectFault('Invalid API provider operation.',400)
             ident=None if action=='create' else identity(request.get('id'))
+            if action in ('disconnect','delete') and store.get(ident)['kind']=='chatgpt-plan':await self.plan_login.cancel_provider(ident)
             result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'))
             if action in ('disconnect','delete') and result['state']=='pending':
                 from api_catalog_host import recover as close_catalogs
                 await close_catalogs(self,ident)
                 await self.handle({'operation':'cancel_provider','providerId':ident})
+                if result['provider']['kind']=='chatgpt-plan':
+                    revocation=await asyncio.to_thread(self.plan_login.plan.revoke,ident)
+                else:revocation=None
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
+                if revocation:result['planLogout']=revocation
             return result
         if op == 'capabilities': return {'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
@@ -845,7 +865,7 @@ async def main():
                     from skill_source_host import dispatch as dispatch_sources
                     await dispatch_sources(host)
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.source_tasks and not host.claude_auth.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.source_tasks and not host.claude_auth.busy and not host.plan_login.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:

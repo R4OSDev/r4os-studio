@@ -6,6 +6,7 @@ import { ApiConnectionForm, apiKinds } from './ApiConnectionForm';
 import type { LeaveGuard } from './ApiConnectionForm';
 import { ApiModels } from './ApiModels';
 import { Icon } from '../../../app/Icon';
+import { ChatGPTPlan } from './ChatGPTPlan';
 import { ZaiProviderLimits } from './ZaiProviderLimits';
 
 export function ApiProviderDetails({ initial, api, removed, setLeaveGuard }: { initial: ApiProvider; api: ProviderApi; removed: () => void; setLeaveGuard?: LeaveGuard }) {
@@ -25,7 +26,7 @@ export function ApiProviderDetails({ initial, api, removed, setLeaveGuard }: { i
     <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><div><h2>{provider.name}</h2><p>{apiKinds[provider.kind]} · {provider.protocol === 'responses' ? 'Responses' : 'Chat Completions'}</p></div><span className={`provider-status ${provider.enabled ? 'connected' : ''}`}><span />{provider.enabled ? 'Configured' : 'Disabled'}</span></div>
     {error && <p className="provider-alert" role="alert">{error}<button type="button" onClick={() => void reload()}>Reload connection</button></p>}
     <button type="button" className="button-secondary" onClick={() => { if (Object.values(guards.current).every(guard => !guard || guard())) void reload(); }}>Reload saved connection</button>
-    <ApiConnectionForm key={provider.revision} initial={provider} kind={provider.kind} api={api} saved={() => void reload()} setLeaveGuard={connectionGuard} />
+    {provider.kind==='chatgpt-plan'?<ChatGPTPlan key={provider.revision} api={api} provider={provider} saved={()=>{void reload();}}/>:<ApiConnectionForm key={provider.revision} initial={provider} kind={provider.kind} api={api} saved={() => void reload()} setLeaveGuard={connectionGuard} />}
     {provider.kind === 'zai-coding-plan' && <ZaiProviderLimits key={'quota-' + provider.revision} provider={provider} api={api} />}
     <ApiModels key={`models-${provider.revision}`} provider={provider} api={api} setLeaveGuard={modelGuard} />
   </div>;

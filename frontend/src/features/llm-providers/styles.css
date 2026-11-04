@@ -144,3 +144,6 @@ button:disabled { cursor: default; opacity: .55; }
 .zai-limit-actions button { max-width:100%; white-space:normal; }
 .zai-limits.compact { margin:0 22px 10px; padding:9px 12px; flex-shrink:0; max-height:35vh; overflow:auto; }
 .zai-limits summary { color:#cdb4e5; cursor:pointer; }
+
+.chatgpt-plan-transfer { display:grid; gap:12px; min-width:0; }
+.chatgpt-plan-transfer code { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; line-height:1.5; }

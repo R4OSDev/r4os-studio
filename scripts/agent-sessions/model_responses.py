@@ -21,7 +21,7 @@ def request(binding, messages, instructions, tools, effort):
             if part['type'] == 'text':
                 inputs.append({'role': message['role'], 'content': part['text']})
             elif part['type'] == 'tool_call':
-                inputs.append({'type': 'function_call', 'call_id': part['callId'], 'name': part['name'], 'arguments': dumps(part['arguments'])})
+                inputs.append({'type': 'function_call', 'call_id': part['callId'], 'name': part['name'], 'arguments': dumps(part['arguments']),**({'namespace':'studio'} if binding['kind']=='chatgpt-plan' else {})})
                 pending.add(part['callId'])
             elif part['type'] == 'tool_result':
                 if part['callId'] not in pending:raise ModelFault('model_context_unpaired')
@@ -39,6 +39,8 @@ def request(binding, messages, instructions, tools, effort):
     value = {'model': binding['model'], 'instructions': instructions, 'input': inputs, 'store': False, 'stream': True,
              'tools': [{'type': 'function', 'name': tool['name'], 'description': tool.get('description', ''),
                         'parameters': tool['inputSchema'], 'strict': False} for tool in tools]}
+    if binding['kind']=='chatgpt-plan' and tools:
+        value['tools']=[{'type':'namespace','name':'studio','description':'Tools provided by R4OS Studio for this original workspace.','tools':value['tools']}]
     if effort and not (effort == 'none' and binding.get('reasoning') == 'unsupported'):
         value['reasoning'] = {'effort': effort}
     if binding.get('reasoning') != 'unsupported': value['include'] = ['reasoning.encrypted_content']
@@ -63,7 +65,9 @@ class Responses:
         kind = value.get('type')
         if self.response is not None: raise ModelFault()
         if kind in ('error', 'response.failed', 'response.incomplete'):
-            raise ModelFault('model_response_incomplete')
+            error=value.get('error') if kind=='error' else value.get('response',{}).get('error')
+            code=error.get('code') if isinstance(error,dict) else value.get('code')
+            raise ModelFault(code if isinstance(code,str) else 'model_response_incomplete',details={'providerParam':error.get('param')} if isinstance(error,dict) else None)
         if kind == 'response.output_text.delta':
             if not isinstance(value.get('delta'), str): raise ModelFault()
             key = (value.get('output_index', 0), value.get('content_index', 0))
@@ -116,6 +120,7 @@ class Responses:
                         if not isinstance(text, str): raise ModelFault()
                         content.append({'type': 'text', 'text': text})
             elif item.get('type') == 'function_call':
+                if self.binding.get('kind')=='chatgpt-plan' and item.get('namespace')!='studio':raise ModelFault('model_tool_not_allowed')
                 call_id, name = item.get('call_id'), item.get('name')
                 if (not isinstance(call_id, str) or not 1 <= len(call_id.encode()) <= 256 or call_id in calls or len(calls) >= 32
                         or any(ord(c) < 33 or ord(c) == 127 for c in call_id)
