@@ -653,6 +653,8 @@ def finalize(manifest):
             stopped = row['state'] == 'stopping'
             state = 'interrupted' if stopped else ('failed' if row['state'] == 'queued' else 'unknown')
             reconcile_items(store, row['id'], state)
+            if (json.loads(row['config'])['engine'].get('kind')=='studio'
+                    and store.db.execute("SELECT 1 FROM tools WHERE run_id=? AND state='unknown'",(row['id'],)).fetchone()):state='unknown'
             transition(store, row['id'], state, 'Run stopped.' if stopped else 'The run service exited without a confirmed result; tool effects were not repeated.')
             from goal_store import Goals
             Goals(store).lost_worker(row['id'])

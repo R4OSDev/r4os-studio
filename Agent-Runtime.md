@@ -306,3 +306,30 @@ angenommene Studio-Eingabe wird weder verworfen noch erneut gesendet.
 Angenommene Studio-Aufträge verwenden ihre ursprüngliche unveränderliche
 Workerrelease mit Version und Quellhash. Fehlt sie, hält die Queue ihre Eingabe
 mit Begründung; ein neuer globaler Standard ersetzt sie nicht automatisch.
+
+## Originale Prozessenden (0.10.11)
+
+Der direkte Modelltransport meldet seinen tatsächlichen Kindprozess an den
+vorhandenen Worker, bevor er Credentials oder Requestdaten an Node übergibt.
+Im privaten SQLite-Journal studio_model_calls bleiben lokale Request-ID,
+ursprüngliche Auswahl, PID/Geburt, Boot-ID, cgroup, Streamabschluss und
+beobachtetes Prozessende getrennt. Eine verlorene Antwort bleibt unbestätigt,
+auch wenn der ursprüngliche Prozess später nachweislich endet. Bestätigte
+Wirkungsquittungen werden dabei weder zurückgenommen noch erneut ausgeführt.
+
+Der bestehende Host rekonstruiert nach Verlust nur diese Originale. Er bindet
+das Ende an Owner/Session/Run/Release, systemd-Invocation, ursprünglichen PID
+und leere beziehungsweise bereits entfernte cgroup. Ein belegter Neustart des
+Hosts oder eingesammelte Unitmetadaten ersetzen keine lebende Originalidentität.
+Fehlen notwendige Endbelege, bleibt der ursprüngliche API-Lease geschützt.
+Nach bestätigtem Ende kann derselbe Lease freigegeben werden; seine frühere
+Unknown-Historie und fehlende Modellantwort bleiben erhalten. Dies verwendet
+die vorhandenen Recovery-/Refreshpfade und keinen zusätzlichen Dienst.
+
+Stop schließt die gemeinsame Zulassung und den ursprünglichen Transport;
+Werkzeuge, Terminal- und MCP-Prozesse folgen ihren vorhandenen Besitzbelegen.
+Die gezielte Thaw-vor-Stop-Mechanik unabhängiger MCP-Units bleibt bestehen.
+Credentialfreigabe erfordert das tatsächliche Ende des eigenen Modelltransports.
+Unbestätigte MCP-/Entwicklungswirkungen bleiben davon getrennte Lösch- und
+Ressourcenblocker. Ein späterer bestätigter Prozessabschluss erfindet keine
+verlorene Toolquittung. Laufende ältere Releases behalten ihren Originalpfad.

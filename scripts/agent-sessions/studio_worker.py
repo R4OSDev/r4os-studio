@@ -25,6 +25,8 @@ class StudioWorker(Worker):
         self.conversation = Conversation(self.store, self.session_id)
         self.model = None; self.operation = None; self.credential = None
         self.round = 0
+        from model_operations import Operations
+        self.operations=Operations(self.store)
         from studio_context import StudioContext
         self.context = StudioContext(self)
         from studio_goal import StudioGoal
@@ -102,14 +104,18 @@ class StudioWorker(Worker):
             raise GoalHalted()
         self.model = self.transport(); self.turn_requested = True
         request_id = str(uuid.uuid4())
+        self.operations.begin(self.run_id,request_id)
+        self.model.process_observer=lambda stage,child:self.operations.process(request_id,stage,child)
         execution = self.goal_worker.execution if self.goal_worker.active else None
         self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],on_text=on_text))
         try:result = await self.operation
         except (asyncio.CancelledError,ModelFault) as error:
+            self.operations.finish(request_id,error=error,attempted=self.model.attempted)
             if self.model.attempted and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
             if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
                 await self.goal_worker.pause(status='usageLimited' if error.http_status in (402,429) else 'blocked',reason=str(error))
             raise
+        self.operations.finish(request_id,result=result,attempted=self.model.attempted)
         if execution and execution == self.goal_worker.execution:self.goal_worker.observe(result,request_id)
         result['origin']['studioRequestId'] = request_id
         return result
@@ -226,7 +232,8 @@ class StudioWorker(Worker):
             self.lease = open_lock(self.store.projects, self.store.owner_type, self.store.owner_id)
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
             worker = {'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())}
-            transition(self.store, self.run_id, 'starting', worker=worker)
+            from model_operations import worker_identity
+            transition(self.store, self.run_id, 'starting', worker=worker|worker_identity())
             if self.store.owner_type == 'project': await self.build_snapshots.start()
             from api_provider_store import ApiProviders
             self.api_worker = worker

@@ -56,7 +56,8 @@ class Host:
         return state in ('active', 'activating', 'deactivating', 'reloading')
 
     async def goal_worker_matches(self, meta, row):
-        if not any(json.loads(row['config']).get(key) for key in ('goalExecution','claudeGoalExecution','nativeGoalPreparation','claudeGoalPreparation','studioGoalPreparation')):return True
+        config=json.loads(row['config'])
+        if config['engine'].get('kind')!='studio' and not any(config.get(key) for key in ('goalExecution','claudeGoalExecution','nativeGoalPreparation','claudeGoalPreparation','studioGoalPreparation')):return True
         try:
             pid=int(await systemctl('show',UNIT.format(row['id']),'--property=MainPID','--value'))
             if pid<=0 or (Path('/proc')/str(pid)).stat().st_uid!=self.config['uid']:return False
@@ -66,6 +67,21 @@ class Host:
             return (worker.get('pid')==pid and worker.get('birth')==birth and worker.get('release')==meta['release']
                 and (Path('/proc')/str(pid)).stat().st_uid==self.config['uid'])
         except (OSError,ValueError,KeyError,IndexError):return False
+
+    async def reconcile_ended(self,store,meta):
+        row=get_run(store,meta['runId']);config=json.loads(row['config'])
+        if config['engine'].get('kind')!='studio' or row['busy']:return False
+        if binding(meta)!=(store.owner_type,store.owner_id) or row['session_id']!=meta['sessionId']:return False
+        from model_operations import confirm_end
+        observed=dict(line.split('=',1) for line in (await systemctl('show',UNIT.format(row['id']),
+            '--property=ActiveState','--property=MainPID','--property=InvocationID','--property=ControlGroup',
+            '--property=ExecMainPID','--property=ExecMainCode','--property=ExecMainStatus','--property=Result')).splitlines() if '=' in line)
+        if not confirm_end(store,meta,observed):return False
+        from api_provider_store import ApiProviders
+        worker=json.loads(get_run(store,row['id'])['worker'])
+        ApiProviders(self.config['providers']).release(row['id'],store.owner_type,store.owner_id,row['session_id'],
+            row['request_id'],config,{key:worker[key] for key in ('release','pid','birth')})
+        return True
 
     def metadata(self, path):
         if path.resolve(strict=True) != path.absolute(): raise ValueError('Invalid worker record.')
@@ -144,6 +160,11 @@ class Host:
                 for run_id in finished:
                     from worker import reconcile_items
                     reconcile_items(store, run_id, get_run(store, run_id)['state'])
+                for row in store.db.execute("SELECT * FROM runs WHERE busy=0 AND json_extract(worker,'$.runEndProtocol')=1 AND json_extract(worker,'$.processEnd.confirmed') IS NULL").fetchall():
+                    value=manifests.get(row['id'])
+                    if value:
+                        try:await self.reconcile_ended(store,value)
+                        except (OSError,ProjectFault):pass  # Missing end evidence keeps the original lease.
             finally: store.close()
         await self.check_unbound()
 
@@ -173,6 +194,7 @@ class Host:
                     Goals(store).lost_worker(run_id)
                 from message_store import observe_run
                 with store.db: observe_run(store, row['session_id'], run_id, row['state'], row['turn_id'])
+                await self.reconcile_ended(store,meta)
                 self.active.pop(run_id, None)
             finally: store.close()
         await self.check_unbound()
@@ -725,10 +747,13 @@ class Host:
             if row['busy'] or await self.active_unit(run_id):
                 transition(store, run_id, 'stopping')
                 await systemctl('stop', UNIT.format(run_id))
+                if await self.active_unit(run_id):raise ProjectFault('The original run service end is unconfirmed. Its resources remain protected.',503)
                 row = get_run(store, run_id)
                 if row['busy']: transition(store, run_id, 'interrupted', 'Run stopped.')
             self.active.pop(run_id, None)
             self.unbound.discard(run_id)
+            path=self.root/run_id/'worker.json'
+            if path.exists():await self.reconcile_ended(store,self.metadata(path))
             if json.loads(row['config']).get('claudeGoalExecution') or json.loads(row['config']).get('claudeGoalPreparation'):
                 from claude_goal import lost as lost_claude
                 from goal_clock import lost as lost_claude_clock
