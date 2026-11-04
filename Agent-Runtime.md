@@ -470,3 +470,12 @@ RPCs are unavailable through the account client. Disconnect uses the existing
 catalog and original-worker end receipts before deleting this account's home.
 Current saved conversations require the existing explicit Studio conversion or
 connection selection; installing this release never migrates them.
+
+Native subscription limits (0.10.23) retain the existing account RPC,
+normalizer and visible-page refresh behavior. Native account/workspace/auth
+scope binds cached values and each completed read. A changed scope invalidates
+in-flight quota results and WebApp values; unavailable or stale data stays
+unknown. The same view is available in provider and session settings.
+Native Studio accounts select their managed common-model projection exclusively;
+a historical session with the same account must be converted explicitly before
+new work. No legacy native-agent fallback is permitted for that account.

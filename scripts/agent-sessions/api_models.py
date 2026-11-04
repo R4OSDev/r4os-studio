@@ -100,7 +100,10 @@ def chat_policy(model,effort):
 
 def freeze(store,sid,data,providers,snapshot,original=None):
     session=store.get(sid);selected=session['engine'].get('api')
-    if not selected:return
+    if not selected:
+        provider=connection(providers,snapshot['providerId'])
+        if provider and provider['kind']=='codex-subscription':raise ProjectFault('Convert this original conversation to Studio before using the native OpenAI model connection. No native agent was started.',409)
+        return
     provider=connection(providers,snapshot['providerId'])
     if provider and provider['kind'] in ('chatgpt-plan','codex-subscription') and snapshot['engine'].get('kind')!='studio':raise ProjectFault('This OpenAI connection requires the common Studio worker.',409)
     if provider is None:raise ProjectFault('The original API connection is unavailable.',409)

@@ -14,12 +14,14 @@ export function useProviders(usageVisible = true) {
   const csrf = useRef('');
   const usageGeneration = useRef(0);
   const usageRequests = useRef<Record<string, number>>({});
+  const accountScopes = useRef<Record<string, string | undefined>>({});
   const [remainingByProvider, setRemainingByProvider] = useState<Record<string, number | null>>({});
 
   const accept = useCallback((next: ProviderList) => {
     // A reconnect can change the account behind an existing provider ID.
     usageGeneration.current++;
     usageRequests.current = {};
+    accountScopes.current = Object.fromEntries(next.providers.map(p => [p.id, p.account?.scope]));
     setRemainingByProvider({});
     csrf.current = next.csrfToken;
     setData(next); setError(null); setLoading(false);
@@ -55,7 +57,7 @@ export function useProviders(usageVisible = true) {
   }, [accept, fail]);
 
   const rememberUsage = useCallback((id: string, usage: ProviderUsage | null) => {
-    const remaining = remainingUsage(usage);
+    const remaining = usage?.accountScope && usage.accountScope !== accountScopes.current[id] ? null : remainingUsage(usage);
     setRemainingByProvider((previous) => previous[id] === remaining ? previous : { ...previous, [id]: remaining });
   }, []);
 
@@ -80,6 +82,7 @@ export function useProviders(usageVisible = true) {
       if (document.hidden) return;
       for (const provider of data.providers) {
         if (provider.type === 'openai' && provider.status === 'connected' && provider.account) {
+          rememberUsage(provider.id, null);
           void request(`/${provider.id}/usage`).catch(() => { /* Unknown usage is shown as a dash. */ });
         }
       }
@@ -88,7 +91,7 @@ export function useProviders(usageVisible = true) {
     const timer = setInterval(refresh, 60_000);
     document.addEventListener('visibilitychange', refresh);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
-  }, [data.providers, request, usageVisible]);
+  }, [data.providers, request, rememberUsage, usageVisible]);
 
   const managed = new Set(apiProviders.filter(p => p.kind === 'codex-subscription').map(p => p.id));
   return { ...data, nativeProviders: data.providers, providers: [...data.providers.filter(p => !managed.has(p.id)), ...apiProviders, ...claudeProviders], apiError, claudeError, remainingByProvider, loading, error, reload, request };

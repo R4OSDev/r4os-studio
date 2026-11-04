@@ -49,8 +49,12 @@ export function ProviderDetails({ initial, connection, api, removed, setLeaveGua
         setError(null);
         if (result.login?.status !== 'pending') {
           const current = await request<{ provider: Provider }>(path);
-          if (current.provider.runtime === 'studio' && current.provider.status === 'connected') await request(`${path}/studio`, 'POST');
-          if (active) { setProvider(current.provider); setLogin(result.login); await reload(); }
+          if (active) { setProvider(current.provider); setLogin(result.login); }
+          if (current.provider.runtime === 'studio' && current.provider.status === 'connected') {
+            try { await request(`${path}/studio`, 'POST'); }
+            catch (cause) { setError(cause instanceof Error ? cause.message : 'Signed in. The Studio model connection could not be prepared.'); }
+          }
+          await reload();
           return;
         }
         setLogin(result.login);
@@ -143,7 +147,7 @@ export function ProviderDetails({ initial, connection, api, removed, setLeaveGua
         {provider.account?.workspaceId && <div><dt>Workspace</dt><dd>{provider.account.workspaceId}</dd></div>}
         <div><dt>Authentication</dt><dd>ChatGPT subscription</dd></div>
       </dl>
-      {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.email ?? ''}:${provider.account?.plan ?? ''}:${provider.account?.workspaceId ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} accountScope={provider.account?.workspaceId} request={request} />}
+      {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.scope ?? provider.account?.workspaceId ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} accountScope={provider.account?.scope} request={request} />}
       {provider.status === 'connected' && provider.runtime === 'studio' && !connection && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading} onClick={() => void prepareStudio()}>Use this connection in Studio</button></div>}
       {connection && <ApiModels api={api} provider={connection} setLeaveGuard={setLeaveGuard} />}
       {provider.status !== 'connected' && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading || !api.signInAvailable || !!api.error || provider.status === 'signing_in'} onClick={() => void action('login')}>{busy ? 'Starting sign-in…' : 'Continue with ChatGPT'}</button></div>}

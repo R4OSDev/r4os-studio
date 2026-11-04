@@ -10,7 +10,7 @@ export interface Provider {
   type: 'openai';
   runtime?: 'native' | 'studio';
   status: 'connected' | 'disconnected' | 'signing_in' | 'unavailable';
-  account: { email: string | null; plan: string | null; workspaceId?: string } | null;
+  account: { email: string | null; plan: string | null; workspaceId?: string; scope?: string } | null;
   createdAt: string;
 }
 
@@ -72,6 +72,7 @@ export interface CreditUsageControl {
 }
 
 export interface ProviderUsage {
+  accountScope?: string;
   creditUsageControl?: CreditUsageControl;
   fetchedAt: string;
   ordinaryUsageAllowed: boolean | null;

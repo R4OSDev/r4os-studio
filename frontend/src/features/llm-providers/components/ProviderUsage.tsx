@@ -51,13 +51,14 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
     reading.current = true;
     const currentGeneration = generation.current;
     return request<{ usage: Usage }>(`${path}${force ? '?refresh=true' : ''}`).then((result) => {
+      if (accountScope && result.usage.accountScope && result.usage.accountScope !== accountScope) throw new Error('The account changed.');
       if (alive.current && currentGeneration === generation.current) { setUsage(result.usage); setError(null); setNow(Date.now()); }
     }).catch(() => {
-      if (alive.current && currentGeneration === generation.current) setError('Usage could not be refreshed. Previously loaded values may be out of date.');
+      if (alive.current && currentGeneration === generation.current) { setUsage(null); setError('Usage could not be refreshed. Reload the connection if its account changed.'); }
     }).finally(() => {
       if (currentGeneration === generation.current) { reading.current = false; if (alive.current) setLoading(false); }
     });
-  }, [path, request]);
+  }, [path, request, accountScope]);
 
   useEffect(() => {
     invalidateReads(); alive.current = true;
@@ -117,7 +118,8 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
     }
   }
 
-  const resets = usage?.resetCredits;
+  const stale = !!usage && (!Number.isFinite(Date.parse(usage.fetchedAt)) || now - Date.parse(usage.fetchedAt) > 120_000);
+  const resets = stale ? null : usage?.resetCredits;
   const count = resets?.availableCount;
   const canUse = (count !== undefined && count !== null && count > 0) || !!attempt?.submitted;
   return <section className="provider-usage" aria-busy={loading} aria-labelledby={`usage-title-${id}`}>
@@ -125,7 +127,8 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
     {message && <p className="provider-alert" role="status">{message}</p>}
     {error && <p className="provider-alert" role="alert">{error}</p>}
     {!usage && loading && <p className="field-help" role="status">Loading usage limits…</p>}
-    {usage && <>
+    {stale && <p className="provider-alert" role="status">Previously loaded usage is out of date. Refresh usage to read the current limits.</p>}
+    {usage && !stale && <>
       {usage.ordinaryUsageAllowed === false && <p className="provider-alert" role="status">OpenAI currently reports that ordinary included usage is unavailable.</p>}
       <div className="usage-limits">{usage.limits.map((limit, index) => <article className="usage-bucket" key={`${limit.id}-${index}`}>
         <div className="usage-bucket-heading"><h4>{limit.name}</h4>{limit.limitReached && <span className="provider-status">Limit reached</span>}</div>

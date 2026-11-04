@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import type { AgentSession, SessionOptions, NativeImageCapability } from '../../../../shared/agent-sessions';
 import { WebServiceSettings } from './WebServiceSettings';
 import { SessionMigration } from './SessionMigration';
+import { SessionOpenAILimits } from './SessionOpenAILimits';
 import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, sessionPath, busyRun, toolLabels, permissionToolIds, updateToolIds, remoteToolIds, imageToolIds } from './api';
 
@@ -83,6 +84,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       }}>{name}</button>)}</div>
       <fieldset className="project-fields" disabled={saving || reloading || runtimeBusy} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
         {tab === 'Conversation' ? <SessionMigration session={session} options={options} projectId={projectId} token={token} changed={saved} busyChanged={setRuntimeBusy} disabled={dirty||saving||reloading}/> : tab === 'General' ? <>
+          {provider?.kind === 'codex-subscription' && <SessionOpenAILimits key={draft.providerId} providerId={draft.providerId} />}
           {session.engine.kind === 'studio' && <p className="agent-terminal-hint">Choose the connection and model for future inputs. Saving starts no work. Existing queued inputs must finish or be cancelled first; original history, receipts and Goal budgets remain. Private reasoning from another connection or model stays in its original archive and is not sent to the selected model.</p>}
           {!session.engine.kind && <p className="agent-terminal-hint">This saved conversation uses a native connection. You can review a conversion under Conversation after its current work ends.</p>}
           {session.engine.available === false && session.engine.reason && <p className="project-dialog-error">{session.engine.reason}</p>}

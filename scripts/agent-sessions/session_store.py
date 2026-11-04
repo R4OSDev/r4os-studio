@@ -51,11 +51,11 @@ def providers(directory):
         if file.resolve(strict=True) != file.absolute() or not file.is_file():
             raise ProjectFault('Provider storage is unavailable.', 503)
         values=json.loads(file.read_text())
-    result=[v for v in values if v.get('type') == 'openai' and v.get('connected') is True]
+    result=[v for v in values if v.get('type') == 'openai' and v.get('connected') is True and v.get('runtime')!='studio']
     # API storage availability never rewrites or disables a subscription.
     from api_provider_store import ApiProviders
     try:
-        legacy={v.get('id') for v in values}
+        legacy={v.get('id') for v in values if v.get('runtime')!='studio'}
         result += [v for v in ApiProviders(directory).listing() if v['enabled'] and v['id'] not in legacy]
     except ProjectFault:pass
     from claude_provider_store import ClaudeProviders

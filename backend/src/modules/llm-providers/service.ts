@@ -33,6 +33,7 @@ export class ProviderManager {
   private runtimes = new Map<string, Runtime>();
   private locks = new Map<string, Promise<unknown>>();
   private usages = new Map<string, ProviderUsage>();
+  private usageScopes = new Map<string, string>();
   private loginTimeout: number;
   private closing = false;
   private browserProvider: string | null = null;
@@ -66,7 +67,9 @@ export class ProviderManager {
     const runtime = this.runtimes.get(record.id);
     return { id: record.id, name: record.name, type: 'openai', createdAt: record.createdAt,
       ...(record.runtime ? { runtime: record.runtime } : {}),
-      account: record.account ? { ...record.account } : null,
+      account: record.account ? { ...record.account,
+        ...(record.runtime === 'studio' && record.authGeneration && record.account.workspaceId
+          ? { scope: record.authGeneration + ':' + record.account.workspaceId } : {}) } : null,
       status: runtime?.unavailable ? 'unavailable'
         : runtime?.login?.status === 'pending' ? 'signing_in' : record.connected ? 'connected' : 'disconnected' };
   }
@@ -189,10 +192,14 @@ export class ProviderManager {
   private async readUsageLocked(id: string, runtime: Runtime): Promise<ProviderUsage> {
     // Sparse notifications invalidate the full snapshot, including an in-flight read.
     for (let attempt = 0; attempt < 2; attempt++) {
+      await this.usageScope(id, runtime);
       const epoch = runtime.usageEpoch;
       const usage = await readUsage(runtime.client);
+      await this.usageScope(id, runtime);
       if (this.runtimes.get(id) !== runtime || runtime.retired || runtime.unavailable) throw new Error('Account runtime changed.');
       if (epoch !== runtime.usageEpoch) continue;
+      const scope = this.present(await this.record(id)).account?.scope;
+      if (scope) usage.accountScope = scope;
       this.usages.set(id, usage); return usage;
     }
     throw new Error('Account usage changed while reading. Refresh a full snapshot.');
@@ -201,11 +208,24 @@ export class ProviderManager {
   async usage(id: string, refresh = false): Promise<ProviderUsage> {
     return this.exclusive(id, async () => {
       const runtime = await this.connectedRuntime(id);
+      await this.usageScope(id, runtime);
       const cached = this.usages.get(id);
       if (!refresh && cached && Date.now() - Date.parse(cached.fetchedAt) < 15_000) return cached;
       try { return await this.readUsageLocked(id, runtime); }
       catch { throw new ProviderError('OpenAI usage could not be loaded. Please try again.', 502); }
     });
+  }
+
+  private async usageScope(id: string, runtime: Runtime) {
+    try {
+      const record = await this.record(id);
+      const scope = record.runtime === 'studio' ? JSON.stringify((await this.nativeAccessLocked(id)).binding) : '';
+      if (this.usageScopes.get(id) !== scope) {
+        this.usages.delete(id); runtime.usageEpoch++; this.usageScopes.set(id, scope);
+      }
+    } catch (error) {
+      this.usages.delete(id); this.usageScopes.delete(id); runtime.usageEpoch++; throw error;
+    }
   }
 
   /** Private host access only. HTTP routes never expose this result. */
@@ -233,7 +253,7 @@ export class ProviderManager {
           credentials = await nativeCredentials(home);
           validate();
         }
-        if (credentials.managedRouting) throw new ProviderError('This managed OpenAI workspace requires a different model endpoint. No alternate route was used.', 409);
+        if (secret && credentials.managedRouting) throw new ProviderError('This managed OpenAI workspace requires a different model endpoint. No alternate route was used.', 409);
         return { binding: validate(), managedRouting: credentials.managedRouting,
           ...(secret ? { accessToken: credentials.accessToken, client: await runtime.client.metadata?.() } : {}) };
       } catch (error) {
@@ -245,6 +265,7 @@ export class ProviderManager {
   async prepareStudio(id: string) {
     return this.exclusive(id, async () => {
       const access = await this.nativeAccessLocked(id);
+      if (access.managedRouting) throw new ProviderError('This managed OpenAI workspace requires a different model endpoint. No alternate route was used.', 409);
       const record = await this.record(id);
       if (!this.options.prepareStudio) throw new ProviderError('The Studio model coordinator is unavailable.', 503);
       return this.options.prepareStudio(id, record.name, access.binding);
@@ -381,6 +402,7 @@ export class ProviderManager {
       throw error;
     }
     this.usages.delete(id);
+    this.usageScopes.delete(id);
     const runtime = this.runtimes.get(id);
     if (runtime?.login) this.finish(runtime.login, 'cancelled');
     if (runtime) { await runtime.client.close(); this.runtimes.delete(id); }
@@ -415,6 +437,7 @@ export class ProviderManager {
     await Promise.all([...this.runtimes.values()].map((runtime) => runtime.client.close()));
     this.runtimes.clear();
     this.usages.clear();
+    this.usageScopes.clear();
   }
 }
 
