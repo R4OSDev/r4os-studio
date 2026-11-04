@@ -83,7 +83,7 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
         self.remote.unit='r4os-studio-skill-mcp@'+self.service.launch['serviceId']+'.service'
         with patch('skill_session_client.systemctl',side_effect=ctl):
             with self.assertRaises(McpFault):await self.remote.release(True)
-        self.assertEqual([a[0] for a in actions],['freeze','stop'])
+        self.assertEqual([a[0] for a in actions],['freeze','show','stop'])
         self.assertTrue(all(a[1]==self.remote.unit for a in actions))
 
     async def test_late_original_receipt_is_read_without_another_native_call(self):
@@ -263,3 +263,30 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class FrozenUnitStop(unittest.IsolatedAsyncioTestCase):
+    async def test_only_the_exact_frozen_instance_is_thawed_before_stop(self):
+        from skill_session_client import stop_unit
+        unit='r4os-studio-skill-mcp@'+str(uuid.uuid4())+'.service';actions=[]
+        async def ctl(*args):
+            actions.append(args)
+            return 'frozen\n' if args[0]=='show' else ''
+        with patch('skill_session_client.systemctl',side_effect=ctl):await stop_unit(unit)
+        self.assertEqual([a[0] for a in actions],['show','thaw','stop'])
+        self.assertTrue(all(a[1]==unit for a in actions))
+
+    async def test_inactive_instance_is_not_blindly_thawed(self):
+        from skill_session_client import stop_unit
+        unit='r4os-studio-skill-mcp@'+str(uuid.uuid4())+'.service';actions=[]
+        async def ctl(*args):
+            actions.append(args)
+            return 'running\n' if args[0]=='show' else ''
+        with patch('skill_session_client.systemctl',side_effect=ctl):await stop_unit(unit)
+        self.assertEqual([a[0] for a in actions],['show','stop'])
+
+    async def test_a_foreign_unit_is_rejected_before_systemd_access(self):
+        from skill_session_client import stop_unit
+        with patch('skill_session_client.systemctl') as ctl:
+            with self.assertRaises(McpFault):await stop_unit('foreign.service')
+        ctl.assert_not_called()

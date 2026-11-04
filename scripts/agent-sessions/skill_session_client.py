@@ -56,7 +56,7 @@ class SessionClient:
 
     async def release(self,retain=False):
         if self.closed is None or not retain and self.closed.get('sessionRetained'):
-            if self.unit and not retain:await systemctl('thaw',self.unit)
+            if self.unit and not retain:await ensure_thawed(self.unit)
             try:self.closed=await self.rpc('release' if retain else 'close')
             except McpFault:
                 self.closed=self.observed_release(retain)
@@ -70,7 +70,7 @@ class SessionClient:
                 except BaseException:
                     # Never release the project lease while a supposedly idle
                     # native target can still execute in the background.
-                    await systemctl('stop',self.unit)
+                    await stop_unit(self.unit)
                     confirmed=self.observed_release(False)
                     if confirmed:
                         self.closed=dict(confirmed,retentionFailed=True);return self.closed
@@ -103,6 +103,21 @@ async def systemctl(*arguments):
     return output.decode()
 
 
+async def ensure_thawed(unit):
+    import re
+    if not re.fullmatch(r'r4os-studio-skill-mcp@[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\.service',unit):
+        raise McpFault('Invalid original managed analysis unit.')
+    frozen=await systemctl('show',unit,'--property=FreezerState','--value')
+    if frozen.strip() in ('frozen','freezing'):await systemctl('thaw',unit)
+
+
+async def stop_unit(unit):
+    # systemd257 rejects StopUnit while frozen. Thaw only this positively
+    # attributed instance before waiting for its original stop.
+    await ensure_thawed(unit)
+    await systemctl('stop',unit)
+
+
 async def retire_changed(worker,entry):
     wanted=launch_record(worker,entry,str(uuid.uuid4()))
     root=registry(worker.store.projects,wanted['serviceId']).parent
@@ -118,7 +133,7 @@ async def retire_changed(worker,entry):
         if launch['namespaceHash']==wanted['namespaceHash']:continue
         state=paths(worker.store.projects,launch)[3];end=state/'ServiceEnd.json'
         if not end.exists():
-            await systemctl('stop','r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
+            await stop_unit('r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
             from skill_mcp_lifecycle import reconcile_end
             await reconcile_end(worker.store.projects,launch)
         observed=await systemctl('show','r4os-studio-skill-mcp@'+launch['serviceId']+'.service','--property=MainPID','--property=ActiveState')

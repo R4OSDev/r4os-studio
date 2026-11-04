@@ -42,7 +42,7 @@ def pending(state):
 
 async def stop_run(worker):
     """Stop only launch intents still attributed to this original worker run."""
-    from skill_session_client import systemctl
+    from skill_session_client import stop_unit
     root=skills_root(worker.store.projects)/'.mcp'
     for file in (root/'Bindings').glob('*.json'):
         value=strict(file.read_bytes())
@@ -51,7 +51,7 @@ async def stop_run(worker):
         if any(launch.get(k)!=v for k,v in dict(ownerType=worker.store.owner_type,
                 ownerId=worker.store.owner_id,sessionId=worker.session_id).items()):
             raise ProjectFault('The original analysis launch intent changed owner.',503)
-        await systemctl('stop','r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
+        await stop_unit('r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
 
 
 def blockers(projects,**scope):
@@ -91,7 +91,7 @@ async def reconcile_end(projects,launch):
 
 
 async def stop_owned(projects,**scope):
-    from skill_session_client import systemctl
+    from skill_session_client import systemctl,stop_unit
     selected=instances(projects,**scope)
     for _,launch in selected:
         state=paths(projects,launch)[3]
@@ -99,7 +99,7 @@ async def stop_owned(projects,**scope):
         if reason:raise ProjectFault(reason,409)
         unit='r4os-studio-skill-mcp@'+launch['serviceId']+'.service'
         end=state/'ServiceEnd.json'
-        if not end.exists():await systemctl('stop',unit)
+        if not end.exists():await stop_unit(unit)
         if not end.exists():await reconcile_end(projects,launch)
         observed=await systemctl('show',unit,'--property=MainPID','--property=ActiveState')
         if 'MainPID=0' not in observed or not end.exists():
