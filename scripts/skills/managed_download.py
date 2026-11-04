@@ -14,9 +14,12 @@ import uuid
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
+    def __init__(self,hosts):
+        super().__init__();self.hosts=set(hosts)
+
     def redirect_request(self, request, fp, code, msg, headers, newurl):
         old, new = urlsplit(request.full_url), urlsplit(newurl)
-        if new.scheme!='https' or new.hostname!=old.hostname or new.username or new.password:
+        if new.scheme!='https' or new.hostname not in self.hosts or new.username or new.password or new.port not in (None,443):
             raise ValueError('The artifact redirect leaves its official HTTPS origin.')
         return super().redirect_request(request,fp,code,msg,headers,newurl)
 
@@ -28,7 +31,10 @@ def file_hash(path):
     with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
 
 
-def download(api,url,path,maximum,expected=None):
+def download(api,url,path,maximum,expected=None,hosts=None):
+    origin=urlsplit(url);hosts=set(hosts or (origin.hostname,))
+    if origin.scheme!='https' or not origin.hostname or origin.hostname not in hosts or origin.username or origin.password or origin.port not in (None,443):
+        raise api.SkillFault('The artifact source is outside its approved HTTPS origins.',409)
     api.folder(path.parent,True)
     lock=path.with_name('.'+path.name+'.lock')
     fd=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
@@ -41,7 +47,7 @@ def download(api,url,path,maximum,expected=None):
             return path
         temporary=path.with_name('.download-'+str(uuid.uuid4()))
         request=urllib.request.Request(url,headers={'User-Agent':'R4OS-Studio-managed-skill-runtime'})
-        client=urllib.request.build_opener(Redirects())
+        client=urllib.request.build_opener(Redirects(hosts))
         try:
             with client.open(request,timeout=60) as response,temporary.open('xb') as output:
                 if response.status!=200:raise ValueError('Official artifact download did not return200.')

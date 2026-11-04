@@ -12,10 +12,11 @@ from urllib.parse import urlsplit
 from managed_download import node_plan,install_node,file_hash
 import runtime_spec
 
-RECIPE_VERSION=1
+RECIPE_VERSION=2
+PROGRAM_PATH='/runtime/Programs/Bin:/runtime/Programs/Java/bin:/runtime/Programs/Python/bin:/runtime/Programs/OsTools/usr/bin:/runtime/Programs/Wabt/bin:/runtime/Node/bin:/usr/bin:/bin'
 
 
-def command(stage,work,arguments,network=False,readonly=False):
+def command(stage,work,arguments,network=False,readonly=False,environment=None):
     args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-pid','--unshare-ipc','--unshare-uts']
     if not network:args+=['--unshare-net']
     for path in ('/usr','/lib','/lib64'):
@@ -28,13 +29,22 @@ def command(stage,work,arguments,network=False,readonly=False):
         for path in ('/etc/ssl','/etc/resolv.conf','/etc/hosts'):
             if Path(path).exists():args+=['--ro-bind',path,path]
     args+=['--chdir','/runtime/Repository','--clearenv','--setenv','HOME','/work/Home',
-           '--setenv','PATH','/runtime/Node/bin:/usr/bin:/bin','--setenv','LANG','C.UTF-8',
+           '--setenv','PATH',PROGRAM_PATH,'--setenv','LANG','C.UTF-8',
            '--setenv','HUSKY','0','--setenv','npm_config_cache','/work/Cache','--setenv','npm_config_userconfig','/dev/null',
            '--setenv','npm_config_audit','false','--setenv','npm_config_fund','false',
            '--setenv','TURBO_TELEMETRY_DISABLED','1','--setenv','DO_NOT_TRACK','1',
            '--setenv','GOMAXPROCS','2','--setenv','UV_THREADPOOL_SIZE','2',
-           '--setenv','REA_MCP_INPUT_SCHEMA_PROFILE','full','--setenv','REA_MCP_OUTPUT_SCHEMA_PROFILE','full',
-           '--',*arguments]
+           '--setenv','CARGO_HOME','/work/Cargo','--setenv','CARGO_TARGET_DIR','/runtime/Repository/third_party/binwalk/target',
+           '--setenv','CC','/usr/bin/gcc','--setenv','CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER','/usr/bin/gcc',
+           '--setenv','PKG_CONFIG_SYSROOT_DIR','/runtime/Programs/OsTools',
+           '--setenv','PKG_CONFIG_PATH','/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu/pkgconfig:/runtime/Programs/OsTools/usr/share/pkgconfig',
+           '--setenv','LD_LIBRARY_PATH','/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu:/runtime/Programs/OsTools/lib/x86_64-linux-gnu:/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu/android',
+           '--setenv','UV_CACHE_DIR','/work/Cache/uv','--setenv','UV_PYTHON_DOWNLOADS','never',
+           '--setenv','PLAYWRIGHT_BROWSERS_PATH','/runtime/Programs/Browsers',
+           '--setenv','JAVA_HOME','/runtime/Programs/Java','--setenv','GHIDRA_INSTALL_DIR','/runtime/Programs/Ghidra',
+           '--setenv','REA_MCP_INPUT_SCHEMA_PROFILE','full','--setenv','REA_MCP_OUTPUT_SCHEMA_PROFILE','full']
+    for name,value in (environment or {}).items():args+=['--setenv',name,value]
+    args+=['--',*arguments]
     return args
 
 
@@ -67,18 +77,22 @@ def inventory(root):
     return sorted(files,key=lambda item:item['path'])
 
 
-async def probe(api,stage,work,expected,job):
+async def probe(api,stage,work,expected,job,environment):
     spec=importlib.util.spec_from_file_location('rea_recipe_mcp_client',Path(__file__).resolve().parents[1]/'agent-sessions/skill_mcp_client.py')
     client_api=importlib.util.module_from_spec(spec);spec.loader.exec_module(client_api)
     state=api.folder(work/'Probe',True)
     client=client_api.Client(state,dict(skillId=job['skillId'],requestId=job['requestId'],sourceCommit=job['commit']))
     try:
-        value=await client.start(command(stage,work,['/runtime/Node/bin/node','/runtime/Repository/scripts/rea.mjs','mcp'],readonly=True),
+        value=await client.start(command(stage,work,['/runtime/Node/bin/node','/runtime/Repository/scripts/rea.mjs','mcp'],readonly=True,environment=environment),
                                  env={'LANG':'C.UTF-8'})
         tools=await client.discover()
         if tools!=expected['tools'] or value['serverInfo']['version']!=expected['info']['version']:
             raise api.SkillFault('The built REA MCP contracts differ from their generated catalogue.',503)
         result=dict(protocol=value['protocolVersion'],serverInfo=value['serverInfo'],tools=len(tools),exactCatalogue=True)
+        readiness=await client.call('binary_session',{},timeout=180)
+        if readiness.get('isError'):raise api.SkillFault('The prepared REA session could not report its native readiness.',409)
+        api.atomic(stage/'Readiness.json',(api.encode(dict(schema=1,server=result,session=readiness,
+                   scope='Native installation probe; target/device/license/client requirements remain operation-specific.'))+'\n').encode())
     finally:
         end=await client.close(grace=15)
         api.atomic(work/'probe-process-end.json',(api.encode(end)+'\n').encode())
@@ -110,7 +124,8 @@ def prepare(api,skills,ident,job,source,source_manifest,progress):
     node=node_plan(api,skills,repository)
     source_hash=file_hash(source/'manifest.json')
     script=Path(__file__).resolve()
-    recipe_files=[script,script.with_name('managed_download.py'),script.with_name('runtime_spec.py'),script.parents[1]/'../shared/rea-skill-guide.md']
+    recipe_files=[script,script.with_name('managed_download.py'),script.with_name('runtime_spec.py'),script.with_name('rea_programs.py'),
+                  script.parents[1]/'../shared/rea-skill-guide.md',script.parents[1]/'../shared/rea-programs.json']
     recipe={file.name:file_hash(file.resolve()) for file in recipe_files}
     identity=dict(recipeVersion=RECIPE_VERSION,recipeFiles=recipe,sourceCommit=source_manifest['commit'],sourceManifestHash=source_hash,
                   dependencyLockHash=hashlib.sha256(lock_raw).hexdigest(),node={k:node[k] for k in ('version','sha256','architecture')})
@@ -144,6 +159,8 @@ def prepare(api,skills,ident,job,source,source_manifest,progress):
     progress(phase='building_runtime')
     receipts.append(run(api,stage,work,'prepare',['/runtime/Node/bin/npm','run','prepare']))
     receipts.append(run(api,stage,work,'build',['/runtime/Node/bin/npm','run','build:cached']))
+    from rea_programs import prepare as prepare_programs
+    programs,environment=prepare_programs(api,skills,stage,work,run,progress)
     generated=api.folder(stage/'Repository/skills/reverse-engineer-anything')
     shutil.copytree(generated,stage/'Skill',symlinks=False)
     skill_path=stage/'Skill/SKILL.md';raw=api.regular(skill_path)[0]
@@ -156,18 +173,20 @@ def prepare(api,skills,ident,job,source,source_manifest,progress):
     if not validation['valid']:raise api.SkillFault('The generated complete REA skill failed validation: '+'; '.join(validation['errors']),409)
     catalog=json.loads(runtime_spec.read(stage/'Repository/dist/mcp-catalog-full.json'))
     progress(phase='probing_runtime')
-    native=asyncio.run(probe(api,stage,work,catalog,dict(job,commit=source_manifest['commit'])))
+    native=asyncio.run(probe(api,stage,work,catalog,dict(job,commit=source_manifest['commit']),environment))
     # Build caches are operational data, not part of the immutable executable set.
     for path in (stage/'Repository/.turbo',stage/'Repository/.cache'):
         if path.exists():shutil.rmtree(path)
+    progress(phase='verifying_runtime_files')
     value=dict(schema=1,recipe='rea',version=package['version'],source=dict(repository=job['configuration']['repository'],
                commit=source_manifest['commit'],manifestHash=source_hash),node=node_runtime,
                entry=dict(path='Repository/scripts/rea.mjs',sha256=file_hash(stage/'Repository/scripts/rea.mjs'),arguments=['mcp']),
                catalog=dict(path='Repository/dist/mcp-catalog-full.json',sha256=file_hash(stage/'Repository/dist/mcp-catalog-full.json')),
-               programs={},environment={},build=dict(identity=identity,receipts=receipts,probe=native,programProvisioning='separate-analysis-program-step'),
+               programs=programs,environment=environment,build=dict(identity=identity,receipts=receipts,probe=native,programProvisioning='complete-private-linux-recipe'),
                files=inventory(stage))
     api.atomic(stage/'runtime.json',(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii'))
     runtime_spec.verify_files(stage,value['files'])
+    progress(phase='sealing_runtime_files')
     for directory,_,names in os.walk(stage,topdown=False):
         for name in names:
             file=Path(directory)/name

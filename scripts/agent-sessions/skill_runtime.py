@@ -35,10 +35,14 @@ def namespace(worker, root, manifest, state):
     permissions = worker.config['permissions']
     if not permissions.get('studio.exec_command') or not permissions.get('studio.read_file'):
         raise McpFault('Managed analysis requires Run command and Read file permissions for this run.')
-    args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
+    args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-user', '--uid', '0', '--gid', '0',
+            '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts', '--hostname', 'studio-skill',
+            '--cap-add', 'CAP_NET_ADMIN', '--cap-add', 'CAP_SETPCAP']
     for path in ('/usr', '/lib', '/lib64'):
         if Path(path).exists(): args += ['--ro-bind', path, path]
     args += ['--symlink', '/usr/bin', '/bin', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/etc',
+             '--dir','/runner','--ro-bind',str(Path(__file__).with_name('skill_namespace_entry.py')),'/runner/skill_namespace_entry.py',
+             '--ro-bind',str(Path(__file__).resolve().parents[2]/'shared/skill-hosts'),'/etc/hosts',
              '--ro-bind', str(root), '/runtime', '--bind', str(state / 'Data'), '/session',
              '--bind' if permissions.get('studio.write_file') else '--ro-bind', str(worker.store.workspace), '/workspace']
     for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
@@ -52,15 +56,24 @@ def namespace(worker, root, manifest, state):
         directory(state / 'Data' / name)
     args += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/session/Home',
              '--setenv', 'XDG_CACHE_HOME', '/session/Cache', '--setenv', 'LANG', 'C.UTF-8',
-             '--setenv', 'PATH', '/runtime/' + str(Path(manifest['node']['path']).parent) + ':/usr/bin:/bin',
+             '--setenv', 'PYTHONDONTWRITEBYTECODE', '1', '--setenv', 'PYTHONNOUSERSITE', '1',
+             '--setenv', 'PATH', '/runtime/Programs/Bin:/runtime/Programs/Java/bin:/runtime/Programs/Python/bin:/runtime/Programs/OsTools/usr/bin:/runtime/Programs/OsTools/usr/sbin:/runtime/Programs/Wabt/bin:/runtime/' + str(Path(manifest['node']['path']).parent) + ':/usr/bin:/bin',
              '--setenv', 'REA_BUILD_COMMIT', manifest['source']['commit'],
              '--setenv', 'REA_MCP_INPUT_SCHEMA_PROFILE', 'full', '--setenv', 'REA_MCP_OUTPUT_SCHEMA_PROFILE', 'full']
+    environment_names=('GHIDRA_INSTALL_DIR','JAVA_HOME','REA_JADX_MCP_JAR','REA_WABT_BIN_DIRECTORY',
+        'REA_SIGROK_COMMAND','REA_PWNTOOLS_PYTHON','REA_MITMDUMP_COMMAND','REA_BROWSER_EXECUTABLE',
+        'SIGROKDECODE_DIR','REA_WAKARU_COMMAND','REA_PWNDBG_GDB','REA_PWNDBG_GDBINIT','REA_PWNDBG_VENV_PATH','WIRESHARK_DATA_DIR',
+        'PLAYWRIGHT_BROWSERS_PATH','LD_LIBRARY_PATH','REA_UNBLOB_COMMAND','REA_BINWALK_COMMAND')
     for name, value in manifest.get('environment', {}).items():
-        if (name not in ('GHIDRA_INSTALL_DIR','JAVA_HOME','REA_GHIDRA_INSTALL_DIR','REA_JADX_PATH','REA_BROWSER_EXECUTABLE_PATH')
-                or not isinstance(value,str) or not value.startswith('/runtime/')):
+        if name=='REA_BROWSER_NO_SANDBOX' and value=='true':
+            # Chromium remains inside the already sealed OS namespace.
+            args += ['--setenv',name,value];continue
+        if name not in environment_names or not isinstance(value,str) or not all(
+                part.startswith('/runtime/') and '..' not in Path(part).parts for part in value.split(':')):
             raise McpFault('A runtime recipe attempted to provide an unrecognised environment value.')
         args += ['--setenv', name, value]
-    args += ['--', '/runtime/' + manifest['node']['path'], '/runtime/' + manifest['entry']['path'], *manifest['entry']['arguments']]
+    args += ['--','/usr/bin/python3','-I','-B','/runner/skill_namespace_entry.py',
+             '/runtime/' + manifest['node']['path'], '/runtime/' + manifest['entry']['path'], *manifest['entry']['arguments']]
     return args
 
 
