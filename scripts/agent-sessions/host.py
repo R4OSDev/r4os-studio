@@ -229,14 +229,11 @@ class Host:
             action=request.get('action');plan=self.plan_login.plan;browser_owner=request.get('ownerId')
             self.plan_login.owner(browser_owner)
             if action=='list':return plan.listing(browser_owner)
-            if action=='prepare':
-                identity(request.get('requestId'));return {'hostId':plan.host(),'importDirectory':str(plan.folder('Imports'))}
             if action=='start':
-                if request.get('localBrowser') is not True:raise ProjectFault('This browser is on another computer. Use the local Studio sign-in helper and protected SSH transfer; a host loopback cannot receive this browser callback.',409)
                 return await self.plan_login.start(request.get('input'),browser_owner)
+            if action=='callback':return await self.plan_login.callback(request.get('requestId'),request.get('redirectUrl'),browser_owner)
             if action=='cancel':return await self.plan_login.cancel(request.get('requestId'),browser_owner)
             if action=='finish':return await self.plan_login.finish(request.get('requestId'),browser_owner)
-            if action=='import':return await self.plan_login.import_record(request.get('input'),browser_owner)
             raise ProjectFault('Invalid ChatGPT account operation.',400)
         if op == 'api_provider':
             from api_provider_store import ApiProviders

@@ -4,11 +4,13 @@ from contextlib import contextmanager
 from datetime import datetime,timezone
 import fcntl
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import subprocess
 import uuid
+from urllib.parse import urlsplit,parse_qs
 
 from api_provider_store import ApiProviders,private,key
 from profile import directory,regular,write_json
@@ -156,38 +158,6 @@ class Plan:
         else:write_json(binding_path,binding)
         return result
 
-    def import_record(self,data,owner=None):
-        if (not isinstance(data,dict) or set(data)-{'requestId','importId','name','providerId'}
-                or not {'requestId','importId','name'}<=set(data)):raise ProjectFault('Invalid private ChatGPT import.',400)
-        from api_provider_store import name as valid_name
-        valid_name(data['name'])
-        if data.get('providerId'):identity(data['providerId'])
-        rid=identity(data['requestId']);source=self.folder('Imports')/(identity(data['importId'])+'.json')
-        attempt=self.folder('Attempts')/(rid+'.json');status=attempt.with_suffix('.status.json')
-        with self.lock(attempt.with_suffix('.lock')):
-            if attempt.exists():
-                original=self.read(attempt)
-                if original['input']!=data:raise ProjectFault('This original import belongs to another input.',409)
-                if original.get('providerId'):return original
-                if self.read(status).get('state')!='authorized':raise ProjectFault('The original token import is unconfirmed. Do not repeat its refresh.',409)
-            else:
-                value=self.read(source);expected_revision=None
-                if data.get('providerId'):
-                    selected=self.api.get(data['providerId']);require(selected);expected_revision=selected['revision'];expected=self.prior(selected['id'])['identity']
-                    if any(value.get(k)!=expected[k] for k in ('issuer','subject','client_id')):raise ProjectFault('This private record belongs to another selected registration.',409)
-                if value.get('kind')!='studio-siwc':raise ProjectFault('Use the same Studio public-client helper; native Codex credentials are not a Studio grant.',409)
-                target=self.grant(rid);write_json(target,{**value,'ext_agent_host_id':self.host()})
-                write_json(attempt,{'requestId':rid,'name':data['name'],'input':data,'sourceSha256':hashlib.sha256(source.read_bytes()).hexdigest(),'providerRevision':expected_revision,'ownerId':owner,'createdAt':now()});write_json(status,{'state':'intent'})
-                self.invoke({'mode':'refresh','path':str(target),'statusPath':str(status),'hostId':self.host(),'requireGrantedScope':True})
-                if self.read(status).get('state')!='authorized':raise ProjectFault('The imported session did not confirm a direct Studio plan grant. Sign in again explicitly.',409)
-            saved_status=self.read(status);write_json(status,{**saved_status,'state':'activating'})
-            if self.read(attempt).get('cancelRequested'):raise ProjectFault('The original account import was cancelled before activation.',409)
-            result=self.install(rid,self.grant(rid),data['name'],data.get('providerId'),self.read(attempt).get('providerRevision'))
-            saved=self.read(attempt);saved['providerId']=result['provider']['id'];write_json(attempt,saved)
-            write_json(status,{**self.read(status),'state':'complete'})
-            if source.exists() and hashlib.sha256(regular(source).read_bytes()).hexdigest()==saved['sourceSha256']:source.unlink()
-            return saved
-
     def listing(self,owner=None):
         attempts=[]
         if self.root.exists() and (self.root/'Attempts').exists():
@@ -204,6 +174,7 @@ class Plan:
                     except (OSError,ValueError):alive=False
                     if not alive:state={'state':'unknown','error':'The original sign-in process ended without a confirmed registration.'}
                 attempts.append({'requestId':attempt['requestId'],'name':attempt['name'],'state':state['state'],'registrationIssued':bool(state.get('issuedClientId')),'canFinish':state.get('planPermission') is True and not attempt.get('cancelRequested',False),
+                    'redirectSubmitted':bool(attempt.get('redirectSubmission')),
                     **({'authorizationUrl':state['authorizationUrl']} if state['state']=='waiting' else {}),
                     **({'providerId':attempt['providerId']} if attempt.get('providerId') else {}),
                     **({'error':state['error']} if state.get('error') else {})})
@@ -280,6 +251,7 @@ class Login:
             try:frozen=self.plan.frozen(provider);registration=self.plan.grant(frozen['grantId'])
             except ProjectFault:pass
         elif data.get('previousAttempt'):
+            self.owns(self.plan.read(self.plan.folder('Attempts')/(identity(data['previousAttempt'])+'.json')),owner)
             prior=self.plan.folder('Attempts')/(identity(data['previousAttempt'])+'.status.json');previous=self.plan.read(prior);issued=previous.get('issuedClientId');consent=previous.get('state')=='permissionMissing'
             token_path=self.plan.folder('Attempts')/(identity(data['previousAttempt'])+'.token.json')
             if token_path.exists():registration=token_path
@@ -296,7 +268,7 @@ class Login:
         if issued:config['issuedClientId']=issued
         if expected:config['expectedIdentity']=expected
         if consent:config['requestConsent']=True
-        child.stdin.write((encode(config)+'\n').encode());await child.stdin.drain();child.stdin.close()
+        child.stdin.write((encode(config)+'\n').encode());await child.stdin.drain()
         self.children[rid]=child
         async def observe():
             try:
@@ -313,31 +285,47 @@ class Login:
                 elif state.get('state')=='exchanging':write_json(status,{**state,'state':'unknown'})
             except Exception:
                 previous=self.plan.read(status);write_json(status,{**previous,'state':'unknown','error':'The original account setup could not be confirmed. Its private evidence was retained.'})
-            finally:self.tasks.pop(rid,None);self.children.pop(rid,None)
+            finally:
+                child.stdin.close()
+                self.tasks.pop(rid,None);self.children.pop(rid,None)
         self.tasks[rid]=asyncio.create_task(observe())
         try:await asyncio.wait_for(child.stdout.readline(),5)
         except asyncio.TimeoutError:pass
         return self.plan.listing(owner)
 
-    async def import_record(self,data,owner):
+    async def callback(self,rid,url,owner):
         self.owner(owner)
-        rid=identity(data.get('requestId'));path=self.plan.folder('Attempts')/(rid+'.json')
-        if rid in self.tasks:
-            if self.inputs.get(rid)!={'input':data,'owner':owner}:raise ProjectFault('This original import belongs to another input.',409)
+        rid=identity(rid);path=self.plan.folder('Attempts')/(rid+'.json');attempt=self.plan.read(path)
+        self.owns(attempt,owner)
+        try:size=len(url.encode()) if isinstance(url,str) else 0
+        except UnicodeError:size=0
+        if not 1<=size<=16384 or any(ord(c)<33 or ord(c)==127 for c in url):
+            raise ProjectFault('Paste the complete redirect address from the browser address bar.',400)
+        hashed=hashlib.sha256(url.encode()).hexdigest()
+        if attempt.get('redirectSubmission'):
+            if attempt['redirectSubmission']['sha256']!=hashed:raise ProjectFault('This original sign-in already received a different redirect. Read its status.',409)
             return self.plan.listing(owner)
-        if path.exists():
-            self.owns(self.plan.read(path),owner)
-            if self.plan.read(path)['input']!=data:raise ProjectFault('This original import belongs to another input.',409)
-            return self.plan.listing(owner)
-        self.inputs[rid]={'input':dict(data),'owner':owner}
-        async def run():
-            try:await asyncio.to_thread(self.plan.import_record,data,owner)
-            except Exception:
-                if not path.exists():write_json(path,{'requestId':rid,'name':data.get('name','ChatGPT plan'),'input':data,'ownerId':owner,'createdAt':now()})
-                status=path.with_suffix('.status.json');saved=self.plan.read(status) if status.exists() else {}
-                write_json(status,{**saved,'state':'unknown','error':'The original protected credential import was not confirmed. Do not repeat its refresh; inspect or reauthorize.'})
-            finally:self.tasks.pop(rid,None);self.inputs.pop(rid,None)
-        self.tasks[rid]=asyncio.create_task(run());return self.plan.listing(owner)
+        status=path.with_suffix('.status.json');state=self.plan.read(status);child=self.children.get(rid)
+        if state.get('state')!='waiting' or rid not in self.tasks or child is None or child.returncode is not None:
+            raise ProjectFault('This original sign-in is no longer waiting for a redirect. Read its status or start a new sign-in explicitly.',409)
+        try:
+            expected=parse_qs(urlsplit(state['authorizationUrl']).query,strict_parsing=True)
+            callback=urlsplit(expected['redirect_uri'][0]);returned=urlsplit(url)
+            fields=parse_qs(returned.query,keep_blank_values=True,strict_parsing=True)
+            valid=(returned.scheme,returned.netloc,returned.path)==(callback.scheme,callback.netloc,callback.path) and not returned.fragment
+            valid=valid and bool(fields) and all(len(v)==1 for v in fields.values()) and not set(fields)-{'code','state','client_id','scope','error','error_description','error_uri'}
+            valid=valid and hmac.compare_digest(fields.get('state',[''])[0],expected['state'][0])
+            valid=valid and bool(fields.get('code',[''])[0])!=bool(fields.get('error',[''])[0])
+        except (ValueError,KeyError,TypeError):valid=False
+        if not valid:raise ProjectFault('This redirect does not match the original sign-in. Copy its complete final 127.0.0.1 address, including the query.',400)
+        # Receipt before forwarding. A lost pipe/HTTP response is observed using
+        # this same attempt; never submit a second code after uncertain exchange.
+        attempt['redirectSubmission']={'sha256':hashed,'createdAt':now()};write_json(path,attempt)
+        try:
+            child.stdin.write((encode({'callbackUrl':url})+'\n').encode());await child.stdin.drain()
+        except (BrokenPipeError,ConnectionResetError):
+            raise ProjectFault('Delivery to the original sign-in process is unconfirmed. Read its status; the code was not repeated.',409) from None
+        return self.plan.listing(owner)
 
     async def finish(self,rid,owner=None):
         rid=identity(rid);path=self.plan.folder('Attempts')/(rid+'.json');attempt=self.plan.read(path)

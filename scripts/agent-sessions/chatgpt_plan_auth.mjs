@@ -3,8 +3,7 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, timingSafeEqual, createPublicKey, verify } from 'node:crypto';
 import { constants } from 'node:fs';
 import { open, lstat, realpath, rename, mkdir, readFile } from 'node:fs/promises';
-import { dirname, resolve, join } from 'node:path';
-import { homedir } from 'node:os';
+import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 const issuer='https://auth.openai.com', resource='https://api.openai.com/v1';
 const required=['openid','profile','email','offline_access','resource.invoke','chatgpt.tokens.use.direct'];
@@ -61,7 +60,7 @@ async function tokenSet(value,client,host,expected,nonce,retainScopes=false) {
   access_token:value.access_token,refresh_token:value.refresh_token,token_type:'Bearer',scopes:scopes(value.scope??(retainScopes?expected.scopes.join(' '):'')),
   expires_at:new Date(Date.now()+value.expires_in*1000).toISOString(),saved_at:new Date().toISOString()};
 }
-async function main(config) {
+async function main(config, input) {
  const {mode,path,statusPath,hostId}=config;
  const status=async value=>{if(!statusPath)return;let previous={};try{previous=await privateFile(statusPath);}catch(error){if(error.code!=='ENOENT')throw error;}await atomic(statusPath,{...previous,...value,updatedAt:new Date().toISOString()});};
  if(!text(hostId,256)||!['signin','refresh','validate','revoke'].includes(mode)||typeof path!=='string')throw Error('invalid_auth_operation');
@@ -85,12 +84,12 @@ async function main(config) {
  const client=original?.client_id??config.issuedClientId??'dynamic_agent_client',state=randomBytes(32).toString('base64url'),nonce=randomBytes(32).toString('base64url'),verifier=randomBytes(48).toString('base64url');
  let consumed=false,finished=false,timer,finish;
  const completed=new Promise(resolve=>{finish=resolve;});
- const server=createServer(async(request,response)=>{
-  response.setHeader('Cache-Control','no-store');response.setHeader('Referrer-Policy','no-referrer');response.setHeader('Content-Security-Policy',"default-src 'none'");
-  const answer=(code,text)=>{response.writeHead(code,{'Content-Type':'text/plain; charset=utf-8'});response.end(text);};
-  if(request.method!=='GET'||request.headers.host!=='127.0.0.1:'+server.address().port||(request.url?.length??0)>16384){answer(400,'Invalid callback.');return;}
-  const url=new URL(request.url,'http://127.0.0.1');
-  if(url.pathname!=='/auth/callback'||!equal(url.searchParams.get('state'),state)||[...url.searchParams.keys()].some(k=>url.searchParams.getAll(k).length!==1)) {answer(400,'This callback does not match the original login.');return;}
+ const receive=async(value,answer)=>{
+  let url;
+  try{url=new URL(value);}catch{answer(400,'Invalid callback.');return;}
+  if(value.length>16384||url.origin+url.pathname!==callback||url.username||url.password||url.hash
+   ||!equal(url.searchParams.get('state'),state)||[...url.searchParams.keys()].some(k=>url.searchParams.getAll(k).length!==1
+    ||!['code','state','client_id','scope','error','error_description','error_uri'].includes(k))) {answer(400,'This callback does not match the original login.');return;}
   if(consumed||finished){answer(409,'This original callback is already handled.');return;}
   consumed=true;clearTimeout(timer);
   try {
@@ -104,6 +103,12 @@ async function main(config) {
    answer(200,'Sign-in received. Return to R4OS Studio. No model request was made.');
   }catch(error) {await status({state:error.originalError?'failed':'unknown',...(error.originalError?{originalError:error.originalError}:{}),error:'The original sign-in could not be confirmed. Do not resend its code.'});answer(400,'Sign-in could not be confirmed. Return to Studio.');}
   finally{finished=true;finish();}
+ };
+ const server=createServer(async(request,response)=>{
+  response.setHeader('Cache-Control','no-store');response.setHeader('Referrer-Policy','no-referrer');response.setHeader('Content-Security-Policy',"default-src 'none'");
+  const answer=(code,text)=>{response.writeHead(code,{'Content-Type':'text/plain; charset=utf-8'});response.end(text);};
+  if(request.method!=='GET'||request.headers.host!=='127.0.0.1:'+server.address().port||(request.url?.length??0)>16384){answer(400,'Invalid callback.');return;}
+  await receive('http://127.0.0.1:'+server.address().port+request.url,answer);
  });
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
  const callback='http://127.0.0.1:'+server.address().port+'/auth/callback';
@@ -112,30 +117,35 @@ async function main(config) {
  const authorizationUrl=issuer+'/api/accounts/authorize?'+new URLSearchParams(params);
  await status({state:'waiting',authorizationUrl,expiresAt:new Date(Date.now()+600000).toISOString()});
  console.log(JSON.stringify({state:'waiting',authorizationUrl}));
+ // The web backend forwards an explicitly pasted redirect through this same
+ // private process pipe. Both delivery paths consume the same original PKCE.
+ const commands=(async()=>{
+  for await(const line of input){
+   if(finished)break;
+   try{
+    if(Buffer.byteLength(line)>32768)throw Error();
+    const value=JSON.parse(line);
+    if(Object.keys(value).length!==1||typeof value.callbackUrl!=='string')throw Error();
+    await receive(value.callbackUrl,()=>{});
+   }catch{if(!consumed&&!finished)await status({callbackError:'Invalid redirect input.'});}
+  }
+ })();
  timer=setTimeout(()=>{finished=true;void status({state:'expired'}).finally(finish);},600000);
  const cancel=()=>{finished=true;void status({state:consumed?'unknown':'cancelled'}).finally(finish);};
  process.once('SIGTERM',cancel);process.once('SIGINT',cancel);
  await completed;clearTimeout(timer);server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
+ input.return?.();
+ void commands.catch(()=>{});
 }
 let config;
+const reader=createInterface({input:process.stdin,crlfDelay:Infinity}),input=reader[Symbol.asyncIterator]();
 try {
- if(process.argv.length>2){
-  if(![4,6,8].includes(process.argv.length)||process.argv[2]!=='--signin')throw Error('Usage: node chatgpt_plan_auth.mjs --signin PRIVATE_FILE [--host-id urn:uuid:HOST_UUID] [--client-id ISSUED_CLIENT_ID]');
-  const path=resolve(process.argv[3]),options={};
-  for(let i=4;i<process.argv.length;i+=2){if(!['--host-id','--client-id'].includes(process.argv[i])||Object.hasOwn(options,process.argv[i])||!text(process.argv[i+1],256))throw Error('invalid_login_option');options[process.argv[i]]=process.argv[i+1];}
-  let hostId=options['--host-id'];
-  if(!hostId){
-   const hostFile=join(homedir(),'.config','r4os-studio','chatgpt-plan','Host.json');
-   try{hostId=(await privateFile(hostFile)).hostId;}catch(error){if(error.code!=='ENOENT')throw error;hostId='urn:uuid:'+randomUUID();await atomic(hostFile,{hostId});}
-  }
-  config={mode:'signin',path,statusPath:path+'.status.json',hostId,...(options['--client-id']?{issuedClientId:options['--client-id']}:{})};
-  try{const prior=await privateFile(path);if(config.issuedClientId&&config.issuedClientId!==prior.client_id)throw Error('selected_registration_changed');config.registrationPath=path;}catch(error){if(error.code!=='ENOENT')throw error;}
- } else {
-  const input=createInterface({input:process.stdin,crlfDelay:Infinity});
-  for await(const line of input){if(Buffer.byteLength(line)>262144)throw Error('auth_input_limit');config=JSON.parse(line);input.close();break;}
- }
- await main(config);
+ if(process.argv.length!==2)throw Error('server_account_operation_only');
+ const first=await input.next();
+ if(first.done||Buffer.byteLength(first.value)>262144)throw Error('auth_input_limit');
+ config=JSON.parse(first.value);
+ await main(config,input);
 }catch(error){
  if(config?.statusPath){let previous={};try{previous=await privateFile(config.statusPath);}catch{/* Preserve the new failure even if its prior journal cannot be read. */}await atomic(config.statusPath,{...previous,state:'unknown',...(error.originalError?{originalError:error.originalError}:{}),error:'The original account operation was not confirmed. No automatic retry.',updatedAt:new Date().toISOString()}).catch(()=>{});}
- console.error(error.message?.startsWith('Usage:')?error.message:'The original ChatGPT account operation could not be confirmed.');process.exitCode=1;
-}
+ console.error('The original ChatGPT account operation could not be confirmed.');process.exitCode=1;
+}finally{reader.close();process.stdin.destroy();}
