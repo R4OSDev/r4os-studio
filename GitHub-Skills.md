@@ -39,3 +39,17 @@ receipt does not resubmit a download. Prepared sources are distinct from a
 published skill or working runtime. Activation/update controls, external MCP
 execution and complete REA provisioning follow in the separately planned
 releases. A configured URL or downloaded source alone is not a ready runtime.
+
+0.9.48 validates and publishes ordinary source packages through the existing
+skill Save contract. Immutable package identities include the exact source
+commit and any managed runtime manifest. Local saves preserve that provenance;
+subsequent updates detect local changes rather than replacing them. Identical
+updates create no revision, while a different commit keeps its own identity even
+when its instruction text is unchanged. A missing runtime recipe fails explicitly
+before activation. Publication has a durable private activation journal and
+restores its original draft on a confirmed pre-commit failure. A lost receipt is
+observed by its original ID; it is never permission to repeat an unknown effect.
+
+The source-only unit permits the private proc mount required by its nested Git
+namespace. Its filesystem, device, control-group and kernel-module protections
+remain enabled; no web/agent/VM service configuration is replaced.

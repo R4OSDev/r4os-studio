@@ -142,7 +142,10 @@ def run(root, ident, rid):
                               repositories=manifest['repositories'],
                               externalLfsObjects=sum(bool(item.get('lfs')) for item in manifest['files']),
                               inertLinks=sum(bool(item.get('inertLink')) for item in manifest['files']))
-                update(db, ident, rid, phase='complete', result=result, pid=None, sourceStatus='sources_ready')
+                from source_publish import publish as publish_source
+                result.update(publish_source(api, db, root, ident, job, destination, manifest, manifest_hash,
+                                             lambda **value: update(db, ident, rid, **value)))
+                update(db, ident, rid, phase='complete', result=result, pid=None, sourceStatus='ready')
             except Exception as error:
                 # Fixed adapter diagnostics contain no credentials or upstream stderr.
                 safe = str(error) if isinstance(error, api.SkillFault) or type(error).__name__ == 'ProjectFault' else 'The source job failed. Its original files were preserved for inspection.'

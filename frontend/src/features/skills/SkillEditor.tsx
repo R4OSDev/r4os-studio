@@ -141,7 +141,7 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
   return <section className="skill-editor" aria-label="View skill">
     <button type="button" className="skill-delete-action" disabled={busy || !detail} onClick={deleteSkill}>Delete skill</button>
     <div className="skill-heading"><label htmlFor="skill-display-name">Skill name</label><input id="skill-display-name" value={name} maxLength={120} disabled={busy || !detail} onChange={event => setName(event.target.value)} />
-      <p>{detail?.skill.activeRevision ? `Active revision ${detail.skill.activeRevision}` : 'Draft · no active revision'}{detail && detail.draftHash !== detail.skill.activeHash ? ' · draft differs' : ''}</p></div>
+      <p>{detail?.skill.activeRevision ? `Active revision ${detail.skill.activeRevision}` : 'Draft · no active revision'}{detail && detail.draftHash !== (detail.activeDraftHash ?? detail.skill.activeHash) ? ' · draft differs' : ''}</p></div>
     {error && <div className="skill-message error" role="alert">{error}<button type="button" disabled={busy} onClick={() => void reload()}>Reload</button></div>}
     {notice && <p className="skill-message" role="status">{notice}</p>}
     {validation && !validation.valid && <ul className="skill-message error" role="alert">{validation.errors.map((message, i) => <li key={i}>{message}</li>)}</ul>}
@@ -174,7 +174,7 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
       : doc.file.editable ? <EditorCore doc={doc} readOnly={busy} save={() => void save()} onState={state => { doc.state = state; changed(); }} navigated={() => {}} />
         : <p className="skill-empty">{doc.file.reason}</p> : <p className="skill-empty">Create or select a package file.</p>}
     <div className="skill-actions"><button type="button" disabled={busy || !dirty} onClick={cancel}>Cancel edits</button>
-      <button type="button" disabled={busy || (!dirty && detail.draftHash === detail.skill.activeHash)} onClick={() => void save()}>{busy ? 'Saving…' : 'Save skill'}</button></div>
+      <button type="button" disabled={busy || (!dirty && detail.draftHash === (detail.activeDraftHash ?? detail.skill.activeHash))} onClick={() => void save()}>{busy ? 'Saving…' : 'Save skill'}</button></div>
     </>}
     {action && <EditorDialog label={action === 'rename' ? 'Rename skill file' : action === 'upload' ? 'Upload skill file' : 'New skill file'} busy={busy} close={() => { setAction(null); setDialogDirty(false); }}>
       <form onSubmit={event => { event.preventDefault(); void fileAction(); }}><h2>{action === 'rename' ? 'Rename file' : action === 'upload' ? 'Upload resource' : 'New file'}</h2>

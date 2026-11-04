@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import uuid
 
 
 def install():
@@ -32,7 +33,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
+ProtectKernelTunables=no
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
@@ -54,18 +55,32 @@ polkit.addRule(function(action, subject) {
         Path('/etc/polkit-1/rules.d/66-r4os-studio-skill-sources.rules'): rule.encode(),
         Path('/opt/r4os-studio/bin/skill-source-launch.py'): Path(__file__).with_name('source_launch.py').read_bytes(),
     }
+    originals = {}
     for path, data in targets.items():
         if path.is_symlink() or path.exists() and not path.is_file():
             raise SystemExit('Refusing linked source job host support.')
-        if path.exists() and path.read_bytes() != data:
+        previous = path.read_bytes() if path.exists() else None
+        originals[path] = previous
+        # Only the known 0.9.47 generated proc-mask incompatibility is migrated.
+        known_previous = data.replace(b'ProtectKernelTunables=no\n', b'ProtectKernelTunables=yes\n') if path.suffix == '.service' else data
+        if previous is not None and previous not in (data, known_previous):
             raise SystemExit('Existing source job support differs; preserve it for explicit maintenance.')
     for path, data in targets.items():
-        if not path.exists():
-            with path.open('xb') as stream:
+        if originals[path] != data:
+            if (path.read_bytes() if path.exists() else None) != originals[path]:
+                raise SystemExit('Source job host support changed during maintenance.')
+            temporary = path.with_name('.' + path.name + '.' + str(uuid.uuid4()) + '.tmp')
+            with temporary.open('xb') as stream:
                 os.fchmod(stream.fileno(), 0o644)
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
     print('Private source-job unit and narrow start/stop support installed; existing services and VMs preserved.')
 

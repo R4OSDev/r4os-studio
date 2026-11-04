@@ -8,7 +8,8 @@ export interface SkillSourceConfiguration {
 }
 export interface SkillSource {
   configuration: SkillSourceConfiguration; revision: number; status: string; commit: string | null;
-  active: { commit: string; packageHash: string; runtimeHash?: string; repository: string } | null;
+  active: { commit: string; packageHash: string; importedHash: string; draftHash: string; repository: string;
+    runtime: { path: string; manifestHash: string; version: string } | null } | null;
   lastRequestId: string | null; updatedAt: string;
 }
 export interface SkillSourceJob {
@@ -17,7 +18,7 @@ export interface SkillSourceJob {
   configuration: SkillSourceConfiguration; commit: string | null; pid: number | null;
   result: Record<string, unknown> | null; error: string | null; createdAt: string; updatedAt: string;
 }
-export interface SkillDetail { skill: Skill; files: SkillFile[]; draftHash: string; source?: SkillSource | null }
+export interface SkillDetail { skill: Skill; files: SkillFile[]; draftHash: string; activeDraftHash?: string | null; source?: SkillSource | null }
 export interface SkillFileContent extends SkillFile { encoding: 'utf8' | 'base64'; content: string }
 export interface SkillValidation { valid: boolean; errors: string[]; metadata?: { name: string; description: string }; draftHash: string }
 export interface SkillList { skills: Skill[]; csrfToken: string }

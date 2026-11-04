@@ -54,9 +54,15 @@ def revision(projects, entry, verify_files=False):
         raw, _ = packages.regular(packages.folder(root) / 'revision.json')
         if len(raw) > 131072: raise ValueError()
         data = json.loads(raw); files = data['files']; metadata = data['metadata']
+        binding = data.get('sourceBinding') if data.get('schema') == 2 else None
+        expected_fields = ({'schema', 'files', 'hash', 'metadata', 'draftHash', 'sourceBinding'} if binding is not None
+                           else {'files', 'hash', 'metadata'})
         if (data['hash'] != tree_hash or not isinstance(files, list) or not 1 <= len(files) <= 128
+                or set(data) != expected_fields
                 or metadata != {'name': entry['formatName'], 'description': entry['description']}
-                or packages.digest(packages.encode(files).encode()) != tree_hash): raise ValueError()
+                or packages.source_binding.package_hash(packages, files, binding) != tree_hash): raise ValueError()
+        files_hash = packages.digest(packages.encode(files).encode())
+        if binding is not None and data['draftHash'] != files_hash: raise ValueError()
         total = 0; paths = set()
         for file in files:
             if set(file) != {'path', 'sha256', 'bytes', 'executable'}: raise ValueError()
@@ -70,7 +76,7 @@ def revision(projects, entry, verify_files=False):
         workspace = packages.folder(root / 'Workspace')
         if verify_files:
             actual, _, actual_hash = packages.inventory(workspace)
-            if actual != files or actual_hash != tree_hash: raise ValueError()
+            if actual != files or actual_hash != files_hash: raise ValueError()
         return workspace, files, manifest_hash, total
     except (OSError, ValueError, KeyError, TypeError, packages.SkillFault):
         raise ProjectFault('The published revision for skill ' + str(entry.get('name', entry.get('id', 'unknown'))) +

@@ -21,6 +21,8 @@ spec_lifecycle=importlib.util.spec_from_file_location('studio_skill_lifecycle',P
 lifecycle=importlib.util.module_from_spec(spec_lifecycle);spec_lifecycle.loader.exec_module(lifecycle)
 spec_sources=importlib.util.spec_from_file_location('studio_skill_sources',Path(__file__).with_name('source_spec.py'))
 sources=importlib.util.module_from_spec(spec_sources);spec_sources.loader.exec_module(sources)
+spec_binding=importlib.util.spec_from_file_location('studio_skill_source_binding',Path(__file__).with_name('source_binding.py'))
+source_binding=importlib.util.module_from_spec(spec_binding);spec_binding.loader.exec_module(source_binding)
 
 MAX_FILE = 1024 * 1024
 MAX_TOTAL = 8 * MAX_FILE
@@ -212,7 +214,11 @@ def detail(db, root, ident):
     row = db.execute("SELECT * FROM skills WHERE id=? AND state='ready'", (ident,)).fetchone()
     value = summary(row)
     files, _, tree_hash = inventory(folder(root / ident) / 'Workspace')
-    return {'skill': value, 'files': files, 'draftHash': tree_hash, 'source': sources.read(db, ident)}
+    source = sources.read(db, ident)
+    active_draft = value['activeHash']
+    if source and source.get('active') and source['active'].get('packageHash') == value['activeHash']:
+        active_draft = source['active'].get('draftHash', active_draft)
+    return {'skill': value, 'files': files, 'draftHash': tree_hash, 'activeDraftHash': active_draft, 'source': source}
 
 
 def create(db, root, data):
@@ -306,7 +312,7 @@ def change_file(db, root, data, rename=False):
         return detail(db, root, ident)
 
 
-def publish(db, root, data, node, author=None):
+def publish(db, root, data, node, author=None, publication=None):
     if set(data) != {'id', 'revision', 'draftHash', 'requestId'} or type(data['revision']) is not int or data['revision'] < 1 or not isinstance(data['draftHash'], str) or not re.fullmatch('[a-f0-9]{64}', data['draftHash']):
         raise SkillFault('Invalid skill save request.', 400)
     ident = identity(data['id']); identity(data['requestId']); request_hash = digest(encode(data).encode())
@@ -320,14 +326,20 @@ def publish(db, root, data, node, author=None):
         if current['skill']['revision'] != data['revision'] or tree_hash != data['draftHash']: raise SkillFault('This skill changed. Reload before saving.', 409)
         validation = validate(files, contents, tree_hash, node)
         if not validation['valid']: return {**current, 'validation': validation, 'saved': False}
-        revisions = folder(root / ident / 'Revisions'); destination = revisions / tree_hash
+        if publication is None:
+            publication = source_binding.current(sys.modules[__name__], db, root, ident, current['skill']['activeHash'])
+        package_hash = source_binding.package_hash(sys.modules[__name__], files, publication)
+        manifest = {'files': files, 'hash': package_hash, 'metadata': validation['metadata']}
+        if publication is not None:
+            manifest.update(schema=2, draftHash=tree_hash, sourceBinding=publication)
+        revisions = folder(root / ident / 'Revisions'); destination = revisions / package_hash
         if not destination.exists():
             stage = revisions / ('.stage-' + str(uuid.uuid4()))
             try:
                 workspace = folder(stage / 'Workspace', True)
                 for f in files:
                     path = workspace / f['path']; folder(path.parent, True); atomic(path, contents[f['path']], f['executable'])
-                atomic(stage / 'revision.json', (encode({'files': files, 'hash': tree_hash, 'metadata': validation['metadata']}) + '\n').encode())
+                atomic(stage / 'revision.json', (encode(manifest) + '\n').encode())
                 for directory, _, _ in os.walk(workspace, topdown=False): sync(directory)
                 sync(stage)
                 if author is not None: author.verify(root, ident)
@@ -336,15 +348,18 @@ def publish(db, root, data, node, author=None):
                 if stage.exists(): shutil.rmtree(stage)
         actual, _, actual_hash = inventory(folder(destination) / 'Workspace')
         if actual != files or actual_hash != tree_hash: raise SkillFault('The immutable skill snapshot changed. Data was preserved.', 503)
+        recorded, _ = regular(destination / 'revision.json')
+        if json.loads(recorded) != manifest: raise SkillFault('The immutable skill manifest changed. Data was preserved.', 503)
         if inventory(root / ident / 'Workspace')[2] != tree_hash: raise SkillFault('The skill changed during validation. Retry with the current draft.', 409)
         if author is not None: author.verify(root, ident)
         db.execute('BEGIN IMMEDIATE')
         active = current['skill']['activeRevision']
-        if current['skill']['activeHash'] != tree_hash:
+        if current['skill']['activeHash'] != package_hash:
             active += 1
-            db.execute('INSERT INTO revisions VALUES(?,?,?,?)', (ident, active, tree_hash, encode(validation['metadata'])))
+            db.execute('INSERT INTO revisions VALUES(?,?,?,?)', (ident, active, package_hash, encode(validation['metadata'])))
             db.execute('UPDATE skills SET revision=revision+1,format_name=?,description=?,active_revision=?,active_hash=?,updated_at=? WHERE id=?',
-                       (validation['metadata']['name'], validation['metadata']['description'], active, tree_hash, now(), ident))
+                       (validation['metadata']['name'], validation['metadata']['description'], active, package_hash, now(), ident))
+        source_binding.attach(sys.modules[__name__], db, ident, package_hash, tree_hash, publication)
         result = {**detail(db, root, ident), 'validation': validation, 'saved': True}
         db.execute('INSERT INTO saves VALUES(?,?,?,?)', (data['requestId'], ident, request_hash, encode(result)))
         db.commit(); return result
