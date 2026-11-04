@@ -46,6 +46,13 @@ class StudioWorker(Worker):
             ids.add(call['callId'])
             try: validate_arguments(call['name'][7:], call['arguments'], tool_scope(self.config))
             except ValueError: raise ModelFault('model_invalid_tool_arguments') from None
+            previous = self.store.db.execute('SELECT arguments_hash FROM tools WHERE run_id=? AND call_id=?',
+                (self.run_id, self.receipt_id(call['callId']))).fetchone()
+            expected = hashlib.sha256(encode({'tool':call['name'], 'arguments':call['arguments']}).encode()).hexdigest()
+            if previous and previous['arguments_hash'] != expected: raise ModelFault('model_tool_identity_conflict')
+
+    def receipt_id(self, call_id):
+        return 'studio-' + hashlib.sha256(encode([self.run_id, call_id]).encode()).hexdigest()
 
     async def _stop(self):
         self.stopping = True
@@ -114,7 +121,15 @@ class StudioWorker(Worker):
         while self.active():
             result = await self.response(instructions, tools)
             calls = [part for part in result['content'] if part['type'] == 'tool_call']
-            self.validate_calls(calls, tools)  # Validate the entire set before any host effect.
+            try:
+                self.validate_calls(calls, tools)  # Validate the entire set before any host effect.
+            except ModelFault as error:
+                for index, call in enumerate(calls):
+                    self.conversation.append(self.run_id, 'rejected-' + str(self.round) + '-' + str(index), 'tool',
+                        [{'type':'tool_result', 'callId':call['callId'], 'result':{'success':False, 'error':'notAdmitted',
+                          'output':'This entire tool batch was rejected before host execution.'}}],
+                        {'admissionOnly':True, 'reasonCode':error.code, 'turnId':self.turn_id})
+                raise
             if not calls:
                 if not any(p['type'] == 'text' and p['text'].strip() for p in result['content']):
                     raise ModelFault('model_empty_response')
@@ -123,10 +138,10 @@ class StudioWorker(Worker):
             # also makes dependent write/read pairs deterministic.
             for call in calls:
                 if not self.active(): break
-                bound_id = 'studio-' + hashlib.sha256(encode([self.run_id, self.round, call['callId']]).encode()).hexdigest()
+                bound_id = self.receipt_id(call['callId'])
                 self.operation = asyncio.create_task(self.bound_tool(call['name'], call['arguments'], bound_id, self.tool_result))
                 result = await self.operation
-                self.conversation.append(self.run_id, 'tool-' + bound_id, 'tool',
+                self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
                     [{'type': 'tool_result', 'callId': call['callId'], 'result': result}],
                     {'toolReceiptId': bound_id, 'turnId': self.turn_id})
                 if result.get('error') == 'unknown' or result.get('partialChangesPossible') and result.get('error') == 'interrupted':

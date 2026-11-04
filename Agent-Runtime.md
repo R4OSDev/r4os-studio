@@ -192,3 +192,27 @@ werden in den jeweils folgenden Paketen ergänzt. Messages-API und deren
 optionale Thinkingparameter benötigen ausdrückliche eigene Modellfakten; ein
 vorhandenes Claude-Abo stellt keinen APIzugang her. Der bestehende eigenständige
 Patchparser bleibt zunächst eine Dateihilfe und führt keine Agentenschleife aus.
+
+## Gemeinsame Werkzeuge und Managed Skills (0.10.7)
+
+Der Kern verwendet weiterhin ausschließlich shared/agent-tools.json und
+Worker.bound_tool samt bestehender Datei-/Terminal-/Entwicklungs-/Roadmap-/
+Notiz-/VM-/Skillbroker. Eine originale Call-ID innerhalb desselben Runs erhält
+eine stabile interne Quittungskennung. Erneute Beobachtungen geben den gespeicherten
+Inhalt zurück, geänderte Argumente scheitern vor der gesamten Werkzeugrunde.
+Verlaufsnachrichten besitzen zusätzlich ihre Beobachtungsrunde; eine zweite
+Beobachtung ist keine zweite Wirkung. Ein vollständig abgewiesener Aufrufsatz
+bekommt eindeutige notAdmitted-Ergebnisse im Verlauf, ohne Hostquittungen oder
+Werkzeugwirkungen vorzutäuschen.
+
+System-/Projekt-/Skillanweisungen, UUID-Auswahl, unveränderliche Revisionen,
+Ressourcen und Skripte stammen aus den vorhandenen eingefrorenen Quellen.
+SkillTools und der bestehende private Session-MCP-Service behandeln vollständige
+Kataloge, Schemas, Ergebnisreferenzen, Originalprozesse, Stop, Thaw, Controllerverlust
+und Löschung für jeden Anschluss gleich. Es gibt keinen zweiten MCP-Client und
+keine neue modellspezifische Teilmenge. Lesen/Öffnen installiert keine Skills.
+
+Gewöhnliche Datei- und Terminaloperationen im Studio-Kern prüfen, laden und
+mounten keine Codex-Modellruntime. Nur die ausdrücklich gewählte apply_patch-
+Operation verwendet derzeit den vorhandenen eigenständigen offiziellen
+Patchparser. Dieser ist eine Werkzeughilfe und führt keine Agentenschleife aus.

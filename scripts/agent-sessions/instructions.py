@@ -62,6 +62,14 @@ def compose(config):
     text = base(config)
     from active_tools import instructions as current_tool_instructions
     text += current_tool_instructions(config)
+    if config['engine'].get('kind') == 'studio':
+        text += ('\n\nSTUDIO TOOL RESULTS: The current Studio catalog and frozen permissions apply to every model connection. '
+                 'For file creation, expectedSha256 is JSON null, never the string "null". Read an existing file and use its exact SHA-256 before replacing it. '
+                 'The permitted apply_patch tool can also add a new file with an Add File patch and an empty expectedHashes object. '
+                 'A failed or unknown tool result is not a successful effect. Read original receipts and do not repeat unconfirmed work. '
+                 'For managed skills use skill_discover to select exact native tool names and obtain their complete schemas; use returned byte cursors '
+                 'and read_skill_result to read large schemas/results fully. A preview or retained reference alone is not a complete read or visual inspection. '
+                 'Published skill resources are read-only; session tools cannot edit private skill sources, installed runtimes or credentials.')
     from environment_note_tools import instructions as environment_instructions
     text += environment_instructions(config)
     from input_instructions import compose as input_instructions

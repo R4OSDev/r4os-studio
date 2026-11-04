@@ -26,7 +26,9 @@ class Sandbox:
             # of the Claude model engine and its native2.x version.
             patch_version=CODEX_VERSION if self.worker.config['engine'].get('kind') in ('claude-code', 'studio') else self.worker.config['engine']['version']
             binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / patch_version / 'codex'
-            if self.worker.config['engine'].get('kind') in ('claude-code', 'studio'):
+            if self.worker.config['engine'].get('kind') == 'studio':
+                pass  # Ordinary file/terminal tools do not need a model-agent binary.
+            elif self.worker.config['engine'].get('kind') == 'claude-code':
                 if digest(regular(binary)) != CODEX_SHA256: raise ValueError('The private file patch utility changed.')
             else:
                 from codex_runtime import binary as runtime_binary
@@ -50,7 +52,7 @@ class Sandbox:
                 if not target.exists(): shutil.copytree(exports['tools'], target, symlinks=False)
             self.context = context
 
-    def command(self, command, workdir='/workspace'):
+    def command(self, command, workdir='/workspace', patch=False):
         args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
         for path in ('/usr', '/lib', '/lib64'):
             if Path(path).exists(): args += ['--ro-bind', path, path]
@@ -87,8 +89,12 @@ class Sandbox:
         if self.context.get('rust'):
             rust_bin = '/rust/' + str(self.context['rust']['compiler'].parent)
         tool_path = ':'.join(path for path in ('/pwsh', '/zig', rust_bin, '/host-tools', '/usr/bin', '/bin') if path)
-        args += ['--dir', '/runner', '--ro-bind', str(Path(__file__).parent / 'file_worker.py'), '/runner/file_worker.py',
-                 '--ro-bind', str(self.binary), '/runner/codex', '--chdir', workdir, '--clearenv',
+        args += ['--dir', '/runner', '--ro-bind', str(Path(__file__).parent / 'file_worker.py'), '/runner/file_worker.py']
+        if self.worker.config['engine'].get('kind') != 'studio' or patch:
+            if self.worker.config['engine'].get('kind') == 'studio' and digest(regular(self.binary)) != CODEX_SHA256:
+                raise ValueError('The standalone patch utility changed.')
+            args += ['--ro-bind', str(self.binary), '/runner/codex']
+        args += ['--chdir', workdir, '--clearenv',
                  '--setenv', 'HOME', '/cache/home', '--setenv', 'PATH', tool_path,
                  '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'SDK_ROOT', '/sdk', '--setenv', 'CONTRACT_ROOT', '/contract',
                  '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_AUTO_INSTALL', '0',
@@ -128,7 +134,7 @@ class Sandbox:
         # All calls share this lock, including reads, so a read/hash pair observes
         # the preceding Studio write. External administrator edits remain external.
         async with self.lock:
-            proc = await asyncio.create_subprocess_exec(*self.command(['/usr/bin/python3', '-I', '-B', '/runner/file_worker.py']),
+            proc = await asyncio.create_subprocess_exec(*self.command(['/usr/bin/python3', '-I', '-B', '/runner/file_worker.py'], patch=name == 'apply_patch'),
                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=262144)
             try:
                 output, _ = await asyncio.wait_for(proc.communicate(json.dumps({'tool': name, 'arguments': arguments}).encode()), 30)
