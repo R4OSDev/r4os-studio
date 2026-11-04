@@ -123,6 +123,59 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(paths(self.projects,launch)[3],self.service.state)
         self.assertFalse(self.service.state.exists())
 
+    async def test_original_dead_unit_reconciliation_preserves_missing_reply_and_unknown(self):
+        from skill_mcp_lifecycle import reconcile_end,pending
+        from skill_mcp_client import atomic,encoded
+        rid=str(uuid.uuid4())
+        await self.remote.call('echo',{},request_id=rid)
+        end=await self.service.client.close();self.assertTrue(end['processEndConfirmed'])
+        unknown=str(uuid.uuid4());receipt=dict(requestId=unknown,method='tools/call',phase='unknown',providerEndConfirmed=False)
+        file=self.service.state/'Transport/Calls'/(unknown+'.json');atomic(file,encoded(receipt));before=file.read_bytes()
+        atomic(self.service.state/'ServiceProcess.json',encoded(dict(self.service.launch,pid=999999999,birth='original-fixture-ended',invocationId='known-owned-invocation')))
+        async def ctl(*args):return 'MainPID=0\nActiveState=failed\nInvocationID=known-owned-invocation\nExecMainCode=2\nExecMainStatus=9\n'
+        with patch('skill_session_client.systemctl',side_effect=ctl):
+            result=await reconcile_end(self.projects,self.service.launch)
+        self.assertTrue(result['processEndConfirmed']);self.assertEqual(result['outcome'],'unknown')
+        self.assertFalse(result['replayed']);self.assertFalse(result['nativeReplyReconstructed'])
+        self.assertEqual(result['unresolved'],[unknown]);self.assertEqual(file.read_bytes(),before)
+        self.assertIsNotNone(pending(self.service.state))
+
+    async def test_transient_database_lock_keeps_original_native_state(self):
+        from skill_session_state import original
+        attempts=[]
+        def probe(*args):
+            attempts.append(True)
+            if len(attempts)==1:raise sqlite3.OperationalError('database is locked')
+            return original(*args)
+        with patch('skill_mcp_service.original',side_effect=probe):
+            monitor=asyncio.create_task(self.service.watch());self.monitors.append(monitor)
+            for _ in range(100):
+                if len(attempts)>1 and not self.service.observation_busy:break
+                await asyncio.sleep(.02)
+            self.assertGreater(len(attempts),1);self.assertFalse(self.service.stopped.is_set())
+            self.assertFalse(self.service.observation_busy)
+        result=await self.remote.call('echo',{},request_id=str(uuid.uuid4()))
+        self.assertEqual(result['structuredContent']['nativeCounter'],1)
+
+    async def test_cleanup_commits_its_original_journal_before_external_release(self):
+        from skill_mcp_tools import SkillTools
+        self.worker.store.db=self.session_db
+        self.worker.outcome='completed';self.worker.uncertain_effect=False
+        broker=SkillTools(self.worker);broker.clients[self.entry['id']]=self.remote
+        self.session_db.execute('BEGIN EXCLUSIVE')
+        await asyncio.wait_for(broker.close(),5)
+        self.assertFalse(self.session_db.in_transaction)
+        self.assertFalse(self.service.stopped.is_set());self.assertFalse(self.worker.uncertain_effect)
+        self.assertTrue(self.remote.closed['sessionRetained'])
+        del self.worker.store.db
+
+    async def test_lost_close_reply_reads_the_original_native_end(self):
+        end=await self.service.finish();self.assertTrue(end['processEndConfirmed'])
+        with patch.object(self.remote,'rpc',side_effect=McpFault('explicit lost close reply')):
+            result=await self.remote.close()
+        self.assertTrue(result['processEndConfirmed']);self.assertEqual(result['exit'],0)
+        self.assertFalse(result['unresolved'])
+
     async def test_two_sessions_have_independent_process_state_and_results(self):
         sid=str(uuid.uuid4());run=str(uuid.uuid4());self.session_db.execute('INSERT INTO sessions VALUES(?,?,?)',(sid,self.owner,'{}'))
         worker=types.SimpleNamespace(**vars(self.worker));worker.session_id=sid;worker.run_id=run;self.run_row(worker)

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import sqlite3
 import struct
 import sys
 
@@ -16,11 +17,32 @@ from skill_session_state import identity, original, paths, registry, birth, RIGH
 MAX_REPLY=34*1024*1024
 
 
+def database_busy(error):
+    for _ in range(8):
+        if isinstance(error,sqlite3.OperationalError) and (getattr(error,'sqlite_errorcode',0)&255 in (5,6)
+                or str(error) in ('database is locked','database table is locked')):return True
+        error=error.__cause__ or error.__context__
+        if error is None:break
+    return False
+
+
+async def original_worker(*arguments):
+    task=asyncio.create_task(asyncio.to_thread(original,*arguments))
+    try:return await asyncio.shield(task)
+    except BaseException:
+        # A cancelled observer still drains and closes its own read-only
+        # connection when the bounded SQLite wait finishes.
+        try:
+            worker=await task;worker.store.db.close()
+        except Exception:pass
+        raise
+
+
 class Service:
     def __init__(self,config,launch):
         self.config,self.launch=config,launch
         self.client=None;self.grant=None;self.lock=asyncio.Lock();self.stopped=asyncio.Event();self.proxy=None
-        self.connections=set();self.finished=None;self.finish_task=None;self.namespace_permissions=None
+        self.connections=set();self.finished=None;self.finish_task=None;self.namespace_permissions=None;self.observation_busy=False
         self.state=paths(config['projects'],launch,create=True)[3]
 
     def snapshot(self):
@@ -48,7 +70,7 @@ class Service:
                 from skill_egress import Proxy
                 runtime=Path(self.config.get('runtimeDirectory','/run/r4os-studio-skill-mcp/'+self.launch['serviceId']))
                 socket_path=directory(runtime)/'web.sock'
-                self.proxy=Proxy(socket_path,self.config['uid'],lambda:bool(self.grant) and not self.stopped.is_set())
+                self.proxy=Proxy(socket_path,self.config['uid'],lambda:bool(self.grant) and not self.observation_busy and not self.stopped.is_set())
                 await self.proxy.start()
             await client.start(skill_runtime.namespace(worker,root,manifest,self.state,self.proxy.path if self.proxy else None),env={'LANG':'C.UTF-8'})
             tools=await client.discover()
@@ -72,7 +94,7 @@ class Service:
         if not isinstance(request,dict) or set(request)-{'operation','runId','name','arguments','method','key','requestId','timeout','retain'}:
             raise McpFault('Invalid analysis service request.')
         op=request.get('operation');effects=op not in ('close','release','observe')
-        worker=original(self.config['projects'],self.launch,request.get('runId'),peer,self.config['uid'],effects)
+        worker=await original_worker(self.config['projects'],self.launch,request.get('runId'),peer,self.config['uid'],effects)
         try:
             if op=='close':
                 if self.grant and self.grant['runId']!=worker.run_id:
@@ -148,18 +170,18 @@ class Service:
             self.connections.discard(task)
 
     async def watch(self):
+        busy_since=None
         while not self.stopped.is_set():
             try:
                 if self.grant:
                     grant=self.grant
                     try:
-                        worker=original(self.config['projects'],self.launch,grant['runId'],(grant['pid'],self.config['uid'],0),self.config['uid'])
+                        if birth(grant['pid'])!=grant['birth']:raise McpFault('The original worker ended.')
+                        worker=await original_worker(self.config['projects'],self.launch,grant['runId'],(grant['pid'],self.config['uid'],0),self.config['uid'])
                         worker.store.db.close()
-                    except Exception:
-                        self.grant=None
-                        if self.client is None or not self.client.tools or any(v['phase'] not in ('complete','late_result') for v in self.client.receipts.values()):
-                            await self.finish('original_worker_lost')
-                        elif self.proxy:await self.proxy.revoke()
+                    except Exception as error:
+                        if database_busy(error):raise
+                        await self.finish('original_worker_lost');return
                 # A deleted session or revoked idle permission must close the
                 # namespace even when the following run never invokes REA.
                 if not self.grant:
@@ -187,7 +209,14 @@ class Service:
                         current=effective(store,settings.get('permissions',{}))
                         if any((current.get(key) is True)!=self.namespace_permissions[key] for key in RIGHTS):
                             await self.finish('permissions_changed');return
+                busy_since=None;self.observation_busy=False
             except Exception as error:
+                if database_busy(error):
+                    self.observation_busy=True
+                    if self.proxy:await self.proxy.revoke()
+                    if busy_since is None:busy_since=asyncio.get_running_loop().time()
+                    if asyncio.get_running_loop().time()-busy_since<30:
+                        await asyncio.sleep(.25);continue
                 try:atomic(self.state/'ObservationFailure.json',encoded(dict(kind=type(error).__name__,message=str(error)[:1000])))
                 except OSError:pass
                 await self.finish('owner_observation_lost');return

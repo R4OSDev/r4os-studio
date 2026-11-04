@@ -3,8 +3,8 @@ from pathlib import Path
 import shutil
 
 from owner import skills_root
-from skill_mcp_client import strict
-from skill_session_state import identity, paths
+from skill_mcp_client import strict,atomic,encoded
+from skill_session_state import identity, paths,birth
 from store import ProjectFault
 
 
@@ -62,6 +62,34 @@ def blockers(projects,**scope):
     return result
 
 
+async def reconcile_end(projects,launch):
+    """Confirm the ended original unit, never invent a missing analysis reply."""
+    from skill_session_client import systemctl
+    state=paths(projects,launch)[3];end=state/'ServiceEnd.json'
+    if end.exists():return strict(end.read_bytes())
+    unit='r4os-studio-skill-mcp@'+identity(launch['serviceId'])+'.service'
+    raw=await systemctl('show',unit,'--property=ActiveState','--property=MainPID',
+        '--property=InvocationID','--property=ExecMainCode','--property=ExecMainStatus')
+    observed=dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+    if observed.get('MainPID')!='0' or observed.get('ActiveState') not in ('inactive','failed'):return None
+    process=state/'ServiceProcess.json'
+    if not process.exists():return None
+    original=strict(process.read_bytes())
+    if (original.get('serviceId')!=launch['serviceId'] or birth(original.get('pid'))==original.get('birth')
+            or observed.get('InvocationID') not in ('',original.get('invocationId'))):return None
+    native_file=state/'Transport/process.json'
+    native=strict(native_file.read_bytes()) if native_file.exists() else None
+    if native and native.get('pid') and birth(native['pid'])==native.get('birth'):return None
+    unresolved=[]
+    for file in (state/'Transport/Calls').glob('*.json'):
+        if file.name.endswith(('.response.json','.owner.json')):continue
+        receipt=strict(file.read_bytes())
+        if receipt['phase'] not in ('complete','late_result'):unresolved.append(receipt['requestId'])
+    result=dict(launch,processEndConfirmed=True,outcome='unknown',reason='original_unit_ended_without_controller_receipt',
+        reconciled=True,replayed=False,nativeReplyReconstructed=False,unresolved=unresolved,unitState=observed)
+    atomic(end,encoded(result));return result
+
+
 async def stop_owned(projects,**scope):
     from skill_session_client import systemctl
     selected=instances(projects,**scope)
@@ -72,6 +100,7 @@ async def stop_owned(projects,**scope):
         unit='r4os-studio-skill-mcp@'+launch['serviceId']+'.service'
         end=state/'ServiceEnd.json'
         if not end.exists():await systemctl('stop',unit)
+        if not end.exists():await reconcile_end(projects,launch)
         observed=await systemctl('show',unit,'--property=MainPID','--property=ActiveState')
         if 'MainPID=0' not in observed or not end.exists():
             raise ProjectFault('The original analysis process end is unconfirmed. Its data was preserved.',409)
@@ -85,7 +114,10 @@ def forget(projects,selected):
     root=skills_root(projects)/'.mcp';retired={launch['serviceId'] for _,launch in selected}
     for file in (root/'Bindings').glob('*.json'):
         if file.resolve(strict=True)!=file:raise ProjectFault('Analysis binding is linked.',503)
-        if strict(file.read_bytes()).get('serviceId') in retired:file.unlink()
+        if strict(file.read_bytes()).get('serviceId') in retired:
+            lock=file.with_suffix('.lock')
+            if lock.is_symlink():raise ProjectFault('Analysis lifetime lock is linked.',503)
+            file.unlink();lock.unlink(missing_ok=True)
     for folder,launch in selected:
         if folder!=root/launch['serviceId'] or folder.resolve(strict=True)!=folder:
             raise ProjectFault('Analysis cleanup identity changed.',503)

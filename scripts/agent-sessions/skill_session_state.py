@@ -57,7 +57,7 @@ def paths(projects,launch,create=False):
 
 def original(projects,launch,run_id,peer,uid,effects=True):
     workspace,sessions,database,state=paths(projects,launch)
-    db=sqlite3.connect(database.as_uri()+'?mode=ro',uri=True,timeout=5);db.row_factory=sqlite3.Row
+    db=sqlite3.connect(database.as_uri()+'?mode=ro',uri=True,timeout=5,check_same_thread=False);db.row_factory=sqlite3.Row
     try:
         row=db.execute('SELECT * FROM runs WHERE id=? AND session_id=?',(identity(run_id),launch['sessionId'])).fetchone()
         session=db.execute('SELECT * FROM sessions WHERE id=? AND project_id=?',(launch['sessionId'],launch['ownerId'])).fetchone()

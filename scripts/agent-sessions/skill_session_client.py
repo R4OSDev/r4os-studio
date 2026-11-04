@@ -57,7 +57,10 @@ class SessionClient:
     async def release(self,retain=False):
         if self.closed is None or not retain and self.closed.get('sessionRetained'):
             if self.unit and not retain:await systemctl('thaw',self.unit)
-            self.closed=await self.rpc('release' if retain else 'close')
+            try:self.closed=await self.rpc('release' if retain else 'close')
+            except McpFault:
+                self.closed=self.observed_release(retain)
+                if self.closed is None:raise
             if self.unit and retain and self.closed.get('sessionRetained'):
                 try:
                     await systemctl('freeze',self.unit)
@@ -68,8 +71,26 @@ class SessionClient:
                     # Never release the project lease while a supposedly idle
                     # native target can still execute in the background.
                     await systemctl('stop',self.unit)
+                    confirmed=self.observed_release(False)
+                    if confirmed:
+                        self.closed=dict(confirmed,retentionFailed=True);return self.closed
                     raise McpFault('The analysis unit could not be parked. Its own unit was stopped; inspect its original end before resuming.') from None
         return self.closed
+
+    def observed_release(self,retain):
+        """A lost close response can only be resolved by its original receipt."""
+        from skill_runtime import runtime_spec
+        state=paths(self.worker.store.projects,self.launch)[3]
+        end=state/'ServiceEnd.json'
+        if end.exists():
+            value=strict(runtime_spec.read(end))
+            if (all(value.get(k)==v for k,v in self.launch.items())
+                    and value.get('processEndConfirmed') and not value.get('unresolved')):return value
+        release=state/('Release-'+self.worker.run_id+'.json')
+        if retain and release.exists():
+            value=strict(runtime_spec.read(release))
+            if value.get('serviceId')==self.launch['serviceId'] and value.get('sessionRetained') and value.get('grantClosed'):return value
+        return None
 
     async def close(self):return await self.release(False)
 
@@ -98,6 +119,8 @@ async def retire_changed(worker,entry):
         state=paths(worker.store.projects,launch)[3];end=state/'ServiceEnd.json'
         if not end.exists():
             await systemctl('stop','r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
+            from skill_mcp_lifecycle import reconcile_end
+            await reconcile_end(worker.store.projects,launch)
         observed=await systemctl('show','r4os-studio-skill-mcp@'+launch['serviceId']+'.service','--property=MainPID','--property=ActiveState')
         if 'MainPID=0' not in observed or not end.exists():
             raise McpFault('The previous analysis namespace has no confirmed original end. No broader or replacement namespace was admitted.')
@@ -119,6 +142,9 @@ async def start(worker,entry):
         if binding:
             launch=strict((registry(projects,binding['serviceId'])/'Launch.json').read_bytes())
             end=paths(projects,launch)[3]/'ServiceEnd.json'
+            if not end.exists():
+                from skill_mcp_lifecycle import reconcile_end
+                await reconcile_end(projects,launch)
             if end.exists():
                 previous=strict(end.read_bytes())
                 if (not previous.get('processEndConfirmed') or previous.get('unresolved')

@@ -210,6 +210,8 @@ class SkillTools:
             originalRunId=owner['runId'],originalPackageHash=binding['activeHash'])
         response=file.with_name(reference+'.response.json')
         if response.exists():original['response']=strict(read(response))
+        end=state/'ServiceEnd.json'
+        if end.exists():original['processEnd']=strict(read(end))
         raw=encoded(original)
         metadata,raw=self.retain(binding,original,reference+':'+hashlib.sha256(raw).hexdigest(),'nativeReceipt',owner['runId'])
         return self.page(metadata,raw,offset)
@@ -234,6 +236,11 @@ class SkillTools:
         return result
 
     async def close(self):
+        # The independent service authenticates this original run through its
+        # committed journal. Never wait for that reader while holding our own
+        # last SQLite write batch, including API conversation finalisation.
+        db=getattr(self.worker.store,'db',None)
+        if db is not None and db.in_transaction:db.commit()
         if self.starting:
             tasks=dict(self.starting)
             if self.worker.stopping or getattr(self.worker,'closing',False):
