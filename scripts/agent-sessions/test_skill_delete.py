@@ -14,7 +14,17 @@ from skill_application import packages
 from store import ProjectFault
 
 class SkillDeleteTests(unittest.IsolatedAsyncioTestCase):
-    setUp=fixtures.Skills.setUp
+    def setUp(self):
+        fixtures.Skills.setUp(self)
+        import hashlib
+        runtime=self.r4os/'Toolchains/Codex/0.163.0/codex';runtime.parent.mkdir(parents=True)
+        runtime.write_bytes(b'owned-delete-fixture-not-executed')
+        metadata=dict(id='0.163.0',version='0.163.0',binarySha256=hashlib.sha256(runtime.read_bytes()).hexdigest())
+        runtime.with_name('.studio-component.json').write_text(json.dumps(metadata))
+        (self.r4os/'Profiles').mkdir()
+        (self.r4os/'Profiles/versions.json').write_text(json.dumps({'defaults':{'codex':dict(metadata,binary=str(runtime))}}))
+        features=patch('codex_runtime.feature_names',return_value=('goals','image_generation'));features.start();self.addCleanup(features.stop)
+
     tearDown=fixtures.Skills.tearDown
     open=fixtures.Skills.open
     settings=fixtures.Skills.settings

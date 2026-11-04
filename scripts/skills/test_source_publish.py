@@ -145,5 +145,68 @@ class Publications(unittest.TestCase):
         self.assertEqual(api.detail(self.db, self.root, self.ident)['skill']['activeRevision'], 1)
 
 
+    def interrupted_swap(self,swapped=False):
+        import os,shutil
+        source,manifest,digest=self.source('a');job=self.job()
+        old=api.detail(self.db,self.root,self.ident)
+        operation=api.folder(self.root/self.ident/'Activations'/job['requestId'],True)
+        incoming=operation/'Incoming';shutil.copytree(source/'Repository/skill',incoming)
+        binding=dict(schema=1,repository=job['configuration']['repository'],commit=manifest['commit'],
+            sourceManifestHash=digest,skillPath='skill',recipe=None,importedHash=api.inventory(incoming)[2],runtime=None)
+        journal=dict(schema=1,requestId=job['requestId'],skillId=self.ident,phase='swap_intent',
+            previousDraftHash=old['draftHash'],incomingHash=binding['importedHash'],
+            previousActiveHash=old['skill']['activeHash'],sourceBinding=binding)
+        api.atomic(operation/'journal.json',api.encode(journal).encode())
+        os.rename(self.root/self.ident/'Workspace',operation/'Previous')
+        if swapped:os.rename(incoming,self.root/self.ident/'Workspace')
+        return job,old,operation
+
+    def test_original_rename_gap_and_uncommitted_swap_restore_without_replay(self):
+        from source_publish import reconcile
+        job,old,operation=self.interrupted_swap(False)
+        value=reconcile(api,self.db,self.root,self.ident,job)
+        self.assertEqual(value['phase'],'rolled_back')
+        self.assertEqual(api.detail(self.db,self.root,self.ident)['draftHash'],old['draftHash'])
+        self.assertTrue((operation/'Incoming/SKILL.md').is_file())
+        self.assertEqual(reconcile(api,self.db,self.root,self.ident,job),value)
+
+    def test_swapped_draft_restore_and_conflict_preserve_originals(self):
+        from source_publish import reconcile
+        job,old,operation=self.interrupted_swap(True)
+        path=self.root/self.ident/'Workspace/SKILL.md';incoming=path.read_bytes()
+        api.atomic(path,incoming+b'Concurrent authored bytes.\n')
+        with self.assertRaisesRegex(api.SkillFault,'current draft changed'):reconcile(api,self.db,self.root,self.ident,job)
+        self.assertTrue((operation/'Previous/SKILL.md').is_file())
+        api.atomic(path,incoming)
+        self.assertEqual(reconcile(api,self.db,self.root,self.ident,job)['phase'],'rolled_back')
+        self.assertEqual(api.detail(self.db,self.root,self.ident)['draftHash'],old['draftHash'])
+        self.assertEqual((operation/'Rejected/SKILL.md').read_bytes(),incoming)
+
+    def test_committed_original_is_completed_without_another_publication(self):
+        from source_publish import reconcile
+        job=self.job();result=self.apply(job,self.source('b'))
+        path=self.root/self.ident/'Activations'/job['requestId']/'journal.json'
+        journal=json.loads(path.read_bytes());journal['phase']='swapped';api.atomic(path,api.encode(journal).encode())
+        with patch.object(api,'publish',side_effect=AssertionError('No publish replay')):
+            value=reconcile(api,self.db,self.root,self.ident,job)
+        self.assertEqual(value['phase'],'complete');self.assertEqual(value['packageHash'],result['packageHash'])
+        self.assertEqual(api.detail(self.db,self.root,self.ident)['skill']['activeRevision'],1)
+
+    def test_cache_collection_preserves_pending_original_and_published_reference(self):
+        from source_retention import prune
+        job=self.job();result=self.apply(job,self.source('c'))
+        cache=api.folder(self.root/self.ident/'Runtimes'/('c'*40)/('d'*64),True)
+        api.atomic(cache/'runtime.json',b'{}')
+        stage=api.folder(self.root/self.ident/'Sources'/('.stage-'+job['requestId']),True)
+        self.assertEqual(prune(api,self.db,self.root,self.ident)['pendingOriginals'],1)
+        self.assertTrue(cache.exists());self.assertTrue(stage.exists())
+        job.update(phase='complete',processEndConfirmed=True,result=result)
+        with self.db:self.db.execute('UPDATE skill_source_jobs SET metadata=? WHERE request_id=?',(api.encode(job),job['requestId']))
+        collected=prune(api,self.db,self.root,self.ident)
+        self.assertFalse(cache.exists());self.assertFalse(stage.exists())
+        self.assertEqual(len(collected['pruned']),2)
+        self.assertTrue((self.root/self.ident/'Revisions'/result['packageHash']).is_dir())
+
+
 if __name__ == '__main__':
     unittest.main()

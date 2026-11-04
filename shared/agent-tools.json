@@ -3504,7 +3504,7 @@
     },
     {
       "name": "studio_read_skill_result",
-      "description": "Read the complete original skill JSON through its opaque reference and exact returned UTF-8 byte cursors. This cannot repeat analysis or access another session. Older source identities remain labelled in the result.",
+      "description": "Read complete original skill JSON through its opaque reference and returned UTF-8 byte cursors. To observe an unconfirmed call without replay, use its skillMcpRequest UUID as reference; the original receipt and any late native response are returned. Only this session is accessible; older source identities remain labelled.",
       "inputSchema": {
         "type": "object",
         "properties": {

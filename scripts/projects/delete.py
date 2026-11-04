@@ -133,6 +133,10 @@ def remove(path):
 
 def finish(db, projects, journal):
     ident = project_id(journal['projectId'])
+    analysis=Path(__file__).resolve().parents[1]/'agent-sessions/skill_mcp_lifecycle.py'
+    observed=subprocess.run([sys.executable,'-B',str(analysis),str(projects),ident],
+        stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
+    if observed.returncode:raise ProjectFault('Original project analysis ends are unconfirmed. Existing data was preserved.',409)
     for key in ('runs', 'jobs', 'leases'):
         for value in journal[key]: project_id(value)
     for group, key in [('agents', 'runs'), ('development', 'jobs')]:

@@ -9,6 +9,51 @@ import uuid
 STARTER = b'---\nname: new-skill\ndescription: ""\n---\n\n'
 
 
+def reconcile(api,db,root,ident,job):
+    """After confirmed original worker end, recover only its known rename intent."""
+    operation=root/ident/'Activations'/job['requestId'];file=operation/'journal.json'
+    if not file.exists():return None
+    raw,_=api.regular(file);journal=json.loads(raw)
+    if journal.get('requestId')!=job['requestId'] or journal.get('skillId')!=ident or journal.get('schema')!=1:
+        raise api.SkillFault('The original source publication journal changed.',503)
+    if journal['phase'] in ('complete','rolled_back'):return journal
+    with api.locked(root,ident):
+        original=root/ident/'Workspace';backup=operation/'Previous'
+        row=db.execute('SELECT active_hash FROM skills WHERE id=? AND state=\'ready\'',(ident,)).fetchone()
+        if row is None:raise api.SkillFault('The original publication owner retired.',409)
+        source=api.sources.read(db,ident)
+        active=(source or {}).get('active') or {}
+        bound=None
+        if row[0]:
+            manifest,_=api.regular(root/ident/'Revisions'/row[0]/'revision.json')
+            bound=json.loads(manifest).get('sourceBinding')
+        committed=(active.get('importedHash')==journal['incomingHash']
+            and bound==journal['sourceBinding']
+            and active.get('packageHash')==row[0])
+        if committed:
+            if not original.exists() or api.inventory(original)[2]!=journal['incomingHash']:
+                raise api.SkillFault('Published source draft changed; preserve its original recovery files.',409)
+            if backup.exists():
+                if api.inventory(backup)[2]!=journal['previousDraftHash']:raise api.SkillFault('The previous publication draft changed.',409)
+                shutil.rmtree(backup)
+            journal.update(phase='complete',packageHash=row[0],reconciled=True)
+        elif row[0]==journal['previousActiveHash']:
+            if backup.exists():
+                if api.inventory(backup)[2]!=journal['previousDraftHash']:raise api.SkillFault('The original backup changed.',409)
+                if original.exists():
+                    if api.inventory(original)[2]!=journal['incomingHash']:raise api.SkillFault('The current draft changed; preserve both original versions.',409)
+                    rejected=operation/'Rejected'
+                    if rejected.exists():raise api.SkillFault('Publication recovery staging is occupied.',409)
+                    os.rename(original,rejected)
+                os.rename(backup,original)
+            elif not original.exists() or api.inventory(original)[2]!=journal['previousDraftHash']:
+                raise api.SkillFault('The original draft cannot be safely restored.',409)
+            journal.update(phase='rolled_back',reconciled=True)
+        else:raise api.SkillFault('The active publication identity changed. Original recovery files were preserved.',409)
+        api.sync(original.parent);api.atomic(file,(api.encode(journal)+'\n').encode());api.sync(operation)
+    return journal
+
+
 def prepare_package(api, root, ident, job, source, manifest, progress):
     config = job['configuration']
     runtime = None

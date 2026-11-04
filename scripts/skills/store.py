@@ -223,6 +223,9 @@ def detail(db, root, ident):
     files, _, tree_hash = inventory(folder(root / ident) / 'Workspace')
     source = sources.read(db, ident)
     active_draft = value['activeHash']
+    if active_draft:
+        manifest,_=regular(root/ident/'Revisions'/active_draft/'revision.json')
+        active_draft=__import__('json').loads(manifest).get('draftHash',active_draft)
     if source and source.get('active') and source['active'].get('packageHash') == value['activeHash']:
         active_draft = source['active'].get('draftHash', active_draft)
     return {'skill': value, 'files': files, 'draftHash': tree_hash, 'activeDraftHash': active_draft, 'source': source}

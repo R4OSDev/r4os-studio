@@ -86,6 +86,43 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([a[0] for a in actions],['freeze','stop'])
         self.assertTrue(all(a[1]==self.remote.unit for a in actions))
 
+    async def test_late_original_receipt_is_read_without_another_native_call(self):
+        from skill_mcp_tools import SkillTools
+        rid=str(uuid.uuid4())
+        with self.assertRaises(McpFault):await self.remote.call('echo',{'delay_ms':1350},request_id=rid,timeout=1)
+        broker=SkillTools(self.worker)
+        before=json.loads(broker.observe_original(self.entry,rid,0)['output'])['payload']
+        self.assertFalse(before['providerEndConfirmed'])
+        await asyncio.sleep(.6)
+        after=json.loads(broker.observe_original(self.entry,rid,0)['output'])['payload']
+        self.assertTrue(after['providerEndConfirmed']);self.assertEqual(after['phase'],'late_result')
+        self.assertEqual(after['response']['result']['structuredContent']['nativeCounter'],1)
+        self.assertEqual(len([v for v in self.service.client.receipts.values() if v['method']=='tools/call']),1)
+
+    async def test_confirmed_own_retirement_forgets_only_exact_registry_without_resurrection(self):
+        import shutil
+        from skill_mcp_client import atomic,encoded,directory
+        from skill_session_state import registry,paths
+        from skill_mcp_lifecycle import stop_owned,forget
+        launch=self.service.launch;folder=directory(registry(self.projects,launch['serviceId']))
+        atomic(folder/'Launch.json',encoded(launch))
+        foreign=dict(launch,serviceId=str(uuid.uuid4()),sessionId=str(uuid.uuid4()))
+        other=directory(registry(self.projects,foreign['serviceId']));atomic(other/'Launch.json',encoded(foreign))
+        actions=[]
+        async def ctl(*args):
+            actions.append(args)
+            if args[0]=='stop':await self.service.finish()
+            return 'MainPID=0\nActiveState=inactive\n'
+        with patch('skill_session_client.systemctl',side_effect=ctl):
+            selected=await stop_owned(self.projects,ownerType=self.worker.store.owner_type,
+                ownerId=self.worker.store.owner_id,sessionId=self.session)
+        self.assertTrue(self.service.finished['processEndConfirmed']);self.assertEqual(self.service.finished['exit'],0)
+        self.assertTrue(all(args[1]=='r4os-studio-skill-mcp@'+launch['serviceId']+'.service' for args in actions))
+        forget(self.projects,selected);self.assertFalse(folder.exists());self.assertTrue(other.exists())
+        shutil.rmtree(self.service.state)
+        self.assertEqual(paths(self.projects,launch)[3],self.service.state)
+        self.assertFalse(self.service.state.exists())
+
     async def test_two_sessions_have_independent_process_state_and_results(self):
         sid=str(uuid.uuid4());run=str(uuid.uuid4());self.session_db.execute('INSERT INTO sessions VALUES(?,?,?)',(sid,self.owner,'{}'))
         worker=types.SimpleNamespace(**vars(self.worker));worker.session_id=sid;worker.run_id=run;self.run_row(worker)

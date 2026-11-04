@@ -21,7 +21,7 @@ class Service:
         self.config,self.launch=config,launch
         self.client=None;self.grant=None;self.lock=asyncio.Lock();self.stopped=asyncio.Event();self.proxy=None
         self.connections=set();self.finished=None;self.finish_task=None;self.namespace_permissions=None
-        self.state=paths(config['projects'],launch)[3]
+        self.state=paths(config['projects'],launch,create=True)[3]
 
     def snapshot(self):
         return dict(serviceId=self.launch['serviceId'],capabilities=self.client.capabilities if self.client else {},
@@ -39,6 +39,7 @@ class Service:
         root,manifest,_=await asyncio.to_thread(skill_runtime.load,worker,worker.entry,True)
         if self.stopped.is_set():raise McpFault('The original run stopped during runtime verification; no MCP process was started.')
         directory(self.state/'Data')
+        atomic(self.state/'Binding.json',encoded(dict(entry=worker.entry,namespaceHash=self.launch['namespaceHash'])))
         client=Client(self.state/'Transport',dict(self.launch,servicePid=os.getpid(),serviceBirth=birth(os.getpid())))
         self.client=client
         self.namespace_permissions={key:worker.config['permissions'].get(key) is True for key in RIGHTS}
@@ -105,6 +106,9 @@ class Service:
                 timeout=request.get('timeout',120)
                 if type(timeout) not in (int,float) or not 1<=timeout<=3600:raise McpFault('Invalid analysis deadline.')
                 rid=identity(request.get('requestId')) if op in ('call','request') else None
+                if rid:
+                    atomic(self.state/'Transport/Calls'/(rid+'.owner.json'),encoded(dict(runId=worker.run_id,
+                        serviceId=self.launch['serviceId'],skillId=worker.entry['id'],packageHash=worker.entry['activeHash'])))
                 if op=='call':result=await self.client.call(request.get('name'),request.get('arguments'),request_id=rid,timeout=timeout)
                 elif op=='request':
                     method=request.get('method');parameters=request.get('arguments')

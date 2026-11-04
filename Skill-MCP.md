@@ -89,3 +89,5 @@ from its fully prepared and published managed runtime.
 Protocol basis: [lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
 [stdio](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),
 [cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation).
+
+Original call UUIDs returned as `skillMcpRequest` can be passed as the `reference` to `studio_read_skill_result`. This reads the retained original receipt and any late response, without dispatching analysis. Confirmed session, skill and project deletion first stops its exact managed analysis instances; unconfirmed native effects continue to block deletion. Referenced historical packages/runtimes remain intact.

@@ -90,6 +90,14 @@ async def preview(host,ident):
     with closing(packages.connect(root)) as db:
         current=scope(db,root,ident)
     bindings,runs=contexts(host.config['projects'],ident);blocked=[]
+    from skill_mcp_lifecycle import blockers as analysis_blockers
+    for reason in analysis_blockers(host.config['projects'],skillId=ident):blocked.append({'reason':reason})
+    with closing(packages.connect(root)) as db:
+        if has(db,'skill_source_jobs'):
+            for row in db.execute('SELECT metadata FROM skill_source_jobs WHERE skill_id=?',(ident,)):
+                job=json.loads(row[0])
+                if job['phase'] not in ('complete','failed','cancelled') or job.get('invocationId') and not job.get('processEndConfirmed'):
+                    blocked.append({'reason':'An original source preparation is active or unconfirmed.'})
     for value in bindings:
         reason=value.get('reason')
         if value.get('busy'):reason='A run still owns this skill or its published resources.'
@@ -134,6 +142,8 @@ async def delete(host,ident,data):
                 if not current['allowed']:raise ProjectFault('This skill is still in use. Stop or finish the listed work before deleting it.',409)
                 if data['revision']!=current['revision'] or data['scopeHash']!=current['scopeHash'] or data['confirmName']!=current['name']:
                     raise ProjectFault('The skill or deletion scope changed. Reload and confirm its current name again.',409)
+                from skill_mcp_lifecycle import stop_owned
+                await stop_owned(host.config['projects'],skillId=ident)
                 with db:
                     db.execute('INSERT INTO skill_deletions VALUES (?,?,?,?,?,?,?,?,?,?,NULL)',(rid,ident,fingerprint,current['scopeHash'],data['revision'],'reserved',(root/ident).stat().st_dev,(root/ident).stat().st_ino,encode(runs),now()))
                     db.execute("UPDATE skills SET state='deleting' WHERE id=?",(ident,))
@@ -148,6 +158,9 @@ def remove(path):
 
 async def finish(host,db,root,row):
     ident=row['skill_id'];rid=row['request_id'];source=root/ident
+    from skill_mcp_lifecycle import stop_owned,forget
+    selected=await stop_owned(host.config['projects'],skillId=ident)
+    forget(host.config['projects'],selected)
     stage=packages.folder(root/'.deleting',True)/rid
     selected=source if source.exists() else stage
     if selected.exists():
@@ -184,6 +197,10 @@ async def finish(host,db,root,row):
         db.execute('PRAGMA secure_delete=ON')
         db.execute('DELETE FROM saves WHERE skill_id=?',(ident,));db.execute('DELETE FROM revisions WHERE skill_id=?',(ident,));db.execute('DELETE FROM skills WHERE id=?',(ident,))
         if has(db,'builtin_packages'):db.execute('DELETE FROM builtin_packages WHERE skill_id=?',(ident,))
+        if has(db,'skill_source_jobs'):db.execute('DELETE FROM skill_source_jobs WHERE skill_id=?',(ident,))
+        if has(db,'skill_sources'):db.execute('DELETE FROM skill_sources WHERE skill_id=?',(ident,))
+        if has(db,'skill_source_requests'):
+            db.execute("UPDATE skill_source_requests SET result=? WHERE json_extract(result,'$.skill.id')=?",(encode({'id':ident,'deleted':True}),ident))
         db.execute("UPDATE skill_deletions SET phase='deleted' WHERE request_id=?",(rid,))
     return original(db,rid,ident)
 

@@ -47,6 +47,17 @@ async def watch(host, ident, rid, launch):
             invocation = value.get('invocationId')
             if invocation and original.get('InvocationID') not in ('', invocation):
                 raise ProjectFault('The observed unit belongs to another original source process.', 409)
+            # No download/build/publish replay: reconcile the original completed
+            # unit's filesystem/SQLite publication only.
+            parent=str(Path(__file__).resolve().parents[1]/'skills')
+            if parent not in sys.path:sys.path.append(parent)
+            import source_publish as publication
+            recovered=publication.reconcile(packages,db,root,ident,value)
+            if recovered and recovered['phase']=='complete':
+                value.update(phase='complete',error=None,result=dict(value.get('result') or {},published=True,
+                    packageHash=recovered['packageHash'],reconciled=True))
+            elif recovered and recovered['phase']=='rolled_back':
+                value.update(phase='failed',error='The original publication was interrupted. Its previous draft and active version were restored without replay.')
             if value['phase'] not in TERMINAL:
                 value.update(phase='failed' if value['phase'] == 'queued' else 'unknown',
                              error='The original source helper ended without a final receipt. No replacement was started.')
@@ -57,6 +68,10 @@ async def watch(host, ident, rid, launch):
                 if source and source.get('lastRequestId') == rid and value['phase'] != 'complete':
                     source.update(status=value['phase'], updatedAt=value['updatedAt'])
                     db.execute('UPDATE skill_sources SET metadata=? WHERE skill_id=?', (packages.encode(source), ident))
+            import source_retention
+            collected=source_retention.prune(packages,db,root,ident)
+            value['cleanup']=collected
+            with db:db.execute('UPDATE skill_source_jobs SET metadata=? WHERE request_id=?',(packages.encode(value),rid))
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -69,7 +84,8 @@ async def start(host, ident, rid):
     root = skills_root(host.config['projects'])
     try:
         with closing(packages.connect(root)) as db:
-            packages.detail(db, root, ident)
+            if packages.lifecycle.deleted(root,ident) or not db.execute("SELECT 1 FROM skills WHERE id=? AND state='ready'",(ident,)).fetchone():
+                raise packages.SkillFault('The source owner is unavailable.',404)
             value = packages.sources.read_job(db, ident, rid, packages)
     except packages.SkillFault as error:
         raise ProjectFault(str(error), error.code) from None

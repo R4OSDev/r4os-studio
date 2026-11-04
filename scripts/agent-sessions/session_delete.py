@@ -183,6 +183,8 @@ async def inspect(host, store, sid):
         if not proof or not (proof.get('recovery') or {}).get('guestEndConfirmed'):
             blockers.append('An original tool effect is unconfirmed. Reconcile it before deleting the evidence.')
     additional, jobs = external(store, sid); blockers.extend(additional)
+    from skill_mcp_lifecycle import blockers as analysis_blockers
+    blockers.extend(analysis_blockers(store.projects,ownerType=store.owner_type,ownerId=store.owner_id,sessionId=sid))
     units=[]
     for job_id, kind in jobs.items():
         unit = ('r4os-studio-development-ssh@' if kind == 'ssh' else 'r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + job_id + '.service'
@@ -249,6 +251,8 @@ async def delete(host, kind, owner, sid, data):
             if not current['allowed']: raise ProjectFault(current['blockers'][0],409)
             if data['revision'] != current['revision'] or data['scopeHash'] != current['scopeHash'] or data['confirmName'] != current['name']:
                 raise ProjectFault('The session or deletion scope changed. Reload and confirm its current name again.',409)
+            from skill_mcp_lifecycle import stop_owned
+            await stop_owned(store.projects,ownerType=kind,ownerId=owner,sessionId=sid)
             # The exclusive gate is borrowed by numeric capture, never reacquired.
             store.session_uses[sid]=None
             from usage_stats import Usage
@@ -280,6 +284,9 @@ def sync(path):
 
 async def finish(host,store,row):
     sid=row['session_id'];rid=row['request_id'];source=store.directory/sid
+    from skill_mcp_lifecycle import stop_owned,forget
+    selected=await stop_owned(store.projects,ownerType=store.owner_type,ownerId=store.owner_id,sessionId=sid)
+    forget(store.projects,selected)
     stage=directory(store.directory/'.deleting')/rid
     present=source if source.exists() or source.is_symlink() else stage
     if present.exists() or present.is_symlink():

@@ -70,6 +70,7 @@ def configure(db, root, data, api):
             or type(data['revision']) is not int or data['revision'] < 1):
         raise api.SkillFault('Invalid skill source request.', 400)
     ident = api.identity(data['id'])
+    if api.lifecycle.deleted(root,ident):raise api.SkillFault('This skill identity was deleted.',404)
     api.identity(data['requestId'])
     source = normalize(data['source'], api.SkillFault)
     fingerprint = api.digest(api.encode(data).encode())
@@ -127,6 +128,7 @@ def prepare(db, root, data, api):
             or type(data['sourceRevision']) is not int or data['action'] not in ('activate', 'update')):
         raise api.SkillFault('Invalid source activation request.', 400)
     ident = api.identity(data['id'])
+    if api.lifecycle.deleted(root,ident):raise api.SkillFault('This skill identity was deleted.',404)
     api.identity(data['requestId'])
     fingerprint = api.digest(api.encode(data).encode())
     with api.locked(root, ident):

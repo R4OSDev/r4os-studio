@@ -42,7 +42,7 @@ def registry(projects,ident):
     return skills_root(projects)/'.mcp'/identity(ident)
 
 
-def paths(projects,launch):
+def paths(projects,launch,create=False):
     kind=launch['ownerType'];owner=identity(launch['ownerId']);sid=identity(launch['sessionId'])
     if kind not in ('project','skill'):raise McpFault('Invalid managed analysis owner.')
     parent=(Path(projects) if kind=='project' else skills_root(projects))/owner
@@ -50,7 +50,8 @@ def paths(projects,launch):
     workspace=parent/'Workspace';sessions=parent/'Sessions';database=sessions/'Sessions.sqlite'
     for path in (workspace,sessions,database):
         if path.resolve(strict=True)!=path:raise McpFault('A managed analysis owner path is linked or missing.')
-    state=directory(sessions/sid/'SkillMCP'/identity(launch['skillId'])/identity(launch['serviceId']))
+    state=sessions/sid/'SkillMCP'/identity(launch['skillId'])/identity(launch['serviceId'])
+    if create:directory(state)
     return workspace,sessions,database,state
 
 

@@ -50,11 +50,11 @@ class SkillTools:
     def root(self):
         return directory(self.worker.store.directory / self.worker.session_id / 'SkillMcpResults')
 
-    def retain(self, entry, value, native_id, kind):
+    def retain(self, entry, value, native_id, kind,original_run=None):
         ident = str(uuid.uuid5(uuid.UUID(self.worker.run_id), kind + ':' + native_id))
         raw = encoded(value)
         metadata = dict(schema=1, id=ident, ownerType=self.worker.store.owner_type, ownerId=self.worker.store.owner_id,
-                        sessionId=self.worker.session_id, runId=self.worker.run_id, skillId=entry['id'],
+                        sessionId=self.worker.session_id, runId=original_run or self.worker.run_id, skillId=entry['id'],
                         packageHash=entry['activeHash'], sourceBinding=entry['mcp']['sourceBinding'], kind=kind,
                         sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
         if kind=='nativeResult' and isinstance(value,dict):
@@ -177,7 +177,11 @@ class SkillTools:
             if name=='skill_discover': return await self.discover(args,call_id)
             entry=self.entry(args['skillId'])
             if name=='read_skill_result':
-                metadata,raw=self.retained(entry,args['reference'])
+                from skill_session_state import identity
+                reference=identity(args['reference'])
+                if not (self.root()/(reference+'.metadata.json')).is_file():
+                    return self.observe_original(entry,reference,args.get('offset',0))
+                metadata,raw=self.retained(entry,reference)
                 return self.page(metadata,raw,args.get('offset',0))
             if name!='skill_call': raise McpFault('Unknown skill broker operation.')
             lock=self.locks.setdefault(entry['id'],asyncio.Lock())
@@ -188,6 +192,27 @@ class SkillTools:
                         **({'partialChangesPossible':True,'skillMcpRequest':error.request_id} if unknown else {}))
         except (OSError,ValueError,KeyError,TypeError):
             return dict(success=False,error='skillUnavailable',output='The frozen skill runtime or original result is unavailable or changed. No alternate skill/runtime was selected.')
+
+    def observe_original(self,entry,reference,offset):
+        from skill_session_state import identity
+        identity(reference)
+        root=self.worker.store.directory/self.worker.session_id/'SkillMCP'/entry['id']
+        matches=list(root.glob('*/Transport/Calls/'+reference+'.json'))
+        if len(matches)!=1:raise McpFault('That original analysis request is unavailable in this session.')
+        file=matches[0];state=file.parents[2]
+        read=skill_runtime.runtime_spec.read
+        receipt=strict(read(file));binding=strict(read(state/'Binding.json'))['entry']
+        owner=strict(read(file.with_name(reference+'.owner.json')))
+        if (receipt.get('requestId')!=reference or binding['id']!=entry['id']
+                or owner['skillId']!=entry['id'] or owner['packageHash']!=binding['activeHash']):
+            raise McpFault('The original analysis request identity changed.')
+        original=dict(requestId=reference,phase=receipt['phase'],providerEndConfirmed=receipt.get('providerEndConfirmed',False),
+            originalRunId=owner['runId'],originalPackageHash=binding['activeHash'])
+        response=file.with_name(reference+'.response.json')
+        if response.exists():original['response']=strict(read(response))
+        raw=encoded(original)
+        metadata,raw=self.retain(binding,original,reference+':'+hashlib.sha256(raw).hexdigest(),'nativeReceipt',owner['runId'])
+        return self.page(metadata,raw,offset)
 
     def images(self, result):
         reference = result.get('skillMcp')
@@ -210,7 +235,13 @@ class SkillTools:
 
     async def close(self):
         if self.starting:
-            await asyncio.gather(*self.starting.values(),return_exceptions=True)
+            tasks=dict(self.starting)
+            if self.worker.stopping or getattr(self.worker,'closing',False):
+                for task in tasks.values():task.cancel()
+            results=await asyncio.gather(*tasks.values(),return_exceptions=True)
+            for ident,value in zip(tasks,results):
+                if not isinstance(value,BaseException):self.clients[ident]=value
+            self.starting.clear()
         if self.clients:
             retain=self.worker.outcome=='completed' and not self.worker.stopping and not self.worker.uncertain_effect
             ends=await asyncio.gather(*(client.release(retain) if hasattr(client,'release') else client.close() for client in self.clients.values()),return_exceptions=True)
@@ -220,3 +251,9 @@ class SkillTools:
                 self.worker.uncertain_effect=True
                 self.worker.outcome='unknown'
                 self.worker.error=self.worker.error or 'A managed skill process end remains unconfirmed.'
+        if self.worker.stopping or self.worker.outcome!='completed':
+            from skill_mcp_lifecycle import stop_run
+            try:await stop_run(self.worker)
+            except Exception:
+                self.worker.uncertain_effect=True;self.worker.outcome='unknown'
+                self.worker.error=self.worker.error or 'An original analysis launch end remains unconfirmed.'
