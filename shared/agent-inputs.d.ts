@@ -16,16 +16,21 @@ export interface StudioClaudeGoal {
   limits: { maxSteps: 8; maxActiveSeconds: 900 };
   executionId?: string; stepsCompleted?: number;
 }
+export interface StudioGoal extends Omit<NativeGoal, 'source' | 'tokensUsed'> {
+  source: 'studio'; goalId: string; tokensUsed: number | null;
+  timeBudgetMs: number | null; timeUsageKnown: boolean; executionId?: string;
+}
 export type GoalAction = 'save' | 'play' | 'pause' | 'stop';
 export interface GoalLiveTarget { runId: string; threadId: string; turnId: string }
 export interface GoalCommand {
   requestId: string; revision: number; action: GoalAction; objective?: string; sessionRevision?: number;
   target?: GoalLiveTarget;
   targetRunId?: string;
+  tokenBudget?: number | null; timeBudgetMs?: number | null;
 }
 export interface SessionGoal {
   owner: SessionOwner; sessionId: string; threadId: string | null;
-  revision: number; goal: NativeGoal | StudioClaudeGoal | null;
+  revision: number; goal: NativeGoal | StudioClaudeGoal | StudioGoal | null;
   lastIntent: GoalAction | null;
   phase: 'idle' | 'pending' | 'pausing' | 'unknown';
   requestId?: string; runId?: string; reason?: string;

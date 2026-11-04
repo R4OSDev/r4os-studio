@@ -250,3 +250,32 @@ Fortsetzung. Tacho und Tooltip unterscheiden gemeldeten Input, konfiguriertes
 Fenster und Schätzung; nach Abbruch/Fehler bleiben frühere Messungen als solche
 kenntlich. Die Messages-Rollendarstellung folgt dem stateless Messages-Vertrag:
 [offizielle APIreferenz](https://platform.claude.com/docs/en/api/messages/create).
+
+## Gemeinsames GOAL (0.10.9)
+
+StudioGoal verwendet den vorhandenen Goal-Commandstore, die originale Play-
+Execution, den authentifizierten Worker-Controlsocket und GoalClock. Save und
+Readback sind Metadatenaktionen. Nur ein ausdrücklich angenommenes Play aktiviert
+Arbeit. Direkte Projekt- und Skill-Runs haben denselben Ablauf ohne native
+thread/goal-RPCs. Vorhandene native Goal-Daten werden damit nicht umgedeutet.
+
+Ein Live-Play bleibt bis zur sicheren Antwort-/Werkzeuggrenze im Originaljournal.
+Es übernimmt denselben ursprünglichen Run und dessen eingefrorene Auswahl, ohne
+Runconfig oder früheren Auftrag umzuschreiben. Vorher disponierte gewöhnliche
+Modellaufrufe zählen nicht als neue GOAL-Tokenausgabe. Eine gültige normale Antwort
+beendet ein aktives GOAL nicht. Die zentrale Schleife setzt es unter Bezug auf
+das ursprüngliche menschliche Play fort; diese internen Kontrollnachrichten
+sind als solche gekennzeichnet. studio_update_goal meldet complete/blocked mit
+konkreter Begründung und gegebenenfalls eindeutigen bestätigten studioReceiptId-
+Referenzen. Modelle ändern damit weder Ziel noch Budget oder Aktivierung.
+
+Optionale tokenBudget/timeBudgetMs werden nur mit revisioniertem Save geändert.
+Gemeldete Tokens und ihre dokumentierten Teilcounts bleiben von Providercredits
+getrennt. Fehlende, widersprüchliche oder unbestätigte Usage bleibt unbekannt;
+ein gesetztes Tokenbudget hält dann weitere Disposition an. Eine bereits laufende
+Modellanfrage kann ihr tatsächliches Restbudget überschreiten; die gemeldeten
+Kosten werden nicht auf das Budget gekürzt. Danach gibt der Kern keine weiteren
+Werkzeugwirkungen oder Modellrunden frei. Aktivzeit stammt aus der vorhandenen
+monotonen pro-Play-Uhr; ein Zeitlimit kann laufenden Transport/Arbeit abbrechen.
+Originale Teilwirkungen bleiben erhalten. Nach Controllerverlust bleiben Goal-
+Zustand, fehlende Zeitabdeckung und Usage unbestätigt; Öffnen führt keinen Resume aus.

@@ -44,6 +44,9 @@ class Goals:
                 if row[key] is not None: result[public] = row[key]
         if result['goal'] and result['goal']['threadId'] != session['thread_id']:
             raise ProjectFault('The saved Goal thread binding changed.', 409)
+        if json.loads(session['engine']).get('kind') == 'studio':
+            from studio_goal import public
+            result['goal'] = public(result['goal'])
         return result
 
     def command(self, sid, rid):
@@ -62,15 +65,22 @@ class Goals:
         if self.store.get(sid)['engine'].get('kind')=='claude-code':
             from claude_goal_store import accept
             return accept(self,sid,data)
-        if self.store.get(sid)['engine'].get('api'):
+        studio = self.store.get(sid)['engine'].get('kind') == 'studio'
+        if self.store.get(sid)['engine'].get('api') and not studio:
             from api_goals import require
             require(self.store.get(sid)['engine'])
-        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target'}
+        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target',*({'tokenBudget','timeBudgetMs'} if studio else set())}
                 or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int
                 or ('sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1))
                 or data['action'] not in ('save','play','pause','stop')
                 or (('objective' in data) != (data['action'] == 'save'))):
             raise ProjectFault('Invalid Goal command.', 400)
+        if studio:
+            from studio_goal import budget
+            for name in ('tokenBudget','timeBudgetMs'):
+                if name in data:
+                    if data['action'] != 'save': raise ProjectFault('Budgets can only be changed by an explicit Save.',400)
+                    budget(data[name])
         key = identity(data['requestId']); self.store.row(sid)
         if 'target' in data:
             from goal_live import target
@@ -99,6 +109,8 @@ class Goals:
             if self.store.db.execute('SELECT COUNT(*) FROM goal_commands WHERE session_id=?', (sid,)).fetchone()[0] >= 4096:
                 raise ProjectFault('This session reached its Goal command history limit.', 409)
             if data['action'] == 'play' and not snapshot['goal']: raise ProjectFault('Save a Goal before pressing Play.', 409)
+            if studio and data['action']=='play' and snapshot['goal']['status']=='active':
+                raise ProjectFault('This original Goal is already active.',409)
             self.store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
                 (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal']}), 'pending', 'accepted', now()))
             if 'target' in data: LiveGoals(self.store).bind(sid,data,snapshot['goal'])
@@ -115,7 +127,11 @@ class Goals:
 
     def observe(self, sid, thread_id, value, run_id=None, phase=None):
         if self.store.row(sid)['thread_id'] != thread_id: raise ProjectFault('Goal thread binding changed.', 409)
-        try: goal = native_goal(value, thread_id)
+        try:
+            if json.loads(self.store.row(sid)['engine']).get('kind') == 'studio':
+                from studio_goal import project
+                goal = project(value,thread_id)
+            else: goal = native_goal(value, thread_id)
         except ValueError as error: raise ProjectFault(str(error), 503) from None
         self.schema()
         raw = encode(goal) if goal else None
@@ -178,6 +194,15 @@ class Goals:
         run=self.store.db.execute('SELECT session_id,config,state FROM runs WHERE id=?',(run_id,)).fetchone()
         if run:
             config=json.loads(run['config']);request=(config.get('goalExecution') or config.get('claudeGoalExecution') or {}).get('requestId')
+            if config['engine'].get('kind')=='studio':
+                row=self.store.db.execute('SELECT native FROM session_goals WHERE session_id=? AND run_id=?',(run['session_id'],run_id)).fetchone()
+                value=json.loads(row['native']) if row and row['native'] else None
+                if value and value['status']=='active':
+                    value.update(status='paused',timeUsageKnown=False,tokensUsed=None)
+                    with self.store.db:
+                        self.store.db.execute("UPDATE session_goals SET native=?,phase='unknown',reason=?,revision=revision+1 WHERE session_id=?",(
+                            encode(value),'The original Studio Goal worker was lost. Its unobserved usage/time remains unknown; nothing was resumed.',run['session_id']))
+                        self.publish(run['session_id'])
             if request:
                 command=self.command(run['session_id'],request)
                 if command['state']=='pending':

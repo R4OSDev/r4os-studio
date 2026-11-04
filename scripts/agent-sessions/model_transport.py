@@ -109,6 +109,7 @@ class ModelTransport:
         self.client = client
         self.child = None
         self.closed_confirmed = True
+        self.attempted = False
 
     def prepare(self, messages, instructions, tools, effort=''):
         if self.binding['protocol'] == 'responses':
@@ -152,6 +153,7 @@ class ModelTransport:
             self.child = await asyncio.create_subprocess_exec('/usr/bin/node', str(Path(__file__).with_name('model_http.mjs')),
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 limit=262144, env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
+            self.attempted = True
             self.closed_confirmed = False
             self.child.stdin.write(bootstrap)
             await self.child.stdin.drain()

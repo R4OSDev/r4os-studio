@@ -27,9 +27,13 @@ class StudioWorker(Worker):
         self.round = 0
         from studio_context import StudioContext
         self.context = StudioContext(self)
+        from studio_goal import StudioGoal
+        self.goal_worker = StudioGoal(self)
 
     def declarations(self):
         def allowed(name):
+            if name == 'get_goal': return True
+            if name == 'update_goal': return self.goal_worker.active
             if name in NOTE_TOOLS:
                 from environment_note_tools import require
                 try: require(self); return True
@@ -66,6 +70,11 @@ class StudioWorker(Worker):
         # attachment path, never by a protocol-specific tool runner.
         return result
 
+    async def execute(self,name,arguments,call_id):
+        if name in __import__('tool_catalog').GOAL_TOOLS:
+            return await self.goal_worker.tool(name,arguments)
+        return await super().execute(name,arguments,call_id)
+
     def active(self):
         row = get_run(self.store, self.run_id)
         return not self.stopping and bool(row['busy']) and row['state'] != 'stopping'
@@ -87,6 +96,24 @@ class StudioWorker(Worker):
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
             chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
 
+    async def infer(self,messages,instructions,tools,on_text=None):
+        self.validate_lease()
+        if self.goal_worker.execution and not self.goal_worker.active:
+            raise GoalHalted()
+        self.model = self.transport(); self.turn_requested = True
+        request_id = str(uuid.uuid4())
+        execution = self.goal_worker.execution if self.goal_worker.active else None
+        self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],on_text=on_text))
+        try:result = await self.operation
+        except (asyncio.CancelledError,ModelFault) as error:
+            if self.model.attempted and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
+            if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
+                await self.goal_worker.pause(status='usageLimited' if error.http_status in (402,429) else 'blocked',reason=str(error))
+            raise
+        if execution and execution == self.goal_worker.execution:self.goal_worker.observe(result,request_id)
+        result['origin']['studioRequestId'] = request_id
+        return result
+
     async def response(self, instructions, tools):
         self.validate_lease()
         active = await self.context.prepare(instructions, tools)
@@ -106,11 +133,7 @@ class StudioWorker(Worker):
             self.store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
                 (self.session_id, self.run_id, ident, encode(preview)))
             event(self.store, self.session_id, self.run_id, 'delta', {'itemId': ident, 'text': added})
-        self.model = self.transport()
-        self.turn_requested = True
-        self.operation = asyncio.create_task(self.model.response(active, instructions,
-            tools, self.config['effort'], on_text=text))
-        result = await self.operation
+        result = await self.infer(active,instructions,tools,on_text=text)
         self.conversation.append(self.run_id, ident, 'assistant', result['content'],
             {**result['origin'], 'usage': result['usage'], 'finishReason': result['finishReason'], 'turnId': self.turn_id})
         self.context.report(instructions, tools)
@@ -124,10 +147,20 @@ class StudioWorker(Worker):
     async def cycle(self):
         from instructions import compose
         instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
-        tools = self.declarations()
         while self.active():
-            result = await self.response(instructions, tools)
+            await self.goal_worker.boundary()
+            if not self.active():
+                self.outcome='unknown' if self.uncertain_effect else 'interrupted';return
+            if self.goal_worker.execution and not self.goal_worker.active:
+                self.outcome='completed';return
+            tools = self.declarations()
+            result = await self.response(instructions+self.goal_worker.instructions(), tools)
             calls = [part for part in result['content'] if part['type'] == 'tool_call']
+            if self.goal_worker.execution and not self.goal_worker.active:
+                for index,call in enumerate(calls):
+                    self.conversation.append(self.run_id,'goal-not-admitted-'+str(self.round)+'-'+str(index),'tool',
+                        [{'type':'tool_result','callId':call['callId'],'result':{'success':False,'error':'notAdmitted','output':'The original Goal budget or control stopped further work before execution.'}}],{'admissionOnly':True,'executionId':self.goal_worker.execution})
+                self.outcome='completed';return
             try:
                 self.validate_calls(calls, tools)  # Validate the entire set before any host effect.
             except ModelFault as error:
@@ -140,19 +173,34 @@ class StudioWorker(Worker):
             if not calls:
                 if not any(p['type'] == 'text' and p['text'].strip() for p in result['content']):
                     raise ModelFault('model_empty_response')
+                await self.goal_worker.boundary()
+                if not self.active():
+                    self.outcome='unknown' if self.uncertain_effect else 'interrupted';return
+                if self.goal_worker.active:
+                    self.conversation.append(self.run_id,'goal-continuation-'+str(self.round),'user',
+                        [{'type':'text','text':'Continue the explicitly activated Goal. Report complete or blocked with studio_update_goal when justified; preserve unknown effects.'}],
+                        {'kind':'goalContinuation','executionId':self.goal_worker.execution,'humanPlayRequestId':self.goal_worker.execution})
+                    continue
                 self.outcome = 'completed'; return
             # Broker locks serialize workspace effects. Keeping the batch ordered
             # also makes dependent write/read pairs deterministic.
-            for call in calls:
-                if not self.active(): break
+            for index, call in enumerate(calls):
+                await self.goal_worker.boundary(allow_play=False)
+                if not self.active() or self.goal_worker.execution and not self.goal_worker.active:
+                    for offset, remaining in enumerate(calls[index:],index):
+                        self.conversation.append(self.run_id,'not-admitted-'+str(self.round)+'-'+str(offset),'tool',
+                            [{'type':'tool_result','callId':remaining['callId'],'result':{'success':False,'error':'notAdmitted',
+                              'output':'The original run stopped before this tool was admitted.'}}],{'admissionOnly':True})
+                    break
                 bound_id = self.receipt_id(call['callId'])
                 self.operation = asyncio.create_task(self.bound_tool(call['name'], call['arguments'], bound_id, self.tool_result))
                 result = await self.operation
+                reply = {**result,'studioReceiptId':bound_id}
                 self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
-                    [{'type': 'tool_result', 'callId': call['callId'], 'result': result}],
+                    [{'type': 'tool_result', 'callId': call['callId'], 'result': reply}],
                     {'toolReceiptId': bound_id, 'turnId': self.turn_id})
                 if result.get('error') == 'unknown' or result.get('partialChangesPossible') and result.get('error') == 'interrupted':
-                    self.unconfirmed(); break
+                    self.unconfirmed()
         self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
 
     async def run(self):
@@ -163,8 +211,6 @@ class StudioWorker(Worker):
             if self.row['state'] == 'stopping': self.outcome = 'interrupted'; return
             if self.conversation.metadata() is None:
                 raise ProjectFault('This session needs an explicit Studio history migration before direct execution.', 409)
-            if self.config.get('goalExecution'):
-                raise ProjectFault('Studio Goal execution is not available in this worker release.', 409)
             self.lease = open_lock(self.store.projects, self.store.owner_type, self.store.owner_id)
             fcntl.flock(self.lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
             worker = {'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())}
@@ -174,9 +220,13 @@ class StudioWorker(Worker):
             self.api_worker = worker
             self.credential = ApiProviders(self.manifest['providers']).claim(self.run_id, self.store.owner_type,
                 self.store.owner_id, self.session_id, self.row['request_id'], self.config, worker)
+            await self.goal_worker.start()
+            human = self.config['goalExecution']['objective'] if self.config.get('goalExecution') else request_text(self.store, self.run_id)
             self.conversation.append(self.run_id, 'user-' + self.row['request_id'], 'user',
-                [{'type': 'text', 'text': request_text(self.store, self.run_id)}], {'requestId': self.row['request_id']})
+                [{'type': 'text', 'text': human}], {'requestId': self.row['request_id'], **({'kind':'humanGoalPlay'} if self.config.get('goalExecution') else {})})
             await self.cycle()
+        except GoalHalted:
+            self.outcome='unknown' if self.uncertain_effect else 'interrupted' if self.stopping else 'completed'
         except asyncio.CancelledError:
             self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
             self.context.invalidate('The model operation was interrupted. Original context and receipts are retained.', 'stale')
@@ -197,8 +247,17 @@ class StudioWorker(Worker):
             except Exception:
                 self.outcome = 'unknown'; self.error = self.error or 'The original worker cleanup is unconfirmed. Inspect its retained receipts.'
             finally:
+                if self.config.get('goalExecution'):
+                    from goal_store import Goals
+                    goals=Goals(self.store);rid=self.config['goalExecution']['requestId']
+                    if goals.command(self.session_id,rid)['state']=='pending':
+                        goals.finish(self.session_id,rid,'unknown' if self.turn_requested else 'failed',self.error or 'The original Goal activation was not confirmed.')
                 self.credential = None
                 if self.lease: self.lease.close()
                 reconcile_items(self.store, self.run_id, self.outcome)
                 transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)
                 self.store.close()
+
+
+class GoalHalted(Exception):
+    pass

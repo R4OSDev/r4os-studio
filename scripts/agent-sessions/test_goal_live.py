@@ -3,6 +3,7 @@ import asyncio
 import os
 import unittest
 import uuid
+from unittest.mock import patch
 import test_goal_control as controls
 from goal_live import LiveGoals
 from goal_store import Goals
@@ -20,7 +21,10 @@ class LiveGoalTests(unittest.IsolatedAsyncioTestCase):
         native=controls.Native()
         with self.open() as store:
             await self.command(store,native)
-            run,_=admit(store,self.sid,{**self.data,'liveGoalPreparation':1},self.providers)
+            # This Goal RPC stub has no native rollout registry. Qualify only
+            # its declared route here; real registry checks have separate cases.
+            with patch('native_tools.provider',return_value='openai'):
+                run,_=admit(store,self.sid,{**self.data,'liveGoalPreparation':1},self.providers)
         w=Worker({'projects':str(self.projects),'r4os':str(self.r4os),'projectId':self.pid,'runId':run['id'],'release':'own-fixture'})
         w.client=native;w.thread_id=native.thread
         transition(w.store,w.run_id,'running',turn_id='current-turn',worker={'liveGoalPreparation':1,'liveGoalControl':1,'liveGoalOpen':True,'release':'own-fixture','pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())})

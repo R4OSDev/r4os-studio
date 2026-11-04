@@ -87,16 +87,24 @@ class LiveGoals:
         return row
 
     def evidence(self,sid,request_id):
-        from goal_store import Goals
-        row=self.get(sid,request_id);command=Goals(self.store).command(sid,request_id)
-        data=json.loads(command['payload']);client={k:v for k,v in data.items() if not k.startswith('_')}
-        goal=json.loads(row['goal']);binding=json.loads(row['binding'])
-        run=self.store.db.execute('SELECT config,session_id FROM runs WHERE id=?',(row['run_id'],)).fetchone()
-        if (not run or run['session_id']!=sid or data.get('action')!='play'
-                or data.get('target')!={k:binding[k] for k in ('runId','threadId','turnId')}
-                or binding['owner']!={'type':self.store.owner_type,'id':self.store.owner_id}
-                or row['capture_hash']!=digest(goal) or goal!=data.get('_goal')
-                or row['config_hash']!=digest(json.loads(run['config']))
-                or command['fingerprint']!=digest({'sessionId':sid,**client})):
-            raise ProjectFault('The original human Live-Play evidence changed. Nothing was activated.',409)
-        return {'requestId':request_id,'binding':binding,'goal':goal,'captureSha256':row['capture_hash'],'commandFingerprint':command['fingerprint']}
+        self.store.row(sid)
+        return evidence(self.store.db,sid,request_id,{'type':self.store.owner_type,'id':self.store.owner_id})
+
+
+def evidence(db,sid,request_id,owner):
+    """Same immutable human Play proof for worker control and tool provenance."""
+    identity(sid);identity(request_id)
+    row=db.execute('SELECT * FROM goal_activations WHERE request_id=? AND session_id=?',(request_id,sid)).fetchone()
+    command=db.execute('SELECT * FROM goal_commands WHERE request_id=? AND session_id=?',(request_id,sid)).fetchone()
+    if row is None or command is None:raise ProjectFault('The original human Live-Play evidence is unavailable.',404)
+    data=json.loads(command['payload']);client={k:v for k,v in data.items() if not k.startswith('_')}
+    goal=json.loads(row['goal']);binding=json.loads(row['binding'])
+    run=db.execute('SELECT config,session_id FROM runs WHERE id=?',(row['run_id'],)).fetchone()
+    if (not run or run['session_id']!=sid or data.get('action')!='play'
+            or data.get('target')!={k:binding[k] for k in ('runId','threadId','turnId')}
+            or binding['owner']!=owner
+            or row['capture_hash']!=digest(goal) or goal!=data.get('_goal')
+            or row['config_hash']!=digest(json.loads(run['config']))
+            or command['fingerprint']!=digest({'sessionId':sid,**client})):
+        raise ProjectFault('The original human Live-Play evidence changed. Nothing was activated.',409)
+    return {'requestId':request_id,'binding':binding,'goal':goal,'captureSha256':row['capture_hash'],'commandFingerprint':command['fingerprint']}

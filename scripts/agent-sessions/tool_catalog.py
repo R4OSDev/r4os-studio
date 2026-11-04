@@ -4,6 +4,8 @@ from functools import lru_cache
 import json
 from pathlib import Path
 
+GOAL_TOOLS = ('get_goal', 'update_goal')
+
 
 def tool_scope(value='project'):
     if isinstance(value,dict):
@@ -37,7 +39,7 @@ def tools_for(scope='project'):
 
 
 def permission_tools(scope='project'):
-    grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note'}
+    grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note',*GOAL_TOOLS}
     return tuple(name for name in tools_for(scope) if name not in grouped)+('skill_network',)
 
 

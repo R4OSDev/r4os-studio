@@ -3530,6 +3530,51 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "studio_get_goal",
+      "description": "Read this Studio conversation’s current Goal, original Play and measured budget state. Reading does not activate or resume work.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_update_goal",
+      "description": "Report complete or blocked for the current explicitly activated Studio Goal. Give a concrete reason and relevant confirmed studioReceiptId references. This cannot activate, replace or change a Goal objective or budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "blocked"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "receiptIds": {
+            "type": "array",
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
     }
   ],
   "skill": [
@@ -4076,6 +4121,51 @@
         "required": [
           "skillId",
           "reference"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_get_goal",
+      "description": "Read this Studio conversation’s current Goal, original Play and measured budget state. Reading does not activate or resume work.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_update_goal",
+      "description": "Report complete or blocked for the current explicitly activated Studio Goal. Give a concrete reason and relevant confirmed studioReceiptId references. This cannot activate, replace or change a Goal objective or budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "blocked"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "receiptIds": {
+            "type": "array",
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "required": [
+          "status",
+          "reason"
         ],
         "additionalProperties": false
       }

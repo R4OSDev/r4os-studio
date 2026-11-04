@@ -10,7 +10,7 @@ from store import ProjectFault
 
 
 async def readback(store, sid, rpc_factory=CodexRPC):
-    if store.get(sid)['engine'].get('kind')=='claude-code':
+    if store.get(sid)['engine'].get('kind') in ('claude-code','studio'):
         return {'goal':Goals(store).snapshot(sid),'nativeRead':False,'studioRead':True,'superseded':False}
     if store.get(sid)['engine'].get('api'):
         from api_goals import require

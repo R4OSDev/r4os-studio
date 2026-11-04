@@ -22,7 +22,10 @@ def text(db,sid,rid,owner):
             if not command or command[2] not in ('pending','confirmed','unknown'):return None
             data=json.loads(command[1]);captured=data.get('_goal')
             client={key:value for key,value in data.items() if not key.startswith('_')}
-            goal=native_goal(captured,thread)
+            if config.get('engine',{}).get('kind')=='studio':
+                from studio_goal import project
+                goal=project(captured,thread)
+            else:goal=native_goal(captured,thread)
             if (not goal or data.get('action')!='play' or set(client)!={'requestId','revision','action','sessionRevision'}
                     or data['requestId']!=request_id or execution.get('requestId')!=request_id
                     or data['sessionRevision']!=config['revision'] or execution.get('objective')!=goal['objective']
@@ -30,6 +33,12 @@ def text(db,sid,rid,owner):
                     or execution.get('commandFingerprint')!=command[0] or digest({'sessionId':sid,**client})!=command[0]):return None
             original={'sessionId':sid,'requestId':request_id,'revision':config['revision'],'mode':'goal','goalRequestId':request_id}
             return goal['objective'] if digest(original)==request_hash else None
+        if config.get('engine',{}).get('kind')=='studio' and db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_activations'").fetchone():
+            active=db.execute("SELECT request_id FROM goal_activations WHERE session_id=? AND run_id=? AND state='confirmed' ORDER BY rowid DESC LIMIT 1",(sid,rid)).fetchone()
+            if active:
+                from goal_live import evidence as live_evidence
+                evidence=live_evidence(db,sid,active[0],owner)
+                return evidence['goal']['objective']
         item=db.execute('SELECT payload FROM items WHERE session_id=? AND run_id=? AND item_id=?',(sid,rid,'user-'+request_id)).fetchone()
         if not item:return None
         value=json.loads(item[0])

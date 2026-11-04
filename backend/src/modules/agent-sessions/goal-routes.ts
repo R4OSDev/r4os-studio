@@ -40,6 +40,8 @@ export function goalRoutes(app: FastifyInstance, security: ProjectSessions, owne
       targetRunId: identity,
       target: { type: 'object', additionalProperties: false, required: ['runId','threadId','turnId'], properties: { runId: identity, threadId: { type: 'string', minLength: 1, maxLength: 256 }, turnId: { type: 'string', minLength: 1, maxLength: 256 } } },
       action: { type: 'string', enum: ['save', 'play', 'pause', 'stop'] }, objective: { type: 'string', maxLength: 16000 },
+      tokenBudget: { anyOf: [{ type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER },{ type:'null' }] },
+      timeBudgetMs: { anyOf: [{ type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER },{ type:'null' }] },
     } } },
   }, async (request, reply) => {
     security.mutation(request, reply);

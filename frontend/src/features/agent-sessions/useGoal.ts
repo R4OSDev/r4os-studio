@@ -26,13 +26,15 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
   const [checkAgain, setCheckAgain] = useState(false), [refresh, setRefresh] = useState(0);
   const generation = useRef(0), inflight = useRef(false);
-  const apiSession = !!session?.engine.api, claudeSession = session?.engine.kind === 'claude-code', engineKnown = !!session;
+  const apiSession = !!session?.engine.api, claudeSession = session?.engine.kind === 'claude-code', studioSession = session?.engine.kind === 'studio', engineKnown = !!session;
   useEffect(() => { const current = ++generation.current; return () => { generation.current = current + 1; }; }, [base]);
   const observe = useCallback((value: SessionGoal) => {
     if (value.sessionId !== sessionId || value.owner.id !== projectId || value.owner.type !== scope)
       throw new Error('This Goal belongs to another session.');
     if (engineKnown && value.goal && (claudeSession !== (value.goal.source === 'studio-claude')))
       throw new Error('The Goal source does not match the original session engine.');
+    if (engineKnown && value.goal && studioSession !== (value.goal.source === 'studio'))
+      throw new Error('The Goal source does not match this Studio conversation.');
     setGoal((previous) => {
       if (previous && previous.revision > value.revision) return previous;
       const samePlay = previous?.goal?.source !== 'studio-claude' || value.goal?.source === 'studio-claude'
@@ -42,19 +44,19 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
           || previous.goal.timeUsedSeconds > value.goal.timeUsedSeconds)) return previous;
       return value;
     });
-  }, [projectId, sessionId, scope, claudeSession, engineKnown]);
+  }, [projectId, sessionId, scope, claudeSession, studioSession, engineKnown]);
   useEffect(() => {
     const controller = new AbortController(), current = generation.current;
     let timer: number | undefined;
     const load = async () => {
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ apiNativeGoals?: number; claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ studioGoals?: number; apiNativeGoals?: number; claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
-      const controls = claudeSession ? support.claudeGoals === 1 : support.nativeGoals === 1;
-      const runs = claudeSession ? support.claudeGoalExecution === 1 : support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1;
-      const engineReady = !apiSession || support.apiNativeGoals === 1;
+      const controls = studioSession ? support.studioGoals === 1 : claudeSession ? support.claudeGoals === 1 : support.nativeGoals === 1;
+      const runs = studioSession ? controls : claudeSession ? support.claudeGoalExecution === 1 : support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1;
+      const engineReady = studioSession ? support.studioGoals === 1 : !apiSession || support.apiNativeGoals === 1;
       observe(state.goal); setAvailable(engineReady && controls && support.enabled !== false);
       setExecution(engineReady && controls && runs && support.enabled !== false);
       setReadback(engineReady && (claudeSession ? controls : support.nativeGoalReadback === 1)); setLiveExecution(engineReady && (claudeSession ? support.claudeLiveGoals === 1 : support.liveGoalControl === 1));
@@ -63,7 +65,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [base, request, observe, refresh, apiSession, claudeSession]);
+  }, [base, request, observe, refresh, apiSession, claudeSession, studioSession]);
 
   const accept = useCallback((receipt: GoalReceipt, data: GoalCommand) => {
     if (receipt.requestId !== data.requestId || receipt.action !== data.action) throw new Error('The Goal receipt does not match the original request.');

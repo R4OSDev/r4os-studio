@@ -301,7 +301,9 @@ class Worker:
             result = admission_error
         elif roadmap_denial:
             result = {'success': False, 'error': 'disabled', 'output': roadmap_denial}
-        elif name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS) and not self.config['permissions'].get(tool_id, False):
+        elif (name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS)
+                and not (self.config['engine'].get('kind')=='studio' and name[7:] in __import__('tool_catalog').GOAL_TOOLS)
+                and not self.config['permissions'].get(tool_id, False)):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
         else:
             try: result = await self.execute(name[7:], arguments, call_id)

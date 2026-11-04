@@ -25,6 +25,14 @@ def matches(action, text, raw):
 async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
     goals=Goals(store); row=goals.command(sid,rid); command=json.loads(row['payload'])
     if row['state']!='pending': return goals.receipt(sid,rid)
+    if store.get(sid)['engine'].get('kind') == 'studio':
+        lock=open_lock(store.projects,store.owner_type,store.owner_id)
+        try:
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            if store.db.execute('SELECT 1 FROM runs WHERE busy=1').fetchone():raise ProjectFault('The original worker must handle this Goal control.',409)
+            from studio_goal import save
+            return save(goals,sid,rid)
+        finally:lock.close()
     if command['action']=='play': raise ProjectFault('Goal execution requires the multi-turn worker.',503)
     lock=open_lock(store.projects,store.owner_type,store.owner_id); client=None; sent=False
     try:

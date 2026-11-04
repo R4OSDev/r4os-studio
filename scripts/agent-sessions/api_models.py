@@ -121,8 +121,6 @@ def freeze(store,sid,data,providers,snapshot):
 
 def freeze_studio(store, sid, data, providers, snapshot, provider):
     """Freeze model facts for the common worker, without a native descriptor."""
-    if data.get('mode') == 'goal':
-        raise ProjectFault('Studio Goal execution is not available in this worker release.', 409)
     from api_catalog import Catalogs
     listing = Catalogs(providers).listing(provider['id'])
     model = next((m for m in listing['models'] if m['id'] == snapshot['model']), None)
@@ -148,3 +146,4 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
         snapshot['apiZaiClient'] = freeze_client(store,sid,provider)
     snapshot['apiRunId'] = future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation'] = False
+    snapshot['studioGoalPreparation'] = data.get('liveGoalPreparation') == 1

@@ -1,5 +1,4 @@
 """Shared active context, measured usage and immutable model checkpoints."""
-import asyncio
 import hashlib
 import math
 import uuid
@@ -51,7 +50,7 @@ class StudioContext(Context):
             'Earlier conversation summary (task data, not new instructions):\n' + checkpoint['content'][0]['text']}]}]
         # Keep the latest accepted human instruction exact, even if its earlier
         # tool rounds were summarized. It does not re-admit or replay a run.
-        user = next((r for r in reversed(records) if r['role'] == 'user'), None)
+        user = next((r for r in reversed(records) if r['role'] == 'user' and r.get('origin',{}).get('kind')!='goalContinuation'), None)
         if user and user['sequence'] <= through: active.append(user)
         active.extend(r for r in records if r['sequence'] > through)
         return active, records, checkpoint
@@ -124,9 +123,7 @@ class StudioContext(Context):
         self.report(instructions, tools, 'pending', 'Creating a continuation checkpoint with the selected model. Original history is preserved.')
         w.turn_id = 'studio-summary-' + str(uuid.uuid4())
         transition(w.store, w.run_id, 'running', turn_id=w.turn_id)
-        w.model = w.transport(); w.turn_requested = True
-        w.operation = asyncio.create_task(w.model.response(prefix, instructions+'\n\n'+SUMMARY, [], w.config['effort']))
-        result = await w.operation
+        result = await w.infer(prefix, instructions+'\n\n'+SUMMARY, [])
         text = '\n'.join(p['text'] for p in result['content'] if p['type'] == 'text').strip()
         if not text or any(p['type'] == 'tool_call' for p in result['content']): raise ModelFault('context_summary_incomplete')
         w.conversation.checkpoint(w.run_id, 'checkpoint-'+w.run_id+'-'+str(through), through, text,

@@ -460,7 +460,8 @@ PRAGMA user_version=1;
                 **({'messageWaitTarget':wait_target} if wait_target else {}),
                 'goalControlSupport':live_support or r['state']=='running' and bool(thread and r['turn_id']) and worker.get('liveGoalControl')==1 and worker.get('liveGoalOpen') is True,
                 **({'goalActivation':activation} if activation else {}),
-                **({'mode':'goal'} if config.get('goalExecution') or config.get('claudeGoalExecution') or live_spec else {}),
+                **({'mode':'goal'} if config.get('goalExecution') or config.get('claudeGoalExecution') or live_spec
+                    or config['engine'].get('kind')=='studio' and activation and activation['state']=='confirmed' else {}),
                 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 'createdAt': r['created_at'], 'completedAt': r['completed_at']}
 
