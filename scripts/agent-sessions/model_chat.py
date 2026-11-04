@@ -4,13 +4,7 @@ Z.AI wire options derive from the existing MIT OpenCode reference documented in
 THIRD-PARTY-ZAI.md. No OpenCode process or separate agent loop is involved.
 """
 import re
-from model_transport import ModelFault, dumps, loads
-
-
-def unicode_text(value):
-    if not isinstance(value, str): raise ModelFault()
-    try: return value.encode('utf-16-le', 'surrogatepass').decode('utf-16-le')
-    except UnicodeError: raise ModelFault('model_stream_invalid') from None
+from model_transport import ModelFault, dumps, loads, text_fragment, unicode_text
 
 
 def request(binding, messages, instructions, tools, effort, policy, client):
@@ -107,9 +101,8 @@ class Chat:
         self.usage = None; self.origin = {'providerResponseId': None, 'reportedModel': None, 'reportedBackend': None}
 
     def reasoning_text(self, key, value):
-        text = self.reasoning_pending.get(key, '') + value; self.reasoning_pending[key] = ''
-        if text and 0xd800 <= ord(text[-1]) <= 0xdbff: self.reasoning_pending[key] = text[-1]; text = text[:-1]
-        return unicode_text(text)
+        text, self.reasoning_pending[key] = text_fragment(value, self.reasoning_pending.get(key, ''))
+        return text
 
     def reasoning(self, delta):
         events = []
@@ -186,9 +179,8 @@ class Chat:
         content = delta.get('content')
         if content is not None:
             if not isinstance(content, str): raise ModelFault()
-            text = self.pending_surrogate + content; self.pending_surrogate = ''
-            if text and 0xd800 <= ord(text[-1]) <= 0xdbff: self.pending_surrogate = text[-1]; text = text[:-1]
-            text = unicode_text(text); self.text += text
+            text, self.pending_surrogate = text_fragment(content, self.pending_surrogate)
+            self.text += text
             if text: events.append(('text', text))
         calls = delta.get('tool_calls', [])
         if not isinstance(calls, list) or len(calls) > 32: raise ModelFault()

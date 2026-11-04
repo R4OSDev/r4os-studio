@@ -44,6 +44,20 @@ def dumps(value):
         raise ModelFault('model_input_invalid') from None
 
 
+def text_fragment(value, pending=''):
+    if not isinstance(value, str): raise ModelFault('model_stream_invalid')
+    text = pending + value; pending = ''
+    if text and 0xd800 <= ord(text[-1]) <= 0xdbff: pending = text[-1]; text = text[:-1]
+    try: return text.encode('utf-16-le', 'surrogatepass').decode('utf-16-le'), pending
+    except UnicodeError: raise ModelFault('model_stream_invalid') from None
+
+
+def unicode_text(value):
+    text, pending = text_fragment(value)
+    if pending: raise ModelFault('model_stream_invalid')
+    return text
+
+
 class SSE:
     """One bounded UTF-8/SSE decoder shared by every wire protocol."""
     def __init__(self):
@@ -106,6 +120,11 @@ class ModelTransport:
             body, headers = request(self.binding, messages, instructions, tools, effort, self.chat_policy, self.client)
             self.headers = {**self.headers, **headers}
             parser = Chat(self.binding, tools)
+        elif self.binding['protocol'] == 'messages':
+            from model_messages import request, Messages
+            body, headers = request(self.binding, messages, instructions, tools, effort)
+            self.headers = {**self.headers, **headers}
+            parser = Messages(self.binding, tools)
         else:
             raise ModelFault('model_protocol_unavailable')
         await self.send(body, parser, on_text, on_reasoning)

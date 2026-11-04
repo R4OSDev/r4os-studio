@@ -1,5 +1,5 @@
 """Responses serialization and confirmed output; no execution or retries."""
-from model_transport import ModelFault, dumps, loads
+from model_transport import ModelFault, dumps, loads, text_fragment
 
 
 def request(binding, messages, instructions, tools, effort):
@@ -27,7 +27,8 @@ def request(binding, messages, instructions, tools, effort):
     value = {'model': binding['model'], 'instructions': instructions, 'input': inputs, 'store': False, 'stream': True,
              'tools': [{'type': 'function', 'name': tool['name'], 'description': tool.get('description', ''),
                         'parameters': tool['inputSchema'], 'strict': False} for tool in tools]}
-    if effort and effort != 'none': value['reasoning'] = {'effort': effort}
+    if effort and not (effort == 'none' and binding.get('reasoning') == 'unsupported'):
+        value['reasoning'] = {'effort': effort}
     if binding.get('reasoning') != 'unsupported': value['include'] = ['reasoning.encrypted_content']
     return value
 
@@ -39,6 +40,7 @@ class Responses:
         self.response = None
         self.finished_items = {}
         self.response_id = None
+        self.pending_text = {}
 
     def push(self, raw):
         if raw == '[DONE]':
@@ -52,9 +54,10 @@ class Responses:
             raise ModelFault('model_response_incomplete')
         if kind == 'response.output_text.delta':
             if not isinstance(value.get('delta'), str): raise ModelFault()
-            try: value['delta'].encode('utf-8')
-            except UnicodeError: raise ModelFault() from None
-            return [('text', value['delta'])]
+            key = (value.get('output_index', 0), value.get('content_index', 0))
+            if any(type(v) is not int or v < 0 for v in key): raise ModelFault()
+            text, self.pending_text[key] = text_fragment(value['delta'], self.pending_text.get(key, ''))
+            return [('text', text)] if text else []
         if kind == 'response.created':
             ident = value.get('response', {}).get('id')
             if self.response_id is not None and self.response_id != ident: raise ModelFault()
@@ -72,7 +75,7 @@ class Responses:
         return None
 
     def result(self):
-        if self.response is None: raise ModelFault('model_stream_incomplete')
+        if self.response is None or any(self.pending_text.values()): raise ModelFault('model_stream_incomplete')
         response = self.response
         output = response.get('output')
         if output is None and self.finished_items:

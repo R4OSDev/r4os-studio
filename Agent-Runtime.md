@@ -71,6 +71,18 @@ start saved goals automatically.
 
 ## Access is separate from model transport
 
+Since 0.10.5, `model_messages.py` connects Messages through that same private
+HTTP/SSE transport. It retains ordered text, signed thinking and complete tool
+blocks, with cumulative reported usage. Required signatures and tool pairs are
+preserved for same-route continuation. No Claude SDK/CLI is used on this path.
+Only an explicitly configured API connection may use it; existing Claude
+subscription credentials are not converted. Thinking controls come from actual
+selected facts/options, without model-name gates. Messages requires a per-call
+output budget: the request defaults to 8192 tokens unless an explicit smaller
+or larger `maxOutputTokens` budget is supplied. This is a requested bound, not
+a claim about model capacity or an entire Goal's budget. Public connection/UI
+activation is delivered with the common worker and subsequent shared UI work.
+
 Since 0.10.4, the same transport/SSE path also handles direct Chat Completions
 through `model_chat.py`. OpenRouter routing/attribution and Z.AI's existing
 OpenCode wire identity remain small connector options. Custom, Ollama and
