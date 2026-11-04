@@ -117,7 +117,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
     from active_tools import snapshot as tool_snapshot
     snapshot['toolCatalog'] = tool_snapshot(snapshot)
-    if snapshot['engine'].get('kind') != 'claude-code':
+    if snapshot['engine'].get('kind') not in ('claude-code', 'studio'):
         from native_tools import provider as native_provider
         try:
             snapshot['nativeModelProvider'] = native_provider(store, session_id)

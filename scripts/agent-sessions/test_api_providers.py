@@ -135,6 +135,10 @@ class Providers(unittest.TestCase):
             catalog=models/(ident+'.json');catalog.write_text(encode({'schema':1,'providerId':ident,'configRevision':1,
                 'models':[{'slug':'fixture','visibility':'list','use_responses_lite':False,'input_modalities':['text'],
                     'supported_reasoning_levels':[{'effort':'low'}]}]}));catalog.chmod(0o600)
+            from api_catalog import Catalogs
+            Catalogs(fixture.providers).save_model(ident,{'requestId':request(),'providerRevision':1,'catalogRevision':0,
+                'model':{'id':'fixture','contextWindow':8192,'efforts':['low'],'defaultEffort':'low',
+                    'capabilities':{'text':'supported','functionTools':'supported','streaming':'supported','reasoning':'supported'}}})
             with fixture.open() as store,patch('session_store.engine',return_value={'profile':PROFILE,'version':CODEX_VERSION,'sha256':CODEX_SHA256,'available':True}):
                 session=store.create({'requestId':request(),'name':'Own API session','providerId':ident,'model':'fixture','effort':'low'},fixture.providers)
                 sid=session['id'];self.assertFalse(session['webSearchEnabled']);self.assertFalse(session['imageGenerationEnabled'])
@@ -188,7 +192,7 @@ class Providers(unittest.TestCase):
                     'supported_reasoning_levels':[{'effort':'none'}]}]}));catalog.chmod(0o600)
             with fixture.open() as store,patch('session_store.engine',return_value={'profile':PROFILE,'version':CODEX_VERSION,'sha256':CODEX_SHA256,'available':True}):
                 session=store.create({'requestId':request(),'name':'Unqualified own model','providerId':ident,'model':'fixture','effort':'none'},fixture.providers)
-                with self.assertRaisesRegex(ProjectFault,'qualified text/function streaming'):
+                with self.assertRaisesRegex(ProjectFault,'explicit text/function/streaming'):
                     admit(store,session['id'],{'requestId':request(),'revision':1,'text':'Own input remains unsent.'},fixture.providers)
                 self.assertEqual(store.db.execute('SELECT COUNT(*) FROM runs').fetchone()[0],0)
                 with apis.connect() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM leases').fetchone()[0],0)

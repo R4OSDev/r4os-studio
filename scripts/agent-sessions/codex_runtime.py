@@ -7,7 +7,7 @@ import subprocess
 
 
 def native(engine):
-    return (isinstance(engine, dict) and engine.get('kind') != 'claude-code'
+    return (isinstance(engine, dict) and engine.get('kind') not in ('claude-code', 'studio')
             and isinstance(engine.get('version'), str)
             and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', engine['version']) is not None
             and isinstance(engine.get('sha256'), str)
@@ -122,6 +122,10 @@ def options(r4os, scope):
 
 def for_input(store, session, original=None):
     """Already accepted queues retain even legacy snapshot bytes verbatim."""
+    if session['engine'].get('kind') == 'studio':
+        if original is not None: return {**session, 'engine': original['engine']}
+        from studio_engine import engine as studio_engine
+        return {**session, 'engine': studio_engine(store.owner_type, session['engine'].get('api'))}
     if session['engine'].get('kind') == 'claude-code':
         return session
     if original is not None:

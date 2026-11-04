@@ -79,7 +79,8 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       }}>{name}</button>)}</div>
       <fieldset className="project-fields" disabled={saving || reloading} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
         {tab === 'General' ? <>
-          {session.engine.kind !== 'claude-code' && <p className="agent-terminal-hint">Codex {session.engine.version}. New requests use the Codex default selected in Studio Updates. Accepted requests keep their original version.</p>}
+          {session.engine.kind === 'studio' && <p className="agent-terminal-hint">Studio {session.engine.version} runs this conversation using the selected direct model connection.</p>}
+          {!session.engine.kind && <p className="agent-terminal-hint">Codex {session.engine.version}. New requests use the Codex default selected in Studio Updates. Accepted requests keep their original version.</p>}
           {session.engine.available === false && session.engine.reason && <p className="project-dialog-error">{session.engine.reason}</p>}
           {session.engine.api && <p className="agent-terminal-hint">This conversation keeps its API connection and protocol. Create a new session to change providers. GOAL uses its function tools and starts only after Play. Hosted web/image generation, image input and Fast Mode are unavailable through this adapter.</p>}
           {session.engine.kind === 'claude-code' && <p className="agent-terminal-hint">This conversation keeps its native Claude account and history. Choose another provider in a new session. Documents use explicit text extraction; images require a qualified image model (4 MiB each, 8 MiB per send). Studio tools use fresh subscription checks. Fast Mode is unavailable.</p>}

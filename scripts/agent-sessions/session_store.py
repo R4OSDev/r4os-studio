@@ -129,6 +129,9 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
                     'unavailableReasons':['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
                     'contextWindow':m['contextWindow'],'source':m['source']} for m in catalog['models']]
         provider_engine=None
+        if v.get('type') == 'api':
+            from studio_engine import engine as studio_engine
+            provider_engine = studio_engine(tool_scope(selected_profile))
         if v.get('type')=='claude-subscription':
             if not any(m.get('available') for m in models):reason='Read the native model catalog in this Claude provider before creating a text session.'
             from claude_selection import engine as claude_engine
@@ -268,7 +271,12 @@ PRAGMA user_version=1;
             settings.pop('roadmapEnabled', None)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
-        if engine.get('kind') != 'claude-code':
+        if engine.get('kind') == 'studio':
+            if latest and latest['busy']: engine = json.loads(latest['config'])['engine'].copy()
+            else:
+                from studio_engine import engine as studio_engine
+                engine = studio_engine(self.owner_type, engine.get('api'))
+        elif engine.get('kind') != 'claude-code':
             original_api = engine.get('api')
             if latest and latest['busy']:
                 engine = json.loads(latest['config'])['engine'].copy()
@@ -339,11 +347,16 @@ PRAGMA user_version=1;
             if claude:
                 from claude_selection import engine as claude_engine
                 selected_engine=claude_engine(provider_dir,self.selected_profile)
-            if api:selected_engine['api']={'providerId':api['id'],'kind':api['kind'],'baseUrl':api['baseUrl'],'protocol':api['protocol'],
-                'server':api.get('server','custom')}
+            if api:
+                from studio_engine import engine as studio_engine
+                selected_engine = studio_engine(self.owner_type, {'providerId':api['id'],'kind':api['kind'],
+                    'baseUrl':api['baseUrl'],'protocol':api['protocol'],'server':api.get('server','custom')})
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))
+            if selected_engine.get('kind') == 'studio':
+                from conversation import Conversation
+                Conversation(self, ident).initialize({'kind':'new', 'ownerType':self.owner_type}, commit=False)
             from goal_total import mark_new
             mark_new(self, ident)
             if claude:

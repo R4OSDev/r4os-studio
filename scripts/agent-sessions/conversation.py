@@ -4,6 +4,7 @@ Reads never create or migrate a conversation. Only explicit initialization and
 appends write; original messages and checkpoints remain immutable.
 """
 import json
+from contextlib import nullcontext
 
 from session_store import identity, now
 from store import ProjectFault
@@ -79,12 +80,12 @@ class Conversation:
             raise ProjectFault('This conversation format is unavailable. Its original history was preserved.', 409)
         return {'format': row['format'], 'source': json.loads(row['source']), 'createdAt': row['created_at']}
 
-    def initialize(self, source):
+    def initialize(self, source, commit=True):
         """Called only by new common-session creation or an explicit import."""
         if not isinstance(source, dict):
             raise ProjectFault('The conversation source is missing.', 400)
         raw = encoded(source)
-        with self.store.db:
+        with self.store.db if commit else nullcontext():
             self.store.db.execute('''CREATE TABLE IF NOT EXISTS conversation_sessions(
                 session_id TEXT PRIMARY KEY REFERENCES sessions(id), format INTEGER NOT NULL,
                 source TEXT NOT NULL, created_at TEXT NOT NULL)''')

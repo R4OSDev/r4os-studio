@@ -19,8 +19,8 @@ export interface AgentRun { engine?: { version?: string; sha256?: string }; id: 
 export interface AgentSession {
   context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
-  permissions: ToolPermissions; engine: { kind?: 'claude-code'; toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available?: boolean; reason?: string;
-    api?: { providerId: string; kind?: import('./api-providers.js').ApiProviderKind; baseUrl: string; protocol: 'responses' | 'chat-completions'; server?: 'custom' | 'ollama' | 'lm-studio' } };
+  permissions: ToolPermissions; engine: { kind?: 'claude-code' | 'studio'; toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available?: boolean; reason?: string;
+    api?: { providerId: string; kind?: import('./api-providers.js').ApiProviderKind; baseUrl: string; protocol: import('./api-providers.js').ApiProtocol; server?: 'custom' | 'ollama' | 'lm-studio' } };
   webSearchEnabled?: boolean;
   environmentNotesEnabled?: boolean;
   imageGenerationEnabled?: boolean;
@@ -34,7 +34,7 @@ export interface AgentSession {
 export interface SessionContext {
   schema: 1; revision: number; owner: SessionOwner; sessionId: string;
   state: 'available' | 'pending' | 'stale' | 'unavailable'; reason: string;
-  engine: 'codex' | 'claude-code'; engineVersion: string; engineSha256: string;
+  engine: 'codex' | 'claude-code' | 'studio'; engineVersion: string; engineSha256: string;
   providerId: string; requestedModel: string; model: string | null; modelProvider: string | null;
   threadId: string | null; runId: string | null; turnId: string | null;
   source: string | null; reportedAt: string | null;

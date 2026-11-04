@@ -40,8 +40,6 @@ class Catalogs:
         result=present(value,provider['protocol'],provider['kind'])
         from api_server import unavailable as server_unavailable
         result['unavailableReasons']+=server_unavailable(provider,value)
-        if provider['kind'] not in ('openrouter','zai-coding-plan') and 'reasoning' in value:
-            result['unavailableReasons'].append('This documented reasoning-history contract requires the OpenRouter Chat Completions adapter.')
         if provider['kind']=='openrouter':
             from openrouter_policy import unavailable
             result['unavailableReasons']+=unavailable(provider,value)

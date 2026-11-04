@@ -167,3 +167,28 @@ Current access references:
 [direct plan limits](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations),
 [Claude API authentication](https://platform.claude.com/docs/en/manage-claude/authentication),
 [Claude Code credential boundary](https://code.claude.com/docs/en/legal-and-compliance).
+
+## Gemeinsame Schleife (0.10.6)
+
+Neue explizite API-Sessions verwenden StudioWorker für alle drei Protokolle.
+Der vorhandene systemd-Worker besitzt weiterhin UID, Release, Prozessgeburt,
+Owner-/Workspace-Lock, Credentiallease, Sandbox und Werkzeugquittungen. Es gibt
+keinen weiteren Agentenprozess oder Protokoll-Toolrunner. Bestehende Sessions
+werden beim Lesen oder Upgrade nicht migriert. Die ausdrückliche Überführung
+folgt in 0.10.15; Abozugänge folgen in 0.10.14.
+
+Der Kern speichert jede bestätigte Modellantwort vor der Werkzeugrunde, prüft
+den gesamten Callsatz einschließlich Schema und eingefrorener Rechte und führt
+zulässige Aufrufe in Reihenfolge über Worker.bound_tool aus. Die sequenzielle
+Ausführung schützt auch abhängige write/read-Paare; Anschlüsse disponieren keine
+Hostparallelität. Originale Call-IDs bleiben im Modellverlauf; Quittungskennungen
+sind zusätzlich an Run und Modellrunde gebunden. Ein verlorener Modellabschluss
+verwirft weder gespeicherte Wirkungen noch gibt er einen Werkzeugreplay frei.
+Öffentliche Textvorschauen sind begrenzt, vollständige Originale bleiben privat.
+
+Normale Text-/Werkzeugrunden und Stop sind in diesem Schritt angebunden. Kontext-
+verdichtung, GOAL, Queue/Steer, ausführliche Recovery, Quoten/Usage und Anhänge
+werden in den jeweils folgenden Paketen ergänzt. Messages-API und deren
+optionale Thinkingparameter benötigen ausdrückliche eigene Modellfakten; ein
+vorhandenes Claude-Abo stellt keinen APIzugang her. Der bestehende eigenständige
+Patchparser bleibt zunächst eine Dateihilfe und führt keine Agentenschleife aus.

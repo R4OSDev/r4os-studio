@@ -16,7 +16,7 @@ const openrouter = { type: 'object', additionalProperties: false, properties: {
 const fields = {
   requestId: uuid, name: { type: 'string', minLength: 1, maxLength: 80 },
   baseUrl: { type: 'string', minLength: 1, maxLength: 2048 },
-  protocol: { type: 'string', enum: ['responses', 'chat-completions'] },
+  protocol: { type: 'string', enum: ['responses', 'chat-completions', 'messages'] },
   auth: { type: 'string', enum: ['none', 'bearer'] },
   server: { type: 'string', enum: ['custom', 'ollama', 'lm-studio'] },
   openrouter,
@@ -44,6 +44,13 @@ function modelInput(value: unknown, manual: boolean) {
   const model = body.model;
   if (!model || typeof model !== 'object' || Array.isArray(model)) throw new ProviderError('Invalid model facts.');
   for (const [key, item] of Object.entries(model)) {
+    if (key === 'messages') {
+      if (!item || typeof item !== 'object' || Array.isArray(item)
+        || Object.entries(item).some(([field, entry]) => field === 'apiVersion' || field === 'thinkingType' ? typeof entry !== 'string'
+          : field === 'thinkingBudget' ? typeof entry !== 'number' || !Number.isSafeInteger(entry)
+            : field === 'thinkingDisabled' ? typeof entry !== 'boolean' : true)) throw new ProviderError('Invalid Messages settings.');
+      continue;
+    }
     if (key === 'reasoning') {
       if (!item || typeof item !== 'object' || Array.isArray(item)
         || Object.entries(item).some(([field, entry]) => ['mandatory', 'default_enabled'].includes(field) ? typeof entry !== 'boolean'
@@ -132,6 +139,12 @@ export function apiProviderRoutes(app: FastifyInstance, sessions: ProviderSessio
         efforts: { type: 'array', maxItems: efforts.length, uniqueItems: true, items: { type: 'string', enum: efforts } },
         defaultEffort: { anyOf: [{ type: 'string', enum: efforts }, { type: 'null' }] },
         reasoning,
+        messages: { type: 'object', additionalProperties: false, properties: {
+          apiVersion: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          thinkingType: { type: 'string', enum: ['adaptive', 'enabled'] },
+          thinkingBudget: { type: 'integer', minimum: 1024, maximum: 2147483647 },
+          thinkingDisabled: { type: 'boolean' },
+        } },
       } },
     } } },
   }, async (request, reply) => {

@@ -98,6 +98,8 @@ def freeze(store,sid,data,providers,snapshot):
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
             or selected['protocol']!=provider['protocol'] or selected.get('server','custom')!=provider.get('server','custom')):
         raise ProjectFault('The API connection identity changed. Create a new session; the existing conversation was preserved.',409)
+    if snapshot['engine'].get('kind') == 'studio':
+        return freeze_studio(store, sid, data, providers, snapshot, provider)
     from api_goals import qualified,require
     if data.get('mode')=='goal':require(snapshot['engine'])
     if session.get('webSearchEnabled',False) or session.get('imageGenerationEnabled',False) or session.get('fastMode',False):
@@ -115,3 +117,34 @@ def freeze(store,sid,data,providers,snapshot):
     snapshot['apiModels']={'models':[model]};snapshot['apiRunId']=future_run_id(store,sid,data['requestId'])
     if qualified(snapshot['engine']):snapshot['apiGoalProtocol']=1
     else:snapshot['nativeGoalPreparation']=False
+
+
+def freeze_studio(store, sid, data, providers, snapshot, provider):
+    """Freeze model facts for the common worker, without a native descriptor."""
+    if data.get('mode') == 'goal':
+        raise ProjectFault('Studio Goal execution is not available in this worker release.', 409)
+    from api_catalog import Catalogs
+    listing = Catalogs(providers).listing(provider['id'])
+    model = next((m for m in listing['models'] if m['id'] == snapshot['model']), None)
+    if listing['stale'] or model is None or not model['available'] or snapshot['effort'] not in model['efforts']:
+        raise ProjectFault('The selected model needs current, explicit text/function/streaming and reasoning facts.', 409)
+    snapshot['apiProvider'] = {key:provider[key] for key in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
+    if provider['kind'] == 'openrouter': snapshot['apiProvider']['openrouter'] = copy.deepcopy(provider['openrouter'])
+    else: snapshot['apiProvider']['server'] = provider.get('server','custom')
+    snapshot['apiModel'] = {key:copy.deepcopy(model[key]) for key in ('contextWindow','maxOutputTokens')}
+    snapshot['apiModel']['reasoning'] = model['declaredCapabilities']['reasoning']
+    if model.get('messages'): snapshot['apiModel']['messages'] = copy.deepcopy(model['messages'])
+    if snapshot['apiModel']['maxOutputTokens'] is None: snapshot['apiModel'].pop('maxOutputTokens')
+    if provider['protocol'] == 'chat-completions':
+        policy = {'schema':1, 'systemRole':'system', 'reasoning':'none' if model['declaredCapabilities']['reasoning']=='unsupported' else 'effort',
+                  'functionTools':True, 'streaming':True}
+        if 'reasoning' in model:
+            policy.update(schema=2, reasoningFacts=model['reasoning'], efforts=model['efforts'], selectedEffort=snapshot['effort'])
+        if provider['kind'] == 'zai-coding-plan':
+            policy.update(provider=provider['kind'], imageInput=model['capabilities']['imageInput']=='supported', maxOutputTokens=model['maxOutputTokens'])
+        snapshot['apiChat'] = policy
+    if provider['kind'] == 'zai-coding-plan':
+        from zai_client import freeze as freeze_client
+        snapshot['apiZaiClient'] = freeze_client(store,sid,provider)
+    snapshot['apiRunId'] = future_run_id(store,sid,data['requestId'])
+    snapshot['nativeGoalPreparation'] = False

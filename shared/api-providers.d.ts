@@ -1,6 +1,6 @@
 /** Additive API connections; existing OpenAI subscription Provider is unchanged. */
 export type ApiProviderKind = 'openrouter' | 'openai-compatible' | 'local' | 'zai-coding-plan';
-export type ApiProtocol = 'responses' | 'chat-completions';
+export type ApiProtocol = 'responses' | 'chat-completions' | 'messages';
 export type ApiAuth = 'none' | 'bearer';
 export type ApiServer = 'custom' | 'ollama' | 'lm-studio';
 export interface OpenRouterSettings {
@@ -49,6 +49,7 @@ export interface ApiModelFacts {
   capabilities: Record<'text' | 'functionTools' | 'streaming' | 'imageInput' | 'reasoning' | 'webSearch' | 'imageGeneration' | 'goals', ApiCapability>;
   efforts: ApiEffort[]; defaultEffort: ApiEffort | null;
   reasoning?: ApiReasoningFacts;
+  messages?: { apiVersion?: string; thinkingType?: 'adaptive' | 'enabled'; thinkingBudget?: number; thinkingDisabled?: boolean };
 }
 export interface ApiModel extends ApiModelFacts {
   declaredCapabilities: ApiModelFacts['capabilities'];

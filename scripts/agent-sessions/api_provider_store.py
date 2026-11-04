@@ -20,7 +20,7 @@ from store import ProjectFault
 FIELDS = ('id','type','kind','name','baseUrl','protocol','auth','revision','credentialRevision',
           'keyConfigured','enabled','status','createdAt','updatedAt','runtime')
 KINDS = ('openrouter','openai-compatible','local','zai-coding-plan')
-PROTOCOLS = ('responses','chat-completions')
+PROTOCOLS = ('responses','chat-completions','messages')
 
 
 def private(path, directory=False, create=False):

@@ -51,7 +51,7 @@ def limit(value):
 
 
 def normalized(value):
-    if not isinstance(value,dict) or set(value)-{'id','name','contextWindow','maxOutputTokens','capabilities','efforts','defaultEffort','reasoning'}:
+    if not isinstance(value,dict) or set(value)-{'id','name','contextWindow','maxOutputTokens','capabilities','efforts','defaultEffort','reasoning','messages'}:
         raise ProjectFault('Invalid API model settings.',400)
     ident=model_id(value.get('id'));name=value.get('name',ident)
     if (not isinstance(name,str) or not 1<=len(name.strip())<=200
@@ -75,9 +75,20 @@ def normalized(value):
         raise ProjectFault('Confirm the reasoning contract before setting effort levels.',400)
     if facts is not None and caps['reasoning']!='supported':
         raise ProjectFault('Documented reasoning metadata requires reasoning support.',400)
+    messages=value.get('messages')
+    if messages is not None:
+        if (not isinstance(messages,dict) or set(messages)-{'apiVersion','thinkingType','thinkingBudget','thinkingDisabled'}
+                or messages.get('thinkingType') not in (None,'adaptive','enabled')
+                or 'thinkingDisabled' in messages and type(messages['thinkingDisabled']) is not bool
+                or 'thinkingBudget' in messages and (type(messages['thinkingBudget']) is not int or messages['thinkingBudget']<1024)):
+            raise ProjectFault('Invalid explicit Messages thinking settings.',400)
+        if 'apiVersion' in messages:
+            import re
+            if not isinstance(messages['apiVersion'],str) or not re.fullmatch(r'\d{4}-\d\d-\d\d',messages['apiVersion']):
+                raise ProjectFault('Enter the documented Messages API date.',400)
     return {'id':ident,'name':name.strip(),'contextWindow':limit(value.get('contextWindow')),
         'maxOutputTokens':limit(value.get('maxOutputTokens')),'capabilities':caps,'efforts':list(efforts),'defaultEffort':default,
-        **({'reasoning':facts} if facts is not None else {})}
+        **({'reasoning':facts} if facts is not None else {}), **({'messages':copy.deepcopy(messages)} if messages is not None else {})}
 
 
 def present(value,protocol,kind=None):

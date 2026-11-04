@@ -27,7 +27,7 @@ def empty(store,row):
     latest=store.db.execute('SELECT config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     if latest:engine=json.loads(latest['config'])['engine']
     return {'schema':1,'revision':0,'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':row['id'],
-        'engine':'claude-code' if engine.get('kind')=='claude-code' else 'codex',
+        'engine':engine['kind'] if engine.get('kind') in ('claude-code', 'studio') else 'codex',
         'engineVersion':engine.get('version'),'engineSha256':engine.get('sha256'),
         'providerId':settings['providerId'],'requestedModel':settings['model'],'model':None,'modelProvider':None,
         'threadId':row['thread_id'],'runId':None,'turnId':None,'source':None,'reportedAt':None,

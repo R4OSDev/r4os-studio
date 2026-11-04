@@ -77,7 +77,9 @@ class Worker:
         if self.row['busy'] and 'contextProtocol' not in self.config and not self.config.get('apiProvider'):
             self.config['contextProtocol']=1
             with self.store.db:self.store.db.execute('UPDATE runs SET config=? WHERE id=?',(encode(self.config),self.run_id))
-        if self.config.get('goalExecution'):
+        if self.config['engine'].get('kind') == 'studio':
+            pass  # The Studio loop owns its lifecycle; never instantiate native Goal control.
+        elif self.config.get('goalExecution'):
             from goal_worker import GoalWorker
             self.goal_worker = GoalWorker(self)
         elif self.config.get('nativeGoalPreparation') is True:
@@ -692,4 +694,7 @@ if __name__ == '__main__':
         if engine_kind=='claude-code':
             from claude_worker import ClaudeWorker
             asyncio.run(ClaudeWorker(manifest).run())
+        elif engine_kind == 'studio':
+            from studio_worker import StudioWorker
+            asyncio.run(StudioWorker(manifest).run())
         else:asyncio.run(Worker(manifest).run())
