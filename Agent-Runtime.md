@@ -33,6 +33,15 @@ typed owner and tool scope.
 
 ## Small common contract
 
+Since 0.10.2, `conversation.py` supplies this private durable context store in
+the existing Sessions.sqlite. Two additive tables hold explicit initialization
+and immutable message/checkpoint records. Reads create no tables or records.
+The store verifies session/run ownership and deduplicates a record together
+with its existing durable event in one SQLite transaction. A conflicting
+identity fails; private provider payloads are excluded from the public cursor
+event. Original messages survive later checkpoints. This storage primitive
+does not migrate native sessions or select a new runtime by itself.
+
 A session keeps its existing Studio UUID and owner. Each accepted input freezes
 its request ID, connection/model/protocol and credential revision, instructions,
 permissions, skills and ready attachments. External thread/turn/response IDs are
