@@ -34,6 +34,13 @@ await test('GitHub source changes preserve published resources, enforce revision
     assert.deepEqual(await readdir(join(root, 'Skills', id, 'Runtimes')), []);
     assert.deepEqual(await readFile(join(root, 'Skills', id, 'Workspace/SKILL.md')), original);
     assert.deepEqual((await call('/source', input, 'PUT')).json(), detail);
+    const originalReceipt = await app.inject({ url: '/api/skills/' + id + '/source/configuration/requests/' + input.requestId, headers });
+    assert.equal(originalReceipt.statusCode, 200);
+    assert.deepEqual(originalReceipt.json(), detail);
+    const otherId = randomUUID();
+    await app.inject({ method: 'POST', url: '/api/skills', headers, payload: { id: otherId, name: 'Other owner' } });
+    assert.equal((await app.inject({ url: '/api/skills/' + otherId + '/source/configuration/requests/' + input.requestId, headers })).statusCode, 404);
+    assert.equal((await app.inject({ url: '/api/skills/' + id + '/source/configuration/requests/' + randomUUID(), headers })).statusCode, 404);
     assert.equal((await call('/source', { ...input, source: null }, 'PUT')).statusCode, 409);
     assert.equal((await call('/source', { ...input, requestId: randomUUID() }, 'PUT')).statusCode, 409);
     for (const source of [

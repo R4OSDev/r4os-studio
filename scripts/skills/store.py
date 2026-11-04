@@ -386,6 +386,13 @@ def main():
         elif operation == 'source_job' and set(request) == {'operation', 'id', 'requestId'}:
             detail(db, root, request['id'])
             result = sources.read_job(db, request['id'], request['requestId'], sys.modules[__name__])
+        elif operation == 'source_configuration_request' and set(request) == {'operation', 'id', 'requestId'}:
+            detail(db, root, identity(request['id'])); identity(request['requestId'])
+            present = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='skill_source_requests'").fetchone()
+            row = db.execute('SELECT result FROM skill_source_requests WHERE request_id=?', (request['requestId'],)).fetchone() if present else None
+            if not row or json.loads(row[0])['skill']['id'] != request['id']:
+                raise SkillFault('This original source configuration request is unavailable.', 404)
+            result = json.loads(row[0])
         elif operation in ('get', 'validate') and set(request) == {'operation', 'id'}:
             ident = identity(request['id']); result = detail(db, root, ident)
             if operation == 'validate':

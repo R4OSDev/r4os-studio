@@ -3,7 +3,7 @@ import type { Skill, SkillDetail } from '../../../../shared/skills';
 import { loadSkills, request } from './api';
 export function useSkills() {
   const [skills, setSkills] = useState<Skill[]>([]), [token, setToken] = useState(''), [error, setError] = useState('');
-  const remember = (value: Skill) => setSkills((previous) => [...previous.filter((s) => s.id !== value.id), value].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+  const remember = useCallback((value: Skill) => setSkills((previous) => [...previous.filter((s) => s.id !== value.id), value].sort((a, b) => a.createdAt.localeCompare(b.createdAt))), []);
   useEffect(() => {
     let cancelled = false;
     void loadSkills().then((value) => { if (!cancelled) { setSkills(value.skills); setToken(value.csrfToken); setError(''); } })

@@ -53,3 +53,17 @@ observed by its original ID; it is never permission to repeat an unknown effect.
 The source-only unit permits the private proc mount required by its nested Git
 namespace. Its filesystem, device, control-group and kernel-module protections
 remain enabled; no web/agent/VM service configuration is replaced.
+
+In Skill Manager → View Skill, expand GitHub source, enter the repository, Ref
+and Skill path, then Save source. Public repositories need no GitHub connection;
+private ones use an existing connection. Activate prepares the first package;
+Update explicitly checks and prepares the selected ref again. Progress, the
+confirmed active commit and any failure are shown separately. Cancel source
+edits preserves stored settings. Disconnect source preserves instruction files
+and ends runtime access for future runs.
+
+The browser retains an original request ID across reload and observes that
+request after a lost response. Check status / refresh access renews access and
+reads current state without starting preparation. Concurrent edits report a
+conflict and preserve entered fields. Session Settings continues to select each
+skill by its existing UUID; tool permissions remain independent.

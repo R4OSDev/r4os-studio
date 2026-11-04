@@ -37,3 +37,11 @@
 .skill-delete-content label { display:flex;flex-direction:column;gap:8px; }
 .skill-delete-content input { width:100%;box-sizing:border-box;padding:10px;border:1px solid #6c4c82;border-radius:6px;background:#19131f;color:#e9dcf2; }
 .skill-delete-id,.skill-delete-content li span { display:block;font-size:10px;color:#b8a5c8;overflow-wrap:anywhere; }
+.skill-source { border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px; }
+.skill-source summary { cursor:pointer;font-size:13px; }
+.skill-source-fields { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;margin-top:14px; }
+.skill-source-fields label { display:flex;flex-direction:column;gap:6px;min-width:0; }
+.skill-source-fields input,.skill-source-fields select { width:100%;box-sizing:border-box;min-width:0; }
+.skill-source-actions { display:flex;gap:8px;flex-wrap:wrap;margin-top:12px; }
+.skill-source-status { overflow-wrap:anywhere;color:var(--muted);line-height:1.55; }
+.skill-source [role=alert] { color:#ffa7b7; }

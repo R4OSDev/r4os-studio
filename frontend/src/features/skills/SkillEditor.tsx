@@ -7,6 +7,7 @@ import type { EditorDocument } from '../project-editor/model';
 import { EditorDialog } from '../project-editor/EditorDialog';
 import { MessageText } from '../agent-sessions/Transcript';
 import { request } from './api';
+import { SkillSourcePanel } from './SkillSourcePanel';
 
 type Action = 'new' | 'rename' | 'upload' | null;
 export default function SkillEditor({ id, token, remembered, setLeaveGuard, refreshAuth, deleteSkill }: {
@@ -18,13 +19,23 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
   const [preview, setPreview] = useState(false), [action, setAction] = useState<Action>(null), [path, setPath] = useState('');
   const [upload, setUpload] = useState<File | null>(null), [epoch, setEpoch] = useState(0);
   const [dialogDirty, setDialogDirty] = useState(false);
+  const [sourceDirty, setSourceDirty] = useState(false), [sourceBusy, setSourceBusy] = useState(false);
   const [executable, setExecutable] = useState<Record<string, boolean>>({});
+  const sourceActive = useRef<string | null | undefined>(undefined);
   const [, changed] = useReducer((n: number) => n + 1, 0);
   const saveId = useRef<{ hash: string; revision: number; id: string } | undefined>(undefined);
   const opening = useRef('SKILL.md');
   const doc = documents[active];
   const textDirty = Object.values(documents).some(isDirty);
-  const dirty = dialogDirty || textDirty || (!!detail && name !== detail.skill.name) || Object.entries(executable).some(([p, v]) => detail?.files.find(f => f.path === p)?.executable !== v);
+  const editorDirty = dialogDirty || textDirty || (!!detail && name !== detail.skill.name) || Object.entries(executable).some(([p, v]) => detail?.files.find(f => f.path === p)?.executable !== v);
+  const dirty = sourceDirty || editorDirty;
+  useEffect(() => { sourceActive.current = detail?.skill.activeHash; }, [detail?.skill.activeHash]);
+  const sourceChanged = useCallback((value: SkillDetail) => {
+    if (sourceActive.current !== undefined && sourceActive.current !== value.skill.activeHash) setEpoch(n => n + 1);
+    sourceActive.current = value.skill.activeHash;
+    setDetail(value);
+    remembered(value.skill);
+  }, [remembered]);
   const guard = useCallback(() => !busy && (!dirty || window.confirm('Discard unsaved skill edits?')), [busy, dirty]);
   useEffect(() => { setLeaveGuard(guard); return () => setLeaveGuard(() => true); }, [guard, setLeaveGuard]);
   useEffect(() => {
@@ -65,7 +76,7 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
     setName(detail?.skill.name ?? ''); setExecutable({}); setError(''); setNotice(''); changed();
   }
   async function save() {
-    if (busy || !detail) return;
+    if (busy || sourceBusy || sourceDirty || !detail) return;
     setBusy(true); setError(''); setNotice('');
     try {
       let next = detail;
@@ -139,24 +150,26 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
     finally { setBusy(false); }
   }
   return <section className="skill-editor" aria-label="View skill">
-    <button type="button" className="skill-delete-action" disabled={busy || !detail} onClick={deleteSkill}>Delete skill</button>
-    <div className="skill-heading"><label htmlFor="skill-display-name">Skill name</label><input id="skill-display-name" value={name} maxLength={120} disabled={busy || !detail} onChange={event => setName(event.target.value)} />
+    <button type="button" className="skill-delete-action" disabled={busy || sourceBusy || !detail} onClick={deleteSkill}>Delete skill</button>
+    <div className="skill-heading"><label htmlFor="skill-display-name">Skill name</label><input id="skill-display-name" value={name} maxLength={120} disabled={busy || sourceBusy || !detail} onChange={event => setName(event.target.value)} />
       <p>{detail?.skill.activeRevision ? `Active revision ${detail.skill.activeRevision}` : 'Draft · no active revision'}{detail && detail.draftHash !== (detail.activeDraftHash ?? detail.skill.activeHash) ? ' · draft differs' : ''}</p></div>
-    {error && <div className="skill-message error" role="alert">{error}<button type="button" disabled={busy} onClick={() => void reload()}>Reload</button></div>}
+    {error && <div className="skill-message error" role="alert">{error}<button type="button" disabled={busy || sourceBusy} onClick={() => void reload()}>Reload</button></div>}
     {notice && <p className="skill-message" role="status">{notice}</p>}
     {validation && !validation.valid && <ul className="skill-message error" role="alert">{validation.errors.map((message, i) => <li key={i}>{message}</li>)}</ul>}
     {!detail && !error && <p className="skill-empty">Loading skill…</p>}
+    {detail && <SkillSourcePanel key={id} detail={detail} token={token} disabled={busy || editorDirty}
+      changed={sourceChanged} draftChanged={setSourceDirty} workingChanged={setSourceBusy} refreshAuth={refreshAuth} />}
     {detail && <><div className="skill-toolbar"><label htmlFor="skill-file">File</label>
-      <select id="skill-file" value={active} disabled={busy || !detail.files.length} onChange={event => void open(event.target.value)}>
+      <select id="skill-file" value={active} disabled={busy || sourceBusy || !detail.files.length} onChange={event => void open(event.target.value)}>
         {detail.files.map(file => <option key={file.path} value={file.path}>{file.path}{documents[file.path] && isDirty(documents[file.path]) ? ' ●' : ''}</option>)}
       </select>
-      <button type="button" disabled={busy} onClick={() => { setPath('scripts/helper.py'); setUpload(null); setAction('new'); }}>New file</button>
-      <button type="button" disabled={busy || dirty} onClick={() => { setPath(active); setUpload(null); setAction('upload'); }}>Upload / replace</button>
-      <button type="button" disabled={busy || dirty || !doc} onClick={() => { setPath(active); setAction('rename'); }}>Rename</button>
-      <button type="button" disabled={busy || dirty || !doc} onClick={() => void remove()}>Remove file</button>
-      <button type="button" disabled={busy || !doc} onClick={() => void download()}>Download</button>
+      <button type="button" disabled={busy || sourceBusy} onClick={() => { setPath('scripts/helper.py'); setUpload(null); setAction('new'); }}>New file</button>
+      <button type="button" disabled={busy || sourceBusy || dirty} onClick={() => { setPath(active); setUpload(null); setAction('upload'); }}>Upload / replace</button>
+      <button type="button" disabled={busy || sourceBusy || dirty || !doc} onClick={() => { setPath(active); setAction('rename'); }}>Rename</button>
+      <button type="button" disabled={busy || sourceBusy || dirty || !doc} onClick={() => void remove()}>Remove file</button>
+      <button type="button" disabled={busy || sourceBusy || !doc} onClick={() => void download()}>Download</button>
       <button type="button" disabled={!doc || !active.endsWith('.md')} aria-pressed={preview} onClick={() => setPreview(v => !v)}>{preview ? 'Edit source' : 'Preview'}</button>
-      {doc?.file.editable && active.startsWith('scripts/') && <label className="skill-executable"><input type="checkbox" disabled={busy}
+      {doc?.file.editable && active.startsWith('scripts/') && <label className="skill-executable"><input type="checkbox" disabled={busy || sourceBusy}
         checked={executable[active] ?? detail.files.find(f => f.path === active)?.executable ?? false}
         onChange={event => setExecutable(previous => ({ ...previous, [active]: event.target.checked }))} />Executable</label>}
     </div>
@@ -171,18 +184,18 @@ export default function SkillEditor({ id, token, remembered, setLeaveGuard, refr
         else if (resource) setError('This resource is not in the skill package.');
       } catch { setError('Invalid resource link.'); }
     }}><MessageText text={doc.state.doc.toString()} markdown /></div>
-      : doc.file.editable ? <EditorCore doc={doc} readOnly={busy} save={() => void save()} onState={state => { doc.state = state; changed(); }} navigated={() => {}} />
+      : doc.file.editable ? <EditorCore doc={doc} readOnly={busy || sourceBusy} save={() => void save()} onState={state => { doc.state = state; changed(); }} navigated={() => {}} />
         : <p className="skill-empty">{doc.file.reason}</p> : <p className="skill-empty">Create or select a package file.</p>}
-    <div className="skill-actions"><button type="button" disabled={busy || !dirty} onClick={cancel}>Cancel edits</button>
-      <button type="button" disabled={busy || (!dirty && detail.draftHash === (detail.activeDraftHash ?? detail.skill.activeHash))} onClick={() => void save()}>{busy ? 'Saving…' : 'Save skill'}</button></div>
+    <div className="skill-actions"><button type="button" disabled={busy || sourceBusy || !editorDirty} onClick={cancel}>Cancel edits</button>
+      <button type="button" disabled={busy || sourceBusy || sourceDirty || (!dirty && detail.draftHash === (detail.activeDraftHash ?? detail.skill.activeHash))} onClick={() => void save()}>{busy ? 'Saving…' : 'Save skill'}</button></div>
     </>}
     {action && <EditorDialog label={action === 'rename' ? 'Rename skill file' : action === 'upload' ? 'Upload skill file' : 'New skill file'} busy={busy} close={() => { setAction(null); setDialogDirty(false); }}>
       <form onSubmit={event => { event.preventDefault(); void fileAction(); }}><h2>{action === 'rename' ? 'Rename file' : action === 'upload' ? 'Upload resource' : 'New file'}</h2>
-        <label htmlFor="skill-file-path">Package path</label><input id="skill-file-path" value={path} maxLength={240} required disabled={busy} onChange={event => { setPath(event.target.value); setDialogDirty(true); }} />
+        <label htmlFor="skill-file-path">Package path</label><input id="skill-file-path" value={path} maxLength={240} required disabled={busy || sourceBusy} onChange={event => { setPath(event.target.value); setDialogDirty(true); }} />
         <p>Use SKILL.md, scripts/, references/, assets/ or agents/. File operations update the draft.</p>
-        {action === 'upload' && <input type="file" aria-label="Resource file" required disabled={busy} onChange={event => { setUpload(event.target.files?.[0] ?? null); setDialogDirty(true); }} />}
+        {action === 'upload' && <input type="file" aria-label="Resource file" required disabled={busy || sourceBusy} onChange={event => { setUpload(event.target.files?.[0] ?? null); setDialogDirty(true); }} />}
         {error && <p role="alert">{error}</p>}
-        <div className="editor-dialog-actions"><button type="button" disabled={busy} onClick={() => { setAction(null); setDialogDirty(false); }}>Cancel</button><button type="submit" disabled={busy || !path}>{busy ? 'Updating…' : 'Update draft'}</button></div>
+        <div className="editor-dialog-actions"><button type="button" disabled={busy || sourceBusy} onClick={() => { setAction(null); setDialogDirty(false); }}>Cancel</button><button type="submit" disabled={busy || sourceBusy || !path}>{busy ? 'Updating…' : 'Update draft'}</button></div>
       </form>
     </EditorDialog>}
   </section>;
