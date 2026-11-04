@@ -230,3 +230,6 @@
 
 .agent-migration .project-primary { background:#bd94ed; border-color:#cda5f6; color:#21142f; font-weight:650; }
 .agent-migration button:disabled { opacity:.5; cursor:default; }
+
+.agent-plan-usage { margin:0; padding:6px 18px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.agent-plan-usage a { color:var(--accent); }

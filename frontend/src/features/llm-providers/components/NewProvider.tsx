@@ -34,9 +34,9 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
   return <div className="provider-card">
     <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><div><h2>Connect an AI provider</h2><p>Choose an account subscription or an API connection.</p></div></div>
     <div className="provider-form"><label htmlFor="provider-type">Provider</label>
-      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · Native ChatGPT connection</option><option value="claude-subscription">Claude · Pro / Max subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · Native connection (existing features)</option><option value="claude-subscription">Claude · Pro / Max subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {type === 'openai' ? <form onSubmit={(event) => void submit(event)} className="provider-form">
-      <p className="field-help">ChatGPT subscription access. No API key required.</p>
+      <p className="field-help">Native ChatGPT connection for existing features such as hosted image generation. Choose ChatGPT plan for the common Studio conversation flow; neither requires an API key.</p>
       <label htmlFor="provider-name">Display name</label>
       <input id="provider-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoComplete="off" disabled={busy} />
       <p className="field-help">This name appears in the Views column.</p>

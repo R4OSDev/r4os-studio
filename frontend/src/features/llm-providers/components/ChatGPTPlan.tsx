@@ -49,7 +49,7 @@ export function ChatGPTPlan({ api, provider, saved }: { api:ProviderApi; provide
   return <div className="provider-form chatgpt-plan">
     <p className="field-help">Use your ChatGPT plan in Studio. Sign in with OpenAI, then paste the final redirect address here to finish connecting.</p>
     <label htmlFor="chatgpt-plan-name">Display name</label><input id="chatgpt-plan-name" value={name} onChange={e=>setName(e.target.value)} maxLength={80} disabled={!!provider||busy||!!pending}/>
-    {account&&<p className="field-help">{account.email??provider?.name} · {account.directPermission?'Direct plan permission saved':'Sign-in required'}. Registration {account.clientId??'unavailable'}. Exact remaining plan quota is unavailable here. <a href={account.usageUrl} target="_blank" rel="noopener noreferrer">Manage ChatGPT usage</a></p>}
+    {account&&<p className="field-help">{account.email??provider?.name} · {account.directPermission?'Direct plan permission saved':'Sign-in required'}. Exact remaining plan quota is unavailable here. <a href={account.usageUrl} target="_blank" rel="noopener noreferrer">Manage ChatGPT usage</a></p>}
     {provider&&!provider.enabled&&account?.remoteRevocation&&<p role="status" className="field-help">Signed out locally. Remote token revocation: {account.remoteRevocation}. Review ChatGPT app access when its outcome is unknown.</p>}
     <p className="field-help">Review the plan and credit permissions you grant in ChatGPT settings. You can choose a model after connecting.</p>
     <div className="provider-actions"><button className="button-primary" type="button" disabled={loading||busy||!!waiting||!name.trim()} onClick={()=>{void start();}}>Continue with ChatGPT</button></div>

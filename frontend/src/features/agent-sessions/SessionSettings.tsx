@@ -8,7 +8,7 @@ import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, sessionPath, busyRun, toolLabels, permissionToolIds, updateToolIds, remoteToolIds, imageToolIds } from './api';
 
 const tools = permissionToolIds;
-const sections = ['General', 'Tools', 'Skills', 'Runtime'] as const;
+const sections = ['General', 'Tools', 'Skills', 'Conversation'] as const;
 const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
 export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged, deleteSession }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
@@ -82,11 +82,11 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
         if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); const index = e.key === 'Home' ? 0 : e.key === 'End' ? sections.length - 1 : (sections.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : sections.length - 1)) % sections.length; setTab(sections[index]); e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button')?.[index].focus(); }
       }}>{name}</button>)}</div>
       <fieldset className="project-fields" disabled={saving || reloading || runtimeBusy} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
-        {tab === 'Runtime' ? <SessionMigration session={session} options={options} projectId={projectId} token={token} changed={saved} busyChanged={setRuntimeBusy} disabled={dirty||saving||reloading}/> : tab === 'General' ? <>
+        {tab === 'Conversation' ? <SessionMigration session={session} options={options} projectId={projectId} token={token} changed={saved} busyChanged={setRuntimeBusy} disabled={dirty||saving||reloading}/> : tab === 'General' ? <>
           {session.engine.kind === 'studio' && <p className="agent-terminal-hint">Choose the connection and model for future inputs. Saving starts no work. Existing queued inputs must finish or be cancelled first; original history, receipts and Goal budgets remain. Private reasoning from another connection or model stays in its original archive and is not sent to the selected model.</p>}
-          {!session.engine.kind && <p className="agent-terminal-hint">Codex {session.engine.version}. New requests use the Codex default selected in Studio Updates. Accepted requests keep their original version.</p>}
+          {!session.engine.kind && <p className="agent-terminal-hint">This saved conversation uses a native connection. You can review a conversion under Conversation after its current work ends.</p>}
           {session.engine.available === false && session.engine.reason && <p className="project-dialog-error">{session.engine.reason}</p>}
-          {session.engine.api && !studio && <p className="agent-terminal-hint">This conversation keeps its API connection and protocol. Create a new session to change providers. GOAL uses its function tools and starts only after Play. Hosted web/image generation, image input and Fast Mode are unavailable through this adapter.</p>}
+          {session.engine.api && !studio && <p className="agent-terminal-hint">This saved conversation uses an older connection. Review a conversion under Conversation to continue with a direct connection. Original history stays available.</p>}
           {session.engine.kind === 'claude-code' && <p className="agent-terminal-hint">This conversation keeps its native Claude account and history. Choose another provider in a new session. Documents use explicit text extraction; images require a qualified image model (4 MiB each, 8 MiB per send). Studio tools use fresh subscription checks. Fast Mode is unavailable.</p>}
           {model?.available === false && <p className="project-dialog-error">{model.unavailableReasons?.join(' ')}</p>}
           <ProjectField id="settings-session-name" label="Name"><input id="settings-session-name" required maxLength={120} value={draft.name} onChange={(e) => patch({ name: e.target.value })} /></ProjectField>
@@ -98,10 +98,10 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
             const next = provider?.models.find((m) => m.id === e.target.value); patch({ model: e.target.value, effort: next?.efforts.includes(draft.effort) ? draft.effort : next?.defaultEffort ?? '', fastMode: draft.fastMode && !!next?.fastModeAvailable });
           }}>{!model && <option value={draft.model}>{draft.model}</option>}{provider?.models.map((m) => <option key={m.id} value={m.id} disabled={m.available === false}>{m.name}{m.available === false ? ' · unavailable' : ''}</option>)}</select></ProjectField>
           <ProjectField id="settings-session-effort" label="Reasoning"><select id="settings-session-effort" value={draft.effort} onChange={(e) => patch({ effort: e.target.value })}>{!model?.efforts.includes(draft.effort) && <option value={draft.effort}>{effortLabel(draft.effort, provider)}</option>}{model?.efforts.map((effort) => <option key={effort} value={effort}>{effortLabel(effort, provider)}</option>)}</select></ProjectField>
-          <ProjectField id="settings-session-fast" label="Fast Mode"><select id="settings-session-fast" value={draft.fastMode ? 'on' : 'off'} onChange={(e) => patch({ fastMode: e.target.value === 'on' })}><option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option></select></ProjectField>
+          {(model?.fastModeAvailable || draft.fastMode) && <ProjectField id="settings-session-fast" label="Fast Mode"><select id="settings-session-fast" value={draft.fastMode ? 'on' : 'off'} onChange={(e) => patch({ fastMode: e.target.value === 'on' })}><option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option></select></ProjectField>}
         </> : tab === 'Skills' ? <div className="agent-skill-choices">
           <p>Global skills are enabled by default. Saved choices apply from the next run.</p>
-          <p>Disabling a skill removes its next-run catalog and resource access. Earlier conversation content remains in the native history.</p>
+          <p>Disabling a skill removes its next-run catalog and resource access. Earlier conversation content stays in its original history.</p>
           {!options && <p role="status">Loading global skills…</p>}
           {options && !options.skills?.length && <p>No global skills are available.</p>}
           {options?.skills?.map((skill) => <label key={skill.id} className="agent-permission" data-skill-id={skill.id}>
@@ -119,7 +119,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           <p className="agent-terminal-hint">{studio ? 'Studio web access uses the same tool control with every conversation model. Page data is untrusted. Changes apply from the next run.' : hostedToolsUnavailable ? 'Hosted web search is unavailable through this provider adapter.' : 'Search the web, open pages and find text. On by default. Changes apply from the next run. Availability depends on the selected model and account.'}</p>
         </fieldset>{scope === 'project' && <fieldset><legend>Roadmap</legend>
           <label className="agent-permission"><span>Roadmap</span><input type="checkbox" role="switch" aria-label="Roadmap" checked={draft.roadmapEnabled ?? true} onChange={(e) => patch({ roadmapEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
-          <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content remains in the native history.</p>
+          <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content stays in its original history.</p>
           <p className="agent-terminal-hint" role="status">{draft.roadmapAccess?.available ? 'Roadmap tools available in this session.' : draft.roadmapAccess?.reason ?? 'Roadmap tools are unavailable through the active host.'}</p>
         </fieldset>}{(scope === 'skill' ? ['Files', 'Terminal', 'Skills', 'Images'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub', 'Remote Hosts', 'Images']).map((group) => <fieldset key={group}><legend>{group}</legend>
           {group === 'Images' && <><label className="agent-permission"><span>Image generation</span><input type="checkbox" role="switch" aria-label="Image generation" disabled={hostedToolsUnavailable} checked={draft.imageGenerationEnabled ?? true} onChange={event => patch({ imageGenerationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>

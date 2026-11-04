@@ -42,7 +42,7 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
     if (draft && !window.confirm('Discard unsaved model facts?')) return;
     const next = model ? { id: model.id, name: model.name, contextWindow: model.contextWindow, maxOutputTokens: model.maxOutputTokens,
       capabilities: { ...model.declaredCapabilities }, efforts: [...model.efforts], defaultEffort: model.defaultEffort,
-      ...(model.reasoning ? { reasoning: { ...model.reasoning } } : {}) } : empty();
+      ...(model.reasoning ? { reasoning: { ...model.reasoning } } : {}), ...(model.messages?{messages:{...model.messages}}:{}) } : empty();
     if (applyMetadata && model?.reasoningMetadata) {
       const facts = model.reasoningMetadata.facts;
       const choices = (facts.supported_efforts === null ? efforts : facts.supported_efforts ?? []).filter(value => value !== 'none' || facts.mandatory !== true);
@@ -65,7 +65,7 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
       setNotice(''); void mutation.send('check', { providerRevision: provider.revision });
     }}>{pending?.operation === 'check' ? 'Checking metadata…' : 'Check connection / refresh models'}</button></div>
     <p className="field-help">Check connection reads this endpoint’s Models API once from the Studio host worker. It does not generate text or verify access to individual models. Exact manual IDs are supported when no model list is available.</p>
-    {provider.server && provider.server !== 'custom' && <p className="field-help">{provider.server === 'ollama' ? 'Ollama' : 'LM Studio'}: a listed model may be unloaded. Enter the actual configured context window and confirm text, streaming and function tools for an explicitly nonreasoning model. Image and reasoning history are unavailable in this server adapter. Studio does not install, download, load or reconfigure models during metadata checks.</p>}
+    {provider.server && provider.server !== 'custom' && <p className="field-help">{provider.server === 'ollama' ? 'Ollama' : 'LM Studio'}: a listed model may be unloaded. Enter the actual configured context window and confirm text, streaming and function tools for an explicitly nonreasoning model. The selected protocol and configured model facts determine image and reasoning support. Studio does not install, download, load or reconfigure models during metadata checks.</p>}
     {catalog?.checkedAt && <p className="field-help">Last metadata: <time dateTime={catalog.checkedAt}>{new Date(catalog.checkedAt).toLocaleString()}</time>{!catalog.metadataCurrent ? ' · earlier connection revision' : ''}</p>}
     {catalog?.stale && <p className="provider-alert">These facts belong to earlier connection settings. Refresh metadata or explicitly save current model facts before starting a run.</p>}
     {catalog?.truncated && <p className="field-help">The catalog is limited to 256 models. Add any other exact ID manually.</p>}
@@ -81,13 +81,13 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
       {model.source?.url && <p className="field-help api-model-source">{model.source.url}</p>}
       <dl className="provider-properties"><div><dt>Context / output</dt><dd>{model.contextWindow ?? 'Unknown'} / {model.maxOutputTokens ?? 'Unknown'} tokens</dd></div><div><dt>Reasoning levels</dt><dd>{model.efforts.length ? model.efforts.map(effortLabel).join(', ') : 'Unknown'} · Default: {model.defaultEffort === null ? 'Unknown' : effortLabel(model.defaultEffort)}</dd></div>
         {model.reasoning && <div><dt>Reasoning requirement</dt><dd>{model.reasoning.mandatory === true ? 'Required · cannot be disabled' : model.reasoning.mandatory === false ? 'Optional' : 'Not specified'}</dd></div>}
-        {Object.entries(labels).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{model.capabilities[key as keyof typeof labels]}{model.capabilities[key as keyof typeof labels] !== model.declaredCapabilities[key as keyof typeof labels] ? ` · model: ${model.declaredCapabilities[key as keyof typeof labels]}; unavailable in this adapter` : ''}</dd></div>)}</dl>
+        {Object.entries(labels).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{model.capabilities[key as keyof typeof labels]}{model.capabilities[key as keyof typeof labels] !== model.declaredCapabilities[key as keyof typeof labels] ? ` · model: ${model.declaredCapabilities[key as keyof typeof labels]}; unavailable through this connection` : ''}</dd></div>)}</dl>
       {!!model.unavailableReasons.length && <p className="field-help">{model.unavailableReasons.join(' ')}</p>}
       <button type="button" className="button-secondary" disabled={mutation.busy || !!pending} onClick={() => edit(model)}>Edit model facts</button>
       {model.reasoningMetadata && <button type="button" className="button-secondary" disabled={mutation.busy || !!pending} onClick={() => edit(model, true)}>Apply latest reasoning metadata</button>}
     </details>)}</div>
     {catalog && !catalog.models.length && <p className="field-help">No cached models. Check metadata or add an exact model ID.</p>}
-    <p className="field-help">GOAL is provided by Studio when text, streaming and function tools are confirmed. It starts only after Play. Image input, hosted web search, image generation and Fast Mode are unavailable through these API adapters.</p>
+    <p className="field-help">Studio provides Goal, tools, queue and Stop for these connections. Images require confirmed model support. Web uses your configured Studio service; selected skill services can supply images. Goal starts only after Play. Native hosted image generation and Fast Mode are separate account features.</p>
     {!draft ? <button type="button" className="button-secondary" disabled={!catalog || mutation.busy || !!pending && !(mutation.notFound && pending.operation === 'model')} onClick={() => edit()}>{pending?.operation === 'model' ? 'Re-enter original model facts' : 'Add exact model ID'}</button>
       : <form className="provider-form api-model-form" onSubmit={event => void save(event)} aria-label="Explicit model facts">
         <h4>Explicit model facts</h4><p className="field-help">Enter facts from the model and endpoint documentation. Unknown capabilities stay unavailable for agent execution; saving does not test them.</p>
@@ -98,6 +98,16 @@ export function ApiModels({ api, provider, setLeaveGuard }: { api: ProviderApi; 
           {(['text', 'functionTools', 'streaming', 'reasoning', 'imageInput'] as const).map(key => <div key={key}><label htmlFor={`api-model-${key}`}>{labels[key]}</label><select id={`api-model-${key}`} value={draft.capabilities[key]} onChange={event => {
             const value = event.target.value as ApiCapability; patch({ capabilities: { ...draft.capabilities, [key]: value }, ...(key === 'reasoning' ? { efforts: value === 'unsupported' ? ['none'] : [], defaultEffort: value === 'unsupported' ? 'none' : null, reasoning: undefined } : {}) });
           }}><option value="unknown">Unknown</option><option value="supported">Supported</option><option value="unsupported">Unsupported</option></select></div>)}
+          {provider.protocol==='messages' && <fieldset className="api-messages-options"><legend>Messages options</legend>
+            <label htmlFor="api-messages-version">Documented API version</label><input id="api-messages-version" placeholder="Endpoint default" value={draft.messages?.apiVersion??''} pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" onChange={event=>{
+              const value={...draft.messages};if(event.target.value)value.apiVersion=event.target.value;else delete value.apiVersion;patch({messages:value});
+            }}/>
+            <label htmlFor="api-messages-thinking">Thinking mode</label><select id="api-messages-thinking" value={draft.messages?.thinkingDisabled?'disabled':draft.messages?.thinkingType??''} onChange={event=>{
+              const mode=event.target.value;patch({messages:{...(draft.messages?.apiVersion?{apiVersion:draft.messages.apiVersion}:{}),...(mode==='disabled'?{thinkingDisabled:true}:mode==='adaptive'?{thinkingType:'adaptive' as const}:mode==='enabled'?{thinkingType:'enabled' as const,thinkingBudget:draft.messages?.thinkingBudget??1024}:{})}});
+            }}><option value="">Not specified</option><option value="adaptive">Adaptive</option><option value="enabled">Explicit token budget</option><option value="disabled">Disabled</option></select>
+            {draft.messages?.thinkingType==='enabled'&&<><label htmlFor="api-messages-budget">Thinking token budget</label><input id="api-messages-budget" type="number" min={1024} step={1} required value={draft.messages.thinkingBudget??''} onChange={event=>patch({messages:{...draft.messages,thinkingBudget:Number(event.target.value)}})}/></>}
+            <p className="field-help">Use the selected endpoint’s documented options. Existing signed thinking stays with its original model.</p>
+          </fieldset>}
           {draft.capabilities.reasoning === 'supported' && <>
             {draft.reasoning && <p className="field-help">{draft.reasoning.mandatory ? 'Reasoning is required. none cannot be selected.' : 'Reasoning follows the documented model options.'} Provider default: {draft.reasoning.default_enabled === undefined ? 'not specified' : draft.reasoning.default_enabled ? 'enabled' : 'disabled'}. Applying metadata keeps a valid explicit default; changes take effect after Save.</p>}
             <fieldset className="api-efforts"><legend>Documented reasoning levels</legend>{(draft.reasoning ? ['', ...(draft.reasoning.supported_efforts === null ? efforts : draft.reasoning.supported_efforts ?? [])] as ApiEffort[] : efforts).filter(value => value !== 'none' || draft.reasoning?.mandatory !== true).map(effort => <label key={effort}><input type="checkbox" checked={draft.efforts.includes(effort)} onChange={event => {

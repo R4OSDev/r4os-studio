@@ -124,7 +124,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       }
       if (event.kind === 'run') {
         const run=event.payload as AgentRun;
-        setSession(s => s ? {...s,latestRun:run,...(run.state==='unknown' && s.context ? {context:{...s.context,state:'stale',reason:'The latest native execution is unconfirmed. This is the last measured context.'}} : {})} : s);
+        setSession(s => s ? {...s,latestRun:run,...(run.state==='unknown' && s.context ? {context:{...s.context,state:'stale',reason:'The latest execution is unconfirmed. This is the last measured context.'}} : {})} : s);
         changed();
       }
       if (event.kind === 'context') {
@@ -174,7 +174,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const afterResponse = (session?.engine.kind === 'studio' || inbox.boundWaiting && session?.engine.kind === 'claude-code') && run?.messageWaitTarget;
   async function send(now = false, after = false) {
     if (!session || sending || (!pending && (blocked || empty || !!attachments.issue))) return;
-    if (now && active && !direct && !afterResponse) { setError('The original native turn cannot accept this full input. Use Queue message or wait for its next turn.'); return; }
+    if (now && active && !direct && !afterResponse) { setError('The current turn cannot accept this full input. Use Queue message or wait for its next turn.'); return; }
     if (!pending && queueMode && !inbox.available) { setError('The coordinator cannot queue messages yet. Your draft was preserved.'); return; }
     setError('');
     const steering = now && active && direct && !after;
@@ -203,11 +203,12 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }
   return <section className="agent-session" aria-label="Agent session">
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
-      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal, run) : run?.state ?? 'Ready') : connection}</span>
+      <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal, run) : run?.state ? ({queued:'Queued',starting:'Starting',running:'Running',stopping:'Stopping',completed:'Complete',failed:'Failed',interrupted:'Stopped',unknown:'Unconfirmed'} as Record<string,string>)[run.state]??run.state : 'Ready') : connection}</span>
         <button type="button" className="agent-settings-button" aria-label="Screenshot gallery" title="Screenshot gallery" aria-haspopup="dialog" aria-expanded={gallery} disabled={!session} onClick={()=>setGallery(true)}><Icon name="image"/></button>
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
+    {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
     {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
     {session?.engine.api && (session.engine.api.kind === 'zai-coding-plan' || !session.engine.api.kind && session.engine.api.baseUrl === 'https://api.z.ai/api/coding/paas/v4') && <SessionZaiLimits key={base + session.providerId} base={base} token={token} providerId={session.providerId} />}
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={projectSession ? 0 : undefined}

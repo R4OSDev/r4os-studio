@@ -81,13 +81,13 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
           {model?.efforts.map((value) => <option key={value} value={value}>{effortLabel(value, account)}</option>)}
         </select>
       </label>
-      <div className="agent-fast-context"><label><span>Fast Mode</span>
+      <div className="agent-fast-context">{(model?.fastModeAvailable || choice.fastMode) && <label><span>Fast Mode</span>
         <select aria-label="Fast Mode" value={choice.fastMode ? 'on' : 'off'} disabled={controlsDisabled||!model} onChange={(event) => void change({ fastMode: event.target.value === 'on' })}>
           <option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option>
         </select>
-      </label><ContextIndicator context={session.context}/></div>
+      </label>}<ContextIndicator context={session.context}/></div>
     </fieldset>
-    {session.engine.api && <p className="agent-terminal-hint">API connection is fixed for this conversation. Choose another provider in a new session.</p>}
+    {session.engine.kind==='studio'?<p className="agent-terminal-hint">Choices apply to future inputs. Your draft and original results stay available.</p>:<p className="agent-terminal-hint">This conversation uses a native connection. Review a conversion in Session settings → Conversation to use a different direct connection.</p>}
     {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
     {error && <p className="agent-choice-error" role="alert">{error}</p>}
   </div>;

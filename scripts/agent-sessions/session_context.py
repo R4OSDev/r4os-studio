@@ -45,7 +45,7 @@ def read(store,row):
         return {**snapshot,'state':'pending','reason':'The selection or native conversation changed. Waiting for a matching context measurement.'}
     latest=store.db.execute('SELECT id,busy,state,config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     if latest and latest['state']=='unknown':
-        return {**snapshot,'state':'stale','reason':'The latest native execution is unconfirmed. This is the last measured context.'}
+        return {**snapshot,'state':'stale','reason':'The latest execution is unconfirmed. This is the last measured context.'}
     if latest and latest['id']!=snapshot['runId']:
         config=json.loads(latest['config'])
         if config.get('contextProtocol')!=1:
