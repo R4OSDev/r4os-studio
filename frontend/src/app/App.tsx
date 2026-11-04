@@ -234,6 +234,7 @@ export function App() {
             <div className="nav-items">
               {availableViews.map((name, index) => {
                 const provider = providerPage && index > 0 ? providers.providers[index - 1] : undefined;
+                const account = provider ? providers.nativeProviders.find(p => p.id === provider.id) : undefined;
                 const remaining = provider ? providers.remainingByProvider[provider.id] : null;
                 return <button type="button" key={githubPage ? (github.connections[index - 1]?.id ?? 'new-connection') : providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
                   aria-current={selectedView === index ? 'page' : undefined}
@@ -241,7 +242,7 @@ export function App() {
                   {providerPage ? <>
                     {index === 0 && <span className="view-number" aria-hidden="true">+</span>}
                     <span className="provider-view-name">{name}</span>
-                    {provider?.type === 'openai' && provider.status === 'connected' && provider.account &&
+                    {account?.status === 'connected' && account.account &&
                       <span className="provider-remaining" title={remaining == null
                         ? 'Remaining usage is not available.' : 'Lowest reported remaining usage across quota windows.'}>
                         {remaining == null ? '—' : percent(remaining)}

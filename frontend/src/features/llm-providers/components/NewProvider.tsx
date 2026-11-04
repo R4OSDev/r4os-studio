@@ -34,7 +34,7 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
   return <div className="provider-card">
     <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><div><h2>Connect an AI provider</h2><p>Choose an account subscription or an API connection.</p></div></div>
     <div className="provider-form"><label htmlFor="provider-type">Provider</label>
-      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · ChatGPT subscription</option><option value="claude-subscription">Claude · Pro / Max subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · ChatGPT subscription</option><option value="claude-subscription">Claude · Pro / Max · Native conversations</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {type === 'openai' ? <form onSubmit={(event) => void submit(event)} className="provider-form">
       <p className="field-help">Connect your ChatGPT subscription through OpenAI. Sign in entirely in your browser; native account access stays on the Studio host. Model access and usage limits use this same connection.</p>
       <label htmlFor="provider-name">Display name</label>

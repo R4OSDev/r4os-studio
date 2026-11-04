@@ -28,7 +28,7 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
       if (controller.signal.aborted) return;
       setOptions(r);
       if (!pending) {
-        const provider = r.providers.find((p) => p.type==='api' && availableModels(p).length) ?? r.providers.find((p) => availableModels(p).length), chosen = availableModels(provider)[0];
+        const provider = r.providers.find((p) => p.type==='api' && availableModels(p).length), chosen = availableModels(provider)[0];
         setProvider(provider?.id ?? ''); setModel(chosen?.id ?? ''); setEffort(chosen?.defaultEffort ?? '');
       }
     }).catch((e: Error) => { if (!controller.signal.aborted) setError(e.message); });
@@ -66,13 +66,13 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
         {(chosen?.fastModeAvailable || fastMode) && <ProjectField id="session-fast-mode" label="Fast Mode"><select id="session-fast-mode" value={fastMode ? 'on' : 'off'} onChange={(e) => setFast(e.target.value === 'on')}><option value="off">Off</option><option value="on" disabled={!chosen?.fastModeAvailable}>On</option></select></ProjectField>}
       </fieldset>
       {!options && !error && <p className="project-dialog-status" role="status">Loading…</p>}
-      {provider?.type === 'claude-subscription' && <p className="field-help">Claude subscription · Text, documents and Studio tools. {chosen?.imageInputs === 'supported' ? 'PNG/JPEG/WebP images are qualified for this model (4 MiB each, 8 MiB per send).' : 'Image input is not qualified for this model.'} Each send checks the native account and included usage. Fast Mode is unavailable.</p>}
+      {provider?.type === 'claude-subscription' && <p className="field-help">This subscription uses native Claude conversations. Studio’s common conversation runtime is not available for this plan. Choose a Messages API connection explicitly to use the Studio runtime; its account and billing are separate.</p>}
       {provider?.kind === 'zai-coding-plan' && <p className="field-help">Uses your Z.AI GLM Coding Plan allowance. Subscription limits are available in the session and provider settings. Model access is confirmed by Z.AI when you send a message.</p>}
-      {selectedEngine?.available && <p className="field-help">{provider?.type==='api'?'Your selected connection provides the model. Studio manages the conversation, tools, queue and Goal. Creating this session sends no message.':'This account uses its native connection. Studio keeps the conversation and confirmed tool results available.'}</p>}
+      {selectedEngine?.available && <p className="field-help">{provider?.type==='api'?'Your selected connection provides the model. Studio manages the conversation, tools, queue and Goal. Creating this session sends no message.':'This selection uses the provider’s native conversation runtime. Existing native history and confirmed tool results remain available.'}</p>}
       {selectedEngine && !selectedEngine.available && <p className="project-dialog-error" role="alert">{selectedEngine.reason}</p>}
       {options && !options.providers.some((p) => availableModels(p).length) && <p className="project-dialog-error">Connect a provider and configure an available model in System settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
-      <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!selectedEngine?.available || !chosen || chosen.available === false))}>{busy ? 'Creating…' : pending ? 'Retry create' : 'Create session'}</button></footer>
+      <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!selectedEngine?.available || !chosen || chosen.available === false))}>{busy ? 'Creating…' : pending ? 'Retry create' : provider && provider.type !== 'api' ? 'Create native session' : 'Create session'}</button></footer>
     </form>
   </dialog>;
 }

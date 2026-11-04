@@ -135,7 +135,8 @@ export function ClaudeProviderDetails({ initial, api, removed }: { initial: Clau
     finally { inflight.current = false; if (mounted.current) setBusy(false); }
   }
   return <div className="provider-card">
-    <div className="provider-card-heading"><div><h2>{provider.name}</h2><p>Claude subscription</p></div><span className={`provider-status ${provider.status === 'connected' ? 'connected' : ''}`}>{labels[provider.status]}</span></div>
+    <div className="provider-card-heading"><div><h2>{provider.name}</h2><p>Claude subscription · Native conversations</p></div><span className={`provider-status ${provider.status === 'connected' ? 'connected' : ''}`}>{labels[provider.status]}</span></div>
+    <p className="field-help">This plan currently uses Claude’s native conversation runtime. A model-only subscription connection for Studio’s common runtime is not available. Existing native conversations stay available; an independent Messages API connection requires your explicit account and billing choice.</p>
     <Runtime {...runtime} />
     <ClaudeLimitsView sample={limits} revision={provider.revision} />
     <section className="claude-models" aria-label="Native Claude model catalog"><h3>Native model catalog</h3>

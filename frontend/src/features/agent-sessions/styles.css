@@ -133,7 +133,7 @@
 .agent-header-actions { display:flex; align-items:center; gap:12px; }
 .agent-settings-button { display:grid; place-items:center; width:30px; height:30px; border:1px solid #4b375c; border-radius:6px; background:#2c2037; color:#c5aedc; }
 .agent-settings-button:disabled { opacity:.4; }
-.agent-settings-tabs { display:flex; padding:12px 26px 0; gap:16px; border-bottom:1px solid #3b2c4b; }
+.agent-settings-tabs { display:flex; flex-wrap:wrap; padding:12px 26px 0; gap:16px; border-bottom:1px solid #3b2c4b; }
 .agent-settings-tabs button { background:transparent; padding:10px 2px 12px; font-size:12px; color:#aa98bb; border-bottom:2px solid transparent; }
 .agent-settings-tabs button.selected { color:#dfc8f7; border-color:#ba91e7; }
 .agent-permissions { display:grid; gap:24px; }

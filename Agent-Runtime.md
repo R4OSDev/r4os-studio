@@ -479,3 +479,30 @@ unknown. The same view is available in provider and session settings.
 Native Studio accounts select their managed common-model projection exclusively;
 a historical session with the same account must be converted explicitly before
 new work. No legacy native-agent fallback is permitted for that account.
+
+# Remaining provider boundaries (0.10.24)
+
+Responses, Chat Completions and Messages connections use the same StudioWorker,
+Conversation, tools, context, GOAL, Queue and lifecycle. OpenAI subscription
+access changes only account credentials, endpoint metadata and model headers.
+OpenRouter routing and Z.AI subscription policy stay in their existing small
+connectors. No alternate model or billing account is selected implicitly.
+
+Claude subscription access remains a native-conversation exception. The
+[Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) supplies Claude's
+own agent loop and context; the current Studio native integration calls its
+query/session API. That is not a model-only connector. The documented
+[credential contract](https://code.claude.com/docs/en/legal-and-compliance)
+distinguishes native subscription use from independently authorized API access.
+Studio does not extract those subscription credentials for Messages requests.
+A separate, explicitly configured Messages API connection uses the common core;
+no such independent live access was available for this qualification.
+The actual subscription model-only implementation remains open. Existing native
+accounts and histories are retained and visibly identified; new session forms
+never choose native execution as an automatic fallback when no common model is
+available. An explicit native selection stays labelled as native execution.
+
+Native hosted image/specialty features retain their own narrow availability
+boundaries. Their absence never starts a second agent inside a Studio model
+run. Explicit conversation conversion preserves original artifacts and accepted
+queued inputs; installing or reconnecting does not perform that conversion.
