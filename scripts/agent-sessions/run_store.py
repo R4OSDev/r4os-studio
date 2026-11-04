@@ -10,7 +10,7 @@ from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
 from project_agents import snapshot as project_snapshot
 
-CAPABILITIES=('projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs','imageGenerationSettings','liveGoalPreparation','environmentNotesSettings')
+CAPABILITIES=('skillMcp','projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs','imageGenerationSettings','liveGoalPreparation','environmentNotesSettings')
 
 
 def fingerprint(session_id,data,attachments=()):
@@ -137,7 +137,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
     if data.get('skillSelection') == 1:
         from skill_application import freeze
-        snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1)
+        snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1, mcp=data.get('skillMcp') == 1)
     if store.owner_type == 'skill':
         if 'projectInstructions' in data: raise ProjectFault('Project instructions do not apply to skill sessions.', 400)
         from skill_prompt import snapshot as skill_prompt_snapshot
@@ -172,7 +172,7 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
     if (set(data) - set(CAPABILITIES) != expected
         or type(data['revision']) is not int or any(key in data and (type(data[key]) is not int or data[key] != 1) for key in CAPABILITIES)
         or (('roadmapSettings' in data or 'remoteHostTools' in data) and store.owner_type != 'project')
-        or ('skillScripts' in data and data.get('skillSelection') != 1)):
+        or (any(key in data for key in ('skillScripts','skillMcp')) and data.get('skillSelection') != 1)):
         raise ProjectFault('Unexpected run fields.', 400)
     if not goal_mode and (not isinstance(data['text'], str) or (not data['text'].strip() and not data.get('attachments'))
             or any(0xd800<=ord(c)<=0xdfff for c in data['text']) or len(data['text'].encode()) > 65536 or '\x00' in data['text']):

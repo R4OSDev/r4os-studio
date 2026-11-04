@@ -3413,6 +3413,123 @@
           }
         ]
       }
+    },
+    {
+      "name": "studio_skill_discover",
+      "description": "Discover every tool and its exact original schema from an enabled managed skill. Omit skillId to list runtimes. Select a native name to read its complete schema; follow returned result pages if needed. This does not run an analysis.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tools",
+              "prompts",
+              "resources",
+              "resourceTemplates"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33554432
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "schemaOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33554432
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_skill_call",
+      "description": "Call the exact native method of an enabled managed skill through its frozen runtime. Read its schema first. argumentsJson contains the unchanged native JSON object (including nulls/unions); never coerce it to fit another provider schema. Tools use name plus their argument object. Prompts use name plus prompt arguments; resource reads use their URI as name and {}; completion uses its full native params and no name. Original results are retained, including Evidence and images. A client timeout or Unknown is not permission to repeat.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "tools/call",
+              "prompts/get",
+              "resources/read",
+              "completion/complete"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "argumentsJson": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 98304
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          }
+        },
+        "required": [
+          "skillId",
+          "argumentsJson"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_read_skill_result",
+      "description": "Read the complete original skill JSON through its opaque reference and exact returned UTF-8 byte cursors. This cannot repeat analysis or access another session. Older source identities remain labelled in the result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33554432
+          }
+        },
+        "required": [
+          "skillId",
+          "reference"
+        ],
+        "additionalProperties": false
+      }
     }
   ],
   "skill": [
@@ -3842,6 +3959,123 @@
           "category",
           "title",
           "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_skill_discover",
+      "description": "Discover every tool and its exact original schema from an enabled managed skill. Omit skillId to list runtimes. Select a native name to read its complete schema; follow returned result pages if needed. This does not run an analysis.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tools",
+              "prompts",
+              "resources",
+              "resourceTemplates"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33554432
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "schemaOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33554432
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_skill_call",
+      "description": "Call the exact native method of an enabled managed skill through its frozen runtime. Read its schema first. argumentsJson contains the unchanged native JSON object (including nulls/unions); never coerce it to fit another provider schema. Tools use name plus their argument object. Prompts use name plus prompt arguments; resource reads use their URI as name and {}; completion uses its full native params and no name. Original results are retained, including Evidence and images. A client timeout or Unknown is not permission to repeat.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "tools/call",
+              "prompts/get",
+              "resources/read",
+              "completion/complete"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "argumentsJson": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 98304
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          }
+        },
+        "required": [
+          "skillId",
+          "argumentsJson"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_read_skill_result",
+      "description": "Read the complete original skill JSON through its opaque reference and exact returned UTF-8 byte cursors. This cannot repeat analysis or access another session. Older source identities remain labelled in the result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33554432
+          }
+        },
+        "required": [
+          "skillId",
+          "reference"
         ],
         "additionalProperties": false
       }

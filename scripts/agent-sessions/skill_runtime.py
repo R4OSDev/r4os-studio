@@ -1,0 +1,83 @@
+"""Frozen source/runtime references and a separate credential-free namespace."""
+import asyncio
+import hashlib
+import importlib.util
+from pathlib import Path
+import json
+from owner import skills_root
+from skill_mcp_client import Client, McpFault, directory, encoded
+
+spec = importlib.util.spec_from_file_location('managed_skill_runtime_spec', Path(__file__).resolve().parents[1] / 'skills/runtime_spec.py')
+runtime_spec = importlib.util.module_from_spec(spec); spec.loader.exec_module(runtime_spec)
+
+
+def freeze(projects, ident, source):
+    try:
+        root, manifest, catalog = runtime_spec.load(skills_root(projects), ident, source)
+        return dict(schema=1, sourceBinding=source, catalogHash=manifest['catalog']['sha256'],
+                    toolsHash=hashlib.sha256(encoded(catalog['tools'])).hexdigest(), tools=len(catalog['tools']))
+    except (OSError, ValueError, KeyError, TypeError):
+        from store import ProjectFault
+        raise ProjectFault('The managed skill runtime is incomplete or changed. Review its original preparation before running.', 409) from None
+
+
+def load(worker, entry, complete=False):
+    frozen = entry.get('mcp')
+    if not isinstance(frozen, dict) or frozen.get('schema') != 1: raise McpFault('This accepted run has no managed runtime for the selected skill.')
+    root, manifest, catalog = runtime_spec.load(skills_root(worker.store.projects), entry['id'], frozen['sourceBinding'], complete=complete)
+    if (manifest['catalog']['sha256'] != frozen['catalogHash']
+            or hashlib.sha256(encoded(catalog['tools'])).hexdigest() != frozen['toolsHash']
+            or len(catalog['tools']) != frozen['tools']): raise McpFault('The frozen MCP catalogue changed.')
+    return root, manifest, catalog
+
+
+def namespace(worker, root, manifest, state):
+    permissions = worker.config['permissions']
+    if not permissions.get('studio.exec_command') or not permissions.get('studio.read_file'):
+        raise McpFault('Managed analysis requires Run command and Read file permissions for this run.')
+    args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
+    for path in ('/usr', '/lib', '/lib64'):
+        if Path(path).exists(): args += ['--ro-bind', path, path]
+    args += ['--symlink', '/usr/bin', '/bin', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/etc',
+             '--ro-bind', str(root), '/runtime', '--bind', str(state / 'Data'), '/session',
+             '--bind' if permissions.get('studio.write_file') else '--ro-bind', str(worker.store.workspace), '/workspace']
+    for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
+        if Path(path).exists(): args += ['--ro-bind', path, path]
+    from attachment_files import mounts
+    originals = mounts(worker) if permissions.get('studio.read_attachment') else []
+    if originals:
+        args += ['--dir', '/attachments']
+        for source, target in originals: args += ['--ro-bind', source, target]
+    for name in ('Home','Cache','Evidence'):
+        directory(state / 'Data' / name)
+    args += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/session/Home',
+             '--setenv', 'XDG_CACHE_HOME', '/session/Cache', '--setenv', 'LANG', 'C.UTF-8',
+             '--setenv', 'PATH', '/runtime/' + str(Path(manifest['node']['path']).parent) + ':/usr/bin:/bin',
+             '--setenv', 'REA_BUILD_COMMIT', manifest['source']['commit'],
+             '--setenv', 'REA_MCP_INPUT_SCHEMA_PROFILE', 'full', '--setenv', 'REA_MCP_OUTPUT_SCHEMA_PROFILE', 'full']
+    for name, value in manifest.get('environment', {}).items():
+        if (name not in ('GHIDRA_INSTALL_DIR','JAVA_HOME','REA_GHIDRA_INSTALL_DIR','REA_JADX_PATH','REA_BROWSER_EXECUTABLE_PATH')
+                or not isinstance(value,str) or not value.startswith('/runtime/')):
+            raise McpFault('A runtime recipe attempted to provide an unrecognised environment value.')
+        args += ['--setenv', name, value]
+    args += ['--', '/runtime/' + manifest['node']['path'], '/runtime/' + manifest['entry']['path'], *manifest['entry']['arguments']]
+    return args
+
+
+async def start(worker, entry, progress=None):
+    root, manifest, _ = await asyncio.to_thread(load, worker, entry, True)
+    state = directory(worker.store.directory / worker.session_id / 'SkillMCP' / entry['id'] / worker.run_id)
+    directory(state / 'Data')
+    binding = dict(ownerType=worker.store.owner_type, ownerId=worker.store.owner_id, sessionId=worker.session_id,
+                   runId=worker.run_id, skillId=entry['id'], packageHash=entry['activeHash'],
+                   runtimeManifestHash=entry['mcp']['sourceBinding']['runtime']['manifestHash'])
+    client = Client(state / 'Transport', binding, progress)
+    try:
+        await client.start(namespace(worker, root, manifest, state), env={'LANG':'C.UTF-8'})
+        tools = await client.discover()
+        if hashlib.sha256(encoded(tools)).hexdigest() != entry['mcp']['toolsHash']:
+            raise McpFault('The actual server tool contracts differ from this run\'s immutable catalogue.')
+        return client
+    except BaseException:
+        await client.close()
+        raise

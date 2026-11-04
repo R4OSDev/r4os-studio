@@ -14,6 +14,17 @@ import test_runs as fixtures
 
 
 class McpTransport(unittest.TestCase):
+    def test_managed_skill_wrappers_keep_the_exact_generic_contract(self):
+        from tool_catalog import specifications
+        for scope in ('project','skill'):
+            declarations=specifications(scope)
+            for name in ('studio_skill_discover','studio_skill_call','studio_read_skill_result'):
+                schema=next(t['inputSchema'] for t in declarations if t['name']==name)
+                self.assertEqual(mcp_schema(schema),schema)
+        # Native provider differences do not rewrite the nested REA argument JSON.
+        call=next(t for t in specifications() if t['name']=='studio_skill_call')
+        self.assertEqual(call['inputSchema']['properties']['argumentsJson']['type'],'string')
+
     def test_roadmap_oneof_keeps_all_strict_object_branches(self):
         from tool_catalog import specifications
         from profile import PROFILE

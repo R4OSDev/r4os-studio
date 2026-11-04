@@ -227,7 +227,7 @@ class Host:
                 await self.handle({'operation':'cancel_provider','providerId':ident})
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
             return result
-        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
@@ -395,7 +395,7 @@ class Host:
                     if op == 'message_receipt': return messages.receipt(session_id, request['requestId'])
                     self.inboxes.add((kind, project_id, session_id))
                     if op == 'message_control': return messages.control(session_id, request['input'],self.config['providers'])
-                    flags = {'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,'liveGoalPreparation':1,'environmentNotesSettings':1,
+                    flags = {'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'skillMcp':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,'liveGoalPreparation':1,'environmentNotesSettings':1,
                              **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}
                     if store.db.execute('SELECT 1 FROM session_messages WHERE request_id=?', (request['input'].get('requestId'),)).fetchone():
                         # An original receipt outlives its active worker/turn.
@@ -531,6 +531,10 @@ class Host:
                             raise ProjectFault('This worker release cannot apply the saved session skill choices.', 503)
                         if request['input'].get('skillScripts') == 1 and not (target / 'scripts/agent-sessions/skill_scripts.py').is_file():
                             raise ProjectFault('This worker release cannot provide frozen skill script resources.', 503)
+                    if not previous and request['input'].get('skillMcp') == 1:
+                        target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
+                        if not target.is_relative_to('/opt/r4os-studio/releases') or not (target / 'scripts/agent-sessions/skill_mcp_tools.py').is_file():
+                            raise ProjectFault('This immutable worker release cannot provide managed skill tools.',503)
                     if not previous and len(self.active) >= self.max_active_runs:
                         raise ProjectFault(f'The host is already running its maximum number of agent runs ({self.max_active_runs}). No run was started. Retry the same request when a slot is available.', 429)
                     run, fresh = admit(store, session_id, request['input'], self.config['providers'],image_capability)
@@ -632,7 +636,7 @@ class Host:
                 try:
                     run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':project_id,'sessionId':sid,
                         'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
-                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,'liveGoalPreparation':1,'environmentNotesSettings':1,
+                            'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'skillMcp':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,'liveGoalPreparation':1,'environmentNotesSettings':1,
                             **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
                 except Exception:
                     original=store.db.execute('SELECT * FROM runs WHERE request_id=? AND session_id=?',(rid,sid)).fetchone()
@@ -683,7 +687,7 @@ class Host:
             try:
                 run=await self.handle({'operation':'start_run','ownerType':kind,'ownerId':owner,'sessionId':sid,
                     'input':{'mode':'goal','goalRequestId':rid,'requestId':rid,'revision':session['revision'],
-                        'skillSelection':1,'skillScripts':1,'environmentNotesSettings':1,
+                        'skillSelection':1,'skillScripts':1,'skillMcp':1,'environmentNotesSettings':1,
                         **({'projectInstructions':1,'roadmapSettings':1,'remoteHostTools':1} if kind=='project' else {})}})
             except Exception as error:
                 original=store.db.execute('SELECT * FROM runs WHERE request_id=? AND session_id=?',(rid,sid)).fetchone()

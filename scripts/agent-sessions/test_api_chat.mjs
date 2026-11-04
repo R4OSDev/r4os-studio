@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { CHAT_NATIVE_METADATA, ChatFault, ChatStream, chatRequest } from './api_chat.mjs';
 
 const policy = { schema: 1, systemRole: 'system', reasoning: 'none', functionTools: true, streaming: true };
@@ -16,6 +17,24 @@ function stream() {
   return { events, parser: new ChatStream(wire, event => events.push(event)) };
 }
 const released = events => events.filter(event => event.type === 'response.output_item.done' && event.item.type === 'function_call');
+
+test('managed skill wrappers preserve native nullable arguments and names through the API bridge', () => {
+  const declarations = JSON.parse(readFileSync(new URL('../../shared/agent-tools.json', import.meta.url), 'utf8')).project
+    .filter(tool => ['studio_skill_discover', 'studio_skill_call', 'studio_read_skill_result'].includes(tool.name));
+  assert.equal(declarations.length, 3);
+  const value = base();
+  value.tools = declarations.map(tool => ({ type: 'function', name: tool.name, description: tool.description,
+    parameters: tool.inputSchema, strict: false }));
+  const original = JSON.stringify({ skillId: '00000000-0000-4000-8000-000000000001', name: 'native_exact_name',
+    argumentsJson: '{"nullable":null,"nested":[false,{"number":3.5}]}' });
+  value.input.push({ type: 'function_call', call_id: 'owned_skill_call', name: 'studio_skill_call', arguments: original });
+  value.input.push({ type: 'function_call_output', call_id: 'owned_skill_call', output: '{"reference":"owned-original","complete":true}' });
+  const wire = chatRequest(value, policy);
+  const called = wire.messages.find(message => message.tool_calls);
+  assert.equal(called.tool_calls[0].function.arguments, original);
+  assert.equal(called.tool_calls[0].function.name, 'studio_skill_call');
+  assert.deepEqual(wire.tools.map(tool => tool.function.parameters), declarations.map(tool => tool.inputSchema));
+});
 
 test('full instruction/text/tool history, original IDs and qualified parameters survive translation', () => {
   const request = base();

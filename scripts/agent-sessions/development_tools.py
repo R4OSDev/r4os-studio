@@ -44,6 +44,12 @@ class DevelopmentTools:
             # durable job/request/call mapping also survives a lost whole reply.
             content.append({'type':'inputText','text':encode({'developmentReference':reference,'referenceOnly':True})})
         content.append({'type': 'inputText', 'text': encode(result)})
+        if result.get('skillMcp'):
+            images=self.worker.skill_mcp.images(result) if self.image_capable() else []
+            for block in images:
+                content.append({'type':'inputImage','imageUrl':'data:'+block['mimeType']+';base64,'+block['data']})
+            if len(images)<result['skillMcp'].get('imageCount',0):
+                content.append({'type':'inputText','text':'Some original skill images remain in the retained result because this model or its image transport limit cannot deliver them. Retention does not confirm visual inspection.'})
         if result.get('image'):
             if not self.image_capable() or not self.worker.config['permissions'].get('studio.capture_vm'):
                 return {'success': False, 'contentItems': [{'type': 'inputText', 'text': 'Image inspection is unavailable for this model or permission.'}]}

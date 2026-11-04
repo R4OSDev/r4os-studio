@@ -71,6 +71,11 @@ class ClaudeWorker(Worker):
 
     async def mcp_output(self,result,image_data=None):
         content=[{'type':'text','text':encode(result)}]
+        if result.get('skillMcp'):
+            images=self.skill_mcp.images(result) if self.config.get('claudeModel',{}).get('imageInput')=='supported' else []
+            content.extend(images)
+            if len(images)<result['skillMcp'].get('imageCount',0):
+                content.append({'type':'text','text':'Some original skill images remain in the retained result because this model or its image transport limit cannot deliver them. Retention does not confirm visual inspection.'})
         if result.get('image') and self.config.get('claudeModel',{}).get('imageInput')!='supported':
             content.append({'type':'text','text':'The original screenshot was captured and retained, but image delivery is unavailable for this model. This result does not confirm visual inspection.'})
         if result.get('image') and self.config.get('claudeModel',{}).get('imageInput')=='supported':

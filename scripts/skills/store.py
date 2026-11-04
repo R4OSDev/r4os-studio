@@ -15,6 +15,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+from types import SimpleNamespace
 import uuid
 
 spec_lifecycle=importlib.util.spec_from_file_location('studio_skill_lifecycle',Path(__file__).with_name('lifecycle.py'))
@@ -38,6 +39,12 @@ class SkillFault(Exception):
 def now(): return datetime.datetime.now(datetime.timezone.utc).isoformat()
 def encode(value): return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 def digest(data): return hashlib.sha256(data).hexdigest()
+
+
+def module_api():
+    # Research/test and worker loaders need not register a private module alias
+    # in sys.modules. Pass the owning API explicitly at this boundary.
+    return SimpleNamespace(**globals())
 
 
 def identity(value):
@@ -327,8 +334,8 @@ def publish(db, root, data, node, author=None, publication=None):
         validation = validate(files, contents, tree_hash, node)
         if not validation['valid']: return {**current, 'validation': validation, 'saved': False}
         if publication is None:
-            publication = source_binding.current(sys.modules[__name__], db, root, ident, current['skill']['activeHash'])
-        package_hash = source_binding.package_hash(sys.modules[__name__], files, publication)
+            publication = source_binding.current(module_api(), db, root, ident, current['skill']['activeHash'])
+        package_hash = source_binding.package_hash(module_api(), files, publication)
         manifest = {'files': files, 'hash': package_hash, 'metadata': validation['metadata']}
         if publication is not None:
             manifest.update(schema=2, draftHash=tree_hash, sourceBinding=publication)
@@ -359,7 +366,7 @@ def publish(db, root, data, node, author=None, publication=None):
             db.execute('INSERT INTO revisions VALUES(?,?,?,?)', (ident, active, package_hash, encode(validation['metadata'])))
             db.execute('UPDATE skills SET revision=revision+1,format_name=?,description=?,active_revision=?,active_hash=?,updated_at=? WHERE id=?',
                        (validation['metadata']['name'], validation['metadata']['description'], active, package_hash, now(), ident))
-        source_binding.attach(sys.modules[__name__], db, ident, package_hash, tree_hash, publication)
+        source_binding.attach(module_api(), db, ident, package_hash, tree_hash, publication)
         result = {**detail(db, root, ident), 'validation': validation, 'saved': True}
         db.execute('INSERT INTO saves VALUES(?,?,?,?)', (data['requestId'], ident, request_hash, encode(result)))
         db.commit(); return result

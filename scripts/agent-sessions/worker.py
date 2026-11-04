@@ -59,6 +59,8 @@ class Worker:
         self.sandbox = Sandbox(self)
         from skill_resources import SkillResources
         self.skill_resources = SkillResources(self)
+        from skill_mcp_tools import SkillTools as ManagedSkillTools
+        self.skill_mcp = ManagedSkillTools(self)
         self.terminals = Terminals(self)
         from agent_snapshot import AgentSnapshots
         self.build_snapshots = AgentSnapshots(self)
@@ -177,6 +179,8 @@ class Worker:
             event(self.store, self.session_id, self.run_id, 'usage', safe)
 
     async def execute(self, name, arguments, call_id):
+        if name in ('skill_discover','skill_call','read_skill_result'):
+            return await self.skill_mcp.call(name,arguments,call_id)
         if name in NOTE_TOOLS:
             from environment_note_tools import execute
             return execute(self,name,arguments,call_id)
@@ -262,6 +266,12 @@ class Worker:
                 if name == 'studio_read_development_job':
                     result = self.development.replay_read(arguments, result)
                 if result.get('error') != 'unknown':
+                    if result.get('skillMcp'):
+                        reference=result['skillMcp']
+                        current={(entry['id'],entry['activeHash']) for entry in self.config.get('skillAccess',{}).get('entries',[]) if entry.get('mcp')}
+                        if (not self.config['permissions'].get(name.replace('studio_','studio.',1),False)
+                                or (reference['skillId'],reference['packageHash']) not in current):
+                            return await output({'success':False,'error':'unavailable','output':'This historical skill result is outside the current accepted skill selection. Its original data was preserved.'})
                     if result.get('skillResources'):
                         current = {(entry['id'], entry['activeHash']) for entry in self.config.get('skillAccess', {}).get('entries', [])}
                         if (not self.config['permissions'].get(name.replace('studio_', 'studio.', 1), False)
@@ -300,6 +310,7 @@ class Worker:
             except Exception:
                 uncertain = name[7:] in ('import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 uncertain = uncertain or name == 'studio_control_app_window' and (not isinstance(arguments,dict) or arguments.get('action') != 'status')
+                uncertain = uncertain or name == 'studio_skill_call'
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
         # Strip image bytes before any durable tool result, item or SSE event.
@@ -313,7 +324,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('remote', 'roadmap', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset'):
+        for key in ('remote', 'roadmap', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'skillMcp', 'skillMcpRequest'):
             if key in result: value[key] = result[key]
         if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
             from terminal_timing import FIELDS as terminal_time_fields
@@ -354,6 +365,7 @@ class Worker:
         try:
             self.stopping = True
             await self.provider_retry.cancel_for_control()
+            await self.skill_mcp.close()
             if self.goal_worker:
                 user_stop = get_run(self.store,self.run_id)['state']=='stopping' and not self.uncertain_effect
                 await self.goal_worker.pause(origin='user' if user_stop else 'automatic')
@@ -385,6 +397,7 @@ class Worker:
         await self.build_snapshots.close()
         if self.client: await self.client.close()
         await self.terminals.close()
+        await self.skill_mcp.close()
         await self.skill_resources.close()
 
     async def run(self):

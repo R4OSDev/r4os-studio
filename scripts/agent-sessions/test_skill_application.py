@@ -3,6 +3,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import json
+import hashlib
 import os
 from pathlib import Path
 import sqlite3
@@ -24,6 +25,17 @@ import skill_application as application
 class Application(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.fixture = fixtures.Skills(); self.fixture.setUp(); f = self.fixture
+        # Current admission selects an installed default independently of the
+        # historical thread profile retained by this resource fixture.
+        runtime=f.r4os/'Toolchains/Codex/0.163.0/codex';runtime.parent.mkdir(parents=True)
+        runtime.write_bytes(b'isolated-resource-fixture-never-executed')
+        checksum=hashlib.sha256(runtime.read_bytes()).hexdigest()
+        metadata={'id':'0.163.0','version':'0.163.0','binarySha256':checksum}
+        runtime.with_name('.studio-component.json').write_text(json.dumps(metadata))
+        (f.r4os/'Profiles').mkdir()
+        (f.r4os/'Profiles/versions.json').write_text(json.dumps({'defaults':{'codex':{**metadata,'binary':str(runtime)}}}))
+        features=patch('codex_runtime.feature_names',return_value=('goals','image_generation'))
+        features.start();self.addCleanup(features.stop)
         self.publish(f.ids[0], 'First published body.')
         with f.open(f.ids[1]) as store, patch('session_store.engine', return_value=f.engine):
             self.session = store.create(f.settings(), f.providers)
@@ -44,6 +56,7 @@ class Application(unittest.IsolatedAsyncioTestCase):
         return run, json.loads(get_run(store, run['id'])['config']), data, fresh
     def manifest(self, run):
         f = self.fixture
+        (f.projects/'.studio/agents'/run['id']).mkdir(parents=True,exist_ok=True)
         return {**f.config, 'ownerType': 'skill', 'ownerId': f.ids[1], 'sessionId': self.session['id'], 'runId': run['id'], 'release': 'fixture', 'version': '0.4.9'}
 
     async def test_atomic_exceptions_revisions_and_legacy_settings_preserve_the_auxiliary_store(self):
@@ -151,13 +164,25 @@ class Application(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(preferences.read_bytes(), b'preserve corrupt session choices')
 
     async def test_same_native_thread_receives_current_catalogue_without_changed_declarations(self):
-        f = self.fixture; seen = []
+        f = self.fixture; seen = []; sid=self.session['id']
+        native_root=f.skills/f.ids[1]/'Sessions'/sid/'Codex'
+        tail=b'{"type":"event_msg","payload":{"type":"user_message","message":"Original bounded history"}}\n'
         class Native:
             def __init__(self, args, notify, tool): self.notify = notify
             async def start(self): pass
             async def close(self): pass
             async def request(self, method, params, **kwargs):
                 seen.append((method, params))
+                if method=='thread/start':
+                    (native_root/'state').mkdir(parents=True,exist_ok=True)
+                    (native_root/'native').mkdir(parents=True,exist_ok=True)
+                    from image_provider import PROVIDER
+                    with sqlite3.connect(native_root/'state/state_5.sqlite') as db:
+                        db.execute('CREATE TABLE threads(id TEXT PRIMARY KEY,rollout_path TEXT,model_provider TEXT)')
+                        db.execute('INSERT INTO threads VALUES(?,?,?)',('same-selected-skill-thread','/session/native/owned.jsonl',PROVIDER))
+                    record={'type':'session_meta','payload':{'id':'same-selected-skill-thread','model_provider':PROVIDER,
+                            'dynamic_tools':[{'type':'function',**item} for item in params['dynamicTools']]}}
+                    (native_root/'native/owned.jsonl').write_bytes(json.dumps(record).encode()+b'\n'+tail)
                 if method.startswith('thread/'): return {'thread': {'id': 'same-selected-skill-thread'}}
                 if method == 'turn/start':
                     await self.notify('turn/completed', {'threadId': 'same-selected-skill-thread', 'turn': {'id': 'turn', 'status': 'completed'}})
@@ -166,6 +191,10 @@ class Application(unittest.IsolatedAsyncioTestCase):
         with self.open() as store: first, _, _, _ = self.admit(store)
         worker = Worker(self.manifest(first))
         with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
+        self.assertEqual(worker.outcome,'completed',worker.error)
+        record=json.loads((native_root/'native/owned.jsonl').read_bytes().split(b'\n',1)[0])
+        record['payload']['dynamic_tools']=[item for item in record['payload']['dynamic_tools'] if item['name'] not in ('studio_skill_discover','studio_skill_call','studio_read_skill_result')]
+        (native_root/'native/owned.jsonl').write_bytes(json.dumps(record).encode()+b'\n'+tail)
         with self.open() as store:
             store.update(self.session['id'], {'revision': 1, 'skillOverrides': {f.ids[0]: False}}, f.providers)
             second, _, _, _ = self.admit(store)
@@ -175,6 +204,9 @@ class Application(unittest.IsolatedAsyncioTestCase):
         resumed = next(params for method, params in seen if method == 'thread/resume')
         self.assertIn(f.ids[0], start['baseInstructions']); self.assertNotIn(f.ids[0], resumed['baseInstructions'])
         self.assertEqual(resumed['threadId'], 'same-selected-skill-thread')
+        header,after_tail=(native_root/'native/owned.jsonl').read_bytes().split(b'\n',1)
+        self.assertEqual(after_tail,tail)
+        self.assertEqual(json.loads(header)['payload']['dynamic_tools'],[{'type':'function',**item} for item in specifications(f.engine['profile'])])
         self.assertEqual(start['dynamicTools'], specifications(f.engine['profile']))
         roots = next(value for value in specifications('studio-tools-v1') if value['name'] == 'studio_read_file')['inputSchema']['properties']['root']['enum']
         self.assertEqual(roots, ['workspace', 'sdk', 'contract', 'zig', 'rust'])
