@@ -41,7 +41,9 @@ export interface SessionContext {
   usedTokens: number | null; capacityTokens: number | null; remainingTokens: number | null;
   overflowTokens: number | null; usedRatio: number | null;
   last: Record<string, number | null> | null;
-  autoCompactThreshold: null; nominalModelCapacity: null;
+  autoCompactThreshold: number | null; nominalModelCapacity: null;
+  estimatedInputTokens?: number | null; estimateMethod?: string; estimateAt?: string; capacitySource?: string | null;
+  checkpoint?: { recordId: string; throughSequence: number } | null;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {

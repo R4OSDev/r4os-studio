@@ -110,7 +110,7 @@ class ModelTransport:
         self.child = None
         self.closed_confirmed = True
 
-    async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None):
+    def prepare(self, messages, instructions, tools, effort=''):
         if self.binding['protocol'] == 'responses':
             from model_responses import request, Responses
             body = request(self.binding, messages, instructions, tools, effort)
@@ -127,8 +127,16 @@ class ModelTransport:
             parser = Messages(self.binding, tools)
         else:
             raise ModelFault('model_protocol_unavailable')
-        await self.send(body, parser, on_text, on_reasoning)
-        return parser.result()
+        return body, parser
+
+    async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None):
+        body, parser = self.prepare(messages, instructions, tools, effort)
+        try:
+            await self.send(body, parser, on_text, on_reasoning)
+            return parser.result()
+        except ModelFault as error:
+            if self.credential and self.credential in str(error.code): error.code = 'model_provider_error'
+            raise
 
     async def send(self, body, parser, on_text=None, on_reasoning=None):
         if self.child is not None:

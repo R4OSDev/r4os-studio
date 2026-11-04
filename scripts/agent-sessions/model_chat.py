@@ -89,6 +89,8 @@ def request(binding, messages, instructions, tools, effort, policy, client):
         server(binding['server']); value.pop('store')
         if binding['server'] == 'ollama':
             value.pop('tool_choice'); value.pop('parallel_tool_calls')
+    if not tools:
+        for key in ('tools', 'tool_choice', 'parallel_tool_calls', 'tool_stream'): value.pop(key, None)
     return value, headers
 
 

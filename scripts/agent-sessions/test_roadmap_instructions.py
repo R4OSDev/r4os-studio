@@ -43,7 +43,11 @@ class RoadmapInstructions(unittest.TestCase):
             db_file = self.projects / '.studio/Settings.sqlite'
             raw_db = db_file.read_bytes() if db_file.exists() else None
             result = compose(config)
-            self.assertIn(config['systemPrompt']['text'], result)
+            # The complete source enters the common base. Managed SDK/shortcut
+            # guidance is rendered once with the current feature contract.
+            from instructions import base
+            self.assertIn(config['systemPrompt']['text'], base(config))
+            if custom: self.assertIn(config['systemPrompt']['text'], result)
             self.assertIn(config['projectInstructions']['text'], result)
             self.assertIn(CONTRACT.read_text(), result)
             self.assertEqual(config, original)

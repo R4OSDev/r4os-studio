@@ -216,3 +216,37 @@ Gewöhnliche Datei- und Terminaloperationen im Studio-Kern prüfen, laden und
 mounten keine Codex-Modellruntime. Nur die ausdrücklich gewählte apply_patch-
 Operation verwendet derzeit den vorhandenen eigenständigen offiziellen
 Patchparser. Dieser ist eine Werkzeughilfe und führt keine Agentenschleife aus.
+
+## Kontext und Verdichtung (0.10.8)
+
+Alle direkten Anschlüsse verwenden dieselbe compose-Funktion einschließlich der
+bestehenden Entwicklungs-/GUI-/Projektumgebungsanweisungen. Globale und lokale
+Quellen bleiben unverändert gespeichert; aktuelle Werkzeugverträge ergänzen ihre
+bestehende Priorität. Aufbewahrte Inhalte und Zusammenfassungen sind Taskdaten.
+
+StudioContext rekonstruiert Originalnachrichten und den letzten bestätigten
+Checkpoint. Die Planungsschätzung verwendet die Bytezahl des tatsächlich vom
+Anschluss serialisierten Requests geteilt durch vier; sie ist kein Tokenizer
+und wird ausdrücklich getrennt von der original gemeldeten Inputzahl angezeigt.
+Das konfigurierte Kontextfenster kommt aus den akzeptierten Modellfakten.
+Unbekannte Counts/Fenster bleiben unbekannt; für Messages sind unvollständige
+Cachecounts keine vollständige Kontextmessung. Offene Werkzeugpaare erhalten
+noch keine Schätzung eines versendbaren Folgeinputs. Lesen/Reload führt keine
+Modellprüfung oder Verdichtung aus.
+
+Bei Bedarf (80 Prozent des konfigurierten Fensters, als Messung oder ausdrücklich
+gekennzeichnete Planungsschätzung, beziehungsweise Annäherung an die vorhandene
+Transport-Bytegrenze) fordert der aktive Worker eine Zusammenfassung über dieselbe
+Route an. Sie hat keine Tools und wird erst nach bestätigtem Protokollabschluss
+als unveränderlicher Checkpoint samt Originalantwort, Quellhash und Wasserstand
+gespeichert. Fehler erzeugen keinen Ersatzcheckpoint und keinen Routenwechsel.
+Nur vollständig geschlossene Toolpaare werden verdichtet. Der aktuelle originale
+Benutzerauftrag bleibt im aktiven Kontext exakt erhalten. Alle ursprünglichen
+Nachrichten, opaken Providerdaten, Ergebnisse und Wirkungsquittungen bleiben
+privat gespeichert; große Resultate behalten ihre vollständigen Originalreferenzen.
+
+Ein gespeicherter Checkpoint ist kein neuer Auftrag und startet beim Öffnen keine
+Fortsetzung. Tacho und Tooltip unterscheiden gemeldeten Input, konfiguriertes
+Fenster und Schätzung; nach Abbruch/Fehler bleiben frühere Messungen als solche
+kenntlich. Die Messages-Rollendarstellung folgt dem stateless Messages-Vertrag:
+[offizielle APIreferenz](https://platform.claude.com/docs/en/api/messages/create).

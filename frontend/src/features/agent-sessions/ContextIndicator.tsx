@@ -49,20 +49,23 @@ export function ContextIndicator({context}:{context?:SessionContext}) {
       </svg><span aria-hidden="true">{value}</span>
     </button>
     {known&&<span className="agent-context-meter" role="meter" aria-label="Context usage" aria-valuemin={0} aria-valuemax={100}
-      aria-valuenow={fill*100} aria-valuetext={percent.format(ratio)+' of the reported effective context window'}/>}
+      aria-valuenow={fill*100} aria-valuetext={percent.format(ratio)+(context?.engine==='studio'?' of the configured model window':' of the reported effective context window')}/>}
     {open&&createPortal(<div ref={tooltip} id={id} role="tooltip" className="agent-context-tooltip" style={position}
       onPointerEnter={show} onPointerLeave={leave}>
       <strong>Context usage{known?' · '+percent.format(ratio):''}</strong>
       <p className="context-state">{state!=='available'&&state[0].toUpperCase()+state.slice(1)+' · '}{context?.reason??'No qualified context measurement is available.'}</p>
-      <dl><dt>Used tokens</dt><dd>{tokens(context?.usedTokens)}</dd>
-        <dt>Effective window</dt><dd>{tokens(context?.capacityTokens)}</dd>
-        <dt>Remaining tokens</dt><dd>{tokens(context?.remainingTokens)}</dd>
+      <dl><dt>{context?.engine==='studio'?'Last reported input':'Used tokens'}</dt><dd>{tokens(context?.usedTokens)}</dd>
+        <dt>{context?.engine==='studio'?'Configured window':'Effective window'}</dt><dd>{tokens(context?.capacityTokens)}</dd>
+        <dt>{context?.engine==='studio'?'Unused at last report':'Remaining tokens'}</dt><dd>{tokens(context?.remainingTokens)}</dd>
         {known&&<><dt>Remaining</dt><dd>{percent.format(Math.max(0,1-ratio))}</dd></>}
         {!!context?.overflowTokens&&<><dt>Reported overflow</dt><dd>{tokens(context.overflowTokens)}</dd></>}
         <dt>Model</dt><dd>{context?.model??'Unknown'}</dd>
         <dt>Last reported</dt><dd>{date&&!Number.isNaN(date.valueOf())?<time dateTime={context!.reportedAt!}>{date.toLocaleString()}</time>:'Unknown'}</dd>
-        <dt>Source</dt><dd>{context?.source?'Native '+(context.engine==='codex'?'Codex ':'Claude ')+context.engineVersion+' · last context':'Unavailable'}</dd></dl>
-      <p>Full reported context. No estimate from cumulative usage or subscription limits.</p>
+        <dt>Source</dt><dd>{context?.source?(context.engine==='studio'?'Studio model usage · '+context.capacitySource:'Native '+(context.engine==='codex'?'Codex ':'Claude ')+context.engineVersion+' · last context'):'Unavailable'}</dd>
+        {context?.engine==='studio'&&<><dt>Estimated next input</dt><dd>{tokens(context.estimatedInputTokens)}</dd>
+          <dt>Estimate method</dt><dd>{context.estimateMethod??'Unknown'}</dd></>}
+        </dl>
+      <p>{context?.engine==='studio'?'The planning estimate uses serialized bytes. It is separate from provider usage and subscription limits.':'Full reported context. No estimate from cumulative usage or subscription limits.'}</p>
     </div>,document.body)}
   </div>;
 }

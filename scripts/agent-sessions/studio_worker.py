@@ -25,6 +25,8 @@ class StudioWorker(Worker):
         self.conversation = Conversation(self.store, self.session_id)
         self.model = None; self.operation = None; self.credential = None
         self.round = 0
+        from studio_context import StudioContext
+        self.context = StudioContext(self)
 
     def declarations(self):
         def allowed(name):
@@ -80,8 +82,14 @@ class StudioWorker(Worker):
             if not page: return values
             values.extend(page); cursor = page[-1]['sequence']
 
+    def transport(self):
+        return ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
+            **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
+            chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
+
     async def response(self, instructions, tools):
         self.validate_lease()
+        active = await self.context.prepare(instructions, tools)
         self.round += 1; self.turn_id = 'studio-' + str(uuid.uuid4())
         transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
         ident = 'assistant-' + self.run_id + '-' + str(self.round)
@@ -98,15 +106,14 @@ class StudioWorker(Worker):
             self.store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
                 (self.session_id, self.run_id, ident, encode(preview)))
             event(self.store, self.session_id, self.run_id, 'delta', {'itemId': ident, 'text': added})
-        self.model = ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
-            **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
-            chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
+        self.model = self.transport()
         self.turn_requested = True
-        self.operation = asyncio.create_task(self.model.response(self.history(), instructions,
+        self.operation = asyncio.create_task(self.model.response(active, instructions,
             tools, self.config['effort'], on_text=text))
         result = await self.operation
         self.conversation.append(self.run_id, ident, 'assistant', result['content'],
             {**result['origin'], 'usage': result['usage'], 'finishReason': result['finishReason'], 'turnId': self.turn_id})
+        self.context.report(instructions, tools)
         full = ''.join(part['text'] for part in result['content'] if part['type'] == 'text')
         from terminal import bounded_text
         preview['text'], clipped = bounded_text(full, 196608)
@@ -116,7 +123,7 @@ class StudioWorker(Worker):
 
     async def cycle(self):
         from instructions import compose
-        instructions = compose(self.config)
+        instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
         tools = self.declarations()
         while self.active():
             result = await self.response(instructions, tools)
@@ -172,11 +179,13 @@ class StudioWorker(Worker):
             await self.cycle()
         except asyncio.CancelledError:
             self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
+            self.context.invalidate('The model operation was interrupted. Original context and receipts are retained.', 'stale')
         except Exception as error:
             self.outcome = 'unknown' if self.uncertain_effect else 'failed'
             self.error = str(error) if isinstance(error, ProjectFault) else 'The Studio worker could not confirm this run. Inspect its original receipts.'
             if isinstance(error, ModelFault):
                 event(self.store, self.session_id, self.run_id, 'notice', {'text': self.error, 'providerError': {'code': error.code, 'httpStatusCode': error.http_status}})
+            self.context.invalidate('The latest model operation failed. This is retained earlier context.', 'stale')
         finally:
             try:
                 if self.model: await self.model.close()
