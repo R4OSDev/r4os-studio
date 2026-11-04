@@ -63,6 +63,7 @@ export async function providerRoutes(app: FastifyInstance, options: ProviderOpti
       confirm: { type: 'boolean', enum: [true] },
       idempotencyKey: { type: 'string', pattern: '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$' },
       creditId: { type: 'string', minLength: 1, maxLength: 512 },
+      accountScope: { type: 'string', minLength: 1, maxLength: 1024 },
     } } },
   }, async (request, reply) => {
     sessions.mutation(request, reply);

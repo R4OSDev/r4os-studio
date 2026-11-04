@@ -275,6 +275,13 @@ export class ProviderManager {
   async consumeReset(id: string, request: ResetRequest): Promise<ResetResult> {
     return this.exclusive(id, async () => {
       const runtime = await this.connectedRuntime(id);
+      const provider = this.present(await this.record(id));
+      if (provider.runtime === 'studio') {
+        if (!provider.account?.scope || request.accountScope !== provider.account.scope) {
+          throw new ProviderError('This sign-in or workspace changed. Reload the connection before using a reset.', 409);
+        }
+        await this.usageScope(id, runtime);
+      }
       let outcome: ResetResult['outcome'];
       try { outcome = await redeemReset(runtime.client, request); }
       catch { throw new ProviderError('The reset result could not be confirmed. Retry the same attempt to avoid using another reset.', 502); }

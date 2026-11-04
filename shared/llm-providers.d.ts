@@ -86,6 +86,7 @@ export interface ResetRequest {
   confirm: true;
   idempotencyKey: string;
   creditId?: string;
+  accountScope?: string;
 }
 
 export interface ResetResult {

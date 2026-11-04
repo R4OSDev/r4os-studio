@@ -506,3 +506,21 @@ Native hosted image/specialty features retain their own narrow availability
 boundaries. Their absence never starts a second agent inside a Studio model
 run. Explicit conversation conversion preserves original artifacts and accepted
 queued inputs; installing or reconnecting does not perform that conversion.
+
+# Explicit connection changes (0.10.25)
+
+OpenAI subscription sign-in and the older direct ChatGPT registration are
+labelled separately. The native browser flow supplies model access and limits
+for one selected account/workspace; changing that identity requires an explicit
+disconnect/sign-in. It never starts work or rewrites saved conversations.
+Subscription reset actions, when explicitly confirmed by the user, also bind to
+the sign-in scope shown in that view; a stale view cannot consume a different
+sign-in's reset. Reading limits does not invoke that action.
+
+Use the existing Conversation review to convert a saved native session, then
+select models/providers through its ordinary Studio settings. Accepted queue
+inputs retain their original frozen connection. Only compatible original model
+payloads stay private to that model/route; cross-provider history projects
+confirmed visible content and complete tool observations without executing them
+again. Session identity, original receipts, selected REA processes and Goal
+budgets stay with Studio. There is no installer or sign-in migration.

@@ -47,7 +47,7 @@ export function ChatGPTPlan({ api, provider, saved }: { api:ProviderApi; provide
   }
   const disconnected=async()=>{const result=await logout.send('disconnect',{revision:provider!.revision});if(result?.state==='complete'){await reload();saved(provider!.id);}};
   return <div className="provider-form chatgpt-plan">
-    <p className="field-help">Use your ChatGPT plan in Studio. Sign in with OpenAI, then paste the final redirect address here to finish connecting.</p>
+    <p className="field-help">This is a separate direct ChatGPT registration. For one native sign-in that also reports subscription percentages, choose “OpenAI · ChatGPT subscription”. Sign in with OpenAI, then paste the final redirect address here to finish this direct connection.</p>
     <label htmlFor="chatgpt-plan-name">Display name</label><input id="chatgpt-plan-name" value={name} onChange={e=>setName(e.target.value)} maxLength={80} disabled={!!provider||busy||!!pending}/>
     {account&&<p className="field-help">{account.email??provider?.name} · {account.directPermission?'Direct plan permission saved':'Sign-in required'}. Exact remaining plan quota is unavailable here. <a href={account.usageUrl} target="_blank" rel="noopener noreferrer">Manage ChatGPT usage</a></p>}
     {provider&&!provider.enabled&&account?.remoteRevocation&&<p role="status" className="field-help">Signed out locally. Remote token revocation: {account.remoteRevocation}. Review ChatGPT app access when its outcome is unknown.</p>}

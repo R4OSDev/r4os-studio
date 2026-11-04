@@ -103,7 +103,8 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
     try {
       // Persist before sending; retries and reloads reuse this exact logical attempt.
       saveAttempt({ ...attempt, submitted: true });
-      const result = await request<ResetResult>(`${path}/resets`, 'POST', { confirm: true, idempotencyKey: attempt.key });
+      const result = await request<ResetResult>(`${path}/resets`, 'POST', { confirm: true, idempotencyKey: attempt.key,
+        ...(accountScope ? { accountScope } : {}) });
       if (!alive.current) return;
       clearAttempt(); setConfirming(false); setMessage(outcomes[result.outcome]);
       // The server refetches the authoritative limits instead of predicting new values.
