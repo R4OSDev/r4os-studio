@@ -86,6 +86,8 @@ polkit.addRule(function(action, subject) {
             finally:
                 os.close(fd)
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
+    companion=Path(__file__).with_name('install-mcp-support.py')
+    if companion.is_file():subprocess.run(['/usr/bin/python3','-B',str(companion)],check=True)
     print('Private source-job unit and narrow start/stop support installed; existing services and VMs preserved.')
 
 

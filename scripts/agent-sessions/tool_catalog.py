@@ -38,7 +38,7 @@ def tools_for(scope='project'):
 
 def permission_tools(scope='project'):
     grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note'}
-    return tuple(name for name in tools_for(scope) if name not in grouped)
+    return tuple(name for name in tools_for(scope) if name not in grouped)+('skill_network',)
 
 
 def validate_arguments(name,value,scope='project'):

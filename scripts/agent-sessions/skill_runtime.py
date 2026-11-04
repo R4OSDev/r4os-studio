@@ -5,7 +5,7 @@ import importlib.util
 from pathlib import Path
 import json
 from owner import skills_root
-from skill_mcp_client import Client, McpFault, directory, encoded
+from skill_mcp_client import Client, McpFault, directory, encoded,atomic
 
 spec = importlib.util.spec_from_file_location('managed_skill_runtime_spec', Path(__file__).resolve().parents[1] / 'skills/runtime_spec.py')
 runtime_spec = importlib.util.module_from_spec(spec); spec.loader.exec_module(runtime_spec)
@@ -31,7 +31,7 @@ def load(worker, entry, complete=False):
     return root, manifest, catalog
 
 
-def namespace(worker, root, manifest, state):
+def namespace(worker, root, manifest, state,egress=None):
     permissions = worker.config['permissions']
     if not permissions.get('studio.exec_command') or not permissions.get('studio.read_file'):
         raise McpFault('Managed analysis requires Run command and Read file permissions for this run.')
@@ -42,6 +42,7 @@ def namespace(worker, root, manifest, state):
         if Path(path).exists(): args += ['--ro-bind', path, path]
     args += ['--symlink', '/usr/bin', '/bin', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/etc',
              '--dir','/runner','--ro-bind',str(Path(__file__).with_name('skill_namespace_entry.py')),'/runner/skill_namespace_entry.py',
+             '--ro-bind',str(Path(__file__).with_name('skill_chromium.sh')),'/runner/chromium',
              '--ro-bind',str(Path(__file__).resolve().parents[2]/'shared/skill-hosts'),'/etc/hosts',
              '--ro-bind', str(root), '/runtime', '--bind', str(state / 'Data'), '/session',
              '--bind' if permissions.get('studio.write_file') else '--ro-bind', str(worker.store.workspace), '/workspace']
@@ -72,12 +73,35 @@ def namespace(worker, root, manifest, state):
                 part.startswith('/runtime/') and '..' not in Path(part).parts for part in value.split(':')):
             raise McpFault('A runtime recipe attempted to provide an unrecognised environment value.')
         args += ['--setenv', name, value]
+    browser=manifest.get('environment',{}).get('REA_BROWSER_EXECUTABLE')
+    browser_environment=dict(PATH='/runtime/Programs/Bin:/runtime/Programs/Java/bin:/runtime/Programs/Python/bin:/runtime/Programs/OsTools/usr/bin:/usr/bin:/bin',
+        HOME='/session/Home',XDG_CACHE_HOME='/session/Cache',LANG='C.UTF-8')
+    if manifest.get('environment',{}).get('LD_LIBRARY_PATH'):
+        browser_environment['LD_LIBRARY_PATH']=manifest['environment']['LD_LIBRARY_PATH']
+    if browser:
+        args+=['--setenv','REA_BROWSER_EXECUTABLE','/runner/chromium']
+    if permissions.get('studio.skill_network'):
+        if egress is None:raise McpFault('This run has no prepared private skill web proxy.')
+        args+=['--ro-bind',str(egress),'/runner/egress.sock','--ro-bind',str(Path(__file__).with_name('skill_net_bridge.py')),'/runner/skill_net_bridge.py']
+        if Path('/etc/ssl/certs').exists():args+=['--dir','/etc/ssl','--ro-bind','/etc/ssl/certs','/etc/ssl/certs']
+        proxy_environment=dict(HTTP_PROXY='http://127.0.0.1:3128',HTTPS_PROXY='http://127.0.0.1:3128',
+                http_proxy='http://127.0.0.1:3128',https_proxy='http://127.0.0.1:3128',
+                NO_PROXY='localhost,127.0.0.1,::1,studio-skill',no_proxy='localhost,127.0.0.1,::1,studio-skill',
+                NODE_USE_ENV_PROXY='1',STUDIO_SKILL_PROXY='http://127.0.0.1:3128')
+        for name,value in proxy_environment.items():args+=['--setenv',name,value]
+        browser_environment.update(proxy_environment)
+    if browser:
+        control=directory(state/'Control');configuration=control/'Browser.json'
+        atomic(configuration,encoded(dict(schema=1,executable=browser,environment=browser_environment,
+            proxy='http://127.0.0.1:3128' if permissions.get('studio.skill_network') else None)))
+        args+=['--ro-bind',str(configuration),'/runner/browser.json',
+            '--ro-bind',str(Path(__file__).with_name('skill_browser_launch.py')),'/runner/skill_browser_launch.py']
     args += ['--','/usr/bin/python3','-I','-B','/runner/skill_namespace_entry.py',
              '/runtime/' + manifest['node']['path'], '/runtime/' + manifest['entry']['path'], *manifest['entry']['arguments']]
     return args
 
 
-async def start(worker, entry, progress=None):
+async def local_start(worker, entry, progress=None):
     root, manifest, _ = await asyncio.to_thread(load, worker, entry, True)
     state = directory(worker.store.directory / worker.session_id / 'SkillMCP' / entry['id'] / worker.run_id)
     directory(state / 'Data')
@@ -94,3 +118,8 @@ async def start(worker, entry, progress=None):
     except BaseException:
         await client.close()
         raise
+
+
+async def start(worker,entry):
+    from skill_session_client import start as session_start
+    return await session_start(worker,entry)

@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import socket
 import struct
+import subprocess
+import select
 import sys
 
 
@@ -29,6 +31,17 @@ def main():
     header=Header(0x20080522,0);data=(Data*2)()
     if libc.capset(ctypes.byref(header),data)!=0 or libc.prctl(38,1,0,0,0)!=0:
         raise OSError(ctypes.get_errno(),'Cannot seal private analysis privileges.')
+    if os.environ.get('STUDIO_SKILL_PROXY'):
+        reader,writer=os.pipe()
+        process=subprocess.Popen(['/usr/bin/python3','-I','-B','/runner/skill_net_bridge.py',str(writer)],
+            stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,pass_fds=(writer,))
+        os.close(writer)
+        try:
+            ready=select.select([reader],[],[],8)[0]
+            if not ready or os.read(reader,5)!=b'ready':
+                process.terminate();process.wait(timeout=5)
+                raise RuntimeError('The private web bridge did not confirm its loopback socket.')
+        finally:os.close(reader)
     if len(sys.argv)<2 or not Path(sys.argv[1]).is_absolute():raise RuntimeError('A managed absolute command is required.')
     os.execve(sys.argv[1],sys.argv[1:],dict(os.environ))
 

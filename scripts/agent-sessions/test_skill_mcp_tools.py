@@ -20,17 +20,26 @@ spec=importlib.util.spec_from_file_location('mcp_fixture_skill_store',Path(__fil
 packages=importlib.util.module_from_spec(spec);sys.modules[spec.name]=packages;spec.loader.exec_module(packages)
 
 SERVER = r'''
-import fs from 'node:fs';import readline from 'node:readline';
-const tools=JSON.parse(fs.readFileSync('/runtime/catalog.json')).tools;
+import fs from 'node:fs';import readline from 'node:readline';import net from 'node:net';
+const tools=JSON.parse(fs.readFileSync('/runtime/catalog.json')).tools;let counter=0;
 const send=v=>console.log(JSON.stringify({jsonrpc:'2.0',...v}));
 for await(const line of readline.createInterface({input:process.stdin})){
  const q=JSON.parse(line),p=q.params??{};if(q.id===undefined)continue;
  if(q.method==='initialize')send({id:q.id,result:{protocolVersion:p.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'explicit-studio-test-fixture',version:'1'}}});
  else if(q.method==='tools/list')send({id:q.id,result:{tools}});
  else if(q.method==='tools/call'){
+   if(p.arguments.delay_ms)await new Promise(r=>setTimeout(r,p.arguments.delay_ms));
    let result;if(p.name==='large')result={content:[{type:'text',text:'bound-evidence-'.repeat(10000)}]};
    else if(p.name==='image')result={content:[{type:'image',mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII='}]};
-   else result={content:[{type:'text',text:JSON.stringify(p.arguments)}],structuredContent:{original:p.arguments,ambient:process.env.STUDIO_QA_SECRET??null,workspace:fs.readFileSync('/workspace/canary.txt','utf8')}};
+   else {const probe={};if(p.arguments.probe){
+     for(const path of p.arguments.probe.read??[])try{probe[path]={text:fs.readFileSync(path,'utf8')}}catch(e){probe[path]={error:e.code}}
+     for(const path of p.arguments.probe.write??[])try{fs.writeFileSync(path,'owned namespace probe');probe[path]={written:true}}catch(e){probe[path]={error:e.code}}
+     probe.capabilities=fs.readFileSync('/proc/self/status','utf8').split('\n').filter(s=>/^(Cap|NoNewPrivs)/.test(s));
+     if(p.arguments.probe.proxy_url)probe.webResponse=await new Promise((resolve,reject)=>{let value='';const s=net.connect({host:'127.0.0.1',port:3128});s.on('connect',()=>s.write('GET '+p.arguments.probe.proxy_url+' HTTP/1.1\r\nHost: own-public.example\r\nConnection: close\r\n\r\n'));s.on('data',b=>value+=b);s.on('end',()=>resolve(value));s.on('error',reject)});
+     probe.hostConnection=await new Promise(resolve=>{const s=net.connect({host:'127.0.0.1',port:5010});s.setTimeout(250);s.once('connect',()=>{s.destroy();resolve('connected')});s.once('error',e=>resolve(e.code));s.once('timeout',()=>{s.destroy();resolve('timeout')})});
+     const local=net.createServer(s=>s.end('private-loopback'));await new Promise(r=>local.listen(0,'127.0.0.1',r));
+     probe.loopback=await new Promise((resolve,reject)=>{let value='';const s=net.connect({host:'127.0.0.1',port:local.address().port});s.on('data',b=>value+=b);s.on('end',()=>resolve(value));s.on('error',reject)});await new Promise(r=>local.close(r));
+   }result={content:[{type:'text',text:JSON.stringify(p.arguments)}],structuredContent:{probe,nativeCounter:++counter,nativePid:process.pid,original:p.arguments,ambient:process.env.STUDIO_QA_SECRET??null,workspace:fs.readFileSync('/workspace/canary.txt','utf8')}};}
    send({id:q.id,result});
  }else send({id:q.id,result:{}});
 }
@@ -77,7 +86,8 @@ class ManagedBroker(unittest.IsolatedAsyncioTestCase):
             stopping=False,lease=object(),uncertain_effect=False,error=None,outcome='completed')
         self.worker.config['skillAccess']=freeze(store,{},mcp=True)
         self.entry=self.worker.config['skillAccess']['entries'][0]
-        self.broker=SkillTools(self.worker)
+        import skill_runtime
+        self.broker=SkillTools(self.worker,starter=skill_runtime.local_start)
         self.worker.skill_mcp=self.broker
 
     async def asyncTearDown(self):

@@ -52,8 +52,7 @@ run. A runtime runs in a separate credential-free filesystem/network namespace,
 with only the selected project and permitted attachments, immutable runtime and
 private analysis state. Run command and Read file are required; the project is
 read-only when Write file is disabled. No VM, host home or provider store is
-exposed. Program prerequisites and further namespace/session-lifetime work are
-qualified in their separately planned releases.
+exposed. Program prerequisites are recorded in the private runtime and its native readiness report.
 
 Whole original results stay private to the project/session and retain their
 source commit. Results and schemas exceeding the model-facing page limit have
@@ -62,11 +61,30 @@ Opaque references from other sessions fail. Original image blocks use the
 existing native model image path when supported; any undelivered images stay
 in the original result and are explicitly distinguished from visual inspection.
 
-At the 0.9.51 implementation stage native process state is owned by the active
-run, while result references remain session-owned. Full native session-state
-continuity and final real-model acceptance remain open until the later lifecycle
-and qualification work. A successfully downloaded REA source is still distinct
-from its prepared managed runtime.
+An independent unprivileged service retains REA's native state for each session
+and immutable analysis namespace. It verifies the original accepted run,
+worker PID/birth and Unix peer before admitting effects. A completed run closes
+its grant while retaining the actual native process; the next accepted run can
+use that same state. The service cgroup is frozen between accepted runs so
+native background targets cannot keep executing outside their project lease.
+Other sessions never share it. Changed runtime, file rights
+or attachment scope require the previous namespace to end before replacement.
+The controller preserves original unknown effects instead of replaying them;
+full application deletion/recovery coordination follows in the lifecycle release.
+
+Skill web access is a separate normal permission, disabled by default. The
+network namespace always retains only its private loopback. When granted, a
+scoped Unix proxy admits checked public HTTP/HTTPS destinations on ports80/443,
+pins DNS results and rejects host/private/special addresses. The proxy stores
+no request headers or bodies. Grants and open proxy streams close at the run
+boundary. Native Node24 uses its supported environment-proxy mode; the managed
+Chromium launcher follows the same route. Discovery returns actual namespace
+paths, including `/runner/chromium` for an explicitly selected browser-scenario
+launch. No page, target or user VM starts merely by activating a skill.
+
+The 0.9.51 native model/Goal/Resume acceptance remains open until the final
+real-session qualification. A successfully downloaded source is still distinct
+from its fully prepared and published managed runtime.
 
 Protocol basis: [lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
 [stdio](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),

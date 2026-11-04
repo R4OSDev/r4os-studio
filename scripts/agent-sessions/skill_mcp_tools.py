@@ -13,8 +13,10 @@ PAGE = 49152
 
 
 class SkillTools:
-    def __init__(self, worker):
+    def __init__(self, worker, starter=None):
         self.worker = worker
+        self.starter=starter or skill_runtime.start
+        self.starting={}
         self.clients = {}
         self.catalogs = {}
         self.locks = {}
@@ -34,10 +36,15 @@ class SkillTools:
         return self.catalogs[entry['id']]
 
     async def client(self, entry):
-        if self.worker.stopping or not self.worker.lease:
+        if self.worker.stopping or getattr(self.worker,'closing',False) or not self.worker.lease:
             raise McpFault('The original active run no longer admits skill effects.')
         if entry['id'] not in self.clients:
-            self.clients[entry['id']] = await skill_runtime.start(self.worker, entry)
+            task=self.starting.get(entry['id'])
+            if task is None:
+                task=asyncio.create_task(self.starter(self.worker,entry));self.starting[entry['id']]=task
+            try:self.clients[entry['id']]=await asyncio.shield(task)
+            finally:
+                if task.done():self.starting.pop(entry['id'],None)
         return self.clients[entry['id']]
 
     def root(self):
@@ -94,8 +101,17 @@ class SkillTools:
     async def discover(self, args, call_id):
         if not args.get('skillId'):
             entries = self.worker.config.get('skillAccess', {}).get('entries', [])
-            return dict(success=True, output=encoded({'skills':[dict(id=e['id'],name=e['name'],tools=e['mcp']['tools'],
-                        version=e['mcp']['sourceBinding']['runtime']['version']) for e in entries if e.get('mcp')]}).decode())
+            rows=[]
+            for entry in entries:
+                if not entry.get('mcp'):continue
+                _,manifest,_=await asyncio.to_thread(skill_runtime.load,self.worker,entry)
+                rows.append(dict(id=entry['id'],name=entry['name'],tools=entry['mcp']['tools'],
+                    version=entry['mcp']['sourceBinding']['runtime']['version'],
+                    namespace=dict(workspace='/workspace',session='/session',node='/runtime/'+manifest['node']['path'],
+                        rea='/runtime/'+manifest['entry']['path'],
+                        browserExecutable='/runner/chromium' if manifest.get('environment',{}).get('REA_BROWSER_EXECUTABLE') else None,
+                        webAccess=self.worker.config['permissions'].get('studio.skill_network') is True)))
+            return dict(success=True,output=encoded({'skills':rows}).decode())
         entry = self.entry(args['skillId'])
         catalog = await self.catalog(entry)
         kind = args.get('kind','tools')
@@ -193,9 +209,14 @@ class SkillTools:
         return result
 
     async def close(self):
+        if self.starting:
+            await asyncio.gather(*self.starting.values(),return_exceptions=True)
         if self.clients:
-            ends=await asyncio.gather(*(client.close() for client in self.clients.values()),return_exceptions=True)
-            if any(isinstance(value,BaseException) or not value.get('processEndConfirmed') for value in ends):
+            retain=self.worker.outcome=='completed' and not self.worker.stopping and not self.worker.uncertain_effect
+            ends=await asyncio.gather(*(client.release(retain) if hasattr(client,'release') else client.close() for client in self.clients.values()),return_exceptions=True)
+            if any(isinstance(value,BaseException) or value.get('unresolved') or not (
+                    value.get('processEndConfirmed') or value.get('ownershipTransferred') and value.get('grantClosed')
+                    or retain and value.get('sessionRetained') and value.get('grantClosed')) for value in ends):
                 self.worker.uncertain_effect=True
                 self.worker.outcome='unknown'
                 self.worker.error=self.worker.error or 'A managed skill process end remains unconfirmed.'
