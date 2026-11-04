@@ -5321,3 +5321,11 @@ For the additive profiles, prepare only the known updater compatibility with `py
 0.7.23: Project session transcripts follow the latest messages only at the actual bottom. The divider above “Message the agent…” pulses while following; scrolling up pauses, and reaching the bottom resumes. New messages, streamed deltas and late content resizing share the same follow state. Paused reading positions and composer drafts are preserved. Reduced motion uses a static highlighted divider. This is browser-only state; Skill Manager session behavior and run/provider/VM control are unchanged. Local HTTP/SSE browser checks1440/320, Build/TypeScript and lint passed without inference.
 
 Project VM SSH (0.9.25): free commands on the assigned VM use the internal SSH transport, durable development jobs and a separate Tools switch; no build/deployment required. See [Project-VM-SSH.md](Project-VM-SSH.md). No guest function run was performed for this release.
+# Common Studio runtime (0.10.1)
+
+The [common runtime design](Agent-Runtime.md) defines one Studio-owned execution
+loop for all direct model connections, reusing existing storage and tool brokers.
+It also records required account boundaries and the transition from native
+Codex/Claude sessions. Direct connectors and execution are delivered in the
+following 0.10 releases; existing runs and saved conversations retain their
+current runtime. Keep code simple and permanent checks tied to actual features.
