@@ -29,7 +29,7 @@ function newKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function ProviderUsage({ id, accountEmail, request }: { id: string; accountEmail: string | null; request: ProviderApi['request'] }) {
+export function ProviderUsage({ id, accountEmail, accountScope = '', request }: { id: string; accountEmail: string | null; accountScope?: string; request: ProviderApi['request'] }) {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export function ProviderUsage({ id, accountEmail, request }: { id: string; accou
   const [now, setNow] = useState(Date.now);
   const [confirming, setConfirming] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const storageKey = `r4os-studio:reset-attempt:${id}:${accountEmail ?? ''}`;
+  const storageKey = `r4os-studio:reset-attempt:${id}:${accountEmail ?? ''}${accountScope ? ':' + accountScope : ''}`;
   const [attempt, setAttempt] = useState<Attempt | null>(() => restoreAttempt(storageKey));
   const alive = useRef(false);
   const reading = useRef(false);

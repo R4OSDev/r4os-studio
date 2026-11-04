@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { Provider } from '../../../../shared/llm-providers.js';
 
-export type ProviderRecord = Omit<Provider, 'status'> & { connected: boolean };
+export type ProviderRecord = Omit<Provider, 'status'> & { connected: boolean; authGeneration?: string };
 export const validProviderId = (value: string) => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value);
 
 export class ProviderStore {

@@ -20,13 +20,14 @@ export async function providerRoutes(app: FastifyInstance, options: ProviderOpti
     const current = sessions.get(request, reply, true);
     return { providers: await manager.list(), csrfToken: current.token, signInAvailable: await manager.available() };
   });
-  app.post<{ Body: { name: string; type: 'openai' } }>('/', {
+  app.post<{ Body: { name: string; type: 'openai'; runtime?: 'native' | 'studio' } }>('/', {
     schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: {
       name: { type: 'string', minLength: 1, maxLength: 80 }, type: { type: 'string', enum: ['openai'] },
+      runtime: { type: 'string', enum: ['native', 'studio'] },
     } } },
   }, async (request, reply) => {
     sessions.mutation(request, reply);
-    const provider = await manager.create(request.body.name);
+    const provider = await manager.create(request.body.name, request.body.runtime);
     return reply.code(201).send({ provider });
   });
   app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
@@ -49,9 +50,19 @@ export async function providerRoutes(app: FastifyInstance, options: ProviderOpti
     sessions.mutation(request, reply);
     return await manager.consumeReset(request.params.id, request.body);
   });
-  app.post<{ Params: { id: string } }>('/:id/login', async (request, reply) => {
+  app.post<{ Params: { id: string }; Body?: { flow?: 'browser' | 'deviceCode' } }>('/:id/login', {
+    preValidation: async request => { if (request.body === undefined) request.body = {}; },
+    schema: { body: { type: 'object', additionalProperties: false, properties: { flow: { type: 'string', enum: ['browser', 'deviceCode'] } } } },
+  }, async (request, reply) => {
     const owner = sessions.mutation(request, reply);
-    return { login: await manager.start(request.params.id, owner) };
+    return { login: await manager.start(request.params.id, owner, request.body?.flow) };
+  });
+  app.post<{ Params: { id: string }; Body: { redirectUrl: string } }>('/:id/login/redirect', {
+    bodyLimit: 32768, schema: { body: { type: 'object', additionalProperties: false, required: ['redirectUrl'],
+      properties: { redirectUrl: { type: 'string', minLength: 1, maxLength: 16384 } } } },
+  }, async (request, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    return { login: await manager.redirect(request.params.id, sessions.mutation(request, reply), request.body.redirectUrl) };
   });
   app.get<{ Params: { id: string } }>('/:id/login', async (request, reply) => {
     const current = sessions.get(request, reply);

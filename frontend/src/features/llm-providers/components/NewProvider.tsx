@@ -11,8 +11,8 @@ import { NewClaudeProvider } from './ClaudeProviderDetails';
 
 export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi; created: (id: string) => void; setLeaveGuard?: LeaveGuard }) {
   const [type, setType] = useState<'openai' | 'claude-subscription' | ApiProviderKind>(() => {
-    try { const kind = JSON.parse(sessionStorage.getItem('studio.api.provider.new') ?? 'null')?.kind as ApiProviderKind; return Object.hasOwn(apiKinds, kind) ? kind : 'chatgpt-plan'; }
-    catch { return 'chatgpt-plan'; }
+    try { const kind = JSON.parse(sessionStorage.getItem('studio.api.provider.new') ?? 'null')?.kind as ApiProviderKind; return Object.hasOwn(apiKinds, kind) ? kind : 'openai'; }
+    catch { return 'openai'; }
   });
   const guard = useRef<(() => boolean) | null>(null);
   const [name, setName] = useState('OpenAI');
@@ -24,7 +24,7 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
     if (busy) return;
     setBusy(true); setError(null);
     try {
-      const result = await api.request<{ provider: Provider }>('', 'POST', { type: 'openai', name: name.trim() });
+      const result = await api.request<{ provider: Provider }>('', 'POST', { type: 'openai', name: name.trim(), runtime: 'studio' });
       await api.reload();
       created(result.provider.id);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The provider could not be added.'); }
@@ -34,9 +34,9 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
   return <div className="provider-card">
     <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><div><h2>Connect an AI provider</h2><p>Choose an account subscription or an API connection.</p></div></div>
     <div className="provider-form"><label htmlFor="provider-type">Provider</label>
-      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · Native connection (existing features)</option><option value="claude-subscription">Claude · Pro / Max subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+      <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · ChatGPT subscription</option><option value="claude-subscription">Claude · Pro / Max subscription</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {type === 'openai' ? <form onSubmit={(event) => void submit(event)} className="provider-form">
-      <p className="field-help">Native ChatGPT connection for existing features such as hosted image generation. Choose ChatGPT plan for the common Studio conversation flow; neither requires an API key.</p>
+      <p className="field-help">Connect your ChatGPT subscription through OpenAI. Sign in entirely in your browser; native account access stays on the Studio host. Model access and usage limits use this same connection.</p>
       <label htmlFor="provider-name">Display name</label>
       <input id="provider-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoComplete="off" disabled={busy} />
       <p className="field-help">This name appears in the Views column.</p>

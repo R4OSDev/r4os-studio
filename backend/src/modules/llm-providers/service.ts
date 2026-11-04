@@ -8,8 +8,12 @@ import { ProviderStore, validProviderId } from './store.js';
 import type { ProviderRecord } from './store.js';
 import { ProviderError } from './errors.js';
 import { readUsage, redeemReset } from './openai/usage.js';
+import { browserLogin, redirectSubmission, relayRedirect } from './openai/browser-login.js';
+import type { BrowserLogin } from './openai/browser-login.js';
+import { nativeCredentials } from './openai/credentials.js';
+import type { NativeBinding } from './openai/credentials.js';
 
-type Login = ProviderLogin & { owner: string; id?: string; timer?: NodeJS.Timeout };
+type Login = ProviderLogin & { owner: string; providerId: string; id?: string; timer?: NodeJS.Timeout; browser?: BrowserLogin };
 type Runtime = { client: AuthClient; login?: Login; unavailable: boolean; usageEpoch: number; retired?: boolean };
 type AccountResult = { account: { type: string; email?: string | null; planType?: string | null } | null };
 
@@ -29,6 +33,7 @@ export class ProviderManager {
   private usages = new Map<string, ProviderUsage>();
   private loginTimeout: number;
   private closing = false;
+  private browserProvider: string | null = null;
 
   constructor(private options: ProviderOptions) {
     this.store = new ProviderStore(options.directory);
@@ -58,7 +63,8 @@ export class ProviderManager {
   private present(record: ProviderRecord): Provider {
     const runtime = this.runtimes.get(record.id);
     return { id: record.id, name: record.name, type: 'openai', createdAt: record.createdAt,
-      account: record.account ? { email: record.account.email, plan: record.account.plan } : null,
+      ...(record.runtime ? { runtime: record.runtime } : {}),
+      account: record.account ? { ...record.account } : null,
       status: runtime?.unavailable ? 'unavailable'
         : runtime?.login?.status === 'pending' ? 'signing_in' : record.connected ? 'connected' : 'disconnected' };
   }
@@ -109,11 +115,13 @@ export class ProviderManager {
   }
 
   private finish(login: Login, status: ProviderLogin['status'], message?: string) {
+    if (login.browser && this.browserProvider === login.providerId) this.browserProvider = null;
     clearTimeout(login.timer);
     login.status = status;
     login.message = message;
     delete login.userCode;
     delete login.verificationUrl;
+    delete login.browser;
   }
 
   private async retire(id: string, runtime: Runtime) {
@@ -126,14 +134,16 @@ export class ProviderManager {
   private async syncAccount(id: string, runtime: Runtime): Promise<Provider> {
     const result = await runtime.client.request<AccountResult>('account/read', { refreshToken: false });
     const account = result.account?.type === 'chatgpt' ? result.account : null;
+    const original = await this.record(id);
+    const credentials = account && original.runtime === 'studio' ? await nativeCredentials(await this.store.home(id)) : null;
     await this.store.change((records) => {
       const record = records.find((item) => item.id === id);
       if (!record) return;
-      const publicAccount = account ? { email: typeof account.email === 'string' ? account.email : null, plan: typeof account.planType === 'string' ? account.planType : null } : null;
+      const publicAccount = account ? { email: typeof account.email === 'string' ? account.email : null, plan: typeof account.planType === 'string' ? account.planType : null,
+        ...(credentials ? { workspaceId: credentials.identity.accountId } : {}) } : null;
       if (record.connected !== (account !== null) || JSON.stringify(record.account) !== JSON.stringify(publicAccount)) { runtime.usageEpoch++; this.usages.delete(id); }
       record.connected = account !== null;
-      record.account = account ? { email: typeof account.email === 'string' ? account.email : null,
-        plan: typeof account.planType === 'string' ? account.planType : null } : null;
+      record.account = publicAccount;
     });
     const provider = this.present(await this.record(id));
     // A completion notification is being handled while the attempt is still pending.
@@ -151,13 +161,14 @@ export class ProviderManager {
     });
   }
 
-  async create(name: string): Promise<Provider> {
+  async create(name: string, execution: 'native' | 'studio' = 'native'): Promise<Provider> {
     const clean = name.trim();
     if (!clean || clean.length > 80 || [...clean].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
       throw new ProviderError('Enter a provider name between 1 and 80 characters.');
     }
     const record: ProviderRecord = { id: randomUUID(), name: clean, type: 'openai', connected: false,
-      account: null, createdAt: new Date().toISOString() };
+      account: null, createdAt: new Date().toISOString(),
+      ...(execution === 'studio' ? { runtime: 'studio' as const, authGeneration: randomUUID() } : {}) };
     await this.store.change((records) => {
       if (records.length >= 20) throw new ProviderError('Remove an existing provider before adding another.', 409);
       records.push(record);
@@ -195,6 +206,37 @@ export class ProviderManager {
     });
   }
 
+  /** Private host access only. HTTP routes never expose this result. */
+  async nativeAccess(id: string, expected?: NativeBinding, secret = false) {
+    return this.exclusive(id, async () => {
+      const record = await this.record(id);
+      if (record.runtime !== 'studio' || !record.authGeneration) throw new ProviderError('Explicitly connect this account for Studio conversations.', 409);
+      const runtime = await this.connectedRuntime(id);
+      const home = await this.store.home(id);
+      try {
+        let credentials = await nativeCredentials(home);
+        const validate = () => {
+          const binding = { ...credentials.identity, generation: record.authGeneration! };
+          if (expected && (expected.generation !== binding.generation || expected.accountId !== binding.accountId
+            || expected.subject !== binding.subject)) throw new ProviderError('The original OpenAI account or workspace changed. No model request was started.', 409);
+          if (record.account?.workspaceId !== binding.accountId) throw new ProviderError('Refresh this original OpenAI account before continuing.', 409);
+          return binding;
+        };
+        validate();
+        if (secret && (credentials.expiresAt === null || credentials.expiresAt <= Date.now() + 60_000)) {
+          await runtime.client.request('account/read', { refreshToken: true });
+          credentials = await nativeCredentials(home);
+          validate();
+        }
+        return { binding: validate(), managedRouting: credentials.managedRouting,
+          ...(secret ? { accessToken: credentials.accessToken } : {}) };
+      } catch (error) {
+        if (error instanceof ProviderError) throw error;
+        throw new ProviderError('The private OpenAI account access could not be confirmed. Review this original connection.', 409);
+      }
+    });
+  }
+
   async consumeReset(id: string, request: ResetRequest): Promise<ResetResult> {
     return this.exclusive(id, async () => {
       const runtime = await this.connectedRuntime(id);
@@ -210,37 +252,50 @@ export class ProviderManager {
     });
   }
 
-  async start(id: string, owner: string): Promise<ProviderLogin> {
+  async start(id: string, owner: string, flow: 'browser' | 'deviceCode' = 'deviceCode'): Promise<ProviderLogin> {
     return this.exclusive(id, async () => {
       const record = await this.record(id);
       if (record.connected) throw new ProviderError('Disconnect this provider before signing in again.', 409);
       if (this.runtimes.get(id)?.login?.status === 'pending') throw new ProviderError('A sign-in is already in progress for this provider.', 409);
+      if (flow === 'browser') {
+        // Native clients share a loopback login port. Never let a second
+        // account's client displace the first account's original callback.
+        if (this.browserProvider !== null) throw new ProviderError('Finish or cancel the original OpenAI browser sign-in before starting another account.', 409);
+        this.browserProvider = id;
+      }
       // A new attempt never inherits credentials from a failed/cancelled attempt.
-      await this.disconnectLocked(id);
-      const runtime = await this.runtime(id);
-      const login: Login = { status: 'pending', owner, expiresAt: new Date(Date.now() + this.loginTimeout).toISOString() };
+      try { await this.disconnectLocked(id); }
+      catch (error) { if (flow === 'browser' && this.browserProvider === id) this.browserProvider = null; throw error; }
+      let runtime: Runtime;
+      try { runtime = await this.runtime(id); }
+      catch (error) { if (flow === 'browser' && this.browserProvider === id) this.browserProvider = null; throw error; }
+      const login: Login = { status: 'pending', owner, providerId: id, expiresAt: new Date(Date.now() + this.loginTimeout).toISOString() };
       runtime.login = login;
       try {
-        const response = await runtime.client.request<{ type: string; loginId: string; verificationUrl: string; userCode: string }>(
-          'account/login/start', { type: 'chatgptDeviceCode' });
-        if (response.type !== 'chatgptDeviceCode' || typeof response.loginId !== 'string'
-          || response.verificationUrl !== 'https://auth.openai.com/codex/device'
-          || typeof response.userCode !== 'string' || !/^[A-Za-z0-9-]{4,64}$/.test(response.userCode)) {
-          throw new Error();
-        }
+        const response = await runtime.client.request<{ type: string; loginId: string; verificationUrl?: string; userCode?: string; authUrl?: string }>(
+          'account/login/start', { type: flow === 'browser' ? 'chatgpt' : 'chatgptDeviceCode' });
+        if (typeof response.loginId !== 'string' || !response.loginId || response.loginId.length > 200) throw new Error();
         login.id = response.loginId;
-        login.verificationUrl = response.verificationUrl;
-        login.userCode = response.userCode;
+        if (flow === 'browser') {
+          if (response.type !== 'chatgpt') throw new Error();
+          login.browser = browserLogin(response.authUrl);
+        } else {
+          if (response.type !== 'chatgptDeviceCode' || response.verificationUrl !== 'https://auth.openai.com/codex/device'
+            || typeof response.userCode !== 'string' || !/^[A-Za-z0-9-]{4,64}$/.test(response.userCode)) throw new Error();
+          login.verificationUrl = response.verificationUrl;
+          login.userCode = response.userCode;
+        }
         login.timer = setTimeout(() => {
           void this.exclusive(id, async () => {
             if (runtime.login !== login || login.status !== 'pending') return;
-            this.finish(login, 'expired', 'This code has expired. Start a new sign-in.');
+            this.finish(login, 'expired', 'This sign-in has expired. Start a new sign-in.');
             try { await runtime.client.request('account/login/cancel', { loginId: login.id }); } catch { /* No credentials are exposed on failure. */ }
             await this.retire(id, runtime);
           }).catch(() => {});
         }, Math.max(1, Date.parse(login.expiresAt) - Date.now()));
         login.timer.unref();
       } catch (error) {
+        if (flow === 'browser' && this.browserProvider === id) this.browserProvider = null;
         const message = error instanceof Error && error.message.startsWith('Enable device-code')
           ? error.message : 'OpenAI sign-in could not be started. Please try again.';
         this.finish(login, 'failed', message);
@@ -256,7 +311,28 @@ export class ProviderManager {
   private publicLogin(login: Login): ProviderLogin {
     return { status: login.status, expiresAt: login.expiresAt,
       ...(login.message ? { message: login.message } : {}),
-      ...(login.status === 'pending' ? { verificationUrl: login.verificationUrl, userCode: login.userCode } : {}) };
+      ...(login.status === 'pending' ? login.browser
+        ? { authorizationUrl: login.browser.authorizationUrl, redirectSubmitted: !!login.browser.submission }
+        : { verificationUrl: login.verificationUrl, userCode: login.userCode } : {}) };
+  }
+
+  async redirect(id: string, owner: string, address: string): Promise<ProviderLogin> {
+    return this.exclusive(id, async () => {
+      await this.record(id);
+      const login = this.runtimes.get(id)?.login;
+      if (!login || login.owner !== owner) throw new ProviderError('This original sign-in belongs to another browser session.', 403);
+      if (login.status === 'connected') return this.publicLogin(login);
+      if (login.status !== 'pending' || !login.browser) throw new ProviderError('This original browser sign-in is no longer pending.', 409);
+      let submission: ReturnType<typeof redirectSubmission>;
+      try { submission = redirectSubmission(login.browser, address); }
+      catch { throw new ProviderError('Use the complete redirect address from this original sign-in. An already submitted redirect cannot be replaced.', 409); }
+      if (login.browser.submission) return this.publicLogin(login);
+      // Record before dispatch: a lost callback response is observed, never replayed.
+      login.browser.submission = submission.fingerprint;
+      try { await relayRedirect(submission.port, submission.path); }
+      catch { login.message = 'Redirect received. Its completion is unconfirmed; keep this original sign-in open while Studio checks its status.'; }
+      return this.publicLogin(login);
+    });
   }
 
   async login(id: string, owner: string): Promise<ProviderLogin | null> {
@@ -284,10 +360,10 @@ export class ProviderManager {
     const previous = await this.record(id);
     // Close run admission before asking the independent host to stop workers.
     // Otherwise a new run could start between cancellation and credential removal.
-    await this.store.change((records) => { const record = records.find((r) => r.id === id); if (record) record.connected = false; });
+    await this.store.change((records) => { const record = records.find((r) => r.id === id); if (record) { record.connected = false; if (record.runtime === 'studio') record.authGeneration = randomUUID(); } });
     try { await this.options.beforeDisconnect?.(id); }
     catch (error) {
-      await this.store.change((records) => { const record = records.find((r) => r.id === id); if (record) record.connected = previous.connected; });
+      await this.store.change((records) => { const record = records.find((r) => r.id === id); if (record) { record.connected = previous.connected; record.authGeneration = previous.authGeneration; } });
       throw error;
     }
     this.usages.delete(id);

@@ -8,8 +8,9 @@ export interface Provider {
   id: string;
   name: string;
   type: 'openai';
+  runtime?: 'native' | 'studio';
   status: 'connected' | 'disconnected' | 'signing_in' | 'unavailable';
-  account: { email: string | null; plan: string | null } | null;
+  account: { email: string | null; plan: string | null; workspaceId?: string } | null;
   createdAt: string;
 }
 
@@ -17,6 +18,8 @@ export interface ProviderLogin {
   status: 'pending' | 'connected' | 'cancelled' | 'failed' | 'expired';
   verificationUrl?: string;
   userCode?: string;
+  authorizationUrl?: string;
+  redirectSubmitted?: boolean;
   expiresAt: string;
   message?: string;
 }

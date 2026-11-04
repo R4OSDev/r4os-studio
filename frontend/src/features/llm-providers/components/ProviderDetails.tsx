@@ -16,6 +16,7 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
   const [error, setError] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState('');
   const codeInput = useRef<HTMLInputElement>(null);
   const { request, reload } = api;
   const path = `/${initial.id}`;
@@ -59,7 +60,7 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
     setBusy(true); setError(null); setCopyMessage('');
     try {
       if (operation === 'login') {
-        const result = await request<{ login: ProviderLogin }>(`${path}/login`, 'POST');
+        const result = await request<{ login: ProviderLogin }>(`${path}/login`, 'POST', { flow: 'browser' });
         setLogin(result.login);
         setProvider((previous) => ({ ...previous, status: result.login.status === 'pending' ? 'signing_in' : 'disconnected' }));
       } else if (operation === 'remove') {
@@ -85,6 +86,16 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
     } catch { codeInput.current?.select(); setCopyMessage('Code selected. Press Ctrl+C to copy.'); }
   }
 
+  async function submitRedirect() {
+    if (busy || !redirectUrl.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await request<{ login: ProviderLogin }>(`${path}/login/redirect`, 'POST', { redirectUrl: redirectUrl.trim() });
+      setLogin(result.login); setRedirectUrl('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The redirect could not be submitted.'); }
+    finally { setBusy(false); }
+  }
+
   const pending = login?.status === 'pending';
   const status = pending ? 'signing_in' : provider.status;
   return <div className="provider-card">
@@ -93,11 +104,22 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
     {login?.message && <p className="provider-alert" role="status">{login.message}</p>}
     {pending && <div className="device-login" aria-label="OpenAI sign-in">
       <h3>Finish signing in</h3>
+      {login.authorizationUrl ? <>
+        <p>Sign in at OpenAI, then paste the complete final redirect address below. Keep this Studio tab open; your connection will update automatically.</p>
+        <div className="provider-actions"><a className="button-primary" href={login.authorizationUrl} target="_blank" rel="noopener noreferrer">Open OpenAI sign-in ↗</a><button className="button-secondary" type="button" disabled={busy} onClick={() => void action('cancel')}>Cancel sign-in</button></div>
+        {!login.redirectSubmitted ? <>
+          <p className="field-help">The final localhost page may say it cannot connect when Studio runs on another computer. Copy its complete address anyway. No download or terminal is needed.</p>
+          <label htmlFor="native-openai-redirect">Redirect address</label>
+          <textarea id="native-openai-redirect" value={redirectUrl} onChange={event => setRedirectUrl(event.target.value)} rows={3} autoComplete="off" autoCapitalize="none" spellCheck={false} disabled={busy} placeholder="http://localhost:…/auth/callback?…" />
+          <button className="button-primary" type="button" disabled={busy || !redirectUrl.trim()} onClick={() => void submitRedirect()}>Complete sign-in</button>
+        </> : <p className="field-help" role="status">Redirect received. Studio is checking this original sign-in; do not submit another address.</p>}
+      </> : <>
       <p>Enter this one-time code on OpenAI. Keep this page open; your connection will update automatically.</p>
       <label htmlFor="openai-code">One-time code</label>
       <div className="device-code-row"><input ref={codeInput} id="openai-code" value={login.userCode ?? ''} readOnly onFocus={(event) => event.currentTarget.select()} autoComplete="off" /><button className="button-secondary" type="button" onClick={() => void copyCode()}>Copy code</button></div>
       <div className="copy-message" role="status">{copyMessage}</div>
       <div className="provider-actions"><a className="button-primary" href={login.verificationUrl} target="_blank" rel="noopener noreferrer">Open OpenAI sign-in ↗</a><button className="button-secondary" type="button" disabled={busy} onClick={() => void action('cancel')}>Cancel sign-in</button></div>
+      </>}
       <p className="field-help">The code expires at {new Date(login.expiresAt).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}. Only continue if you started this sign-in.</p>
     </div>}
     {!pending && <>
@@ -105,9 +127,10 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
         <div><dt>Provider</dt><dd>OpenAI</dd></div>
         <div><dt>Account</dt><dd>{provider.account?.email ?? 'Not signed in'}</dd></div>
         <div><dt>Plan</dt><dd className="plan-name">{provider.account?.plan ?? '—'}</dd></div>
+        {provider.account?.workspaceId && <div><dt>Workspace</dt><dd>{provider.account.workspaceId}</dd></div>}
         <div><dt>Authentication</dt><dd>ChatGPT subscription</dd></div>
       </dl>
-      {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.email ?? ''}:${provider.account?.plan ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} request={request} />}
+      {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.email ?? ''}:${provider.account?.plan ?? ''}:${provider.account?.workspaceId ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} accountScope={provider.account?.workspaceId} request={request} />}
       {provider.status !== 'connected' && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading || !api.signInAvailable || !!api.error || provider.status === 'signing_in'} onClick={() => void action('login')}>{busy ? 'Starting sign-in…' : 'Continue with ChatGPT'}</button></div>}
       {!api.signInAvailable && <p className="provider-alert" role="status">OpenAI sign-in is currently unavailable. Please try again later.</p>}
       {provider.status === 'signing_in' && <p className="field-help">A sign-in is in progress in another browser session.</p>}

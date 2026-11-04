@@ -49,7 +49,16 @@ def catalog(providers,provider):
 def connection(providers,ident):
     try:return ApiProviders(providers).get(ident)
     except ProjectFault as error:
-        if error.code==404:return None
+        if error.code==404:
+            # A newly selected Studio account must never fall through to a
+            # native agent while its model connection is being prepared.
+            path=Path(providers)/'providers.json'
+            if path.exists():
+                from profile import regular
+                records=json.loads(regular(path).read_text())
+                if any(p.get('id')==ident and p.get('runtime')=='studio' for p in records):
+                    raise ProjectFault('The Studio model connection for this OpenAI account is not ready. Review the original connection.',409)
+            return None
         raise
 
 

@@ -1,3 +1,19 @@
+## Native OpenAI browser sign-in (0.10.21)
+
+Choose **OpenAI · ChatGPT subscription** when connecting a new account.
+Continue with ChatGPT, complete OpenAI sign-in in the other browser tab, then
+paste its complete final redirect address into the original Studio form.
+The localhost page may report that it cannot connect on another computer;
+its address still contains the one-time sign-in result. No helper, terminal
+or desktop installation is needed on the browser computer.
+
+Studio keeps native account access privately on its host. A confirmed sign-in
+updates immediately and shows the selected workspace and its account limits.
+Each account has one token-renewal owner. Model transport is prepared separately;
+an account selected for Studio never falls back to running a native agent when
+that preparation is missing. Existing direct ChatGPT plan connections and old
+native conversations are preserved until deliberately changed.
+
 ## Common Studio conversations (0.10.19)
 
 Connect a **ChatGPT plan**, **Z.AI Coding Plan** or an explicit API endpoint in

@@ -96,6 +96,8 @@ export class CodexClient implements AuthClient {
   }
 
   async request<T>(method: string, params?: unknown): Promise<T> {
+    if (!['account/read', 'account/login/start', 'account/login/cancel', 'account/rateLimits/read',
+      'account/rateLimitResetCredit/consume'].includes(method)) throw new Error('Only account operations are supported by this connection.');
     await this.ready;
     return await this.send(method, params) as T;
   }
@@ -103,11 +105,13 @@ export class CodexClient implements AuthClient {
   async close(): Promise<void> {
     if (this.stopped) return;
     this.closing = true;
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => { this.child.kill('SIGKILL'); resolve(); }, 2000);
-      timer.unref();
-      this.child.once('exit', () => { clearTimeout(timer); resolve(); });
-      this.child.once('error', () => { clearTimeout(timer); resolve(); });
+    await new Promise<void>((resolve, reject) => {
+      const kill = setTimeout(() => { this.child.kill('SIGKILL'); }, 2000);
+      const deadline = setTimeout(() => { clearTimeout(kill); reject(new Error('The original account client termination is unconfirmed.')); }, 10000);
+      kill.unref(); deadline.unref();
+      const ended = () => { clearTimeout(kill); clearTimeout(deadline); resolve(); };
+      this.child.once('exit', ended);
+      if (!this.child.pid || this.child.exitCode !== null || this.child.signalCode !== null) { ended(); return; }
       this.child.kill('SIGTERM');
     });
   }
