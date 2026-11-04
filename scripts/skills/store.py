@@ -396,6 +396,9 @@ def main():
         elif operation == 'source_job' and set(request) == {'operation', 'id', 'requestId'}:
             detail(db, root, request['id'])
             result = sources.read_job(db, request['id'], request['requestId'], sys.modules[__name__])
+        elif operation == 'source_runtime' and set(request)=={'operation','id'}:
+            from source_status import read as runtime_status
+            result=runtime_status(sys.modules[__name__],db,root,identity(request['id']))
         elif operation == 'source_configuration_request' and set(request) == {'operation', 'id', 'requestId'}:
             detail(db, root, identity(request['id'])); identity(request['requestId'])
             present = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='skill_source_requests'").fetchone()

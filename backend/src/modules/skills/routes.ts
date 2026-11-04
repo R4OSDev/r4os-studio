@@ -56,6 +56,10 @@ export async function skillRoutes(app: FastifyInstance, { directory, providerDir
   app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     sessions.session(request, reply); return skillStore<SkillDetail>(directory, { operation: 'get', id: request.params.id });
   });
+  app.get<{ Params: { id: string } }>('/:id/source/runtime', { schema: { params: deletionParams } }, async (request, reply) => {
+    sessions.session(request, reply);
+    return skillStore(directory, { operation: 'source_runtime', id: request.params.id });
+  });
   app.put<{ Params: { id: string } }>('/:id/source', { bodyLimit: 4096, schema: { params: deletionParams } }, async (request) => {
     const input = body(request.body);
     if (Object.hasOwn(input, 'id')) throw new ProjectError('Unexpected skill fields.', 400);

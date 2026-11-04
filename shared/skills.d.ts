@@ -19,6 +19,12 @@ export interface SkillSourceJob {
   result: Record<string, unknown> | null; error: string | null; createdAt: string; updatedAt: string;
 }
 export interface SkillDetail { skill: Skill; files: SkillFile[]; draftHash: string; activeDraftHash?: string | null; source?: SkillSource | null }
+export interface SkillRuntimeStatus {
+  ready: boolean; reason?: string; commit?: string; version?: string; tools?: number;
+  packageHash?: string; manifestHash?: string; node?: string; npm?: string; debianArchives?: number;
+  programs?: { id: string; version: string; origin: string }[]; externalRequirements?: string[]; scope?: string;
+  availability?: { groups: { available: boolean; names: string[]; reason?: string; availability_code?: string }[] };
+}
 export interface SkillFileContent extends SkillFile { encoding: 'utf8' | 'base64'; content: string }
 export interface SkillValidation { valid: boolean; errors: string[]; metadata?: { name: string; description: string }; draftHash: string }
 export interface SkillList { skills: Skill[]; csrfToken: string }

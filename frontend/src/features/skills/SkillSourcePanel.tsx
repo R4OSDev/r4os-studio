@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SkillDetail, SkillSourceConfiguration, SkillSourceJob } from '../../../../shared/skills';
+import type { SkillDetail, SkillSourceConfiguration, SkillSourceJob, SkillRuntimeStatus } from '../../../../shared/skills';
 import type { GitHubConnection } from '../../../../shared/github-connections';
 import { loadConnections } from '../github-connections/api';
 import { projectRequestId } from '../projects/api';
@@ -19,6 +19,17 @@ export function SkillSourcePanel({ detail, token, disabled, changed, draftChange
   const [fields, setFields] = useState<SkillSourceConfiguration>(detail.source?.configuration ?? empty);
   const [connections, setConnections] = useState<GitHubConnection[]>([]);
   const [job, setJob] = useState<SkillSourceJob>(), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const runtimeKey = id + ':' + (detail.source?.active?.packageHash ?? '');
+  const hasRuntime = !!detail.source?.active?.runtime;
+  const [runtimeState, setRuntime] = useState<{ key: string; value: SkillRuntimeStatus }>();
+  const runtime = hasRuntime && runtimeState?.key === runtimeKey ? runtimeState.value : undefined;
+  useEffect(() => {
+    let alive = true;
+    if (hasRuntime) void request<SkillRuntimeStatus>('GET', '/' + id + '/source/runtime')
+      .then(value => { if (alive) setRuntime({ key: runtimeKey, value }); })
+      .catch(() => { if (alive) setRuntime({ key: runtimeKey, value: { ready: false, reason: 'Installation proof could not be loaded. Refresh access to check again.' } }); });
+    return () => { alive = false; };
+  }, [id, runtimeKey, hasRuntime, detail.source?.updatedAt]);
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState<Intent | undefined>(() => {
     try { const value = sessionStorage.getItem(key); return value ? JSON.parse(value) as Intent : undefined; }
     catch { return undefined; }
@@ -160,6 +171,18 @@ export function SkillSourcePanel({ detail, token, disabled, changed, draftChange
     </div>
     <div className="skill-source-status" aria-live="polite">
       {active && <p>Active commit: <code>{active.commit}</code>{active.runtime ? ' · REA ' + active.runtime.version : ''}</p>}
+      {runtime && <details><summary>{runtime.ready ? `Ready · ${runtime.tools} native tools` : 'Runtime proof unavailable'}</summary>
+        {runtime.reason && <p role="alert">{runtime.reason}</p>}
+        {runtime.ready && <>
+          <p>Managed Node {runtime.node} · npm {runtime.npm}. Installation probe; target-specific capabilities are checked again by REA during use.</p>
+          <ul>{runtime.programs?.map(program => <li key={program.id}>{program.id} {program.version} · <a href={program.origin} target="_blank" rel="noreferrer">Source</a></li>)}</ul>
+          <p>{runtime.debianArchives} private system archives. No global package installation.</p>
+          {runtime.availability?.groups.map((group, index) => <details key={index}><summary>{group.names.length} tools · {group.available ? 'available before target selection' : group.reason ?? group.availability_code ?? 'require a matching target'}</summary>
+            <p>{group.names.join(', ')}</p></details>)}
+          <p>Optional requirements: {runtime.externalRequirements?.join('; ')}.</p>
+          <p>Use the enabled REA skill in a project session, then discover its native tools. Project files are available at /workspace; results remain in that project or its private session.</p>
+        </>}
+      </details>}
       {job && <p>Preparation: {job.phase}{job.commit && <> · requested commit: <code>{job.commit}</code></>}</p>}
       {job?.phase === 'complete' && <p>{job.result?.published === true ? job.result?.packageHash === active?.packageHash ? 'The confirmed package is active.' : 'This request completed; the current active package is shown above.' : 'Sources downloaded. The analysis runtime and skill are not active yet.'}</p>}
       {job?.error && <p role="alert">{job.error}{active ? ' The confirmed active revision is still available.' : ''}</p>}
