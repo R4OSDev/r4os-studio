@@ -137,11 +137,8 @@ class StudioWorker(Worker):
             self.store.owner_id, self.session_id, self.row['request_id'], self.config, self.api_worker)
 
     def history(self):
-        values = []; cursor = 0
-        while True:
-            page = self.conversation.records(after=cursor, limit=200)
-            if not page: return values
-            values.extend(page); cursor = page[-1]['sequence']
+        from studio_selection import records
+        return records(self.store, self.session_id)
 
     def transport(self):
         model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),

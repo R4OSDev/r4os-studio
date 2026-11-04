@@ -94,8 +94,12 @@ class Responses:
         if self.response is None or any(self.pending_text.values()): raise ModelFault('model_stream_incomplete')
         response = self.response
         output = response.get('output')
-        if output is None and self.finished_items:
+        if (output is None or output == []) and self.finished_items:
             if sorted(self.finished_items) != list(range(len(self.finished_items))): raise ModelFault()
+            # Some streams keep only completed-item events and leave the final
+            # aggregate empty. Require a contiguous, fully completed original
+            # set and the terminal response.completed; added/delta events never
+            # provide authority for a tool or successful answer.
             output = [self.finished_items[index] for index in range(len(self.finished_items))]
         if not isinstance(output, list): raise ModelFault()
         for index, original in self.finished_items.items():

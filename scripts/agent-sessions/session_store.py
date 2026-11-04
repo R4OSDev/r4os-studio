@@ -389,7 +389,7 @@ PRAGMA user_version=1;
                 new_claude=any(v['id']==data['providerId'] and v.get('type')=='claude-subscription' for v in providers(provider_dir))
                 if previous['engine'].get('kind')=='claude-code' or new_claude:
                     raise ProjectFault('Changing the native Claude provider requires a new session. This conversation was preserved.',409)
-                if previous['engine'].get('api') or new_api:
+                if (previous['engine'].get('api') or new_api) and not (previous['engine'].get('kind')=='studio' and new_api):
                     raise ProjectFault('Changing API connection requires a new session. This conversation was preserved.',409)
             if previous['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before saving.')
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1', (session_id,)).fetchone():
@@ -402,10 +402,19 @@ PRAGMA user_version=1;
             choices = skill_preferences.normalize(value['skillOverrides'])
             skill_change = choices != previous['skillOverrides']
             value['name'] = text(value['name'], 120)
-            changed = value['name'] != previous['name'] or any(value[k] != previous[k] for k in settings) or skill_change
+            studio = previous['engine'].get('kind')=='studio'
+            runtime_change = studio and any(value[k]!=previous[k] for k in ('providerId','model','effort'))
+            if studio and any(k in data for k in ('providerId','model','effort')):
+                from studio_selection import route_changed
+                runtime_change = runtime_change or route_changed(previous['engine'], provider_dir, value['providerId'])
+            changed = value['name'] != previous['name'] or any(value[k] != previous[k] for k in settings) or skill_change or runtime_change
             if changed:
                 # Name-only edits stay possible when a formerly connected provider disappears.
-                if any(value[k] != previous[k] for k in settings): validate_settings(value, provider_dir)
+                if runtime_change or any(value[k] != previous[k] for k in settings): validate_settings(value, provider_dir)
+                if runtime_change:
+                    from studio_selection import change
+                    selected_engine = change(self, session_id, provider_dir, value)
+                    self.db.execute('UPDATE sessions SET engine=? WHERE id=?', (encode(selected_engine),session_id))
                 if skill_change: skill_preferences.write(self, session_id, choices)
                 self.db.execute('UPDATE sessions SET name=?,settings=?,revision=revision+1,updated_at=? WHERE id=?',
                                 (text(value['name'], 120), encode(settings), now(), session_id))

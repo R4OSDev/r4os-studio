@@ -81,9 +81,10 @@ if (configuration && !finished) {
         incoming.once('error', () => fail('model_http_error', status));
         return;
       }
-      if (!String(incoming.headers['content-type'] ?? '').startsWith('text/event-stream')
+      const contentType = incoming.headers['content-type'];
+      if (contentType && !String(contentType).toLowerCase().startsWith('text/event-stream')
         || incoming.headers['content-encoding'] || Number(incoming.headers['content-length'] ?? 0) > MAX_RESPONSE) {
-        incoming.destroy(); fail('model_stream_invalid', status); return;
+        incoming.destroy(); fail('model_stream_invalid', status, { contentType: typeof contentType==='string' ? contentType.slice(0,200) : null, contentEncoding: String(incoming.headers['content-encoding']??'').slice(0,80) }); return;
       }
       let received = 0;
       incoming.on('data', chunk => {

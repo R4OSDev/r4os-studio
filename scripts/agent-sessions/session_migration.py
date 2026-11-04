@@ -84,17 +84,8 @@ class Migration:
         return source, digest(state)
 
     def target(self, data):
-        from api_provider_store import ApiProviders
-        from api_models import freeze_studio
-        from studio_engine import engine
-        provider = ApiProviders(self.providers).get(identity(data.get('providerId')))
-        if not provider['enabled']: raise ProjectFault('Connect the selected direct model provider first.', 409)
-        if not isinstance(data.get('model'), str) or not isinstance(data.get('effort'), str): raise ProjectFault('Choose a model and reasoning level.', 400)
-        route = {k: provider[k] for k in ('kind', 'baseUrl', 'protocol', 'server')}; route['providerId'] = provider['id']
-        value = {'providerId': provider['id'], 'model': data['model'], 'effort': data['effort'], 'engine': engine(self.store.owner_type, route)}
-        # Metadata-only: no reservation, refresh, native process or model request.
-        freeze_studio(self.store, self.sid, {'requestId': self.sid}, self.providers, value, provider)
-        value.pop('apiRunId', None)
+        from studio_selection import target
+        value = target(self.store, self.sid, self.providers, data)
         return value, digest(value)
 
     def records(self, source):
@@ -196,20 +187,8 @@ class Migration:
         return results
 
     def validate_context(self, records, target):
-        from model_transport import ModelTransport
-        from studio_media import Media
-        from types import SimpleNamespace
-        worker = SimpleNamespace(store=self.store, session_id=self.sid, config=target)
-        transport = ModelTransport({**target['apiProvider'], **target['apiModel']}, target['model'], chat_policy=target.get('apiChat'), client=target.get('apiZaiClient'))
-        # GeneratedImages.path normally makes its private folder; migration GETs
-        # only resolve existing bytes, so reject a missing folder before that read.
-        def media(reference):
-            if reference.startswith('studio-generated-image:'):
-                regular(self.store.directory/self.sid/'GeneratedImages'/(identity(reference.split(':', 1)[1])+'.image'))
-            return Media(worker).resolve(reference)
-        transport.media_resolver = media
-        try: transport.prepare(records, '', [], target['effort'])
-        except ProjectFault as error: raise ProjectFault('The selected model cannot continue this original context: '+str(error), 409) from None
+        from studio_selection import validate_context
+        validate_context(self.store, self.sid, records, target)
 
     def goal(self):
         row = self.goal_row()
