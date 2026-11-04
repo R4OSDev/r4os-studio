@@ -9,7 +9,7 @@ import type { SkillDetail } from '../../shared/skills.js';
 
 await test('GitHub source changes preserve published resources, enforce revision/CSRF and replay only the original metadata result', async () => {
   const root = await mkdtemp(join(tmpdir(), 'skill-source-'));
-  const app = createApp({ providers: { directory: join(root, 'LLMProvider') }, projectDirectory: join(root, 'Projects') });
+  const app = createApp({ providers: { directory: join(root, 'LLMProvider') }, projectDirectory: join(root, 'Projects'), skillSourceExecutor: async () => undefined });
   try {
     const list = await app.inject('/api/skills');
     const headers = { cookie: String(list.headers['set-cookie']).split(';')[0], 'x-csrf-token': list.json().csrfToken };

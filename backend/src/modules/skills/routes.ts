@@ -13,7 +13,9 @@ function body(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProjectError('Invalid skill request.', 400);
   return value as Record<string, unknown>;
 }
-export async function skillRoutes(app: FastifyInstance, { directory, providerDirectory }: { directory: string; providerDirectory?: string }) {
+export async function skillRoutes(app: FastifyInstance, { directory, providerDirectory, sourceExecutor }: {
+  directory: string; providerDirectory?: string; sourceExecutor?: (id: string, requestId: string) => Promise<unknown>;
+}) {
   const sessions = new ProjectSessions('skills');
   scopedStatisticsRoutes(app, sessions, 'skill');
   app.setErrorHandler((cause, _request, reply) => {
@@ -64,6 +66,13 @@ export async function skillRoutes(app: FastifyInstance, { directory, providerDir
       const input = body(request.body);
       if (Object.hasOwn(input, 'id') || Object.hasOwn(input, 'action')) throw new ProjectError('Unexpected source fields.', 400);
       const job = await skillStore<{ phase: string }>(directory, { operation: 'source_prepare', input: { ...input, id: request.params.id, action } });
+      if (job.phase === 'queued') {
+        try {
+          await (sourceExecutor ?? ((id, requestId) => agentHost({ operation: 'skill_source_start', ownerId: id, requestId })))(request.params.id, String(input.requestId));
+        } catch {
+          // The durable original remains queued for the coordinator; do not resubmit it.
+        }
+      }
       return reply.code(job.phase === 'complete' ? 200 : 202).send(job);
     });
   }
