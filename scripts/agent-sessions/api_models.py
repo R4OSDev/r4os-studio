@@ -138,9 +138,8 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
     model = next((m for m in listing['models'] if m['id'] == snapshot['model']), None)
     if listing['stale'] or model is None or not model['available'] or snapshot['effort'] not in model['efforts']:
         raise ProjectFault('The selected model needs current, explicit text/function/streaming and reasoning facts.', 409)
-    snapshot['apiProvider'] = {key:provider[key] for key in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
-    if provider['kind'] == 'openrouter': snapshot['apiProvider']['openrouter'] = copy.deepcopy(provider['openrouter'])
-    else: snapshot['apiProvider']['server'] = provider.get('server','custom')
+    from studio_engine import model_binding
+    snapshot['apiProvider'] = model_binding(provider)
     snapshot['apiModel'] = {key:copy.deepcopy(model[key]) for key in ('contextWindow','maxOutputTokens')}
     snapshot['apiModel']['reasoning'] = model['declaredCapabilities']['reasoning']
     snapshot['apiModel']['imageInput'] = model['capabilities']['imageInput']

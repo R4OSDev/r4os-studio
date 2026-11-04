@@ -5,6 +5,26 @@ from pathlib import Path
 import re
 
 
+def model_binding(provider):
+    """Public model inputs only; account clients never own Studio execution."""
+    from store import ProjectFault
+    if provider.get('protocol') not in ('responses', 'chat-completions', 'messages'):
+        raise ProjectFault('This connection has no supported model transport.', 409)
+    value = {key: provider[key] for key in
+             ('id', 'kind', 'baseUrl', 'protocol', 'auth', 'revision', 'credentialRevision')}
+    if provider['kind'] == 'openrouter':
+        import copy
+        value['openrouter'] = copy.deepcopy(provider['openrouter'])
+    else:
+        value['server'] = provider.get('server', 'custom')
+    return value
+
+
+def model_route(provider):
+    return {**{key: provider[key] for key in ('kind', 'baseUrl', 'protocol')},
+            'server': provider.get('server', 'custom'), 'providerId': provider['id']}
+
+
 def release_for(value,current,root=Path('/opt/r4os-studio/releases')):
     """Use the immutable worker accepted with this input, including old queues."""
     from store import ProjectFault

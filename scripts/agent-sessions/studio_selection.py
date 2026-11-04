@@ -5,10 +5,7 @@ from types import SimpleNamespace
 from conversation import Conversation
 from session_store import identity
 from store import ProjectFault
-
-
-def route(provider):
-    return {**{k: provider[k] for k in ('kind','baseUrl','protocol','server')}, 'providerId': provider['id']}
+from studio_engine import model_route as route
 
 
 def route_changed(engine, providers, provider_id):

@@ -33,6 +33,15 @@ typed owner and tool scope.
 
 ## Small common contract
 
+Since 0.10.20, model selections and accepted model bindings share the public
+projection in `studio_engine.py`. It includes connection identity, protocol,
+configuration/credential revisions and necessary routing options. Credentials,
+account client state and native agent configuration are excluded. Routing
+options are copied before freezing; a connection without a server preset uses
+the existing custom contract, including OpenRouter selections. The same Studio
+worker owns history, tools, context, Goal, queues, Stop and recovery. A native
+account client alone does not qualify a native model transport.
+
 Since 0.10.2, `conversation.py` supplies this private durable context store in
 the existing Sessions.sqlite. Two additive tables hold explicit initialization
 and immutable message/checkpoint records. Reads create no tables or records.
