@@ -1,3 +1,27 @@
+## Common Studio conversations (0.10.19)
+
+Connect a **ChatGPT plan**, **Z.AI Coding Plan** or an explicit API endpoint in
+System settings. Direct connections share Studio's conversation, tool, context,
+Goal, queue and Stop code over Responses, Chat Completions or Messages. They
+need no Codex/Claude/OpenCode agent process. ChatGPT plan sign-in runs in the
+browser: complete OpenAI sign-in and paste the full final redirect address into
+the original Studio tab. No helper download, CLI or API-key conversion is needed.
+
+Refresh model metadata explicitly, then select an available model. Creating a
+session or saving a connection sends no message. Account/model choices apply to
+future inputs and preserve the draft and original results. Finish or resolve
+already accepted work before changing its connection. Session settings →
+Conversation offers a deliberate conversion for compatible idle old sessions;
+opening a session or upgrading never converts it automatically.
+
+Existing native accounts/history and frozen workers remain supported. Claude
+subscription access and native hosted image generation still require their
+specific native connection. The standalone patch utility is needed only by the
+existing Apply patch tool; ordinary direct model/file operations do not require
+a native model runtime. No hidden account, model or paid API fallback is used.
+See [Agent runtime](Agent-Runtime.md) for protocols, original receipts, media,
+limits, conversion and the exact remaining native boundaries.
+
 ## Local project files
 
 Every project workspace has an initially empty `ExFiles/` directory for local
@@ -14,8 +38,9 @@ does not make the directory read-only or include its files in a built app.
 
 Connect **Z.AI · GLM Coding Plan** in LLM Provider settings with your plan API
 key, then select its model in a normal project or skill session. Studio uses
-your Coding Plan endpoint and the current Codex default, with the authorized
-OpenCode client identity. There is no paid standard-API or model fallback.
+your Coding Plan endpoint and the common Studio worker, with the authorized
+OpenCode client identity. Existing native conversations retain their original
+worker until explicitly converted. There is no paid standard-API or model fallback.
 
 Provider settings and sessions show original account-wide credit windows,
 remaining allowance, reported resets and confirmed limit reasons. Refresh

@@ -66,8 +66,21 @@ def providers(directory):
     return result
 
 
-def provider_models(directory, provider_id):
+def direct_models(directory, provider_id):
+    """Common model choices from actual API facts, without a native descriptor."""
+    from api_catalog import Catalogs
+    catalog = Catalogs(directory).listing(provider_id)
+    return [{'id': m['id'], 'name': m['name'], 'efforts': m['efforts'], 'defaultEffort': m['defaultEffort'] or '',
+        'fastModeAvailable': False, 'imageInputs': m['capabilities']['imageInput'],
+        'inputModalities': ['text','image'] if m['capabilities']['imageInput']=='supported' else ['text'],
+        'available': m['available'] and not catalog['stale'],
+        'unavailableReasons': ['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
+        'contextWindow': m['contextWindow'], 'source': m['source']} for m in catalog['models']]
+
+
+def provider_models(directory, provider_id, *, direct=False):
     identity(provider_id)
+    if direct: return direct_models(directory, provider_id)
     source = Path(directory) / provider_id / 'models_cache.json'
     from claude_auth_store import AuthStore
     from claude_provider_store import ClaudeProviders
@@ -115,20 +128,12 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
     values = []
     for v in providers(provider_dir):
         reason=None
-        models=provider_models(provider_dir,v['id'])
         if v.get('type')=='api':
-            from api_catalog import Catalogs
-            try:catalog=Catalogs(provider_dir).listing(v['id'])
+            try: models=provider_models(provider_dir,v['id'],direct=True)
             except (ProjectFault,OSError,ValueError,TypeError,KeyError):
-                catalog={'models':[]};models=[];reason='This API model catalog is unavailable. Review this connection in System settings.'
-            if catalog['models']:
-                models=[{'id':m['id'],'name':m['name'],'efforts':m['efforts'],'defaultEffort':m['defaultEffort'] or '',
-                    'fastModeAvailable':False,'imageInputs':m['capabilities']['imageInput'],
-                    'inputModalities':['text','image'] if m['capabilities']['imageInput']=='supported' else ['text'],
-                    'available':m['available'] and not catalog['stale'],
-                    'unavailableReasons':['Model facts belong to earlier connection settings.'] if catalog['stale'] else m['unavailableReasons'],
-                    'contextWindow':m['contextWindow'],'source':m['source']} for m in catalog['models']]
-        provider_engine=None
+                models=[];reason='This model catalog is unavailable. Review this connection in System settings.'
+        else: models=provider_models(provider_dir,v['id'])
+        provider_engine=engine(r4os, selected_profile) if v.get('type')=='openai' else None
         if v.get('type') == 'api':
             from studio_engine import engine as studio_engine
             provider_engine = studio_engine(tool_scope(selected_profile))
@@ -140,9 +145,11 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
         values.append({'id': v['id'], 'name': v['name'], 'type':v['type'],'models':models,
             **({'kind':v['kind']} if v.get('type')=='api' else {}),
             **({'engine':provider_engine} if provider_engine else {}),**({'unavailableReason':reason} if reason else {})})
+    from studio_engine import engine as studio_engine
+    default_engine=studio_engine(tool_scope(selected_profile)) if any(v['type']=='api' for v in values) else next((v['engine'] for v in values if v.get('engine')),None) or engine(r4os,selected_profile)
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
             'nativeTools': [{'id': 'web_search', 'defaultEnabled': True},{'id':'image_generation','defaultEnabled':True}],
-            'engine': engine(r4os, selected_profile)}
+            'engine': default_engine}
 
 
 def engine(r4os, selected_profile=PROFILE):
@@ -150,7 +157,7 @@ def engine(r4os, selected_profile=PROFILE):
     return runtime_options(r4os, tool_scope(selected_profile))
 
 
-def validate_settings(data, provider_dir):
+def validate_settings(data, provider_dir, *, direct=None):
     text(data['name'], 120)
     candidate = next((v for v in providers(provider_dir) if v['id'] == data['providerId']), None)
     if candidate is None: raise ProjectFault('Connect the selected provider before saving these settings.', 409)
@@ -158,9 +165,12 @@ def validate_settings(data, provider_dir):
         raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model.',409)
     if candidate.get('type')=='claude-subscription' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
         raise ProjectFault('Hosted web/image generation and Fast Mode are unavailable for this native Claude adapter.',409)
-    model = next((m for m in provider_models(provider_dir, data['providerId']) if m['id'] == data['model']), None)
+    common = data.get('engine',{}).get('kind')=='studio' if direct is None else direct
+    model = next((m for m in provider_models(provider_dir, data['providerId'], direct=common and candidate.get('type')=='api') if m['id'] == data['model']), None)
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)
+    if common and candidate.get('type')=='api' and model.get('available') is False:
+        raise ProjectFault('The selected model needs current documented capabilities. Review its model facts.',409)
     if candidate.get('type')=='claude-subscription' and model.get('available') is False:
         raise ProjectFault('The original Claude model is unavailable. Read its native model catalog in System settings.',409)
     if type(data.get('fastMode', False)) is not bool:
@@ -341,9 +351,9 @@ PRAGMA user_version=1;
             if self.owner_type == 'project': settings['roadmapEnabled'] = True
             from tool_defaults import permissions as creation_permissions
             settings['permissions'] = creation_permissions(self)
-            validate_settings({**settings, 'name': data['name'], 'owner': {'type': self.owner_type}}, provider_dir)
+            validate_settings({**settings, 'name': data['name'], 'owner': {'type': self.owner_type}}, provider_dir, direct=bool(api))
             ident, created = str(uuid.uuid4()), now()
-            selected_engine = engine(self.r4os, self.selected_profile)
+            selected_engine = None
             if claude:
                 from claude_selection import engine as claude_engine
                 selected_engine=claude_engine(provider_dir,self.selected_profile)
@@ -351,6 +361,7 @@ PRAGMA user_version=1;
                 from studio_engine import engine as studio_engine
                 selected_engine = studio_engine(self.owner_type, {'providerId':api['id'],'kind':api['kind'],
                     'baseUrl':api['baseUrl'],'protocol':api['protocol'],'server':api.get('server','custom')})
+            if selected_engine is None: selected_engine=engine(self.r4os,self.selected_profile)
             if not selected_engine['available']: raise ProjectFault(selected_engine['reason'])
             self.db.execute('INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,?,?)',
                             (ident, self.project_id, text(data['name'], 120), encode(settings), encode(selected_engine), created, created))
