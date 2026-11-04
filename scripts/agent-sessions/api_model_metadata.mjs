@@ -18,7 +18,28 @@ export function modelFacts(entry, binding, key) {
     }
     const capabilities = Object.fromEntries(['text', 'functionTools', 'streaming', 'imageInput', 'reasoning', 'webSearch', 'imageGeneration', 'goals'].map(field => [field, 'unknown']));
     let contextWindow = null, maxOutputTokens = null, name = id;
-    let reasoning, efforts = [], defaultEffort = null;
+    let reasoning, messages, efforts = [], defaultEffort = null;
+    if (binding.kind === 'claude-plan') {
+      if (entry.lifecycle === 'retired') return null;
+      name = safeString(entry.display_name, 200) ?? id;
+      contextWindow = tokens(entry.max_input_tokens); maxOutputTokens = tokens(entry.max_tokens);
+      capabilities.text = capabilities.functionTools = capabilities.streaming = 'supported';
+      const facts = entry.capabilities;
+      if (facts && typeof facts === 'object') {
+        const state = value => value?.supported === true ? 'supported' : value?.supported === false ? 'unsupported' : 'unknown';
+        capabilities.imageInput = state(facts.image_input);
+        capabilities.reasoning = state(facts.thinking);
+        if (capabilities.reasoning === 'unsupported') { efforts = ['none']; defaultEffort = 'none'; }
+        else if (capabilities.reasoning === 'supported') {
+          efforts = ['', ...['low','medium','high','xhigh','max'].filter(value => facts.effort?.[value]?.supported === true)];
+          if (facts.thinking.types?.disabled?.supported === true) efforts.push('none');
+          defaultEffort = ''; // Native provider default, no guessed default effort.
+        }
+        messages = { apiVersion: '2026-10-21',
+          ...(facts.thinking?.types?.adaptive?.supported === true ? { thinkingType: 'adaptive' } : {}),
+          thinkingDisabled: facts.thinking?.types?.disabled?.supported === true };
+      }
+    }
     // OpenRouter's published model schema supplies these facts. Generic Models
     // IDs alone establish no context/tool/reasoning or modality capabilities.
     if (['chatgpt-plan','codex-subscription'].includes(binding.kind)) {
@@ -83,7 +104,7 @@ export function modelFacts(entry, binding, key) {
       }
       capabilities.streaming = 'supported'; // Published endpoint-level streaming contract.
     }
-    return { id, name, contextWindow, maxOutputTokens, capabilities, efforts, defaultEffort, ...(reasoning ? { reasoning } : {}) };
+    return { id, name, contextWindow, maxOutputTokens, capabilities, efforts, defaultEffort, ...(reasoning ? { reasoning } : {}), ...(messages ? { messages } : {}) };
   }
   return model(entry);
 }

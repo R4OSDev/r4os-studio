@@ -27,7 +27,8 @@ def request(binding, messages, instructions, tools, effort):
                 content.append({'type': 'text', 'text': part['text']})
             elif part['type'] == 'tool_call':
                 if role != 'assistant' or part['callId'] in pending: raise ModelFault('model_context_unpaired')
-                content.append({'type': 'tool_use', 'id': part['callId'], 'name': part['name'], 'input': part['arguments']})
+                name = 'mcp_'+part['name'] if binding.get('kind') == 'claude-plan' else part['name']
+                content.append({'type': 'tool_use', 'id': part['callId'], 'name': name, 'input': part['arguments']})
                 pending.add(part['callId'])
             elif part['type'] == 'tool_result':
                 if role != 'user' or part['callId'] not in pending: raise ModelFault('model_context_unpaired')
@@ -72,6 +73,7 @@ def request(binding, messages, instructions, tools, effort):
 class Messages:
     def __init__(self, binding, tools):
         self.binding = binding; self.names = {tool['name'] for tool in tools}
+        self.aliases = {'mcp_'+name: name for name in self.names} if binding.get('kind') == 'claude-plan' else {}
         self.started = False; self.done = False; self.blocks = {}; self.stopped = set()
         self.fragments = {}; self.pending = {}; self.stop_reason = None; self.usage = {}; self.origin = {}; self.extensions = []
 
@@ -168,11 +170,13 @@ class Messages:
                 content.append({'type': 'text', 'text': unicode_text(block.get('text', ''))})
             elif block['type'] == 'tool_use':
                 ident = block.get('id')
+                wire_name = block.get('name')
+                name = (self.aliases.get(wire_name) if self.binding.get('kind') == 'claude-plan' else wire_name) if isinstance(wire_name, str) else None
                 if (not isinstance(ident, str) or not 1 <= len(ident.encode()) <= 256 or ident in calls or len(calls) >= 32
-                        or any(ord(c) < 33 or ord(c) == 127 for c in ident) or block.get('name') not in self.names
+                        or any(ord(c) < 33 or ord(c) == 127 for c in ident) or name not in self.names
                         or not isinstance(block.get('input'), dict)): raise ModelFault('model_invalid_tool_call')
                 calls.add(ident)
-                content.append({'type': 'tool_call', 'callId': ident, 'name': block['name'], 'arguments': block['input']})
+                content.append({'type': 'tool_call', 'callId': ident, 'name': name, 'arguments': block['input']})
             elif block['type'] == 'thinking':
                 if not isinstance(block.get('signature'), str) or not block['signature']: raise ModelFault('model_reasoning_incomplete')
         if (self.stop_reason == 'tool_use') != bool(calls): raise ModelFault()

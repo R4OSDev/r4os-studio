@@ -33,6 +33,9 @@ class ModelFault(ProjectFault):
             self.args=('ChatGPT plan use was not confirmed. Review this connection and its actual ChatGPT usage settings; no alternate billing route was used.',)
         if self.category=='context':self.args=('The selected model rejected the context size. Original history was preserved.',)
         if self.category=='connection':self.args=('The connection failed before the model request was sent.',)
+        if code=='claude_subscription_unavailable':
+            self.category='quota'
+            self.args=('Refresh this Claude connection’s subscription limits to confirm included usage and disabled paid extra usage. No model request was sent.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -150,6 +153,10 @@ class ModelTransport:
             from model_messages import request, Messages
             body, headers = request(self.binding, messages, instructions, tools, effort)
             self.headers = {**self.headers, **headers}
+            if self.binding['kind'] == 'claude-plan':
+                from claude_wire import request as oauth_request, headers as oauth_headers
+                body = oauth_request(body, tools)
+                self.headers = {**self.headers, **oauth_headers()}
             parser = Messages(self.binding, tools)
         else:
             raise ModelFault('model_protocol_unavailable')

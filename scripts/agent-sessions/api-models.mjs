@@ -47,6 +47,11 @@ const headers = { Accept: 'application/json', 'Accept-Encoding': 'identity', 'Us
 if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
 if (binding.kind === 'openrouter') Object.assign(headers, routerHeaders(routerSettings(binding.openrouter ?? {})));
 if (binding.kind === 'zai-coding-plan') headers['User-Agent'] = JSON.parse(readFileSync(new URL('../../shared/zai-client.json', import.meta.url))).userAgent;
+if (binding.kind === 'claude-plan') {
+  if (binding.baseUrl !== 'https://api.anthropic.com/v1' || binding.protocol !== 'messages') fail('binding');
+  headers['anthropic-version'] = '2026-10-21';
+  headers['anthropic-beta'] = 'oauth-2025-04-20';
+}
 let query = '';
 if (binding.kind === 'codex-subscription') {
   if (binding.baseUrl !== 'https://chatgpt.com/backend-api/codex' || binding.protocol !== 'responses' || binding.auth !== 'bearer'
@@ -76,7 +81,9 @@ request = (target.protocol === 'https:' ? https : http).request({ protocol: targ
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
       const entries=['chatgpt-plan','codex-subscription'].includes(binding.kind)?value?.models:value?.data;
       if (!value || !Array.isArray(entries)) { fail('format'); return; }
-      finish({ ok: true, ...modelCatalog(entries, binding, key, input.modelIds) });
+      const catalog = modelCatalog(entries, binding, key, input.modelIds);
+      if (binding.kind === 'claude-plan' && value.has_more === true) catalog.truncated = true;
+      finish({ ok: true, ...catalog });
     } catch { fail('format'); }
   });
 });

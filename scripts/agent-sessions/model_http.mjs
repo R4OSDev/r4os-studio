@@ -52,7 +52,7 @@ if (configuration && !finished) {
     if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
     const address = addresses[0], transport = target.protocol === 'https:' ? https : http;
     request = transport.request({ protocol: target.protocol, hostname: originalHost, port: target.port || undefined,
-      path: target.pathname.replace(/\/$/, '') + paths[binding.protocol], method: 'POST', headers,
+      path: target.pathname.replace(/\/$/, '') + paths[binding.protocol] + (binding.kind === 'claude-plan' ? '?beta=true' : ''), method: 'POST', headers,
       agent: false, maxHeaderSize: 16384, autoSelectFamily: false, family: net.isIP(address),
       lookup: (host, options, callback) => {
         if (host !== originalHost) { callback(Error('Target changed')); return; }

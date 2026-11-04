@@ -263,3 +263,12 @@ class ClaudePlan:
                 value = self.read(path)
                 if value.get('providerId') == ident:
                     write_json(path, {'providerId': ident, 'revoked': True, 'localLogoutAt': now(), 'remoteRevocation': 'unconfirmed'})
+
+    def require_included(self, provider):
+        path = self.folder('Limits')/(identity(provider['id'])+'.json')
+        value = self.read(path) if path.exists() else {}
+        if (value.get('providerId') != provider['id'] or value.get('credentialRevision') != provider['credentialRevision']
+                or value.get('identity') != self.frozen(provider)['identity']
+                or not 0 <= time.time()-value.get('checkedAtUnix', 0) < 90
+                or value.get('extraUsageEnabled') is not False or value.get('error')):
+            raise ProjectFault('Refresh Claude subscription limits to confirm included usage and disabled paid extra usage before running.', 409)

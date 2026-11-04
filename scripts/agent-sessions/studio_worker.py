@@ -166,6 +166,14 @@ class StudioWorker(Worker):
             self.credential=await asyncio.to_thread(Plan(self.manifest['providers']).credential,self.config['apiProvider'],self.config['apiPlanGrant'])
             self.validate_lease()
             if not self.active():raise asyncio.CancelledError()
+        if self.config['apiProvider']['kind']=='claude-plan':
+            from claude_plan import ClaudePlan
+            plan=ClaudePlan(self.manifest['providers'])
+            try:await asyncio.to_thread(plan.require_included,self.config['apiProvider'])
+            except ProjectFault:raise ModelFault('claude_subscription_unavailable',429,not_dispatched=True) from None
+            self.credential=await asyncio.to_thread(plan.credential,self.config['apiProvider'],self.config['apiClaudeGrant'])
+            self.validate_lease()
+            if not self.active():raise asyncio.CancelledError()
         if self.config['apiProvider']['kind']=='zai-coding-plan':
             from zai_limits import state
             if state(self.manifest['providers'],self.config['apiProvider'],self.config['model']):

@@ -29,7 +29,7 @@ def native_import(messages):
     return result
 
 
-def visible(original):
+def visible(original, connector=None):
     """Only protocol-confirmed visible content can form a foreign-route view."""
     from model_transport import loads
     value = loads(original['value']); protocol = original['protocol']; parts = []
@@ -38,6 +38,9 @@ def visible(original):
         parts.append({'type': 'text', 'text': value})
     def call(ident, name, arguments):
         if not isinstance(ident, str) or not isinstance(name, str) or not isinstance(arguments, dict): raise ModelFault('model_context_not_portable')
+        if connector == 'claude-plan':
+            if not name.startswith('mcp_'): raise ModelFault('model_context_not_portable')
+            name = name[4:]
         parts.append({'type': 'tool_call', 'callId': ident, 'name': name, 'arguments': arguments})
     try:
         if protocol == 'responses' and isinstance(value, list):
@@ -79,7 +82,7 @@ def project(messages, binding):
             result.append(message); continue
         parts = [p for p in message['content'] if p['type'] != 'provider']
         if originals:
-            if len(originals) != 1 or message['role'] != 'assistant' or visible(originals[0]) != parts:
+            if len(originals) != 1 or message['role'] != 'assistant' or visible(originals[0], selection.get('connection', {}).get('kind')) != parts:
                 raise ModelFault('model_context_not_portable')
             parts = [{'type': 'text', 'text': 'HISTORICAL MODEL RESPONSE. Visible original content follows. Provider-private reasoning remains in its original archive and is unavailable to the selected model.'}, *parts]
         for part in parts:

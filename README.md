@@ -5382,3 +5382,15 @@ readiness is separate from real model and quota qualification. Disconnect clears
 local tokens after original workers close; remote revocation is not confirmed.
 The OAuth wire reference is the MIT-licensed
 [opencode-anthropic-auth](https://github.com/ex-machina-co/opencode-anthropic-auth/tree/93cdd23b95f84a1d495744c2e6cc4058b5a86381).
+
+### Claude model transport (0.10.28)
+
+The same browser grant now connects to Studio's common Messages encoder, worker,
+tool broker and conversation store. Account model metadata supplies capability
+and token limits; missing facts remain explicit and can be configured manually.
+OAuth compatibility adds the connector's required headers/system metadata and a
+reversible tool-name namespace. Studio instructions and raw signed provider
+history are preserved. The wire identity is compatibility metadata, not a native
+SDK process. Native conversations are retained until explicitly converted.
+Model work requires confirmation that account-level paid extra usage is disabled;
+real subscription access and quota qualification remain separate acceptance work.
