@@ -1,4 +1,4 @@
-"""User steering on the original native connection; no model tools or new turns."""
+"""Original input receipts and one control socket for every worker."""
 import asyncio
 import json
 import os
@@ -60,6 +60,10 @@ class MessageWorker:
             try: data = self.valid_target(row)
             except ProjectFault as error: return self.messages.finish(w.session_id,request_id,'rejected',str(error))
             self.messages.finish(w.session_id,request_id,'dispatching')
+            if w.config['engine'].get('kind')=='studio':
+                # Registration is durable. Only boundary() can acknowledge its
+                # atomic addition to the next model context.
+                return self.messages.receipt(w.session_id,request_id)
             try:
                 result = await w.client.request('turn/steer',{'threadId':w.thread_id,'expectedTurnId':w.turn_id,
                     'clientUserMessageId':request_id,'input':[{'type':'text','text':data['text']}]},timeout=10)
@@ -72,6 +76,25 @@ class MessageWorker:
                 raise
             except Exception:
                 return self.messages.finish(w.session_id,request_id,'unknown','Native acceptance is unconfirmed. Inspect the original receipt; this message was not submitted again.')
+
+    def boundary(self):
+        w=self.worker;accepted=False
+        with w.store.db:
+            w.store.db.execute('BEGIN IMMEDIATE')
+            run=get_run(w.store,w.run_id);owner=json.loads(run['worker'] or '{}')
+            if (w.stopping or w.done.is_set() or run['state']!='running' or not run['busy']
+                    or owner.get('pid')!=os.getpid() or owner.get('birth')!=birth(os.getpid())
+                    or owner.get('release')!=w.manifest['release'] or not owner.get('messageTurnActive')):return False
+            rows=w.store.db.execute("SELECT * FROM session_messages WHERE session_id=? AND run_id=? AND mode='steer' AND state IN ('pending','dispatching') ORDER BY seq",(w.session_id,w.run_id)).fetchall()
+            for row in rows:
+                data=json.loads(row['input'])
+                if (data['target']['runId']!=w.run_id or data['target']['threadId']!=w.thread_id
+                        or json.loads(row['frozen'])['config']!=json.loads(run['config'])):
+                    self.messages.finish(w.session_id,row['request_id'],'rejected','The original input binding changed.',commit=False);continue
+                w.conversation.append(w.run_id,'user-'+row['request_id'],'user',[{'type':'text','text':data['text']}],
+                    {'kind':'acceptedMessage','requestId':row['request_id'],'target':data['target'],'delivery':'next-model-boundary'},commit=False)
+                self.messages.finish(w.session_id,row['request_id'],'accepted',commit=False);accepted=True
+        return accepted
 
     def observe(self, method, params):
         if method in ('turn/started','turn/completed'):
@@ -116,6 +139,12 @@ class MessageWorker:
             except Exception: pass
 
     async def close(self):
+        w=self.worker
+        if w.config['engine'].get('kind')=='studio':
+            owner=json.loads(get_run(w.store,w.run_id)['worker'] or '{}');owner['messageTurnActive']=False
+            with w.store.db:w.store.db.execute('UPDATE runs SET worker=? WHERE id=?',(encode(owner),w.run_id))
+            for row in w.store.db.execute("SELECT request_id FROM session_messages WHERE run_id=? AND mode='steer' AND state IN ('pending','dispatching')",(w.run_id,)).fetchall():
+                self.messages.finish(w.session_id,row['request_id'],'rejected','This run ended before the next model boundary. The input is retained; submit it explicitly to continue.')
         if self.server: self.server.close();await self.server.wait_closed()
         for task in tuple(self.tasks): task.cancel()
         if self.tasks: await asyncio.gather(*self.tasks,return_exceptions=True)

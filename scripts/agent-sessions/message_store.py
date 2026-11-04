@@ -2,6 +2,7 @@ from skill_lifecycle import guarded
 """Private user-message intents. Creating an intent never invokes a model."""
 import hashlib
 import json
+from contextlib import nullcontext
 
 from session_store import encode, identity, now
 from store import ProjectFault
@@ -25,7 +26,7 @@ def pending_queue(store, sid, authorized=False):
 def observe_run(store, sid, run_id, state, turn_id=None):
     if not exists(store): return
     if state == 'running' and turn_id:
-        changed = store.db.execute("UPDATE session_messages SET state='accepted',updated_at=? WHERE run_id=? AND state='dispatching'", (now(), run_id)).rowcount
+        changed = store.db.execute("UPDATE session_messages SET state='accepted',updated_at=? WHERE run_id=? AND mode='queue' AND state='dispatching'", (now(), run_id)).rowcount
         if changed: store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?',(sid,))
     if state in ('failed', 'interrupted', 'unknown'):
         store.db.execute('UPDATE session_inboxes SET held=1,reason=?,revision=revision+1 WHERE session_id=?',
@@ -59,6 +60,7 @@ class Messages:
         data = json.loads(row['input']); frozen = json.loads(row['frozen'])
         return {'requestId': row['request_id'], 'sessionId': row['session_id'], 'sequence': row['seq'],
                 'mode': row['mode'], 'state': row['state'], 'text': data['text'],
+                **({'delivery':'next-model-boundary'} if row['mode']=='steer' and frozen.get('config',{}).get('engine',{}).get('kind')=='studio' else {}),
                 'attachments': frozen.get('attachments', []), 'target': data.get('target'),
                 **({'afterRun':data['afterRun']} if 'afterRun' in data else {}),
                 'runId': row['run_id'], 'error': row['error'], 'createdAt': row['created_at'], 'updatedAt': row['updated_at']}
@@ -103,8 +105,10 @@ class Messages:
             identity(target['runId'])
         elif target is not None: raise ProjectFault('Queued messages cannot specify a live target.', 400)
         if 'afterRun' in data:
-            from claude_waiting import validate
-            validate(data['afterRun'])
+            value=data['afterRun']
+            if not isinstance(value,dict) or set(value) not in ({'runId','nativeSessionId'},{'runId','conversationId'}):
+                raise ProjectFault('An after-response message needs its original run and conversation.',400)
+            for value in value.values():identity(value)
             if data['mode']!='queue':raise ProjectFault('An after-response message waits in its original queue.',400)
         hashed = hashlib.sha256(encode({'sessionId': sid, **data}).encode()).hexdigest()
         self.store.db.execute('BEGIN IMMEDIATE')
@@ -117,7 +121,13 @@ class Messages:
                 return self.present(previous), False
             session = self.store.get(sid)
             claude=session['engine'].get('kind')=='claude-code'
-            if 'afterRun' in data and not claude:raise ProjectFault('This after-response target belongs to a Claude session.',400)
+            studio=session['engine'].get('kind')=='studio'
+            if 'afterRun' in data and not claude and not studio:raise ProjectFault('This worker does not support after-response input.',400)
+            if studio and 'afterRun' in data:
+                from run_store import get_run
+                source=get_run(self.store,data['afterRun']['runId'])
+                if source['session_id']!=sid or data['afterRun']!=studio_target(self.store,source):
+                    raise ProjectFault('The original Studio response ended or changed. The input was preserved.',409)
             if claude and data['mode']=='steer':
                 raise ProjectFault('Direct Claude messages are not qualified. Queue this input to continue on the same native session after the original run ends.',409)
             if session['revision'] != data['revision']: raise ProjectFault('Session settings changed. Reload before sending.', 409)
@@ -178,12 +188,15 @@ class Messages:
         with self.store.db:
             self.store.db.execute('INSERT INTO session_inboxes VALUES (?,1,?,1) ON CONFLICT(session_id) DO UPDATE SET held=1,reason=excluded.reason,revision=revision+1', (sid, reason))
 
-    def finish(self, sid, request_id, state, error=None):
-        with self.store.db:
+    def finish(self, sid, request_id, state, error=None, commit=True):
+        with self.store.db if commit else nullcontext():
             row = self.row(sid, request_id)
             if row['state'] == 'accepted': return self.present(row)
             self.store.db.execute('UPDATE session_messages SET state=?,error=?,updated_at=? WHERE request_id=?', (state, error, now(), request_id))
             self.store.db.execute('INSERT INTO session_inboxes VALUES (?,0,NULL,1) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1', (sid,))
+            if state=='unknown':
+                self.store.db.execute('UPDATE session_inboxes SET held=1,reason=? WHERE session_id=?',
+                    (error or 'Original input acceptance is unknown. Review its receipt before continuing.',sid))
             value = self.receipt(sid, request_id)
             from run_store import event, item
             event(self.store, sid, row['run_id'], 'message', value, False)
@@ -219,16 +232,21 @@ class Messages:
                 self.store.db.execute('UPDATE session_inboxes SET revision=revision+1 WHERE session_id=?', (sid,))
             else:
                 if 'messageId' in data: raise ProjectFault('Resume does not select another message.', 400)
-                from claude_waiting import record_resume
-                record_resume(self.store,sid,data,hashed)
+                if self.store.get(sid)['engine'].get('kind')=='claude-code':
+                    from claude_waiting import record_resume
+                    record_resume(self.store,sid,data,hashed)
                 self.store.db.execute('UPDATE session_inboxes SET held=0,reason=NULL,revision=revision+1 WHERE session_id=?', (sid,))
             result = self.snapshot(sid)
+            if data['action']=='resume':
+                last=self.store.db.execute('SELECT id FROM runs WHERE session_id=? AND busy=0 ORDER BY rowid DESC LIMIT 1',(sid,)).fetchone()
+                result['control']={'action':'resume','afterRunId':last['id'] if last else None}
             self.store.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)', (key, 'message_control', hashed, sid, encode(result)))
             return result
 
     def recover(self):
         for row in self.store.db.execute("SELECT session_id,request_id FROM session_messages WHERE mode='steer' AND state IN ('pending','dispatching')").fetchall():
             self.finish(row['session_id'], row['request_id'], 'unknown', 'The coordinator restarted before the direct receipt was confirmed. It was not sent again.')
+            self.hold(row['session_id'],'The original input acceptance is unknown after coordinator loss. Review it before continuing the queue.')
         # A coordinator restart revokes unattended dispatch, even for live workers.
         for row in self.store.db.execute("SELECT DISTINCT session_id FROM session_messages WHERE mode='queue' AND state IN ('queued','dispatching','unknown')").fetchall():
             self.hold(row['session_id'], 'The coordinator restarted. Continue the saved queue explicitly.')
@@ -236,3 +254,21 @@ class Messages:
     def first(self, sid):
         if not pending_queue(self.store, sid, authorized=True): return None
         return self.store.db.execute("SELECT * FROM session_messages WHERE session_id=? AND mode='queue' AND state='queued' ORDER BY seq LIMIT 1", (sid,)).fetchone()
+
+    def resumed_after(self,sid,run_id):
+        for row in self.store.db.execute("SELECT response FROM requests WHERE session_id=? AND kind='message_control' ORDER BY rowid DESC",(sid,)):
+            if json.loads(row['response']).get('control')=={'action':'resume','afterRunId':run_id}:return True
+        return False
+
+    def waiting_after(self,sid,run_id):
+        return any(json.loads(row['input']).get('afterRun',{}).get('runId')==run_id for row in self.store.db.execute(
+            "SELECT input FROM session_messages WHERE session_id=? AND mode='queue' AND state='queued' ORDER BY seq",(sid,)))
+
+
+def studio_target(store,run):
+    """Public capability of this original worker, without starting anything."""
+    worker=json.loads(run['worker'] or '{}')
+    if (json.loads(run['config'])['engine'].get('kind')=='studio' and run['busy'] and run['state']=='running'
+            and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True):
+        return {'runId':run['id'],'conversationId':run['session_id']}
+    return None

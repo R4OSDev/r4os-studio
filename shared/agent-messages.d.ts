@@ -2,7 +2,7 @@ import type { FrozenAttachment } from './agent-inputs.js';
 
 export type SessionMessageState = 'pending' | 'queued' | 'dispatching' | 'accepted' | 'rejected' | 'cancelled' | 'unknown';
 export interface MessageTarget { runId: string; threadId: string; turnId: string }
-export interface AfterResponseTarget { runId: string; nativeSessionId: string }
+export type AfterResponseTarget = { runId: string; nativeSessionId: string } | { runId: string; conversationId: string };
 export interface SessionMessageInput {
   requestId: string; revision: number; mode: 'queue' | 'steer'; text: string;
   attachments?: string[]; target?: MessageTarget;
@@ -13,6 +13,7 @@ export interface SessionMessage {
   text: string; attachments: FrozenAttachment[]; target: MessageTarget | null;
   afterRun?: AfterResponseTarget;
   runId: string | null; error: string | null; createdAt: string; updatedAt: string;
+  delivery?: 'next-model-boundary';
 }
 export interface SessionInbox {
   messages: SessionMessage[]; nextBefore: number | null;

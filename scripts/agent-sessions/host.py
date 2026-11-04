@@ -546,6 +546,8 @@ class Host:
     async def launch_admitted(self, store, run, kind, project_id, session_id):
         try:
             release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
+            from studio_engine import release_for
+            release=release_for(json.loads(get_run(store,run['id'])['config'])['engine'],release)
             if not release.is_relative_to('/opt/r4os-studio/releases'): raise ProjectFault('Invalid agent worker release.', 503)
             release_protocol(release)
             if not (release / 'scripts/agent-sessions/instructions.py').is_file():
@@ -578,7 +580,9 @@ class Host:
             await live_message(store,sid,request_id)
         except BaseException as error:
             state = 'rejected' if isinstance(error,(FileNotFoundError,ConnectionRefusedError)) or isinstance(error,ProjectFault) and error.code in (403,404) else 'unknown'
-            Messages(store).finish(sid,request_id,state,'The original direct worker receipt could not be confirmed. No message was submitted again.')
+            messages=Messages(store);row=messages.row(sid,request_id)
+            registered=json.loads(row['frozen']).get('config',{}).get('engine',{}).get('kind')=='studio' and row['state'] in ('dispatching','accepted')
+            if not registered:messages.finish(sid,request_id,state,'The original direct worker receipt could not be confirmed. No message was submitted again.')
             if isinstance(error,asyncio.CancelledError): raise
         finally: store.close()
 
@@ -605,7 +609,13 @@ class Host:
                 if pending(store) or goal['phase'] not in ('idle',): continue
                 if goal['goal'] and goal['goal']['status'] == 'active':
                     messages.hold(sid, 'Pause the original Goal before continuing this queue.'); continue
+                if goal['goal'] and goal['goal'].get('source')=='studio' and goal['goal']['status'] in ('budgetLimited','usageLimited','blocked'):
+                    last=store.db.execute('SELECT id FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(sid,)).fetchone()
+                    if last and goal.get('runId')==last['id'] and not messages.resumed_after(sid,last['id']):
+                        messages.hold(sid,'Review the original Goal limit or blockade and continue this queue explicitly.');continue
                 config = frozen['config']
+                from studio_engine import release_for
+                release_for(config['engine'],Path(self.config.get('workerReleaseRoot','/opt/r4os-studio/current')).resolve(strict=True))
                 run, fresh = admit(store, sid, frozen['runInput'], self.config['providers'], config.get('imageGenerationCapability'), config)
                 if not fresh:
                     messages.hold(sid, 'The original queued run already exists. Inspect its receipt; it was not started again.'); continue

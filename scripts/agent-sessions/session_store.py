@@ -437,6 +437,9 @@ PRAGMA user_version=1;
         retry = retry_snapshot(self, r)
         support = r['state']=='running' and bool(thread and r['turn_id']) and worker.get('messageProtocol')==1 and worker.get('messageTurnActive') is True
         activation=None;config=json.loads(r['config']);live_spec=None;live_support=False;wait_target=None
+        if config['engine'].get('kind')=='studio':
+            from message_store import studio_target
+            wait_target=studio_target(self,r)
         if config['engine'].get('kind')=='claude-code':
             from claude_waiting import public_target
             wait_target=public_target(self,r)

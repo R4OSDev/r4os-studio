@@ -279,3 +279,30 @@ Werkzeugwirkungen oder Modellrunden frei. Aktivzeit stammt aus der vorhandenen
 monotonen pro-Play-Uhr; ein Zeitlimit kann laufenden Transport/Arbeit abbrechen.
 Originale Teilwirkungen bleiben erhalten. Nach Controllerverlust bleiben Goal-
 Zustand, fehlende Zeitabdeckung und Usage unbestätigt; Öffnen führt keinen Resume aus.
+
+## Gemeinsame Eingänge (0.10.10)
+
+Messages/Inbox, Request-UUID, ursprüngliche FIFO, eingefrorene Auswahl und
+Hostbelegung bleiben die einzigen Eingangswege. Der vorhandene authentifizierte
+MessageWorker registriert direkte Studio-Eingaben dauerhaft. Erst an der nächsten
+sicheren Grenze werden der originale menschliche Text und seine Annahme in einer
+SQLite-Transaktion gespeichert. Eine schon laufende HTTPanfrage bleibt exakt
+unverändert. Der Status unterscheidet die Registrierung von der tatsächlichen
+Übernahme in den gemeinsamen Verlauf; Delivery heißt next-model-boundary.
+
+After response bindet den ursprünglichen Run und die Studio-Conversation. Nach
+der nächsten vollständigen Antwort ohne offene Toolaufrufe endet dieser Run; ein
+aktives GOAL wird dabei pausiert. Der bestehende Host disponiert die FIFO erst
+nach bestätigter Ressourcenfreigabe. Normale Queue-Eingaben warten bis zum Ende
+des ursprünglichen Laufs. Ready-Anhänge bleiben an ihrem Queue-Original; direkte
+Eingaben unterstützen weiterhin ausschließlich Text. Native Claude-Ziele und
+Codex-Steerquittungen behalten ihre bisherigen Verträge.
+
+Stop, Unknown, Quota und GOAL-Limits halten Folgearbeit. Ein ursprüngliches
+Resume im vorhandenen Kontrolljournal bestätigt nur den vorherigen Endzustand,
+keinen späteren Fehler. Neustart/Reload startet weder Queue noch GOAL. Verlorene
+IPC-Antworten lesen den vorhandenen Request; eine bereits registrierte oder
+angenommene Studio-Eingabe wird weder verworfen noch erneut gesendet.
+Angenommene Studio-Aufträge verwenden ihre ursprüngliche unveränderliche
+Workerrelease mit Version und Quellhash. Fehlt sie, hält die Queue ihre Eingabe
+mit Begründung; ein neuer globaler Standard ersetzt sie nicht automatisch.

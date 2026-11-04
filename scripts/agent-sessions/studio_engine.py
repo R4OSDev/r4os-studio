@@ -2,6 +2,25 @@
 import hashlib
 import json
 from pathlib import Path
+import re
+
+
+def release_for(value,current,root=Path('/opt/r4os-studio/releases')):
+    """Use the immutable worker accepted with this input, including old queues."""
+    from store import ProjectFault
+    if value.get('kind')!='studio':return current
+    version=value.get('version');checksum=value.get('sha256')
+    if (not isinstance(version,str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version)
+            or not isinstance(checksum,str) or not re.fullmatch(r'[a-f0-9]{64}',checksum)):
+        raise ProjectFault('The accepted Studio worker identity is invalid. The input was preserved.',409)
+    for candidate in [current,*sorted(root.glob(version+'-*'))]:
+        try:
+            candidate=candidate.resolve(strict=True)
+            if not candidate.is_relative_to(root):continue
+            info=json.loads((candidate/'release.json').read_text())
+            if info['version']==version and hashlib.sha256((candidate/'scripts/agent-sessions/studio_worker.py').read_bytes()).hexdigest()==checksum:return candidate
+        except (OSError,KeyError,ValueError):continue
+    raise ProjectFault('The original immutable Studio worker is unavailable. The accepted input was preserved; select no replacement automatically.',409)
 
 
 def engine(scope, api=None):

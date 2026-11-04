@@ -106,17 +106,17 @@ class Conversation:
                                       (self.session_id, FORMAT, raw, now()))
         return self.metadata()
 
-    def append(self, run_id, record_id, role, content, origin):
+    def append(self, run_id, record_id, role, content, origin, commit=True):
         if role not in ('user', 'assistant', 'tool'):
             raise ProjectFault('Invalid conversation role.', 400)
-        return self._append(run_id, record_id, 'message', role, content, origin)
+        return self._append(run_id, record_id, 'message', role, content, origin, commit=commit)
 
     def checkpoint(self, run_id, record_id, through_seq, text, origin):
         if type(through_seq) is not int or through_seq < 1 or not isinstance(text, str) or not text.strip():
             raise ProjectFault('A conversation checkpoint requires confirmed source content and a summary.', 400)
         return self._append(run_id, record_id, 'checkpoint', 'assistant', [{'type': 'text', 'text': text}], origin, through_seq)
 
-    def _append(self, run_id, record_id, kind, role, content, origin, through_seq=None):
+    def _append(self, run_id, record_id, kind, role, content, origin, through_seq=None, commit=True):
         from run_store import event, get_run
         if self.metadata() is None:
             raise ProjectFault('This session has not been explicitly initialized for the Studio runtime.', 409)
@@ -136,7 +136,7 @@ class Conversation:
         origin = {**origin, 'selection': selection}
         content_raw = parts(content); origin_raw = encoded(origin)
         expected = (run_id, kind, role, content_raw, origin_raw, through_seq)
-        with self.store.db:
+        with self.store.db if commit else nullcontext():
             # Serialize the lookup and append using SQLite's existing writer
             # transaction, including concurrent retries of the same record.
             self.store.db.execute('UPDATE conversation_sessions SET format=format WHERE session_id=?', (self.session_id,))

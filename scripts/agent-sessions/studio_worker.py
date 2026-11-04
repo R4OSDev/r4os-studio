@@ -148,6 +148,8 @@ class StudioWorker(Worker):
         from instructions import compose
         instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
         while self.active():
+            await self.goal_worker.boundary(allow_play=False)
+            if self.active() and (not self.goal_worker.execution or self.goal_worker.active):self.message_worker.boundary()
             await self.goal_worker.boundary()
             if not self.active():
                 self.outcome='unknown' if self.uncertain_effect else 'interrupted';return
@@ -173,9 +175,19 @@ class StudioWorker(Worker):
             if not calls:
                 if not any(p['type'] == 'text' and p['text'].strip() for p in result['content']):
                     raise ModelFault('model_empty_response')
-                await self.goal_worker.boundary()
+                await self.goal_worker.boundary(allow_play=False)
                 if not self.active():
                     self.outcome='unknown' if self.uncertain_effect else 'interrupted';return
+                if self.message_worker.messages.waiting_after(self.session_id,self.run_id):
+                    if self.goal_worker.active:await self.goal_worker.pause(reason='The original answer ended. Explicit after-response input continues through the saved queue.')
+                    self.outcome='completed';return
+                if self.message_worker.boundary():
+                    # A human input authorizes another ordinary model call. A
+                    # completed Goal stays completed; limits never reach here.
+                    if self.goal_worker.execution and not self.goal_worker.active:
+                        self.goal_worker.execution=None;self.goal_worker.dormant=True
+                    continue
+                await self.goal_worker.boundary()
                 if self.goal_worker.active:
                     self.conversation.append(self.run_id,'goal-continuation-'+str(self.round),'user',
                         [{'type':'text','text':'Continue the explicitly activated Goal. Report complete or blocked with studio_update_goal when justified; preserve unknown effects.'}],
@@ -221,6 +233,10 @@ class StudioWorker(Worker):
             self.credential = ApiProviders(self.manifest['providers']).claim(self.run_id, self.store.owner_type,
                 self.store.owner_id, self.session_id, self.row['request_id'], self.config, worker)
             await self.goal_worker.start()
+            from message_worker import MessageWorker
+            self.message_worker=MessageWorker(self);await self.message_worker.start()
+            worker=json.loads(get_run(self.store,self.run_id)['worker']);worker.update(messageProtocol=1,messageTurnActive=True)
+            transition(self.store,self.run_id,'starting',worker=worker)
             human = self.config['goalExecution']['objective'] if self.config.get('goalExecution') else request_text(self.store, self.run_id)
             self.conversation.append(self.run_id, 'user-' + self.row['request_id'], 'user',
                 [{'type': 'text', 'text': human}], {'requestId': self.row['request_id'], **({'kind':'humanGoalPlay'} if self.config.get('goalExecution') else {})})
@@ -256,6 +272,8 @@ class StudioWorker(Worker):
                 if self.lease: self.lease.close()
                 reconcile_items(self.store, self.run_id, self.outcome)
                 transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)
+                if self.message_worker and self.goal_worker.execution and self.goal_worker.current() and self.goal_worker.current()['status'] in ('budgetLimited','usageLimited','blocked'):
+                    self.message_worker.messages.hold(self.session_id,'The original Goal reached a limit or blockade. Review its receipt, then continue the queue explicitly.')
                 self.store.close()
 
 

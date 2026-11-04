@@ -82,7 +82,10 @@ class MessageLifecycle(unittest.TestCase):
                 inbox.accept(self.sid,self.message(mode='steer',target={'runId':run['id'],'threadId':thread,'turnId':'old-turn'}),self.providers)
             self.assertEqual(old.exception.code,503)
             original=get_run(store,run['id'])['config']
-            inbox.accept(self.sid,self.message(),self.providers)
+            # This fixture has no native rollout database. Keep the original
+            # qualified route explicit while exercising the old worker queue.
+            with patch('native_tools.provider',return_value='openai'):
+                inbox.accept(self.sid,self.message(),self.providers)
             self.assertEqual(store.row(self.sid)['thread_id'],thread)
             self.assertEqual(get_run(store,run['id'])['config'],original)
             self.assertEqual(store.db.execute('SELECT COUNT(*) FROM runs').fetchone()[0],1)
