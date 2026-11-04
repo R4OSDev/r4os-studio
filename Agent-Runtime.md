@@ -71,6 +71,15 @@ start saved goals automatically.
 
 ## Access is separate from model transport
 
+Since 0.10.4, the same transport/SSE path also handles direct Chat Completions
+through `model_chat.py`. OpenRouter routing/attribution and Z.AI's existing
+OpenCode wire identity remain small connector options. Custom, Ollama and
+LM Studio use the same serializer and parser. Complete original assistant
+messages retain reasoning strings/details and tool argument strings; same-route
+continuation restores those originals. DONE and a valid complete call set are
+required before any tool is returned. No Responses relay or provider agent is
+started, and no model catalog or local server is probed by opening a connection.
+
 Since 0.10.3, `model_transport.py` and `model_responses.py` provide a direct
 Responses connector. `model_http.mjs` sends one private, pinned HTTP request
 and returns bytes, not an agent protocol. Python owns the common SSE decoder

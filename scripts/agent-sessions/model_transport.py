@@ -87,23 +87,31 @@ class SSE:
 
 
 class ModelTransport:
-    def __init__(self, binding, model, credential=None, headers=None):
+    def __init__(self, binding, model, credential=None, headers=None, chat_policy=None, client=None):
         self.binding = {**binding, 'model': model}
         self.credential = credential
         self.headers = headers or {}
+        self.chat_policy = chat_policy or {}
+        self.client = client
         self.child = None
         self.closed_confirmed = True
 
-    async def response(self, messages, instructions, tools, effort='', on_text=None):
-        if self.binding['protocol'] != 'responses':
+    async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None):
+        if self.binding['protocol'] == 'responses':
+            from model_responses import request, Responses
+            body = request(self.binding, messages, instructions, tools, effort)
+            parser = Responses(self.binding, tools)
+        elif self.binding['protocol'] == 'chat-completions':
+            from model_chat import request, Chat
+            body, headers = request(self.binding, messages, instructions, tools, effort, self.chat_policy, self.client)
+            self.headers = {**self.headers, **headers}
+            parser = Chat(self.binding, tools)
+        else:
             raise ModelFault('model_protocol_unavailable')
-        from model_responses import request, Responses
-        body = request(self.binding, messages, instructions, tools, effort)
-        parser = Responses(self.binding, tools)
-        await self.send(body, parser, on_text)
+        await self.send(body, parser, on_text, on_reasoning)
         return parser.result()
 
-    async def send(self, body, parser, on_text=None):
+    async def send(self, body, parser, on_text=None, on_reasoning=None):
         if self.child is not None:
             raise ModelFault('model_request_busy')
         raw_body = dumps(body)
@@ -137,9 +145,9 @@ class ModelTransport:
                 else:
                     raise ModelFault()
                 for value in values:
-                    delta = parser.push(value)
-                    if delta is not None and on_text is not None:
-                        await on_text(delta)
+                    for channel, text in parser.push(value) or []:
+                        callback = on_text if channel == 'text' else on_reasoning if channel == 'reasoning' else None
+                        if callback is not None: await callback(text)
             if await self.child.wait() != 0 or not ended:
                 raise ModelFault('model_stream_incomplete')
         except (OSError, ValueError, ConnectionError) as error:

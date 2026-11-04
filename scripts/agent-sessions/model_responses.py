@@ -54,7 +54,7 @@ class Responses:
             if not isinstance(value.get('delta'), str): raise ModelFault()
             try: value['delta'].encode('utf-8')
             except UnicodeError: raise ModelFault() from None
-            return value['delta']
+            return [('text', value['delta'])]
         if kind == 'response.created':
             ident = value.get('response', {}).get('id')
             if self.response_id is not None and self.response_id != ident: raise ModelFault()
