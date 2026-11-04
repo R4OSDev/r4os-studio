@@ -333,3 +333,58 @@ Credentialfreigabe erfordert das tatsächliche Ende des eigenen Modelltransports
 Unbestätigte MCP-/Entwicklungswirkungen bleiben davon getrennte Lösch- und
 Ressourcenblocker. Ein späterer bestätigter Prozessabschluss erfindet keine
 verlorene Toolquittung. Laufende ältere Releases behalten ihren Originalpfad.
+
+## Gemeinsame Usage, Limits und Wiederholung (0.10.12)
+
+Direkte Modellaufrufe erzeugen dieselben vorhandenen numerischen Statistik-
+quittungen wie andere Studio-Quellen. Die lokale Original-Request-ID bestimmt
+die Ausgabeidentität, auch wenn ein Dienst Antwortkennungen wiederverwendet.
+Verarbeitung, Restore und spätere Zahlenreconciliation zählen sie nicht erneut.
+Unvollständige Antworten erzeugen eine Abdeckungslücke und bleiben samt
+privatem Streampräfix erhalten; ihr fehlender Gesamtverbrauch ist keine Null.
+
+Input, Output, Gesamt, Cache-Read/-Write und Reasoning werden nur aus gültigen
+gemeldeten Ganzzahlen übernommen. Messages-Input besteht aus vollständigem
+uncached Input plus Cache-Read und Cache-Write; fehlt ein erforderlicher Teil,
+bleibt der Gesamtinput unbekannt. Kumulative Outputstände werden ersetzt,
+nicht addiert. Detailtokens sind Teilmengen und werden nicht nochmals auf die
+Gesamtausgabe gerechnet. Cache-Schreibwerte und Thinkingdetails bleiben bei
+fehlender Meldung unbekannt. Die Feldverträge sind dokumentiert in den
+[Responses-Usagefeldern](https://developers.openai.com/api/reference/resources/responses/methods/create),
+[Chat-Usagefeldern](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/retrieve),
+[Messages-Usagefeldern](https://platform.claude.com/docs/en/api/messages/create)
+und der [Messages-Cacheaufteilung](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+
+Der vorhandene Fehlerpfad unterscheidet Authentifizierung, Zugriff, Billing,
+Rate/Quota, Kontext, Dienstfehler und unvollständigen Transport. Originale
+HTTP-Fehlerkörper und SSE-Payloads bleiben privat, öffentliche Meldungen sind
+begrenzt und enthalten keine reflektierten Credentials. Das private Streamjournal
+hat ein ausdrücklich markiertes Präfixlimit von96 MiB pro Session; vollständige
+Conversation-Originale unterliegen weiterhin ihrem eigenen vorhandenen Vertrag.
+Ein vollständiges Ergebnis wird nicht aus einem abgeschnittenen Präfix erfunden.
+
+ProviderRetry verwendet sein vorhandenes Journal, fünf Wiederholungsversuche
+und60 Sekunden Wartezeit. Für neue direkte Aufträge ist ausschließlich ein
+bewiesener Verbindungsfehler vor TCP-/TLS-Verbindungsaufbau zulässig: der
+Transport hat den Modellrequest nicht disponiert. Maßgeblich sind interne
+Node-Prozessbelege und ausgewählte Systemfehler, keine Fehlermeldung eines
+Anbieters. [Node beschreibt ECONNREFUSED als fehlgeschlagenen Verbindungsaufbau](https://nodejs.org/api/errors.html#common-system-errors).
+Der neue Versuch behält den Originalinhalt mit identischem Requesthash und
+demselben eingefrorenen Zugang. HTTP5xx, verlorene Bodies, Quota, Zugriff und
+Billing autorisieren keine Wiederholung. Stop beendet den vorhandenen Timer.
+Ältere eingefrorene Eingänge erhalten keine nachträgliche Retryfähigkeit.
+
+Native Z.AI-Holds bleiben an ihren belegten ursprünglichen Keyscope gebunden.
+Der gemeinsame Kern liest sie vor einer neuen Modellrunde und kann echte
+native Fehlercodes in demselben bestehenden Limitstore speichern. Frische
+Kontofenster und Resets kommen aus dem vorhandenen Accountleser; Unknown allein
+ist keine Modellsperre. Ein Reset oder Readback startet keine Arbeit. Es gibt
+keinen zusätzlichen Monitor, keine Tokenumrechnung von Credits und keinen
+kostenpflichtigen Ausweichpfad. OpenAI-/Claude-Kontoleser behalten ihre echten
+Accountgrenzen; fehlende direkte Aboentitlements werden separat qualifiziert.
+
+Eine Rotation ersetzt keine bereits angenommene Auswahl. Laufende gemeinsame
+Runs und bereits reservierte Queue-Eingänge behalten ihre originalen Fakten,
+Credentialrevisionen und vollständigen Confighashes. Nur neue Eingänge verwenden
+die aktuelle Konfiguration. Disconnect schließt weiterhin die Zulassung. Alte
+Secrets bleiben bis zum bestätigten Ende aller eigenen Referenzen geschützt.

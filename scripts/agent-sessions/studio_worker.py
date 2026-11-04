@@ -99,26 +99,57 @@ class StudioWorker(Worker):
             chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
 
     async def infer(self,messages,instructions,tools,on_text=None):
+        while True:
+            try:return await self.infer_once(messages,instructions,tools,on_text)
+            except ModelFault as error:
+                if not await self.provider_retry.direct(error):raise
+
+    async def infer_once(self,messages,instructions,tools,on_text=None):
         self.validate_lease()
+        if self.config['apiProvider']['kind']=='zai-coding-plan':
+            from zai_limits import state
+            if state(self.manifest['providers'],self.config['apiProvider'],self.config['model']):
+                await self.goal_worker.pause(status='usageLimited',reason='The original subscription has a retained native limit. Review its actual account state.')
+                raise ModelFault('zai_subscription_exhausted',429,not_dispatched=True)
         if self.goal_worker.execution and not self.goal_worker.active:
             raise GoalHalted()
         self.model = self.transport(); self.turn_requested = True
         request_id = str(uuid.uuid4())
         self.operations.begin(self.run_id,request_id)
-        self.model.process_observer=lambda stage,child:self.operations.process(request_id,stage,child)
+        self.model.process_observer=lambda stage,child:self.operations.process(request_id,stage,child,request_sha256=self.model.request_sha256)
+        self.model.event_observer=lambda raw:self.operations.wire(request_id,raw)
         execution = self.goal_worker.execution if self.goal_worker.active else None
         self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],on_text=on_text))
         try:result = await self.operation
-        except (asyncio.CancelledError,ModelFault) as error:
-            self.operations.finish(request_id,error=error,attempted=self.model.attempted)
-            if self.model.attempted and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
+        except (asyncio.CancelledError,ProjectFault) as error:
+            unsent=isinstance(error,ModelFault) and error.not_dispatched
+            if isinstance(error,ModelFault):self.observe_limit(error)
+            self.operations.finish(request_id,error=error,attempted=self.model.attempted and not unsent)
+            if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
             if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
-                await self.goal_worker.pause(status='usageLimited' if error.http_status in (402,429) else 'blocked',reason=str(error))
+                if not unsent:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
             raise
         self.operations.finish(request_id,result=result,attempted=self.model.attempted)
+        self.provider_retry.direct_complete()
         if execution and execution == self.goal_worker.execution:self.goal_worker.observe(result,request_id)
         result['origin']['studioRequestId'] = request_id
         return result
+
+    def observe_limit(self,error):
+        if self.config['apiProvider']['kind']!='zai-coding-plan' or not error.details:return
+        try:
+            import base64
+            raw=json.loads(base64.b64decode(error.details.get('providerBodyBase64','')))
+            if not isinstance(raw,dict):return
+            nested=raw.get('error');code=nested.get('code',raw.get('code')) if isinstance(nested,dict) else raw.get('code')
+            from zai_limits import REASONS,observe
+            if str(code) not in REASONS:return
+            error.category='quota' if str(code) in ('1308','1310','1316','1317','1320','1321') else 'access'
+            error.args=(REASONS[str(code)],)
+            ordinal=self.store.db.execute('SELECT COUNT(*) FROM studio_model_calls WHERE run_id=?',(self.run_id,)).fetchone()[0]
+            observe(self.manifest['providers'],self.config['apiProvider'],self.config['model'],self.run_id,
+                {'code':str(code),'ordinal':ordinal,'resetAt':None,'httpStatus':error.http_status})
+        except (ValueError,TypeError,KeyError,ProjectFault):pass
 
     async def response(self, instructions, tools):
         self.validate_lease()
@@ -257,7 +288,7 @@ class StudioWorker(Worker):
             self.outcome = 'unknown' if self.uncertain_effect else 'failed'
             self.error = str(error) if isinstance(error, ProjectFault) else 'The Studio worker could not confirm this run. Inspect its original receipts.'
             if isinstance(error, ModelFault):
-                event(self.store, self.session_id, self.run_id, 'notice', {'text': self.error, 'providerError': {'code': error.code, 'httpStatusCode': error.http_status}})
+                event(self.store, self.session_id, self.run_id, 'notice', {'text': self.error, 'providerError': {'code': error.code, 'httpStatusCode': error.http_status,'category':error.category}})
             self.context.invalidate('The latest model operation failed. This is retained earlier context.', 'stale')
         finally:
             try:
@@ -281,6 +312,11 @@ class StudioWorker(Worker):
                 transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)
                 if self.message_worker and self.goal_worker.execution and self.goal_worker.current() and self.goal_worker.current()['status'] in ('budgetLimited','usageLimited','blocked'):
                     self.message_worker.messages.hold(self.session_id,'The original Goal reached a limit or blockade. Review its receipt, then continue the queue explicitly.')
+                try:
+                    from studio_usage import scan
+                    from stats_store import Source
+                    scan(self.store,self.session_id);Source(self.store).flush()
+                except Exception:pass  # Original calls remain available for the existing numeric reconciliation.
                 self.store.close()
 
 

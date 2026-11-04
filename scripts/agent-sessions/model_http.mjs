@@ -5,11 +5,11 @@ import net from 'node:net';
 
 const MAX_REQUEST = 8 * 1024 * 1024, MAX_RESPONSE = 16 * 1024 * 1024;
 const paths = { responses: '/responses', 'chat-completions': '/chat/completions', messages: '/messages' };
-let request, finished = false;
+let request, finished = false, connected = false;
 function emit(value) { return process.stdout.write(JSON.stringify(value) + '\n'); }
-function fail(code = 'model_transport_error', httpStatus = null) {
+function fail(code = 'model_transport_error', httpStatus = null, details = null, notDispatched = false) {
   if (finished) return; finished = true;
-  emit({ type: 'error', code, httpStatus }); request?.destroy();
+  emit({ type: 'error', code, httpStatus, details, notDispatched }); request?.destroy();
 }
 process.on('SIGTERM', () => { fail('model_interrupted'); process.exitCode = 1; });
 process.on('SIGINT', () => { fail('model_interrupted'); process.exitCode = 1; });
@@ -61,15 +61,22 @@ if (configuration && !finished) {
       const status = incoming.statusCode ?? 502;
       if (status < 200 || status >= 300) {
         const errors = []; let size = 0;
-        incoming.on('data', chunk => { size += chunk.length; if (size <= 65536) errors.push(chunk); else { incoming.destroy(); fail('model_http_error', status); } });
+        incoming.on('data', chunk => {
+          const remaining = Math.max(0, 65536 - size); size += chunk.length; errors.push(chunk.subarray(0, remaining));
+          if (size > 65536) { incoming.destroy(); fail('model_http_error', status,
+            { providerBodyBase64: Buffer.concat(errors).toString('base64'), bodyTruncated: true }); }
+        });
         incoming.once('end', () => {
           let code = 'model_http_error';
           try {
-            const value = JSON.parse(Buffer.concat(errors).toString('utf8')).error?.code;
-            if (typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,128}$/.test(value)
-              && (typeof key !== 'string' || !value.includes(key))) code = value;
+            const payload = JSON.parse(Buffer.concat(errors).toString('utf8'));
+            const value = payload.error?.code ?? payload.code;
+            if (['string', 'number'].includes(typeof value) && /^[a-zA-Z0-9_.-]{1,128}$/.test(String(value))
+              && (typeof key !== 'string' || !String(value).includes(key))) code = String(value);
           } catch { /* Never forward provider error text or reflected credentials. */ }
-          fail(code, status);
+          fail(code, status, { providerBodyBase64: Buffer.concat(errors).toString('base64'),
+            requestId: incoming.headers['x-request-id'] ?? incoming.headers['request-id'] ?? null,
+            retryAfter: incoming.headers['retry-after'] ?? null });
         });
         incoming.once('error', () => fail('model_http_error', status));
         return;
@@ -89,11 +96,14 @@ if (configuration && !finished) {
       incoming.once('error', () => fail('model_stream_incomplete'));
       incoming.once('aborted', () => fail('model_stream_incomplete'));
     });
-    request.once('error', () => fail());
+    request.once('error', error => {
+      const unsent = !connected && ['ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'EAI_AGAIN'].includes(error.code);
+      fail('model_connection_error', null, { connectionCode: error.code }, unsent);
+    });
     request.setTimeout(300000, () => fail('model_transport_timeout'));
     const connect = setTimeout(() => fail('model_transport_timeout'), 10000);
     const deadline = setTimeout(() => fail('model_transport_timeout'), 900000);
-    request.on('socket', socket => socket.once(target.protocol === 'https:' ? 'secureConnect' : 'connect', () => clearTimeout(connect)));
+    request.on('socket', socket => socket.once(target.protocol === 'https:' ? 'secureConnect' : 'connect', () => { connected = true; clearTimeout(connect); }));
     request.once('close', () => { clearTimeout(connect); clearTimeout(deadline); });
     // Forward the exact Python-serialized body. Re-encoding parsed JavaScript
     // objects would round valid uint64 tool arguments and history values.

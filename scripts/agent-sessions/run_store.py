@@ -153,7 +153,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
     from api_models import freeze as freeze_api
-    freeze_api(store,session_id,data,provider_dir,snapshot)
+    freeze_api(store,session_id,data,provider_dir,snapshot,original=original)
     if original is not None:
         for key in ('nativeGoalPreparation','apiGoalProtocol'):
             if key in original:snapshot[key]=original[key]

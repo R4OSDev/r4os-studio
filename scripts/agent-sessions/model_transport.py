@@ -3,6 +3,8 @@ import asyncio
 import base64
 import codecs
 import json
+import re
+import hashlib
 from pathlib import Path
 
 from api_endpoint import resolve_binding
@@ -10,7 +12,7 @@ from store import ProjectFault
 
 
 class ModelFault(ProjectFault):
-    def __init__(self, code='model_protocol_error', http_status=None):
+    def __init__(self, code='model_protocol_error', http_status=None, *, not_dispatched=False, details=None):
         messages = {401: 'The provider credential was rejected.', 402: 'The API account needs credits or billing attention.',
                     403: 'The account cannot access the selected model.', 404: 'The selected model or API route was not found.',
                     429: 'The model service is rate or usage limited.'}
@@ -18,6 +20,15 @@ class ModelFault(ProjectFault):
         super().__init__(message, 503)
         self.code = code
         self.http_status = http_status
+        self.not_dispatched=not_dispatched;self.details=details
+        self.category=('connection' if not_dispatched and http_status is None else 'authentication' if http_status==401 else 'access' if http_status in (403,404)
+            else 'billing' if http_status==402 else 'quota' if str(code) in ('insufficient_quota','quota_exceeded','zai_subscription_exhausted')
+            else 'rate' if http_status==429 else 'context' if http_status==413 or code in ('context_length_exceeded','context_window_exceeded','prompt_too_long','model_input_limit')
+            else 'outputLimit' if code=='model_output_limit' else 'service' if http_status and http_status>=500 or code in ('overloaded_error','server_error')
+            else 'incomplete' if code in ('model_stream_incomplete','model_response_incomplete','model_transport_timeout','model_connection_error','model_transport_error') else 'protocol')
+        if self.category=='context':self.args=('The selected model rejected the context size. Original history was preserved.',)
+        if self.category=='connection':self.args=('The connection failed before the model request was sent.',)
+        if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
 def loads(value):
@@ -111,6 +122,8 @@ class ModelTransport:
         self.closed_confirmed = True
         self.attempted = False
         self.process_observer = None
+        self.event_observer = None
+        self.request_sha256 = None
 
     def prepare(self, messages, instructions, tools, effort=''):
         if self.binding['protocol'] == 'responses':
@@ -137,6 +150,7 @@ class ModelTransport:
             await self.send(body, parser, on_text, on_reasoning)
             return parser.result()
         except ModelFault as error:
+            error.partial={'origin':getattr(parser,'origin',None),'usage':getattr(parser,'usage',None)}
             if self.credential and self.credential in str(error.code): error.code = 'model_provider_error'
             raise
 
@@ -144,6 +158,7 @@ class ModelTransport:
         if self.child is not None:
             raise ModelFault('model_request_busy')
         raw_body = dumps(body)
+        self.request_sha256=hashlib.sha256(raw_body.encode()).hexdigest()
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit')
         addresses = await resolve_binding(self.binding)
@@ -164,7 +179,8 @@ class ModelTransport:
                 frame = loads(raw)
                 if not isinstance(frame, dict): raise ModelFault()
                 if frame.get('type') == 'error':
-                    raise ModelFault(frame.get('code', 'model_transport_error'), frame.get('httpStatus'))
+                    raise ModelFault(frame.get('code', 'model_transport_error'), frame.get('httpStatus'),
+                        not_dispatched=frame.get('notDispatched') is True,details=frame.get('details'))
                 if frame.get('type') == 'end':
                     if ended: raise ModelFault()
                     ended = True
@@ -176,6 +192,7 @@ class ModelTransport:
                 else:
                     raise ModelFault()
                 for value in values:
+                    if self.event_observer:self.event_observer(value)
                     for channel, text in parser.push(value) or []:
                         callback = on_text if channel == 'text' else on_reasoning if channel == 'reasoning' else None
                         if callback is not None: await callback(text)

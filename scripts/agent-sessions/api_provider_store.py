@@ -264,11 +264,13 @@ class ApiProviders:
         binding=self.run_binding(run_id,owner_type,owner_id,sid,rid,snapshot);selected=snapshot['apiProvider']
         with self.connect(write=True) as db:
             value=self.current(db,selected['id'])
-            if not value['enabled'] or any(value[k]!=v for k,v in selected.items()):
-                raise ProjectFault('The API connection changed before admission. No model request was started.',409)
             previous=db.execute('SELECT * FROM leases WHERE run_id=?',(run_id,)).fetchone()
+            original_studio=previous is not None and snapshot.get('engine',{}).get('kind')=='studio'
+            if not value['enabled'] or not original_studio and any(value[k]!=v for k,v in selected.items()):
+                raise ProjectFault('The API connection changed before admission. No model request was started.',409)
             if previous:
                 if (previous['state']!='reserved' or previous['provider_id']!=value['id']
+                        or previous['config_revision']!=selected['revision'] or previous['credential_revision']!=selected['credentialRevision']
                         or json.loads(previous['binding'])!=binding):
                     raise ProjectFault('The original API reservation has changed. It was not replaced.',409)
                 return
@@ -308,7 +310,7 @@ class ApiProviders:
         with self.connect() as db:
             row=db.execute('SELECT * FROM leases WHERE run_id=?',(run_id,)).fetchone() if db else None
             value=self.current(db,selected['id']) if db else None
-            if (not value or not value['enabled'] or any(value[k]!=v for k,v in selected.items())
+            if (not value or not value['enabled'] or snapshot.get('engine',{}).get('kind')!='studio' and any(value[k]!=v for k,v in selected.items())
                     or row is None or row['state']!='active' or row['provider_id']!=selected['id']
                     or row['config_revision']!=selected['revision'] or row['credential_revision']!=selected['credentialRevision']
                     or json.loads(row['binding'])!=binding|{'worker':worker}):

@@ -25,9 +25,26 @@ def alive(pid,started):
 class Operations:
     def __init__(self,store):
         self.store=store
+        self.raw_remaining={}
         with store.db:store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_calls(
             run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL UNIQUE,
             phase TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run_id,request_id))''')
+
+    def wire(self,rid,raw):
+        row,data=self.row(rid)
+        if rid not in self.raw_remaining:
+            with self.store.db:self.store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_events(
+                run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL REFERENCES studio_model_calls(request_id),
+                seq INTEGER NOT NULL,raw TEXT NOT NULL,PRIMARY KEY(request_id,seq))''')
+            used=self.store.db.execute('SELECT COALESCE(SUM(length(CAST(e.raw AS BLOB))),0) FROM studio_model_events e JOIN runs r ON r.id=e.run_id WHERE r.session_id=?',(data['sessionId'],)).fetchone()[0]
+            self.raw_remaining[rid]=max(0,96*1024*1024-used)
+        size=len(raw.encode())
+        if size>self.raw_remaining[rid]:
+            if not data.get('rawTruncated'):data['rawTruncated']=True;self.put(rid,row['phase'],data)
+            self.raw_remaining[rid]=0;return
+        with self.store.db:
+            self.store.db.execute('INSERT INTO studio_model_events SELECT ?,?,COALESCE(MAX(seq),0)+1,? FROM studio_model_events WHERE request_id=?',(row['run_id'],rid,raw,rid))
+        self.raw_remaining[rid]-=size
 
     def row(self,rid):
         row=self.store.db.execute('SELECT * FROM studio_model_calls WHERE request_id=?',(rid,)).fetchone()
@@ -43,11 +60,12 @@ class Operations:
             'selection':{key:config[key] for key in ('providerId','model','effort','apiProvider')},'createdAt':now()}
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
 
-    def process(self,rid,stage,child):
+    def process(self,rid,stage,child,request_sha256=None):
         row,data=self.row(rid)
         if stage=='started':
             if data.get('process'):raise ProjectFault('This model call already owns a process.',409)
             data['process']={'pid':child.pid,'birth':birth(child.pid),'bootId':boot(),'cgroup':cgroup(child.pid)}
+            data['requestSha256']=request_sha256
             self.put(rid,'dispatching',data)
         else:
             original=data.get('process')
@@ -63,7 +81,12 @@ class Operations:
             self.put(rid,'completed',data)
         else:
             data['error']={'code':getattr(error,'code','interrupted'),'httpStatus':getattr(error,'http_status',None)}
+            data['error']['category']=getattr(error,'category','interrupted')
+            data['error']['details']=getattr(error,'details',None)
+            data['error']['partial']=getattr(error,'partial',None)
             self.put(rid,'unknown' if attempted else 'failed',data)
+        from studio_usage import record
+        record(self.store,self.row(rid)[0])
 
     def reconcile(self,run_id):
         for row in self.store.db.execute('SELECT * FROM studio_model_calls WHERE run_id=?',(run_id,)).fetchall():
@@ -74,6 +97,7 @@ class Operations:
             phase=row['phase']
             if phase not in ('completed','failed','unknown'):
                 phase='unknown';data['reason']='Original model completion was not received. No request was repeated.'
+                if not process:data['attempted']=False;phase='failed'
             self.put(row['request_id'],phase,data)
         return True
 

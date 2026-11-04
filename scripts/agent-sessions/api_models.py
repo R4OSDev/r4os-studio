@@ -89,12 +89,23 @@ def chat_policy(model,effort):
     return result
 
 
-def freeze(store,sid,data,providers,snapshot):
+def freeze(store,sid,data,providers,snapshot,original=None):
     session=store.get(sid);selected=session['engine'].get('api')
     if not selected:return
     provider=connection(providers,snapshot['providerId'])
     if provider is None:raise ProjectFault('The original API connection is unavailable.',409)
     if not provider['enabled']:raise ProjectFault('This API connection is disconnected.',409)
+    if original is not None and snapshot['engine'].get('kind')=='studio':
+        frozen=original.get('apiProvider',{})
+        if (frozen.get('id')!=provider['id'] or frozen.get('kind')!=provider['kind']
+                or any(snapshot.get(k)!=original.get(k) for k in ('providerId','model','effort','engine'))
+                or original.get('apiRunId')!=future_run_id(store,sid,data['requestId'])):
+            raise ProjectFault('The original queued API selection changed. Its input was preserved.',409)
+        # The reserved full-config hash is checked again at admission. Retain
+        # accepted facts and credentials rather than reading a new catalog.
+        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
+            if key in original:snapshot[key]=copy.deepcopy(original[key])
+        return
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
             or selected['protocol']!=provider['protocol'] or selected.get('server','custom')!=provider.get('server','custom')):
         raise ProjectFault('The API connection identity changed. Create a new session; the existing conversation was preserved.',409)

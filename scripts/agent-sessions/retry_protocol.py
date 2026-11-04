@@ -6,6 +6,7 @@ FIELDS=('goalRetryProtocol','claudeRetryProtocol','streamRetryProtocol')
 
 def offered(snapshot):
     engine=snapshot['engine']
+    if engine.get('kind')=='studio':return {'streamRetryProtocol':2}
     if engine.get('kind')=='claude-code':
         from claude_runtime import profile,text_profile
         pin=profile();runtime=engine.get('claude') or {}

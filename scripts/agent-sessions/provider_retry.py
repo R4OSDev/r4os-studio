@@ -65,6 +65,39 @@ class ProviderRetry:
         self.goal = GoalRetry(self)
         self.goal_mode = False
 
+    async def direct(self,error):
+        """The existing timer may repeat only a provably undispatched request."""
+        w=self.w;row=get_run(w.store,w.run_id)
+        if (w.config['engine'].get('kind')!='studio' or w.config.get('streamRetryProtocol')!=2
+                or not getattr(error,'not_dispatched',False) or error.http_status is not None
+                or not isinstance(error.details,dict) or error.details.get('connectionCode') not in ('ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN')
+                or not w.model or not w.model.closed_confirmed
+                or self.closed or w.stopping or w.done.is_set() or w.uncertain_effect
+                or not row['busy'] or row['state']!='running'):return False
+        if self.attempt>=MAX_ATTEMPTS:
+            with w.store.db:self.write('exhausted')
+            return False
+        owner=json.loads(row['worker']);self.original={'owner':{'type':w.store.owner_type,'id':w.store.owner_id},
+            'sessionId':w.session_id,'runId':w.run_id,'requestId':row['request_id'],'inputSha256':row['payload_hash'],
+            'configSha256':digest(w.config),'threadId':w.thread_id,'release':w.manifest['release'],
+            'pid':owner['pid'],'birth':owner['birth'],'boot':boot()}
+        self.failure={'text':'The connection failed before the model request was dispatched.','httpStatusCode':None}
+        self.failed_turn=w.turn_id;self.deadline=time.monotonic_ns()+DELAY_NS;self.sequence+=1
+        with w.store.db:self.write('waiting')
+        self.task=asyncio.create_task(asyncio.sleep(DELAY_NS/1_000_000_000))
+        try:await self.task
+        finally:self.task=None
+        current=get_run(w.store,w.run_id)
+        if (w.stopping or w.done.is_set() or self.closed or not current['busy'] or current['state']!='running'
+                or digest(json.loads(current['config']))!=self.original['configSha256']):return False
+        w.validate_lease();self.attempt+=1;self.sequence+=1;self.retry_turn=w.turn_id
+        with w.store.db:self.write('continuing')
+        return True
+
+    def direct_complete(self):
+        if self.w.config['engine'].get('kind')=='studio' and self.state=='continuing':
+            with self.w.store.db:self.write('completed')
+
     def eligible(self):
         from image_provider import PROVIDER
         from codex_runtime import native

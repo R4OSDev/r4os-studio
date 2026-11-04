@@ -60,6 +60,9 @@ class Usage:
         return True
     def scan(self,budget=BUDGET,api_final=False):
         session=self.store.row(self.sid);thread=session['thread_id']
+        if json.loads(session['engine']).get('kind')=='studio':
+            from studio_usage import scan
+            return scan(self.store,self.sid)
         if not thread or not qualified(json.loads(session['engine'])):return 0
         if (json.loads(session['engine']).get('api') and not api_final
                 and self.store.db.execute('SELECT 1 FROM runs WHERE session_id=? AND busy=1',(self.sid,)).fetchone()):return 0
