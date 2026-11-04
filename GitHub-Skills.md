@@ -67,3 +67,24 @@ request after a lost response. Check status / refresh access renews access and
 reads current state without starting preparation. Concurrent edits report a
 conflict and preserve entered fields. Session Settings continues to select each
 skill by its existing UUID; tool permissions remain independent.
+
+0.9.52 supplies the managed REA source recipe. It follows the selected commit's
+exact `.nvmrc`, verifies the official Node archive SHA256, and retains its own
+Node/npm under the immutable runtime. Studio's Node and global configuration
+are unchanged. Dependency installation uses the commit's lockfile with lifecycle
+scripts disabled and a fixed public registry. Explicit source preparation and
+`npm run build:cached` then run offline in a separate private namespace.
+
+The build's generated `skills/reverse-engineer-anything` package, references,
+bridges, dependencies, licences, CLI/MCP entry and full catalogue belong to the
+same runtime identity. A Studio-specific guide precedes generic setup advice.
+Before publication the real MCP process must match its complete generated
+catalogue and confirm its process end. Every runtime file/link participates in
+the immutable inventory. An identical prepared runtime is verified and reused;
+invalid assets, archive paths, changed caches or a wrong executable cannot use
+the host Node as an alternative. Original build/probe logs remain private.
+
+The base recipe and its static JavaScript/SQLite/PTY/CLI/MCP paths are qualified.
+Ghidra/JDK and additional analysis programs are the next separate provisioning
+step. Source readiness, working MCP and availability of each analysis program
+are distinct; the final productive REA skill is activated after those steps.

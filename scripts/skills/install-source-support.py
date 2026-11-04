@@ -38,7 +38,7 @@ ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths="''' + quoted + '''"
-MemoryMax=2G
+MemoryMax=6G
 TasksMax=512
 '''
     rule = '''// R4OS Studio: only one validated private source-job UUID instance.
@@ -61,9 +61,13 @@ polkit.addRule(function(action, subject) {
             raise SystemExit('Refusing linked source job host support.')
         previous = path.read_bytes() if path.exists() else None
         originals[path] = previous
-        # Only the known 0.9.47 generated proc-mask incompatibility is migrated.
-        known_previous = data.replace(b'ProtectKernelTunables=no\n', b'ProtectKernelTunables=yes\n') if path.suffix == '.service' else data
-        if previous is not None and previous not in (data, known_previous):
+        # Only our exact generated earlier units are migrated: the proc fix and
+        # the bounded extra memory required by the real managed REA build.
+        known_previous = {data}
+        if path.suffix == '.service':
+            known_previous |= {data.replace(b'MemoryMax=6G\n', b'MemoryMax=2G\n')}
+            known_previous |= {value.replace(b'ProtectKernelTunables=no\n', b'ProtectKernelTunables=yes\n') for value in list(known_previous)}
+        if previous is not None and previous not in known_previous:
             raise SystemExit('Existing source job support differs; preserve it for explicit maintenance.')
     for path, data in targets.items():
         if originals[path] != data:

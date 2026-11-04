@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('publication_test_store', Path(__file__).with_name('store.py'))
@@ -123,8 +124,11 @@ class Publications(unittest.TestCase):
         with self.assertRaisesRegex(api.SkillFault, 'missing from the package'):
             self.apply(job, (source, manifest, digest))
         rea = dict(job, configuration=dict(job['configuration'], recipe='rea'))
-        with self.assertRaisesRegex(api.SkillFault, 'runtime recipe'):
-            self.apply(rea, (source, manifest, digest))
+        def failed_recipe(*args):
+            raise api.SkillFault('Injected runtime prerequisite failure.',409)
+        with patch.dict(sys.modules,{'rea_recipe':SimpleNamespace(prepare=failed_recipe)}):
+            with self.assertRaisesRegex(api.SkillFault, 'prerequisite failure'):
+                self.apply(rea, (source, manifest, digest))
         self.assertIsNone(api.detail(self.db, self.root, self.ident)['skill']['activeHash'])
 
     def test_corrupt_immutable_manifest_does_not_become_an_update(self):
