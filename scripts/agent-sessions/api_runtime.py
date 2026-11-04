@@ -1,13 +1,11 @@
 """Run-owned Responses transport and native launch binding, never a tool loop."""
 import asyncio
-import ipaddress
 import json
 import os
 from pathlib import Path
 import secrets
-import socket
 
-from api_endpoint import endpoint, resolved_addresses
+from api_endpoint import resolve_binding
 from api_provider_store import private
 from session_store import identity
 from store import ProjectFault
@@ -15,27 +13,6 @@ from store import ProjectFault
 
 def provider_name(ident):
     return 'studio_api_'+identity(ident).replace('-','_')
-
-
-async def resolve_binding(binding):
-    checked=endpoint(binding['baseUrl'],binding['kind'])
-    from urllib.parse import urlsplit
-    parsed=urlsplit(checked['baseUrl']);host=parsed.hostname;port=parsed.port or (443 if parsed.scheme=='https' else 80)
-    try:
-        try: addresses=[str(ipaddress.ip_address(host))]
-        except ValueError:
-            values=await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo,host,port,type=socket.SOCK_STREAM),10)
-            addresses=[value[4][0] for value in values]
-        validated=resolved_addresses(checked,addresses)
-        if binding['kind']=='zai-coding-plan':
-            # The global service publishes A and AAAA. Lexicographic ordering
-            # selected IPv6 first even on IPv4-only hosts. Choose a validated
-            # IPv4 address before any credential transport, with no HTTP retry.
-            validated.sort(key=lambda address:ipaddress.ip_address(address).version)
-        return validated
-    except ProjectFault:raise
-    except (OSError,ValueError,asyncio.TimeoutError):
-        raise ProjectFault('The configured model endpoint could not be resolved safely.',503) from None
 
 
 class ApiRuntime:

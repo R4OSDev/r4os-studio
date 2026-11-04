@@ -71,6 +71,16 @@ start saved goals automatically.
 
 ## Access is separate from model transport
 
+Since 0.10.3, `model_transport.py` and `model_responses.py` provide a direct
+Responses connector. `model_http.mjs` sends one private, pinned HTTP request
+and returns bytes, not an agent protocol. Python owns the common SSE decoder
+and context serialization, preserving exact large integer tool arguments.
+The original complete provider output is retained for same-route continuation.
+No tool is returned before a confirmed terminal response and complete argument
+validation. Credentials travel only in the private bootstrap pipe. DNS/TLS and
+endpoint checks are shared with the old native path. The connector itself does
+not migrate sessions or dispatch tools; the common worker follows in 0.10.6.
+
 | Connection | Direct common route | Remaining access constraint |
 | --- | --- | --- |
 | OpenAI API / compatible Responses | Responses | Explicit configured credentials and actual endpoint capabilities |

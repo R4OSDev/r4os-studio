@@ -107,10 +107,10 @@ class ActiveHold(unittest.IsolatedAsyncioTestCase):
         binding={'kind':'zai-coding-plan','baseUrl':'https://api.z.ai/api/coding/paas/v4'}
         records=[(socket.AF_INET6,socket.SOCK_STREAM,6,'',('2606:4700::1111',443,0,0)),
                  (socket.AF_INET,socket.SOCK_STREAM,6,'',('8.8.8.8',443))]
-        with patch('api_runtime.socket.getaddrinfo',return_value=records):
+        with patch('api_endpoint.socket.getaddrinfo',return_value=records):
             self.assertEqual(await resolve_binding(binding),['8.8.8.8','2606:4700::1111'])
         records.append((socket.AF_INET,socket.SOCK_STREAM,6,'',('127.0.0.1',443)))
-        with patch('api_runtime.socket.getaddrinfo',return_value=records),self.assertRaises(ProjectFault):
+        with patch('api_endpoint.socket.getaddrinfo',return_value=records),self.assertRaises(ProjectFault):
             await resolve_binding(binding)
 
     async def test_host_hold_only_blocks_future_requests_without_stop_or_replay(self):

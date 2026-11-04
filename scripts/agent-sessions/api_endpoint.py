@@ -1,7 +1,9 @@
 """Fixed API endpoint policy. No HTTP request or credential forwarding here."""
+import asyncio
 import ipaddress
 from pathlib import Path
 import re
+import socket
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
@@ -69,3 +71,21 @@ def resolved_addresses(value, addresses):
     if not values or not all(address_allowed(address,value['local']) for address in values):
         raise ProjectFault('The API endpoint resolved outside its allowed network scope.',400)
     return values
+
+
+async def resolve_binding(binding):
+    """Shared native/direct target resolution; no request or credential use."""
+    checked=endpoint(binding['baseUrl'],binding['kind'])
+    parsed=urlsplit(checked['baseUrl']);host=parsed.hostname;port=parsed.port or (443 if parsed.scheme=='https' else 80)
+    try:
+        try:addresses=[str(ipaddress.ip_address(host))]
+        except ValueError:
+            values=await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo,host,port,type=socket.SOCK_STREAM),10)
+            addresses=[value[4][0] for value in values]
+        validated=resolved_addresses(checked,addresses)
+        if binding['kind']=='zai-coding-plan':
+            validated.sort(key=lambda address:ipaddress.ip_address(address).version)
+        return validated
+    except ProjectFault:raise
+    except (OSError,ValueError,asyncio.TimeoutError):
+        raise ProjectFault('The configured model endpoint could not be resolved safely.',503) from None
