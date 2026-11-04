@@ -143,7 +143,7 @@ class StudioWorker(Worker):
     def transport(self):
         model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
-            chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
+            headers=getattr(self,'model_headers',None), chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
         model.media_resolver=self.media.resolve
         return model
 
@@ -155,6 +155,12 @@ class StudioWorker(Worker):
 
     async def infer_once(self,messages,instructions,tools,on_text=None):
         self.validate_lease()
+        if self.config['apiProvider']['kind']=='codex-subscription':
+            from native_openai import access
+            original=await asyncio.to_thread(access,self.manifest['providers'],self.config['apiProvider']['id'],self.config['apiNativeAccount'])
+            self.credential=original['key'];self.model_headers=original['extraHeaders']
+            self.validate_lease()
+            if not self.active():raise asyncio.CancelledError()
         if self.config['apiProvider']['kind']=='chatgpt-plan':
             from chatgpt_plan import Plan
             self.credential=await asyncio.to_thread(Plan(self.manifest['providers']).credential,self.config['apiProvider'],self.config['apiPlanGrant'])

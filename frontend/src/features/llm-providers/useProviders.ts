@@ -90,7 +90,8 @@ export function useProviders(usageVisible = true) {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
   }, [data.providers, request, usageVisible]);
 
-  return { ...data, providers: [...data.providers, ...apiProviders, ...claudeProviders], apiError, claudeError, remainingByProvider, loading, error, reload, request };
+  const managed = new Set(apiProviders.filter(p => p.kind === 'codex-subscription').map(p => p.id));
+  return { ...data, nativeProviders: data.providers, providers: [...data.providers.filter(p => !managed.has(p.id)), ...apiProviders, ...claudeProviders], apiError, claudeError, remainingByProvider, loading, error, reload, request };
 }
 
 export type ProviderApi = ReturnType<typeof useProviders>;

@@ -1,10 +1,12 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { version } from '../../../version.js';
 
 export interface AuthClient {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
+  metadata?(): Promise<{ userAgent: string; version: string }>;
   close(): Promise<void>;
 }
 
@@ -21,8 +23,10 @@ export class CodexClient implements AuthClient {
   private ready: Promise<void>;
   private stopped = false;
   private closing = false;
+  private userAgent = '';
+  private identification?: Promise<{ userAgent: string; version: string }>;
 
-  constructor(binary: string, home: string, notify: AuthNotification, exited: () => void) {
+  constructor(private binary: string, private home: string, notify: AuthNotification, exited: () => void) {
     const env = { ...process.env, CODEX_HOME: home };
     for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'CODEX_AUTH_JSON', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE']) {
       delete (env as Record<string, string | undefined>)[key];
@@ -72,7 +76,9 @@ export class CodexClient implements AuthClient {
     this.ready = this.send('initialize', {
       clientInfo: { name: 'r4os_studio', title: 'R4OS Studio', version },
       capabilities: { experimentalApi: false },
-    }).then(() => {
+    }).then((result) => {
+      const agent = (result as { userAgent?: unknown } | null)?.userAgent;
+      if (typeof agent === 'string' && /^[\x20-\x7e]{1,2048}$/.test(agent)) this.userAgent = agent;
       this.child.stdin.write(JSON.stringify({ method: 'initialized' }) + '\n');
     });
     // The first request still receives initialization errors, without an unhandled rejection.
@@ -100,6 +106,19 @@ export class CodexClient implements AuthClient {
       'account/rateLimitResetCredit/consume'].includes(method)) throw new Error('Only account operations are supported by this connection.');
     await this.ready;
     return await this.send(method, params) as T;
+  }
+
+  async metadata() {
+    await this.ready;
+    this.identification ??= (async () => {
+      const { stdout } = await promisify(execFile)(this.binary, ['--version'], {
+        cwd: this.home, env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', CODEX_HOME: this.home }, timeout: 5000, maxBuffer: 4096,
+      });
+      const version = /^codex-cli ([0-9]+\.[0-9]+\.[0-9]+(?:[-+][\w.-]+)?)\s*$/.exec(stdout)?.[1];
+      if (!version || !this.userAgent) throw new Error(unavailable);
+      return { userAgent: this.userAgent, version };
+    })();
+    return this.identification;
   }
 
   async close(): Promise<void> {

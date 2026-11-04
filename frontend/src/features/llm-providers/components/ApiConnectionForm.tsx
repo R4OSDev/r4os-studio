@@ -6,13 +6,14 @@ import { useApiMutation } from '../useApiMutation';
 import { OpenRouterFields, routerDraft, routerSettings } from './OpenRouterFields';
 
 export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API', 'zai-coding-plan': 'Z.AI · GLM Coding Plan', 'chatgpt-plan':'ChatGPT plan' };
+export const apiKindLabel = (kind: ApiProviderKind) => kind === 'codex-subscription' ? 'OpenAI · ChatGPT subscription' : apiKinds[kind];
 const defaultUrl = (kind: ApiProviderKind) => kind === 'zai-coding-plan' ? 'https://api.z.ai/api/coding/paas/v4' : kind === 'openrouter' ? 'https://openrouter.ai/api/v1' : '';
 export const apiProtocols:Record<ApiProtocol,string>={responses:'Responses','chat-completions':'Chat Completions',messages:'Messages'};
 export type LeaveGuard = (guard: () => boolean) => void;
 export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: {
   api: ProviderApi; initial?: ApiProvider; kind: ApiProviderKind; saved: (id: string) => void; setLeaveGuard?: LeaveGuard;
 }) {
-  const [name, setName] = useState(initial?.name ?? apiKinds[kind]);
+  const [name, setName] = useState(initial?.name ?? apiKindLabel(kind));
   const [baseUrl, setUrl] = useState(initial?.baseUrl ?? defaultUrl(kind));
   const [protocol, setProtocol] = useState<ApiProtocol>(initial?.protocol ?? 'chat-completions');
   const [auth, setAuth] = useState<ApiAuth>(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
@@ -23,7 +24,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   const mutation = useApiMutation(api, initial?.id ?? null), field = useRef<HTMLInputElement>(null);
   const retryConfig = mutation.notFound && !!mutation.pending && ['create', 'update'].includes(mutation.pending.operation);
   const subscription = kind === 'zai-coding-plan';
-  const dirty = name !== (initial?.name ?? apiKinds[kind]) || baseUrl !== (initial?.baseUrl ?? defaultUrl(kind))
+  const dirty = name !== (initial?.name ?? apiKindLabel(kind)) || baseUrl !== (initial?.baseUrl ?? defaultUrl(kind))
     || protocol !== (initial?.protocol ?? 'chat-completions') || auth !== (initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'))
     || enabled !== (initial?.enabled ?? true) || !!secret || !!initial && keyAction !== 'keep'
     || kind === 'openrouter' && JSON.stringify(routing) !== JSON.stringify(routerDraft(initial?.openrouter));
@@ -47,7 +48,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
     await accept(await mutation.send(initial ? 'update' : 'create', data, !!mutation.pending) as ApiProviderMutation | undefined);
   }
   function cancel() {
-    setSecret(''); setName(initial?.name ?? apiKinds[kind]); setUrl(initial?.baseUrl ?? defaultUrl(kind));
+    setSecret(''); setName(initial?.name ?? apiKindLabel(kind)); setUrl(initial?.baseUrl ?? defaultUrl(kind));
     setProtocol(initial?.protocol ?? 'chat-completions'); setAuth(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
     setEnabled(initial?.enabled ?? true); setKeyAction(initial ? 'keep' : 'replace'); setRouting(routerDraft(initial?.openrouter));
     setServer(initial?.server ?? 'custom');

@@ -102,7 +102,7 @@ def freeze(store,sid,data,providers,snapshot,original=None):
     session=store.get(sid);selected=session['engine'].get('api')
     if not selected:return
     provider=connection(providers,snapshot['providerId'])
-    if provider and provider['kind']=='chatgpt-plan' and snapshot['engine'].get('kind')!='studio':raise ProjectFault('Direct ChatGPT plan access requires the common Studio worker.',409)
+    if provider and provider['kind'] in ('chatgpt-plan','codex-subscription') and snapshot['engine'].get('kind')!='studio':raise ProjectFault('This OpenAI connection requires the common Studio worker.',409)
     if provider is None:raise ProjectFault('The original API connection is unavailable.',409)
     if not provider['enabled']:raise ProjectFault('This API connection is disconnected.',409)
     if original is not None and snapshot['engine'].get('kind')=='studio':
@@ -113,7 +113,7 @@ def freeze(store,sid,data,providers,snapshot,original=None):
             raise ProjectFault('The original queued API selection changed. Its input was preserved.',409)
         # The reserved full-config hash is checked again at admission. Retain
         # accepted facts and credentials rather than reading a new catalog.
-        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiPlanGrant','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
+        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiPlanGrant','apiNativeAccount','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
             if key in original:snapshot[key]=copy.deepcopy(original[key])
         return
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
@@ -168,6 +168,9 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
     if provider['kind']=='chatgpt-plan':
         from chatgpt_plan import Plan
         snapshot['apiPlanGrant']=Plan(providers).frozen(provider)
+    if provider['kind']=='codex-subscription':
+        from native_openai import frozen
+        snapshot['apiNativeAccount']=frozen(providers,provider)
     snapshot['apiRunId'] = future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation'] = False
     snapshot['studioGoalPreparation'] = data.get('liveGoalPreparation') == 1

@@ -31,17 +31,33 @@ export function redirectSubmission(login: BrowserLogin, value: string) {
   return { fingerprint, port: Number(callback.port), path: callback.pathname + supplied.search };
 }
 
-/** One request to the callback issued by our own native client; no redirects. */
+/** Original callback, then at most its own local success page; no code replay. */
 export function relayRedirect(port: number, path: string): Promise<void> {
+  return localPage(port, path, true);
+}
+
+function localPage(port: number, path: string, callback: boolean): Promise<void> {
   return new Promise((resolve, reject) => {
     const current = request({ hostname: '127.0.0.1', port, path, method: 'GET', agent: false,
-      headers: { Host: `localhost:${port}` }, maxHeaderSize: 16384 }, response => {
+      headers: { Host: `127.0.0.1:${port}` }, maxHeaderSize: 16384 }, response => {
       let size = 0;
       response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 65536) response.destroy(); });
-      response.on('end', () => response.statusCode && response.statusCode < 400 ? resolve() : reject(new Error('Original callback did not confirm completion.')));
+      response.on('end', () => {
+        if (!response.statusCode || response.statusCode >= 400) { reject(new Error('Original callback did not confirm completion.')); return; }
+        if (callback && response.statusCode === 302 && response.headers.location) {
+          try {
+            const next = new URL(response.headers.location);
+            if (next.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(next.hostname)
+              && Number(next.port) === port && next.pathname === '/success' && !next.username && !next.password && !next.hash) {
+              void localPage(port, next.pathname + next.search, false).then(resolve, reject); return;
+            }
+          } catch { /* Never forward an invalid or external redirect. */ }
+        }
+        resolve(); // The native completion notification remains authoritative.
+      });
       response.on('error', () => reject(new Error('Original callback completion is unconfirmed.')));
     });
-    current.setTimeout(15000, () => current.destroy());
+    current.setTimeout(15000, () => current.destroy(new Error('Original callback timed out.')));
     current.on('error', () => reject(new Error('Original callback completion is unconfirmed.')));
     current.end();
   });

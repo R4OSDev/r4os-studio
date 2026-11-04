@@ -6,10 +6,28 @@ import type { ResetRequest } from '../../../../shared/llm-providers.js';
 import { chatgptPlanRoutes } from './chatgpt-plan-routes.js';
 import { apiProviderRoutes } from './api-routes.js';
 import { claudeProviderRoutes } from './claude-routes.js';
+import { agentHost } from '../agent-sessions/host.js';
+import { NativeAccessServer } from './openai/access-server.js';
 
 export async function providerRoutes(app: FastifyInstance, options: ProviderOptions) {
-  const manager = new ProviderManager(options);
-  app.addHook('onClose', () => manager.close());
+  const manager = new ProviderManager({ ...options,
+    prepareStudio: (id, name, binding) => agentHost({ operation: 'api_provider', action: 'native_connect', id, name, binding }),
+    beforeDisconnect: async id => {
+      if ((await manager.list()).find(p => p.id === id)?.runtime === 'studio') {
+        await agentHost({ operation: 'api_provider', action: 'native_retire', id });
+      }
+      await options.beforeDisconnect?.(id);
+    },
+    beforeRemove: async id => {
+      if ((await manager.list()).find(p => p.id === id)?.runtime === 'studio') {
+        await agentHost({ operation: 'api_provider', action: 'native_retire', id, remove: true });
+      }
+      await options.beforeRemove?.(id);
+    },
+  });
+  const access = new NativeAccessServer(options.directory, manager);
+  app.addHook('onReady', async () => { await manager.list(); await access.start(); });
+  app.addHook('onClose', async () => { await access.close(); await manager.close(); });
   const sessions = new ProviderSessions();
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
   apiProviderRoutes(app, sessions);
@@ -75,6 +93,10 @@ export async function providerRoutes(app: FastifyInstance, options: ProviderOpti
   app.post<{ Params: { id: string } }>('/:id/disconnect', async (request, reply) => {
     sessions.mutation(request, reply);
     return { provider: await manager.disconnect(request.params.id) };
+  });
+  app.post<{ Params: { id: string } }>('/:id/studio', async (request, reply) => {
+    sessions.mutation(request, reply);
+    return { provider: await manager.prepareStudio(request.params.id) };
   });
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
     sessions.mutation(request, reply);

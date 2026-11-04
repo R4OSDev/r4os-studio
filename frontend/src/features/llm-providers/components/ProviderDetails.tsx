@@ -3,12 +3,17 @@ import type { Provider, ProviderLogin } from '../../../../../shared/llm-provider
 import type { ProviderApi } from '../useProviders';
 import { Icon } from '../../../app/Icon';
 import { ProviderUsage } from './ProviderUsage';
+import type { ApiProvider } from '../../../../../shared/api-providers.js';
+import { ApiModels } from './ApiModels';
+import type { LeaveGuard } from './ApiConnectionForm';
+
+const noLeaveGuard: LeaveGuard = () => {};
 
 const labels: Record<Provider['status'], string> = {
   connected: 'Connected', disconnected: 'Not connected', signing_in: 'Waiting for sign-in', unavailable: 'Unavailable',
 };
 
-export function ProviderDetails({ initial, api, removed }: { initial: Provider; api: ProviderApi; removed: () => void }) {
+export function ProviderDetails({ initial, connection, api, removed, setLeaveGuard = noLeaveGuard }: { initial: Provider; connection?: ApiProvider; api: ProviderApi; removed: () => void; setLeaveGuard?: LeaveGuard }) {
   const [provider, setProvider] = useState(initial);
   const [login, setLogin] = useState<ProviderLogin | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,6 +49,7 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
         setError(null);
         if (result.login?.status !== 'pending') {
           const current = await request<{ provider: Provider }>(path);
+          if (current.provider.runtime === 'studio' && current.provider.status === 'connected') await request(`${path}/studio`, 'POST');
           if (active) { setProvider(current.provider); setLogin(result.login); await reload(); }
           return;
         }
@@ -54,6 +60,13 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
     timer = setTimeout(() => void poll(), 1500);
     return () => { active = false; clearTimeout(timer); };
   }, [login?.status, path, request, reload]);
+
+  async function prepareStudio() {
+    setBusy(true); setError(null);
+    try { await request(`${path}/studio`, 'POST'); await reload(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The Studio connection could not be prepared.'); }
+    finally { setBusy(false); }
+  }
 
   async function action(operation: 'login' | 'cancel' | 'disconnect' | 'remove') {
     if (busy) return;
@@ -131,6 +144,8 @@ export function ProviderDetails({ initial, api, removed }: { initial: Provider; 
         <div><dt>Authentication</dt><dd>ChatGPT subscription</dd></div>
       </dl>
       {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.email ?? ''}:${provider.account?.plan ?? ''}:${provider.account?.workspaceId ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} accountScope={provider.account?.workspaceId} request={request} />}
+      {provider.status === 'connected' && provider.runtime === 'studio' && !connection && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading} onClick={() => void prepareStudio()}>Use this connection in Studio</button></div>}
+      {connection && <ApiModels api={api} provider={connection} setLeaveGuard={setLeaveGuard} />}
       {provider.status !== 'connected' && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading || !api.signInAvailable || !!api.error || provider.status === 'signing_in'} onClick={() => void action('login')}>{busy ? 'Starting sign-in…' : 'Continue with ChatGPT'}</button></div>}
       {!api.signInAvailable && <p className="provider-alert" role="status">OpenAI sign-in is currently unavailable. Please try again later.</p>}
       {provider.status === 'signing_in' && <p className="field-help">A sign-in is in progress in another browser session.</p>}

@@ -47,8 +47,16 @@ const headers = { Accept: 'application/json', 'Accept-Encoding': 'identity', 'Us
 if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
 if (binding.kind === 'openrouter') Object.assign(headers, routerHeaders(routerSettings(binding.openrouter ?? {})));
 if (binding.kind === 'zai-coding-plan') headers['User-Agent'] = JSON.parse(readFileSync(new URL('../../shared/zai-client.json', import.meta.url))).userAgent;
+let query = '';
+if (binding.kind === 'codex-subscription') {
+  if (binding.baseUrl !== 'https://chatgpt.com/backend-api/codex' || binding.protocol !== 'responses' || binding.auth !== 'bearer'
+    || !/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][\w.-]+)?$/.test(input.clientVersion ?? '')
+    || !input.extraHeaders || Object.keys(input.extraHeaders).sort().join() !== ['ChatGPT-Account-Id', 'User-Agent', 'originator'].sort().join()
+    || Object.values(input.extraHeaders).some(value => typeof value !== 'string' || !/^[\x20-\x7e]{1,2048}$/.test(value))) fail('binding');
+  Object.assign(headers, input.extraHeaders); query = '?client_version=' + encodeURIComponent(input.clientVersion);
+}
 request = (target.protocol === 'https:' ? https : http).request({ protocol: target.protocol, hostname: host,
-  port: target.port || undefined, path: target.pathname.replace(/\/$/, '') + '/models', method: 'GET', headers,
+  port: target.port || undefined, path: target.pathname.replace(/\/$/, '') + '/models' + query, method: 'GET', headers,
   agent: false, maxHeaderSize: 16384, autoSelectFamily: false, family: net.isIP(address),
   lookup: (hostname, options, callback) => {
     if (hostname !== host) { callback(Error()); return; }
@@ -66,7 +74,7 @@ request = (target.protocol === 'https:' ? https : http).request({ protocol: targ
     if (finished) return;
     try {
       const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
-      const entries=binding.kind==='chatgpt-plan'?value?.models:value?.data;
+      const entries=['chatgpt-plan','codex-subscription'].includes(binding.kind)?value?.models:value?.data;
       if (!value || !Array.isArray(entries)) { fail('format'); return; }
       finish({ ok: true, ...modelCatalog(entries, binding, key, input.modelIds) });
     } catch { fail('format'); }

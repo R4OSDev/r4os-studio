@@ -238,6 +238,13 @@ class Host:
         if op == 'api_provider':
             from api_provider_store import ApiProviders
             store=ApiProviders(self.config['providers']);action=request.get('action')
+            if action=='native_connect':
+                from native_openai import prepare
+                return await asyncio.to_thread(prepare,self.config['providers'],request.get('id'),request.get('name'),request.get('binding'))
+            if action=='native_retire':
+                from native_openai import retire
+                await retire(self,identity(request.get('id')),request.get('remove') is True)
+                return {'closed':True}
             if action=='list':return await asyncio.to_thread(store.listing)
             if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
             if action=='receipt':return await asyncio.to_thread(store.receipt,request.get('id'),request.get('requestId'))

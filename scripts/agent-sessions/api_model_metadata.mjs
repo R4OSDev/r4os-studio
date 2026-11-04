@@ -21,11 +21,11 @@ export function modelFacts(entry, binding, key) {
     let reasoning, efforts = [], defaultEffort = null;
     // OpenRouter's published model schema supplies these facts. Generic Models
     // IDs alone establish no context/tool/reasoning or modality capabilities.
-    if (binding.kind === 'chatgpt-plan') {
+    if (['chatgpt-plan','codex-subscription'].includes(binding.kind)) {
       if (entry.visibility !== 'list' || entry.supported_in_api !== true) return null;
       name = safeString(entry.display_name, 200) ?? id;
       contextWindow = tokens(entry.context_window); maxOutputTokens = tokens(entry.max_output_tokens);
-      // The documented SIWC Responses contract supports text, streamed output
+      // The account Responses contract supports text, streamed output
       // and custom function tools. Display/account eligibility comes from this
       // account's own catalog; no ID or local binary selects a model.
       capabilities.text = capabilities.functionTools = capabilities.streaming = 'supported';
@@ -92,7 +92,7 @@ export function modelFacts(entry, binding, key) {
 export function modelCatalog(entries, binding, key, modelIds = []) {
   if (!Array.isArray(entries) || !Array.isArray(modelIds) || modelIds.length > 320
     || modelIds.some(value => typeof value !== 'string' || value.length > 200)) throw Error('Invalid model catalog');
-  if(binding.kind==='chatgpt-plan')entries=entries.map(v=>({...v,id:v.slug}));
+  if(['chatgpt-plan','codex-subscription'].includes(binding.kind))entries=entries.map(v=>({...v,id:v.slug}));
   const wanted = new Set(modelIds), preferred = [], remaining = [];
   for (const entry of entries) {
     if (wanted.has(entry?.id)) preferred.push(entry);

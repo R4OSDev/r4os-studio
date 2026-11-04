@@ -455,3 +455,18 @@ Direct choices, creation and accepted inputs now read one current API catalog pr
 The dependency audit found no provider agent SDK in Studio's application dependencies. There is one direct Studio worker and three small wire projections, with the existing shared tools/stores. OpenAI OAuth, Z.AI's expressly authorized client headers/account limits and remaining native account contracts stay at those boundaries. No new model/version allowlist, probe-inference requirement, background self-test, periodic qualification or provider-specific agent loop is introduced. Necessary input, rights, original process and protocol checks remain.
 
 The current Claude API contract accepts Authorization Bearer API keys and API version 2026-10-21. The existing Messages path therefore needs neither a legacy auth fallback nor an extra SDK. Workspace-scoped API credentials are configured independently of Claude subscriptions. See [Claude API headers](https://platform.claude.com/docs/en/api/overview). Live credentials are qualified only where actually available; local protocol/fixture evidence does not establish a live account. Final operational acceptance and owned-resource cleanup are recorded separately in the workspace implementation report.
+# Native OpenAI model access (0.10.22)
+
+An explicitly connected Studio OpenAI account uses the account-only native
+client for browser sign-in, token renewal and limits. Its model catalog and
+Responses requests use the original ChatGPT account endpoint. A private Unix
+socket binds each access to the frozen account, workspace and auth generation;
+existing API catalog records and worker leases store an opaque account reference.
+No access or refresh token is copied into that store or sent to the WebApp.
+
+The account record and model connection share one UUID. StudioWorker continues
+to own history, context, tools, skills, GOAL, Queue and Stop. Native thread/turn
+RPCs are unavailable through the account client. Disconnect uses the existing
+catalog and original-worker end receipts before deleting this account's home.
+Current saved conversations require the existing explicit Studio conversion or
+connection selection; installing this release never migrates them.

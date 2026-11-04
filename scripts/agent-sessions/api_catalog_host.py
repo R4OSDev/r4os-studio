@@ -47,11 +47,16 @@ async def run(host,ident,rid):
         proof={'pid':child.pid,'birth':birth(child.pid),'script':script}
         # No credential is obtained until this exact waiting process is journaled.
         credential=store.claim(ident,rid,proof)
+        extra={}
+        if binding['kind']=='codex-subscription':
+            from native_openai import access,frozen
+            original=await asyncio.to_thread(access,host.config['providers'],ident,frozen(host.config['providers'],binding))
+            credential=original['key'];extra={k:original[k] for k in ('extraHeaders','clientVersion')}
         if binding['kind']=='chatgpt-plan':
             from chatgpt_plan import Plan
             plan=Plan(host.config['providers']);credential=await asyncio.to_thread(plan.credential,binding,plan.frozen(binding))
         manual=[v['id'] for v in store.listing(ident)['models'] if v.get('source',{}).get('kind')=='manual']
-        child.stdin.write(json.dumps({'binding':binding,'addresses':addresses,'key':credential,'modelIds':manual},separators=(',',':')).encode()+b'\n')
+        child.stdin.write(json.dumps({'binding':binding,'addresses':addresses,'key':credential,'modelIds':manual,**extra},separators=(',',':')).encode()+b'\n')
         await child.stdin.drain();credential=None
         raw=await asyncio.wait_for(child.stdout.readline(),20)
         result=json.loads(raw)

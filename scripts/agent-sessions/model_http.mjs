@@ -36,6 +36,8 @@ if (configuration && !finished) {
       || JSON.parse(body).model !== binding.model || !['none', 'bearer'].includes(binding.auth)
       || binding.auth === 'bearer' && (typeof key !== 'string' || !/^[\x21-\x7e]{1,8192}$/.test(key))) throw Error('Binding');
     if (net.isIP(originalHost) && !addresses.includes(originalHost)) throw Error('Address');
+    if (binding.kind === 'codex-subscription' && (binding.baseUrl !== 'https://chatgpt.com/backend-api/codex'
+      || binding.protocol !== 'responses' || binding.auth !== 'bearer' || !extraHeaders['ChatGPT-Account-Id'])) throw Error('Native account binding');
     const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream',
       'Accept-Encoding': 'identity', 'Content-Length': Buffer.byteLength(body) };
     // Only trusted connector code supplies these headers. Keep routing,

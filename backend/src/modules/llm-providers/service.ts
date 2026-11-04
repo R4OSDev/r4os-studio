@@ -24,6 +24,8 @@ export interface ProviderOptions {
   clientFactory?: AuthClientFactory;
   loginTimeoutMs?: number;
   beforeDisconnect?: (id: string) => Promise<void>;
+  beforeRemove?: (id: string) => Promise<void>;
+  prepareStudio?: (id: string, name: string, binding: NativeBinding) => Promise<unknown>;
 }
 
 export class ProviderManager {
@@ -208,7 +210,10 @@ export class ProviderManager {
 
   /** Private host access only. HTTP routes never expose this result. */
   async nativeAccess(id: string, expected?: NativeBinding, secret = false) {
-    return this.exclusive(id, async () => {
+    return this.exclusive(id, () => this.nativeAccessLocked(id, expected, secret));
+  }
+
+  private async nativeAccessLocked(id: string, expected?: NativeBinding, secret = false) {
       const record = await this.record(id);
       if (record.runtime !== 'studio' || !record.authGeneration) throw new ProviderError('Explicitly connect this account for Studio conversations.', 409);
       const runtime = await this.connectedRuntime(id);
@@ -228,12 +233,21 @@ export class ProviderManager {
           credentials = await nativeCredentials(home);
           validate();
         }
+        if (credentials.managedRouting) throw new ProviderError('This managed OpenAI workspace requires a different model endpoint. No alternate route was used.', 409);
         return { binding: validate(), managedRouting: credentials.managedRouting,
-          ...(secret ? { accessToken: credentials.accessToken } : {}) };
+          ...(secret ? { accessToken: credentials.accessToken, client: await runtime.client.metadata?.() } : {}) };
       } catch (error) {
         if (error instanceof ProviderError) throw error;
         throw new ProviderError('The private OpenAI account access could not be confirmed. Review this original connection.', 409);
       }
+  }
+
+  async prepareStudio(id: string) {
+    return this.exclusive(id, async () => {
+      const access = await this.nativeAccessLocked(id);
+      const record = await this.record(id);
+      if (!this.options.prepareStudio) throw new ProviderError('The Studio model coordinator is unavailable.', 503);
+      return this.options.prepareStudio(id, record.name, access.binding);
     });
   }
 
@@ -386,6 +400,7 @@ export class ProviderManager {
   async remove(id: string): Promise<void> {
     await this.exclusive(id, async () => {
       await this.disconnectLocked(id);
+      await this.options.beforeRemove?.(id);
       await this.store.change((records) => {
         const index = records.findIndex((item) => item.id === id);
         if (index !== -1) records.splice(index, 1);
