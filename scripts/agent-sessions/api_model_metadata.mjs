@@ -31,11 +31,13 @@ export function modelFacts(entry, binding, key) {
       capabilities.text = capabilities.functionTools = capabilities.streaming = 'supported';
       if (Array.isArray(entry.input_modalities)) capabilities.imageInput = entry.input_modalities.includes('image') ? 'supported' : 'unsupported';
       const levels = entry.supported_reasoning_levels;
-      if (Array.isArray(levels) && levels.every(v => v && ['none','minimal','low','medium','high','xhigh','max'].includes(v.effort))) {
-        efforts = [...new Set(levels.map(v=>v.effort))];
+      if (Array.isArray(levels) && levels.length<=32 && levels.every(v => v && safeString(v.effort,30))) {
+        // This account catalog also describes native orchestration modes (for
+        // example automatic delegation). Keep its documented Responses effort
+        // values without rejecting the model because it offers another mode.
+        efforts = [...new Set(levels.map(v=>v.effort).filter(v=>['none','minimal','low','medium','high','xhigh','max'].includes(v)))];
         defaultEffort = efforts.includes(entry.default_reasoning_level) ? entry.default_reasoning_level : null;
-        capabilities.reasoning = efforts.some(v=>v!=='none') ? 'supported' : 'unsupported';
-        if (capabilities.reasoning === 'unsupported' && !efforts.length) { efforts=['none'];defaultEffort='none'; }
+        capabilities.reasoning = !efforts.length ? 'unknown' : efforts.some(v=>v!=='none') ? 'supported' : 'unsupported';
       }
     }
     if (binding.kind === 'openrouter') {

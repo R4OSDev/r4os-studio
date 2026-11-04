@@ -336,6 +336,9 @@ class Host:
                     and (not limits or sample['receivedAt']>limits['receivedAt'])):limits=sample
                 return {'limits':limits,'observation':observed,'hold':quota['hold'] if quota else None,'providerRevision':provider['revision']}
             finally:store.close()
+        if op in ('session_migration_status','session_migration_preview','session_migrate','session_migration_rollback'):
+            from session_migration import dispatch
+            async with self.lock: return await dispatch(self, request)
         if op in ('session_delete_preview','session_delete','session_delete_receipt'):
             import session_delete
             kind,ident=binding(request);sid=identity(request['sessionId'])

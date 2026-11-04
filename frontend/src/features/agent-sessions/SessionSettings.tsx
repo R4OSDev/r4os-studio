@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentSession, SessionOptions, NativeImageCapability } from '../../../../shared/agent-sessions';
 import { WebServiceSettings } from './WebServiceSettings';
+import { SessionMigration } from './SessionMigration';
 import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, sessionPath, busyRun, toolLabels, permissionToolIds, updateToolIds, remoteToolIds, imageToolIds } from './api';
 
 const tools = permissionToolIds;
-const sections = ['General', 'Tools', 'Skills'] as const;
+const sections = ['General', 'Tools', 'Skills', 'Runtime'] as const;
 const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
 export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged, deleteSession }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
@@ -20,18 +21,19 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   const [imageCapability, setImageCapability] = useState<{ key: string; value?: NativeImageCapability; error?: string } | null>(null);
   const [baseline, setBaseline] = useState(session);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false), [reloading, setReloading] = useState(false);
+  const [runtimeBusy,setRuntimeBusy]=useState(false);
   const dialog = useRef<HTMLDialogElement>(null), [tab, setTab] = useState<typeof sections[number]>('General');
   const dirty = editable(draft) !== editable(baseline);
   const developmentTools = scope === 'project';
   const provider = options?.providers.find((p) => p.id === draft.providerId), model = provider?.models.find((m) => m.id === draft.model);
   useEffect(() => { dirtyChanged(dirty); return () => dirtyChanged(false); }, [dirty, dirtyChanged]);
-  useEffect(() => { busyChanged(saving || reloading); return () => busyChanged(false); }, [saving, reloading, busyChanged]);
+  useEffect(() => { busyChanged(saving || reloading || runtimeBusy); return () => busyChanged(false); }, [saving, reloading, runtimeBusy, busyChanged]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
-  const requestClose = () => { if (!saving && !reloading && (!dirty || window.confirm('Discard unsaved session settings?'))) close(); };
+  const requestClose = () => { if (!saving && !reloading && !runtimeBusy && (!dirty || window.confirm('Discard unsaved session settings?'))) close(); };
   useEffect(() => {
     const element = dialog.current!, opener = document.activeElement; element.showModal();
     return () => { element.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
@@ -57,7 +59,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   }, [tab, hostedToolsUnavailable, draft.imageGenerationEnabled, hasImageTools, draft.providerId, draft.model, imageKey, projectId, session.id, projectRequest]);
   const patch = (values: Partial<AgentSession>) => setDraft((old) => ({ ...old, ...values }));
   async function submit(e: FormEvent) {
-    e.preventDefault(); if (saving || reloading) return;
+    e.preventDefault(); if (saving || reloading || runtimeBusy) return;
     setSaving(true); setError('');
     try {
       const { revision, name, permissions, providerId, model, effort, fastMode } = draft;
@@ -75,12 +77,12 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   }
   return <dialog className="project-dialog agent-settings-dialog" ref={dialog} aria-labelledby="session-settings-title" onCancel={(e) => { e.preventDefault(); requestClose(); }}>
     <form onSubmit={(e) => void submit(e)}>
-      <header className="project-dialog-header"><h2 id="session-settings-title">Session settings</h2><button type="button" className="project-close" aria-label="Close" disabled={saving || reloading} onClick={requestClose}>×</button></header>
-      <div className="agent-settings-tabs" role="tablist" aria-label="Session settings sections">{sections.map((name) => <button type="button" key={name} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`session-settings-${name}`} className={tab === name ? 'selected' : ''} onClick={() => setTab(name)} onKeyDown={(e) => {
+      <header className="project-dialog-header"><h2 id="session-settings-title">Session settings</h2><button type="button" className="project-close" aria-label="Close" disabled={saving || reloading || runtimeBusy} onClick={requestClose}>×</button></header>
+      <div className="agent-settings-tabs" role="tablist" aria-label="Session settings sections">{sections.map((name) => <button type="button" key={name} disabled={runtimeBusy} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`session-settings-${name}`} className={tab === name ? 'selected' : ''} onClick={() => setTab(name)} onKeyDown={(e) => {
         if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); const index = e.key === 'Home' ? 0 : e.key === 'End' ? sections.length - 1 : (sections.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : sections.length - 1)) % sections.length; setTab(sections[index]); e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button')?.[index].focus(); }
       }}>{name}</button>)}</div>
-      <fieldset className="project-fields" disabled={saving || reloading} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
-        {tab === 'General' ? <>
+      <fieldset className="project-fields" disabled={saving || reloading || runtimeBusy} id={`session-settings-${tab}`} role="tabpanel" aria-label={tab}>
+        {tab === 'Runtime' ? <SessionMigration session={session} options={options} projectId={projectId} token={token} changed={saved} busyChanged={setRuntimeBusy} disabled={dirty||saving||reloading}/> : tab === 'General' ? <>
           {session.engine.kind === 'studio' && <p className="agent-terminal-hint">Studio {session.engine.version} runs this conversation using the selected direct model connection.</p>}
           {!session.engine.kind && <p className="agent-terminal-hint">Codex {session.engine.version}. New requests use the Codex default selected in Studio Updates. Accepted requests keep their original version.</p>}
           {session.engine.available === false && session.engine.reason && <p className="project-dialog-error">{session.engine.reason}</p>}
@@ -141,7 +143,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
       </fieldset>
       {busyRun(draft.latestRun?.state) && <p className="project-dialog-error">Stop the current run before saving settings.</p>}
       {error && <p className="project-dialog-error" role="alert">{error}</p>}
-      <footer className="project-actions">{deleteSession && <button type="button" className="session-delete-action session-delete-open" disabled={saving || reloading} onClick={deleteSession}>Delete session</button>}{error && <button type="button" disabled={saving || reloading} onClick={() => void reload()}>Reload saved</button>}<button type="button" disabled={saving || reloading} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={saving || reloading || busyRun(draft.latestRun?.state)}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
+      <footer className="project-actions">{deleteSession && <button type="button" className="session-delete-action session-delete-open" disabled={saving || reloading || runtimeBusy} onClick={deleteSession}>Delete session</button>}{error && <button type="button" disabled={saving || reloading || runtimeBusy} onClick={() => void reload()}>Reload saved</button>}<button type="button" disabled={saving || reloading || runtimeBusy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={saving || reloading || runtimeBusy || busyRun(draft.latestRun?.state)}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
     </form>
   </dialog>;
 }

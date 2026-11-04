@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiProvider } from '../../../../../shared/api-providers';
 import type { ProviderApi } from '../useProviders';
 import { providerRequestId } from '../api';
+import { ProviderRequestError } from '../api';
 import { useApiMutation } from '../useApiMutation';
 
 type Attempt = { requestId:string; name:string; state:string; registrationIssued?:boolean; canFinish?:boolean; redirectSubmitted?:boolean; authorizationUrl?:string; providerId?:string; error?:string };
@@ -16,7 +17,7 @@ export function ChatGPTPlan({ api, provider, saved }: { api:ProviderApi; provide
   const setPending=useCallback((value:Pending|null)=>{try{if(value)sessionStorage.setItem(storageKey,JSON.stringify(value));else sessionStorage.removeItem(storageKey);updatePending(value);return true;}catch{setError('Enable session storage to preserve the original sign-in ID.');return false;}},[storageKey]);
   const logout=useApiMutation(api,provider?.id??null);
   const active=status?.attempts.find(a=>a.requestId===pending?.requestId);
-  const waiting=active&&['starting','waiting','exchanging','sent','intent','activating'].includes(active.state);
+  const waiting=!!active&&['starting','waiting','exchanging','sent','intent','activating','authorized','complete'].includes(active.state)&&!active.providerId;
   const account=status?.accounts.find(a=>a.providerId===provider?.id);
   useEffect(()=>{if(loading)return;let mounted=true;void request<Status>('/chatgpt-plan').then(value=>{if(mounted)setStatus(value);}).catch((e:Error)=>{if(mounted)setError(e.message);});return()=>{mounted=false;};},[request,loading]);
   useEffect(()=>{
@@ -26,10 +27,10 @@ export function ChatGPTPlan({ api, provider, saved }: { api:ProviderApi; provide
         const value=await request<Status>('/chatgpt-plan');if(!mounted)return;setStatus(value);
         const original=value.attempts.find(a=>a.requestId===pending.requestId);
         if(original?.providerId){setPending(null);await reload();saved(original.providerId);return;}
-        if(!original||['starting','waiting','exchanging','sent','intent','activating'].includes(original.state))timer=setTimeout(()=>{void read();},1000);
-      }catch(e){if(mounted)setError((e as Error).message);}
+        if(!original||['starting','waiting','exchanging','sent','intent','activating','authorized','complete'].includes(original.state))timer=setTimeout(()=>{void read();},1000);
+      }catch(e){if(mounted){setError((e as Error).message);if(!(e instanceof ProviderRequestError)||e.status>=500)timer=setTimeout(()=>{void read();},3000);}}
     };void read();return()=>{mounted=false;clearTimeout(timer);};
-  },[pending,request,reload,saved,setPending,loading]);
+  },[pending,request,reload,saved,setPending,loading,waiting]);
   async function start(previousAttempt?:string){
     const original=previousAttempt?{requestId:providerRequestId(),name:name.trim(),previousAttempt}:pending??{requestId:providerRequestId(),name:name.trim(),...(provider?{providerId:provider.id}:{})};
     if(!setPending(original))return;setBusy(true);setError('');

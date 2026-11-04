@@ -224,3 +224,9 @@
 .agent-provider-retry>span { min-width:0; }
 .agent-web-service { display:grid; gap:10px; min-width:0; margin-top:12px; }
 .agent-web-service .project-reload { justify-self:start; max-width:100%; }
+.agent-migration { display:grid; gap:12px; min-width:0; }
+.agent-migration .project-reload { justify-self:start; max-width:100%; white-space:normal; }
+.agent-migration ul { padding-left:18px; font-size:12px; overflow-wrap:anywhere; }
+
+.agent-migration .project-primary { background:#bd94ed; border-color:#cda5f6; color:#21142f; font-weight:650; }
+.agent-migration button:disabled { opacity:.5; cursor:default; }

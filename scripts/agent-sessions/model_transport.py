@@ -132,6 +132,8 @@ class ModelTransport:
         self.media_resolver = None
 
     def prepare(self, messages, instructions, tools, effort=''):
+        from portable_history import native_import
+        messages = native_import(messages)
         if any(p['type'] in ('image','document') for m in messages for p in m['content']):
             from studio_media import resolve
             messages=resolve(messages,self.media_resolver)

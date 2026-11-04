@@ -169,6 +169,7 @@ class Plan:
                 state=self.read(status_path) if status_path.exists() else {'state':'starting'}
                 if state['state'] in ('starting','waiting','exchanging','sent','intent'):
                     child=attempt.get('child') or state.get('child')
+                    if state['state']=='starting' and not child:child=attempt.get('controller')
                     from attachment_store import birth
                     try:alive=bool(child) and (Path('/proc')/str(child['pid'])).stat().st_uid==os.getuid() and birth(child['pid'])==child['birth']
                     except (OSError,ValueError):alive=False
@@ -258,7 +259,9 @@ class Login:
             elif self.plan.grant(data['previousAttempt']).exists():registration=self.plan.grant(data['previousAttempt'])
             if not issued:raise ProjectFault('The original sign-in has no issued registration to reuse.',409)
         token=path.with_suffix('.token.json');status=path.with_suffix('.status.json')
-        write_json(path,{'requestId':rid,'name':name,'input':data,'providerRevision':selected_revision,'ownerId':owner,'createdAt':now()});write_json(status,{'state':'starting'})
+        from attachment_store import birth
+        write_json(path,{'requestId':rid,'name':name,'input':data,'providerRevision':selected_revision,'ownerId':owner,
+            'controller':{'pid':os.getpid(),'birth':birth(os.getpid())},'createdAt':now()});write_json(status,{'state':'starting'})
         child=await asyncio.create_subprocess_exec('/usr/bin/node',str(SCRIPT),stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},limit=32768)
         from attachment_store import birth
