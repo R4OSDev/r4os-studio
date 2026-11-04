@@ -19,7 +19,7 @@ from store import ProjectFault
 
 FIELDS = ('id','type','kind','name','baseUrl','protocol','auth','revision','credentialRevision',
           'keyConfigured','enabled','status','createdAt','updatedAt','runtime')
-KINDS = ('openrouter','openai-compatible','local','zai-coding-plan','chatgpt-plan','codex-subscription')
+KINDS = ('openrouter','openai-compatible','local','zai-coding-plan','chatgpt-plan','codex-subscription','claude-plan')
 PROTOCOLS = ('responses','chat-completions','messages')
 
 
@@ -134,6 +134,9 @@ class ApiProviders:
         if value['kind']=='chatgpt-plan':
             from chatgpt_plan import require
             require(value)
+        if value['kind']=='claude-plan':
+            from claude_plan import require
+            require(value)
         if value['kind']=='codex-subscription' and (value['protocol']!='responses' or value['auth']!='bearer' or value.get('server')!='custom'):
             raise ProjectFault('The native OpenAI model contract is unavailable.',503)
         return value
@@ -167,7 +170,7 @@ class ApiProviders:
 
     def mutate(self,operation,ident,data,finish=False,plan=False,native=False):
         if not isinstance(data,dict):raise ProjectFault('Invalid API provider input.',400)
-        if operation=='create' and data.get('kind')=='chatgpt-plan' and not plan:raise ProjectFault('Use the verified Studio ChatGPT sign-in flow.',400)
+        if operation=='create' and data.get('kind') in ('chatgpt-plan','claude-plan') and not plan:raise ProjectFault('Use the Studio browser sign-in flow.',400)
         if operation=='create' and data.get('kind')=='codex-subscription':raise ProjectFault('Use the native OpenAI browser sign-in.',400)
         rid=identity(data.get('requestId'));ident=identity(ident) if ident else None
         if operation=='create':allowed={'requestId','name','kind','baseUrl','protocol','auth','key','openrouter','server'}
@@ -197,8 +200,8 @@ class ApiProviders:
             else:
                 value=self.current(db,ident)
                 if value['kind']=='codex-subscription' and not native:raise ProjectFault('Manage this connection through its OpenAI subscription settings.',409)
-                if value['kind']=='chatgpt-plan' and operation=='update' and not plan and set(data)-{'requestId','revision','name','enabled'}:
-                    raise ProjectFault('ChatGPT plan endpoint and credentials are managed by its verified sign-in.',400)
+                if value['kind'] in ('chatgpt-plan','claude-plan') and operation=='update' and not plan and set(data)-{'requestId','revision','name','enabled'}:
+                    raise ProjectFault('Subscription endpoint and credentials are managed by browser sign-in.',400)
                 if not original:
                     if type(data.get('revision')) is not int or data['revision']!=value['revision']:
                         raise ProjectFault('API provider settings changed. Reload before saving.',409)

@@ -5370,3 +5370,15 @@ It also records required account boundaries and the transition from native
 Codex/Claude sessions. Direct connectors and execution are delivered in the
 following 0.10 releases; existing runs and saved conversations retain their
 current runtime. Keep code simple and permanent checks tied to actual features.
+
+## Claude browser subscription (0.10.27)
+
+Choose **Claude · Pro / Max · Studio** to sign in in a browser and paste the
+complete redirect address into Studio. No helper or local CLI is required.
+Studio owns the private PKCE grant and coordinated renewal; existing native
+Claude conversations and sign-in directories are preserved. The connector does
+not import credentials from another installation or run a native agent. Sign-in
+readiness is separate from real model and quota qualification. Disconnect clears
+local tokens after original workers close; remote revocation is not confirmed.
+The OAuth wire reference is the MIT-licensed
+[opencode-anthropic-auth](https://github.com/ex-machina-co/opencode-anthropic-auth/tree/93cdd23b95f84a1d495744c2e6cc4058b5a86381).

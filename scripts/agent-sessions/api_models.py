@@ -9,6 +9,8 @@ from store import ProjectFault
 
 
 def catalog(providers,provider):
+    if provider['kind']=='claude-plan':
+        raise ProjectFault('Claude browser sign-in is ready. Its Studio model connector is still being prepared.',409)
     if provider['kind']=='openrouter':
         from openrouter_policy import unavailable
         if unavailable(provider):return []

@@ -49,6 +49,8 @@ class Host:
         self.claude_auth=ClaudeAuth(config['providers'])
         from chatgpt_plan import Login
         self.plan_login=Login(config['providers'])
+        from claude_plan import ClaudePlan
+        self.claude_plan=ClaudePlan(config['providers'])
         self.stats_cursor=0;self.stats_sessions={}
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -225,6 +227,13 @@ class Host:
         if op == 'project_activity':
             from project_activity import snapshot
             return await snapshot(self)
+        if op == 'claude_plan':
+            action=request.get('action');owner=request.get('ownerId');plan=self.claude_plan
+            if action=='list':return await asyncio.to_thread(plan.listing,owner)
+            if action=='start':return await asyncio.to_thread(plan.start,request.get('input'),owner)
+            if action=='callback':return await asyncio.to_thread(plan.callback,request.get('requestId'),request.get('redirectUrl'),owner)
+            if action=='cancel':return await asyncio.to_thread(plan.cancel,request.get('requestId'),owner)
+            raise ProjectFault('Invalid Claude browser account operation.',400)
         if op == 'chatgpt_plan':
             action=request.get('action');plan=self.plan_login.plan;browser_owner=request.get('ownerId')
             self.plan_login.owner(browser_owner)
@@ -274,6 +283,9 @@ class Host:
                 await self.handle({'operation':'cancel_provider','providerId':ident})
                 if result['provider']['kind']=='chatgpt-plan':
                     revocation=await asyncio.to_thread(self.plan_login.plan.revoke,ident)
+                elif result['provider']['kind']=='claude-plan':
+                    await asyncio.to_thread(self.claude_plan.forget,ident)
+                    revocation={'localLogout':'confirmed','remoteRevocation':'unconfirmed'}
                 else:revocation=None
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
                 if revocation:result['planLogout']=revocation
