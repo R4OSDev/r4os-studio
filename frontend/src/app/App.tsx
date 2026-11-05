@@ -25,6 +25,7 @@ import { useRemoteHosts } from '../features/remote-hosts/useRemoteHosts';
 import { HostPanel } from '../features/remote-hosts/HostPanel';
 import { parseRemoteHostRoute, remoteHostHash } from '../features/remote-hosts/location';
 import { StatusWorkspace } from '../features/status/StatusWorkspace';
+import { AiLimitsPanel } from '../features/status/AiLimitsPanel';
 
 const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['Status', 'System', 'Projects', 'Tools'];
@@ -133,7 +134,7 @@ export function App() {
   const githubPage = tab === 'System' && group.name === 'Settings' && item === 'GitHub';
   const github = useConnections(githubPage);
   const activeConnection = github.connections.find((connection) => connection.id === connectionView);
-  const providers = useProviders(providerPage);
+  const providers = useProviders(providerPage || tab === 'Status');
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
   const availableViews = remotePage ? (remoteHostId ? ['Overview', 'Settings'] : []) : githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex', 'R4UPack'] : []) : [];
   const selectedView = githubPage ? (activeConnection ? github.connections.indexOf(activeConnection) + 1 : 0) : providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : updatePage && item === 'Components' ? 0 : selected.view;
@@ -205,7 +206,7 @@ export function App() {
       </header>
 
       <div className={`workspace ${tab === 'Status' ? 'status-workspace' : statisticsPage ? 'statistics-global' : tab === 'Projects' && projectNavigation[projectId ?? '']?.section === 'Statistics' ? 'statistics-project' : ''}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        {tab === 'Status' ? <StatusWorkspace><p className="status-empty">No limit observations loaded.</p></StatusWorkspace> : tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
+        {tab === 'Status' ? <StatusWorkspace><AiLimitsPanel api={providers} /></StatusWorkspace> : tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <aside className={`navigation ${statisticsPage ? 'statistics-global' : ''}`} aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
@@ -240,6 +241,7 @@ export function App() {
                 const account = provider ? providers.nativeProviders.find(p => p.id === provider.id) : undefined;
                 const remaining = provider ? providers.remainingByProvider[provider.id] : null;
                 const limits = provider ? providers.connectionLimits[provider.id] : null;
+                const state = limits?.state ?? (provider ? providers.usageByProvider[provider.id]?.state : undefined);
                 const apiLimits = provider?.type === 'api' && ['claude-plan', 'openrouter', 'zai-coding-plan'].includes(provider.kind) && provider.enabled;
                 const held = !!limits?.zai?.holds?.length;
                 return <button type="button" key={githubPage ? (github.connections[index - 1]?.id ?? 'new-connection') : providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
@@ -249,9 +251,9 @@ export function App() {
                     {index === 0 && <span className="view-number" aria-hidden="true">+</span>}
                     <span className="provider-view-name">{name}</span>
                     {(account?.status === 'connected' && account.account || apiLimits) &&
-                      <span className="provider-remaining" data-state={held ? 'held' : limits?.state} title={remaining == null
-                        ? `${held ? 'Access held. ' : ''}Remaining usage is not available.` : `${held ? 'Access held. ' : ''}${limits?.state === 'stale' ? 'Out of date. ' : ''}${limits?.openrouter ? 'Remaining share of the currently limiting USD spending budget.' : 'Lowest reported remaining usage across quota windows.'}${limits?.checkedAt ? ' Observed '+new Date(limits.checkedAt).toLocaleString()+'.' : ''}`}>
-                        {remaining == null ? '—' : percent(remaining)}{limits?.state === 'stale' && remaining != null && ' *'}{held && ' !'}
+                      <span className="provider-remaining" data-state={held ? 'held' : state} title={remaining == null
+                        ? `${held ? 'Access held. ' : ''}Remaining usage is not available.` : `${held ? 'Access held. ' : ''}${state === 'stale' ? 'Out of date. ' : ''}${limits?.openrouter ? 'Remaining share of the currently limiting USD spending budget.' : 'Lowest reported remaining usage across quota windows.'}${limits?.checkedAt ? ' Observed '+new Date(limits.checkedAt).toLocaleString()+'.' : ''}`}>
+                        {remaining == null ? '—' : percent(remaining)}{state === 'stale' && remaining != null && ' *'}{held && ' !'}
                       </span>}
                   </> : githubPage || vmPage || remotePage || updatePage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
                 </button>;

@@ -4,6 +4,8 @@ import type { ProviderApi } from '../useProviders';
 import { dateTime } from '../usage-format';
 import { UsageWindow } from './UsageWindow';
 import { ProviderCredits } from './ProviderCredits';
+import { usageIsStale } from '../limit-windows';
+import type { UsageObservation } from '../limit-windows';
 
 type Attempt = { key: string; submitted: boolean };
 const outcomes: Record<ResetOutcome, string> = {
@@ -29,9 +31,10 @@ function newKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function ProviderUsage({ id, accountEmail, accountScope = '', request }: { id: string; accountEmail: string | null; accountScope?: string; request: ProviderApi['request'] }) {
-  const [usage, setUsage] = useState<Usage | null>(null);
-  const [loading, setLoading] = useState(true);
+export function ProviderUsage({ id, accountEmail, accountScope = '', request, shared }: { id: string; accountEmail: string | null; accountScope?: string; request: ProviderApi['request']; shared?: UsageObservation | null }) {
+  const [localUsage, setUsage] = useState<Usage | null>(null);
+  const managed = shared !== undefined, usage = managed ? shared?.usage ?? null : localUsage;
+  const [loading, setLoading] = useState(shared === undefined);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now);
@@ -62,15 +65,15 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
 
   useEffect(() => {
     invalidateReads(); alive.current = true;
-    void refresh();
+    if (!managed) void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
-      if (!document.hidden) void refresh();
+      if (!managed && !document.hidden) void refresh();
     }, 60_000);
-    const visible = () => { if (!document.hidden) void refresh(); };
+    const visible = () => { if (!managed && !document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', visible);
     return () => { alive.current = false; invalidateReads(); clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
-  }, [refresh, invalidateReads]);
+  }, [refresh, invalidateReads, managed]);
 
   function saveAttempt(next: Attempt) {
     try { sessionStorage.setItem(storageKey, JSON.stringify(next)); }
@@ -119,15 +122,17 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
     }
   }
 
-  const stale = !!usage && (!Number.isFinite(Date.parse(usage.fetchedAt)) || now - Date.parse(usage.fetchedAt) > 120_000);
+  const stale = shared?.state === 'stale' || usageIsStale(usage, now);
+  const usageLoading = managed ? shared === null || loading : loading;
+  const usageError = error || shared?.error;
   const resets = stale ? null : usage?.resetCredits;
   const count = resets?.availableCount;
   const canUse = (count !== undefined && count !== null && count > 0) || !!attempt?.submitted;
-  return <section className="provider-usage" aria-busy={loading} aria-labelledby={`usage-title-${id}`}>
-    <div className="usage-heading"><div><h3 id={`usage-title-${id}`}>Usage limits</h3><p>Current Codex subscription usage</p></div><button className="button-secondary" type="button" disabled={loading || resetting} onClick={() => { setLoading(true); void refresh(true); }}>{loading ? 'Refreshing…' : 'Refresh usage'}</button></div>
+  return <section className="provider-usage" aria-busy={usageLoading} aria-labelledby={`usage-title-${id}`}>
+    <div className="usage-heading"><div><h3 id={`usage-title-${id}`}>Usage limits</h3><p>Current Codex subscription usage</p></div><button className="button-secondary" type="button" disabled={usageLoading || resetting} onClick={() => { setLoading(true); void refresh(true); }}>{usageLoading ? 'Refreshing…' : 'Refresh usage'}</button></div>
     {message && <p className="provider-alert" role="status">{message}</p>}
-    {error && <p className="provider-alert" role="alert">{error}</p>}
-    {!usage && loading && <p className="field-help" role="status">Loading usage limits…</p>}
+    {usageError && <p className="provider-alert" role="alert">{usageError}</p>}
+    {!usage && usageLoading && <p className="field-help" role="status">Loading usage limits…</p>}
     {stale && <p className="provider-alert" role="status">Previously loaded usage is out of date. Refresh usage to read the current limits.</p>}
     {usage && !stale && <>
       {usage.ordinaryUsageAllowed === false && <p className="provider-alert" role="status">OpenAI currently reports that ordinary included usage is unavailable.</p>}
@@ -139,7 +144,7 @@ export function ProviderUsage({ id, accountEmail, accountScope = '', request }: 
         </div>
         {!limit.primary && !limit.secondary && <p className="field-help">OpenAI did not report a quota window for this limit.</p>}
       </article>)}</div>
-      <ProviderCredits limits={usage.limits} stale={!!error} control={usage.creditUsageControl} />
+      <ProviderCredits limits={usage.limits} stale={stale || !!usageError} control={usage.creditUsageControl} />
       <p className="usage-updated">Last checked: <time dateTime={usage.fetchedAt}>{dateTime(usage.fetchedAt)}</time>. Updates every minute while this page is visible.</p>
     </>}
     {(usage || attempt?.submitted) && <div className="usage-resets">

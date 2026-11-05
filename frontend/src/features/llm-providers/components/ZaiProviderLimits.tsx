@@ -1,21 +1,10 @@
-import { useCallback } from 'react';
 import type { ApiProvider } from '../../../../../shared/api-providers';
 import type { ProviderApi } from '../useProviders';
-import { useSubscriptionLimits } from '../useSubscriptionLimits';
+import { useConnectionLimits } from '../useConnectionLimits';
 import { ZaiLimitsView } from './ZaiLimitsView';
-import type { ZaiSubscriptionLimits } from '../../../../../shared/zai-subscription';
 
 export function ZaiProviderLimits({ provider, api }: { provider: ApiProvider; api: ProviderApi }) {
-  const { request } = api;
-  const transport = useCallback(<T,>(suffix: string, method = 'GET', body?: unknown) => {
-    const base = '/api-connections/' + provider.id;
-    const path = suffix.startsWith('/requests/') ? base + '/subscription-limit-requests/' + suffix.slice(10)
-      : base + '/subscription-limits' + (suffix === '/check' ? '/check' : '');
-    return request<T>(path, method, body);
-  }, [provider.id, request]);
-  const sample = api.connectionLimits[provider.id];
-  const matching = sample?.configRevision === provider.revision && sample.credentialRevision === provider.credentialRevision && sample.zai
-    ? { ...sample.zai, state: sample.state, error: sample.error } : null;
-  const limits = useSubscriptionLimits<ZaiSubscriptionLimits>(provider.id, transport, matching, provider.revision);
-  return <ZaiLimitsView {...limits} enabled={provider.enabled && provider.keyConfigured} refreshAvailable refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
+  const limits = useConnectionLimits(provider, api);
+  const sample = limits.sample?.zai ? { ...limits.sample.zai, state: limits.sample.state, error: limits.sample.error } : null;
+  return <ZaiLimitsView {...limits} sample={sample} enabled={provider.enabled && provider.keyConfigured} refreshAvailable refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
 }

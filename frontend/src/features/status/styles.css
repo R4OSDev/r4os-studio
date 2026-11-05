@@ -3,6 +3,33 @@
 .status-navigation .nav-item { text-decoration: none; }
 .status-content { padding: 28px 37px 37px; min-width: 0; }
 .status-empty { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.ai-limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; }
+.ai-limit-card { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: #1c1624; }
+.ai-limit-card > header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 22px; }
+.ai-limit-card h2 { margin: 0; font-size: 17px; line-height: 1.4; font-weight: 550; letter-spacing: -.3px; overflow-wrap: anywhere; }
+.ai-limit-state { color: var(--muted); font-size: 11px; }
+.ai-limit-card[data-state="stale"] .ai-limit-state { color: #e3ba7f; }
+.ai-limit-card[data-state="stale"] .ai-limit-ring { opacity: .75; }
+.ai-limit-windows { display: flex; justify-content: center; flex-wrap: wrap; align-items: flex-start; gap: 24px 16px; }
+.ai-limit-window { flex: 1 1 140px; min-width: 0; max-width: 180px; margin: 0; text-align: center; }
+.ai-limit-window figcaption { min-height: 42px; margin-bottom: 10px; font-size: 12px; line-height: 1.5; }
+.ai-limit-window figcaption strong { display: block; font-weight: 500; }
+.ai-limit-window figcaption span { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.ai-limit-ring { position: relative; width: 140px; max-width: 100%; aspect-ratio: 1; margin: 0 auto; }
+.ai-limit-ring svg { display: block; width: 100%; height: 100%; fill: none; stroke-width: 9; }
+.ai-limit-track { stroke: #51445f; }
+.ai-limit-used { stroke: #c45a49; }
+.ai-limit-remaining { stroke: #70965f; }
+.ai-limit-value { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.ai-limit-value strong { font-size: 23px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.ai-limit-value span { font-size: 10px; color: var(--muted); }
+.ai-limit-reset, .ai-limit-notice, .ai-limit-observed { color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-limit-reset { margin: 14px 0 0; }
+.ai-limit-reset time { display: block; }
+.ai-limit-notice { margin: 12px 0 0; }
+.ai-limit-observed { padding-top: 14px; margin: auto 0 0; }
+.ai-limit-card .provider-actions { margin-top: 16px; }
+.ai-limit-card button { max-width: 100%; white-space: normal; }
 @media (max-width: 600px) {
   .status-content { padding: 20px 16px; }
   .status-navigation .nav-items { padding: 9px; }

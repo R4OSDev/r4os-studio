@@ -147,7 +147,7 @@ export function ProviderDetails({ initial, connection, api, removed, setLeaveGua
         {provider.account?.workspaceId && <div><dt>Workspace</dt><dd>{provider.account.workspaceId}</dd></div>}
         <div><dt>Authentication</dt><dd>ChatGPT subscription</dd></div>
       </dl>
-      {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.scope ?? provider.account?.workspaceId ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} accountScope={provider.account?.scope} request={request} />}
+      {provider.status === 'connected' && !loading && <ProviderUsage key={`${provider.id}:${provider.account?.scope ?? provider.account?.workspaceId ?? ''}`} id={provider.id} accountEmail={provider.account?.email ?? null} accountScope={provider.account?.scope} request={request} shared={api.usageByProvider[provider.id] ?? null} />}
       {provider.status === 'connected' && provider.runtime === 'studio' && !connection && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading} onClick={() => void prepareStudio()}>Use this connection in Studio</button></div>}
       {connection && <ApiModels api={api} provider={connection} setLeaveGuard={setLeaveGuard} />}
       {provider.status !== 'connected' && <div className="provider-actions"><button className="button-primary" type="button" disabled={busy || loading || !api.signInAvailable || !!api.error || provider.status === 'signing_in'} onClick={() => void action('login')}>{busy ? 'Starting sign-in…' : 'Continue with ChatGPT'}</button></div>}

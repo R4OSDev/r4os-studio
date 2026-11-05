@@ -38,13 +38,21 @@ a native model runtime. No hidden account, model or paid API fallback is used.
 See [Agent runtime](Agent-Runtime.md) for protocols, original receipts, media,
 limits, conversion and the exact remaining native boundaries.
 
-## Status and provider settings (0.10.46)
+## Status and provider settings (0.10.46–0.10.47)
 
 The workspace tabs are Status, System, Projects and Tools. Status → AI Limits
 is directly accessible at `#status/ai-limits` and uses one navigation column;
 its content occupies the remaining width. Provider connections are managed
 under System → Settings → AI Provider. Existing connection identities and
 project/skill routes are preserved.
+
+AI Limits shows one card per configured account or connection. Each reported
+allowance has its own remaining-percentage ring, with the official reset below
+it. Green means remaining; red means used. Missing resets stay unknown, and
+stale or unlimited observations remain distinct from zero allowance. Repeated
+representations of the same account or budget do not create extra rings.
+The dashboard and provider details share their observations and original refresh
+requests. Viewing limits never starts a model run or consumes an earned reset.
 
 ## Local project files
 

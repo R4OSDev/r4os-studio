@@ -40,7 +40,8 @@ export interface ClaudeSubscriptionLimits {
   schema: 1; source: string; receivedAt: string; providerId: string; providerRevision: number;
   accountIdentity: string | null; requestId: string; plan: 'pro' | 'max' | null;
   coverage: 'available' | 'partial' | 'unavailable'; extraUsageEnabled: boolean | null; message: string;
-  windows: { id: string; label: string; scope: string; usedPercent: number | null; remainingPercent: number | null; resetsAt: string | null }[];
+  windows: { id: string; label: string; scope: string; usedPercent: number | null; remainingPercent: number | null; resetsAt: string | null;
+    kind?: string; group?: string; severity?: string; active?: boolean }[];
 }
 export interface ClaudeRateObservation {
   studioSessionId: string; providerId: string; runId: string; accountIdentity: string | null;

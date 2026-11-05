@@ -3,14 +3,11 @@ import type { ProviderList, ProviderUsage } from '../../../../shared/llm-provide
 import type { ApiProvider } from '../../../../shared/api-providers.js';
 import type { ClaudeSubscriptionProvider } from '../../../../shared/claude-subscription.js';
 import { loadProviders, requestProvider } from './api';
-import { remainingUsage, zaiRemainingUsage } from './usage-format';
+import { remainingUsage } from './usage-format';
 import type { ConnectionLimits } from '../../../../shared/connection-limits';
 import type { ZaiSubscriptionLimits } from '../../../../shared/zai-subscription';
-
-function zaiSnapshot(value: ZaiSubscriptionLimits): ConnectionLimits {
-  return { providerId: value.providerId, configRevision: value.configRevision, credentialRevision: value.credentialRevision,
-    state: value.state, checkedAt: value.checkedAt, error: value.error, remainingPercent: zaiRemainingUsage(value), zai: value };
-}
+import { usageIsStale, zaiSnapshot } from './limit-windows';
+import type { UsageObservation } from './limit-windows';
 
 export function useProviders(usageVisible = true) {
   const [data, setData] = useState<ProviderList>({ providers: [], csrfToken: '', signInAvailable: false });
@@ -24,6 +21,7 @@ export function useProviders(usageVisible = true) {
   const accountScopes = useRef<Record<string, string | undefined>>({});
   const connectionScopes = useRef<Record<string, { revision: number; credentialRevision: number; enabled: boolean }>>({});
   const [connectionLimits, setConnectionLimits] = useState<Record<string, ConnectionLimits | null>>({});
+  const [usageByProvider, setUsageByProvider] = useState<Record<string, UsageObservation>>({});
   const [remainingByProvider, setRemainingByProvider] = useState<Record<string, number | null>>({});
 
   const accept = useCallback((next: ProviderList) => {
@@ -33,6 +31,7 @@ export function useProviders(usageVisible = true) {
     accountScopes.current = Object.fromEntries(next.providers.map(p => [p.id, p.account?.scope]));
     setRemainingByProvider({});
     setConnectionLimits({});
+    setUsageByProvider({});
     csrf.current = next.csrfToken;
     setData(next); setError(null); setLoading(false);
   }, []);
@@ -40,19 +39,30 @@ export function useProviders(usageVisible = true) {
     setError(cause instanceof Error ? cause.message : 'Provider settings are unavailable.');
     setLoading(false);
   }, []);
+  const acceptConnections = useCallback((providers: ApiProvider[]) => {
+    const scopes = Object.fromEntries(providers.map(p => [p.id, p]));
+    const changed = Object.entries(connectionScopes.current).filter(([id, old]) => !scopes[id]
+      || scopes[id].revision !== old.revision || scopes[id].credentialRevision !== old.credentialRevision || scopes[id].enabled !== old.enabled).map(([id]) => id);
+    connectionScopes.current = scopes;
+    for (const id of changed) usageRequests.current[id] = (usageRequests.current[id] ?? 0) + 1;
+    if (changed.length) {
+      setConnectionLimits(previous => ({ ...previous, ...Object.fromEntries(changed.map(id => [id, null])) }));
+      setRemainingByProvider(previous => ({ ...previous, ...Object.fromEntries(changed.map(id => [id, null])) }));
+    }
+    setApiProviders(providers); setApiError('');
+  }, []);
   const reload = useCallback(async () => {
     try {
       const next = await loadProviders(); accept(next);
       try {
         const providers = (await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken)).providers;
-        connectionScopes.current = Object.fromEntries(providers.map(p => [p.id, p]));
-        setApiProviders(providers); setApiError('');
+        acceptConnections(providers);
       }
       catch (cause) { setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
       try { setClaudeProviders((await requestProvider<{ providers: ClaudeSubscriptionProvider[] }>('/claude-subscriptions', next.csrfToken)).providers); setClaudeError(''); }
       catch (cause) { setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
     } catch (cause) { fail(cause); }
-  }, [accept, fail]);
+  }, [accept, fail, acceptConnections]);
 
   useEffect(() => {
     let active = true;
@@ -60,7 +70,7 @@ export function useProviders(usageVisible = true) {
       if (!active) return; accept(next);
       try {
         const result = await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken);
-        if (active) { connectionScopes.current = Object.fromEntries(result.providers.map(p => [p.id, p])); setApiProviders(result.providers); setApiError(''); }
+        if (active) acceptConnections(result.providers);
       } catch (cause) { if (active) setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
       try {
         const result = await requestProvider<{ providers: ClaudeSubscriptionProvider[] }>('/claude-subscriptions', next.csrfToken);
@@ -68,11 +78,13 @@ export function useProviders(usageVisible = true) {
       } catch (cause) { if (active) setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
     }).catch((cause: unknown) => { if (active) fail(cause); });
     return () => { active = false; };
-  }, [accept, fail]);
+  }, [accept, fail, acceptConnections]);
 
   const rememberUsage = useCallback((id: string, usage: ProviderUsage | null) => {
-    const remaining = usage?.accountScope && usage.accountScope !== accountScopes.current[id] ? null : remainingUsage(usage);
+    const matching = usage?.accountScope && usage.accountScope !== accountScopes.current[id] ? null : usage;
+    const remaining = remainingUsage(matching);
     setRemainingByProvider((previous) => previous[id] === remaining ? previous : { ...previous, [id]: remaining });
+    setUsageByProvider(previous => ({ ...previous, [id]: { usage: matching, state: matching ? usageIsStale(matching, Date.now()) ? 'stale' : 'current' : 'unknown', error: null } }));
   }, []);
 
   const request = useCallback(<T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
@@ -108,7 +120,10 @@ export function useProviders(usageVisible = true) {
       }
       return result;
     }).catch((cause: unknown) => {
-      if (usageId && generation === usageGeneration.current && usageRequests.current[usageId] === sequence) rememberUsage(usageId, null);
+      if (usageId && generation === usageGeneration.current && usageRequests.current[usageId] === sequence) {
+        setUsageByProvider(previous => ({ ...previous, [usageId]: { usage: previous[usageId]?.usage ?? null,
+          state: previous[usageId]?.usage ? 'stale' : 'unknown', error: 'Usage could not be refreshed. Reload the connection if its account changed.' } }));
+      }
       if (limitId && generation === usageGeneration.current && usageRequests.current[limitId] === sequence) {
         setConnectionLimits(previous => ({ ...previous, [limitId]: previous[limitId] ? { ...previous[limitId], state: 'stale' } : null }));
       }
@@ -125,7 +140,6 @@ export function useProviders(usageVisible = true) {
       if (accountDue) lastAccountRead = Date.now();
       for (const provider of accountDue ? data.providers : []) {
         if (provider.type === 'openai' && provider.status === 'connected' && provider.account) {
-          rememberUsage(provider.id, null);
           void request(`/${provider.id}/usage`).catch(() => { /* Unknown usage is shown as a dash. */ });
         }
       }
@@ -141,10 +155,10 @@ export function useProviders(usageVisible = true) {
     const timer = setInterval(refresh, 15_000);
     document.addEventListener('visibilitychange', refresh);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
-  }, [data.providers, apiProviders, request, rememberUsage, usageVisible]);
+  }, [data.providers, apiProviders, request, usageVisible]);
 
   const managed = new Set(apiProviders.filter(p => p.kind === 'codex-subscription').map(p => p.id));
-  return { ...data, nativeProviders: data.providers, providers: [...data.providers.filter(p => !managed.has(p.id)), ...apiProviders, ...claudeProviders], apiError, claudeError, remainingByProvider, connectionLimits, loading, error, reload, request };
+  return { ...data, nativeProviders: data.providers, providers: [...data.providers.filter(p => !managed.has(p.id)), ...apiProviders, ...claudeProviders], apiError, claudeError, remainingByProvider, connectionLimits, usageByProvider, loading, error, reload, request };
 }
 
 export type ProviderApi = ReturnType<typeof useProviders>;
