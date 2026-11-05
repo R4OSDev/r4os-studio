@@ -5478,3 +5478,9 @@ does not start a monitoring check or inference. One shared refresh replaces both
 views, and older credential replies are discarded. The existing visible cache
 read cadence is shared instead of running a separate detail poller; account
 reads for OpenAI, Claude and OpenRouter retain their existing minute cadence.
+
+Z.AI integer counters (0.10.35): The real monitoring response may report used
+and remaining integer counters whose sum differs by one native unit from its
+limit. The shared display permits that observed one-unit difference and uses
+the original remaining/maximum ratio. Larger or fractional inconsistencies
+remain unknown; source quota records and model/tool behavior are unchanged.

@@ -12,7 +12,12 @@ export function zaiRemainingUsage(sample: ZaiSubscriptionLimits | null): number 
     let remaining: number;
     if (valid(window.maximum) && window.maximum > 0 && valid(window.remaining)) {
       if (window.remaining > window.maximum) return null;
-      if (valid(window.used) && Math.abs(Math.max(0, window.maximum - window.used) - window.remaining) > Math.max(1, window.maximum) * 1e-9) return null;
+      if (valid(window.used)) {
+        // The actual monitoring response can differ by one reported integer
+        // unit. Preserve those original counters and use its remaining value.
+        const tolerance = [window.maximum, window.used, window.remaining].every(Number.isInteger) ? 1 : Math.max(1, window.maximum) * 1e-9;
+        if (Math.abs(Math.max(0, window.maximum - window.used) - window.remaining) > tolerance) return null;
+      }
       remaining = window.remaining / window.maximum * 100;
       // Monitoring may report whole used percentages alongside exact counters.
       if (valid(window.percentage) && (window.percentage > 100 || Math.abs(100 - remaining - window.percentage) > 1)) return null;
