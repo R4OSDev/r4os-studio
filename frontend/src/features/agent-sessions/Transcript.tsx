@@ -81,6 +81,8 @@ const components: Components = {
   a({ href, children }) { return containsImage(children) ? <>{children}</> : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>; },
 };
 
+const streamPlugins = [streamTextPlugin];
+
 function AgentMarkdown({text,projectId,sessionId,live=false}:{text:string;projectId?:string;sessionId?:string;live?:boolean}) {
   const visible=transcriptText(text),root=useRef<HTMLDivElement>(null);
   const [engine]=useState(()=>new TextStream()),[locked,setLocked]=useState<string|null>(null),[instant,setInstant]=useState(0),[armed,setArmed]=useState(live);
@@ -90,7 +92,7 @@ function AgentMarkdown({text,projectId,sessionId,live=false}:{text:string;projec
   const previousInstant=useRef(0),rendered=locked??visible;
   const enabled=armed&&rendered.length<=8192,context=useMemo(()=>({engine,enabled}),[engine,enabled]);
   const scope = useMemo(() => projectId && sessionId ? { projectId, sessionId } : null, [projectId, sessionId]);
-  const content=useMemo(()=><Markdown skipHtml components={components} urlTransform={messageUrl} rehypePlugins={enabled?[streamTextPlugin]:undefined}>{rendered}</Markdown>,[rendered,enabled]);
+  const content=useMemo(()=><Markdown skipHtml components={components} urlTransform={messageUrl} rehypePlugins={enabled?streamPlugins:undefined}>{rendered}</Markdown>,[rendered,enabled]);
   useLayoutEffect(()=>{
     if(!armed&&root.current){
       const parts:string[]=[],walker=document.createTreeWalker(root.current,NodeFilter.SHOW_TEXT);
@@ -103,18 +105,20 @@ function AgentMarkdown({text,projectId,sessionId,live=false}:{text:string;projec
     previousInstant.current=instant;
   },[armed,engine,rendered,live,locked,enabled,instant]);
   useLayoutEffect(()=>()=>engine.dispose(),[engine]);
+  const current = useRef({visible,locked});
+  useLayoutEffect(()=>{current.current={visible,locked};},[visible,locked]);
   useEffect(()=>{
     const media=matchMedia('(prefers-reduced-motion: reduce)');
     const selection=()=>{
       const value=document.getSelection(),element=root.current;
       if(value&&!value.isCollapsed&&element&&value.rangeCount&&value.getRangeAt(0).intersectsNode(element)){
-        engine.finish();setLocked(old=>old??visible);
-      }else if(locked!==null){setLocked(null);setInstant(value=>value+1);}
+        engine.finish();setLocked(old=>old??current.current.visible);
+      }else if(current.current.locked!==null){setLocked(null);setInstant(value=>value+1);}
     };
     const flush=()=>{engine.finish();setLocked(null);setInstant(value=>value+1);};
     document.addEventListener('selectionchange',selection);document.addEventListener('visibilitychange',flush);media.addEventListener('change',flush);
     return()=>{document.removeEventListener('selectionchange',selection);document.removeEventListener('visibilitychange',flush);media.removeEventListener('change',flush);};
-  },[live,locked,visible,engine]);
+  },[engine]);
   const gesture=()=>{engine.finish();if(locked!==null)flushSync(()=>{setLocked(null);setInstant(value=>value+1);});};
   return <imageScope.Provider value={scope}><StreamContext.Provider value={context}><div ref={root} className="agent-message-text agent-markdown" aria-live="off"
     onPointerDownCapture={event=>{if(!event.shiftKey||(event.target as Element).closest('.agent-copy'))gesture();}}

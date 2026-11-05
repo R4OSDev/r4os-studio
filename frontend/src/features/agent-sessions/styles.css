@@ -233,3 +233,5 @@
 
 .agent-plan-usage { margin:0; padding:6px 18px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
 .agent-plan-usage a { color:var(--accent); }
+
+.agent-history-window { color: var(--text-muted); font-size: .75rem; margin: .5rem 0; }

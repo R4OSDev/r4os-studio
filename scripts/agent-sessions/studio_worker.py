@@ -239,7 +239,14 @@ class StudioWorker(Worker):
         transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
         ident = 'assistant-' + self.run_id + '-' + str(self.round)
         preview = {'id': ident, 'runId': self.run_id, 'type': 'assistant', 'text': '', 'status': 'running'}
+        announced = False
         async def text(delta):
+            nonlocal announced
+            # Announce the stable projection before its first delta. Textless
+            # tool turns need no empty message, and readers see live answers.
+            if not announced and delta:
+                item(self.store, self.session_id, self.run_id, preview)
+                announced = True
             # The public preview has the existing item bound. The full original
             # belongs in Conversation, independently of UI truncation.
             from terminal import bounded_text
@@ -262,7 +269,7 @@ class StudioWorker(Worker):
         from terminal import bounded_text
         preview['text'], clipped = bounded_text(full, 196608)
         preview.update(status='completed', truncated=clipped)
-        if full: item(self.store, self.session_id, self.run_id, preview)
+        if full or announced: item(self.store, self.session_id, self.run_id, preview)
         return result
 
     async def cycle(self):

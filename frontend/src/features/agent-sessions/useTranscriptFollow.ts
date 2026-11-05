@@ -5,7 +5,7 @@ import type { SessionItem } from '../../../../shared/agent-sessions';
 // One position state drives both scrolling and its visible boundary. Content
 // growth is not an upward gesture; late image/layout growth uses the same latch.
 export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, contentRef: RefObject<HTMLDivElement | null>, items: SessionItem[], enabled: boolean) {
-  const active = useRef(true), previous = useRef({ top: 0, height: 0, viewport: 0 });
+  const active = useRef(true), latest = useRef(true), previous = useRef({ top: 0, height: 0, viewport: 0 });
   const [following, setFollowing] = useState(true);
   const follow = useCallback((value: boolean) => {
     if (active.current !== value) { active.current = value; setFollowing(value); }
@@ -16,20 +16,25 @@ export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, co
     element.scrollTop = element.scrollHeight;
     previous.current = { top: element.scrollTop, height: element.scrollHeight, viewport: element.clientHeight };
   }, [enabled, logRef]);
-  useLayoutEffect(() => { align(); }, [items, align]);
+  const frame = useRef<number | null>(null);
+  const schedule = useCallback(() => {
+    if (frame.current === null) frame.current = requestAnimationFrame(() => { frame.current = null; align(); });
+  }, [align]);
+  useLayoutEffect(() => { schedule(); }, [items, following, schedule]);
+  useEffect(() => () => { if(frame.current !== null)cancelAnimationFrame(frame.current); }, []);
   useEffect(() => {
     if (!enabled || !logRef.current || !contentRef.current) return;
-    const observer = new ResizeObserver(align);
+    const observer = new ResizeObserver(schedule);
     observer.observe(logRef.current); observer.observe(contentRef.current);
     return () => observer.disconnect();
-  }, [enabled, align, logRef, contentRef]);
+  }, [enabled, schedule, logRef, contentRef]);
   const onScroll = useCallback(() => {
     const element = logRef.current; if (!element) return;
     const current = { top: element.scrollTop, height: element.scrollHeight, viewport: element.clientHeight };
     const bottom = current.height - current.viewport - current.top <= 1;
     const resized = current.height !== previous.current.height || current.viewport !== previous.current.viewport;
     if (current.top < previous.current.top - 0.5 && !(resized && bottom)) follow(false);
-    else if (bottom) follow(true);
+    else if (bottom && latest.current) follow(true);
     else if (!resized) follow(false);
     previous.current = current;
   }, [follow, logRef]);
@@ -44,5 +49,8 @@ export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, co
     }
     follow(false);
   }, [follow, logRef]);
-  return { following, onScroll, onWheel };
+  const pause = useCallback(() => follow(false), [follow]);
+  const resume = useCallback(() => { follow(true); schedule(); }, [follow, schedule]);
+  const viewChanged = useCallback((value: boolean) => { latest.current=value;if(!value)follow(false); },[follow]);
+  return { following, onScroll, onWheel, pause, resume, viewChanged };
 }

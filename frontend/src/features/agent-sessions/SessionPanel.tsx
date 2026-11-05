@@ -1,3 +1,5 @@
+import { flushSync } from 'react-dom';
+import { applyDeltas, SessionDeltas } from './sessionDeltas';
 import { publishSessionActivity } from './sessionActivity';
 import { invalidateSessionReads } from './sessionReads';
 import { EnvironmentNotes } from './EnvironmentNotes';
@@ -43,13 +45,20 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [claudeQuota, setClaudeQuota] = useState<ClaudeRateObservation | null>(null);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
   const [connection, setConnection] = useState('Connecting'), [stopping, setStopping] = useState(false);
-  const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), follow = useRef(true), last = useRef(0);
-  const projectSession = scope === 'project', transcript = useTranscriptFollow(log, transcriptContent, items, projectSession);
+  const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), last = useRef(0);
+  const projectSession = scope === 'project', transcript = useTranscriptFollow(log, transcriptContent, items, true);
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
   const [gallery,setGallery]=useState(false);
   const [liveText,setLiveText]=useState<{runId:string;itemId:string}|null>(null);
   const assistantIds=useRef(new Set<string>());
+  const [deltas] = useState(() => new SessionDeltas(values => {
+    setItems(old => applyDeltas(old, values));
+    const last = values.at(-1);
+    if (last?.live && last.field === 'text')
+      setLiveText(old => old?.runId === last.runId && old.itemId === last.itemId ? old : {runId:last.runId,itemId:last.itemId});
+  }));
+  const flushDeltas = () => flushSync(deltas.flush);
   const [deleting, setDeleting] = useState(() => !!pendingDeletion(scope, projectId, sessionId));
   const removedRef = useRef(removed), retired = useRef(false);
   useEffect(() => { removedRef.current = removed; }, [removed]);
@@ -74,11 +83,12 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [dragging, setDragging] = useState(false), dragDepth = useRef(0);
   const attachments = useAttachments(projectId, sessionId, session, token, refreshAuth);
   const acceptAttachments = attachments.accepted;
+  const resumeTranscript=transcript.resume;
   const accepted = useCallback((ids: string[], acceptedRun?: AgentRun) => {
     acceptAttachments(ids); if (acceptedRun) setSession(old => old ? { ...old, latestRun: acceptedRun } : old);
-    if (scope !== 'project') follow.current = true;
+    if (scope !== 'project') resumeTranscript();
     changed();
-  }, [acceptAttachments, changed, scope]);
+  }, [acceptAttachments, changed, scope, resumeTranscript]);
   const composer = useMessageComposer(projectId, sessionId, session, token, refreshAuth, accepted);
   const { text, pending, sending } = composer;
   const inbox = useMessageInbox(projectId, sessionId, token, refreshAuth);
@@ -96,16 +106,17 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const [h, r] = await Promise.all([projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal),
       projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal)]);
     if (signal.aborted) return;
-    last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
-  }, [base, projectRequest]);
+    deltas.clear(); last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
+  }, [base, projectRequest, deltas]);
   useEffect(() => {
     const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false, connected = false;
     const receive = (event: AgentEvent) => {
       if (event.seq <= last.current) return;
       last.current = event.seq;
+      if (event.kind !== 'delta') deltas.flush();
       publishSessionActivity({scope,ownerId:projectId,sessionId,event});
       const live=event.delivery==='live'&&!document.hidden;
-      if(!live)setLiveText(null);
+      if(!live)setLiveText(old=>old===null?old:null);
       if (projectSession && ['run', 'goal', 'nativeTurn'].includes(event.kind)) window.dispatchEvent(new Event('studio-project-activity'));
       if (event.kind === 'item') {
         const item=event.payload as SessionItem,key=itemKey(item);
@@ -122,8 +133,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       if (event.kind === 'delta') {
         const p = event.payload as { itemId: string; text: string; field?: string };
         const field = p.field === 'output' ? 'output' : 'text';
-        if(live&&field==='text'&&event.runId&&assistantIds.current.has(event.runId+':'+p.itemId))setLiveText({runId:event.runId,itemId:p.itemId});
-        setItems((old) => old.map((i) => i.id === p.itemId && i.runId === event.runId ? { ...i, [field]: String(i[field] ?? '') + p.text } : i));
+        if (event.runId) deltas.push({runId:event.runId,itemId:p.itemId,field,text:p.text,live:live&&field==='text'&&assistantIds.current.has(event.runId+':'+p.itemId)});
       }
       if (event.kind === 'run') {
         const run=event.payload as AgentRun;
@@ -147,8 +157,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       if (controller.signal.aborted) return;
       source = new EventSource(`${apiBase}${base}/events?after=${last.current}`);
       source.onopen = () => { if (!controller.signal.aborted) { if (connected) invalidateSessionReads('capabilities'); connected = true; publishSessionActivity({scope,ownerId:projectId,sessionId,connected:true}); setConnection('Connected'); attempt = 0; if (projectSession) window.dispatchEvent(new Event('studio-project-activity')); } };
-      source.onmessage = (e) => { if(controller.signal.aborted)return;try { receive(JSON.parse(e.data)); } catch { setLiveText(null);source?.close(); retry(); } };
-      source.onerror = () => { setLiveText(null);source?.close(); retry(); };
+      source.onmessage = (e) => { if(controller.signal.aborted)return;try { receive(JSON.parse(e.data)); } catch { deltas.flush();setLiveText(null);source?.close(); retry(); } };
+      source.onerror = () => { deltas.flush();setLiveText(null);source?.close(); retry(); };
     };
     const retry = () => {
       if (controller.signal.aborted) return;
@@ -160,12 +170,9 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       }).catch(retry); }, Math.min(1000 * 2 ** attempt++, 10000));
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
-    return () => { controller.abort(); source?.close(); window.clearTimeout(timer); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope]);
-  useEffect(()=>{const hidden=()=>{if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[]);
-  useEffect(() => {
-    if (!projectSession && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
-  }, [items, projectSession, log]);
+    return () => { controller.abort(); source?.close(); window.clearTimeout(timer); deltas.clear(); };
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas]);
+  useEffect(()=>{const hidden=()=>{deltas.flush();if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[deltas]);
   const run = session?.latestRun;
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
   const active = busyRun(run?.state) || nativeActive;
@@ -187,7 +194,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     void inbox.refresh().catch(() => undefined);
   }
   async function stop() {
-    if (!run || stopping) return; setStopping(true); setError('');
+    deltas.flush(); if (!run || stopping) return; setStopping(true); setError('');
     try {
       const r = await projectRequest<{ run: AgentRun }>(base + '/runs/' + run.id + '/stop', token, 'POST');
       setSession((s) => s ? { ...s, latestRun: r.run } : s); changed();
@@ -196,15 +203,14 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }
   async function loadOlder() {
     if (!before || older) return; setOlder(true);
-    const element = log.current, height = element?.scrollHeight ?? 0;
+
     try {
       const h = await projectRequest<SessionHistory>(base + `/history?before=${before}`);
       for(const value of h.items)if(value.type==='assistant')assistantIds.current.add(itemKey(value));
-      setItems((old) => [...h.items.filter((i) => !old.some((p) => itemKey(p) === itemKey(i))), ...old]); setBefore(h.before);
-      requestAnimationFrame(() => { if (element) element.scrollTop += element.scrollHeight - height; });
+      setItems(old => { const known = new Set(old.map(itemKey)); return [...h.items.filter(i => !known.has(itemKey(i))), ...old]; }); setBefore(h.before);
     } catch (e) { setError((e as Error).message); } finally { setOlder(false); }
   }
-  return <section className="agent-session" aria-label="Agent session">
+  return <section className="agent-session" aria-label="Agent session" onPointerDownCapture={flushDeltas} onFocusCapture={flushDeltas} onKeyDownCapture={flushDeltas} onCopyCapture={flushDeltas}>
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal, run) : run?.state ? ({queued:'Queued',starting:'Starting',running:'Running',stopping:'Stopping',completed:'Complete',failed:'Failed',interrupted:'Stopped',unknown:'Unconfirmed'} as Record<string,string>)[run.state]??run.state : 'Ready') : connection}</span>
         <button type="button" className="agent-settings-button" aria-label="Screenshot gallery" title="Screenshot gallery" aria-haspopup="dialog" aria-expanded={gallery} disabled={!session} onClick={()=>setGallery(true)}><Icon name="image"/></button>
@@ -215,13 +221,11 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
     {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
     {session?.engine.api?.kind === 'claude-plan' && <SessionConnectionLimits key={base + session.providerId} base={base} token={token} providerId={session.providerId} />}
-    <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={projectSession ? 0 : undefined}
-      onWheel={projectSession ? transcript.onWheel : undefined}
-      onScroll={projectSession ? transcript.onScroll : (e) => { const el = e.currentTarget; follow.current = el.scrollHeight-el.scrollTop-el.clientHeight < 90; }}>
+    <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={0}
+      onWheel={transcript.onWheel} onScroll={transcript.onScroll}>
       <div ref={transcriptContent}>
-      {before && <button className="agent-older" disabled={older} onClick={() => void loadOlder()}>{older ? 'Loading…' : 'Load earlier messages'}</button>}
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
-      <SessionTranscript items={items} projectId={projectId} sessionId={sessionId} token={token} liveText={active&&run?.id===liveText?.runId?liveText:null}/>
+      <SessionTranscript before={before} older={older} loadOlder={loadOlder} log={log} following={transcript.following} pauseFollowing={transcript.pause} resumeFollowing={transcript.resume} viewChanged={transcript.viewChanged} items={items} projectId={projectId} sessionId={sessionId} token={token} liveText={active&&run?.id===liveText?.runId?liveText:null}/>
       </div>
     </div>
     <ProviderRetryStatus key={base} run={run}/>
