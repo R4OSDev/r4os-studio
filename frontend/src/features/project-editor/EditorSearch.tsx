@@ -12,17 +12,17 @@ export function EditorSearch({ id, mode, close }: { id: string; mode: 'name' | '
   const results = useRef<HTMLUListElement>(null);
   useEffect(() => { results.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [current, selected]);
   useEffect(() => {
-    let active = true;
+    let active = true; const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setError(''); setSelected(0);
       if (mode === 'content' && !query.trim()) { setBusy(false); return; }
       setBusy(true);
-      void editorRegistry.search(id, { mode, query, caseSensitive: sensitive }, () => active)
+      void editorRegistry.search(id, { mode, query, caseSensitive: sensitive }, () => active, controller.signal)
         .then((value) => { if (active && value) setResult({ query, sensitive, value }); })
         .catch((cause: Error) => { if (active) setError(cause.message); })
         .finally(() => { if (active) setBusy(false); });
     }, 300);
-    return () => { active = false; window.clearTimeout(timer); };
+    return () => { active = false; controller.abort(); window.clearTimeout(timer); };
   }, [id, mode, query, sensitive]);
   function choose(entry: EditorSearchEntry) { void editorRegistry.open(id, entry.path, entry.line, entry.revision); close(); }
   return <EditorDialog label={mode === 'name' ? 'Quick Open' : 'Search Workspace'} close={close}>

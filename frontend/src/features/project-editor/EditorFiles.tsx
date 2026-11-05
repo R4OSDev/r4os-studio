@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { EditorNode, EditorMutation } from '../../../../shared/project-editor';
 import { editorRegistry, dirty } from './registry';
+import type { EditorProject } from './registry';
 import { useEditorProject } from './useEditorProject';
 import { EditorDialog } from './EditorDialog';
 import { EditorSearch } from './EditorSearch';
@@ -9,8 +9,30 @@ import './styles.css';
 
 type Action = { kind: 'create' | 'mkdir' | 'rename' | 'delete'; entry?: EditorNode };
 const parentPath = (path: string) => path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+// Versions bubble through the affected branch only. Other rows retain their
+// original node reference and memoized subtree when a sibling changes.
+type RowProps = { project: EditorProject; entry: EditorNode; depth: number; selected?: string; version: number };
+const TreeRow = memo(function TreeRow({ project: p, entry, depth, selected }: RowProps) {
+  const expanded = p.expanded.has(entry.path);
+  return <li><button type="button" className={`editor-tree-entry ${selected === entry.path ? 'selected' : ''}`} style={{ paddingLeft: 10 + depth * 10 }}
+    aria-expanded={entry.kind === 'directory' ? expanded : undefined} title={entry.reason ?? entry.path}
+    disabled={entry.kind !== 'file' && entry.kind !== 'directory'} onClick={() => {
+      if (entry.kind === 'directory') editorRegistry.toggle(p.id, entry);
+      else { editorRegistry.select(p.id, entry); void editorRegistry.open(p.id, entry.path); }
+    }}><span aria-hidden="true">{entry.kind === 'directory' ? expanded ? '▾' : '▸' : entry.kind === 'link' ? '↗' : entry.kind === 'special' ? '!' : '·'}</span><span>{entry.name}{(entry.kind === 'link' || entry.kind === 'special') && <small> · {entry.kind === 'link' ? 'link' : 'unavailable'}</small>}</span></button>
+    {entry.kind === 'directory' && expanded && treeChildren(p, entry.path, depth + 1, selected)}
+  </li>;
+});
+function treeChildren(p: EditorProject, path: string, depth = 0, selected = p.selection?.path) {
+  const tree = p.trees.get(path);
+  if (!tree) return <p className="editor-tree-message">{p.loading.has('tree:' + path) ? 'Loading…' : 'No files loaded.'}</p>;
+  return <ul className="editor-tree-list">{tree.entries.map(entry => <TreeRow key={entry.path} project={p} entry={entry} depth={depth}
+    selected={selected === entry.path || selected?.startsWith(entry.path + '/') ? selected : undefined} version={p.treeVersions.get(entry.path) ?? 0} />)}
+    {tree.nextOffset != null && <li><button type="button" className="editor-tree-more" disabled={p.loading.has('tree:' + path)} onClick={() => void editorRegistry.loadTree(p.id, path, true)}>Load more</button></li>}
+  </ul>;
+}
 export default function EditorFiles({ id, token }: { id: string; token: string }) {
-  const p = useEditorProject(id, token);
+  const p = useEditorProject(id, token, 'files');
   const [action, setAction] = useState<Action | null>(null), [name, setName] = useState('');
   const [error, setError] = useState('');
   const [search, setSearch] = useState<'name' | 'content' | null>(null);
@@ -43,19 +65,6 @@ export default function EditorFiles({ id, token }: { id: string; token: string }
     if (await editorRegistry.mutate(id, body)) setAction(null);
     else setError(p.error || 'The operation could not be completed.');
   }
-  function children(path: string, depth = 0): ReactNode {
-    const tree = p.trees.get(path);
-    if (!tree) return <p className="editor-tree-message">{p.loading.has('tree:' + path) ? 'Loading…' : 'No files loaded.'}</p>;
-    return <ul className="editor-tree-list">{tree.entries.map((entry) => <li key={entry.path}>
-      <button type="button" className={`editor-tree-entry ${p.selection?.path === entry.path ? 'selected' : ''}`} style={{ paddingLeft: 10 + depth * 10 }}
-        aria-expanded={entry.kind === 'directory' ? p.expanded.has(entry.path) : undefined} title={entry.reason ?? entry.path}
-        disabled={entry.kind !== 'file' && entry.kind !== 'directory'} onClick={() => {
-          if (entry.kind === 'directory') editorRegistry.toggle(id, entry);
-          else { editorRegistry.select(id, entry); void editorRegistry.open(id, entry.path); }
-        }}><span aria-hidden="true">{entry.kind === 'directory' ? p.expanded.has(entry.path) ? '▾' : '▸' : entry.kind === 'link' ? '↗' : entry.kind === 'special' ? '!' : '·'}</span><span>{entry.name}{(entry.kind === 'link' || entry.kind === 'special') && <small> · {entry.kind === 'link' ? 'link' : 'unavailable'}</small>}</span></button>
-      {entry.kind === 'directory' && p.expanded.has(entry.path) && children(entry.path, depth + 1)}
-    </li>)}{tree.nextOffset != null && <li><button type="button" className="editor-tree-more" disabled={p.loading.has('tree:' + path)} onClick={() => void editorRegistry.loadTree(id, path, true)}>Load more</button></li>}</ul>;
-  }
   return <nav className="nav-column editor-files" aria-label="Workspace files">
     <div className="column-heading">Files</div>
     <div className="editor-file-actions editor-navigation-actions"><button type="button" title="Ctrl/Cmd+P" onClick={() => setSearch('name')}>Quick Open</button><button type="button" title="Ctrl/Cmd+Shift+F" onClick={() => setSearch('content')}>Search</button></div>
@@ -68,7 +77,7 @@ export default function EditorFiles({ id, token }: { id: string; token: string }
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
       if (index < 0) return;
       event.preventDefault(); buttons[(index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
-    }}>{children('')}</div>
+    }}>{treeChildren(p, '')}</div>
     {action && <EditorDialog label="Workspace file operation" busy={p.working} close={() => setAction(null)}>
       <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <h2>{({ create: 'New file', mkdir: 'New folder', rename: 'Rename', delete: 'Delete' })[action.kind]}</h2>
@@ -79,6 +88,6 @@ export default function EditorFiles({ id, token }: { id: string; token: string }
           <button type="submit" disabled={blocked}>{p.working ? 'Working…' : action.kind === 'delete' ? 'Delete' : 'Save'}</button></div>
       </form>
     </EditorDialog>}
-    {search && <EditorSearch key={search} id={id} mode={search} close={() => setSearch(null)} />}
+    {search && <EditorSearch key={id + ':' + search} id={id} mode={search} close={() => setSearch(null)} />}
   </nav>;
 }

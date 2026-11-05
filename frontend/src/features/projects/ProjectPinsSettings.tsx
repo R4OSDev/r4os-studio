@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEditorSnapshot } from '../project-editor/useEditorProject';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProjectPinChoice, ProjectPinOptions, ProjectPinReceipt, ProjectPins, ProjectPinUpdate } from '../../../../shared/projects';
 import { projectRequest, projectRequestId, ProjectRequestError } from './api';
 import { editorRegistry } from '../project-editor/registry';
@@ -43,7 +44,7 @@ export function ProjectPinsSettings({ id, token, dirtyChanged, busyChanged }: {
   const [selected, setSelected] = useState(''), [pending, setPending] = useState<ProjectPinUpdate | null>(() => remembered(id));
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const working = useRef(false);
-  useSyncExternalStore(editorRegistry.subscribe, editorRegistry.snapshot, editorRegistry.snapshot);
+  useEditorSnapshot(id);
   const editorBusy = editorRegistry.hasUnsavedFor(id);
   const target = options?.choices.find(choice => choice.sdkId === selected);
   const changed = !!options && !!target?.components && (selected !== options.project.pins.sdk.revision

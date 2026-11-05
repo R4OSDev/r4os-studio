@@ -8,7 +8,7 @@ export interface EditorProject {
   id: string; token: string; docs: EditorDocument[]; active: string; selection?: EditorNode;
   trees: Map<string, EditorTree>; expanded: Set<string>; loading: Set<string>; status?: EditorStatus;
   pending?: Pending; working: boolean; error: string; notice: string; initialized: boolean; deleted: boolean;
-  generation: number; accessError?: string;
+  generation: number; treeEpoch: number; treeVersions: Map<string, number>; accessError?: string;
 }
 export const dirty = (doc: EditorDocument) => !doc.state.doc.eq(doc.baseText);
 const pendingKey = (id: string) => 'studio.editor.request.' + id;
@@ -22,17 +22,33 @@ function remembered(id: string): Pending | undefined {
 }
 export class EditorRegistry {
   private projects = new Map<string, EditorProject>();
-  private listeners = new Set<() => void>();
-  private epoch = 0;
-  private searches = new Map<string, Promise<unknown>>();
-  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
-  snapshot = () => this.epoch;
-  changed = () => { this.epoch++; this.listeners.forEach((listener) => listener()); };
+  private listeners = new Map<string, { version: number; callbacks: Set<() => void> }>();
+  private searches = new Map<string, { controller: AbortController; promise: Promise<EditorSearchResult | undefined> }>();
+  subscribe(id: string, channel: 'metadata' | 'files', listener: () => void) {
+    const key = id + ':' + channel;
+    let value = this.listeners.get(key);
+    if (!value) { value = { version: 0, callbacks: new Set() }; this.listeners.set(key, value); }
+    value.callbacks.add(listener);
+    return () => { value.callbacks.delete(listener); if (!value.callbacks.size) this.listeners.delete(key); };
+  }
+  snapshot = (id: string, channel: 'metadata' | 'files') => this.listeners.get(id + ':' + channel)?.version ?? 0;
+  changed(id: string) {
+    for (const channel of ['metadata', 'files']) {
+      const value = this.listeners.get(id + ':' + channel);
+      if (value) { value.version++; value.callbacks.forEach(listener => listener()); }
+    }
+  }
+  private treeChanged(p: EditorProject, path: string) {
+    for (let current = path;; current = current.includes('/') ? current.slice(0, current.lastIndexOf('/')) : '') {
+      p.treeVersions.set(current, (p.treeVersions.get(current) ?? 0) + 1);
+      if (!current) break;
+    }
+  }
   project(id: string) {
     let value = this.projects.get(id);
     if (!value) {
       value = { id, token: '', docs: [], active: '', trees: new Map(), expanded: new Set(['']), loading: new Set(),
-        pending: remembered(id), working: false, error: '', notice: '', initialized: false, deleted: false, generation: 0 };
+        pending: remembered(id), working: false, error: '', notice: '', initialized: false, deleted: false, generation: 0, treeEpoch: 0, treeVersions: new Map() };
       this.projects.set(id, value);
     }
     return value;
@@ -43,22 +59,28 @@ export class EditorRegistry {
   workspaceChanged(id: string) {
     const p = this.projects.get(id); if (!p) return;
     p.notice = 'Saved sources were updated from GitHub. Review and reload changed files; open drafts are kept.';
-    p.trees.clear(); this.changed(); if (p.initialized) this.refresh(id);
+    p.trees.clear(); p.treeEpoch++; p.treeVersions.clear(); this.changed(p.id); if (p.initialized) this.refresh(id);
   }
   pinsChanged(id: string) {
     const p = this.projects.get(id); if (!p) return;
     p.notice = 'Project pins changed. Review and reload portable project metadata; open drafts are kept.';
-    p.trees.clear(); this.changed(); if (p.initialized) this.refresh(id);
+    p.trees.clear(); p.treeEpoch++; p.treeVersions.clear(); this.changed(p.id); if (p.initialized) this.refresh(id);
   }
-  private request<T>(p: EditorProject, path: string, method = 'GET', body?: unknown) {
-    return projectRequest<T>(`/${p.id}/editor${path}`, p.token, method, body);
+  private request<T>(p: EditorProject, path: string, method = 'GET', body?: unknown, signal?: AbortSignal) {
+    return projectRequest<T>(`/${p.id}/editor${path}`, p.token, method, body, signal);
   }
-  search(id: string, input: EditorSearchInput, active: () => boolean) {
-    const previous = this.searches.get(id) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(() => active() ? this.request<EditorSearchResult>(this.project(id), '/search', 'POST', input) : undefined);
-    this.searches.set(id, next);
-    void next.finally(() => { if (this.searches.get(id) === next) this.searches.delete(id); }).catch(() => undefined);
-    return next;
+  search(id: string, input: EditorSearchInput, active: () => boolean, signal?: AbortSignal) {
+    if (signal?.aborted || !active()) return Promise.resolve(undefined);
+    this.searches.get(id)?.controller.abort();
+    const controller = new AbortController(), abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    const promise = this.request<EditorSearchResult>(this.project(id), '/search', 'POST', input, controller.signal);
+    const current = { controller, promise }; this.searches.set(id, current);
+    void promise.finally(() => {
+      signal?.removeEventListener('abort', abort);
+      if (this.searches.get(id) === current) this.searches.delete(id);
+    }).catch(() => undefined);
+    return promise;
   }
   activate(id: string, token: string) {
     const p = this.project(id); p.token = token;
@@ -67,7 +89,7 @@ export class EditorRegistry {
     void this.loadTree(id, ''); void this.refreshStatus(id);
   }
   refresh(id: string) {
-    const p = this.project(id); p.error = ''; this.changed();
+    const p = this.project(id); p.error = ''; p.treeEpoch++; this.changed(p.id);
     for (const path of p.expanded) void this.loadTree(id, path);
     void this.refreshStatus(id);
   }
@@ -86,28 +108,31 @@ export class EditorRegistry {
         if (current) doc.external = current.revision !== file.revision || current.kind !== file.kind ? current : undefined;
       }
     } catch (error) { if (p.generation === generation && !p.deleted) { p.status = undefined; p.accessError = (error as Error).message; } }
-    finally { p.loading.delete('status'); this.changed(); }
+    finally { p.loading.delete('status'); this.changed(p.id); }
   }
   async loadTree(id: string, path: string, more = false) {
     const p = this.project(id);
     if (p.loading.has('tree:' + path) || p.deleted) return;
-    p.loading.add('tree:' + path); this.changed();
+    p.loading.add('tree:' + path); this.treeChanged(p, path); this.changed(p.id);
+    const epoch = p.treeEpoch;
     try {
       const old = p.trees.get(path);
       const query = new URLSearchParams({ path });
       if (more && old?.nextOffset != null) { query.set('offset', String(old.nextOffset)); query.set('revision', old.revision); }
       const result = await this.request<EditorTree>(p, '/tree?' + query);
-      if (p.deleted) return;
+      if (p.deleted || p.treeEpoch !== epoch) return;
       p.trees.set(path, more && old ? { ...result, entries: [...old.entries, ...result.entries] } : result);
-    } catch (error) { p.error = (error as Error).message; }
-    finally { p.loading.delete('tree:' + path); this.changed(); }
+    } catch (error) { if (p.treeEpoch === epoch) p.error = (error as Error).message; }
+    finally { p.loading.delete('tree:' + path); this.treeChanged(p, path); this.changed(p.id);
+      if (!p.deleted && p.treeEpoch !== epoch && p.expanded.has(path)) void this.loadTree(id, path);
+    }
   }
-  select(id: string, entry: EditorNode) { this.project(id).selection = entry; this.changed(); }
+  select(id: string, entry: EditorNode) { this.project(id).selection = entry; this.changed(id); }
   toggle(id: string, entry: EditorNode) {
     const p = this.project(id); p.selection = entry;
     if (p.expanded.has(entry.path)) p.expanded.delete(entry.path);
     else { p.expanded.add(entry.path); if (!p.trees.has(entry.path)) void this.loadTree(id, entry.path); }
-    this.changed();
+    this.treeChanged(p, entry.path); this.changed(p.id);
   }
   async open(id: string, path: string, line?: number, expectedRevision?: string) {
     const p = this.project(id);
@@ -124,11 +149,11 @@ export class EditorRegistry {
           } else this.goto(existing, line);
         } catch (error) { p.error = (error as Error).message; }
       } else this.goto(existing, line);
-      this.changed(); return;
+      this.changed(p.id); return;
     }
     if (p.loading.has('file:' + path) || p.deleted) return;
-    if ([...this.projects.values()].reduce((n, item) => n + item.docs.length + [...item.loading].filter((key) => key.startsWith('file:')).length, 0) >= 20) { p.error = 'Close a file before opening more than 20 documents.'; this.changed(); return; }
-    p.loading.add('file:' + path); p.error = ''; this.changed();
+    if ([...this.projects.values()].reduce((n, item) => n + item.docs.length + [...item.loading].filter((key) => key.startsWith('file:')).length, 0) >= 20) { p.error = 'Close a file before opening more than 20 documents.'; this.changed(p.id); return; }
+    p.loading.add('file:' + path); p.error = ''; this.changed(p.id);
     try {
       const file = await this.request<EditorNode>(p, '/file?' + new URLSearchParams({ path }));
       if (file.kind === 'missing') throw new Error(file.reason);
@@ -140,7 +165,7 @@ export class EditorRegistry {
       if (expectedRevision && expectedRevision !== file.revision) { p.notice = 'This file changed since the search. Showing its current version.'; this.goto(doc); }
       else this.goto(doc, line);
     } catch (error) { p.error = (error as Error).message; }
-    finally { p.loading.delete('file:' + path); this.changed(); }
+    finally { p.loading.delete('file:' + path); this.changed(p.id); }
   }
   private goto(doc: EditorDocument, line?: number) {
     doc.navigation = { line };
@@ -148,18 +173,22 @@ export class EditorRegistry {
   navigated(doc: EditorDocument, navigation: EditorDocument['navigation']) {
     if (doc.navigation === navigation) doc.navigation = undefined;
   }
-  state(doc: EditorDocument, state: EditorState) { doc.state = state; this.changed(); }
-  focus(id: string, path: string) { this.project(id).active = path; this.changed(); }
+  state(doc: EditorDocument, state: EditorState) {
+    const textChanged = doc.state.doc !== state.doc, before = textChanged && dirty(doc);
+    doc.state = state; // Selection/undo remain synchronous, without a tree broadcast.
+    if (textChanged && before !== dirty(doc)) this.changed(doc.projectId);
+  }
+  focus(id: string, path: string) { this.project(id).active = path; this.changed(id); }
   close(id: string, path: string) {
     const p = this.project(id); p.docs = p.docs.filter((doc) => doc.path !== path);
     if (p.active === path) p.active = p.docs.at(-1)?.path ?? '';
-    this.changed();
+    this.changed(p.id);
   }
   async reload(id: string, path: string) {
     const p = this.project(id), old = p.docs.find((doc) => doc.path === path);
     if (!old || p.working || p.pending || p.loading.has('reload:' + path)) return;
     const draft = old.state.doc;
-    p.loading.add('reload:' + path); this.changed();
+    p.loading.add('reload:' + path); this.changed(p.id);
     try {
       const file = await this.request<EditorNode>(p, '/file?' + new URLSearchParams({ path }));
       if (file.kind === 'missing') { old.external = file; throw new Error(file.reason); }
@@ -170,7 +199,7 @@ export class EditorRegistry {
       p.docs = p.docs.map((item) => item === old ? doc : item);
       p.error = '';
     } catch (error) { p.error = (error as Error).message; }
-    finally { p.loading.delete('reload:' + path); this.changed(); }
+    finally { p.loading.delete('reload:' + path); this.changed(p.id); }
   }
   async current(id: string, path: string) {
     return this.request<EditorNode>(this.project(id), '/file?' + new URLSearchParams({ path }));
@@ -188,22 +217,22 @@ export class EditorRegistry {
     const p = this.project(id);
     if (p.working || p.pending || !p.status?.writable || p.deleted) return false;
     if (input.kind === 'create' && p.docs.some((doc) => doc.path === input.path)) {
-      p.error = 'Close the existing editor draft for this path before creating a file there.'; this.changed(); return false;
+      p.error = 'Close the existing editor draft for this path before creating a file there.'; this.changed(p.id); return false;
     }
     if (input.kind === 'rename' && input.target) {
       const moved = p.docs.filter((doc) => doc.path === input.path || doc.path.startsWith(input.path + '/'));
       if (moved.some((doc) => p.docs.some((other) => !moved.includes(other) && other.path === input.target + doc.path.slice(input.path.length)))) {
-        p.error = 'Close the editor draft at the destination before renaming this entry.'; this.changed(); return false;
+        p.error = 'Close the editor draft at the destination before renaming this entry.'; this.changed(p.id); return false;
       }
     }
     if (input.text !== undefined) {
       const encoded = (input.format?.bom ? '\ufeff' : '') + (input.format?.eol === 'crlf' ? input.text.replaceAll('\n', '\r\n') : input.text);
-      if (new TextEncoder().encode(encoded).length > 524288) { p.error = 'The document exceeds the 512 KiB UTF-8 limit.'; this.changed(); return false; }
+      if (new TextEncoder().encode(encoded).length > 524288) { p.error = 'The document exceeds the 512 KiB UTF-8 limit.'; this.changed(p.id); return false; }
     }
     const value: Pending = { body: { ...input, requestId: projectRequestId() },
       documents: p.docs.map((doc) => ({ path: doc.path, revision: doc.file.revision })) };
     try { sessionStorage.setItem(pendingKey(id), JSON.stringify(value)); }
-    catch { p.error = 'The operation could not be retained. Enable browser session storage and retry.'; this.changed(); return false; }
+    catch { p.error = 'The operation could not be retained. Enable browser session storage and retry.'; this.changed(p.id); return false; }
     p.pending = value;
     return this.send(p);
   }
@@ -215,7 +244,7 @@ export class EditorRegistry {
   private async send(p: EditorProject, reconcile = false) {
     const pending = p.pending;
     if (!pending) return false;
-    p.working = true; p.generation++; p.error = ''; p.notice = ''; this.changed();
+    p.working = true; p.generation++; p.error = ''; p.notice = ''; this.changed(p.id);
     try {
       let result: EditorReceipt | undefined;
       if (reconcile) result = await this.request<EditorReceipt>(p, '/operations/' + pending.body.requestId);
@@ -245,7 +274,7 @@ export class EditorRegistry {
       p.error = (error as Error).message; return false;
     }
     finally {
-      p.working = false; p.generation++; this.changed();
+      p.working = false; p.generation++; this.changed(p.id);
       if (!p.deleted) { void this.refreshStatus(p.id); for (const path of p.expanded) void this.loadTree(p.id, path); }
     }
   }
@@ -281,7 +310,7 @@ export class EditorRegistry {
         doc.state = doc.state.update({ effects: doc.language.reconfigure(await languageFor(doc.path)) }).state;
         if (p.active === oldPath) p.active = doc.path;
       }
-      p.trees.clear(); p.expanded = new Set(['']); p.selection = undefined;
+      p.trees.clear(); p.treeEpoch++; p.treeVersions.clear(); p.expanded = new Set(['']); p.selection = undefined;
     } else if (input.kind === 'delete') {
       p.docs = p.docs.filter((doc) => {
         if (doc.path !== input.path && !doc.path.startsWith(input.path + '/')) return true;
@@ -289,14 +318,14 @@ export class EditorRegistry {
         return reconcile && (!recorded || recorded.revision !== doc.file.revision);
       });
       if (!p.docs.some((doc) => doc.path === p.active)) p.active = p.docs.at(-1)?.path ?? '';
-      p.trees.delete(input.path); p.expanded.delete(input.path); p.selection = undefined;
+      p.trees.delete(input.path); p.treeEpoch++; this.treeChanged(p, input.path); p.expanded.delete(input.path); p.selection = undefined;
     } else if (input.kind === 'create') await this.open(p.id, input.path);
   }
   forget(id: string) {
     const p = this.projects.get(id);
     if (p) { p.deleted = true; p.docs = []; p.pending = undefined; }
     try { sessionStorage.removeItem(pendingKey(id)); } catch { /* Deletion does not depend on browser storage. */ }
-    this.projects.delete(id); this.changed();
+    this.searches.get(id)?.controller.abort(); this.projects.delete(id); this.changed(id);
   }
 }
 export const editorRegistry = new EditorRegistry();

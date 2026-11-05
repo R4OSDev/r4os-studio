@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEditorSnapshot } from '../project-editor/useEditorProject';
+import { useEffect, useRef, useState } from 'react';
 import type { Project, ProjectDeleted } from '../../../../shared/projects';
 import { projectRequest } from './api';
 import { dirty as editorDirty, editorRegistry } from '../project-editor/registry';
@@ -11,7 +12,7 @@ export function DeleteProjectDialog({ project, token, close, deleted, busyChange
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  useSyncExternalStore(editorRegistry.subscribe, editorRegistry.snapshot);
+  useEditorSnapshot(project.id);
   const editor = editorRegistry.project(project.id);
   const editorBlocked = editor.working || !!editor.pending;
   useEffect(() => {

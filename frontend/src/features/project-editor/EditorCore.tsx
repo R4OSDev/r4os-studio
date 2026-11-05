@@ -1,9 +1,14 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import type { EditorDocument } from './model';
 import { languageName } from './languages';
 import './styles.css';
+
+function position(state: EditorState) {
+  const head = state.selection.main.head, line = state.doc.lineAt(head);
+  return { line: line.number, column: head - line.from + 1 };
+}
 
 export function EditorCore({ doc, readOnly, onState, save, navigated }: {
   doc: EditorDocument; readOnly: boolean; onState: (state: EditorState) => void; save: () => void;
@@ -11,8 +16,8 @@ export function EditorCore({ doc, readOnly, onState, save, navigated }: {
 }) {
   const parent = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
   const callbacks = useRef({ onState, save, navigated });
-  const head = doc.state.selection.main.head, currentLine = doc.state.doc.lineAt(head);
-  const caret = { line: currentLine.number, column: head - currentLine.from + 1 };
+  const [localCaret, setCaret] = useState(() => ({ doc, ...position(doc.state) }));
+  const caret = localCaret.doc === doc ? localCaret : position(doc.state);
   useLayoutEffect(() => { callbacks.current = { onState, save, navigated }; });
   useLayoutEffect(() => {
     if (!parent.current) return;
@@ -21,6 +26,10 @@ export function EditorCore({ doc, readOnly, onState, save, navigated }: {
       Prec.highest(keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.save(); return true; } }])),
       EditorView.updateListener.of((update) => {
         callbacks.current.onState(update.state);
+        if (update.docChanged || update.selectionSet) {
+          const next = position(update.state);
+          setCaret(old => old.doc === doc && old.line === next.line && old.column === next.column ? old : { doc, ...next });
+        }
       }),
     ]) }).state;
     const instance = new EditorView({ state: initial, parent: parent.current });

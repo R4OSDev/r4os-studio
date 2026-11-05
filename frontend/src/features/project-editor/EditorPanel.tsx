@@ -1,10 +1,21 @@
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { EditorCore } from './EditorCore';
 import { dirty, editorRegistry } from './registry';
 import type { EditorDocument } from './model';
 import { useEditorProject } from './useEditorProject';
 import { EditorDialog } from './EditorDialog';
 import { EditorCompare, EditorSaveAs } from './EditorConflict';
+
+const EditorTab = memo(function EditorTab({ item, active, unsaved, blocked, select, close }: {
+  item: EditorDocument; active: boolean; unsaved: boolean; blocked: boolean;
+  select: (path: string) => void; close: (item: EditorDocument) => void;
+}) {
+  return <div className="editor-tab-group" role="presentation">
+    <button type="button" role="tab" tabIndex={active ? 0 : -1} aria-selected={active} className={active ? 'selected' : ''} title={item.path}
+      onClick={() => select(item.path)}>{item.path}{unsaved && <span aria-label="Unsaved changes"> ●</span>}</button>
+    <button type="button" aria-label={`Close ${item.path}`} disabled={blocked} onClick={() => close(item)}>×</button>
+  </div>;
+});
 
 export default function EditorPanel({ id, token }: { id: string; token: string }) {
   const p = useEditorProject(id, token);
@@ -19,10 +30,12 @@ export default function EditorPanel({ id, token }: { id: string; token: string }
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [id, token]);
   const writable = !!p.status?.writable && !p.pending && !p.working;
-  function close(item: EditorDocument) {
+  const select = useCallback((path: string) => editorRegistry.focus(id, path), [id]);
+  const close = useCallback((item: EditorDocument) => {
+    const p = editorRegistry.project(id);
     if (p.working || p.pending || p.loading.has('reload:' + item.path)) return;
     if (dirty(item)) setClosing(item); else editorRegistry.close(id, item.path);
-  }
+  }, [id]);
   return <section className="editor-panel" aria-label="Project source editor">
     <div className="editor-tabs" role="tablist" aria-label="Open files" onKeyDown={(event) => {
       if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'tab' || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -30,11 +43,8 @@ export default function EditorPanel({ id, token }: { id: string; token: string }
       const index = tabs.indexOf(event.target as HTMLButtonElement);
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
       event.preventDefault(); tabs[next]?.click(); tabs[next]?.focus();
-    }}>{p.docs.map((item) => <div className="editor-tab-group" key={item.path} role="presentation">
-      <button type="button" role="tab" tabIndex={doc === item ? 0 : -1} aria-selected={doc === item} className={doc === item ? 'selected' : ''} title={item.path}
-        onClick={() => editorRegistry.focus(id, item.path)}>{item.path}{dirty(item) && <span aria-label="Unsaved changes"> ●</span>}</button>
-      <button type="button" aria-label={`Close ${item.path}`} disabled={p.working || !!p.pending || p.loading.has('reload:' + item.path)} onClick={() => close(item)}>×</button>
-    </div>)}</div>
+    }}>{p.docs.map((item) => <EditorTab key={item.path} item={item} active={doc === item} unsaved={dirty(item)}
+      blocked={p.working || !!p.pending || p.loading.has('reload:' + item.path)} select={select} close={close} />)}</div>
     <div className="editor-toolbar"><span>{doc?.path ?? 'Editor'}</span>
       {doc && <><button type="button" disabled={p.working || !!p.pending || p.loading.has('reload:' + doc.path)} onClick={() => {
         if (!dirty(doc) || window.confirm('Reload this file and discard its unsaved changes?')) void editorRegistry.reload(id, doc.path);

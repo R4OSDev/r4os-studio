@@ -18,7 +18,12 @@ export function editorRoutes(app: FastifyInstance, directory: string, sessions: 
     } } },
   }, async (request, reply) => {
     sessions.mutation(request, reply);
-    return projectStore(directory, { operation: 'search', id: request.params.id, input: request.body }, 'editor');
+    const controller = new AbortController(), abort = () => controller.abort();
+    const closed = () => { if (!reply.raw.writableEnded) abort(); };
+    request.raw.on('aborted', abort); reply.raw.on('close', closed);
+    if (request.raw.aborted || reply.raw.destroyed) abort();
+    try { return await projectStore(directory, { operation: 'search', id: request.params.id, input: request.body }, 'editor', controller.signal); }
+    finally { request.raw.off('aborted', abort); reply.raw.off('close', closed); }
   });
   app.post<{ Params: { id: string }; Body: EditorMutation }>('/:id/editor/mutations', {
     bodyLimit: 2 * 1024 * 1024,
