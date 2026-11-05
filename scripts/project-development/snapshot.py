@@ -22,7 +22,8 @@ def inventory(root, inputs=None):
     for base, directories, files, fd in os.fwalk(root, follow_symlinks=False):
         def included(name):
             path = str((Path(base) / name).relative_to(root))
-            return (name not in EXCLUDED or name == '.git') and git_metadata(path, roots)
+            # Root ExFiles is local reference data, outside the build input.
+            return path != 'ExFiles' and (name not in EXCLUDED or name == '.git') and git_metadata(path, roots)
         directories[:] = sorted(name for name in directories if included(name))
         for name in directories:
             if not stat.S_ISDIR(os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode):

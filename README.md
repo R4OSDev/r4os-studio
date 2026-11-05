@@ -49,6 +49,10 @@ keeps this local exclusion if a later pull changes `.gitignore`.
 Project sessions can access these files as `ExFiles/...` through their existing
 file tools, or `/workspace/ExFiles/...` through **Run command**. Git exclusion
 does not make the directory read-only or include its files in a built app.
+Builds exclude the project-root `ExFiles/` directory and its entire contents
+from the source snapshot, input limits and build identity. This applies to both
+manual and agent builds. Keep required app resources in ordinary build paths;
+other `.gitignore` entries do not exclude files from build inputs.
 
 ## Z.AI GLM Coding Plan (0.9.39–0.9.45)
 
