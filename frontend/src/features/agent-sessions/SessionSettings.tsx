@@ -1,7 +1,8 @@
+import { useSessionOptions } from './useSessionOptions';
 import { availableModels, effortLabel, providerAllowed, providerLabel } from './modelChoices';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { AgentSession, SessionOptions, NativeImageCapability } from '../../../../shared/agent-sessions';
+import type { AgentSession, NativeImageCapability } from '../../../../shared/agent-sessions';
 import { WebServiceSettings } from './WebServiceSettings';
 import { SessionMigration } from './SessionMigration';
 import { SessionOpenAILimits } from './SessionOpenAILimits';
@@ -18,7 +19,8 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   deleteSession?: () => void;
 }) {
   const { request: projectRequest, scope } = useSessionApi();
-  const [draft, setDraft] = useState(session), [options, setOptions] = useState<SessionOptions | null>(null);
+  const [draft, setDraft] = useState(session);
+  const { options, error: optionsError } = useSessionOptions(projectId);
   const [imageCapability, setImageCapability] = useState<{ key: string; value?: NativeImageCapability; error?: string } | null>(null);
   const [baseline, setBaseline] = useState(session);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false), [reloading, setReloading] = useState(false);
@@ -39,13 +41,6 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
     const element = dialog.current!, opener = document.activeElement; element.showModal();
     return () => { element.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
   }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    void projectRequest<SessionOptions>(sessionPath(projectId) + '/options', '', 'GET', undefined, controller.signal)
-      .then((r) => { if (!controller.signal.aborted) setOptions(r); })
-      .catch((e: Error) => { if (!controller.signal.aborted) setError(e.message); });
-    return () => controller.abort();
-  }, [projectId, projectRequest]);
   const hasImageTools = 'studio.list_generated_images' in draft.permissions;
   const studio = draft.engine.kind === 'studio';
   const hostedToolsUnavailable=!!draft.engine.api||draft.engine.kind==='claude-code';
@@ -144,7 +139,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           {group === 'Updates' && <p className="agent-terminal-hint">{'Supported update tools default on for new sessions. Commit and rollback may reboot the assigned VM; use only for the intended update. Batch resume also needs Commit permission. Skills do not grant rights.'}</p>}{group === 'Build' && !developmentTools && <p className="agent-terminal-hint">Build and VM tools require an app project.</p>}{group === 'Build' && developmentTools && (!options?.development || !options.development.execute.available) && <p className="agent-terminal-hint">{options?.development?.execute.reason ?? 'Development host unavailable.'}</p>}{group === 'VM' && !developmentTools && <p className="agent-terminal-hint">VM startup requires an app project.</p>}{group === 'VM' && developmentTools && !options?.development?.startVm?.available && <p className="agent-terminal-hint">{options?.development?.startVm?.reason ?? 'VM start host unavailable.'}</p>}{group === 'VM' && options?.development && !options.development.input.available && developmentTools && <p className="agent-terminal-hint">{options.development.input.reason}</p>}{group === 'GitHub' && <p className="agent-terminal-hint">{'New sessions default on when a repository is connected and confirmed. Push uses this project’s bound repository and saved changes, requires a commit description and keeps tokens on the host. Changes apply from the next run.'}</p>}{group === 'Remote Hosts' && <p className="agent-terminal-hint" role="status">{draft.remoteHostAccess?.hostName ? `Assigned: ${draft.remoteHostAccess.hostName}. ` : ''}{draft.remoteHostAccess?.reason ?? 'Remote Host tools need an assigned host.'} Remote permissions default on for new compatible project sessions. File transfers also require the matching Workspace file permission. Changes apply from the next run; assignment alone starts no connection.</p>}{group === 'Terminal' && <p className="agent-terminal-hint">Terminal commands can read and change files in this workspace.</p>}</fieldset>)}</div>}
       </fieldset>
       {busyRun(draft.latestRun?.state) && <p className="project-dialog-error">Stop the current run before saving settings.</p>}
-      {error && <p className="project-dialog-error" role="alert">{error}</p>}
+      {(error || optionsError) && <p className="project-dialog-error" role="alert">{error || optionsError}</p>}
       <footer className="project-actions">{deleteSession && <button type="button" className="session-delete-action session-delete-open" disabled={saving || reloading || runtimeBusy} onClick={deleteSession}>Delete session</button>}{error && <button type="button" disabled={saving || reloading || runtimeBusy} onClick={() => void reload()}>Reload saved</button>}<button type="button" disabled={saving || reloading || runtimeBusy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={saving || reloading || runtimeBusy || busyRun(draft.latestRun?.state)}>{saving ? 'Saving…' : 'Save changes'}</button></footer>
     </form>
   </dialog>;

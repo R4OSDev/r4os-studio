@@ -1,5 +1,6 @@
+import { useSessionOptions } from './useSessionOptions';
 import { useEffect, useRef, useState } from 'react';
-import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
+import type { AgentSession } from '../../../../shared/agent-sessions';
 import { useSessionApi, ProjectRequestError, sessionPath } from './api';
 
 import { availableModels, effortLabel, providerAllowed, providerLabel } from './modelChoices';
@@ -12,15 +13,9 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
   saved: (session: AgentSession) => void; busyChanged: (value: boolean) => void; refreshAuth: () => Promise<void>;
 }) {
   const { request: projectRequest } = useSessionApi();
-  const [options, setOptions] = useState<SessionOptions | null>(null), [error, setError] = useState('');
+  const { options, error: optionsError } = useSessionOptions(projectId);
+  const [error, setError] = useState('');
   const [pending, setPending] = useState<Choice | null>(null), inflight = useRef(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    void projectRequest<SessionOptions>(sessionPath(projectId) + '/options', '', 'GET', undefined, controller.signal)
-      .then((value) => { if (!controller.signal.aborted) setOptions(value); })
-      .catch((failure: Error) => { if (!controller.signal.aborted) setError(failure.message); });
-    return () => controller.abort();
-  }, [projectId, projectRequest]);
   useEffect(() => () => busyChanged(false), [busyChanged]);
 
   const choice = pending ?? session;
@@ -89,6 +84,6 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
     </fieldset>
     {session.engine.kind !== 'studio' && <p className="agent-terminal-hint">This conversation uses a native connection. Review a conversion in Session settings → Conversation to use a different direct connection.</p>}
     {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
-    {error && <p className="agent-choice-error" role="alert">{error}</p>}
+    {(error || optionsError) && <p className="agent-choice-error" role="alert">{error || optionsError}</p>}
   </div>;
 }

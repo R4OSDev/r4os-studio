@@ -6,6 +6,12 @@ const params={type:'object',additionalProperties:false,required:['id','sessionId
 type Params={id:string;sessionId:string};
 export function environmentNoteRoutes(app:FastifyInstance,security:ProjectSessions,ownerType:'project'|'skill'){
  const base='/:id/sessions/:sessionId/environment-notes',scope=(p:Params)=>({ownerType,ownerId:p.id,sessionId:p.sessionId});
+ app.get<{Params:Params}>(base+'/summary',{schema:{params}},async(request,reply)=>{
+  security.session(request,reply);reply.header('Cache-Control','private, no-store');
+  // Older pinned coordinators ignore summaryOnly and return at most one note.
+  const value=await agentHost<{revision:number;count:number}>({operation:'environment_notes',...scope(request.params),summaryOnly:1,query:{limit:1}});
+  return {revision:value.revision,count:value.count};
+ });
  app.get<{Params:Params;Querystring:Record<string,unknown>}>(base,{schema:{params,querystring:{type:'object',additionalProperties:false,properties:{before:{...integer,minimum:1},limit:{type:'integer',minimum:1,maximum:50},query:{type:'string',maxLength:160},kind:{type:'string',enum:['problem','suggestion']},category:{type:'string',enum:['tools','capabilities','workflow','interface','documentation']},id:uuid}}}},async(request,reply)=>{
   security.session(request,reply);reply.header('Cache-Control','private, no-store');return agentHost({operation:'environment_notes',...scope(request.params),query:request.query});
  });

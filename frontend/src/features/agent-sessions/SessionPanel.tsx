@@ -1,3 +1,5 @@
+import { publishSessionActivity } from './sessionActivity';
+import { invalidateSessionReads } from './sessionReads';
 import { EnvironmentNotes } from './EnvironmentNotes';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionClaudeLimits } from './SessionClaudeLimits';
@@ -65,7 +67,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }, [scope, projectId, sessionId, deleted]);
   const [statistics, setStatistics] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
-  const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth);
+  const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth, showNotes);
   const observeNotes = notes.observe;
   const [choiceSaving, setChoiceSaving] = useState(false);
   const [goalEditor, setGoalEditor] = useState(false);
@@ -91,16 +93,17 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     busyChanged(choiceSaving || sending || stopping || goal.posting); return () => busyChanged(false);
   }, [choiceSaving, sending, stopping, goal.posting, busyChanged]);
   const load = useCallback(async (signal: AbortSignal) => {
-    const h = await projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal);
-    const r = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal);
+    const [h, r] = await Promise.all([projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal),
+      projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal)]);
     if (signal.aborted) return;
     last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
   }, [base, projectRequest]);
   useEffect(() => {
-    const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false;
+    const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false, connected = false;
     const receive = (event: AgentEvent) => {
       if (event.seq <= last.current) return;
       last.current = event.seq;
+      publishSessionActivity({scope,ownerId:projectId,sessionId,event});
       const live=event.delivery==='live'&&!document.hidden;
       if(!live)setLiveText(null);
       if (projectSession && ['run', 'goal', 'nativeTurn'].includes(event.kind)) window.dispatchEvent(new Event('studio-project-activity'));
@@ -143,7 +146,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const connect = () => {
       if (controller.signal.aborted) return;
       source = new EventSource(`${apiBase}${base}/events?after=${last.current}`);
-      source.onopen = () => { if (!controller.signal.aborted) { setConnection('Connected'); attempt = 0; if (projectSession) window.dispatchEvent(new Event('studio-project-activity')); } };
+      source.onopen = () => { if (!controller.signal.aborted) { if (connected) invalidateSessionReads('capabilities'); connected = true; publishSessionActivity({scope,ownerId:projectId,sessionId,connected:true}); setConnection('Connected'); attempt = 0; if (projectSession) window.dispatchEvent(new Event('studio-project-activity')); } };
       source.onmessage = (e) => { if(controller.signal.aborted)return;try { receive(JSON.parse(e.data)); } catch { setLiveText(null);source?.close(); retry(); } };
       source.onerror = () => { setLiveText(null);source?.close(); retry(); };
     };
@@ -250,7 +253,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <AttachmentCards control={attachments} disabled={sending || !!pending} />
       <div className="agent-composer-footer">
         <GoalControls control={goal} run={run} disabled={!session || choiceSaving || settings || stopping} inputBusy={sending || !!pending}
-          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
+          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
         {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings || goal.changing || goalEditor}
           busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />

@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo } from 'react';
 import { studioRequest } from '../projects/api';
 import type {AgentToolId} from '../../../../shared/agent-sessions';
+import { sharedSessionRead, shareSessionPath } from './sessionReads';
 export function sessionPath(projectId: string, sessionId?: string) {
   return `/${encodeURIComponent(projectId)}/sessions${sessionId ? '/' + encodeURIComponent(sessionId) : ''}`;
 }
@@ -43,7 +44,9 @@ export function useSessionApi() {
   const scope = useContext(SessionScope);
   return useMemo(() => {
     const base = scope === 'skill' ? '/api/skills' : '/api/projects';
-    return { scope, base, request: <T>(path: string, token = '', method = 'GET', body?: unknown, signal?: AbortSignal) => studioRequest<T>(base, path, token, method, body, signal) };
+    return { scope, base, request: <T>(path: string, token = '', method = 'GET', body?: unknown, signal?: AbortSignal) => method === 'GET' && shareSessionPath(path)
+      ? sharedSessionRead(base, path, sharedSignal => studioRequest<T>(base,path,token,method,body,sharedSignal), signal)
+      : studioRequest<T>(base, path, token, method, body, signal) };
   }, [scope]);
 }
 

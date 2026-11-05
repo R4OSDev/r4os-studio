@@ -1,3 +1,4 @@
+import { watchVisible, watchSessionActivity } from '../agent-sessions/sessionActivity';
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import type {GoalClockSnapshot,GoalTotalSnapshot} from '../../../../shared/statistics';
@@ -38,23 +39,28 @@ function TotalGoalRuntime({value,receivedAt,failed}:{value?:GoalTotalSnapshot;re
   {value && <p className="statistics-help">{value.coverage.measuredExecutions} measured {value.coverage.measuredExecutions===1?'execution':'executions'}{value.coverage.missingExecutions?` · ${value.coverage.missingExecutions} without a measurement`:''}. Paused and queued time is excluded.</p>}
  </section>;
 }
-export function GoalRuntime({ownerId,sessionId,reauth}:{ownerId:string;sessionId:string;reauth:()=>Promise<void>}) {
- const {request}=useSessionApi(),url=sessionPath(ownerId,sessionId)+'/goal/clock';
- const [sample,setSample]=useState<{clock:GoalClockSnapshot|null;arrival:number;error:boolean}>({clock:null,arrival:0,error:false});
+export function GoalRuntime({ownerId,sessionId,reauth,active=false}:{ownerId:string;sessionId:string;reauth:()=>Promise<void>;active?:boolean}) {
+ const {request,scope}=useSessionApi(),url=sessionPath(ownerId,sessionId)+'/goal/clock';
+ const [sample,setSample]=useState<{key:string;clock:GoalClockSnapshot|null;arrival:number;error:boolean}>({key:url,clock:null,arrival:0,error:false});
  const [tick,setTick]=useState(0),live=useRef(false);
  useEffect(()=>{
-  const controller=new AbortController();let loading=false;
+  const controller=new AbortController();let loading=false,timer:number|undefined,goalRevision=-1,runMarker='';
   async function load(){
-   if(document.hidden || loading)return;loading=true;
-   try{const value=await request<{clock:GoalClockSnapshot|null}>(url,'','GET',undefined,controller.signal);if(!controller.signal.aborted){const at=performance.now();live.current=value.clock?.state==='running';setSample({clock:value.clock,arrival:at,error:false});setTick(at);}}
+   if(document.hidden || loading || controller.signal.aborted)return;loading=true;window.clearTimeout(timer);
+   try{const value=await request<{clock:GoalClockSnapshot|null}>(url,'','GET',undefined,controller.signal);if(!controller.signal.aborted){const at=performance.now();live.current=value.clock?.state==='running';setSample({key:url,clock:value.clock,arrival:at,error:false});setTick(at);}}
    catch(error){if(!controller.signal.aborted){live.current=false;setSample(old=>({...old,error:true}));if((error as {status?:number}).status===403)await reauth().catch(()=>undefined);}}
-   finally{loading=false;}
+   finally{loading=false;if(!controller.signal.aborted && !document.hidden && (active || live.current))timer=window.setTimeout(()=>void load(),2000);}
   }
-  void load();const timer=window.setInterval(()=>void load(),2000),frame=window.setInterval(()=>{if(!document.hidden && live.current)setTick(performance.now());},250);
-  const visible=()=>{if(!document.hidden)void load();};window.addEventListener('focus',visible);window.addEventListener('online',visible);document.addEventListener('visibilitychange',visible);
-  return()=>{controller.abort();window.clearInterval(timer);window.clearInterval(frame);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);document.removeEventListener('visibilitychange',visible);};
- },[url,request,reauth]);
- const clock=sample.clock,age=clock?clock.ageMs+Math.max(0,tick-sample.arrival):0;
+  void load();const frame=window.setInterval(()=>{if(!document.hidden && live.current)setTick(performance.now());},250);
+  const stopVisible=watchVisible(()=>void load()),stopActivity=watchSessionActivity(scope,ownerId,sessionId,value=>{
+   const event=value.event,payload=event?.payload as Record<string,unknown>|undefined;let changed=!!value.connected;
+   if(event?.kind==='goal' && typeof payload?.revision==='number' && payload.revision>goalRevision){goalRevision=payload.revision;changed=true;}
+   if(event?.kind==='run'){const next=String(payload?.id)+':'+String(payload?.state);if(next!==runMarker){runMarker=next;changed=true;}}
+   if(changed)void load();
+  });
+  return()=>{controller.abort();window.clearTimeout(timer);window.clearInterval(frame);stopVisible();stopActivity();};
+ },[url,request,reauth,active,scope,ownerId,sessionId]);
+ const clock=sample.key===url?sample.clock:null,age=clock?clock.ageMs+Math.max(0,tick-sample.arrival):0;
  const uncertain=sample.error || clock?.state==='unknown' || (clock?.state==='running' && age>clock.staleAfterMs);
  const ms=clock?clock.durationMs+(clock.state==='running' && !uncertain?age:0):null;
  return <span className={`agent-goal-clock ${uncertain?'uncertain':''}`} role="timer" aria-live="off"

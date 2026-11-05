@@ -1,3 +1,5 @@
+import { watchSessionActivity, watchVisible } from './sessionActivity';
+import { watchSessionReads } from './sessionReads';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentSession } from '../../../../shared/agent-sessions';
 import type { GoalAction, GoalCommand, GoalReceipt, SessionGoal } from '../../../../shared/agent-inputs';
@@ -49,6 +51,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
     const controller = new AbortController(), current = generation.current;
     let timer: number | undefined;
     const load = async () => {
+      if (document.hidden) return;
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
         request<{ studioGoals?: number; apiNativeGoals?: number; claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
@@ -60,12 +63,19 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
       observe(state.goal); setAvailable(engineReady && controls && support.enabled !== false);
       setExecution(engineReady && controls && runs && support.enabled !== false);
       setReadback(engineReady && (claudeSession ? controls : support.nativeGoalReadback === 1)); setLiveExecution(engineReady && (claudeSession ? support.claudeLiveGoals === 1 : support.liveGoalControl === 1));
-      if (!engineReady || !controls || !runs)
+      if ((!engineReady || !controls || !runs) && !document.hidden)
         timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [base, request, observe, refresh, apiSession, claudeSession, studioSession]);
+
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) setRefresh(value => value + 1); };
+    const stopVisible = watchVisible(refresh), stopCapabilities = watchSessionReads(refresh,'capabilities');
+    const stopConnection = watchSessionActivity(scope,projectId,sessionId,value => { if(value.connected)refresh(); });
+    return () => { stopVisible(); stopCapabilities(); stopConnection(); };
+  },[scope,projectId,sessionId]);
 
   const accept = useCallback((receipt: GoalReceipt, data: GoalCommand) => {
     if (receipt.requestId !== data.requestId || receipt.action !== data.action) throw new Error('The Goal receipt does not match the original request.');

@@ -15,7 +15,7 @@ export function useProviders(usageVisible = true) {
   const [error, setError] = useState<string | null>(null);
   const [apiProviders, setApiProviders] = useState<ApiProvider[]>([]), [apiError, setApiError] = useState('');
   const [claudeProviders, setClaudeProviders] = useState<ClaudeSubscriptionProvider[]>([]), [claudeError, setClaudeError] = useState('');
-  const csrf = useRef('');
+  const csrf = useRef(''), familyGeneration = useRef(0);
   const usageGeneration = useRef(0);
   const usageRequests = useRef<Record<string, number>>({});
   const accountScopes = useRef<Record<string, string | undefined>>({});
@@ -51,34 +51,33 @@ export function useProviders(usageVisible = true) {
     }
     setApiProviders(providers); setApiError('');
   }, []);
-  const reload = useCallback(async () => {
+  const load = useCallback(async (active: () => boolean = () => true) => {
+    const generation = ++familyGeneration.current;
     try {
-      const next = await loadProviders(); accept(next);
-      try {
-        const providers = (await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken)).providers;
-        acceptConnections(providers);
-      }
-      catch (cause) { setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
-      try { setClaudeProviders((await requestProvider<{ providers: ClaudeSubscriptionProvider[] }>('/claude-subscriptions', next.csrfToken)).providers); setClaudeError(''); }
-      catch (cause) { setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
-    } catch (cause) { fail(cause); }
-  }, [accept, fail, acceptConnections]);
-
+      const next = await loadProviders();
+      if (!active() || generation !== familyGeneration.current) return;
+      accept(next);
+      const current = () => active() && generation === familyGeneration.current;
+      const api = async () => {
+        try {
+          const result = await requestProvider<{providers:ApiProvider[]}>('/api-connections',next.csrfToken);
+          if(current()) acceptConnections(result.providers);
+        } catch(cause) { if(current()) setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
+      };
+      const claude = async () => {
+        try {
+          const result = await requestProvider<{providers:ClaudeSubscriptionProvider[]}>('/claude-subscriptions',next.csrfToken);
+          if(current()) { setClaudeProviders(result.providers); setClaudeError(''); }
+        } catch(cause) { if(current()) setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
+      };
+      await Promise.all([api(),claude()]);
+    } catch (cause) { if(active() && generation===familyGeneration.current) fail(cause); }
+  }, [accept,fail,acceptConnections]);
+  const reload = useCallback(() => load(),[load]);
   useEffect(() => {
-    let active = true;
-    void loadProviders().then(async (next) => {
-      if (!active) return; accept(next);
-      try {
-        const result = await requestProvider<{ providers: ApiProvider[] }>('/api-connections', next.csrfToken);
-        if (active) acceptConnections(result.providers);
-      } catch (cause) { if (active) setApiError(cause instanceof Error ? cause.message : 'API connections are unavailable.'); }
-      try {
-        const result = await requestProvider<{ providers: ClaudeSubscriptionProvider[] }>('/claude-subscriptions', next.csrfToken);
-        if (active) { setClaudeProviders(result.providers); setClaudeError(''); }
-      } catch (cause) { if (active) setClaudeError(cause instanceof Error ? cause.message : 'Claude subscriptions are unavailable.'); }
-    }).catch((cause: unknown) => { if (active) fail(cause); });
-    return () => { active = false; };
-  }, [accept, fail, acceptConnections]);
+    let active=true; void Promise.resolve().then(() => { if(active) return load(() => active); });
+    return () => { active=false; };
+  },[load]);
 
   const rememberUsage = useCallback((id: string, usage: ProviderUsage | null) => {
     const matching = usage?.accountScope && usage.accountScope !== accountScopes.current[id] ? null : usage;

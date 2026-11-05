@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionInbox } from '../../../../shared/agent-messages';
 import { ProjectRequestError, projectRequestId, sessionPath, useSessionApi } from './api';
+import { watchSessionActivity, watchVisible } from './sessionActivity';
 
 type Control = { requestId: string; revision: number; action: 'resume' | 'cancel'; messageId?: string };
 export function useMessageInbox(projectId: string, sessionId: string, token: string, refreshAuth: () => Promise<void>) {
@@ -20,8 +21,11 @@ export function useMessageInbox(projectId: string, sessionId: string, token: str
     if (!signal?.aborted) setInbox(old => old && old.revision > value.revision ? old : value);
   }, [base, request]);
   useEffect(() => {
-    const controller = new AbortController(); let timer: number | undefined;
-    const poll = async () => {
+    const controller = new AbortController(); let timer: number | undefined, loading = false, dirty = false, activityTimer: number | undefined, goalRevision = -1, runMarker = '', wakeAt = -Infinity;
+    const poll = async (changed = false) => {
+      if (controller.signal.aborted || document.hidden) return;
+      if (loading) { dirty = dirty || changed; return; }
+      loading = true; dirty = false; window.clearTimeout(timer);
       try {
         const support = await request<{ messageQueue?: number; claudeBoundMessages?: number }>('/agent-capabilities', '', 'GET', undefined, controller.signal);
         if (controller.signal.aborted) return;
@@ -29,11 +33,23 @@ export function useMessageInbox(projectId: string, sessionId: string, token: str
         setBoundWaiting(support.messageQueue === 1 && support.claudeBoundMessages === 1);
         if (support.messageQueue === 1) await refresh(controller.signal);
       } catch { /* The main session connection handles authentication recovery. */ }
-      if (!controller.signal.aborted) timer = window.setTimeout(() => { void poll(); }, 1500);
+      loading = false;
+      if (!controller.signal.aborted && !document.hidden) {
+        if (dirty) void poll(); else timer = window.setTimeout(() => { void poll(); }, 30000);
+      }
     };
+    const stopActivity = watchSessionActivity(scope, projectId, sessionId, value => {
+      const event = value.event, payload = event?.payload as Record<string, unknown> | undefined;
+      let changed = value.connected || event?.kind === 'message';
+      if (event?.kind === 'goal' && typeof payload?.revision === 'number' && payload.revision > goalRevision) { goalRevision = payload.revision; changed = true; }
+      if (event?.kind === 'run') { const next = String(payload?.id) + ':' + String(payload?.state); if (next !== runMarker) { runMarker = next; changed = true; } }
+      if (changed && activityTimer === undefined) activityTimer = window.setTimeout(() => { activityTimer = undefined; void poll(true); }, 50);
+    }), stopVisible = watchVisible(() => {
+      const now = performance.now(); if (now - wakeAt < 100) return; wakeAt = now; void poll(true);
+    });
     void poll();
-    return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [request, refresh]);
+    return () => { controller.abort(); window.clearTimeout(timer); window.clearTimeout(activityTimer); stopActivity(); stopVisible(); };
+  }, [request, refresh, scope, projectId, sessionId]);
   const perform = async (action: 'resume' | 'cancel', messageId?: string) => {
     if (!inbox || posting) return;
     const data = pending ?? { requestId: projectRequestId(), revision: inbox.revision, action, ...(messageId ? { messageId } : {}) };

@@ -1,5 +1,6 @@
+import { useSessionOptions } from './useSessionOptions';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentSession, SessionOptions } from '../../../../shared/agent-sessions';
+import type { AgentSession } from '../../../../shared/agent-sessions';
 import type { AttachmentReceipt, SessionAttachment } from '../../../../shared/agent-inputs';
 import { useStoredAttachments } from './useStoredAttachments';
 import { ProjectRequestError, projectRequestId, sessionPath, useSessionApi } from './api';
@@ -28,7 +29,7 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
   const [drafts, setDrafts] = useState(() => read(key));
   const current = useRef(drafts), mounted = useRef(true), transports = useRef(new Map<string, XMLHttpRequest>());
   const queue = useRef(Promise.resolve()), [error, setError] = useState(''), [check, setCheck] = useState(0);
-  const [options, setOptions] = useState<SessionOptions | null>(null);
+  const { options } = useSessionOptions(projectId);
   const store = useCallback((update: (old: AttachmentDraft[]) => AttachmentDraft[]) => {
     const next = update(current.current);
     try { sessionStorage.setItem(key, JSON.stringify(next)); }
@@ -48,13 +49,6 @@ export function useAttachments(projectId: string, sessionId: string, session: Ag
       for (const transport of active.values()) transport.abort();
     };
   }, [key]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void request<SessionOptions>(sessionPath(projectId) + '/options', '', 'GET', undefined, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setOptions(value); }).catch(() => { if (!controller.signal.aborted) setOptions(null); });
-    return () => controller.abort();
-  }, [projectId, request, session?.providerId, session?.model]);
-
   const observe = useCallback((receipt: AttachmentReceipt, original: AttachmentDraft) => {
     if (receipt.requestId !== original.requestId) throw new Error('The upload receipt does not match the original file.');
     let next: Partial<AttachmentDraft>;

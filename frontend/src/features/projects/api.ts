@@ -1,3 +1,4 @@
+import { invalidateSessionPending, invalidateSessionReads, sessionReadIdentity } from '../agent-sessions/sessionReads';
 export class ProjectRequestError extends Error {
   constructor(message: string, public status = 0) { super(message); }
 }
@@ -16,7 +17,13 @@ export async function studioRequest<T>(base: string, path: string, token = '', m
     headers: { ...(method === 'GET' ? {} : { 'x-csrf-token': token }), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const result = await response.json();
-  if (!response.ok) throw new ProjectRequestError(result.message ?? 'The request failed.', response.status);
+  if (!response.ok) {
+    if (response.status === 403) invalidateSessionReads(undefined, false);
+    throw new ProjectRequestError(result.message ?? 'The request failed.', response.status);
+  }
+  if (typeof result.csrfToken === 'string') sessionReadIdentity(base,result.csrfToken);
+  if (method !== 'GET') invalidateSessionPending(base,path);
+  if (method !== 'GET' && /\/settings$|\/sessions$/.test(path)) invalidateSessionReads('options');
   return result as T;
 }
 

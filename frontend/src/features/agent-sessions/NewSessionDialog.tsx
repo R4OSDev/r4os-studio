@@ -1,6 +1,7 @@
+import { useSessionOptions } from './useSessionOptions';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { AgentSession, SessionCreate, SessionOptions } from '../../../../shared/agent-sessions';
+import type { AgentSession, SessionCreate } from '../../../../shared/agent-sessions';
 import { availableModels, effortLabel, providerLabel } from './modelChoices';
 import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, projectRequestId, ProjectRequestError, sessionPath } from './api';
@@ -12,7 +13,9 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
   const [name, setName] = useState(pending?.name ?? ''), [providerId, setProvider] = useState(pending?.providerId ?? '');
   const [model, setModel] = useState(pending?.model ?? ''), [effort, setEffort] = useState(pending?.effort ?? '');
   const [fastMode, setFast] = useState(pending?.fastMode ?? false);
-  const [options, setOptions] = useState<SessionOptions | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const { options, error: optionsError } = useSessionOptions(projectId);
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const initialized = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { dirtyChanged?.(!!name || !!pending); return () => dirtyChanged?.(false); }, [name, pending, dirtyChanged]);
   useEffect(() => { busyChanged?.(busy); return () => busyChanged?.(false); }, [busy, busyChanged]);
@@ -23,17 +26,11 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
     return () => { el.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
   }, []);
   useEffect(() => {
-    const controller = new AbortController();
-    void projectRequest<SessionOptions>(sessionPath(projectId) + '/options', '', 'GET', undefined, controller.signal).then((r) => {
-      if (controller.signal.aborted) return;
-      setOptions(r);
-      if (!pending) {
-        const provider = r.providers.find((p) => p.type==='api' && availableModels(p).length), chosen = availableModels(provider)[0];
-        setProvider(provider?.id ?? ''); setModel(chosen?.id ?? ''); setEffort(chosen?.defaultEffort ?? '');
-      }
-    }).catch((e: Error) => { if (!controller.signal.aborted) setError(e.message); });
-    return () => controller.abort();
-  }, [projectId, pending, projectRequest]);
+    if (!options || pending || initialized.current) return;
+    initialized.current = true;
+    const provider = options.providers.find(p => p.type==='api' && availableModels(p).length), chosen = availableModels(provider)[0];
+    setProvider(provider?.id ?? ''); setModel(chosen?.id ?? ''); setEffort(chosen?.defaultEffort ?? '');
+  }, [options, pending]);
   const provider = options?.providers.find((p) => p.id === providerId), chosen = provider?.models.find((m) => m.id === model);
   const selectedEngine = provider?.engine ?? options?.engine;
   async function submit(event: FormEvent) {
@@ -65,13 +62,13 @@ export function NewSessionDialog({ projectId, token, close, created, dirtyChange
         </div>
         {(chosen?.fastModeAvailable || fastMode) && <ProjectField id="session-fast-mode" label="Fast Mode"><select id="session-fast-mode" value={fastMode ? 'on' : 'off'} onChange={(e) => setFast(e.target.value === 'on')}><option value="off">Off</option><option value="on" disabled={!chosen?.fastModeAvailable}>On</option></select></ProjectField>}
       </fieldset>
-      {!options && !error && <p className="project-dialog-status" role="status">Loading…</p>}
+      {!options && !error && !optionsError && <p className="project-dialog-status" role="status">Loading…</p>}
       {provider?.type === 'claude-subscription' && <p className="field-help">This subscription uses native Claude conversations. Studio’s common conversation runtime is not available for this plan. Choose a Messages API connection explicitly to use the Studio runtime; its account and billing are separate.</p>}
       {provider?.kind === 'zai-coding-plan' && <p className="field-help">Uses your Z.AI GLM Coding Plan allowance. Subscription limits are available in the session and provider settings. Model access is confirmed by Z.AI when you send a message.</p>}
       {selectedEngine?.available && <p className="field-help">{provider?.type==='api'?'Your selected connection provides the model. Studio manages the conversation, tools, queue and Goal. Creating this session sends no message.':'This selection uses the provider’s native conversation runtime. Existing native history and confirmed tool results remain available.'}</p>}
       {selectedEngine && !selectedEngine.available && <p className="project-dialog-error" role="alert">{selectedEngine.reason}</p>}
       {options && !options.providers.some((p) => availableModels(p).length) && <p className="project-dialog-error">Connect a provider and configure an available model in System settings.</p>}
-      {error && <p className="project-dialog-error" role="alert">{error}</p>}
+      {(error || optionsError) && <p className="project-dialog-error" role="alert">{error || optionsError}</p>}
       <footer className="project-actions"><button type="button" disabled={busy} onClick={requestClose}>Cancel</button><button className="project-primary" disabled={busy || (!pending && (!selectedEngine?.available || !chosen || chosen.available === false))}>{busy ? 'Creating…' : pending ? 'Retry create' : provider && provider.type !== 'api' ? 'Create native session' : 'Create session'}</button></footer>
     </form>
   </dialog>;

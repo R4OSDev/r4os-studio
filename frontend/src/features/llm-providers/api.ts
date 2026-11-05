@@ -1,3 +1,4 @@
+import { invalidateSessionReads, sessionReadIdentity, sessionReadMetadata } from '../agent-sessions/sessionReads';
 import type { ProviderList } from '../../../../shared/llm-providers.js';
 
 // getRandomValues is also available on the Studio HTTP LAN origin.
@@ -18,7 +19,10 @@ export function loadProviders(): Promise<ProviderList> {
   if (loadingRequest) return loadingRequest;
   const request = fetch('/api/providers', { cache: 'no-store' }).then(async (response) => {
     if (!response.ok) throw new Error('Provider settings could not be loaded. Please try again.');
-    return await response.json() as ProviderList;
+    const result = await response.json() as ProviderList;
+    sessionReadIdentity('/api/providers',result.csrfToken);
+    sessionReadMetadata('native-accounts',result.providers.map(p=>[p.id,p.status,p.account?.scope,p.account?.workspaceId]));
+    return result;
   });
   loadingRequest = request;
   void request.finally(() => { if (loadingRequest === request) loadingRequest = null; }).catch(() => {});
@@ -26,15 +30,23 @@ export function loadProviders(): Promise<ProviderList> {
 }
 
 export async function requestProvider<T>(path: string, csrfToken: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch(`/api/providers${path}`, {
-    method, cache: 'no-store',
-    headers: { ...(method !== 'GET' ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  if (!response.ok) {
-    const result = await response.json().catch(() => ({})) as { message?: string };
-    throw new ProviderRequestError(result.message ?? 'The provider request failed. Please try again.', response.status);
-  }
-  return response.status === 204 ? undefined as T : await response.json() as T;
+  if (method !== 'GET') invalidateSessionReads('options');
+  try {
+    const response = await fetch(`/api/providers${path}`, {
+      method, cache: 'no-store',
+      headers: { ...(method !== 'GET' ? { 'X-CSRF-Token': csrfToken } : {}),
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    if (!response.ok) {
+      if(response.status===403)invalidateSessionReads(undefined,false);
+      const result = await response.json().catch(() => ({})) as { message?: string };
+      throw new ProviderRequestError(result.message ?? 'The provider request failed. Please try again.', response.status);
+    }
+    const result = response.status === 204 ? undefined as T : await response.json() as T;
+    if (method === 'GET' && (/^\/api-connections(?:\/[^/?]+)?$/.test(path) || /\/(models|catalog)$/.test(path) || path === '/claude-subscriptions')) {
+      sessionReadMetadata('provider:'+path,result);
+    }
+    return result;
+  } finally { if (method !== 'GET') invalidateSessionReads('options'); }
 }

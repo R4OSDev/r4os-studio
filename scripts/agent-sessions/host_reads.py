@@ -52,6 +52,14 @@ def read(config, request):
         if op in ('environment_notes', 'environment_note_receipt'):
             from environment_notes import Notes
             notes = Notes(store)
+            if op == 'environment_notes' and request.get('summaryOnly') == 1:
+                own = not store.db.in_transaction
+                if own: store.db.execute('BEGIN')
+                try:
+                    revision, count = notes.current(sid)
+                    return {'revision':revision, 'count':count}
+                finally:
+                    if own: store.db.rollback()
             return notes.listing(sid, request.get('query')) if op == 'environment_notes' else notes.deletion_receipt(sid, request['requestId'])
         if op == 'session_delete_receipt':
             # A deletion receipt does not require a surviving session row.
