@@ -28,6 +28,7 @@ class Worker:
         self.manifest = manifest
         kind, ident = binding(manifest)
         self.store = SessionStore(manifest['projects'], manifest['r4os'], ident, kind)
+        self.store.public_stream_failed = self.defer_stop
         self.run_id = manifest['runId']; self.row = get_run(self.store, self.run_id)
         self.session_id = self.row['session_id']; self.config = json.loads(self.row['config'])
         from active_tools import verify as verify_catalog
@@ -91,6 +92,9 @@ class Worker:
 
     async def notify(self, method, params):
         if params.get('threadId') and params['threadId'] != self.thread_id: return
+        if method != 'item/agentMessage/delta':
+            from public_stream import flush
+            flush(self.store)
         if method in ('turn/started', 'turn/completed') and params.get('turn', {}).get('id') in self.provider_retry.held_turns:
             return  # A duplicate old boundary cannot finish the current continuation.
         if method == 'turn/completed' and params.get('turn', {}).get('status') == 'failed' and not self.error:
@@ -173,9 +177,8 @@ class Worker:
             ident = params['itemId']; value = self.items.setdefault(ident, {'id': ident, 'runId': self.run_id, 'type': 'assistant', 'text': '', 'status': 'running'})
             value['text'] += params['delta']
             if len(value['text'].encode()) > 196608: raise RuntimeError('Agent message exceeds output limit.')
-            self.store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
-                                  (self.session_id, self.run_id, ident, encode(value)))
-            event(self.store, self.session_id, self.run_id, 'delta', {'itemId': ident, 'text': params['delta']})
+            from public_stream import delta as public_delta
+            public_delta(self.store, self.session_id, self.run_id, value, {'itemId': ident, 'text': params['delta']})
         elif method == 'thread/tokenUsage/updated':
             total = params.get('tokenUsage', {}).get('total', {})
             safe = {k: v for k, v in total.items() if type(v) is int and v >= 0}
@@ -233,6 +236,8 @@ class Worker:
 
     async def bound_tool(self,name,arguments,call_id,output=None,admission_error=None):
         """Common Studio receipts/effects after an engine proves its own binding."""
+        from public_stream import flush
+        flush(self.store)
         if output is None:
             async def output(result,image_data=None):return await self.development.native_output(result,image_data)
         if (not isinstance(name,str) or not name.startswith('studio_') or name[7:] not in tools_for(tool_scope(self.config))
@@ -405,6 +410,8 @@ class Worker:
         await self.terminals.close()
         await self.skill_mcp.close()
         await self.skill_resources.close()
+        from public_stream import flush
+        flush(self.store)
 
     async def run(self):
         if not self.row['busy']: return

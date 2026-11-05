@@ -105,6 +105,8 @@ class Operations:
             self.put(rid,row['phase'],data)
 
     def finish(self,rid,result=None,error=None,attempted=False):
+        from public_stream import flush as flush_public
+        flush_public(self.store)
         self.flush(rid)
         row,data=self.row(rid);data['finishedAt']=now();data['attempted']=attempted
         if result is not None:

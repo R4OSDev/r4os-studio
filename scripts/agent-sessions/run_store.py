@@ -21,12 +21,17 @@ def fingerprint(session_id,data,attachments=()):
     return hashlib.sha256(encode({'sessionId':session_id,**value}).encode()).hexdigest()
 
 def event(store, session_id, run_id, kind, payload, commit=True):
-    raw = encode(payload)
+    from public_stream import flush
+    flush(store, commit)
+    return _event(store, session_id, run_id, kind, encode(payload), commit)
+
+
+def _event(store, session_id, run_id, kind, raw, commit=True):
     if len(raw.encode()) > 262144: raise ProjectFault('Agent event exceeds the output limit.')
     # Hard bounds preserve old data instead of silently truncating native history.
     from session_budgets import total as budget_total
     total = budget_total(store.db, session_id, 'events')
-    terminal = (kind == 'run' and payload.get('state') in ('completed', 'failed', 'interrupted', 'unknown')) or kind == 'itemStatus'
+    terminal = (kind == 'run' and json.loads(raw).get('state') in ('completed', 'failed', 'interrupted', 'unknown')) or kind == 'itemStatus'
     if total + len(raw) > 96 * 1024 * 1024 and not terminal: raise ProjectFault('Session history reached its storage limit.')
     cursor = store.db.execute('INSERT INTO events(session_id,run_id,kind,payload,created_at) VALUES (?,?,?,?,?)',
                               (session_id, run_id, kind, raw, now())).lastrowid
@@ -35,6 +40,8 @@ def event(store, session_id, run_id, kind, payload, commit=True):
 
 
 def item(store, session_id, run_id, value, commit=True):
+    from public_stream import flush
+    flush(store, commit)
     run = get_run(store, run_id)
     if run['turn_id'] and json.loads(run['config']).get('goalExecution'):
         value.setdefault('turnId', run['turn_id'])
@@ -255,6 +262,8 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
 
 
 def transition(store, run_id, state, error=None, turn_id=None, worker=None):
+    from public_stream import flush
+    flush(store)
     store.db.execute('BEGIN IMMEDIATE')
     try:
         return _transition(store, run_id, state, error, turn_id, worker)

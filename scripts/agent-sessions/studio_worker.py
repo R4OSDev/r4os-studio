@@ -248,10 +248,13 @@ class StudioWorker(Worker):
             preview['truncated'] = bool(preview.get('truncated') or clipped)
             added = preview['text'][len(previous):]
             if not added: return
-            self.store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
-                (self.session_id, self.run_id, ident, encode(preview)))
-            event(self.store, self.session_id, self.run_id, 'delta', {'itemId': ident, 'text': added})
-        result = await self.infer(active,instructions,tools,on_text=text)
+            from public_stream import delta as public_delta
+            public_delta(self.store, self.session_id, self.run_id, preview, {'itemId': ident, 'text': added})
+        try:
+            result = await self.infer(active,instructions,tools,on_text=text)
+        finally:
+            from public_stream import flush
+            flush(self.store)
         self.conversation.append(self.run_id, ident, 'assistant', result['content'],
             {**result['origin'], 'usage': result['usage'], 'finishReason': result['finishReason'], 'turnId': self.turn_id})
         self.context.report(instructions, tools)

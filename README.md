@@ -5504,3 +5504,5 @@ and remaining integer counters whose sum differs by one native unit from its
 limit. The shared display permits that observed one-unit difference and uses
 the original remaining/maximum ratio. Larger or fractional inconsistencies
 remain unknown; source quota records and model/tool behavior are unchanged.
+
+Public assistant and terminal deltas share a bounded buffer (64 events, 256 KiB including retained item projections, 100 ms). They become visible only after the existing FULL SQLite commit; non-stream events, model completion, tool admission and run cleanup drain pending originals first. Session history budgets use additive transactional counters in the same journal, including writes by older pinned workers.

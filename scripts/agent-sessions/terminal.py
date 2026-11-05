@@ -75,9 +75,8 @@ class Process:
         if remaining:
             delta, clipped = bounded_text(text, remaining+2); self.value['output'] += delta
             w = self.manager.worker
-            w.store.db.execute('INSERT INTO items VALUES (?,?,?,?) ON CONFLICT(session_id,run_id,item_id) DO UPDATE SET payload=excluded.payload',
-                               (w.session_id, w.run_id, self.value['id'], encode(self.value)))
-            event(w.store, w.session_id, w.run_id, 'delta', {'itemId': self.value['id'], 'text': delta, 'field': 'output'})
+            from public_stream import delta as public_delta
+            public_delta(w.store, w.session_id, w.run_id, self.value, {'itemId': self.value['id'], 'text': delta, 'field': 'output'})
         if len(encode(text).encode()) > remaining+2: self.value['truncated'] = True
         self.changed.set()
         if self.bytes > 2*1024*1024 and self.reason is None:
