@@ -38,6 +38,14 @@ a native model runtime. No hidden account, model or paid API fallback is used.
 See [Agent runtime](Agent-Runtime.md) for protocols, original receipts, media,
 limits, conversion and the exact remaining native boundaries.
 
+## Status and provider settings (0.10.46)
+
+The workspace tabs are Status, System, Projects and Tools. Status → AI Limits
+is directly accessible at `#status/ai-limits` and uses one navigation column;
+its content occupies the remaining width. Provider connections are managed
+under System → Settings → AI Provider. Existing connection identities and
+project/skill routes are preserved.
+
 ## Local project files
 
 Every project workspace has an initially empty `ExFiles/` directory for local

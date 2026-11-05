@@ -15,7 +15,7 @@ export function ProviderPanel({ provider, api, select, setLeaveGuard }: {
 }) {
   const removed = useCallback(() => select(null), [select]);
   const native = provider?.type === 'api' && provider.kind === 'codex-subscription' ? api.nativeProviders.find(p => p.id === provider.id) : undefined;
-  return <section className="provider-content" aria-label="LLM provider settings">
+  return <section className="provider-content" aria-label="AI provider settings">
     {api.error && <div className="provider-alert" role="alert">{api.error}<button type="button" onClick={() => void api.reload()}>Retry</button></div>}
     {api.apiError && <div className="provider-alert" role="alert">{api.apiError}<button type="button" onClick={() => void api.reload()}>Reload API connections</button></div>}
     {api.claudeError && <div className="provider-alert" role="alert">{api.claudeError}<button type="button" onClick={() => void api.reload()}>Reload Claude subscriptions</button></div>}

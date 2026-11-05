@@ -1,0 +1,10 @@
+.workspace.status-workspace { grid-template-columns: var(--navigation-column-width) minmax(0, 1fr); }
+.navigation.status-navigation { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.status-navigation .nav-item { text-decoration: none; }
+.status-content { padding: 28px 37px 37px; min-width: 0; }
+.status-empty { color: var(--muted); font-size: 13px; line-height: 1.6; }
+@media (max-width: 600px) {
+  .status-content { padding: 20px 16px; }
+  .status-navigation .nav-items { padding: 9px; }
+  .status-navigation .column-heading { height: 36px; }
+}
