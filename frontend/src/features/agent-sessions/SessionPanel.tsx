@@ -1,7 +1,6 @@
 import { EnvironmentNotes } from './EnvironmentNotes';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionClaudeLimits } from './SessionClaudeLimits';
-import { SessionZaiLimits } from './SessionZaiLimits';
 import { SessionConnectionLimits } from './SessionConnectionLimits';
 import {ScreenshotGallery} from './ScreenshotGallery';
 import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
@@ -212,7 +211,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     {session && session.engine.kind !== 'studio' && <p className="agent-plan-usage" role="status">Native {session.engine.kind === 'claude-code' ? 'Claude' : 'OpenAI'} conversation. Review an explicit conversion under Session settings → Conversation to use the Studio runtime.</p>}
     {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
     {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
-    {session?.engine.api && (session.engine.api.kind === 'zai-coding-plan' || !session.engine.api.kind && session.engine.api.baseUrl === 'https://api.z.ai/api/coding/paas/v4') && <SessionZaiLimits key={base + session.providerId} base={base} token={token} providerId={session.providerId} />}
     {session?.engine.api?.kind === 'claude-plan' && <SessionConnectionLimits key={base + session.providerId} base={base} token={token} providerId={session.providerId} />}
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={projectSession ? 0 : undefined}
       onWheel={projectSession ? transcript.onWheel : undefined}

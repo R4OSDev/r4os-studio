@@ -142,7 +142,5 @@ button:disabled { cursor: default; opacity: .55; }
 .zai-limit-row progress { display:block; width:100%; height:5px; accent-color:var(--accent); }
 .zai-limit-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .zai-limit-actions button { max-width:100%; white-space:normal; }
-.zai-limits.compact { margin:0 22px 10px; padding:9px 12px; flex-shrink:0; max-height:35vh; overflow:auto; }
-.zai-limits summary { color:#cdb4e5; cursor:pointer; }
 
 .chatgpt-plan textarea { resize:vertical; overflow-wrap:anywhere; margin-bottom:12px; }

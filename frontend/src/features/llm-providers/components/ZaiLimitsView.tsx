@@ -3,9 +3,9 @@ import { percent, zaiRemainingUsage } from '../usage-format';
 
 const amount = (value: number | null) => value === null ? 'Unknown' : new Intl.NumberFormat('en-GB', { maximumFractionDigits: 4 }).format(value);
 const date = (value: string) => new Date(value).toLocaleString('en-GB', { timeZoneName: 'short' });
-export function ZaiLimitsView({ sample, loading = false, busy = false, error = '', pending = false, notFound = false, enabled = true, compact = false, refreshAvailable = !!sample, refresh, recover }: {
+export function ZaiLimitsView({ sample, loading = false, busy = false, error = '', pending = false, notFound = false, enabled = true, refreshAvailable = !!sample, refresh, recover }: {
   sample: ZaiSubscriptionLimits | null; loading?: boolean; busy?: boolean; error?: string; pending?: boolean; notFound?: boolean;
-  enabled?: boolean; compact?: boolean; refreshAvailable?: boolean; refresh: () => void; recover: () => void;
+  enabled?: boolean; refreshAvailable?: boolean; refresh: () => void; recover: () => void;
 }) {
   const state = (sample?.holds?.length ? 'Held · ' : '') + (loading ? 'Loading' : sample?.state === 'current' ? 'Reported' : sample?.state === 'stale' ? 'Stale' : 'Unknown');
   const remaining = zaiRemainingUsage(sample);
@@ -30,6 +30,5 @@ export function ZaiLimitsView({ sample, loading = false, busy = false, error = '
     </div>
     {pending && <p role="status">The original limit check is pending. Its request is preserved on reload.</p>}
   </>;
-  if (compact) return <details className="zai-limits compact"><summary>Z.AI subscription · {state}</summary>{content}</details>;
   return <section className="zai-limits" aria-label="Z.AI subscription limits">{content}</section>;
 }

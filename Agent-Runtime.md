@@ -6,6 +6,12 @@ continue using their recorded runtime until an explicit supported transition.
 
 ## Ownership
 
+Since 0.10.40, Z.AI subscription limits appear in connection details and the
+provider list's remaining percentage. Opening a project or skill session no
+longer mounts a separate quota panel or starts its session-side quota reader.
+Stored original quota requests, provider refresh and server-side holds remain
+part of the existing shared limit handling.
+
 The unprivileged Python run worker owns conversation state, input admission,
 the model/tool loop, context, Goal, queue, cancellation and original receipts.
 The existing Node transport code owns HTTP and streaming. A protocol connector
