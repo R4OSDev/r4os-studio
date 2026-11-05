@@ -31,6 +31,9 @@ export interface AgentSession {
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
   skillOverrides: Record<string, boolean>;
 }
+export type AgentSessionSummary = Pick<AgentSession, 'id' | 'owner' | 'projectId' | 'skillId' | 'name' | 'revision' | 'createdAt' | 'updatedAt'> & {
+  latestRun: Pick<AgentRun, 'id' | 'state'> | null;
+};
 export interface SessionContext {
   schema: 1; revision: number; owner: SessionOwner; sessionId: string;
   state: 'available' | 'pending' | 'stale' | 'unavailable'; reason: string;

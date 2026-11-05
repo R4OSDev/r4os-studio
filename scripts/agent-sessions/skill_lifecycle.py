@@ -19,11 +19,11 @@ def guarded(fn):
 
 def initialize(fn):
     @functools.wraps(fn)
-    def call(self,projects,r4os,ident,kind='project'):
+    def call(self,projects,r4os,ident,kind='project',**kwargs):
         from store import ProjectFault
         from owner import skills_root
-        if kind!='skill':return fn(self,projects,r4os,ident,kind)
-        with api.lock(skills_root(projects),ident='lifetime-'+ident,fault=ProjectFault):return fn(self,projects,r4os,ident,kind)
+        if kind!='skill':return fn(self,projects,r4os,ident,kind,**kwargs)
+        with api.lock(skills_root(projects),ident='lifetime-'+ident,fault=ProjectFault):return fn(self,projects,r4os,ident,kind,**kwargs)
     return call
 
 

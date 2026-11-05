@@ -1,7 +1,7 @@
 import { environmentNoteRoutes } from './environment-note-routes.js';
 import { sessionDeletionRoutes } from './deletion-routes.js';
 import type { FastifyInstance } from 'fastify';
-import type { AgentSession, SessionCreate, SessionHistory, SessionOptions, SessionUpdate } from '../../../../shared/agent-sessions.js';
+import type { AgentSession, AgentSessionSummary, SessionCreate, SessionHistory, SessionOptions, SessionUpdate } from '../../../../shared/agent-sessions.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { sessionStore } from './store.js';
 import { developmentHost } from '../project-development/host.js';
@@ -78,7 +78,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   });
   app.get<{ Params: { id: string } }>(route, { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);
-    return { sessions: await sessionStore<AgentSession[]>(directory, { operation: 'list', ...owner(request.params.id) }, providers) };
+    return { sessions: await sessionStore<AgentSessionSummary[]>(directory, { operation: 'list', ...owner(request.params.id) }, providers) };
   });
   app.post<{ Params: { id: string }; Body: SessionCreate }>(route, { bodyLimit: 16 * 1024,
     schema: { params: projectParams, body: { type: 'object', additionalProperties: false, required: ['name', 'providerId', 'model', 'effort', 'requestId'], properties: { ...fields, requestId: identity } } },

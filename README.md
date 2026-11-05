@@ -5506,3 +5506,5 @@ the original remaining/maximum ratio. Larger or fractional inconsistencies
 remain unknown; source quota records and model/tool behavior are unchanged.
 
 Public assistant and terminal deltas share a bounded buffer (64 events, 256 KiB including retained item projections, 100 ms). They become visible only after the existing FULL SQLite commit; non-stream events, model completion, tool admission and run cleanup drain pending originals first. Session history budgets use additive transactional counters in the same journal, including writes by older pinned workers.
+
+Existing session, project and development catalogs open without claiming a SQLite writer slot. Session navigation reads a small summary; full configuration, context, runtime and receipts remain on-demand session details. Additive session/run/history indexes are initialized on the normal writer path; confirmed read requests perform no schema writes. Original lifetime and deletion gates remain active.

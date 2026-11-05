@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AgentSession } from '../../../../shared/agent-sessions';
+import type { AgentSessionSummary } from '../../../../shared/agent-sessions';
 import { useSessionApi, sessionPath } from './api';
 
 export function useSessions(projectId: string | null) {
   const { request: projectRequest, scope } = useSessionApi();
-  const [state, setState] = useState<{ revision:number; sessions: AgentSession[]; error: string }>({ revision:-1,sessions: [], error: '' });
+  const [state, setState] = useState<{ revision:number; sessions: AgentSessionSummary[]; error: string }>({ revision:-1,sessions: [], error: '' });
   const [epoch, setEpoch] = useState(0);
-  const [cache,setCache]=useState(new Map<string,AgentSession[]>());
+  const [cache,setCache]=useState(new Map<string,AgentSessionSummary[]>());
   const key=scope+':'+projectId;
   const [selection,setSelection]=useState({key,epoch,revision:0});
   if(selection.key!==key||selection.epoch!==epoch)setSelection({key,epoch,revision:selection.revision+1});
@@ -20,7 +20,7 @@ export function useSessions(projectId: string | null) {
   useEffect(() => {
     if (!projectId) return;
     const controller = new AbortController();
-    void projectRequest<{ sessions: AgentSession[] }>(sessionPath(projectId), '', 'GET', undefined, controller.signal)
+    void projectRequest<{ sessions: AgentSessionSummary[] }>(sessionPath(projectId), '', 'GET', undefined, controller.signal)
       .then((r) => { if (!controller.signal.aborted) {
         setState({ revision:selection.revision, sessions: r.sessions, error: '' });
         setCache(old=>{const next=new Map(old),key=scope+':'+projectId;next.delete(key);next.set(key,r.sessions);while(next.size>8)next.delete(next.keys().next().value!);return next;});

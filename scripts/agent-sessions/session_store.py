@@ -189,21 +189,21 @@ def validate_settings(data, provider_dir, *, direct=None):
 
 class SessionStore:
     @initialize
-    def __init__(self, projects, r4os, project_id, kind='project'):
+    def __init__(self, projects, r4os, project_id, kind='project', *, read_only=False):
         from project_use import acquire
         self.owner_type = owner_type(kind); self.owner_id = identity(project_id)
         self.selected_profile = NOTES_SKILL_PROFILE if kind == 'skill' else PROFILE
         self.session_uses = {}
         self.project_use = acquire(projects, project_id) if kind == 'project' else None
-        try: self.open(projects, r4os, project_id)
+        try: self.open(projects, r4os, project_id, read_only=read_only)
         except BaseException:
             if self.project_use: self.project_use.close()
             raise
 
-    def open(self, projects, r4os, project_id):
+    def open(self, projects, r4os, project_id, *, read_only=False):
         self.projects, self.r4os, self.project_id = Path(projects), Path(r4os), identity(project_id)
         if self.owner_type == 'project':
-            with closing(project_connect(self.projects)) as db:
+            with closing(project_connect(self.projects, read_only=True)) as db:
                 self.project = project_operation(db, {'operation': 'get', 'id': project_id}, self.r4os)
             self.workspace = workspace(self.projects, project_id, require_current=True)
         else:
@@ -219,12 +219,15 @@ class SessionStore:
         os.chmod(path, 0o600)
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA foreign_keys=ON'); self.db.execute('PRAGMA synchronous=FULL')
-        self.db.execute('BEGIN IMMEDIATE')
         version = self.db.execute('PRAGMA user_version').fetchone()[0]
         if version not in (0, 1): raise ProjectFault('Unsupported session data version.', 503)
         if version == 0:
+            self.db.execute('BEGIN IMMEDIATE')
             with self.db:
-                if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
+                # A competing initializer may have completed while we waited.
+                version = self.db.execute('PRAGMA user_version').fetchone()[0]
+                if version not in (0, 1): raise ProjectFault('Unsupported session data version.', 503)
+                if version == 0 and self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
                     raise ProjectFault('Unrecognized session database.', 503)
                 schema = '''
 CREATE TABLE sessions(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL,
@@ -247,8 +250,22 @@ CREATE TABLE tools(run_id TEXT NOT NULL REFERENCES runs(id), call_id TEXT NOT NU
 PRAGMA user_version=1;
 '''
                 for statement in schema.split(';'):
-                    if statement.strip(): self.db.execute(statement)
-        self.db.commit()
+                    if version == 0 and statement.strip(): self.db.execute(statement)
+        required = {'sessions', 'requests', 'runs', 'events', 'items', 'tools'}
+        if not required <= {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
+            raise ProjectFault('Unrecognized session database.', 503)
+        if not read_only:
+            indexes = {
+                'session_latest_run': 'runs(session_id,created_at DESC)',
+                'session_run_order': 'runs(session_id)',
+                'session_turn_runs': 'runs(session_id,turn_id)',
+                'session_item_order': 'items(session_id)',
+            }
+            known = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+            if indexes.keys() - known:
+                with self.db:
+                    for name in indexes.keys() - known:
+                        self.db.execute('CREATE INDEX IF NOT EXISTS ' + name + ' ON ' + indexes[name])
 
     def close(self):
         self.db.close()
@@ -316,7 +333,21 @@ PRAGMA user_version=1;
 
     def list(self):
         from session_lifetime import state
-        return [self.present(r) for r in self.db.execute('SELECT * FROM sessions WHERE project_id=? ORDER BY updated_at DESC,id', (self.owner_id,)) if not state(self.db, r['id'])]
+        rows = self.db.execute('''SELECT s.id,s.name,s.revision,s.created_at,s.updated_at,r.id AS run_id,r.state AS run_state
+            FROM sessions s LEFT JOIN runs r ON r.rowid=(SELECT rowid FROM runs WHERE session_id=s.id ORDER BY created_at DESC LIMIT 1)
+            WHERE s.project_id=? ORDER BY s.updated_at DESC,s.id''', (self.owner_id,)).fetchall()
+        result = []
+        for row in rows:
+            if state(self.db, row['id']): continue
+            try: self.row(row['id'])  # Retain the same owner/session lifetime through delivery.
+            except ProjectFault as error:
+                if error.code in (404, 410, 423): continue
+                raise
+            result.append({'id':row['id'], 'owner':{'type':self.owner_type,'id':self.owner_id},
+                ('skillId' if self.owner_type=='skill' else 'projectId'):self.owner_id,
+                'name':row['name'], 'revision':row['revision'], 'createdAt':row['created_at'], 'updatedAt':row['updated_at'],
+                'latestRun':{'id':row['run_id'],'state':row['run_state']} if row['run_id'] else None})
+        return result
 
     def get(self, session_id): return self.present(self.row(session_id))
 
@@ -493,7 +524,7 @@ def operation(projects, r4os, provider_dir, request):
     kind, ident = binding(request)
     if request.get('operation') == 'options':
         # Validate project identity/layout, even for a read-only options request.
-        store = SessionStore(projects, r4os, ident, kind)
+        store = SessionStore(projects, r4os, ident, kind, read_only=True)
         try:
             result = options(provider_dir, r4os, store.selected_profile)
             from tool_defaults import permissions as creation_permissions
@@ -505,7 +536,7 @@ def operation(projects, r4os, provider_dir, request):
             result['skills'] = skill_options(projects)
             return result
         finally: store.close()
-    store = SessionStore(projects, r4os, ident, kind)
+    store = SessionStore(projects, r4os, ident, kind, read_only=request.get('operation') not in ('create','update'))
     try:
         op = request['operation']
         if op == 'list': return store.list()

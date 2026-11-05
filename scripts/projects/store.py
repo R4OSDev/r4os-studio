@@ -65,7 +65,9 @@ def vm_choices(root):
         return {'vms': [], 'vmsAvailable': False}
 
 
-def connect(root):
+def connect(root, read_only=False):
+    # Existing read requests never initialize additive tables. A brand-new
+    # catalog still receives the same initial schema as before.
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     if not stat.S_ISDIR(root.lstat().st_mode):
         raise ValueError('Invalid project storage.')
@@ -79,32 +81,50 @@ def connect(root):
     db.row_factory = sqlite3.Row
     db.execute('PRAGMA foreign_keys=ON')
     db.execute('PRAGMA synchronous=FULL')
-    db.execute('BEGIN IMMEDIATE')
     version = db.execute('PRAGMA user_version').fetchone()[0]
+    fresh = version == 0
     if version not in (0, 1):
         raise ValueError('Unsupported project database version.')
-    with db:
-        if version == 0:
-            if db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
-                raise ValueError('Unrecognized project database.')
-            db.execute('''CREATE TABLE projects (
-                id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL,
-                language TEXT NOT NULL, template TEXT NOT NULL, module_name TEXT NOT NULL UNIQUE,
-                vm_id TEXT, pins TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                revision INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL CHECK(state IN ('pending','ready','failed'))
-            )''')
-            db.execute('''CREATE TABLE requests (
-                request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL,
-                project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
-                phase TEXT NOT NULL, hashes TEXT, error TEXT
-            )''')
-            db.execute('PRAGMA user_version=1')
-    db.commit()
-    with db:
-        db.execute('CREATE TABLE IF NOT EXISTS project_deletions(project_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)')
-        db.execute('CREATE TABLE IF NOT EXISTS retired_project_requests(request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL)')
-        db.execute('CREATE TABLE IF NOT EXISTS project_imports(project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, source_module_name TEXT NOT NULL, request_hash TEXT NOT NULL)')
+    if version == 0:
+        db.execute('BEGIN IMMEDIATE')
+        with db:
+            version = db.execute('PRAGMA user_version').fetchone()[0]
+            if version != 0:
+                if version != 1: raise ValueError('Unsupported project database version.')
+            else:
+                initialize(db)
+    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {'projects', 'requests'} <= tables:
+        db.close(); raise ValueError('Unrecognized project database.')
+    additions = {
+        'project_deletions': 'CREATE TABLE project_deletions(project_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)',
+        'retired_project_requests': 'CREATE TABLE retired_project_requests(request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL)',
+        'project_imports': 'CREATE TABLE project_imports(project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, source_module_name TEXT NOT NULL, request_hash TEXT NOT NULL)',
+    }
+    missing = additions.keys() - tables
+    if missing:
+        if read_only and not fresh:
+            db.close(); raise ProjectFault('Project data initialization is required.', 503)
+        with db:
+            for name in missing: db.execute(additions[name].replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS ', 1))
     return db
+
+
+def initialize(db):
+    if db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
+        raise ValueError('Unrecognized project database.')
+    db.execute('''CREATE TABLE projects (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL,
+        language TEXT NOT NULL, template TEXT NOT NULL, module_name TEXT NOT NULL UNIQUE,
+        vm_id TEXT, pins TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL CHECK(state IN ('pending','ready','failed'))
+    )''')
+    db.execute('''CREATE TABLE requests (
+        request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL,
+        project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
+        phase TEXT NOT NULL, hashes TEXT, error TEXT
+    )''')
+    db.execute('PRAGMA user_version=1')
 
 
 def operation(db, request, root):
@@ -187,7 +207,7 @@ def main():
     from contextlib import nullcontext
     from project_use import acquire
     lifetime = acquire(Path(sys.argv[1]), request['id']) if request.get('operation') == 'update' else nullcontext()
-    with lifetime, connect(Path(sys.argv[1])) as db:
+    with lifetime, connect(Path(sys.argv[1]), read_only=request.get('operation') != 'update') as db:
         result = operation(db, request, Path(sys.argv[2]))
     print(json.dumps({'result': result}, ensure_ascii=False))
 

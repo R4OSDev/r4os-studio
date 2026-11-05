@@ -37,7 +37,7 @@ class Jobs:
     def open(self, projects, r4os, project_id):
         self.projects, self.r4os, self.id = Path(projects), Path(r4os), identity(project_id)
         self.observed_at = {}
-        db = connect(self.projects)
+        db = connect(self.projects, read_only=True)
         try:
             self.project = public(db.execute("SELECT * FROM projects WHERE id=? AND state='ready'", (self.id,)).fetchone(), db)
         finally: db.close()
@@ -49,28 +49,40 @@ class Jobs:
                 raise DevelopmentFault('Invalid development database.', 503)
         self.db = sqlite3.connect(path, timeout=5); self.db.row_factory = sqlite3.Row
         path.chmod(0o600); self.db.execute('PRAGMA synchronous=FULL')
-        self.db.execute('BEGIN IMMEDIATE')
         version = self.db.execute('PRAGMA user_version').fetchone()[0]
         if version not in (0, 1): raise DevelopmentFault('Development data maintenance is required.', 503)
-        with self.db:
-            if version == 0:
-                if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
-                    raise DevelopmentFault('Unrecognized development data.', 503)
-                self.db.executescript('''
-                  CREATE TABLE jobs(id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL,
-                    request_hash TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL,
-                    busy INTEGER NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);
-                  CREATE UNIQUE INDEX active_project_job ON jobs(busy) WHERE busy=1;
-                  CREATE TABLE settings(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
-                  CREATE TABLE artifacts(id TEXT PRIMARY KEY, build_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL);
-                  PRAGMA user_version=1;
-                ''')
-                self.db.execute('INSERT INTO settings VALUES(1,?)', (encode({'revision': 1,
-                    'arguments': '', 'workingDirectory': '.', 'timeoutSeconds': 60,
-                    'expectedExitCode': None, 'outputContains': [], 'visualCriteria': ''}),))
-        # Additive schema-1 extension: earlier build workers ignore this table.
-        with self.db:
-            self.db.execute('CREATE TABLE IF NOT EXISTS deployments(id TEXT PRIMARY KEY, job_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
+        if version == 0:
+            self.db.execute('BEGIN IMMEDIATE')
+            with self.db:
+                version = self.db.execute('PRAGMA user_version').fetchone()[0]
+                if version != 0:
+                    if version != 1: raise DevelopmentFault('Development data maintenance is required.', 503)
+                else:
+                    self.initialize()
+        if not {'jobs','settings','artifacts'} <= {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
+            raise DevelopmentFault('Unrecognized development data.', 503)
+        # Additive schema-1 extension; initialized once, not on each read.
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='deployments' AND type='table'").fetchone():
+            with self.db:
+                self.db.execute('CREATE TABLE IF NOT EXISTS deployments(id TEXT PRIMARY KEY, job_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
+
+    def initialize(self):
+        if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
+            raise DevelopmentFault('Unrecognized development data.', 503)
+        schema = '''
+          CREATE TABLE jobs(id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL,
+            request_hash TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL,
+            busy INTEGER NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);
+          CREATE UNIQUE INDEX active_project_job ON jobs(busy) WHERE busy=1;
+          CREATE TABLE settings(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
+          CREATE TABLE artifacts(id TEXT PRIMARY KEY, build_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL);
+          PRAGMA user_version=1;
+        '''
+        for statement in schema.split(';'):
+            if statement.strip(): self.db.execute(statement)
+        self.db.execute('INSERT INTO settings VALUES(1,?)', (encode({'revision': 1,
+            'arguments': '', 'workingDirectory': '.', 'timeoutSeconds': 60,
+            'expectedExitCode': None, 'outputContains': [], 'visualCriteria': ''}),))
 
     def close(self):
         self.db.close(); self.project_use.close()
