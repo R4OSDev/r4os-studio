@@ -1,33 +1,34 @@
-import { StatisticsPanel } from '../features/statistics/StatisticsPanel';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { deferView, ViewRecovery } from './DeferredView';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { navigation } from './navigation';
 import type { Tab } from './navigation';
 import { useProviders } from '../features/llm-providers/useProviders';
-import { ProviderPanel } from '../features/llm-providers/components/ProviderPanel';
 import { percent } from '../features/llm-providers/usage-format';
 import { useVms } from '../features/virtual-machines/useVms';
-import { VmPanel } from '../features/virtual-machines/VmPanel';
 import { version } from '../../../shared/version.json';
-import { UpdatesPanel } from '../features/updates/UpdatesPanel';
-import { ComponentUpdatesPanel } from '../features/updates/ComponentUpdatesPanel';
 import type { ComponentKind } from '../../../shared/components';
-import { ProjectsWorkspace } from '../features/projects/ProjectsWorkspace';
 import type { ProjectNavigation } from '../features/projects/ProjectsWorkspace';
-import { SystemPromptPanel } from '../features/settings/SystemPromptPanel';
 import { editorRegistry } from '../features/project-editor/registry';
 import { useConnections } from '../features/github-connections/useConnections';
-import { ConnectionPanel } from '../features/github-connections/ConnectionPanel';
 import { parseRoadmapRoute, roadmapHash } from '../features/project-roadmaps/location';
 import { parseBoardRoute, boardHash } from '../features/project-boards/location';
 import { useRemoteHosts } from '../features/remote-hosts/useRemoteHosts';
-import { HostPanel } from '../features/remote-hosts/HostPanel';
 import { parseRemoteHostRoute, remoteHostHash } from '../features/remote-hosts/location';
 import { StatusWorkspace } from '../features/status/StatusWorkspace';
 import { AiLimitsPanel } from '../features/status/AiLimitsPanel';
 
-const ToolsWorkspace = lazy(() => import('../features/skills/ToolsWorkspace'));
+const StatisticsPanel = deferView(() => import('../features/statistics/StatisticsPanel').then(module => ({default: module.StatisticsPanel})));
+const ProviderPanel = deferView(() => import('../features/llm-providers/components/ProviderPanel').then(module => ({default: module.ProviderPanel})));
+const VmPanel = deferView(() => import('../features/virtual-machines/VmPanel').then(module => ({default: module.VmPanel})));
+const UpdatesPanel = deferView(() => import('../features/updates/UpdatesPanel').then(module => ({default: module.UpdatesPanel})));
+const ComponentUpdatesPanel = deferView(() => import('../features/updates/ComponentUpdatesPanel').then(module => ({default: module.ComponentUpdatesPanel})));
+const ProjectsWorkspace = deferView(() => import('../features/projects/ProjectsWorkspace').then(module => ({default: module.ProjectsWorkspace})));
+const SystemPromptPanel = deferView(() => import('../features/settings/SystemPromptPanel').then(module => ({default: module.SystemPromptPanel})));
+const ConnectionPanel = deferView(() => import('../features/github-connections/ConnectionPanel').then(module => ({default: module.ConnectionPanel})));
+const HostPanel = deferView(() => import('../features/remote-hosts/HostPanel').then(module => ({default: module.HostPanel})));
+const ToolsWorkspace = deferView(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['Status', 'System', 'Projects', 'Tools'];
 const statusRoute = ['#status', '#status/ai-limits'].includes(window.location.hash);
 const sessionRoute = /^#projects\/([a-f0-9-]{36})\/sessions\/([a-f0-9-]{36})$/.exec(window.location.hash);
@@ -185,8 +186,16 @@ export function App() {
     setTab(value); return true;
   }
 
+  const reloadView = useCallback(() => {
+    if (editorRegistry.hasWorking()) return;
+    if (tab === 'System' && !settingsLeaveGuard.current()) return;
+    if (tab === 'Projects' && !projectLeaveGuard.current()) return;
+    if (tab === 'Tools' && !toolsLeaveGuard.current()) return;
+    window.location.reload();
+  }, [tab]);
+
   return (
-    <div className="studio">
+    <ViewRecovery.Provider value={reloadView}><div className="studio">
       <header className="topbar">
         <a className="brand" href="/" aria-label="R4OS Studio home">
           <span className="brand-mark"><Icon name="terminal" /></span>
@@ -206,7 +215,7 @@ export function App() {
       </header>
 
       <div className={`workspace ${tab === 'Status' ? 'status-workspace' : statisticsPage ? 'statistics-global' : tab === 'Projects' && projectNavigation[projectId ?? '']?.section === 'Statistics' ? 'statistics-project' : ''}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
-        {tab === 'Status' ? <StatusWorkspace><AiLimitsPanel api={providers} /></StatusWorkspace> : tab === 'Tools' ? <Suspense fallback={<p className="skill-empty">Loading tools…</p>}><ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /></Suspense> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
+        {tab === 'Status' ? <StatusWorkspace><AiLimitsPanel api={providers} /></StatusWorkspace> : tab === 'Tools' ? <ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <aside className={`navigation ${statisticsPage ? 'statistics-global' : ''}`} aria-label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
@@ -273,6 +282,6 @@ export function App() {
         <span className="statusbar-name">R4OS Studio</span>
         <span className="statusbar-version">Version {version}</span>
       </footer>
-    </div>
+    </div></ViewRecovery.Provider>
   );
 }

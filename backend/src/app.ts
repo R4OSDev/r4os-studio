@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { statisticsRoutes } from './modules/statistics/routes.js';
 import { vmRoutes } from './modules/virtual-machines/routes.js';
-import fastifyStatic from '@fastify/static';
+import { registerFrontend } from './frontend.js';
 import { fileURLToPath } from 'node:url';
 import { providerRoutes } from './modules/llm-providers/routes.js';
 import type { ProviderOptions } from './modules/llm-providers/service.js';
@@ -56,9 +56,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
     ?? fileURLToPath(new URL('../../Data/LLMProvider/', import.meta.url))), 'RemoteHosts') });
 
   if (serveFrontend) {
-    app.register(fastifyStatic, {
-      root: fileURLToPath(new URL('../../frontend/dist', import.meta.url)),
-    });
+    registerFrontend(app, fileURLToPath(new URL('../../frontend/dist', import.meta.url)));
   }
 
   return app;

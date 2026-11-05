@@ -1,0 +1,1 @@
+export const apiKinds = { openrouter: 'OpenRouter', 'openai-compatible': 'Custom API', local: 'Local API', 'zai-coding-plan': 'Z.AI · GLM Coding Plan', 'chatgpt-plan':'ChatGPT plan · Direct registration', 'claude-plan':'Claude · Pro / Max · Studio' };

@@ -1,11 +1,12 @@
+import { deferView } from '../../../app/DeferredView';
 import type { Provider } from '../../../../../shared/llm-providers.js';
 import type { ProviderApi } from '../useProviders';
-import { NewProvider } from './NewProvider';
-import { ProviderDetails } from './ProviderDetails';
+const NewProvider = deferView(() => import('./NewProvider').then(module=>({default:module.NewProvider})));
+const ProviderDetails = deferView(() => import('./ProviderDetails').then(module=>({default:module.ProviderDetails})));
 import type { ApiProvider } from '../../../../../shared/api-providers';
-import { ApiProviderDetails } from './ApiProviderDetails';
+const ApiProviderDetails = deferView(() => import('./ApiProviderDetails').then(module=>({default:module.ApiProviderDetails})));
 import type { ClaudeSubscriptionProvider } from '../../../../../shared/claude-subscription';
-import { ClaudeProviderDetails } from './ClaudeProviderDetails';
+const ClaudeProviderDetails = deferView(() => import('./ClaudeProviderDetails').then(module=>({default:module.ClaudeProviderDetails})));
 import type { LeaveGuard } from './ApiConnectionForm';
 import '../styles.css';
 import { useCallback } from 'react';

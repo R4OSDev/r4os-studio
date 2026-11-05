@@ -1,20 +1,17 @@
+import { deferView } from '../../app/DeferredView';
 import { flushSync } from 'react-dom';
 import { applyDeltas, SessionDeltas } from './sessionDeltas';
 import { publishSessionActivity } from './sessionActivity';
 import { invalidateSessionReads } from './sessionReads';
-import { EnvironmentNotes } from './EnvironmentNotes';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionClaudeLimits } from './SessionClaudeLimits';
 import { SessionConnectionLimits } from './SessionConnectionLimits';
-import {ScreenshotGallery} from './ScreenshotGallery';
 import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionContext, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
 import { useSessionApi, sessionPath, busyRun, ProjectRequestError } from './api';
-import { DeleteSessionDialog } from './DeleteSessionDialog';
 import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
-import { SessionSettings } from './SessionSettings';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
 import { ProviderRetryStatus } from './ProviderRetryStatus';
@@ -29,6 +26,10 @@ import { useMessageInbox } from './useMessageInbox';
 import { MessageQueue } from './MessageQueue';
 import { useTranscriptFollow } from './useTranscriptFollow';
 
+const EnvironmentNotes = deferView(() => import('./EnvironmentNotes').then(module => ({default: module.EnvironmentNotes})), props => props.close());
+const ScreenshotGallery = deferView(() => import('./ScreenshotGallery').then(module => ({default: module.ScreenshotGallery})), props => props.close());
+const DeleteSessionDialog = deferView(() => import('./DeleteSessionDialog').then(module => ({default: module.DeleteSessionDialog})));
+const SessionSettings = deferView(() => import('./SessionSettings').then(module => ({default: module.SessionSettings})), props => props.close());
 const itemKey = (item: SessionItem) => item.runId + ':' + item.id;
 function merge(previous: SessionItem[], value: SessionItem) {
   return previous.some((p) => itemKey(p) === itemKey(value)) ? previous.map((p) => itemKey(p) === itemKey(value) ? value : p) : [...previous, value];

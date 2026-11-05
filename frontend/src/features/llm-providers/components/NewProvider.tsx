@@ -1,14 +1,16 @@
+import { deferView } from '../../../app/DeferredView';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Provider } from '../../../../../shared/llm-providers.js';
 import type { ProviderApi } from '../useProviders';
 import { Icon } from '../../../app/Icon';
-import { ApiConnectionForm, apiKinds } from './ApiConnectionForm';
+import { apiKinds } from '../provider-kinds';
+const ApiConnectionForm = deferView(() => import('./ApiConnectionForm').then(module=>({default:module.ApiConnectionForm})));
 import type { LeaveGuard } from './ApiConnectionForm';
 import type { ApiProviderKind } from '../../../../../shared/api-providers';
-import { ChatGPTPlan } from './ChatGPTPlan';
-import { NewClaudeProvider } from './ClaudeProviderDetails';
-import { ClaudePlan } from './ClaudePlan';
+const ChatGPTPlan = deferView(() => import('./ChatGPTPlan').then(module=>({default:module.ChatGPTPlan})));
+const NewClaudeProvider = deferView(() => import('./ClaudeProviderDetails').then(module=>({default:module.NewClaudeProvider})));
+const ClaudePlan = deferView(() => import('./ClaudePlan').then(module=>({default:module.ClaudePlan})));
 
 export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi; created: (id: string) => void; setLeaveGuard?: LeaveGuard }) {
   const [type, setType] = useState<'openai' | 'claude-subscription' | ApiProviderKind>(() => {

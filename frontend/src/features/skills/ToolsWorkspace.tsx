@@ -1,6 +1,7 @@
+import { deferView } from '../../app/DeferredView';
 import { DeleteSkillDialog, pendingSkillDeletion } from './DeleteSkillDialog';
 import { projectRequestId } from '../projects/api';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import { EditorDialog } from '../project-editor/EditorDialog';
 import { useSkills } from './useSkills';
@@ -12,9 +13,9 @@ import '../projects/styles.css';
 import { SessionScope, busyRun } from '../agent-sessions/api';
 import { useSessions } from '../agent-sessions/useSessions';
 import { pendingDeletion } from '../agent-sessions/sessionDeletionStorage';
-import { NewSessionDialog } from '../agent-sessions/NewSessionDialog';
-import { SessionPanel } from '../agent-sessions/SessionPanel';
-const SkillEditor = lazy(() => import('./SkillEditor'));
+const NewSessionDialog = deferView(() => import('../agent-sessions/NewSessionDialog').then(module=>({default:module.NewSessionDialog})), props => props.close());
+const SessionPanel = deferView(() => import('../agent-sessions/SessionPanel').then(module=>({default:module.SessionPanel})));
+const SkillEditor = deferView(() => import('./SkillEditor'));
 
 type Props = { selectedId: string | null; sessionId?: string; select: (id: string | null) => void; navigate: (id: string, sessionId?: string) => void; setLeaveGuard: (guard: () => boolean) => void };
 export default function ToolsWorkspace(props: Props) { return <SessionScope.Provider value="skill"><SkillWorkspace {...props} /></SessionScope.Provider>; }

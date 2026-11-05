@@ -5518,3 +5518,5 @@ Session metadata now follows message/run/Goal/note events with a bounded visible
 Chat rendering batches durable deltas per frame, mounts tool details on demand, and pages long loaded transcripts without changing saved history. Live Studio answers announce their item before the first delta.
 
 Studio continuation reads the confirmed checkpoint and required new records, retaining the exact latest human instruction. Bounded worker caches share validated records and one frozen wire request between estimation and dispatch; original archives remain available.
+
+Heavy Studio views and dialogs load when opened, with guarded recovery that keeps drafts. Release builds include Brotli/gzip public assets; hashed assets use immutable caching while HTML is revalidated for the current release.
