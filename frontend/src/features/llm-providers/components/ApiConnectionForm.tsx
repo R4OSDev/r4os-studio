@@ -57,6 +57,11 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
     <fieldset disabled={mutation.busy || !!mutation.pending && !retryConfig}>
       <label htmlFor="api-name">Display name</label><input id="api-name" value={name} required maxLength={80} autoComplete="off" onChange={event => setName(event.target.value)} />
       {subscription && <p className="field-help">Use your Z.AI GLM Coding Plan API key. Requests use your subscription allowance. There is no paid API fallback.</p>}
+      {subscription && <><label htmlFor="api-protocol">Protocol</label><select id="api-protocol" value={protocol} onChange={event => {
+        const selected = event.target.value as ApiProtocol; setProtocol(selected);
+        setUrl(selected === 'messages' ? 'https://api.z.ai/api/anthropic/v1' : defaultUrl(kind));
+      }}><option value="chat-completions">Chat Completions</option><option value="messages">Messages</option></select>
+        <p className="field-help">Uses the same saved Coding Plan key and account allowance. Changing protocol applies to future inputs after you review the session selection; existing runs keep their original route.</p></>}
       {kind !== 'openrouter' && !subscription && <><label htmlFor="api-server">Server software</label><select id="api-server" value={server} onChange={event => setServer(event.target.value as ApiServer)}><option value="custom">Custom endpoint</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option></select>
         {server !== 'custom' && <><p className="field-help">{server === 'ollama' ? 'Responses requires Ollama 0.13.3 or later and is stateless.' : 'Responses requires LM Studio 0.3.29 or later; API tokens require 0.4.0 or later.'} Confirm your server version and exact nonreasoning model facts. A preset does not verify compatibility.</p>
           {kind === 'local' && <button type="button" className="button-secondary" onClick={() => { setUrl(server === 'ollama' ? 'http://127.0.0.1:11434/v1' : 'http://127.0.0.1:1234/v1'); setProtocol('chat-completions'); setAuth('none'); setSecret(''); if (initial) setKeyAction('clear'); }}>Use {server === 'ollama' ? 'Ollama' : 'LM Studio'} local defaults</button>}</>}</>}

@@ -58,8 +58,11 @@ def request(binding, messages, instructions, tools, effort):
         value['thinking'] = {'type': 'adaptive'}
     elif thinking == 'enabled':
         budget = binding.get('thinkingBudget')
-        if type(budget) is not int or budget < 1024 or budget >= maximum: raise ModelFault('model_thinking_budget_unavailable')
-        value['thinking'] = {'type': 'enabled', 'budget_tokens': budget}
+        if binding.get('kind') == 'zai-coding-plan':
+            value['thinking'] = {'type': 'enabled'}
+        else:
+            if type(budget) is not int or budget < 1024 or budget >= maximum: raise ModelFault('model_thinking_budget_unavailable')
+            value['thinking'] = {'type': 'enabled', 'budget_tokens': budget}
     elif thinking is not None:
         raise ModelFault('model_thinking_unavailable')
     if effort == 'none' and binding.get('reasoning') != 'unsupported':
@@ -178,7 +181,8 @@ class Messages:
                 calls.add(ident)
                 content.append({'type': 'tool_call', 'callId': ident, 'name': name, 'arguments': block['input']})
             elif block['type'] == 'thinking':
-                if not isinstance(block.get('signature'), str) or not block['signature']: raise ModelFault('model_reasoning_incomplete')
+                if self.binding.get('kind') != 'zai-coding-plan' and (not isinstance(block.get('signature'), str) or not block['signature']):
+                    raise ModelFault('model_reasoning_incomplete')
         if (self.stop_reason == 'tool_use') != bool(calls): raise ModelFault()
         content.append({'type': 'provider', 'protocol': 'messages', 'value': dumps(blocks)})
         return {'content': content, 'origin': {**self.origin, **({'extensionDeltas': self.extensions} if self.extensions else {})},

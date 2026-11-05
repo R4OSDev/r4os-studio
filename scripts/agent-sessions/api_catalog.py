@@ -32,7 +32,7 @@ class Catalogs:
         models=[]
         if not row and provider['kind']=='zai-coding-plan':
             from zai_models import documented
-            models=documented()
+            models=documented(provider['protocol'])
         return (row['revision'],json.loads(row['data'])) if row else (0,{'configRevision':provider['revision'],'models':models,
             'checkedAt':None,'checkedConfigRevision':None,'checkedCredentialRevision':None,'truncated':False})
 

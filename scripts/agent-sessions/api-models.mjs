@@ -39,7 +39,13 @@ try {
     || !Array.isArray(addresses) || !addresses.length || addresses.length > 64 || addresses.some(value => !net.isIP(value))) throw Error();
   const literal = target.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(literal) && !addresses.includes(literal)) throw Error();
-  if (binding.kind === 'zai-coding-plan' && (binding.baseUrl !== ZAI_BASE || binding.auth !== 'bearer' || binding.protocol !== 'chat-completions')) throw Error();
+  if (binding.kind === 'zai-coding-plan') {
+    const bases = { 'chat-completions': ZAI_BASE, messages: 'https://api.z.ai/api/anthropic/v1' };
+    if (!Object.hasOwn(bases, binding.protocol) || binding.baseUrl !== bases[binding.protocol] || binding.auth !== 'bearer') throw Error();
+    // Both model protocols share Z.AI's published model catalog. This GET
+    // never changes the selected inference route or attempts a model call.
+    target = new URL(ZAI_BASE);
+  }
 } catch { fail('binding'); }
 
 const host = target.hostname.replace(/^\[|\]$/g, ''), address = addresses[0];

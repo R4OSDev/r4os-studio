@@ -116,7 +116,7 @@ def freeze(store,sid,data,providers,snapshot,original=None):
             raise ProjectFault('The original queued API selection changed. Its input was preserved.',409)
         # The reserved full-config hash is checked again at admission. Retain
         # accepted facts and credentials rather than reading a new catalog.
-        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiPlanGrant','apiNativeAccount','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
+        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiPlanGrant','apiClaudeGrant','apiNativeAccount','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
             if key in original:snapshot[key]=copy.deepcopy(original[key])
         return
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']

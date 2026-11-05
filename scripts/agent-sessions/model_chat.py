@@ -78,15 +78,8 @@ def request(binding, messages, instructions, tools, effort, policy, client):
     elif binding['kind'] == 'zai-coding-plan':
         from zai_policy import require
         require(binding)
-        if (not isinstance(client, dict) or client.get('schema') != 1
-                or not re.fullmatch(r'\d+\.\d+\.\d+', client.get('referenceVersion', ''))
-                or not re.fullmatch(r'[a-f0-9]{40}', client.get('referenceCommit', ''))
-                or client.get('userAgent') != 'opencode/' + client['referenceVersion']
-                or not re.fullmatch(r'ses_[a-f0-9]{64}', client.get('sessionId', ''))):
-            raise ModelFault('model_client_identity_unavailable')
-        session = client['sessionId']
-        headers = {'User-Agent': client['userAgent'], 'x-opencode-session-id': session,
-                   'x-session-affinity': session, 'X-Session-Id': session}
+        from zai_client import headers as client_headers
+        headers = client_headers(client)
         value.pop('store'); value.pop('parallel_tool_calls')
         for tool in value['tools']: tool['function'].pop('strict')
         value['thinking'] = {'type': 'disabled' if policy.get('reasoning') == 'none' or effort == 'none' else 'enabled', 'clear_thinking': False}

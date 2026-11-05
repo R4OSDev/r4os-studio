@@ -157,6 +157,11 @@ class ModelTransport:
                 from claude_wire import request as oauth_request, headers as oauth_headers
                 body = oauth_request(body, tools)
                 self.headers = {**self.headers, **oauth_headers()}
+            if self.binding['kind'] == 'zai-coding-plan':
+                from zai_policy import require
+                from zai_client import headers as client_headers
+                require(self.binding)
+                self.headers = {**self.headers, **client_headers(self.client)}
             parser = Messages(self.binding, tools)
         else:
             raise ModelFault('model_protocol_unavailable')

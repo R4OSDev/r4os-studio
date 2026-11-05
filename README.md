@@ -5421,3 +5421,15 @@ embedded wire-message copies and tool summaries do not become conversation or
 confirmed effects. Unknown formats, unmatched tool pairs and changed originals
 still block conversion. A real owned native conversation exposed these records;
 this compatibility check does not qualify a new Claude subscription grant.
+
+### Z.AI Coding Plan Messages (0.10.31)
+
+Choose Chat Completions or Messages in the existing Coding Plan connection.
+Both use its saved key and account allowance; changing protocol does not rotate
+the key or convert existing sessions. Review the session selection before its
+next input. Messages uses the fixed /api/anthropic/v1 base and Studio's common
+encoder, worker and tool broker. Only this Z.AI connector permits its documented
+budget-free thinking and unsigned thinking blocks. Model metadata, original
+quota holds and accepted queued inputs remain tied to their actual route.
+The existing Chat model catalog is a metadata-only GET for both protocols; it
+never substitutes a Chat inference for a Messages request. No prepaid fallback.

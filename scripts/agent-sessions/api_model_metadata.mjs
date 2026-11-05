@@ -14,7 +14,11 @@ export function modelFacts(entry, binding, key) {
     const id = safeString(entry.id, 200); if (!id || [...id].some(char => /\s/u.test(char))) return null;
     if (binding.kind === 'zai-coding-plan') {
       const documented = zaiDocuments.models.find(model => model.facts.id === id);
-      if (documented) return structuredClone(documented.facts);
+      if (documented) {
+        const facts = structuredClone(documented.facts);
+        if (binding.protocol === 'messages') facts.messages = { apiVersion: '2023-06-01', thinkingType: 'enabled', thinkingDisabled: facts.reasoning?.mandatory !== true };
+        return facts;
+      }
     }
     const capabilities = Object.fromEntries(['text', 'functionTools', 'streaming', 'imageInput', 'reasoning', 'webSearch', 'imageGeneration', 'goals'].map(field => [field, 'unknown']));
     let contextWindow = null, maxOutputTokens = null, name = id;

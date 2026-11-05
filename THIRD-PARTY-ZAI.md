@@ -233,3 +233,8 @@ and raw Authorization convention follow query-usage.mjs.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+Messages compatibility additionally follows the MIT OpenCode source at
+501b15af26915ba52682e20e220e7e137e89e92f, packages/ai/src/providers/zai-coding-plan.ts
+and packages/ai/src/protocols/zai-messages.ts: exact Messages route, API date,
+budget-free thinking and optional thinking signatures. No third-party agent loop
+or plugin host is included.

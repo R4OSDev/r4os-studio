@@ -145,5 +145,5 @@ def native(value,protocol,kind=None):
     if kind=='zai-coding-plan':
         image=public['capabilities']['imageInput']=='supported'
         result['input_modalities']=['text','image'] if image else ['text']
-        result['studio_chat'].update(provider=kind,imageInput=image,maxOutputTokens=public['maxOutputTokens'])
+        if protocol=='chat-completions':result['studio_chat'].update(provider=kind,imageInput=image,maxOutputTokens=public['maxOutputTokens'])
     return result
