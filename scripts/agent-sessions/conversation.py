@@ -151,8 +151,8 @@ class Conversation:
                                                (self.session_id, through_seq)).fetchone()
                 if source is None:
                     raise ProjectFault('The checkpoint source is not an original message in this conversation.', 409)
-            size = self.store.db.execute('SELECT COALESCE(SUM(length(CAST(content AS BLOB))+length(CAST(origin AS BLOB))),0) FROM conversation_records WHERE session_id=?',
-                                         (self.session_id,)).fetchone()[0]
+            from session_budgets import total as budget_total
+            size = budget_total(self.store.db, self.session_id, 'conversation')
             if size + len(content_raw.encode()) + len(origin_raw.encode()) > MAX_HISTORY:
                 raise ProjectFault('Conversation history reached its storage limit. Original records were preserved.', 409)
             cursor = self.store.db.execute('''INSERT INTO conversation_records

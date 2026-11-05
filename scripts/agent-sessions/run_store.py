@@ -24,7 +24,8 @@ def event(store, session_id, run_id, kind, payload, commit=True):
     raw = encode(payload)
     if len(raw.encode()) > 262144: raise ProjectFault('Agent event exceeds the output limit.')
     # Hard bounds preserve old data instead of silently truncating native history.
-    total = store.db.execute('SELECT COALESCE(SUM(length(payload)),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]
+    from session_budgets import total as budget_total
+    total = budget_total(store.db, session_id, 'events')
     terminal = (kind == 'run' and payload.get('state') in ('completed', 'failed', 'interrupted', 'unknown')) or kind == 'itemStatus'
     if total + len(raw) > 96 * 1024 * 1024 and not terminal: raise ProjectFault('Session history reached its storage limit.')
     cursor = store.db.execute('INSERT INTO events(session_id,run_id,kind,payload,created_at) VALUES (?,?,?,?,?)',

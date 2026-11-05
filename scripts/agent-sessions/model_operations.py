@@ -42,7 +42,8 @@ class Operations:
             with self.store.db:self.store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_events(
                 run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL REFERENCES studio_model_calls(request_id),
                 seq INTEGER NOT NULL,raw TEXT NOT NULL,PRIMARY KEY(request_id,seq))''')
-            used=self.store.db.execute('SELECT COALESCE(SUM(length(CAST(e.raw AS BLOB))),0) FROM studio_model_events e JOIN runs r ON r.id=e.run_id WHERE r.session_id=?',(data['sessionId'],)).fetchone()[0]
+            from session_budgets import total as budget_total
+            with self.store.db:used=budget_total(self.store.db,data['sessionId'],'raw')
             self.raw_remaining[rid]=max(0,96*1024*1024-used)
             seq=self.store.db.execute('SELECT COALESCE(MAX(seq),0) FROM studio_model_events WHERE request_id=?',(rid,)).fetchone()[0]
             self.raw_pending[rid]={'runId':row['run_id'],'seq':seq,'events':[],'bytes':0,'since':None}
