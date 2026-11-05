@@ -5412,3 +5412,12 @@ confirmed effects and GOAL/queue boundaries. Installation and account sign-in do
 not convert a session or merge accounts with the same email address. Actual
 Claude login, model access and a populated native-session conversion still need
 their real acceptance evidence; fixture checks are not subscription qualification.
+
+### Native Claude archive compatibility (0.10.30)
+
+Explicit conversion recognizes the native client's recorded context attachments
+and API request/cache metadata. These remain in the hashed original archive;
+embedded wire-message copies and tool summaries do not become conversation or
+confirmed effects. Unknown formats, unmatched tool pairs and changed originals
+still block conversion. A real owned native conversation exposed these records;
+this compatibility check does not qualify a new Claude subscription grant.

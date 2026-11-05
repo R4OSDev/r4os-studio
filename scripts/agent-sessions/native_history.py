@@ -55,6 +55,27 @@ def text(parts, *, user=False):
     return '\n'.join(result)
 
 
+def claude_metadata(record):
+    """Known archive-only client context and wire/cache observations.
+
+    These remain in the hashed original archive. In particular, embedded API
+    message copies and tool summaries never acquire conversation/tool authority.
+    Actual accepted attachments and effects are verified separately by Studio.
+    """
+    kind=record.get('type')
+    if kind=='attachment':
+        value=record.get('attachment')
+        return isinstance(value,dict) and value.get('type') in (
+            'environment','model','session_context','date','credential_org','prompt_snapshot','total_tokens_reminder')
+    if kind=='atis-latch':return isinstance(record.get('atis'),str)
+    if kind=='api-request-shape':return isinstance(record.get('shape'),dict) and isinstance(record.get('shapeHash'),str)
+    if kind=='api-request-blob':return isinstance(record.get('message'),dict) and isinstance(record.get('hash'),str)
+    if kind=='api-request':return isinstance(record.get('params'),dict) and isinstance(record.get('tail'),list) and isinstance(record.get('id'),str)
+    if kind=='tools-used':return isinstance(record.get('tools'),list)
+    if kind=='cost-state':return isinstance(record.get('modelUsage'),dict)
+    return False
+
+
 class NativeHistory:
     def __init__(self, store, sid):
         self.store, self.sid = store, sid
@@ -169,7 +190,7 @@ class NativeHistory:
                                 self.call(part.get('id'), name, arguments)
                             elif part.get('type') in ('thinking', 'redacted_thinking'): self.opaque += 1
                             else: fail('An original Claude assistant block cannot be imported.')
-                elif kind not in ('summary', 'system', 'progress', 'file-history-snapshot', 'queue-operation', 'custom-title', 'last-prompt'):
+                elif kind not in ('summary', 'system', 'progress', 'file-history-snapshot', 'queue-operation', 'custom-title', 'last-prompt') and not claude_metadata(record):
                     fail('The Claude archive contains an unsupported record format.')
         if original['phase'] == 'ready' and not found: fail('The original Claude transcript is missing.')
 
