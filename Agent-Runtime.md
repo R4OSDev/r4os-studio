@@ -524,3 +524,18 @@ payloads stay private to that model/route; cross-provider history projects
 confirmed visible content and complete tool observations without executing them
 again. Session identity, original receipts, selected REA processes and Goal
 budgets stay with Studio. There is no installer or sign-in migration.
+
+### 0.10.38: repeated tool argument fields
+
+All three model protocols accept repeated fields in serialized tool arguments
+only when the decoded JSON values are identical, including their types. Nested
+objects use the same rule. Different paths, hashes, values or types reject the
+complete response before any tool effect. Transport envelopes and stored provider
+payloads keep strict duplicate-field validation. Existing size, tool permission,
+call identity and file precondition checks remain in force.
+
+Raw model events and original serialized Chat/Responses arguments are retained.
+The shared portable history projection applies the same argument rule, so a
+confirmed tool observation can continue on another selected model without
+rewriting or replaying its original call. Installing this correction does not
+retry failed model operations or change their original outcomes.

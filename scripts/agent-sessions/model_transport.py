@@ -39,14 +39,17 @@ class ModelFault(ProjectFault):
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
-def loads(value):
+def loads(value, *, allow_identical_duplicates=False):
+    """Keep envelopes strict; tool arguments may repeat an identical JSON value."""
     def invalid(_value):
         raise ValueError('Nonfinite model value')
     try:
         def unique(pairs):
             result = {}
             for key, part in pairs:
-                if key in result: raise ValueError('Duplicate model field')
+                if key in result:
+                    if not allow_identical_duplicates or json.dumps(result[key], sort_keys=True, allow_nan=False) != json.dumps(part, sort_keys=True, allow_nan=False):
+                        raise ValueError('Duplicate model field')
                 result[key] = part
             return result
         return json.loads(value, parse_constant=invalid, object_pairs_hook=unique)

@@ -52,7 +52,7 @@ def visible(original, connector=None):
                         if part['type'] == 'output_text': text(part['text'])
                         elif part['type'] == 'refusal': text(part['refusal'])
                         else: raise ModelFault('model_context_not_portable')
-                elif item['type'] == 'function_call': call(item['call_id'], item['name'], loads(item['arguments']))
+                elif item['type'] == 'function_call': call(item['call_id'], item['name'], loads(item['arguments'], allow_identical_duplicates=True))
                 else: raise ModelFault('model_context_not_portable')
         elif protocol == 'messages' and isinstance(value, list):
             for part in value:
@@ -65,7 +65,7 @@ def visible(original, connector=None):
             if value.get('content') is not None: text(value['content'])
             for part in value.get('tool_calls', []):
                 if part['type'] != 'function': raise ModelFault('model_context_not_portable')
-                call(part['id'], part['function']['name'], loads(part['function']['arguments']))
+                call(part['id'], part['function']['name'], loads(part['function']['arguments'], allow_identical_duplicates=True))
         else: raise ModelFault('model_context_not_portable')
     except (KeyError, TypeError, ValueError): raise ModelFault('model_context_not_portable') from None
     return parts

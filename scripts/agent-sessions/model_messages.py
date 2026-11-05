@@ -134,7 +134,7 @@ class Messages:
             if kind == 'content_block_stop':
                 if index in self.fragments:
                     if block.get('input'): raise ModelFault('model_tool_input_conflict')
-                    block['input'] = loads(unicode_text(self.fragments[index]))
+                    block['input'] = loads(unicode_text(self.fragments[index]), allow_identical_duplicates=True)
                 if self.pending.get(index): raise ModelFault('model_stream_invalid')
                 self.stopped.add(index); return []
             delta = value.get('delta')

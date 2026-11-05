@@ -130,7 +130,7 @@ class Responses:
                         or any(ord(c) < 33 or ord(c) == 127 for c in call_id)
                         or name not in self.names or item.get('status', 'completed') != 'completed'):
                     raise ModelFault('model_invalid_tool_call')
-                arguments = loads(item.get('arguments'))
+                arguments = loads(item.get('arguments'), allow_identical_duplicates=True)
                 if not isinstance(arguments, dict) or len(dumps(arguments).encode()) > 131072:
                     raise ModelFault('model_invalid_tool_arguments')
                 calls.add(call_id)

@@ -219,7 +219,7 @@ class Chat:
             call = self.calls[index]; ident = call['id']
             if (not isinstance(ident, str) or not 1 <= len(ident.encode()) <= 256 or ident in ids
                     or any(ord(c) < 33 or ord(c) == 127 for c in ident) or call['name'] not in self.names): raise ModelFault('model_invalid_tool_call')
-            arguments = unicode_text(call['arguments']); parsed = loads(arguments)
+            arguments = unicode_text(call['arguments']); parsed = loads(arguments, allow_identical_duplicates=True)
             if not isinstance(parsed, dict): raise ModelFault('model_invalid_tool_arguments')
             ids.add(ident)
             tools.append({'id': ident, 'type': 'function', 'function': {'name': call['name'], 'arguments': arguments}})
