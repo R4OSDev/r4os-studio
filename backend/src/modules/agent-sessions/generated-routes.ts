@@ -26,13 +26,18 @@ export function generatedRoutes(app: FastifyInstance, directory: string, securit
     security.session(request, reply);
     if (streams.size >= 8) throw new ProjectError('Too many generated image reads are open.', 429);
     streams.add(request); request.raw.once('aborted', () => streams.delete(request));
-    const result = await attachmentStore<{ path: string; image: GeneratedImage }>(directory, { operation: 'generated_access', ...owner(request.params.id), sessionId: request.params.sessionId, imageId: request.params.imageId });
+    const result = await attachmentStore<{ path: string; image: GeneratedImage; preview?: Pick<GeneratedImage, 'size' | 'mediaType' | 'width' | 'height'> }>(directory, { operation: mode === 'preview' ? 'generated_preview' : 'generated_access', ...owner(request.params.id), sessionId: request.params.sessionId, imageId: request.params.imageId });
     if (result.image.sessionId !== request.params.sessionId || result.image.id !== request.params.imageId || !['image/png','image/jpeg','image/webp'].includes(result.image.mediaType)
       || !Number.isSafeInteger(result.image.size) || result.image.size < 1 || result.image.size > 16 * 1024 * 1024)
       throw new ProjectError('This reference is not a confirmed generated image in this session.', 403);
+    const media = mode === 'preview' ? result.preview : result.image;
+    if (!media || !['image/png','image/jpeg','image/webp'].includes(media.mediaType)
+      || !Number.isSafeInteger(media.size) || media.size < 1 || media.size > (mode === 'preview' ? 393216 : 16 * 1024 * 1024)
+      || mode === 'preview' && [media.width, media.height].some(size => !Number.isSafeInteger(size) || size < 1 || size > 1024))
+      throw new ProjectError('The bounded image preview could not be confirmed.', 409);
     return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
       .header('Content-Security-Policy', "default-src 'none'; sandbox")
-      .header('Content-Disposition', `${mode === 'preview' ? 'inline' : 'attachment'}; filename="image-${result.image.id}.${result.image.mediaType === 'image/jpeg' ? 'jpg' : result.image.mediaType === 'image/webp' ? 'webp' : 'png'}"`)
-      .type(result.image.mediaType).send(createReadStream(result.path, { highWaterMark: 65536 }));
+      .header('Content-Disposition', `${mode === 'preview' ? 'inline' : 'attachment'}; filename="image-${result.image.id}.${media.mediaType === 'image/jpeg' ? 'jpg' : media.mediaType === 'image/webp' ? 'webp' : 'png'}"`)
+      .type(media.mediaType).send(createReadStream(result.path, { highWaterMark: 65536 }));
   });
 }

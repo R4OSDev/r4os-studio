@@ -221,14 +221,14 @@ class Host:
                 raise ProjectFault('Invalid source operation.', 400)
             from skill_source_host import start as start_source
             return await start_source(self, request['ownerId'], request['requestId'])
-        if op == 'decode_pending_attachment':
-            from attachment_decode import decode_pending
+        if op in ('decode_pending_attachment','preview_generated_image'):
+            from attachment_decode import decode_pending,preview_generated
             # The coordinator has a shared 512 MiB budget. Never run two
             # independently bounded raster/PDF decoder processes together.
             if self.attachment_decodes >= 1:
                 raise ProjectFault('Attachment validation is busy. Existing uploads were preserved.', 429)
             self.attachment_decodes += 1
-            try: return await asyncio.to_thread(decode_pending, self, request)
+            try: return await asyncio.to_thread(decode_pending if op=='decode_pending_attachment' else preview_generated, self, request)
             finally: self.attachment_decodes -= 1
         if op == 'project_activity':
             from project_activity import snapshot

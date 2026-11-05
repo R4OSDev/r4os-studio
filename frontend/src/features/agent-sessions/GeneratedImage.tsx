@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { GeneratedAsset, GeneratedImage } from '../../../../shared/generated-images';
 import { sessionPath, useSessionApi } from './api';
-import { ImageDialog } from './ReplyImage';
+import { ImageDialog, useStoredImage } from './ReplyImage';
+import { useImageVisibility } from './useImageVisibility';
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 export function generatedReference(value: string) {
   const prefix = 'studio-generated-image:';
@@ -17,34 +18,23 @@ function imageRecord(value: unknown, sessionId: string): GeneratedImage | null {
 export function GeneratedPreview({ projectId, sessionId, imageId, alt = 'Generated image' }: { projectId: string; sessionId: string; imageId: string; alt?: string }) {
   const { base } = useSessionApi();
   const endpoint = base + sessionPath(projectId, sessionId) + '/generated-images/' + imageId;
-  const [image, setImage] = useState<{ endpoint: string; url?: string; mediaType?: string; failed?: boolean } | null>(null), [retry, setRetry] = useState(0), [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!uuid.test(imageId)) return;
-    const controller = new AbortController(); let url: string | undefined;
-    void fetch(endpoint + '/preview', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal, headers: { Accept: 'image/png,image/jpeg,image/webp' } })
-      .then(async response => {
-        const mediaType=response.headers.get('content-type')?.split(';')[0];
-        if (!response.ok || !mediaType || !['image/png','image/jpeg','image/webp'].includes(mediaType)) throw new Error('Preview unavailable.');
-        const blob = await response.blob();
-        if (controller.signal.aborted) return;
-        if (!blob.size || blob.size > 16 * 1024 * 1024) throw new Error('Preview unavailable.');
-        url = URL.createObjectURL(blob); setImage({ endpoint, url, mediaType });
-      }).catch(() => { if (!controller.signal.aborted) setImage({ endpoint, failed: true }); });
-    return () => { controller.abort(); if (url) URL.revokeObjectURL(url); };
-  }, [endpoint, imageId, retry]);
-  const current = image?.endpoint === endpoint ? image : null, label = alt.trim().slice(0, 512) || 'Generated image';
-  const extension=current?.mediaType==='image/jpeg'?'jpg':current?.mediaType==='image/webp'?'webp':'png';
+  const { ref: previewRef, visible } = useImageVisibility(uuid.test(imageId));
+  const [attempt, setAttempt] = useState(0), [opened, setOpen] = useState<string | null>(null), [failed, setFailed] = useState<string | null>(null), [height, setHeight] = useState(180);
+  const open = opened === endpoint, unavailable = failed === endpoint;
+  const preview = endpoint + '/preview' + (attempt ? '?retry=' + attempt : '');
+  const current = useStoredImage(uuid.test(imageId) && !unavailable && (visible || open) ? preview : null);
+  const label = alt.trim().slice(0, 512) || 'Generated image';
   if (!uuid.test(imageId)) return null;
-  return <span className="agent-generated-preview" role="figure" aria-label={label}>
-    {current?.url ? <button type="button" className="agent-image-preview" aria-label="Enlarge generated image" onClick={() => setOpen(true)}>
-      <img src={current.url} alt={label} onError={() => { setOpen(false); setImage({ endpoint, failed: true }); }} />
-    </button> : <span role="status">{current?.failed ? 'Original image preview is unavailable.' : 'Loading generated image…'}</span>}
+  return <span ref={previewRef} className="agent-generated-preview" role="figure" aria-label={label} style={{ minHeight: height }}>
+    {current?.url && !unavailable ? <button type="button" className="agent-image-preview" aria-label="Enlarge generated image" onClick={() => setOpen(endpoint)}>
+      <img src={current.url} alt={label} onLoad={event => setHeight(Math.max(80, previewRef.current?.clientHeight ?? event.currentTarget.clientHeight))} onError={() => { setOpen(null); setFailed(endpoint); }} />
+    </button> : <span role="status">{current?.failed || unavailable ? 'Original image preview is unavailable.' : visible ? 'Loading generated image…' : 'Generated image preview'}</span>}
     <span className="agent-image-actions">
-      {current?.url && <button type="button" onClick={() => setOpen(true)}>Enlarge</button>}
-      {current?.failed && <button type="button" onClick={() => { setImage(null); setRetry(value => value + 1); }}>Reload preview</button>}
+      {current?.url && !unavailable && <button type="button" onClick={() => setOpen(endpoint)}>Enlarge</button>}
+      {(current?.failed || unavailable) && <button type="button" onClick={() => { setFailed(null); setAttempt(value => value + 1); }}>Reload preview</button>}
       <a href={endpoint + '/download'}>Download original image</a>
     </span>
-    {open && current?.url && <ImageDialog url={current.url} alt={label} filename={`image-${imageId}.${extension}`} close={() => setOpen(false)} />}
+    {open && current?.url && !unavailable && <ImageDialog url={current.url} alt={label} filename={`image-${imageId}.png`} download={endpoint + '/download'} close={() => setOpen(null)} />}
   </span>;
 }
 export function GeneratedCard({ value, asset, projectId, sessionId, status }: { value: unknown; asset: unknown; projectId: string; sessionId: string; status?: string }) {

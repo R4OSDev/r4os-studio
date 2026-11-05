@@ -81,7 +81,7 @@ class GeneratedImages:
         self.owner_disk_usage()
         rows=self.rows();own=0
         for path in self.root().iterdir():
-            if path.name in ('Native','Imports'):
+            if path.name in ('Native','Imports','Previews'):
                 if path.resolve(strict=True)!=path or not path.is_dir():raise ProjectFault('Unexpected private image directory.',409)
                 continue
             if path.suffix not in ('.image','.pending'):raise ProjectFault('Unexpected private image storage entry.',409)

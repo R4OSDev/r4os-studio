@@ -96,3 +96,28 @@ fixtures: automatic Latest, held selection/anchor, bursts and older pages,
 bounded concurrent/visible images, hidden/close cancellation and URL release,
 foreign/duplicate/late responses, expired authentication, retired session,
 missing-image retry and scope changes. No real inference or VM capture.
+
+## Shared visible previews (0.11.11)
+
+Inline screenshots and registered generated/tool images now subscribe only near
+visible content. An open image dialog retains its own subscription. One shared
+loader uses the full project/skill, owner, session and image endpoint; identical
+visible references share a request and object URL. It allows at most three reads,
+including one generated preview at a time to respect the existing isolated decoder
+slot, 32 resources and 8 MiB of Blob data. Each response is bounded to 384 KiB.
+Leaving the viewport, closing/unmounting and authentication changes release owned
+resources; late responses cannot publish old URLs. Reload is an explicit read.
+
+Generated images above 384 KiB or 1024 pixels per axis use an immutable-source-bound
+PNG thumbnail, at most 1024 pixels per axis and 384 KiB, under the same private
+session image directory. Alpha is retained; no background is composited. The
+existing coordinator runs the fixed networkless Pillow 11.1.0 decoder with the
+same single decoder admission and bounded process limits. Original hashes are
+checked before/after creation, derived bytes are checked on reads, and repeated
+reads use the stored thumbnail. Small originals can be read directly. A missing
+or corrupt original/derivative remains an error; viewing never generates a new
+image, captures a VM or calls a model. Original downloads keep their exact bytes,
+format, dimensions and existing private authorization. Dialog downloads of
+generated images point to that original endpoint. Browser code manages visibility,
+sharing and display; the private derivative requires the existing Studio service
+and coordinator. No additional service, dependency, index or model is needed.

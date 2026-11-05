@@ -3,8 +3,13 @@ type Entry = { controller: AbortController; promise: Promise<unknown>; users: nu
 const entries = new Map<string, Entry>(), identities = new Map<string, string>(), metadata = new Map<string, string>();
 let release: string | undefined;
 const invalidated = 'studio-session-reads-invalidated';
+const identityListeners = new Set<(reason: 'invalidated' | 'renewed') => void>();
+export function watchSessionIdentity(listener: (reason: 'invalidated' | 'renewed') => void) {
+  identityListeners.add(listener); return () => { identityListeners.delete(listener); };
+}
 
 export function invalidateSessionReads(kind?: 'options' | 'capabilities', notify = true) {
+  if (!kind) identityListeners.forEach(listener => listener('invalidated'));
   for (const [key, entry] of entries) if (!kind || entry.kind === kind) {
     entry.controller.abort(); entries.delete(key);
   }
@@ -20,6 +25,7 @@ export function watchSessionReads(refresh: () => void, kind: 'options' | 'capabi
 export function sessionReadIdentity(scope: string, identity: string) {
   if (identities.get(scope) === identity) return;
   identities.set(scope, identity); invalidateSessionReads();
+  identityListeners.forEach(listener => listener('renewed'));
 }
 
 export function invalidateSessionPending(base: string, path: string) {

@@ -16,6 +16,10 @@ def request_decode(store, sid, ident, socket_path):
     request = {'operation': 'decode_pending_attachment', 'projects': str(store.projects.absolute()),
                'ownerType': store.owner_type, 'ownerId': store.owner_id,
                'sessionId': identity(sid), 'attachmentId': identity(ident)}
+    return request_image_work(request,socket_path)
+
+
+def request_image_work(request,socket_path):
     try:
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(18); client.connect(socket_path)
@@ -66,3 +70,15 @@ def decode_pending(host, request):
         return result
     finally:
         store.close()
+
+
+def preview_generated(host, request):
+    if set(request)!={'operation','projects','ownerType','ownerId','sessionId','imageId'}:
+        raise ProjectFault('Unexpected image preview fields.',400)
+    if request['projects']!=host.config['projects']:raise ProjectFault('Image storage binding changed.',409)
+    kind,owner=binding(request);store=host.store(owner,kind)
+    try:
+        from generated_images import GeneratedImages
+        from image_previews import preview
+        return preview(GeneratedImages(store,identity(request['sessionId'])),identity(request['imageId']),create=True)
+    finally:store.close()

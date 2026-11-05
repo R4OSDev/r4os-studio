@@ -3,7 +3,7 @@ import json
 import os
 import sys
 from owner import binding
-from session_store import SessionStore
+from session_store import SessionStore,identity
 from attachment_store import Attachments
 from store import ProjectFault
 
@@ -19,7 +19,7 @@ def main():
             from attachment_decode import request_decode
             decoder=lambda ident:request_decode(store,request['sessionId'],ident,sys.argv[3])
         attachments=Attachments(store,request['sessionId'],decoder);op=request['operation']
-        if op in ('generated_list','generated_access'):
+        if op in ('generated_list','generated_access','generated_preview'):
             from generated_images import GeneratedImages
             images=GeneratedImages(store,request['sessionId'])
             if op=='generated_list':
@@ -29,7 +29,16 @@ def main():
                     reconcile(store,request['sessionId'])
                 except Exception:recovery='Some original outputs remain unconfirmed. Existing files and history were preserved; no generation or import was repeated.'
                 result={'images':images.list(),**({'recoveryReason':recovery} if recovery else {})}
-            else:result={'path':str(images.path(request['imageId'])),'image':images.get(request['imageId'])}
+            elif op=='generated_access':result={'path':str(images.path(request['imageId'])),'image':images.get(request['imageId'])}
+            else:
+                from image_previews import preview
+                result=preview(images,identity(request['imageId']))
+                if result is None:
+                    if len(sys.argv)>3:
+                        from attachment_decode import request_image_work
+                        result=request_image_work({'operation':'preview_generated_image','projects':str(store.projects.absolute()),
+                            'ownerType':kind,'ownerId':ident,'sessionId':identity(request['sessionId']),'imageId':identity(request['imageId'])},sys.argv[3])
+                    else:result=preview(images,identity(request['imageId']),create=True)
         elif op=='list':result=attachments.listing()
         elif op=='upload':result=attachments.upload(request['input'],sys.stdin.buffer)
         elif op=='receipt':result=attachments.receipt(request['requestId'])
