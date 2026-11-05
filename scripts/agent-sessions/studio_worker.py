@@ -24,6 +24,8 @@ class StudioWorker(Worker):
         super().__init__(manifest)
         if self.config['engine'].get('kind') != 'studio': raise ValueError('Wrong Studio worker binding.')
         self.conversation = Conversation(self.store, self.session_id)
+        from active_history import ActiveHistory
+        self.history_reader = ActiveHistory(self.store, self.session_id)
         self.model = None; self.operation = None; self.credential = None
         self.round = 0
         from model_operations import Operations
@@ -147,15 +149,21 @@ class StudioWorker(Worker):
         ApiProviders(self.manifest['providers']).validate_active(self.run_id, self.store.owner_type,
             self.store.owner_id, self.session_id, self.row['request_id'], self.config, self.api_worker)
 
-    def history(self):
-        from studio_selection import records
-        return records(self.store, self.session_id)
+    def active_history(self):
+        # Accepted records/configs are immutable. Recovery gets a new reader;
+        # any changed current route or credential discards worker-local reuse.
+        scope = encode([self.config, hashlib.sha256((self.credential or '').encode()).hexdigest()])
+        return self.history_reader.read(scope)
 
     def transport(self):
+        scope = encode([self.config, self.credential, getattr(self,'model_headers',None)])
+        if getattr(self,'transport_scope',None) == scope:
+            return self.prepared_transport
         model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
             headers=getattr(self,'model_headers',None), chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
         model.media_resolver=self.media.resolve
+        self.transport_scope=scope;self.prepared_transport=model
         return model
 
     async def infer(self,messages,instructions,tools,on_text=None):

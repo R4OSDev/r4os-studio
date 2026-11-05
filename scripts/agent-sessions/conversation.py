@@ -9,6 +9,11 @@ from contextlib import nullcontext
 from session_store import identity, now
 from store import ProjectFault
 
+CONTEXT_INDEXES = {
+    'conversation_checkpoint': "conversation_records(session_id,through_seq DESC,seq DESC) WHERE kind='checkpoint'",
+    'conversation_last_user': "conversation_records(session_id,seq DESC) WHERE kind='message' AND role='user' AND (json_extract(origin,'$.kind') IS NULL OR json_extract(origin,'$.kind')!='goalContinuation')",
+    'conversation_last_assistant': "conversation_records(session_id,seq DESC) WHERE kind='message' AND role='assistant' AND json_type(origin,'$.providerResponseId') IS NOT NULL",
+}
 FORMAT = 1
 MAX_RECORD = 16 * 1024 * 1024
 MAX_HISTORY = 96 * 1024 * 1024
@@ -97,6 +102,8 @@ class Conversation:
                 origin TEXT NOT NULL, through_seq INTEGER, created_at TEXT NOT NULL,
                 UNIQUE(session_id, record_id))''')
             self.store.db.execute('CREATE INDEX IF NOT EXISTS conversation_cursor ON conversation_records(session_id,seq)')
+            for name, target in CONTEXT_INDEXES.items():
+                self.store.db.execute('CREATE INDEX IF NOT EXISTS ' + name + ' ON ' + target)
             current = self.metadata()
             if current is not None:
                 if encoded(current['source']) != raw:

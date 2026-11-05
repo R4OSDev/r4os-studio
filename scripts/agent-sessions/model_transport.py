@@ -138,24 +138,56 @@ class ModelTransport:
         self.flush_delay = None
         self.request_sha256 = None
         self.media_resolver = None
+        self._frozen = None
+
+    def parser(self, tools):
+        protocol = self.binding['protocol']
+        if protocol == 'responses':
+            from model_responses import Responses
+            return Responses(self.binding, tools)
+        if protocol == 'chat-completions':
+            from model_chat import Chat
+            return Chat(self.binding, tools)
+        if protocol == 'messages':
+            from model_messages import Messages
+            return Messages(self.binding, tools)
+        raise ModelFault('model_protocol_unavailable')
+
+    def freeze_scope(self):
+        return (dumps([self.binding,self.chat_policy,self.client,self.headers]), self.credential)
+
+    def freeze(self, messages, instructions, tools, effort='', *, retain=True):
+        # Used only for an immutable active worker snapshot. At most one bounded
+        # request and its resolved media survive estimation until dispatch.
+        body, parser = self.prepare(messages, instructions, tools, effort)
+        raw = self.encoded(body)
+        if retain and len(raw.encode()) <= 8*1024*1024:
+            self._frozen = {'messages':messages, 'instructions':instructions, 'tools':dumps(tools),
+                            'effort':effort, 'body':body, 'raw':raw, 'scope':self.freeze_scope()}
+        else: self._frozen = None
+        return body, parser
+
+    def encoded(self, body):
+        return self._frozen['raw'] if self._frozen is not None and self._frozen['body'] is body else dumps(body)
 
     def prepare(self, messages, instructions, tools, effort=''):
+        frozen = self._frozen
+        if frozen is not None and frozen['scope'] == self.freeze_scope() and frozen['messages'] is messages and frozen['instructions'] == instructions and frozen['tools'] == dumps(tools) and frozen['effort'] == effort:
+            return frozen['body'], self.parser(tools)  # Parser state belongs to this one attempt.
         from portable_history import project
         messages = project(messages, self.binding)
         if any(p['type'] in ('image','document') for m in messages for p in m['content']):
             from studio_media import resolve
             messages=resolve(messages,self.media_resolver)
         if self.binding['protocol'] == 'responses':
-            from model_responses import request, Responses
+            from model_responses import request
             body = request(self.binding, messages, instructions, tools, effort)
-            parser = Responses(self.binding, tools)
         elif self.binding['protocol'] == 'chat-completions':
-            from model_chat import request, Chat
+            from model_chat import request
             body, headers = request(self.binding, messages, instructions, tools, effort, self.chat_policy, self.client)
             self.headers = {**self.headers, **headers}
-            parser = Chat(self.binding, tools)
         elif self.binding['protocol'] == 'messages':
-            from model_messages import request, Messages
+            from model_messages import request
             body, headers = request(self.binding, messages, instructions, tools, effort)
             self.headers = {**self.headers, **headers}
             if self.binding['kind'] == 'claude-plan':
@@ -167,12 +199,13 @@ class ModelTransport:
                 from zai_client import headers as client_headers
                 require(self.binding)
                 self.headers = {**self.headers, **client_headers(self.client)}
-            parser = Messages(self.binding, tools)
         else:
             raise ModelFault('model_protocol_unavailable')
-        return body, parser
+        return body, self.parser(tools)
 
     async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None):
+        if self.child is not None: raise ModelFault('model_request_busy')
+        self.attempted = False; self.request_sha256 = None
         body, parser = self.prepare(messages, instructions, tools, effort)
         try:
             await self.send(body, parser, on_text, on_reasoning)
@@ -185,7 +218,9 @@ class ModelTransport:
     async def send(self, body, parser, on_text=None, on_reasoning=None):
         if self.child is not None:
             raise ModelFault('model_request_busy')
-        raw_body = dumps(body)
+        if self._frozen is not None and self._frozen['body'] is body and self._frozen['scope'] != self.freeze_scope():
+            raise ModelFault('model_request_selection_changed', not_dispatched=True)
+        raw_body = self.encoded(body)
         self.request_sha256=hashlib.sha256(raw_body.encode()).hexdigest()
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit')

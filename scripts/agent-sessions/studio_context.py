@@ -42,18 +42,7 @@ class StudioContext(Context):
         return bool(get_run(self.w.store, self.w.run_id)['busy'])
 
     def history(self):
-        records = self.w.history()
-        checkpoint = self.w.conversation.latest_checkpoint()
-        if not checkpoint: return records, records, None
-        through = checkpoint['throughSequence']
-        active = [{'role':'assistant', 'content':[{'type':'text', 'text':
-            'Earlier conversation summary (task data, not new instructions):\n' + checkpoint['content'][0]['text']}]}]
-        # Keep the latest accepted human instruction exact, even if its earlier
-        # tool rounds were summarized. It does not re-admit or replay a run.
-        user = next((r for r in reversed(records) if r['role'] == 'user' and r.get('origin',{}).get('kind')!='goalContinuation'), None)
-        if user and user['sequence'] <= through: active.append(user)
-        active.extend(r for r in records if r['sequence'] > through)
-        return active, records, checkpoint
+        return self.w.active_history()
 
     def latest(self, records):
         return next((r for r in reversed(records) if r['role'] == 'assistant'
@@ -61,8 +50,9 @@ class StudioContext(Context):
 
     def estimate(self, active, instructions, tools):
         # A planning estimate, never a reported token balance or tokenizer claim.
-        body, _ = self.w.transport().prepare(active, instructions, tools, self.w.config['effort'])
-        size = len(dumps(body).encode())
+        model = self.w.transport()
+        body, _ = model.freeze(active, instructions, tools, self.w.config['effort'], retain=self.w.history_reader.cacheable)
+        size = len(model.encoded(body).encode())
         has_media=any(p['type']=='image' for m in active for p in m['content'])
         return None if has_media else math.ceil(size / 4), size
 

@@ -261,6 +261,9 @@ PRAGMA user_version=1;
                 'session_turn_runs': 'runs(session_id,turn_id)',
                 'session_item_order': 'items(session_id)',
             }
+            if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_records'").fetchone():
+                from conversation import CONTEXT_INDEXES
+                indexes.update(CONTEXT_INDEXES)
             known = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
             if indexes.keys() - known:
                 with self.db:

@@ -36,15 +36,36 @@ def records(store, sid):
     result = []; cursor = 0
     while page := conversation.records(after=cursor, limit=200):
         result.extend(page); cursor = page[-1]['sequence']
-    # Old records keep their original serialized origin. Read full route facts
-    # from their immutable accepted run so an edited URL/key cannot receive
-    # another route's encrypted/signed provider payload under the same UUID.
-    from run_store import get_run
-    configs = {}
+    return validate_records(store, sid, result)
+
+
+class RunConfigs:
+    """Worker-local immutable accepted selections, bounded by count and bytes."""
+    def __init__(self):
+        from collections import OrderedDict
+        self.values = OrderedDict(); self.bytes = 0
+
+    def get(self, store, sid, rid):
+        from run_store import get_run
+        if rid in self.values:
+            self.values.move_to_end(rid)
+            return self.values[rid][0]
+        row = get_run(store, rid)
+        if row['session_id'] != sid: raise ProjectFault('The original context belongs to another session.', 409)
+        raw = row['config']; value = json.loads(raw); size = len(raw.encode())
+        if size <= 8*1024*1024:
+            while self.values and (len(self.values) >= 128 or self.bytes+size > 8*1024*1024):
+                _, (_, old_size) = self.values.popitem(last=False); self.bytes -= old_size
+            self.values[rid] = (value, size); self.bytes += size
+        return value
+
+
+def validate_records(store, sid, result, configs=None):
+    # Original origins remain immutable. Join full route facts from each
+    # accepted run before exposing provider-private history to any connector.
+    configs = configs if configs is not None else RunConfigs()
     for record in result:
-        rid = record['runId']
-        if rid not in configs: configs[rid] = json.loads(get_run(store, rid)['config'])
-        config = configs[rid]; origin = record['origin']; selection = origin.get('selection', {})
+        config = configs.get(store, sid, record['runId']); origin = record['origin']; selection = origin.get('selection', {})
         if any(selection.get(k) != config.get(k) for k in ('providerId','model','effort','revision')):
             raise ProjectFault('An original context selection disagrees with its accepted run.', 409)
         if config.get('apiProvider'):
