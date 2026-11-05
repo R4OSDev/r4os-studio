@@ -5410,8 +5410,9 @@ Existing native sessions can be explicitly converted through the existing
 preview and source/target hashes. Studio keeps session identity, original history,
 confirmed effects and GOAL/queue boundaries. Installation and account sign-in do
 not convert a session or merge accounts with the same email address. Actual
-Claude login, model access and a populated native-session conversion still need
-their real acceptance evidence; fixture checks are not subscription qualification.
+Claude login and direct model access still need their real acceptance evidence.
+A populated native-session conversion is qualified below; fixture checks are not
+subscription qualification.
 
 ### Native Claude archive compatibility (0.10.30)
 
@@ -5433,3 +5434,18 @@ budget-free thinking and unsigned thinking blocks. Model metadata, original
 quota holds and accepted queued inputs remain tied to their actual route.
 The existing Chat model catalog is a metadata-only GET for both protocols; it
 never substitutes a Chat inference for a Messages request. No prepaid fallback.
+
+### Real Messages and native-history qualification (0.10.32)
+
+Installed Studio completed real Z.AI Messages file creation, readback and a
+same-session continuation, followed by an explicit switch to Chat Completions
+with the same saved key, conversation and unchanged file. A disposable skill
+conversation also completed real REA byte-entropy analysis through Messages.
+Original model/tool records and account quota observations were retained before
+regular deletion of the owned sessions, project, skill and temporary connection;
+production REA and the existing Z.AI Chat connection were preserved.
+
+A separate populated native Claude conversation was explicitly imported into
+that same Studio session and continued with Z.AI, preserving its original archive
+and confirmed effects. This does not qualify a new direct Claude browser grant.
+Claude subscription qualification remains pending its own fresh sign-in.
