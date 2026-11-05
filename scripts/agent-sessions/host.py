@@ -9,6 +9,8 @@ import signal
 import socket
 import struct
 import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from coordinator_work import ReadWork
 
 from profile import write_json, directory
 from session_store import SessionStore, identity, encode
@@ -52,6 +54,7 @@ class Host:
         from claude_plan import ClaudePlan
         self.claude_plan=ClaudePlan(config['providers'])
         self.stats_cursor=0;self.stats_sessions={}
+        self.read_work=ReadWork(ProjectFault)
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
 
@@ -205,6 +208,9 @@ class Host:
 
     async def handle(self, request):
         op = request.get('operation')
+        from host_reads import OPERATIONS, read
+        if op in OPERATIONS:
+            return await self.read_work.run(read, self.config, request)
         if op in ('web_service','set_web_service'):
             from studio_web import settings as web_settings
             expected={'operation'} if op=='web_service' else {'operation','input'}
@@ -229,7 +235,7 @@ class Host:
             return await snapshot(self)
         if op == 'claude_plan':
             action=request.get('action');owner=request.get('ownerId');plan=self.claude_plan
-            if action=='list':return await asyncio.to_thread(plan.listing,owner)
+            if action=='list':return await self.read_work.run(plan.listing,owner)
             if action=='start':return await asyncio.to_thread(plan.start,request.get('input'),owner)
             if action=='callback':return await asyncio.to_thread(plan.callback,request.get('requestId'),request.get('redirectUrl'),owner)
             if action=='cancel':return await asyncio.to_thread(plan.cancel,request.get('requestId'),owner)
@@ -254,29 +260,29 @@ class Host:
                 from native_openai import retire
                 await retire(self,identity(request.get('id')),request.get('remove') is True)
                 return {'closed':True}
-            if action=='list':return await asyncio.to_thread(store.listing)
-            if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
-            if action=='receipt':return await asyncio.to_thread(store.receipt,request.get('id'),request.get('requestId'))
-            if action=='creation_receipt':return await asyncio.to_thread(store.creation_receipt,request.get('requestId'))
+            if action=='list':return await self.read_work.run(store.listing)
+            if action=='get':return await self.read_work.run(store.get,request.get('id'))
+            if action=='receipt':return await self.read_work.run(store.receipt,request.get('id'),request.get('requestId'))
+            if action=='creation_receipt':return await self.read_work.run(store.creation_receipt,request.get('requestId'))
             if action in ('connection_limits','connection_limit_refresh','connection_limit_receipt'):
                 from connection_limits import Limits
                 limits=Limits(self.config['providers']);ident=identity(request.get('id'))
-                if action=='connection_limits':return await asyncio.to_thread(limits.listing,ident)
-                if action=='connection_limit_receipt':return await asyncio.to_thread(limits.receipt,ident,request.get('requestId'))
+                if action=='connection_limits':return await self.read_work.run(limits.listing,ident)
+                if action=='connection_limit_receipt':return await self.read_work.run(limits.receipt,ident,request.get('requestId'))
                 return await asyncio.to_thread(limits.refresh,ident,request.get('input'))
             if action in ('zai_quota','zai_quota_receipt','zai_quota_refresh'):
                 from zai_quota import Quota
                 ident=identity(request.get('id'));quota=Quota(self.config['providers'])
-                if action=='zai_quota':return quota.listing(ident)
-                if action=='zai_quota_receipt':return quota.receipt(ident,request.get('requestId'))
+                if action=='zai_quota':return await self.read_work.run(quota.listing,ident)
+                if action=='zai_quota_receipt':return await self.read_work.run(quota.receipt,ident,request.get('requestId'))
                 from zai_quota_host import start as check_quota
                 return await check_quota(self,ident,request.get('input'))
             if action in ('models','model_save','catalog_receipt','catalog_refresh'):
                 from api_catalog import Catalogs
                 catalogs=Catalogs(self.config['providers']);ident=identity(request.get('id'))
-                if action=='models':return catalogs.listing(ident)
+                if action=='models':return await self.read_work.run(catalogs.listing,ident)
                 if action=='model_save':return catalogs.save_model(ident,request.get('input'))
-                if action=='catalog_receipt':return catalogs.receipt(ident,request.get('requestId'))
+                if action=='catalog_receipt':return await self.read_work.run(catalogs.receipt,ident,request.get('requestId'))
                 from api_catalog_host import start
                 return await start(self,ident,request.get('input'))
             if action not in ('create','update','disconnect','delete'):raise ProjectFault('Invalid API provider operation.',400)
@@ -303,8 +309,8 @@ class Host:
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
-            if action=='list':return await asyncio.to_thread(store.listing)
-            if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
+            if action=='list':return await self.read_work.run(store.listing)
+            if action=='get':return await self.read_work.run(store.get,request.get('id'))
             if action=='creation_receipt':return await asyncio.to_thread(store.receipt,request.get('requestId'))
             if action=='create':return await asyncio.to_thread(store.create,request.get('input'))
             if action in ('auth_start','auth_remove'):
@@ -321,8 +327,8 @@ class Host:
                         raise ProjectFault('Reconcile or finish original bound workers before changing Claude authentication. No worker was stopped.',409)
                     return await self.claude_auth.start(ident,data,request.get('owner'))
             if action=='auth_receipt':return self.claude_auth.view(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
-            if action=='limits':return await asyncio.to_thread(self.claude_auth.store.latest_limits,identity(request.get('id')))
-            if action=='catalog':return await asyncio.to_thread(self.claude_auth.store.latest_catalog,identity(request.get('id')))
+            if action=='limits':return await self.read_work.run(self.claude_auth.store.latest_limits,identity(request.get('id')))
+            if action=='catalog':return await self.read_work.run(self.claude_auth.store.latest_catalog,identity(request.get('id')))
             if action=='auth_code':return await self.claude_auth.submit(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'),request.get('code'))
             if action=='auth_cancel':return await self.claude_auth.cancel(identity(request.get('id')),identity(request.get('requestId')),request.get('owner'))
             if action=='runtime':
@@ -370,14 +376,10 @@ class Host:
         if op in ('session_migration_status','session_migration_preview','session_migrate','session_migration_rollback'):
             from session_migration import dispatch
             async with self.lock: return await dispatch(self, request)
-        if op in ('session_delete_preview','session_delete','session_delete_receipt'):
+        if op in ('session_delete_preview','session_delete'):
             import session_delete
             kind,ident=binding(request);sid=identity(request['sessionId'])
             if op=='session_delete_preview': return await session_delete.preview(self,kind,ident,sid)
-            if op=='session_delete_receipt':
-                store=self.store(ident,kind)
-                try:return session_delete.original(store,sid,request['requestId'])
-                finally:store.close()
             rid=identity(request['input']['requestId'])
             if len(self.session_delete_tasks)>=2 and rid not in self.session_delete_tasks:
                 raise ProjectFault('Session cleanup is busy. Read the original request before retrying.',429)
@@ -403,26 +405,6 @@ class Host:
                     task.add_done_callback(lambda _,rid=rid:self.skill_delete_tasks.pop(rid,None))
                 return result
             except skill_delete.packages.SkillFault as error:raise ProjectFault(str(error),error.code) from None
-        if op == 'statistics':
-            from stats_store import read,scope
-            selection=request.get('scope','global')
-            if selection=='global':return read(self.config['projects'])
-            kind,ident=binding(request)
-            if selection=='project':
-                if kind!='project':raise ProjectFault('Project statistics need a project owner.',400)
-                from store import connect
-                from contextlib import closing
-                with closing(connect(Path(self.config['projects']))) as catalog:
-                    if not catalog.execute("SELECT 1 FROM projects WHERE id=? AND state='ready'",(ident,)).fetchone():raise ProjectFault('Project not found.',404)
-                return read(self.config['projects'],'project:'+scope({'type':kind,'id':ident}))
-            if selection=='session':
-                store=self.store(ident,kind)
-                try:
-                    sid=identity(request['sessionId']);store.row(sid)
-                    from goal_total import snapshot as goal_total
-                    return read(self.config['projects'],'session:'+scope({'type':kind,'id':ident},sid)) | {'totalGoalRuntime':goal_total(store,sid)}
-                finally:store.close()
-            raise ProjectFault('Invalid statistics scope.',400)
         if op == 'cancel_provider':
             provider_id = identity(request['providerId'])
             async with self.lock:
@@ -435,16 +417,14 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
-        if op in ('environment_notes','delete_environment_notes','environment_note_receipt'):
+        if op == 'delete_environment_notes':
             from environment_notes import Notes
             store=self.store(project_id,kind)
             try:
                 notes=Notes(store)
-                if op=='environment_notes':return notes.listing(session_id,request.get('query'))
-                if op=='environment_note_receipt':return notes.deletion_receipt(session_id,request['requestId'])
                 return notes.delete(session_id,request['input'],request.get('noteId'))
             finally:store.close()
-        if op in ('messages', 'message_receipt', 'submit_message', 'message_control'):
+        if op in ('submit_message', 'message_control'):
             from message_store import Messages
             capability = None
             if op == 'submit_message' and request.get('input',{}).get('mode') != 'steer':
@@ -469,8 +449,6 @@ class Host:
                 try:
                     store.row(session_id)
                     messages = Messages(store)
-                    if op == 'messages': return messages.snapshot(session_id, request.get('before'), request.get('view','all'))
-                    if op == 'message_receipt': return messages.receipt(session_id, request['requestId'])
                     self.inboxes.add((kind, project_id, session_id))
                     if op == 'message_control': return messages.control(session_id, request['input'],self.config['providers'])
                     flags = {'nativeWebSearch':1,'skillSelection':1,'skillScripts':1,'skillMcp':1,'nativeImageInputs':1,'documentInputs':1,'imageGenerationSettings':1,'liveGoalPreparation':1,'environmentNotesSettings':1,
@@ -502,11 +480,6 @@ class Host:
                 store=self.store(project_id,kind)
                 try:return await inspect(store,session_id,self.config['providers'],request.get('selection'))
                 finally:store.close()
-        if op=='goal_clock':
-            from goal_clock import snapshot
-            store=self.store(project_id,kind)
-            try:return {'clock':snapshot(store,session_id)}
-            finally:store.close()
         if op=='goal_readback':
             from goal_readback import readback
             if self.goal_readback_lock.locked():raise ProjectFault('Another native Goal readback is in progress.',429)
@@ -514,14 +487,12 @@ class Host:
                 store=self.store(project_id,kind)
                 try:return await asyncio.wait_for(readback(store,session_id),15)
                 finally:store.close()
-        if op in ('goal', 'goal_receipt', 'goal_command'):
+        if op == 'goal_command':
             from goal_store import Goals
             async with self.lock:
                 store = self.store(project_id, kind)
                 try:
                     goals = Goals(store)
-                    if op == 'goal': return goals.snapshot(session_id)
-                    if op == 'goal_receipt': return goals.receipt(session_id, identity(request['requestId']))
                     if self.unbound: raise ProjectFault('Reconcile the original unbound workers before changing a Goal.',503)
                     if len(self.goal_tasks) >= 2: raise ProjectFault('Goal controls are busy. Read the original request before retrying.',429)
                     previous=__import__('goal_store').exists(store) and store.db.execute('SELECT 1 FROM goal_commands WHERE request_id=?',(request['input'].get('requestId'),)).fetchone()
@@ -543,18 +514,6 @@ class Host:
                         task.add_done_callback(lambda _, key=key: self.goal_tasks.pop(key,None))
                     return result
                 finally: store.close()
-        if op == 'run_receipt':
-            store = self.store(project_id,kind)
-            try:
-                store.row(session_id)
-                row = store.db.execute('SELECT * FROM runs WHERE session_id=? AND request_id=?',(session_id,identity(request['requestId']))).fetchone()
-                if not row: raise ProjectFault('Original run request not found.',404)
-                return store.run_present(row)
-            finally: store.close()
-        if op == 'events':
-            store = self.store(project_id, kind)
-            try: return events(store, session_id, request.get('after', 0))
-            finally: store.close()
         if op == 'stop_run':
             async with self.lock: return await self.stop(project_id, session_id, identity(request['runId']), kind)
         if op == 'start_run':
@@ -828,27 +787,16 @@ class Host:
         finally: store.close()
 
     async def reconcile_statistics(self):
-        # One existing owner/session per pass; never launch a worker/provider.
-        from contextlib import closing
-        from store import connect
-        from usage_stats import Usage
-        from stats_store import Source
-        with closing(connect(Path(self.config['projects']))) as db:
-            registered=[('project',r['id']) for r in db.execute("SELECT id FROM projects WHERE state='ready' ORDER BY id")]+owners(self.config['projects'])
-        from stats_lifecycle import flush_pending
-        flush_pending(self.config['projects'])
-        if not registered:return
-        kind,ident=registered[self.stats_cursor%len(registered)];self.stats_cursor+=1
-        root=skills_root(self.config['projects']) if kind=='skill' else Path(self.config['projects'])
-        if not (root/ident/'Sessions/Sessions.sqlite').is_file():return
-        store=self.store(ident,kind)
+        if getattr(self,'stats_work_running',False): return
+        self.stats_work_running=True
+        cursor=self.stats_cursor
+        from host_reads import reconcile_statistics
         try:
-            sessions=store.db.execute('SELECT id FROM sessions ORDER BY id').fetchall()
-            if not sessions:
-                Source(store).flush(include_acknowledged=True);return
-            key=(kind,ident);index=self.stats_sessions.get(key,0);self.stats_sessions[key]=index+1
-            Usage(store,sessions[index%len(sessions)]['id']).scan();Source(store).flush(include_acknowledged=True)
-        finally:store.close()
+            result=await self.read_work.run(reconcile_statistics,self.config,cursor,dict(self.stats_sessions))
+            if cursor!=self.stats_cursor: return  # Discard an obsolete cursor result.
+            self.stats_cursor=result[0]
+            if result[1] is not None: self.stats_sessions[result[1]]=result[2]
+        finally:self.stats_work_running=False
 
     async def connection(self, reader, writer):
         task = asyncio.current_task(); self.connections.add(task)
@@ -896,7 +844,7 @@ async def main():
                     from skill_source_host import dispatch as dispatch_sources
                     await dispatch_sources(host)
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.source_tasks and not host.claude_auth.busy and not host.plan_login.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.source_tasks and not host.claude_auth.busy and not host.plan_login.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and not host.read_work.pending and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:
@@ -904,8 +852,7 @@ async def main():
                         replacement = script; stopped.set()
             except Exception: pass  # Preserve current workers and retry, never infer a new job.
             try:
-                from skill_lifecycle import api as lifecycle
-                with lifecycle.lock(Path(config['projects']).parent/'Skills',fault=ProjectFault):await host.reconcile_statistics()
+                await host.reconcile_statistics()
             except Exception:pass  # Numeric capture failure cannot steer runs.
             try: await asyncio.wait_for(stopped.wait(), 2)
             except asyncio.TimeoutError: pass
@@ -916,6 +863,7 @@ async def main():
     if host.connections:
         try: await asyncio.wait_for(asyncio.gather(*host.connections, return_exceptions=True), 25)
         except asyncio.TimeoutError: pass
+    await host.read_work.close()
     if replacement: os.execv('/usr/bin/python3', ['/usr/bin/python3', '-B', str(replacement)])
 
 

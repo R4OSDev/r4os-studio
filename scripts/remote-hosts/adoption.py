@@ -22,6 +22,6 @@ def candidate(current=Path('/opt/r4os-studio/current'), base=BASE):
 
 
 def prepare(host, source):
-    if host.active or host.commands.active: return False
+    if host.active or host.commands.active or getattr(getattr(host,'read_work',None),'pending',None): return False
     host.accepting = False
     return True

@@ -11,6 +11,8 @@ import signal
 import socket
 import struct
 import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from coordinator_work import ReadWork
 
 from catalog import CatalogFault, fields, identity, now, regular
 import checks
@@ -22,6 +24,7 @@ class Host:
         self.config = config; self.directory = Path(config['directory']); self.runtime = Path(config['runtime'])
         self.transport = transport; self.active = {}; self.connections = set()
         self.accepting = True
+        self.read_work = ReadWork(CatalogFault)
         from commands import Commands
         self.commands = Commands(self.directory, self.runtime, transport)
         supported = json.loads((Path(__file__).resolve().parents[2] / 'shared/update-host.json').read_text()).get('agentToolProfiles', [])
@@ -42,18 +45,18 @@ class Host:
             import lifecycle
             required = ['protocol', 'operation', 'hostId'] + (['projectId', 'jobId'] if op != 'jobs' else []) + (['input'] if op == 'review_job' else ['requestId'] if op == 'review_receipt' else [])
             fields(request, required)
-            if op == 'jobs': return lifecycle.listings(self.commands.projects, request['hostId'])
-            if op == 'job': return lifecycle.details(self.commands.projects, request['projectId'], request['hostId'], request['jobId'])
-            if op == 'review_receipt': return lifecycle.receipt(self.commands.projects, request['projectId'], request['hostId'], request['jobId'], request['requestId'])
+            if op == 'jobs': return await self.read_work.run(lifecycle.listings,self.commands.projects,request['hostId'])
+            if op == 'job': return await self.read_work.run(lifecycle.details,self.commands.projects,request['projectId'],request['hostId'],request['jobId'])
+            if op == 'review_receipt': return await self.read_work.run(lifecycle.receipt,self.commands.projects,request['projectId'],request['hostId'],request['jobId'],request['requestId'])
             if not self.accepting: raise CatalogFault('Remote support is adopting a release. Preserve this review request.', 503)
             return lifecycle.review(self.commands.projects, request['projectId'], request['hostId'], request['jobId'], request['input'])
         if op == 'prepare_adoption':
             fields(request, ['protocol', 'operation'])
-            if self.active or self.commands.active: return {'ready': False, 'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
+            if self.active or self.commands.active or self.read_work.pending: return {'ready': False, 'activeChecks': len(self.active), 'activeJobs': len(self.commands.active)}
             self.accepting = False; return {'ready': True, 'activeChecks': 0}
         if op == 'read':
             fields(request, ['protocol', 'operation', 'hostId', 'requestId'])
-            return checks.status(self.directory, request['hostId'], request['requestId'])
+            return await self.read_work.run(checks.status,self.directory,request['hostId'],request['requestId'])
         if op != 'test': raise CatalogFault('Unsupported remote broker operation.', 400)
         if not self.accepting: raise CatalogFault('Remote host support is adopting an update. Retry the original request.', 503)
         fields(request, ['protocol', 'operation', 'hostId', 'input'])
@@ -100,6 +103,7 @@ class Host:
         tasks = tuple(self.active.values())
         for task in tasks: task.cancel()
         if tasks: await asyncio.gather(*tasks, return_exceptions=True)
+        await self.read_work.close()
 
     async def agent_request(self, request, descriptor, peer_pid):
         held = os.dup(descriptor)

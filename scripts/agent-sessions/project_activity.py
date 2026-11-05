@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 import sqlite3
 import stat
+import sys
+import copy
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from coordinator_work import ReadWork
 
 from attachment_store import birth
 from owner import binding
@@ -63,21 +67,21 @@ def executing(db, row, tables):
     return bool(goal and goal['phase'] != 'unknown' and goal['status'] == 'active')
 
 
-async def snapshot(host, read_units=units):
-    root = Path(host.config['projects']).absolute()
+def collect(config, manifest_root, active, metadata):
+    root = Path(config['projects']).absolute()
     try:
         with closing(connect(root / 'Projects.sqlite')) as db:
             registered = {identity(row[0]) for row in db.execute("SELECT id FROM projects WHERE state='ready'")}
         grouped = {}
         # Coordinator admission/recovery already owns these bindings. Revalidate
         # their original private records; never discover sessions or past runs.
-        for run_id, known in list(host.active.items())[:128]:
+        for run_id, known in active:
             try:
                 kind, project = binding(known)
                 if kind != 'project' or project not in registered: continue
-                path = host.root / identity(run_id) / 'worker.json'
+                path = manifest_root / identity(run_id) / 'worker.json'
                 if path.stat().st_size > 65536: continue
-                meta = host.metadata(path)
+                meta = metadata(path)
                 if (meta != known or binding(meta) != (kind, project) or meta['runId'] != run_id): continue
                 grouped.setdefault(project, []).append(meta)
             except (OSError, ValueError, KeyError, TypeError, ProjectFault): continue
@@ -94,11 +98,21 @@ async def snapshot(host, read_units=units):
                         worker = json.loads(row['worker'] or '{}')
                         if (type(worker.get('pid')) is not int or worker['pid'] <= 0 or worker.get('release') != meta['release']
                                 or not isinstance(worker.get('birth'), str)): continue
-                        candidates.append((project, meta['runId'], worker))
+                        candidates.append((project, meta['runId'], worker, meta))
             except (OSError, ValueError, TypeError, KeyError, sqlite3.Error): continue
-        current = await read_units([UNIT.format(run) for _, run, _ in candidates])
+        return candidates
+    except (OSError, ValueError, sqlite3.Error):
+        raise ProjectFault('Project activity is temporarily unavailable.', 503) from None
+
+
+async def snapshot(host, read_units=units):
+    if not getattr(host,'read_work',None):host.read_work=ReadWork(ProjectFault)
+    candidates=await host.read_work.run(collect,host.config,host.root,copy.deepcopy(list(host.active.items())[:128]),host.metadata)
+    try:
+        current = await read_units([UNIT.format(run) for _, run, _, _ in candidates])
         active = set()
-        for project, run, worker in candidates:
+        for project, run, worker, known in candidates:
+            if host.active.get(run)!=known:continue
             try:
                 unit = current.get(UNIT.format(run), {})
                 pid = worker['pid']

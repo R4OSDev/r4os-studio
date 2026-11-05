@@ -9,6 +9,9 @@ import signal
 import socket
 import sqlite3
 import struct
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from coordinator_work import ReadWork
 
 from contracts import APP, ACTIVE, DevelopmentFault, UnconfirmedGuestEffect, LIMITS, encode, identity, protocol
 from jobs import Jobs, folder
@@ -40,8 +43,30 @@ class Host:
         from boot import BootWatch
         from access import Access
         self.boots = BootWatch(config['projects']); self.access = Access(config['projects'], config['r4os'], self.boots)
+        self.read_work=ReadWork(DevelopmentFault)
 
     def store(self, project_id): return Jobs(self.config['projects'], self.config['r4os'], project_id)
+
+    def read(self, request):
+        # Only ownerless browser metadata comes here. Agent authorization and
+        # mutable host/boot state remain on the original serialized path.
+        store = self.store(identity(request['projectId']))
+        try:
+            op = request['operation']
+            if op == 'settings': return store.settings()
+            if op == 'jobs': return store.list()
+            if op == 'read_job': return store.page(request['id'], request.get('offset',0), metadata_only=request.get('metadataOnly',False), channel=request.get('channel'))
+            if op == 'artifact': return store.artifact(request['id'])
+            if op == 'deployment': return store.deployment(request['id'])
+            if op == 'session_jobs':
+                from session_jobs import listing
+                return listing(store.projects,store.id,request.get('sessionId'),request.get('query'))
+            if op == 'job_request':
+                row=store.db.execute('SELECT id FROM jobs WHERE request_id=?',(identity(request['requestId']),)).fetchone()
+                if not row: raise DevelopmentFault('Original development request not found.',404)
+                return store.get(row[0])
+            raise DevelopmentFault('Unsupported local read.',400)
+        finally:store.close()
 
     async def alive(self, job_id, kind='build'):
         return await systemctl('show', job_unit(job_id, kind), '--property=ActiveState', '--value') in ('active', 'activating', 'deactivating', 'reloading')
@@ -329,6 +354,8 @@ class Host:
         if op in ('deploy', 'execution'):
             from retired_desktop import request as reject_retired
             reject_retired(request.get('input'))
+        if request.get('owner') is None and op in ('settings','jobs','job_request','session_jobs','read_job','artifact','deployment'):
+            return await self.read_work.run(self.read,request)
         store = self.store(identity(request['projectId']))
         try:
             owner = request.get('owner'); authorization = None
@@ -630,7 +657,7 @@ async def main():
             try:
                 async with host.lock:
                     await host.refresh(); release = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.git_validating and release != APP:
+                    if not host.active and not host.unbound and not host.git_validating and not host.read_work.pending and release != APP:
                         protocol(release); script = release / 'scripts/project-development/host.py'
                         if not release.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022: raise ValueError()
                         replacement = script; stopped.set()
@@ -644,6 +671,7 @@ async def main():
         try: await asyncio.wait_for(asyncio.gather(*host.connections, return_exceptions=True), 25)
         except asyncio.TimeoutError: pass
     await host.boots.close()
+    await host.read_work.close()
     if replacement: os.execv('/usr/bin/python3', ['/usr/bin/python3', '-B', str(replacement)])
 
 
