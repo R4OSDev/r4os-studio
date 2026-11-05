@@ -539,3 +539,14 @@ The shared portable history projection applies the same argument rule, so a
 confirmed tool observation can continue on another selected model without
 rewriting or replaying its original call. Installing this correction does not
 retry failed model operations or change their original outcomes.
+
+### 0.10.39: explicit object fields for tool variants
+
+The common tool catalog exposes an object root, the union of each closed
+variant's fields and their shared required fields to every model protocol.
+For example, roadmap reads expose the required `view` discriminator directly.
+All original `oneOf` branches, nested rules and references remain in the schema;
+the broker validates calls against its unchanged authoritative catalog.
+This gives model grammars explicit parameter fields without accepting missing
+views, invalid field combinations or additional tool permissions. Historical
+calls and earlier failed batches are preserved and never retried by installation.

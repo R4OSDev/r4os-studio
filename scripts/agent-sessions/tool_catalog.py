@@ -32,7 +32,37 @@ def catalog():
 
 
 def specifications(scope='project'):
-    return deepcopy(catalog()[tool_scope(scope)])
+    tools = deepcopy(catalog()[tool_scope(scope)])
+    for tool in tools:
+        schema = tool['inputSchema']
+        schema.setdefault('type', 'object')
+        variants = schema.get('oneOf', [])
+        # Expose object fields to model grammars while retaining every original
+        # variant. The broker still validates against the unmodified catalog.
+        if 'properties' in schema or not variants or any(
+                part.get('type') != 'object' or part.get('additionalProperties') is not False for part in variants):
+            continue
+        fields = {}
+        for part in variants:
+            for name, rule in part.get('properties', {}).items():
+                if rule not in fields.setdefault(name, []): fields[name].append(rule)
+        properties = {}
+        for name, rules in fields.items():
+            if len(rules) == 1:
+                properties[name] = rules[0]
+            elif all('enum' in rule and set(rule) <= {'type', 'enum', 'description'}
+                     and rule.get('type') == rules[0].get('type') for rule in rules):
+                values = []
+                for rule in rules:
+                    for value in rule['enum']:
+                        if value not in values: values.append(value)
+                properties[name] = {'type': rules[0]['type'], 'enum': values}
+            else:
+                properties[name] = {'anyOf': rules}
+        schema['properties'] = properties
+        schema['required'] = [name for name in variants[0].get('required', [])
+                              if all(name in part.get('required', []) for part in variants)]
+    return tools
 
 
 def native_specifications(scope='project'):
