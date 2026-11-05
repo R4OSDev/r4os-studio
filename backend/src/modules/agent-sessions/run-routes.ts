@@ -1,23 +1,25 @@
 import type { FastifyInstance } from 'fastify';
-import type { AgentEvent, AgentRun, AgentSession } from '../../../../shared/agent-sessions.js';
+import type { AgentRun } from '../../../../shared/agent-sessions.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { agentHost } from './host.js';
 import { ProjectError } from '../projects/store.js';
 import { goalRoutes } from './goal-routes.js';
 import { messageRoutes } from './message-routes.js';
+import { SessionStreams, type EventPage } from './event-stream.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
 const params = { type: 'object', additionalProperties: false, required: ['id', 'sessionId'], properties: { id: identity, sessionId: identity } };
 type Params = { id: string; sessionId: string };
-type EventResponse = { events: AgentEvent[]; session: AgentSession };
 
 export function runRoutes(app: FastifyInstance, security: ProjectSessions, ownerType: 'project' | 'skill' = 'project') {
   goalRoutes(app, security, ownerType);
   messageRoutes(app, security, ownerType);
   const base = '/:id/sessions/:sessionId';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
-  const streams = new Set<() => void>();
-  app.addHook('preClose', async () => { for (const close of streams) close(); });
+  const streams = new Set<() => void>(), shared = new SessionStreams();
+  const pendingStreams = new Set<() => void>();
+  let preparing = 0;
+  app.addHook('preClose', async () => { for (const close of [...streams, ...pendingStreams]) close(); });
   app.get('/agent-capabilities', async (request, reply) => {
     security.session(request, reply);
     try { return await agentHost({ operation: 'capabilities' }); }
@@ -52,21 +54,24 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
     schema: { params, querystring: { type: 'object', additionalProperties: false, properties: { after: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER } } } },
   }, async (request, reply) => {
     security.session(request, reply);
-    if (streams.size >= 32) throw new ProjectError('Too many open session streams.', 429);
+    if (streams.size + preparing >= 32) throw new ProjectError('Too many open session streams.', 429);
     let after = request.query.after ?? 0;
     const last = request.headers['last-event-id'];
     if (typeof last === 'string' && /^\d{1,16}$/.test(last) && Number.isSafeInteger(Number(last))) after = Math.max(after, Number(last));
     const payload = { operation: 'events', ...owner(request.params.id), sessionId: request.params.sessionId };
-    // Validate session/project ownership before committing an HTTP stream.
-    const initial = await agentHost<EventResponse>({ ...payload, after });
-    reply.hijack();
-    const response = reply.raw;
-    let closed = false, timer: NodeJS.Timeout | undefined;
-    const release = () => { closed = true; clearTimeout(timer); streams.delete(close); };
+    const lease = shared.acquire(payload), response = reply.raw;
+    let closed = false, released = false, started = false;
+    let timer: NodeJS.Timeout | undefined, immediate: NodeJS.Immediate | undefined;
+    const release = () => {
+      if (released) return;
+      closed = released = true; clearTimeout(timer); clearImmediate(immediate);
+      streams.delete(close); lease.release();
+    };
     const close = () => {
       if (closed) return;
       release();
-      if (!response.writableEnded && !response.destroyed) response.end();
+      if (started && !response.writableEnded && !response.destroyed) response.end();
+      else if (!started && !response.destroyed) response.destroy();
     };
     const writable = () => {
       if (closed) return false;
@@ -78,42 +83,64 @@ export function runRoutes(app: FastifyInstance, security: ProjectSessions, owner
       if (!response.write(frame) || response.writableLength > 512 * 1024) { close(); return false; }
       return true;
     };
-    streams.add(close);
-    response.on('close', release);
-    response.on('finish', release);
-    // ServerResponse errors are emitted asynchronously, outside poll's catch.
-    response.on('error', close);
-    let caughtUp=false;
-    const send = (result: EventResponse) => {
+    response.on('close', release); response.on('finish', release); response.on('error', close);
+    // Count pending validation too; simultaneous reconnects cannot exceed 32.
+    preparing++;
+    pendingStreams.add(close);
+    let initial: EventPage;
+    try { initial = await lease.reader.read(after); }
+    catch (error) { release(); if (!response.destroyed) throw error; return; }
+    finally { preparing--; pendingStreams.delete(close); }
+    if (!writable()) return;
+    security.session(request, reply);
+    reply.hijack(); started = true; streams.add(close);
+    const initialWatermark = initial.watermark;
+    let caughtUp = initialWatermark !== undefined && after >= initialWatermark;
+    const send = (result: EventPage) => {
       if (!writable()) return false;
       for (const event of result.events) {
         if (event.seq <= after) continue;
-        const frame = `id: ${event.seq}\ndata: ${JSON.stringify({...event,delivery:caughtUp?'live':'replay'})}\n\n`;
+        const live = initialWatermark === undefined ? caughtUp : event.seq > initialWatermark;
+        const frame = `id: ${event.seq}\ndata: ${JSON.stringify({...event,delivery:live?'live':'replay'})}\n\n`;
         after = event.seq;
         if (!write(frame)) return false;
       }
-      if(!result.events.length)caughtUp=true;
+      if (initialWatermark === undefined ? !result.events.length : after >= initialWatermark) caughtUp = true;
       return writable();
     };
     try {
-      if (!writable()) return;
       response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
       response.flushHeaders();
       if (!send(initial)) return;
     } catch { close(); return; }
-    let heartbeats = 0;
+    const openedAt = Date.now(); let heartbeatAt = openedAt;
+    let target = initial.hasMore ? initial.watermark : undefined;
+    const schedule = (page: EventPage, more: boolean) => {
+      if (!writable()) return;
+      if (more) immediate = setImmediate(() => { void poll(); });
+      else timer = setTimeout(() => { void poll(); }, Math.max(0, page.nextPollAt - Date.now()));
+    };
     const poll = async () => {
       if (!writable()) return;
       try {
-        // The response may close while the original read is in flight.
-        if (!send(await agentHost<EventResponse>({ ...payload, after }))) return;
-        if (++heartbeats % 40 === 0 && !write(': heartbeat\n\n')) return;
-        // Refresh authentication on bounded reconnects, without stopping a run.
-        if (heartbeats >= 800) { close(); return; }
-      } catch { close(); return; }
-      if (writable()) timer = setTimeout(() => { void poll(); }, 300);
+        for (let step = 0; step < 4; step++) {
+          const previous = after, result = await lease.reader.read(after, target);
+          if (!send(result)) return;
+          // Legacy hosts drain until an empty page; no-progress replies never spin.
+          const more = result.hasMore && after > previous;
+          if (more && target === undefined) target = result.watermark;
+          if (!more) target = undefined;
+          const now = Date.now();
+          if (now - openedAt >= 240_000) { close(); return; }
+          if (now - heartbeatAt >= 12_000) {
+            if (!write(': heartbeat\n\n')) return;
+            heartbeatAt = now;
+          }
+          if (!more || step === 3) { schedule(result, more); return; }
+        }
+      } catch { close(); }
     };
-    timer = setTimeout(() => { void poll(); }, 300);
+    schedule(initial, initial.hasMore);
 
   });
 }

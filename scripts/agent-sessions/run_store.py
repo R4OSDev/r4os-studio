@@ -292,16 +292,27 @@ def _transition(store, run_id, state, error=None, turn_id=None, worker=None):
     return value
 
 
-def events(store, session_id, after=0):
+def events(store, session_id, after=0, *, details=True, through=None):
     store.row(session_id)
     if type(after) is not int or not 0 <= after <= 9007199254740991: raise ProjectFault('Invalid event cursor.', 400)
-    rows = store.db.execute('SELECT * FROM events WHERE session_id=? AND seq>? ORDER BY seq LIMIT 100', (session_id, after)).fetchall()
-    batch = []; size = 0
-    for r in rows:
-        size += len(r['payload'].encode())
-        if batch and size > 524288: break
-        batch.append({'seq': r['seq'], 'runId': r['run_id'], 'kind': r['kind'], 'payload': json.loads(r['payload'])})
-    return {'events': batch, 'session': store.get(session_id)}
+    if through is not None and (type(through) is not int or not 0 <= through <= 9007199254740991):
+        raise ProjectFault('Invalid event watermark.', 400)
+    own = not store.db.in_transaction
+    if own: store.db.execute('BEGIN')
+    try:
+        watermark = store.db.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]
+        if through is not None: watermark = min(watermark, through)
+        rows = store.db.execute('SELECT * FROM events WHERE session_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT 101', (session_id, after, watermark)).fetchall()
+        batch = []; size = 0
+        for r in rows[:100]:
+            size += len(r['payload'].encode())
+            if batch and size > 524288: break
+            batch.append({'seq': r['seq'], 'runId': r['run_id'], 'kind': r['kind'], 'payload': json.loads(r['payload'])})
+        result = {'events': batch, 'watermark': watermark, 'hasMore': len(rows) > len(batch)}
+        if details: result['session'] = store.get(session_id)
+        return result
+    finally:
+        if own: store.db.rollback()  # End only this read snapshot; never commit a caller's work.
 
 
 def request_text(store, run_id):

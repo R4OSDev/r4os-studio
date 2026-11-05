@@ -33,7 +33,7 @@ def read(config, request):
         if op != 'session_delete_receipt': store.row(sid)
         if op == 'events':
             from run_store import events
-            return events(store, sid, request.get('after', 0))
+            return events(store, sid, request.get('after', 0), details=request.get('eventPage') != 1, through=request.get('through'))
         if op in ('goal', 'goal_receipt'):
             from goal_store import Goals
             goals = Goals(store)
