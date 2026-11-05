@@ -5394,3 +5394,21 @@ history are preserved. The wire identity is compatibility metadata, not a native
 SDK process. Native conversations are retained until explicitly converted.
 Model work requires confirmation that account-level paid extra usage is disabled;
 real subscription access and quota qualification remain separate acceptance work.
+
+### Shared Claude account limits and session conversion (0.10.29)
+
+The connection detail, navigation percentage and session limits use the same
+private account reader and browser grant. One cache and original refresh receipt
+keep both provider views synchronized; stale values are marked and an older
+credential response cannot replace the current account. Opening the visible
+account view reads limits when needed without inference. Model admission checks
+only the required included-usage billing state, without requiring percentages or
+enabling paid extra usage. Unsupported quota fields remain unknown alongside
+the original private response.
+
+Existing native sessions can be explicitly converted through the existing
+preview and source/target hashes. Studio keeps session identity, original history,
+confirmed effects and GOAL/queue boundaries. Installation and account sign-in do
+not convert a session or merge accounts with the same email address. Actual
+Claude login, model access and a populated native-session conversion still need
+their real acceptance evidence; fixture checks are not subscription qualification.

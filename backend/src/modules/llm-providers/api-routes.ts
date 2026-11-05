@@ -106,6 +106,21 @@ export function apiProviderRoutes(app: FastifyInstance, sessions: ProviderSessio
     sessions.get(request, reply);
     return agentHost<ApiModelCatalog>({ operation: 'api_provider', action: 'models', id: request.params.id });
   });
+  app.get<{ Params: { id: string } }>(base + '/:id/limits', { schema: { params } }, async (request, reply) => {
+    sessions.get(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return agentHost({ operation: 'api_provider', action: 'connection_limits', id: request.params.id });
+  });
+  app.post<{ Params: { id: string }; Body: { requestId: string; providerRevision: number } }>(base + '/:id/limits/check', {
+    bodyLimit: 1024, schema: { params, body: { type: 'object', additionalProperties: false, required: ['requestId', 'providerRevision'],
+      properties: { requestId: uuid, providerRevision: revision } } },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return agentHost({ operation: 'api_provider', action: 'connection_limit_refresh', id: request.params.id, input: request.body });
+  });
+  app.get<{ Params: { id: string; requestId: string } }>(base + '/:id/limit-requests/:requestId', { schema: { params: originalParams } }, async (request, reply) => {
+    sessions.get(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return agentHost({ operation: 'api_provider', action: 'connection_limit_receipt', id: request.params.id, requestId: request.params.requestId });
+  });
   app.get<{ Params: { id: string } }>(base + '/:id/subscription-limits', { schema: { params } }, async (request, reply) => {
     sessions.get(request, reply);
     return agentHost({ operation: 'api_provider', action: 'zai_quota', id: request.params.id });

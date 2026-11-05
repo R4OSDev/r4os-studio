@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { ApiProvider } from '../../../../../shared/api-providers';
 import type { ProviderApi } from '../useProviders';
-import { useZaiLimits } from '../useZaiLimits';
+import { useSubscriptionLimits } from '../useSubscriptionLimits';
 import { ZaiLimitsView } from './ZaiLimitsView';
 
 export function ZaiProviderLimits({ provider, api }: { provider: ApiProvider; api: ProviderApi }) {
@@ -12,6 +12,6 @@ export function ZaiProviderLimits({ provider, api }: { provider: ApiProvider; ap
       : base + '/subscription-limits' + (suffix === '/check' ? '/check' : '');
     return request<T>(path, method, body);
   }, [provider.id, request]);
-  const limits = useZaiLimits(provider.id, transport);
+  const limits = useSubscriptionLimits(provider.id, transport);
   return <ZaiLimitsView {...limits} enabled={provider.enabled && provider.keyConfigured} refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
 }

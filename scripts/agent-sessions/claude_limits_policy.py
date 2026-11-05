@@ -33,6 +33,44 @@ def window(key,label,scope,value):
         'remainingPercent':None if used is None else 100-used,'resetsAt':reset(value.get('resets_at'))}
 
 
+def reported_windows(limits, strict=True):
+    """Normalize actual usage fields independently of the credential transport."""
+    windows=[]
+    for key,label,scope in WINDOWS:
+        if limits.get(key) is not None:windows.append(window(key,label,scope,limits[key]))
+    rows=limits.get('limits')
+    if rows is not None:
+        if not isinstance(rows,list) or len(rows)>64:raise ValueError()
+        for index,row in enumerate(rows):
+            fields=('kind','group','severity')
+            if not strict and isinstance(row,dict):fields=tuple(k for k in fields if k in row)
+            if (not isinstance(row,dict) or 'kind' not in row
+                    or not all(isinstance(row.get(k),str) and 0<len(row[k])<=120 and not any(ord(c)<32 for c in row[k]) for k in fields)
+                    or (strict or 'is_active' in row) and type(row.get('is_active')) is not bool
+                    or not number(row.get('percent'))):raise ValueError()
+            scope=row.get('scope');labels=[]
+            if scope is not None:
+                if not isinstance(scope,dict):raise ValueError()
+                for key in ('model','surface'):
+                    if scope.get(key) is not None:
+                        label=scope[key].get('display_name') if isinstance(scope[key],dict) else None
+                        if not isinstance(label,str) or not 1<=len(label)<=120 or any(ord(c)<32 for c in label):raise ValueError()
+                        labels.append(label)
+            label=' · '.join(labels) or row['kind'].replace('_',' ').capitalize()
+            reported=window('native-meter-'+str(index),label,'native-meter',{'utilization':row['percent'],'resets_at':row.get('resets_at')})
+            reported.update({k:row[k] for k in ('kind','group','severity') if k in row})
+            if 'is_active' in row:reported['active']=row['is_active']
+            windows.append(reported)
+    scoped=limits.get('model_scoped')
+    if scoped is not None:
+        if not isinstance(scoped,list) or len(scoped)>64:raise ValueError()
+        for index,entry in enumerate(scoped):
+            if not isinstance(entry,dict) or not isinstance(entry.get('display_name'),str) or not 1<=len(entry['display_name'])<=120 or any(ord(c)<32 for c in entry['display_name']):raise ValueError()
+            windows.append(window('model-scoped-'+str(index),entry['display_name'],'native-model-label',entry))
+    extra=limits.get('extra_usage')
+    return windows,extra['is_enabled'] if isinstance(extra,dict) and type(extra.get('is_enabled')) is bool else None,rows is not None
+
+
 def usage_sample(value,provider,request_id,received_at=None):
     """Project only this pinned control reply, with its receipt time and scope.
 
@@ -50,35 +88,7 @@ def usage_sample(value,provider,request_id,received_at=None):
     sample['plan']=value['subscription_type'];limits=value.get('rate_limits')
     if not isinstance(limits,dict):return sample
     try:
-        for key,label,scope in WINDOWS:
-            if limits.get(key) is not None:sample['windows'].append(window(key,label,scope,limits[key]))
-        rows=limits.get('limits')
-        if rows is not None:
-            if not isinstance(rows,list) or len(rows)>64:raise ValueError()
-            sample['serverMetersReported']=True
-            for index,row in enumerate(rows):
-                if (not isinstance(row,dict) or not all(isinstance(row.get(k),str) and 0<len(row[k])<=120 and not any(ord(c)<32 for c in row[k]) for k in ('kind','group','severity'))
-                    or type(row.get('is_active')) is not bool or not number(row.get('percent'))):raise ValueError()
-                scope=row.get('scope');labels=[]
-                if scope is not None:
-                    if not isinstance(scope,dict):raise ValueError()
-                    for key in ('model','surface'):
-                        if scope.get(key) is not None:
-                            label=scope[key].get('display_name') if isinstance(scope[key],dict) else None
-                            if not isinstance(label,str) or not 1<=len(label)<=120 or any(ord(c)<32 for c in label):raise ValueError()
-                            labels.append(label)
-                label=' · '.join(labels) or row['kind'].replace('_',' ').capitalize()
-                reported=window('native-meter-'+str(index),label,'native-meter',{'utilization':row['percent'],'resets_at':row.get('resets_at')})
-                reported.update(kind=row['kind'],group=row['group'],severity=row['severity'],active=row['is_active'])
-                sample['windows'].append(reported)
-        scoped=limits.get('model_scoped')
-        if scoped is not None:
-            if not isinstance(scoped,list) or len(scoped)>64:raise ValueError()
-            for index,entry in enumerate(scoped):
-                if not isinstance(entry,dict) or not isinstance(entry.get('display_name'),str) or not 1<=len(entry['display_name'])<=120 or any(ord(c)<32 for c in entry['display_name']):raise ValueError()
-                sample['windows'].append(window('model-scoped-'+str(index),entry['display_name'],'native-model-label',entry))
-        extra=limits.get('extra_usage')
-        if isinstance(extra,dict) and type(extra.get('is_enabled')) is bool:sample['extraUsageEnabled']=extra['is_enabled']
+        sample['windows'],sample['extraUsageEnabled'],sample['serverMetersReported']=reported_windows(limits)
     except (ValueError,TypeError,OverflowError):
         sample.update(coverage='unavailable',windows=[],extraUsageEnabled=None,serverMetersReported=False,message='The pinned native usage schema could not be confirmed.')
         return sample

@@ -57,7 +57,9 @@ async def run(host,ident,rid):
             plan=Plan(host.config['providers']);credential=await asyncio.to_thread(plan.credential,binding,plan.frozen(binding))
         if binding['kind']=='claude-plan':
             from claude_plan import ClaudePlan
+            from claude_wire import headers
             plan=ClaudePlan(host.config['providers']);credential=await asyncio.to_thread(plan.credential,binding,plan.frozen(binding))
+            extra={'extraHeaders':headers()}
         manual=[v['id'] for v in store.listing(ident)['models'] if v.get('source',{}).get('kind')=='manual']
         child.stdin.write(json.dumps({'binding':binding,'addresses':addresses,'key':credential,'modelIds':manual,**extra},separators=(',',':')).encode()+b'\n')
         await child.stdin.drain();credential=None

@@ -51,6 +51,9 @@ if (binding.kind === 'claude-plan') {
   if (binding.baseUrl !== 'https://api.anthropic.com/v1' || binding.protocol !== 'messages') fail('binding');
   headers['anthropic-version'] = '2026-10-21';
   headers['anthropic-beta'] = 'oauth-2025-04-20';
+  const ua = input.extraHeaders?.['User-Agent'];
+  if (typeof ua !== 'string' || !/^[\x20-\x7e]{1,2048}$/.test(ua)) fail('binding');
+  headers['User-Agent'] = ua;
 }
 let query = '';
 if (binding.kind === 'codex-subscription') {

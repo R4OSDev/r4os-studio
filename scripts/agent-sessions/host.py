@@ -258,6 +258,12 @@ class Host:
             if action=='get':return await asyncio.to_thread(store.get,request.get('id'))
             if action=='receipt':return await asyncio.to_thread(store.receipt,request.get('id'),request.get('requestId'))
             if action=='creation_receipt':return await asyncio.to_thread(store.creation_receipt,request.get('requestId'))
+            if action in ('connection_limits','connection_limit_refresh','connection_limit_receipt'):
+                from connection_limits import Limits
+                limits=Limits(self.config['providers']);ident=identity(request.get('id'))
+                if action=='connection_limits':return await asyncio.to_thread(limits.listing,ident)
+                if action=='connection_limit_receipt':return await asyncio.to_thread(limits.receipt,ident,request.get('requestId'))
+                return await asyncio.to_thread(limits.refresh,ident,request.get('input'))
             if action in ('zai_quota','zai_quota_receipt','zai_quota_refresh'):
                 from zai_quota import Quota
                 ident=identity(request.get('id'));quota=Quota(self.config['providers'])
@@ -284,6 +290,8 @@ class Host:
                 if result['provider']['kind']=='chatgpt-plan':
                     revocation=await asyncio.to_thread(self.plan_login.plan.revoke,ident)
                 elif result['provider']['kind']=='claude-plan':
+                    from connection_limits import Limits
+                    await asyncio.to_thread(Limits(self.config['providers']).finish_reads,ident)
                     await asyncio.to_thread(self.claude_plan.forget,ident)
                     revocation={'localLogout':'confirmed','remoteRevocation':'unconfirmed'}
                 else:revocation=None
@@ -327,8 +335,11 @@ class Host:
                 async with self.claude_probe_lock:
                     return await probe(self.config['providers'],self.root,request.get('requestId'))
             raise ProjectFault('Unsupported Claude provider operation.',400)
-        if op in ('session_zai_limits','session_zai_limit_refresh','session_zai_limit_receipt'):
-            from zai_session_limits import dispatch
+        if op in ('session_zai_limits','session_zai_limit_refresh','session_zai_limit_receipt','session_connection_limits','session_connection_limit_refresh','session_connection_limit_receipt'):
+            if op.startswith('session_connection_'):
+                from connection_session_limits import dispatch
+            else:
+                from zai_session_limits import dispatch
             kind,ident=binding(request);store=self.store(ident,kind)
             try:return await dispatch(self,store,request['sessionId'],op,request.get('input'),request.get('requestId'))
             finally:store.close()

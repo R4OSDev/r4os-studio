@@ -10,7 +10,7 @@ function countdown(reset: string, clock: number) {
 }
 
 /** Native quota percentages and their receipt time; no token-based estimates. */
-export function ClaudeLimitsView({ sample, compact = false, revision, observation, hold }: { sample: ClaudeSubscriptionLimits | null; compact?: boolean; revision?: number; observation?: ClaudeRateObservation | null; hold?: ClaudeQuotaHold | null }) {
+export function ClaudeLimitsView({ sample, compact = false, revision, observation, hold, reportedState }: { sample: ClaudeSubscriptionLimits | null; compact?: boolean; revision?: number; observation?: ClaudeRateObservation | null; hold?: ClaudeQuotaHold | null; reportedState?: 'current' | 'stale' | 'unknown' }) {
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const tick = () => setClock(Date.now());
@@ -19,7 +19,7 @@ export function ClaudeLimitsView({ sample, compact = false, revision, observatio
   }, [sample?.receivedAt, observation?.receivedAt]);
   const currentClock = clock;
   const age = sample ? currentClock - Date.parse(sample.receivedAt) : NaN;
-  const fresh = Number.isFinite(age) && age >= 0 && age <= 60000 && (revision === undefined || revision === sample?.providerRevision);
+  const fresh = Number.isFinite(age) && age >= 0 && age <= 60000 && (revision === undefined || revision === sample?.providerRevision) && reportedState !== 'stale' && reportedState !== 'unknown';
   const state = hold ? 'Held' : !sample || sample.coverage === 'unavailable' ? 'Unavailable' : !fresh ? 'Stale' : sample.coverage === 'partial' ? 'Partial' : 'Reported';
   const formatter = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'long' });
   const nativeMeters = sample?.windows.filter(row => row.id.startsWith('native-meter-')) ?? [];
@@ -36,7 +36,7 @@ export function ClaudeLimitsView({ sample, compact = false, revision, observatio
     {!sample && <p>Subscription limits have not been checked.</p>}
     {sample?.windows.filter(row => !row.id.startsWith('native-meter-')).map(renderWindow)}
     {nativeMeters.length > 0 && <details><summary>Additional reported limits</summary>{nativeMeters.map(renderWindow)}</details>}
-    {sample && <p>{sample.message} Received {formatter.format(new Date(sample.receivedAt))}. Source: native Claude usage control.</p>}
+    {sample && <p>{sample.message} Received {formatter.format(new Date(sample.receivedAt))}. Source: {sample.source}.</p>}
     <p>Paid extra usage: {sample?.extraUsageEnabled === false ? 'Disabled in the reported account state' : sample?.extraUsageEnabled === true ? 'Enabled — model use blocked' : 'Unconfirmed — model use blocked'}.</p>
     <p>Limits are shared with other Claude surfaces for this account. A reset countdown does not resume work.</p>
   </>;

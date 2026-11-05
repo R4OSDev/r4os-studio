@@ -46,6 +46,8 @@ def remote(url, body=None, access=None):
     if body is not None:
         headers['Content-Type'] = 'application/json'
     if access:
+        from claude_wire import headers as oauth_headers
+        headers['User-Agent'] = oauth_headers()['User-Agent']
         headers.update(Authorization='Bearer '+access, **{'anthropic-beta': 'oauth-2025-04-20'})
     request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers)
     with urllib.request.build_opener(NoRedirect()).open(request, timeout=25) as response:
@@ -265,9 +267,17 @@ class ClaudePlan:
                     write_json(path, {'providerId': ident, 'revoked': True, 'localLogoutAt': now(), 'remoteRevocation': 'unconfirmed'})
 
     def require_included(self, provider):
-        path = self.folder('Limits')/(identity(provider['id'])+'.json')
-        value = self.read(path) if path.exists() else {}
-        if (value.get('providerId') != provider['id'] or value.get('credentialRevision') != provider['credentialRevision']
+        from connection_limits import Limits
+        import uuid
+        current = self.api.get(provider['id'])
+        if not current['enabled'] or current['credentialRevision'] != provider['credentialRevision']:
+            raise ProjectFault('The original Claude subscription access changed.', 409)
+        reader = Limits(self.api.parent)
+        value = reader.record(current) or {}
+        if value.get('error') or not 0 <= time.time()-value.get('checkedAtUnix', 0) <= 60:
+            reader.refresh(provider['id'], {'requestId': str(uuid.uuid4()), 'providerRevision': current['revision']}, only_if_stale=True)
+            value = reader.record(current) or {}
+        if (value.get('binding', {}).get('id') != provider['id'] or value.get('binding', {}).get('credentialRevision') != provider['credentialRevision']
                 or value.get('identity') != self.frozen(provider)['identity']
                 or not 0 <= time.time()-value.get('checkedAtUnix', 0) < 90
                 or value.get('extraUsageEnabled') is not False or value.get('error')):

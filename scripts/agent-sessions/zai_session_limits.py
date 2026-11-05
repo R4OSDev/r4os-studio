@@ -6,11 +6,11 @@ from store import ProjectFault
 from zai_quota import Quota
 
 
-def selection(host,store,sid):
+def selection(host,store,sid,kinds=('zai-coding-plan',)):
     session=store.get(identity(sid))
     if not session['engine'].get('api'):return None
     provider=ApiProviders(host.config['providers']).get(session['providerId'])
-    if provider['kind']!='zai-coding-plan':return None
+    if provider['kind'] not in kinds:return None
     original=session['engine']['api']
     if original.get('providerId')!=provider['id'] or any(original.get(k)!=provider.get(k) for k in ('baseUrl','protocol')):
         raise ProjectFault('This session has a different original subscription connection.',409)

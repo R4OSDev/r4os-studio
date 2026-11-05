@@ -4,6 +4,7 @@ import type { ApiProvider } from '../../../../../shared/api-providers';
 import type { ProviderApi } from '../useProviders';
 import { providerRequestId } from '../api';
 import { useApiMutation } from '../useApiMutation';
+import { ConnectionLimits } from './ConnectionLimits';
 
 interface Attempt { requestId: string; state: string; providerId: string | null; authorizationUrl?: string; message: string | null }
 interface Status { attempts: Attempt[] }
@@ -53,6 +54,7 @@ export function ClaudePlan({ api, provider, saved }: { api: ProviderApi; provide
   if (provider) return <section aria-label="Claude browser connection">
     <p className="field-help">Claude subscription · Studio owns history, tools and context. Model access is qualified separately from sign-in. This connection uses one private browser grant, without a native agent or a second limits login.</p>
     <p>Status: {provider.enabled && provider.keyConfigured ? 'Connected' : 'Disconnected'}</p>
+    <ConnectionLimits provider={provider} api={api} />
     <div className="provider-actions"><button type="button" className="button-secondary" disabled={mutation.busy} onClick={() => {
       if (window.confirm('Disconnect this Claude connection and stop its active runs? Local tokens will be cleared after their original transports end. Remote revocation is not confirmed.')) void mutation.send('disconnect', { revision: provider.revision }).then(() => reload());
     }}>Disconnect</button>
