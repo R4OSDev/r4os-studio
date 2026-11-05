@@ -186,6 +186,8 @@ class StudioWorker(Worker):
         self.operations.begin(self.run_id,request_id)
         self.model.process_observer=lambda stage,child:self.operations.process(request_id,stage,child,request_sha256=self.model.request_sha256)
         self.model.event_observer=lambda raw:self.operations.wire(request_id,raw)
+        self.model.flush_observer=lambda:self.operations.flush(request_id)
+        self.model.flush_delay=lambda:self.operations.flush_delay(request_id)
         execution = self.goal_worker.execution if self.goal_worker.active else None
         self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],on_text=on_text))
         try:result = await self.operation

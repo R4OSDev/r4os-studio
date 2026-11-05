@@ -12,6 +12,15 @@ longer mounts a separate quota panel or starts its session-side quota reader.
 Stored original quota requests, provider refresh and server-side holds remain
 part of the existing shared limit handling.
 
+Since 0.10.41, the common model journal batches raw stream events up to 64 events,
+256 KiB or 100 ms while waiting for the next transport frame. A larger individual
+event is written immediately within the existing transport limits. Raw strings,
+request sequences and the 96 MiB session quota remain unchanged. SQLite still
+uses FULL synchronous commits. Normal end, cancellation and transport errors
+flush pending originals; a confirmed result and tool admission require that
+flush to succeed. Abrupt worker loss preserves only the durable prefix and the
+existing Unknown recovery rules; it never repeats a request or effect.
+
 The unprivileged Python run worker owns conversation state, input admission,
 the model/tool loop, context, Goal, queue, cancellation and original receipts.
 The existing Node transport code owns HTTP and streaming. A protocol connector

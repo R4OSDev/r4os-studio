@@ -134,6 +134,8 @@ class ModelTransport:
         self.attempted = False
         self.process_observer = None
         self.event_observer = None
+        self.flush_observer = None
+        self.flush_delay = None
         self.request_sha256 = None
         self.media_resolver = None
 
@@ -201,7 +203,14 @@ class ModelTransport:
             self.child.stdin.write(bootstrap)
             await self.child.stdin.drain()
             self.child.stdin.close()
-            while raw := await self.child.stdout.readline():
+            while True:
+                delay=self.flush_delay() if self.flush_delay else None
+                try:
+                    raw=await asyncio.wait_for(self.child.stdout.readline(),max(0.001,delay)) if delay is not None else await self.child.stdout.readline()
+                except asyncio.TimeoutError:
+                    self.flush_observer()
+                    continue
+                if not raw:break
                 frame = loads(raw)
                 if not isinstance(frame, dict): raise ModelFault()
                 if frame.get('type') == 'error':
@@ -227,7 +236,9 @@ class ModelTransport:
         except (OSError, ValueError, ConnectionError) as error:
             raise ModelFault('model_transport_error') from error
         finally:
-            await self.close()
+            try:await self.close()
+            finally:
+                if self.flush_observer:self.flush_observer()
 
     async def close(self):
         child = self.child

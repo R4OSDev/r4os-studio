@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import time
 
 from attachment_store import birth
 from run_store import get_run
@@ -23,28 +24,56 @@ def alive(pid,started):
 
 
 class Operations:
+    RAW_BATCH_EVENTS=64
+    RAW_BATCH_BYTES=256*1024
+    RAW_BATCH_SECONDS=0.1
+
     def __init__(self,store):
         self.store=store
         self.raw_remaining={}
+        self.raw_pending={}
         with store.db:store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_calls(
             run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL UNIQUE,
             phase TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run_id,request_id))''')
 
     def wire(self,rid,raw):
-        row,data=self.row(rid)
-        if rid not in self.raw_remaining:
+        if rid not in self.raw_pending:
+            row,data=self.row(rid)
             with self.store.db:self.store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_events(
                 run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL REFERENCES studio_model_calls(request_id),
                 seq INTEGER NOT NULL,raw TEXT NOT NULL,PRIMARY KEY(request_id,seq))''')
             used=self.store.db.execute('SELECT COALESCE(SUM(length(CAST(e.raw AS BLOB))),0) FROM studio_model_events e JOIN runs r ON r.id=e.run_id WHERE r.session_id=?',(data['sessionId'],)).fetchone()[0]
             self.raw_remaining[rid]=max(0,96*1024*1024-used)
+            seq=self.store.db.execute('SELECT COALESCE(MAX(seq),0) FROM studio_model_events WHERE request_id=?',(rid,)).fetchone()[0]
+            self.raw_pending[rid]={'runId':row['run_id'],'seq':seq,'events':[],'bytes':0,'since':None}
+        pending=self.raw_pending[rid]
         size=len(raw.encode())
         if size>self.raw_remaining[rid]:
+            self.flush(rid)
+            row,data=self.row(rid)
             if not data.get('rawTruncated'):data['rawTruncated']=True;self.put(rid,row['phase'],data)
             self.raw_remaining[rid]=0;return
-        with self.store.db:
-            self.store.db.execute('INSERT INTO studio_model_events SELECT ?,?,COALESCE(MAX(seq),0)+1,? FROM studio_model_events WHERE request_id=?',(row['run_id'],rid,raw,rid))
+        if pending['events'] and pending['bytes']+size>self.RAW_BATCH_BYTES:self.flush(rid)
+        if not pending['events']:pending['since']=time.monotonic()
+        pending['seq']+=1
+        pending['events'].append((pending['runId'],rid,pending['seq'],raw))
+        pending['bytes']+=size
         self.raw_remaining[rid]-=size
+        if len(pending['events'])>=self.RAW_BATCH_EVENTS or pending['bytes']>=self.RAW_BATCH_BYTES or self.flush_delay(rid)==0:
+            self.flush(rid)
+
+    def flush_delay(self,rid):
+        pending=self.raw_pending.get(rid)
+        return max(0,self.RAW_BATCH_SECONDS-(time.monotonic()-pending['since'])) if pending and pending['events'] else None
+
+    def flush(self,rid):
+        pending=self.raw_pending.get(rid)
+        if not pending or not pending['events']:return
+        # Clear only after a successful FULL commit. A failed write cannot
+        # produce a confirmed response or admit a tool from this operation.
+        with self.store.db:
+            self.store.db.executemany('INSERT INTO studio_model_events VALUES (?,?,?,?)',pending['events'])
+        pending['events'].clear();pending['bytes']=0;pending['since']=None
 
     def row(self,rid):
         row=self.store.db.execute('SELECT * FROM studio_model_calls WHERE request_id=?',(rid,)).fetchone()
@@ -75,6 +104,7 @@ class Operations:
             self.put(rid,row['phase'],data)
 
     def finish(self,rid,result=None,error=None,attempted=False):
+        self.flush(rid)
         row,data=self.row(rid);data['finishedAt']=now();data['attempted']=attempted
         if result is not None:
             data.update(origin=result['origin'],usage=result['usage'],finishReason=result['finishReason'])
@@ -87,6 +117,7 @@ class Operations:
             self.put(rid,'unknown' if attempted else 'failed',data)
         from studio_usage import record
         record(self.store,self.row(rid)[0])
+        self.raw_pending.pop(rid,None);self.raw_remaining.pop(rid,None)
 
     def reconcile(self,run_id):
         for row in self.store.db.execute('SELECT * FROM studio_model_calls WHERE run_id=?',(run_id,)).fetchall():
