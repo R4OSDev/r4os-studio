@@ -38,6 +38,9 @@ export function modelFacts(entry, binding, key) {
           efforts = ['', ...['low','medium','high','xhigh','max'].filter(value => facts.effort?.[value]?.supported === true)];
           if (facts.thinking.types?.disabled?.supported === true) efforts.push('none');
           defaultEffort = ''; // Native provider default, no guessed default effort.
+          reasoning = { supported_efforts: efforts.filter(Boolean),
+            ...(typeof facts.thinking.types?.disabled?.supported === 'boolean'
+              ? { mandatory: !facts.thinking.types.disabled.supported } : {}) };
         }
         messages = { apiVersion: '2026-10-21',
           ...(facts.thinking?.types?.adaptive?.supported === true ? { thinkingType: 'adaptive' } : {}),
