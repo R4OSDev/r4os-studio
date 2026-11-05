@@ -12,7 +12,7 @@ from profile import directory, write_json
 from session_store import identity, now
 from store import ProjectFault
 
-KINDS = ('claude-plan',)
+KINDS = ('claude-plan', 'openrouter')
 
 
 def binding(provider):
@@ -79,6 +79,8 @@ class Limits:
         value = self.api.get(ident)
         if value['kind'] not in KINDS:
             raise ProjectFault('This connection has no account-limit reader.', 400)
+        if value['kind'] == 'openrouter' and value['baseUrl'] != 'https://openrouter.ai/api/v1':
+            raise ProjectFault('Key limits require the original OpenRouter API endpoint.', 400)
         return value
 
     def record(self, provider):
@@ -145,14 +147,31 @@ class Limits:
                     write_json(request_path, original)
                     return original['result']
                 try:
-                    frozen = self.owner.frozen(provider)
-                    access = self.owner.credential(provider, frozen)
-                    body = remote('https://api.anthropic.com/api/oauth/usage', access=access)
+                    if provider['kind'] == 'claude-plan':
+                        frozen = self.owner.frozen(provider)
+                        access = self.owner.credential(provider, frozen)
+                        body = remote('https://api.anthropic.com/api/oauth/usage', access=access)
+                    else:
+                        from account_http import request_json
+                        with self.api.connect() as db:
+                            current = self.api.current(db, ident)
+                            if binding(current) != original['binding'] or not current['enabled']:
+                                raise ProjectFault('The original key-limit binding changed.', 409)
+                            row = db.execute('SELECT value FROM secrets.credentials WHERE provider_id=? AND revision=?', (ident, provider['credentialRevision'])).fetchone()
+                            if row is None:raise ProjectFault('The original key credential is unavailable.', 409)
+                            access = row[0]
+                        frozen = {'identity': {'providerId': ident, 'credentialRevision': provider['credentialRevision']}}
+                        body = request_json('https://openrouter.ai/api/v1/key', headers={'Authorization': 'Bearer '+access, 'User-Agent': 'R4OS-Studio-Account-Limits'})
                     if access in json.dumps(body):
                         raise ValueError()
                     if binding(self.api.get(ident)) != original['binding'] or not self.api.get(ident)['enabled']:
                         raise ProjectFault('This account changed during its original limit check.', 409)
-                    received = now(); public, extra = claude(body, provider, frozen, rid, received)
+                    received = now()
+                    if provider['kind'] == 'claude-plan':
+                        public, extra = claude(body, provider, frozen, rid, received)
+                    else:
+                        from openrouter_limits import normalize
+                        public, extra = normalize(body), None
                     public['checkedAt'] = received
                     value = {'binding': binding(provider), 'checkedAtUnix': time.time(), 'lastAttemptAt': time.time(), 'identity': frozen['identity'],
                              'extraUsageEnabled': extra, 'error': None, 'public': public}
@@ -160,7 +179,7 @@ class Limits:
                     original['responseOriginal'] = body
                     result = {**result, 'state': 'complete'}
                 except Exception as error:
-                    message = 'Subscription limits are unavailable. No model request was made.'
+                    message = 'Account limits are unavailable. No model request was made.'
                     if isinstance(error, urllib.error.HTTPError):
                         message = 'The account-limit reader returned HTTP '+str(error.code)+'. No alternate account was used.'
                     value = self.record(provider)

@@ -237,7 +237,7 @@ export function App() {
                 const account = provider ? providers.nativeProviders.find(p => p.id === provider.id) : undefined;
                 const remaining = provider ? providers.remainingByProvider[provider.id] : null;
                 const limits = provider ? providers.connectionLimits[provider.id] : null;
-                const apiLimits = provider?.type === 'api' && provider.kind === 'claude-plan' && provider.enabled;
+                const apiLimits = provider?.type === 'api' && ['claude-plan', 'openrouter'].includes(provider.kind) && provider.enabled;
                 return <button type="button" key={githubPage ? (github.connections[index - 1]?.id ?? 'new-connection') : providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
                   aria-current={selectedView === index ? 'page' : undefined}
                   onClick={() => { if (!settingsLeaveGuard.current()) return; if (githubPage) setConnectionView(github.connections[index - 1]?.id ?? null); else if (providerPage) setProviderView(provider?.id ?? null); else select({ view: index }); }}>
@@ -246,7 +246,7 @@ export function App() {
                     <span className="provider-view-name">{name}</span>
                     {(account?.status === 'connected' && account.account || apiLimits) &&
                       <span className="provider-remaining" data-state={limits?.state} title={remaining == null
-                        ? 'Remaining usage is not available.' : `${limits?.state === 'stale' ? 'Out of date. ' : ''}Lowest reported remaining usage across quota windows.${limits?.checkedAt ? ' Observed '+new Date(limits.checkedAt).toLocaleString()+'.' : ''}`}>
+                        ? 'Remaining usage is not available.' : `${limits?.state === 'stale' ? 'Out of date. ' : ''}${limits?.openrouter ? 'Remaining share of the currently limiting USD spending budget.' : 'Lowest reported remaining usage across quota windows.'}${limits?.checkedAt ? ' Observed '+new Date(limits.checkedAt).toLocaleString()+'.' : ''}`}>
                         {remaining == null ? '—' : percent(remaining)}{limits?.state === 'stale' && remaining != null && ' *'}
                       </span>}
                   </> : githubPage || vmPage || remotePage || updatePage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}

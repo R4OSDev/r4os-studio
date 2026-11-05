@@ -119,7 +119,7 @@ export function useProviders(usageVisible = true) {
         }
       }
       for (const provider of apiProviders) {
-        if (provider.enabled && provider.keyConfigured && provider.kind === 'claude-plan') {
+        if (provider.enabled && provider.keyConfigured && ['claude-plan', 'openrouter'].includes(provider.kind)) {
           void request(`/api-connections/${provider.id}/limits`).catch(() => { /* Cached limits retain their source and stale state. */ });
         }
       }

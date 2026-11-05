@@ -14,7 +14,6 @@ from pathlib import Path
 import secrets
 import time
 import urllib.error
-import urllib.request
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from api_provider_store import ApiProviders, private, name, key
@@ -36,28 +35,16 @@ def require(value):
         raise ProjectFault('Claude subscription access requires its original browser grant and Messages endpoint.', 409)
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def remote(url, body=None, access=None):
-    headers = {'Accept': 'application/json', 'User-Agent': 'axios/1.13.6'}
+    from account_http import request_json
+    headers = {'User-Agent': 'axios/1.13.6'}
     if body is not None:
         headers['Content-Type'] = 'application/json'
     if access:
         from claude_wire import headers as oauth_headers
         headers['User-Agent'] = oauth_headers()['User-Agent']
         headers.update(Authorization='Bearer '+access, **{'anthropic-beta': 'oauth-2025-04-20'})
-    request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers)
-    with urllib.request.build_opener(NoRedirect()).open(request, timeout=25) as response:
-        raw = response.read(262145)
-        if len(raw) > 262144:
-            raise ValueError()
-        value = json.loads(raw)
-        if not isinstance(value, dict):
-            raise ValueError()
-        return value
+    return request_json(url, body, headers)
 
 
 class ClaudePlan:

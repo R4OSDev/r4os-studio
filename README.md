@@ -5449,3 +5449,17 @@ A separate populated native Claude conversation was explicitly imported into
 that same Studio session and continued with Z.AI, preserving its original archive
 and confirmed effects. This does not qualify a new direct Claude browser grant.
 Claude subscription qualification remains pending its own fresh sign-in.
+
+### OpenRouter key budgets (0.10.33)
+
+The existing model key also reads OpenRouter's current key budgets. Connection
+details show reported USD caps, spend, remaining budget, reset interval/time
+and BYOK inclusion. The navigation percentage uses the currently effective
+budget reported by OpenRouter, falling back to its key cap only when no effective
+budget is supplied. These caps are separate from account funding.
+
+The detail and navigation share one account observation and refresh receipt.
+Stale values are marked, unlimited/unknown values have no invented percentage,
+and credential changes discard older replies. There is no management key,
+second login, billing mutation or model request. The source is OpenRouter's
+[current-key endpoint](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key).

@@ -287,11 +287,12 @@ class Host:
                 from api_catalog_host import recover as close_catalogs
                 await close_catalogs(self,ident)
                 await self.handle({'operation':'cancel_provider','providerId':ident})
+                if result['provider']['kind'] in ('claude-plan','openrouter'):
+                    from connection_limits import Limits
+                    await asyncio.to_thread(Limits(self.config['providers']).finish_reads,ident)
                 if result['provider']['kind']=='chatgpt-plan':
                     revocation=await asyncio.to_thread(self.plan_login.plan.revoke,ident)
                 elif result['provider']['kind']=='claude-plan':
-                    from connection_limits import Limits
-                    await asyncio.to_thread(Limits(self.config['providers']).finish_reads,ident)
                     await asyncio.to_thread(self.claude_plan.forget,ident)
                     revocation={'localLogout':'confirmed','remoteRevocation':'unconfirmed'}
                 else:revocation=None

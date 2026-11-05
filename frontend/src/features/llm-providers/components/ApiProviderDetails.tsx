@@ -9,6 +9,7 @@ import { Icon } from '../../../app/Icon';
 import { ChatGPTPlan } from './ChatGPTPlan';
 import { ZaiProviderLimits } from './ZaiProviderLimits';
 import { ClaudePlan } from './ClaudePlan';
+import { ConnectionLimits } from './ConnectionLimits';
 
 export function ApiProviderDetails({ initial, api, removed, setLeaveGuard }: { initial: ApiProvider; api: ProviderApi; removed: () => void; setLeaveGuard?: LeaveGuard }) {
   const [provider, setProvider] = useState(initial), [error, setError] = useState('');
@@ -29,6 +30,7 @@ export function ApiProviderDetails({ initial, api, removed, setLeaveGuard }: { i
     <button type="button" className="button-secondary" onClick={() => { if (Object.values(guards.current).every(guard => !guard || guard())) void reload(); }}>Reload saved connection</button>
     {provider.kind === 'codex-subscription' ? <p className="provider-alert">Reload providers to view this connection’s original OpenAI account settings.</p> : provider.kind==='claude-plan'?<ClaudePlan key={provider.revision} api={api} provider={provider} saved={()=>{void reload();}}/>: provider.kind==='chatgpt-plan'?<ChatGPTPlan key={provider.revision} api={api} provider={provider} saved={()=>{void reload();}}/>:<ApiConnectionForm key={provider.revision} initial={provider} kind={provider.kind} api={api} saved={() => void reload()} setLeaveGuard={connectionGuard} />}
     {provider.kind === 'zai-coding-plan' && <ZaiProviderLimits key={'quota-' + provider.revision} provider={provider} api={api} />}
+    {provider.kind === 'openrouter' && <ConnectionLimits key={'limits-' + provider.revision} provider={provider} api={api} />}
     <ApiModels key={`models-${provider.revision}`} provider={provider} api={api} setLeaveGuard={modelGuard} />
   </div>;
 }

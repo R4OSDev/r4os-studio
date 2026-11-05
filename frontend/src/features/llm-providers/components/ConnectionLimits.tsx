@@ -15,5 +15,5 @@ export function ConnectionLimits({ provider, api }: { provider: ApiProvider; api
   const sample = api.connectionLimits[provider.id];
   const matching = sample?.configRevision === provider.revision && sample.credentialRevision === provider.credentialRevision ? sample : null;
   const limits = useSubscriptionLimits<Snapshot>(provider.id, transport, matching, provider.revision);
-  return <ConnectionLimitsView {...limits} enabled={provider.enabled && provider.keyConfigured} refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
+  return <ConnectionLimitsView {...limits} kind={provider.kind} enabled={provider.enabled && provider.keyConfigured} refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
 }
