@@ -3,8 +3,14 @@ import type { ProviderList, ProviderUsage } from '../../../../shared/llm-provide
 import type { ApiProvider } from '../../../../shared/api-providers.js';
 import type { ClaudeSubscriptionProvider } from '../../../../shared/claude-subscription.js';
 import { loadProviders, requestProvider } from './api';
-import { remainingUsage } from './usage-format';
+import { remainingUsage, zaiRemainingUsage } from './usage-format';
 import type { ConnectionLimits } from '../../../../shared/connection-limits';
+import type { ZaiSubscriptionLimits } from '../../../../shared/zai-subscription';
+
+function zaiSnapshot(value: ZaiSubscriptionLimits): ConnectionLimits {
+  return { providerId: value.providerId, configRevision: value.configRevision, credentialRevision: value.credentialRevision,
+    state: value.state, checkedAt: value.checkedAt, error: value.error, remainingPercent: zaiRemainingUsage(value), zai: value };
+}
 
 export function useProviders(usageVisible = true) {
   const [data, setData] = useState<ProviderList>({ providers: [], csrfToken: '', signInAvailable: false });
@@ -71,7 +77,8 @@ export function useProviders(usageVisible = true) {
 
   const request = useCallback(<T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
     const usageId = /^\/([^/?]+)\/usage(?:\/resets)?(?:\?.*)?$/.exec(path)?.[1];
-    const limitId = method === 'GET' ? /^\/api-connections\/([^/?]+)\/limits$/.exec(path)?.[1] : undefined;
+    const limit = method === 'GET' ? /^\/api-connections\/([^/?]+)\/(limits|subscription-limits)$/.exec(path) : null;
+    const limitId = limit?.[1];
     const configId = method === 'GET' ? /^\/api-connections\/([^/?]+)$/.exec(path)?.[1] : undefined;
     const sampleId = usageId ?? limitId ?? (configId ? 'config:'+configId : undefined);
     const generation = usageGeneration.current;
@@ -81,7 +88,8 @@ export function useProviders(usageVisible = true) {
         rememberUsage(usageId, (result as { usage?: ProviderUsage | null } | null)?.usage ?? null);
       }
       if (limitId && generation === usageGeneration.current && usageRequests.current[limitId] === sequence) {
-        const sample = result as ConnectionLimits | null, scope = connectionScopes.current[limitId];
+        const sample = limit?.[2] === 'subscription-limits' && result ? zaiSnapshot(result as unknown as ZaiSubscriptionLimits) : result as ConnectionLimits | null;
+        const scope = connectionScopes.current[limitId];
         const accepted = scope?.enabled && sample?.providerId === limitId && sample.configRevision === scope.revision && sample.credentialRevision === scope.credentialRevision ? sample : null;
         setConnectionLimits(previous => ({ ...previous, [limitId]: accepted }));
         const value = accepted?.state !== 'unknown' ? accepted?.remainingPercent : null;
@@ -110,22 +118,27 @@ export function useProviders(usageVisible = true) {
 
   useEffect(() => {
     if (!usageVisible) return;
+    let lastAccountRead = 0;
     const refresh = () => {
       if (document.hidden) return;
-      for (const provider of data.providers) {
+      const accountDue = Date.now() - lastAccountRead >= 60_000;
+      if (accountDue) lastAccountRead = Date.now();
+      for (const provider of accountDue ? data.providers : []) {
         if (provider.type === 'openai' && provider.status === 'connected' && provider.account) {
           rememberUsage(provider.id, null);
           void request(`/${provider.id}/usage`).catch(() => { /* Unknown usage is shown as a dash. */ });
         }
       }
       for (const provider of apiProviders) {
-        if (provider.enabled && provider.keyConfigured && ['claude-plan', 'openrouter'].includes(provider.kind)) {
+        if (provider.enabled && provider.keyConfigured && provider.kind === 'zai-coding-plan') {
+          void request(`/api-connections/${provider.id}/subscription-limits`).catch(() => { /* Only the existing cached observation is read. */ });
+        } else if (accountDue && provider.enabled && provider.keyConfigured && ['claude-plan', 'openrouter'].includes(provider.kind)) {
           void request(`/api-connections/${provider.id}/limits`).catch(() => { /* Cached limits retain their source and stale state. */ });
         }
       }
     };
     refresh();
-    const timer = setInterval(refresh, 60_000);
+    const timer = setInterval(refresh, 15_000);
     document.addEventListener('visibilitychange', refresh);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
   }, [data.providers, apiProviders, request, rememberUsage, usageVisible]);

@@ -1,4 +1,5 @@
 import type { ClaudeSubscriptionLimits } from './claude-subscription';
+import type { ZaiSubscriptionLimits } from './zai-subscription';
 
 export interface OpenRouterBudget {
   scope: string; limitUsd: number | null; spendUsd: number | null; remainingUsd: number | null;
@@ -20,4 +21,5 @@ export interface ConnectionLimits {
   remainingPercent: number | null;
   claude?: ClaudeSubscriptionLimits;
   openrouter?: OpenRouterKeyLimits;
+  zai?: ZaiSubscriptionLimits;
 }

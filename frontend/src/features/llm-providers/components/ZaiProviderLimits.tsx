@@ -3,6 +3,7 @@ import type { ApiProvider } from '../../../../../shared/api-providers';
 import type { ProviderApi } from '../useProviders';
 import { useSubscriptionLimits } from '../useSubscriptionLimits';
 import { ZaiLimitsView } from './ZaiLimitsView';
+import type { ZaiSubscriptionLimits } from '../../../../../shared/zai-subscription';
 
 export function ZaiProviderLimits({ provider, api }: { provider: ApiProvider; api: ProviderApi }) {
   const { request } = api;
@@ -12,6 +13,9 @@ export function ZaiProviderLimits({ provider, api }: { provider: ApiProvider; ap
       : base + '/subscription-limits' + (suffix === '/check' ? '/check' : '');
     return request<T>(path, method, body);
   }, [provider.id, request]);
-  const limits = useSubscriptionLimits(provider.id, transport);
-  return <ZaiLimitsView {...limits} enabled={provider.enabled && provider.keyConfigured} refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
+  const sample = api.connectionLimits[provider.id];
+  const matching = sample?.configRevision === provider.revision && sample.credentialRevision === provider.credentialRevision && sample.zai
+    ? { ...sample.zai, state: sample.state, error: sample.error } : null;
+  const limits = useSubscriptionLimits<ZaiSubscriptionLimits>(provider.id, transport, matching, provider.revision);
+  return <ZaiLimitsView {...limits} enabled={provider.enabled && provider.keyConfigured} refreshAvailable refresh={() => void limits.refresh()} recover={() => void limits.recover()} />;
 }

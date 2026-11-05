@@ -5463,3 +5463,18 @@ Stale values are marked, unlimited/unknown values have no invented percentage,
 and credential changes discard older replies. There is no management key,
 second login, billing mutation or model request. The source is OpenRouter's
 [current-key endpoint](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key).
+
+### Shared Z.AI navigation allowance (0.10.34)
+
+Every Coding Plan connection now shows its reported remaining model allowance
+in navigation before opening its details. The percentage uses the lowest valid
+5-hour/weekly model window from the same quota snapshot; unrelated tool request
+quotas are excluded. Native credits remain separate from model tokens. Missing,
+contradictory or unbound counters stay unknown; stale values have an asterisk
+and actual access holds have an exclamation mark and remain visible in details.
+
+The provider list reads the existing local quota cache. Opening either view
+does not start a monitoring check or inference. One shared refresh replaces both
+views, and older credential replies are discarded. The existing visible cache
+read cadence is shared instead of running a separate detail poller; account
+reads for OpenAI, Claude and OpenRouter retain their existing minute cadence.

@@ -1,14 +1,17 @@
 import type { ZaiSubscriptionLimits } from '../../../../../shared/zai-subscription';
+import { percent, zaiRemainingUsage } from '../usage-format';
 
 const amount = (value: number | null) => value === null ? 'Unknown' : new Intl.NumberFormat('en-GB', { maximumFractionDigits: 4 }).format(value);
 const date = (value: string) => new Date(value).toLocaleString('en-GB', { timeZoneName: 'short' });
-export function ZaiLimitsView({ sample, loading = false, busy = false, error = '', pending = false, notFound = false, enabled = true, compact = false, refresh, recover }: {
+export function ZaiLimitsView({ sample, loading = false, busy = false, error = '', pending = false, notFound = false, enabled = true, compact = false, refreshAvailable = !!sample, refresh, recover }: {
   sample: ZaiSubscriptionLimits | null; loading?: boolean; busy?: boolean; error?: string; pending?: boolean; notFound?: boolean;
-  enabled?: boolean; compact?: boolean; refresh: () => void; recover: () => void;
+  enabled?: boolean; compact?: boolean; refreshAvailable?: boolean; refresh: () => void; recover: () => void;
 }) {
-  const state = sample?.holds?.length ? 'Held' : loading ? 'Loading' : sample?.state === 'current' ? 'Reported' : sample?.state === 'stale' ? 'Stale' : 'Unknown';
+  const state = (sample?.holds?.length ? 'Held · ' : '') + (loading ? 'Loading' : sample?.state === 'current' ? 'Reported' : sample?.state === 'stale' ? 'Stale' : 'Unknown');
+  const remaining = zaiRemainingUsage(sample);
   const content = <>
     <p className="zai-limits-heading">Z.AI · GLM Coding Plan{sample?.level ? ' · ' + sample.level : ''} · {state}</p>
+    <p>Reported model allowance · {remaining === null ? 'Remaining percentage unknown' : percent(remaining) + ' remaining'}.</p>
     {sample?.holds?.map((hold, index) => <p className="provider-alert" role="status" key={index}>{hold.model ? hold.model + ': ' : ''}{hold.reason}{hold.resetAt ? ' Reset ' + date(hold.resetAt) + '.' : ' Reset time unknown.'} Continue explicitly after access is restored.</p>)}
     {(error || sample?.error) && <p className="provider-alert" role="status">{error || sample?.error}</p>}
     {!sample?.limits.length && <p>{loading ? 'Loading subscription limits…' : 'No subscription allowance has been reported. Missing data does not mean zero remaining.'}</p>}
@@ -22,7 +25,7 @@ export function ZaiLimitsView({ sample, loading = false, busy = false, error = '
     <p>Account-wide allowance includes usage outside Studio. Session statistics show this session’s reported token usage separately.</p>
     <p>Refreshing limits or reaching a reset does not resume a session or Goal. Studio does not enable paid extra usage.</p>
     <div className="zai-limit-actions">
-      <button type="button" className="button-secondary" disabled={busy || !enabled || !sample} onClick={refresh}>{busy ? 'Checking…' : pending ? notFound ? 'Retry original check' : 'Read original check' : 'Refresh subscription limits'}</button>
+      <button type="button" className="button-secondary" disabled={busy || !enabled || !refreshAvailable} onClick={refresh}>{busy ? 'Checking…' : pending ? notFound ? 'Retry original check' : 'Read original check' : 'Refresh subscription limits'}</button>
       {pending && !notFound && !busy && <button type="button" className="button-secondary" onClick={recover}>Check original result</button>}
     </div>
     {pending && <p role="status">The original limit check is pending. Its request is preserved on reload.</p>}
