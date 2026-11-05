@@ -53,17 +53,28 @@ class StudioWorker(Worker):
             return self.config['permissions'].get('studio.' + name, False)
         return [tool for tool in specifications(tool_scope(self.config)) if allowed(tool['name'][7:])]
 
-    def validate_calls(self, calls, tools):
+    def validate_calls(self, calls, tools, rejected=()):
         names = {tool['name'] for tool in tools}; ids = set()
+        previous_effect=False
         for call in calls:
             if call['name'] not in names or call['callId'] in ids: raise ModelFault('model_tool_not_allowed')
+            if call['callId'] in rejected:raise ModelFault('model_tool_identity_conflict')
             ids.add(call['callId'])
-            try: validate_arguments(call['name'][7:], call['arguments'], tool_scope(self.config))
-            except ValueError: raise ModelFault('model_invalid_tool_arguments') from None
             previous = self.store.db.execute('SELECT arguments_hash FROM tools WHERE run_id=? AND call_id=?',
                 (self.run_id, self.receipt_id(call['callId']))).fetchone()
             expected = hashlib.sha256(encode({'tool':call['name'], 'arguments':call['arguments']}).encode()).hexdigest()
             if previous and previous['arguments_hash'] != expected: raise ModelFault('model_tool_identity_conflict')
+            previous_effect=previous_effect or previous is not None
+        invalid=[]
+        for call in calls:
+            try: validate_arguments(call['name'][7:], call['arguments'], tool_scope(self.config))
+            except ValueError as error:
+                # Only the pure schema validator supplies feedback: no host,
+                # provider or tool-execution exception can enter this path.
+                invalid.append({'callId':call['callId'],'message':str(error)[:1024]})
+        if invalid:
+            if previous_effect:raise ModelFault('model_invalid_tool_arguments')
+            raise ToolArgumentsFault(invalid[:8])
 
     def receipt_id(self, call_id):
         return 'studio-' + hashlib.sha256(encode([self.run_id, call_id]).encode()).hexdigest()
@@ -254,6 +265,7 @@ class StudioWorker(Worker):
     async def cycle(self):
         from instructions import compose
         instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
+        correction_used=False; rejected=set()
         while self.active():
             await self.goal_worker.boundary(allow_play=False)
             if self.active() and (not self.goal_worker.execution or self.goal_worker.active):self.message_worker.boundary()
@@ -271,13 +283,21 @@ class StudioWorker(Worker):
                         [{'type':'tool_result','callId':call['callId'],'result':{'success':False,'error':'notAdmitted','output':'The original Goal budget or control stopped further work before execution.'}}],{'admissionOnly':True,'executionId':self.goal_worker.execution})
                 self.outcome='completed';return
             try:
-                self.validate_calls(calls, tools)  # Validate the entire set before any host effect.
+                self.validate_calls(calls, tools, rejected)  # Validate the entire set before any host effect.
             except ModelFault as error:
+                correctable=isinstance(error,ToolArgumentsFault) and not correction_used and not self.uncertain_effect
                 for index, call in enumerate(calls):
+                    feedback={'success':False,'error':'notAdmitted','output':'This entire tool batch was rejected before host execution.'}
+                    if isinstance(error,ToolArgumentsFault):
+                        feedback['validation']={'code':'invalidArguments','errors':error.details,'correctionAvailable':correctable}
+                        feedback['output']+=(' Correct the schema errors using the declared fields and original target IDs, then issue fresh tool calls. No call in this batch ran.'
+                            if correctable else ' The single argument-correction opportunity is unavailable; this run ends.')
                     self.conversation.append(self.run_id, 'rejected-' + str(self.round) + '-' + str(index), 'tool',
-                        [{'type':'tool_result', 'callId':call['callId'], 'result':{'success':False, 'error':'notAdmitted',
-                          'output':'This entire tool batch was rejected before host execution.'}}],
+                        [{'type':'tool_result', 'callId':call['callId'], 'result':feedback}],
                         {'admissionOnly':True, 'reasonCode':error.code, 'turnId':self.turn_id})
+                if correctable:
+                    correction_used=True;rejected.update(call['callId'] for call in calls)
+                    continue
                 raise
             if not calls:
                 if not any(p['type'] == 'text' and p['text'].strip() for p in result['content']):
@@ -395,3 +415,9 @@ class StudioWorker(Worker):
 
 class GoalHalted(Exception):
     pass
+
+
+class ToolArgumentsFault(ModelFault):
+    def __init__(self,errors):
+        super().__init__('model_invalid_tool_arguments',details=errors)
+        self.args=('The tool batch failed argument validation before execution. The single correction opportunity is exhausted or unavailable.',)

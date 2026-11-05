@@ -1439,7 +1439,8 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               }
             },
             "required": [
@@ -1470,12 +1471,14 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "subversionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
               }
             },
             "required": [
@@ -1763,7 +1766,8 @@
               "id": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
               }
             },
             "required": [
@@ -1784,7 +1788,8 @@
               "id": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
               }
             },
             "required": [
@@ -1805,12 +1810,14 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "id": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
               }
             },
             "required": [
@@ -1832,17 +1839,20 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "subversionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
               },
               "id": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
               }
             },
             "required": [
@@ -1865,17 +1875,20 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "subversionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
               },
               "id": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
               }
             },
             "required": [
@@ -1928,7 +1941,8 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               }
             },
             "required": [
@@ -1949,12 +1963,14 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "subversionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
               }
             },
             "required": [
@@ -1976,12 +1992,14 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "subversionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
               }
             },
             "required": [
@@ -1996,7 +2014,7 @@
     },
     {
       "name": "studio_update_roadmap",
-      "description": "Change this project’s shared roadmap with exact operation-, action- and target-specific fields. initialize takes requestId only. mutate needs requestId, expectedRevision, currentVersionId, target and action. For create/update input: version uses title/number/vision/notes/status; subversion uses title/number/description/notes/status; task/acceptance uses description/notes/status and NEVER title; roadmap update uses description/notes. Create requires title for version/subversion, description for task/acceptance. Update supplies only changed fields. Task/acceptance status: open/done/discarded; version/subversion: open/complete/discarded. create/reorder targets omit id; other targets need id. Subversion needs versionId; task/acceptance also subversionId. append_notes/replace_notes take only input.notes. delete takes input.confirm=true. reorder takes input.ids containing the full ordered collection. set_current targets a version with no input or empty input. export needs requestId, versionId, expectedRevision and currentVersionId and prepares a complete immutable snapshot. Preserve notes and separate acceptance checks; record actual evidence before done. Use stable UUID request IDs and read receipt before an uncertain retry. No automatic cleanup or rollover.",
+      "description": "Change this project’s shared roadmap with exact operation-, action- and target-specific fields. initialize takes requestId only. mutate needs requestId, expectedRevision, currentVersionId, target and action. For create/update input: version uses title/number/vision/notes/status; subversion uses title/number/description/notes/status; task/acceptance uses description/notes/status and NEVER title; roadmap update uses description/notes. Create requires title for version/subversion, description for task/acceptance. Update supplies only changed fields. Task/acceptance status: open/done/discarded; version/subversion: open/complete/discarded. create/reorder targets omit id; other targets need id. Subversion needs versionId; task/acceptance also subversionId. append_notes/replace_notes take only input.notes. delete takes input.confirm=true. reorder takes input.ids containing the full ordered collection. set_current targets a version with no input or empty input. export needs requestId, versionId, expectedRevision and currentVersionId and prepares a complete immutable snapshot. Preserve notes and separate acceptance checks; record actual evidence before done. Use stable UUID request IDs and read receipt before an uncertain retry. No automatic cleanup or rollover. For roadmap root updates, target.id is the root ID from initialize entity.id or overview roadmap.id, NEVER currentVersionId. Existing version/subversion/task/acceptance targets use their own exact ID and required parent IDs; create/reorder target the parent collection without a new entry ID.",
       "inputSchema": {
         "oneOf": [
           {
@@ -2037,7 +2055,8 @@
               "versionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Exact parent main-version ID from an original roadmap read."
               },
               "expectedRevision": {
                 "type": "integer",
@@ -2047,7 +2066,8 @@
               "currentVersionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Separate current-version binding from the latest read, not the roadmap root identity or an inferred target ID."
               }
             },
             "required": [
@@ -2081,7 +2101,8 @@
               "currentVersionId": {
                 "type": "string",
                 "minLength": 36,
-                "maxLength": 36
+                "maxLength": 36,
+                "description": "Separate current-version binding from the latest read, not the roadmap root identity or an inferred target ID."
               },
               "action": {
                 "type": "string"
@@ -2460,7 +2481,8 @@
                               "versionId": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact parent main-version ID from an original roadmap read."
                               }
                             },
                             "required": [
@@ -2482,12 +2504,14 @@
                               "versionId": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact parent main-version ID from an original roadmap read."
                               },
                               "subversionId": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
                               }
                             },
                             "required": [
@@ -2528,7 +2552,8 @@
                               "id": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
                               }
                             },
                             "required": [
@@ -2549,12 +2574,14 @@
                               "versionId": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact parent main-version ID from an original roadmap read."
                               },
                               "id": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
                               }
                             },
                             "required": [
@@ -2577,17 +2604,20 @@
                               "versionId": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact parent main-version ID from an original roadmap read."
                               },
                               "subversionId": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact parent subversion ID within versionId, from an original roadmap read."
                               },
                               "id": {
                                 "type": "string",
                                 "minLength": 36,
-                                "maxLength": 36
+                                "maxLength": 36,
+                                "description": "Exact ID of the selected target kind from its original read. For kind=roadmap use the root ID from initialize entity.id or overview roadmap.id, never currentVersionId."
                               }
                             },
                             "required": [

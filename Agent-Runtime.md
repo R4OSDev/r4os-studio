@@ -21,6 +21,17 @@ flush pending originals; a confirmed result and tool admission require that
 flush to succeed. Abrupt worker loss preserves only the durable prefix and the
 existing Unknown recovery rules; it never repeats a request or effect.
 
+Since 0.10.42, a fully confirmed model response whose entire tool batch fails
+only argument-schema validation before execution receives paired `notAdmitted`
+results with bounded validator feedback. The common loop permits one correction
+round per run, with fresh call IDs and all normal Goal, queue, Stop, scope,
+revision and admission checks. A second invalid batch ends the run. Unknown
+names, conflicting/reused call identities, prior effect receipts, ambiguous or
+incomplete protocol responses and transport errors never enter this correction
+path. Original calls, private provider payloads, usage and failed historical
+runs remain unchanged. Roadmap instructions distinguish the root ID from the
+separate current-version binding; no target ID is guessed or filled in.
+
 The unprivileged Python run worker owns conversation state, input admission,
 the model/tool loop, context, Goal, queue, cancellation and original receipts.
 The existing Node transport code owns HTTP and streaming. A protocol connector
