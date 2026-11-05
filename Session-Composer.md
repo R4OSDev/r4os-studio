@@ -1,5 +1,11 @@
 # Session composer
 
+## Run settings (0.10.45)
+
+The explanatory future-input paragraph is removed from Studio session composers.
+Project and skill sessions keep the same account/model controls, draft and
+original results. Native connection guidance and actionable error messages remain.
+
 ## Goal and model layout (0.8.38)
 
 The Goal card uses equal outer columns around the controls, so Play/Pause/Stop

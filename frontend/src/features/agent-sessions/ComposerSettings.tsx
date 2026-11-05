@@ -87,7 +87,7 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
         </select>
       </label>}<ContextIndicator context={session.context}/></div>
     </fieldset>
-    {session.engine.kind==='studio'?<p className="agent-terminal-hint">Choices apply to future inputs. Your draft and original results stay available.</p>:<p className="agent-terminal-hint">This conversation uses a native connection. Review a conversion in Session settings → Conversation to use a different direct connection.</p>}
+    {session.engine.kind !== 'studio' && <p className="agent-terminal-hint">This conversation uses a native connection. Review a conversion in Session settings → Conversation to use a different direct connection.</p>}
     {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
     {error && <p className="agent-choice-error" role="alert">{error}</p>}
   </div>;
