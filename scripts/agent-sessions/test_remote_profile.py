@@ -7,25 +7,26 @@ import subprocess
 import unittest
 import uuid
 from unittest.mock import AsyncMock, patch
-from test_remote_commands import RemoteCommandTests, remote_catalog
-from test_remote_files import RemoteFilesTests
-from profile import PROFILE, REMOTE_TOOLS, ROADMAP_PROFILE, SKILL_PROFILES, permission_tools, tools_for
+import test_remote_commands as remote_commands_tests
+from test_remote_commands import remote_catalog
+import test_remote_files as remote_files_tests
+from profile import PROFILE, REMOTE_TOOLS, permission_tools, tools_for
 from run_store import get_run, transition
 from store import connect, operation
-from tool_catalog import specifications, validate_arguments
+from tool_catalog import validate_arguments
 import remote_tools
 import job_store
 
 
 class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
-    setUp = RemoteCommandTests.setUp
-    tearDown = RemoteCommandTests.tearDown
-    open = RemoteCommandTests.open
-    start = RemoteCommandTests.start
-    finish = RemoteCommandTests.finish
-    setup_remote = RemoteCommandTests.setup_remote
-    setup_files = RemoteFilesTests.setup_files
-    wait = RemoteCommandTests.wait
+    setUp = remote_commands_tests.RemoteCommandTests.setUp
+    tearDown = remote_commands_tests.RemoteCommandTests.tearDown
+    open = remote_commands_tests.RemoteCommandTests.open
+    start = remote_commands_tests.RemoteCommandTests.start
+    finish = remote_commands_tests.RemoteCommandTests.finish
+    setup_remote = remote_commands_tests.RemoteCommandTests.setup_remote
+    setup_files = remote_files_tests.RemoteFilesTests.setup_files
+    wait = remote_commands_tests.RemoteCommandTests.wait
 
     def reserve(self, worker):
         # This suite requires actual RunStore.freeze; no trusted-field rewrite.
@@ -114,13 +115,8 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.returncode, 0, result.stderr.decode()); value = json.loads(result.stdout)['result']; self.assertEqual(value['id'], self.host['id']); self.assertNotIn('password', value)
         self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.directory.iterdir() if p.is_file()})
 
-    def test_v9_schemas_old_profile_separation_and_new_session_defaults(self):
-        self.assertEqual(PROFILE, 'studio-tools-v14'); self.assertEqual(len(specifications(PROFILE)), 44)
-        self.assertEqual(len(specifications('studio-tools-v9')),39)
-        self.assertEqual(len(specifications('studio-tools-v10')),40)
-        self.assertEqual(len(specifications('studio-tools-v11')),42)
-        self.assertFalse(set(REMOTE_TOOLS) & set(tools_for(ROADMAP_PROFILE)))
-        for profile in SKILL_PROFILES: self.assertFalse(set(REMOTE_TOOLS) & set(tools_for(profile)))
+    def test_remote_schemas_scope_and_new_session_defaults(self):
+        self.assertFalse(set(REMOTE_TOOLS) & set(tools_for('skill')))
         rid = str(uuid.uuid4())
         validate_arguments('remote_files', {'requestId': rid, 'action': 'download', 'path': '/C/a.bin', 'localPath': 'a.bin', 'expectedSha256': None, 'remoteSha256': 'f' * 64})
         for bad in ({'jobId': rid, 'requestId': rid}, {}, {'address': 'example.org'}):

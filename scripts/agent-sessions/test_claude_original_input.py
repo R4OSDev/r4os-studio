@@ -7,12 +7,12 @@ import uuid
 from claude_messages import acknowledge,finalize
 from run_store import admit
 from store import ProjectFault
-from test_claude_messages import ClaudeMessages
+import test_claude_messages as claude_messages_tests
 
 
 class OriginalClaudeInput(unittest.TestCase):
     def test_exact_native_echo_is_required_and_conflicts_are_retained(self):
-        f=ClaudeMessages();f.setUp();self.addCleanup(f.doCleanups)
+        f=claude_messages_tests.ClaudeMessages();f.setUp();self.addCleanup(f.doCleanups)
         with f.open() as store:
             run,_=admit(store,f.sid,{'requestId':str(uuid.uuid4()),'revision':1,'text':'Own public text'},f.providers)
             w=f.receiver(store,run)

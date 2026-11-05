@@ -7,7 +7,7 @@ from unittest.mock import patch
 import uuid
 
 import test_runs as fixtures
-from profile import (PROFILE, ROADMAP_PROFILE, tools_for, default_enabled,
+from profile import (PROFILE, permission_tools, default_enabled,
                      CODEX_VERSION, CODEX_SHA256)
 from roadmap_access import require
 from run_store import admit, get_run, transition
@@ -25,12 +25,10 @@ class RoadmapSettings(unittest.TestCase):
             before = tuple(store.db.execute('SELECT settings,engine,thread_id,revision FROM sessions').fetchone())
             session = store.get(self.sid)
             self.assertTrue(session['roadmapEnabled'])
-            self.assertFalse(session['roadmapAccess']['available'])
-            self.assertIn('New session required', session['roadmapAccess']['reason'])
             self.assertEqual(tuple(store.db.execute('SELECT settings,engine,thread_id,revision FROM sessions').fetchone()), before)
             changed = store.update(self.sid, {'revision': 1, 'roadmapEnabled': False}, self.providers)
             self.assertFalse(changed['roadmapEnabled'])
-            self.assertEqual(changed['permissions'], self.settings['permissions'])
+            self.assertEqual(changed['permissions'], session['permissions'])
             self.assertEqual(changed['webSearchEnabled'], session['webSearchEnabled'])
             self.assertEqual(changed['engine'], session['engine'])
         with self.open() as store:
@@ -47,20 +45,19 @@ class RoadmapSettings(unittest.TestCase):
             new = store.create({'name': 'New', 'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'requestId': str(uuid.uuid4())}, self.providers)
             self.assertTrue(new['roadmapEnabled'])
             self.assertTrue(new['roadmapAccess']['available'])
-            for n in range(1, 8):
-                profile = 'studio-tools-v' + str(n)
-                permissions = {'studio.' + t: default_enabled(t) for t in tools_for(profile)}
-                settings = {**self.settings, 'permissions': permissions}
-                store.db.execute('UPDATE sessions SET settings=?,engine=?,thread_id=? WHERE id=?',
-                                 (encode(settings), encode({**engine, 'profile': profile}), 'original-' + profile, self.sid))
-                store.db.commit()
-                before = tuple(store.row(self.sid))
-                self.assertTrue(store.get(self.sid)['roadmapEnabled'])
-                self.assertEqual(tuple(store.row(self.sid)), before)
-                saved = store.update(self.sid, {'revision': store.get(self.sid)['revision'], 'roadmapEnabled': False}, self.providers)
-                self.assertEqual(saved['permissions'], permissions)
-                self.assertEqual(saved['engine']['profile'], profile)
-                self.assertEqual(store.row(self.sid)['thread_id'], 'original-' + profile)
+            profile = 'studio-tools-v1'
+            permissions = {'studio.' + t: default_enabled(t) for t in permission_tools(PROFILE)}
+            settings = {**self.settings, 'permissions': permissions}
+            store.db.execute('UPDATE sessions SET settings=?,engine=?,thread_id=? WHERE id=?',
+                             (encode(settings), encode({**engine, 'profile': profile}), 'original-' + profile, self.sid))
+            store.db.commit()
+            before = tuple(store.row(self.sid))
+            self.assertTrue(store.get(self.sid)['roadmapEnabled'])
+            self.assertEqual(tuple(store.row(self.sid)), before)
+            saved = store.update(self.sid, {'revision': store.get(self.sid)['revision'], 'roadmapEnabled': False}, self.providers)
+            self.assertEqual(saved['permissions'], permissions)
+            self.assertEqual(json.loads(store.row(self.sid)['engine'])['profile'], profile)
+            self.assertEqual(store.row(self.sid)['thread_id'], 'original-' + profile)
 
     def test_concurrent_save_and_frozen_next_runs_do_not_rewrite_previous_admissions(self):
         def save(value):
@@ -83,12 +80,10 @@ class RoadmapSettings(unittest.TestCase):
             self.assertEqual(json.loads(get_run(store, run['id'])['config']), frozen)
             worker = SimpleNamespace(store=store, config=frozen)
             with self.assertRaises(ProjectFault): require(worker)
-            worker.config = {**frozen, 'roadmapEnabled': True, 'engine': {'profile': ROADMAP_PROFILE}}
-            with patch('roadmap_access.TOOLS_READY', False), self.assertRaises(ProjectFault): require(worker)
-            with patch('roadmap_access.TOOLS_READY', True):
-                require(worker)
-                worker.config['owner'] = {'type': 'project', 'id': str(uuid.uuid4())}
-                with self.assertRaises(ProjectFault): require(worker)
+            worker.config = {**frozen, 'roadmapEnabled': True}
+            require(worker)
+            worker.config['owner'] = {'type': 'project', 'id': str(uuid.uuid4())}
+            with self.assertRaises(ProjectFault): require(worker)
 
     def test_skill_sessions_cannot_store_or_gain_project_roadmap_access(self):
         import test_skills as skills
@@ -99,10 +94,7 @@ class RoadmapSettings(unittest.TestCase):
                 self.assertNotIn('roadmapEnabled', store.get(fixture.session['id']))
                 for value in [False, True]:
                     with self.assertRaises(ProjectFault): store.update(fixture.session['id'], {'revision': 1, 'roadmapEnabled': value}, fixture.providers)
-                run, _ = admit(store, fixture.session['id'], fixture.input(), fixture.providers)
-                config = json.loads(get_run(store, run['id'])['config'])
-                self.assertFalse(config['roadmapEnabled'])
-                config.update(roadmapEnabled=True, engine={'profile': ROADMAP_PROFILE})
-                with patch('roadmap_access.TOOLS_READY', True), self.assertRaises(ProjectFault):
+                config = {'owner': {'type': 'skill', 'id': fixture.ids[0]}, 'roadmapEnabled': True}
+                with self.assertRaises(ProjectFault):
                     require(SimpleNamespace(store=store, config=config))
         finally: fixture.tearDown()

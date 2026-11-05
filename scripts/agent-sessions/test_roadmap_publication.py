@@ -45,7 +45,6 @@ class Publication(unittest.TestCase):
                 if not changed: value.pop('githubBinding')
                 self.assertIn('STUDIO PUBLICATION CONTEXT: disabled.', roadmap(value)); self.assertIn(reason, roadmap(value))
             self.assertNotIn('CHECKED SUBVERSION PUBLICATION', roadmap({**config, 'roadmapEnabled': False}))
-            self.assertNotIn('CHECKED SUBVERSION PUBLICATION', roadmap({**config, 'engine': {'profile': 'studio-tools-v1'}}))
             self.assertEqual(roadmap({**config, 'owner': {'type': 'skill', 'id': self.pid}}), '')
 
     def test_only_original_completed_publication_or_noop_is_success(self):

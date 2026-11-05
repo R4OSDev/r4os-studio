@@ -10,8 +10,9 @@ import sqlite3
 import unittest
 import uuid
 from unittest.mock import AsyncMock, patch
-from test_remote_profile import RemoteProfileTests
-from test_remote_commands import RemoteCommandTests, remote_catalog, remote_checks, key
+import test_remote_profile as remote_profile_tests
+import test_remote_commands as remote_commands_tests
+from test_remote_commands import remote_catalog, remote_checks, key
 from session_store import SessionStore, encode
 from profile import PROFILE
 from run_store import admit, transition
@@ -25,16 +26,16 @@ import job_store
 
 
 class RemoteLifecycleTests(unittest.IsolatedAsyncioTestCase):
-    setUp = RemoteProfileTests.setUp
-    tearDown = RemoteProfileTests.tearDown
-    open = RemoteProfileTests.open
-    start = RemoteProfileTests.start
-    finish = RemoteProfileTests.finish
-    setup_remote = RemoteProfileTests.setup_remote
-    reserve = RemoteProfileTests.reserve
-    native = RemoteProfileTests.native
-    call = RemoteProfileTests.call
-    wait = RemoteProfileTests.wait
+    setUp = remote_profile_tests.RemoteProfileTests.setUp
+    tearDown = remote_profile_tests.RemoteProfileTests.tearDown
+    open = remote_profile_tests.RemoteProfileTests.open
+    start = remote_profile_tests.RemoteProfileTests.start
+    finish = remote_profile_tests.RemoteProfileTests.finish
+    setup_remote = remote_profile_tests.RemoteProfileTests.setup_remote
+    reserve = remote_profile_tests.RemoteProfileTests.reserve
+    native = remote_profile_tests.RemoteProfileTests.native
+    call = remote_profile_tests.RemoteProfileTests.call
+    wait = remote_profile_tests.RemoteProfileTests.wait
 
     def second(self):
         host = remote_catalog.operation(self.directory, {'operation': 'create', 'input': {'requestId': str(uuid.uuid4()), 'name': 'Own DNS alias', 'address': 'localhost'}})
@@ -96,7 +97,7 @@ class RemoteLifecycleTests(unittest.IsolatedAsyncioTestCase):
         allowed = await self.call(second, 'run_remote_command', {'requestId': str(uuid.uuid4()), 'command': 'OWN NEW WORK'})
         self.assertTrue(allowed['success'], allowed); self.assertEqual(len(self.calls), 3)
         new_first = self.start(); new_first.development.stop_owned = AsyncMock()
-        legacy = await RemoteCommandTests.call(self, new_first, 'run_remote_command', args)
+        legacy = await remote_commands_tests.RemoteCommandTests.call(self, new_first, 'run_remote_command', args)
         self.assertEqual(legacy['result']['state'], 'unknown'); self.assertEqual(len(self.calls), 3)
         replay = await self.call(new_first, 'run_remote_command', args)
         self.assertFalse(replay['success']); self.assertEqual(replay['error'], 'unknown'); self.assertEqual(len(self.calls), 3)

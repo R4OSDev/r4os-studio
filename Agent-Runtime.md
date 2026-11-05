@@ -32,6 +32,25 @@ path. Original calls, private provider payloads, usage and failed historical
 runs remain unchanged. Roadmap instructions distinguish the root ID from the
 separate current-version binding; no target ID is guessed or filled in.
 
+## Focused verification
+
+Since 0.10.43, fixture users reference their test module instead of importing
+TestCase classes into another module's globals. This prevents `unittest` from
+discovering the same suite again. A subclass needing only setup/teardown reuses
+those helpers without inheriting unrelated test methods. Original behavior
+cases stay in their defining module. Obsolete catalog-age hashes, tool counts,
+retired default assumptions and keyword-only workflow snapshots are removed;
+current scope, permission, revision, original-effect and recovery checks remain.
+
+Use the affected existing cases for a change, for example
+`python3 -m unittest test_roadmap_contract.RoadmapContractTest` from the script
+directory, or `pnpm exec tsx --test backend/test/agent-sessions.test.ts`.
+Tests run only when explicitly invoked; the production launcher runs the built
+server. A smaller test suite does not by itself reduce chat latency. Temporary
+qualification fixtures and benchmarks do not become product self-tests, model
+probes or background polling. New permanent cases need a concrete feature risk
+and independent value; small reversible edits need no permanent test by default.
+
 The unprivileged Python run worker owns conversation state, input admission,
 the model/tool loop, context, Goal, queue, cancellation and original receipts.
 The existing Node transport code owns HTTP and streaming. A protocol connector

@@ -8,7 +8,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from test_skill_mcp_tools import ManagedBroker
+import test_skill_mcp_tools as skill_mcp_tools_tests
 from skill_session_state import birth,launch_record
 from skill_mcp_service import Service
 from skill_session_client import SessionClient
@@ -17,7 +17,7 @@ from skill_mcp_client import McpFault
 
 class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        await ManagedBroker.asyncSetUp(self)
+        await skill_mcp_tools_tests.ManagedBroker.asyncSetUp(self)
         self.services=[];self.servers=[];self.monitors=[]
         self.database=self.worker.store.directory/'Sessions.sqlite';self.database.parent.mkdir(parents=True)
         self.session_db=sqlite3.connect(self.database)
@@ -46,7 +46,7 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
         for task in self.monitors:task.cancel()
         await asyncio.gather(*self.monitors,return_exceptions=True)
         self.session_db.close()
-        await ManagedBroker.asyncTearDown(self)
+        await skill_mcp_tools_tests.ManagedBroker.asyncTearDown(self)
 
     async def test_same_native_process_and_state_survive_a_new_original_run(self):
         first=await self.remote.call('echo',{'value':'first'},request_id=str(uuid.uuid4()))

@@ -11,7 +11,6 @@ from profile import PROFILE, permission_tools
 from run_store import admit, get_run
 from session_store import encode
 from system_prompt import read, update
-from tool_catalog import specifications
 
 
 CONTRACT = Path(__file__).resolve().parents[2] / 'shared/project-roadmap-instructions.txt'
@@ -57,15 +56,11 @@ class RoadmapInstructions(unittest.TestCase):
             self.assertFalse(any(config['permissions'].values()))
             self.assertEqual(config['systemPrompt']['sha256'], hashlib.sha256(global_source['text'].encode()).hexdigest())
 
-    def test_off_old_profiles_and_skill_owners_receive_only_actual_capabilities(self):
+    def test_off_and_skill_owners_receive_only_actual_capabilities(self):
         config, _ = self.frozen()
         disabled = compose({**config, 'roadmapEnabled': False})
         self.assertIn('Roadmap tools are disabled for this run', disabled)
         self.assertNotIn('STUDIO PROJECT ROADMAP CONTRACT', disabled)
-        for number in range(1, 8):
-            text = compose({**config, 'engine': {'profile': 'studio-tools-v' + str(number)}})
-            self.assertIn('New session required', text)
-            self.assertNotIn('STUDIO PROJECT ROADMAP CONTRACT', text)
         skill_text = 'Own unchanged Skill Manager instructions.'
         skill = {'owner': {'type': 'skill', 'id': self.pid}, 'roadmapEnabled': True,
                  'skillManagerPrompt': {'text': skill_text, 'sha256': hashlib.sha256(skill_text.encode()).hexdigest()},
@@ -75,20 +70,3 @@ class RoadmapInstructions(unittest.TestCase):
         self.assertNotIn('STUDIO PROJECT ROADMAP', compose(skill))
         legacy = {k: v for k, v in config.items() if k not in ('owner', 'roadmapEnabled')}
         self.assertNotIn('STUDIO ROADMAP', compose(legacy))
-
-    def test_english_workflow_matches_complete_archive_docs_verification_and_single_rollover(self):
-        text = CONTRACT.read_text(encoding='utf-8')
-        for required in ('clean up the roadmap', 'tidy up the roadmap', 'Roadmap aufräumen',
-                         'Ordinary implementation requests do not authorize roadmap cleanup',
-                         'Docs/Changelogs/0.1.X.txt', 'without a V prefix', 'every level of notes',
-                         'separate acceptance items', 'checks actually passed', 'do not add another blanket confirmation',
-                         'exactly one next empty version', '0.1.X -> 0.2.X', 'read view=receipt',
-                         'Never repeat an uncertain effect', 'Preserve an existing different archive',
-                         'Missing file rights', 'does not automatically establish semantic completeness'):
-            self.assertIn(required, text)
-        phases = [text.index(term) for term in ('1. Prepare', '2. Extract', '3. Verify', '4. Only after')]
-        self.assertEqual(phases, sorted(phases))
-        cleanup = next(t for t in specifications(PROFILE) if t['name'] == 'studio_cleanup_roadmap')
-        for term in ('Roadmap aufräumen', 'Docs/Changelogs/<version>.txt', 'preserve', 'exactly one next empty', 'unavailable'):
-            self.assertIn(term.lower(), cleanup['description'].lower())
-        self.assertEqual(cleanup['inputSchema']['properties']['action']['enum'], ['prepare', 'status', 'finalize', 'cancel'])

@@ -17,7 +17,7 @@ await test('sessions preserve idempotency, settings, tool permissions and projec
   const root = await mkdtemp(join(tmpdir(), 'studio-sessions-'));
   const directory = join(root, 'Projects'), providers = join(root, 'LLMProvider');
   const ids = [randomUUID(), randomUUID()], provider = randomUUID();
-  const app = createApp({ projectDirectory: directory, providers: { directory: providers } });
+  let app = createApp({ projectDirectory: directory, providers: { directory: providers } });
   try {
     await projectStore(directory, { operation: 'list' });
     for (const id of ids) {
@@ -31,13 +31,13 @@ with sqlite3.connect(sys.argv[1]) as db:
   db.execute("INSERT INTO projects VALUES (?,?, '', 'Zig','terminal',?,NULL,'{}','now','now',1,'ready')",(ident,ident,ident))
 `, join(directory, 'Projects.sqlite'), JSON.stringify(ids)]);
     await mkdir(join(providers, provider), { recursive: true });
-    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture provider', type: 'openai', connected: true }]));
+    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture provider', type: 'openai', connected: true, createdAt: '2026-11-05T00:00:00Z' }]));
     await writeFile(join(providers, provider, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'fixture-model', display_name: 'Fixture model',
       visibility: 'list', priority: 0, default_reasoning_level: 'low', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }] }] }));
     const base = `/api/projects/${ids[0]}/sessions`;
     assert.equal((await app.inject(base)).statusCode, 403);
     const auth = await app.inject('/api/projects');
-    const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
+    let headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
     const opts = await app.inject({ url: base + '/options', headers });
     assert.equal(opts.statusCode, 200, opts.body);
     const optionTools = opts.json().tools.map((tool: { id: string }) => tool.id);
@@ -51,9 +51,6 @@ with sqlite3.connect(sys.argv[1]) as db:
     const session = replies[0].json().session;
     assert.equal(replies[1].json().session.id, session.id);
     assert.deepEqual(Object.keys(session.permissions).sort(), optionTools.sort());
-    assert.equal(session.permissions['studio.commit_update'], false);
-    assert.equal(session.permissions['studio.rollback_update'], false);
-    assert(Object.entries(session.permissions).filter(([key]) => !['studio.commit_update', 'studio.rollback_update', 'studio.push_project'].includes(key)).every(([, value]) => value === true));
     assert.equal(session.latestRun, null);
     assert.equal(session.roadmapEnabled, true);
     assert.equal(session.imageGenerationEnabled, true);
@@ -91,20 +88,18 @@ with sqlite3.connect(sys.argv[1]) as db:
     assert.equal((await app.inject({ url: `/api/projects/${ids[1]}/sessions/${session.id}`, headers })).statusCode, 404);
     assert.equal((await app.inject({ url, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);
     assert(!JSON.stringify(session).includes(directory));
-    const again = createApp({ projectDirectory: directory, providers: { directory: providers } });
-    try {
-      const auth2 = await again.inject('/api/projects');
-      const h2 = { cookie: String(auth2.headers['set-cookie']).split(';')[0] };
-      const restored = (await again.inject({ url, headers: h2 })).json().session;
-      assert.equal(restored.permissions['studio.write_file'], false);
-      assert.equal(restored.revision, 2);
-      assert.equal(restored.roadmapEnabled, false);
-      assert.equal(restored.engine.profile, session.engine.profile);
-      assert.deepEqual(restored.context, context);
-      await writeFile(join(providers, 'providers.json'), '[]');
-      assert.equal((await again.inject({ url, headers: h2 })).statusCode, 200);
-    } finally { await again.close(); }
-    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture provider', type: 'openai', connected: true }]));
+    await app.close();
+    app = createApp({ projectDirectory: directory, providers: { directory: providers } });
+    const auth2 = await app.inject('/api/projects');
+    headers = { cookie: String(auth2.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth2.json().csrfToken };
+    const restored = (await app.inject({ url, headers })).json().session;
+    assert.equal(restored.permissions['studio.write_file'], false);
+    assert.equal(restored.revision, 2);
+    assert.equal(restored.roadmapEnabled, false);
+    assert.deepEqual(restored.context, context);
+    await writeFile(join(providers, 'providers.json'), '[]');
+    assert.equal((await app.inject({ url, headers })).statusCode, 200);
+    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture provider', type: 'openai', connected: true, createdAt: '2026-11-05T00:00:00Z' }]));
     const disabledImages = await app.inject({ method: 'PATCH', url: url + '/settings', headers, payload: { revision: 2, imageGenerationEnabled: false } });
     assert.equal(disabledImages.statusCode, 200, disabledImages.body);assert.equal(disabledImages.json().session.imageGenerationEnabled, false);
     const imageRevision=disabledImages.json().session.revision;

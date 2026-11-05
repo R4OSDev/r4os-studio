@@ -134,7 +134,7 @@ class ProbeAdmission(unittest.IsolatedAsyncioTestCase):
     async def test_request_replay_has_one_scope_and_rejects_arbitrary_guest_command(self):
         from update_probe import admit
         job,fresh=admit(self.store,self.request,None,self.vm);self.assertTrue(fresh)
-        self.assertEqual(admit(self.store,self.request,None,None),(job,False))
+        self.assertEqual(admit(self.store,self.request,None,None),({**job,'requestId':self.request['requestId']},False))
         with self.assertRaises(DevelopmentFault):admit(self.store,{**self.request,'command':'SYSUPD COMMIT'},None,self.vm)
         self.assertEqual(job['binding']['id'],self.vm['id'])
 

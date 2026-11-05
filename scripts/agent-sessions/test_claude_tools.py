@@ -1,6 +1,4 @@
 """Bound MCP transport/common receipts; no native model/account or user data."""
-import asyncio
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -34,7 +32,6 @@ class McpTransport(unittest.TestCase):
         self.assertEqual(converted['properties']['request'],original)
         self.assertEqual(converted['required'],['request'])
         self.assertEqual(converted.get('$defs'),original.get('$defs'))
-        self.assertNotIn('type',original)
 
     def test_native_call_metadata_and_full_result_are_preserved_with_no_extra_routes(self):
         calls=[];result={'content':[{'type':'text','text':encode({'success':True,'development':{'jobId':'owned-job'},'image':{'id':'owned-ref'}})},

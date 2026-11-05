@@ -8,7 +8,8 @@ import unittest
 from unittest.mock import AsyncMock, patch
 from contracts import DevelopmentFault, UnconfirmedGuestEffect
 from inbox_sftp import InboxSftp, PREFIX, Reader, RemoteStatus, string, u32, u64, inbox_path
-from test_sysupd import IDLE, capture, ProbeAdmission
+import test_sysupd as sysupd_tests
+from test_sysupd import IDLE, capture
 from update_transfer import Transfer
 
 TMP=PREFIX+'U123ABCD.TMP'
@@ -67,12 +68,15 @@ class Framing(unittest.IsolatedAsyncioTestCase):
                 await client.put(TMP,path,{'bytes':20000,'sha256':hashlib.sha256(b'a'*20000).hexdigest()})
             client.close.assert_not_awaited()
 
-class Admission(ProbeAdmission):
+class Admission(unittest.IsolatedAsyncioTestCase):
+    setUp = sysupd_tests.ProbeAdmission.setUp
+    tearDown = sysupd_tests.ProbeAdmission.tearDown
+
     async def test_transfer_request_replay_is_separate_from_probe_and_serializes_project(self):
         from update_probe import admit
         job,fresh=admit(self.store,self.request,None,self.vm,kind='update_transfer')
         self.assertTrue(fresh);self.assertEqual(job['kind'],'update_transfer')
-        self.assertEqual(admit(self.store,self.request,None,None,kind='update_transfer'),(job,False))
+        self.assertEqual(admit(self.store,self.request,None,None,kind='update_transfer'),({**job,'requestId':self.request['requestId']},False))
         with self.assertRaises(DevelopmentFault):admit(self.store,self.request,None,self.vm)
         with self.assertRaises(DevelopmentFault):self.store.admit('build',self.fixture.fixture.input())
 
@@ -181,4 +185,3 @@ class Reconciliation(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['updateTransfer']['reconciliation']['readOnly'])
 
 if __name__=='__main__':unittest.main()
-

@@ -1,28 +1,26 @@
 """Real SCM-bound workers and SFTP packets through an offline local process."""
-import hashlib
 import json
-import os
-from pathlib import Path
 import sqlite3
 import unittest
 import uuid
 from unittest.mock import patch
-from test_remote_commands import RemoteCommandTests, REMOTE
+import test_remote_commands as remote_commands_tests
+from test_remote_commands import REMOTE
 from transport import RemoteTransport
 import file_access
 
 
 class RemoteFilesTests(unittest.IsolatedAsyncioTestCase):
-    setUp = RemoteCommandTests.setUp
-    tearDown = RemoteCommandTests.tearDown
-    open = RemoteCommandTests.open
-    start = RemoteCommandTests.start
-    finish = RemoteCommandTests.finish
-    setup_remote = RemoteCommandTests.setup_remote
-    reserve = RemoteCommandTests.reserve
-    call = RemoteCommandTests.call
-    good = RemoteCommandTests.good
-    wait = RemoteCommandTests.wait
+    setUp = remote_commands_tests.RemoteCommandTests.setUp
+    tearDown = remote_commands_tests.RemoteCommandTests.tearDown
+    open = remote_commands_tests.RemoteCommandTests.open
+    start = remote_commands_tests.RemoteCommandTests.start
+    finish = remote_commands_tests.RemoteCommandTests.finish
+    setup_remote = remote_commands_tests.RemoteCommandTests.setup_remote
+    reserve = remote_commands_tests.RemoteCommandTests.reserve
+    call = remote_commands_tests.RemoteCommandTests.call
+    good = remote_commands_tests.RemoteCommandTests.good
+    wait = remote_commands_tests.RemoteCommandTests.wait
 
     async def setup_files(self, lost=False):
         worker = await self.setup_remote(); self.workspace = self.projects / self.pid / 'Workspace'

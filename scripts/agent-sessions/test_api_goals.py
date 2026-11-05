@@ -8,7 +8,6 @@ import sqlite3
 from contextlib import closing
 from types import SimpleNamespace
 
-from api_provider_store import ApiProviders
 from api_catalog import Catalogs
 from goal_store import Goals,exists
 from profile import CODEX_SHA256
@@ -17,7 +16,8 @@ from session_store import encode
 from store import ProjectFault
 from worker import Worker
 from attachment_store import birth
-from test_api_usage import ApiUsageTests,request
+import test_api_usage as api_usage_tests
+from test_api_usage import request
 import test_runs as fixtures
 
 
@@ -25,7 +25,7 @@ class ApiGoals(unittest.TestCase):
     setUp=fixtures.Runs.setUp
     tearDown=fixtures.Runs.tearDown
     open=fixtures.Runs.open
-    ready=ApiUsageTests.ready
+    ready=api_usage_tests.ApiUsageTests.ready
 
     def prepared(self,store):
         self.ready(store,'responses')

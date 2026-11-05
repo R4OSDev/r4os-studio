@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 import uuid
-from test_runs import Runs
+import test_runs as runs_tests
 from run_store import admit
 from terminal import Terminals, bounded_text
 from session_store import encode
@@ -33,7 +33,7 @@ class TextBounds(unittest.TestCase):
 @unittest.skipIf(os.getuid() == 0, 'Run this namespace test as an unprivileged user.')
 class Terminal(unittest.TestCase):
     def test_completed_commands_reuse_slots_and_old_handles_retain_final_status(self):
-        fixture = Runs(); fixture.setUp()
+        fixture = runs_tests.Runs(); fixture.setUp()
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
@@ -62,7 +62,7 @@ class Terminal(unittest.TestCase):
         finally: store.close(); fixture.tearDown()
 
     def test_four_live_processes_still_limit_concurrency(self):
-        fixture = Runs(); fixture.setUp()
+        fixture = runs_tests.Runs(); fixture.setUp()
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
@@ -79,7 +79,7 @@ class Terminal(unittest.TestCase):
         finally: store.close(); fixture.tearDown()
 
     def test_completed_processes_with_pending_output_are_not_discarded(self):
-        fixture = Runs(); fixture.setUp()
+        fixture = runs_tests.Runs(); fixture.setUp()
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
@@ -97,7 +97,7 @@ class Terminal(unittest.TestCase):
         finally: store.close(); fixture.tearDown()
 
     def test_pipes_pty_timeouts_handles_and_cleanup(self):
-        fixture = Runs(); fixture.setUp()
+        fixture = runs_tests.Runs(); fixture.setUp()
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)

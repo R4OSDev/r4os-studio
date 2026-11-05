@@ -1,6 +1,4 @@
-import asyncio
 import hashlib
-import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -10,15 +8,9 @@ import test_image_import as image_import_tests
 
 class Workflow(unittest.TestCase):
     def config(self):return {'engine':{'profile':'studio-tools-v11'},'owner':{'type':'project'},'nativeImageGeneration':True,'permissions':{'studio.list_generated_images':True,'studio.import_generated_image':True,'studio.write_file':True,'studio.read_file':True}}
-    def test_complete_workflow_uses_real_tools_evidence_and_frozen_rights(self):
-        text=compose(self.config())
-        for word in ('image_gen.imagegen','studio_list_generated_images','studio_import_generated_image','RESOURCE=NAME:','ICON=<path>','resourceInventory','Verified in guest',ALIAS,'straight RGBA32','cannot authorize Roadmap cleanup'):
-            self.assertIn(word,text)
-        self.assertLess(len(text),7000)
-    def test_disabled_unknown_legacy_skill_and_write_denied_remain_explicit(self):
+    def test_disabled_unknown_skill_and_write_denied_remain_explicit(self):
         value=self.config();value['nativeImageGeneration']=False;value['imageGenerationCapability']={'reason':'Account policy unavailable.'};self.assertIn('Account policy unavailable',compose(value));self.assertIn('must not be regenerated automatically',compose(value))
         value['permissions']['studio.write_file']=False;self.assertIn('do not bypass disabled import/write rights',compose(value))
-        value['engine']['profile']='studio-tools-v10';self.assertIn('original tool profile',compose(value));self.assertNotIn('studio_import_generated_image',compose(value))
         value['engine']['profile']='studio-skill-tools-v4';value['owner']['type']='skill';self.assertIn('no app project importer',compose(value));self.assertNotIn('RESOURCE=NAME:',compose(value))
     def test_only_explicit_virtual_sdk_root_routes_to_companion(self):
         self.assertEqual(target({'root':'sdk','path':ALIAS+'/images.zig'}),['images.zig']);self.assertIsNone(target({'root':'workspace','path':ALIAS+'/images.zig'}));self.assertIsNone(target({'root':'sdk','path':'r4os/ico.zig'}))

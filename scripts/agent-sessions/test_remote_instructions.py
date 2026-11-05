@@ -66,10 +66,8 @@ class RemoteInstructions(unittest.TestCase):
         self.assertEqual(frozen, before); self.assertEqual(agents.read_bytes(), raw_agents); self.assertEqual(settings.read_bytes(), raw_settings)
         self.assertEqual(read(self.projects), global_source); self.assertEqual(frozen['systemPrompt']['sha256'], hashlib.sha256(global_source['text'].encode()).hexdigest())
 
-    def test_old_thread_and_disabled_or_partial_rights_have_only_actual_capability_data(self):
-        self.host(); old = self.frozen('studio-tools-v8'); public = data(compose(old))
-        self.assertEqual(public['assignedHost']['name'], 'Own Desktop'); self.assertFalse(public['bindingFrozen']); self.assertFalse(public['profileCompatible'])
-        self.assertFalse(any(public['permissions'].values())); self.assertIn('New session required', public['availabilityReason'])
+    def test_disabled_or_partial_rights_have_only_actual_capability_data(self):
+        self.host()
         enabled = self.frozen(); disabled = deepcopy(enabled)
         disabled['permissions'] = {k: False for k in enabled['permissions']}; p = data(compose(disabled)); self.assertFalse(any(p['permissions'].values()))
         enabled['permissions']['studio.remote_files'] = False; partial = data(compose(enabled))
@@ -82,26 +80,8 @@ class RemoteInstructions(unittest.TestCase):
             config = self.frozen(); public = data(compose(config))
         self.assertIsNone(public['assignedHost']); self.assertEqual(public['defaultTarget'], 'virtual_machine'); self.assertIn('No Remote Host', public['availabilityReason'])
         text = 'Own skill manager text.'; skill = {'owner': {'type': 'skill', 'id': self.pid}, 'permissions': {},
-            'skillManagerPrompt': {'text': text, 'sha256': hashlib.sha256(text.encode()).hexdigest()}}
+            'engine': {'toolScope': 'skill'}, 'skillManagerPrompt': {'text': text, 'sha256': hashlib.sha256(text.encode()).hexdigest()}}
         self.assertNotIn('STUDIO REMOTE HOST', compose(skill)); self.assertEqual(compose(skill).count(text), 1)
 
-    def test_dialog_contract_covers_explicit_target_continuation_vm_and_concrete_limits(self):
-        self.host(); config = self.frozen(); contract = CONTRACT.read_text(); public = data(compose(config))
-        scenarios = [
-            ('Build and test the app.', 'virtual_machine', 'never an automatic fallback'),
-            ('Arbeite auf Own Desktop.', 'assigned_remote', 'Arbeite auf NAME'),
-            ('work on Own Desktop', 'assigned_remote', 'work on NAME'),
-            ('Continue that same remote task.', 'same_remote_task', 'follow-up messages'),
-            ('Now test in the VM.', 'virtual_machine', 'An explicit VM instruction switches'),
-            ('work on Another Computer', 'clarify_target', 'If a name is wrong or genuinely ambiguous'),
-            ('Remote permission is off.', 'explain_permission', 'disabled rights'),
-            ('The host is offline.', 'explain_availability', 'failed or missing connection checks'),
-            ('Send my existing artifact.', 'permitted_sftp', 'existing verified artifact'),
-            ('Replace an existing remote file.', 'unsupported', 'no overwrite'),
-        ]
-        for message, expected, anchor in scenarios:
-            with self.subTest(message=message, expected=expected):
-                self.assertIn(anchor, contract); self.assertEqual(public['defaultTarget'], 'virtual_machine')
-                self.assertEqual(public['assignedHost']['name'], 'Own Desktop')
         # These are reviewed dialog/contract fixtures, not claims about a paid
         # model choosing a tool. Native dispatch is exercised in the v9 suite.
