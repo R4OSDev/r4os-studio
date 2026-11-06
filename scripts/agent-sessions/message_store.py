@@ -158,6 +158,10 @@ class Messages:
                 if 'afterRun' in data:
                     from claude_waiting import bind
                     bind(data['afterRun'],queue_context)
+            from quota_wait import row as quota_wait,control as quota_control
+            waiting=quota_wait(self.store,sid)
+            if waiting and waiting['state'] in ('waiting','dispatching','unknown'):
+                quota_control(self.store,sid,'New accepted human input replaced the automatic quota continuation.')
             if data['mode'] == 'steer': config, attachments = json.loads(run['config']), []
             else: config, attachments, _ = capture_input(self.store, sid, run_input, provider_dir, image_capability,queued_claude=queue_context)
             frozen = {'config': config, 'runInput': run_input, 'attachments': attachments}
@@ -236,6 +240,9 @@ class Messages:
                     from claude_waiting import record_resume
                     record_resume(self.store,sid,data,hashed)
                 self.store.db.execute('UPDATE session_inboxes SET held=0,reason=NULL,revision=revision+1 WHERE session_id=?', (sid,))
+            from quota_wait import row as quota_wait,control as quota_control
+            waiting=quota_wait(self.store,sid)
+            if waiting and waiting['state'] in ('waiting','dispatching','unknown'):quota_control(self.store,sid,'Explicit queue control replaced automatic quota continuation.')
             result = self.snapshot(sid)
             if data['action']=='resume':
                 last=self.store.db.execute('SELECT id FROM runs WHERE session_id=? AND busy=0 ORDER BY rowid DESC LIMIT 1',(sid,)).fetchone()

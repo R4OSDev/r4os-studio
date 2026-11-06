@@ -25,5 +25,8 @@ async def dispatch(host, store, sid, operation, data=None, request_id=None):
     if operation == 'session_connection_limits':
         return await asyncio.to_thread(limits.listing, provider['id'])
     if operation == 'session_connection_limit_refresh':
-        return await asyncio.to_thread(limits.refresh, provider['id'], data)
+        result=await asyncio.to_thread(limits.refresh, provider['id'], data)
+        from quota_wait_host import notify
+        notify(host,provider['id'])
+        return result
     raise ProjectFault('Unknown session account-limit operation.', 400)

@@ -34,7 +34,12 @@ async def dispatch(host,kind,ident,sid):
             from run_boundary import require
             source=await require(host,store,sid)
             if source is not None and source['state']!='completed':
-                control.block(store,sid,'The previous run did not complete normally. Continue explicitly.');return
+                waiting=quota_wait(store,sid);prior=json.loads(source['config']).get('goalKeepalive') or {}
+                explicit_restart=bool(waiting and waiting['state']=='cancelled' and waiting.get('sourceRunId')==source['id']
+                    and value.get('lastIntent')=='play' and value['generation']>prior.get('generation',0)
+                    and value.get('playRequestId')!=prior.get('playRequestId') and source['state']=='failed')
+                if not explicit_restart:
+                    control.block(store,sid,'The previous run did not complete normally. Continue explicitly.');return
             execution=control.prepare(store,sid,source['id'] if source else None)
             if not execution:return
             session=store.get(sid)

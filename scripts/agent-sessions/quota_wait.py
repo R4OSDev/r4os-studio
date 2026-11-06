@@ -38,7 +38,7 @@ def control(store,sid,reason,only_goal=False):
     if only_goal and (not value or not value.get('goal')):return
     schema(store);value=value or {'epoch':0,'revision':0,'state':'idle'}
     value.update(epoch=value['epoch']+1,revision=value['revision']+1)
-    if value['state'] in OPEN:value.update(state='cancelled',reason=reason,endedAt=now())
+    if value['state'] in (*OPEN,'unknown'):value.update(state='cancelled',reason=reason,endedAt=now())
     put(store,sid,value)
 
 def settings_hash(store,sid):
@@ -119,6 +119,16 @@ def snapshot_evidence(config,error,providers):
     return {'kind':'confirmed-primary-quota','code':'confirmed-empty-account-window','observedAt':now(),'sourceObservedAt':observed,'sourceIdentity':source,
         'sourceSha256':digest(sample),'windows':[w['id'] for w in negative],'resetAt':next((w.get('resetAt',w.get('resetsAt')) for w in negative if w.get('resetAt',w.get('resetsAt'))),None),'httpStatus':429}
 
+def recover(store,sid):
+    value=row(store,sid)
+    if not value or value['state']!='dispatching':return
+    original=store.db.execute('SELECT id FROM runs WHERE request_id=? AND session_id=?',(value.get('resumeRequestId'),sid)).fetchone()
+    with store.db:
+        value.update(state='resumed' if original else 'unknown',revision=value['revision']+1,
+            reason='Original continuation admission recovered without replaying a launch.')
+        if original:value['resumedRunId']=original['id']
+        put(store,sid,value)
+
 def register(worker,operation,proof):
     w=worker;store=w.store;sid=w.session_id;config=w.config
     if (not proof or not operation or w.stopping or w.uncertain_effect or config.get('quotaResume') or not matches(store,sid,config)):
@@ -126,6 +136,8 @@ def register(worker,operation,proof):
     current_goal=getattr(w,'goal_worker',None)
     if current_goal and current_goal.current() and current_goal.current().get('status') in ('complete','completed','blocked','budgetLimited'):return None
     source=get_run(store,w.run_id)
+    previous_wait=row(store,sid)
+    if previous_wait and previous_wait.get('consumedByRequestId')==source['request_id']:return None
     if not source['busy'] or source['session_id']!=sid or config.get('owner')!={'type':store.owner_type,'id':store.owner_id}:return None
     call=store.db.execute('SELECT data,phase FROM studio_model_calls WHERE run_id=? AND request_id=?',(w.run_id,operation)).fetchone()
     if not call:return None

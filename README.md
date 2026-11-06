@@ -1,3 +1,7 @@
+## 0.11.33
+
+Registered primary quota waits admit one continuation of the existing conversation only after a fresh matching positive account observation and the full original process/tool/context barrier. Accepted model/provider changes cancel the intent immediately, including next-run choices; switching back never restores it. Human queue input has priority, Goal controls/budgets remain authoritative, and a repeated quota rejection never creates an inference loop. Original requests and uncertain launch outcomes are read, never replayed.
+
 ## 0.11.32
 
 Only newly accepted, proven primary quota stops register durable reset waits in the existing session journal. Complete negative model responses and concrete fresh account observations remain distinct from unknown transport outcomes, generic 429s, Vision errors and local Goal budgets. Registered waits share existing bounded account readers without holding model workers or inference leases. No historical session is activated; automatic continuation follows in 0.11.33.

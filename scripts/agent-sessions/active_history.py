@@ -37,7 +37,7 @@ class ActiveHistory:
             if self.conversation.metadata() is None:
                 raise ProjectFault('This session needs an explicit common history conversion.', 409)
             cp = db.execute("SELECT seq,through_seq FROM conversation_records WHERE session_id=? AND kind='checkpoint' ORDER BY through_seq DESC,seq DESC LIMIT 1", (self.sid,)).fetchone()
-            user = db.execute("SELECT seq FROM conversation_records WHERE session_id=? AND kind='message' AND role='user' AND (json_extract(origin,'$.kind') IS NULL OR json_extract(origin,'$.kind')!='goalContinuation') ORDER BY seq DESC LIMIT 1", (self.sid,)).fetchone()
+            user = db.execute("SELECT seq FROM conversation_records WHERE session_id=? AND kind='message' AND role='user' AND (json_extract(origin,'$.kind') IS NULL OR json_extract(origin,'$.kind') NOT IN ('goalContinuation','quotaContinuation')) ORDER BY seq DESC LIMIT 1", (self.sid,)).fetchone()
             assistant = db.execute("SELECT seq FROM conversation_records WHERE session_id=? AND kind='message' AND role='assistant' AND json_type(origin,'$.providerResponseId') IS NOT NULL ORDER BY seq DESC LIMIT 1", (self.sid,)).fetchone()
             head = db.execute('SELECT COALESCE(MAX(seq),0) FROM conversation_records WHERE session_id=?', (self.sid,)).fetchone()[0]
             heads = (cp['seq'] if cp else None, cp['through_seq'] if cp else 0, user[0] if user else None, assistant[0] if assistant else None, head)

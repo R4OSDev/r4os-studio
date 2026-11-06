@@ -406,7 +406,7 @@ class StudioWorker(Worker):
             human = self.config['goalExecution']['objective'] if self.config.get('goalExecution') else request_text(self.store, self.run_id)
             from studio_media import user_content
             self.conversation.append(self.run_id, 'user-' + self.row['request_id'], 'user',
-                user_content(self.config,human), {'requestId': self.row['request_id'], **({'kind':'humanGoalPlay'} if self.config.get('goalExecution') else {})})
+                user_content(self.config,human), {'requestId': self.row['request_id'], **({'kind':'quotaContinuation','waitId':self.config['quotaResume']['waitId'],'parentRunId':self.config['quotaResume']['parentRunId']} if self.config.get('quotaResume') else {}), **({'kind':'humanGoalPlay'} if self.config.get('goalExecution') else {})})
             await self.cycle()
         except GoalHalted:
             self.outcome='unknown' if self.uncertain_effect else 'interrupted' if self.stopping else 'completed'

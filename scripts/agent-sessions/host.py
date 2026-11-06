@@ -40,7 +40,7 @@ class Host:
         self.goal_readback_lock = asyncio.Lock()
         self.image_capability_lock=asyncio.Lock()
         self.inboxes=set();self.keepalives=set()
-        self.quota_waits=set();self.quota_tasks={};self.quota_next={};self.quota_scopes={};self.quota_samples={};self.quota_reads={}
+        self.quota_waits=set();self.quota_tasks={};self.quota_next={};self.quota_scopes={};self.quota_samples={};self.quota_reads={};self.quota_epochs={}
         self.message_tasks={}
         self.skill_delete_tasks={}
         self.session_delete_tasks={}
@@ -171,6 +171,8 @@ class Host:
                     self.keepalives.update((kind,project_id,r['session_id']) for r in store.db.execute('SELECT session_id FROM session_keepalive WHERE active=1'))
                 from quota_wait import has as has_waits
                 if has_waits(store):
+                    from quota_wait import recover as recover_wait
+                    for saved in store.db.execute("SELECT session_id FROM session_quota_wait WHERE state='dispatching'").fetchall():recover_wait(store,saved['session_id'])
                     self.quota_waits.update((kind,project_id,r['session_id']) for r in store.db.execute("SELECT session_id FROM session_quota_wait WHERE state='waiting'"))
                 # Repair stale pending cards from earlier compatible releases
                 # using confirmed receipts, without replaying any tool operation.
@@ -297,7 +299,10 @@ class Host:
                 limits=Limits(self.config['providers']);ident=identity(request.get('id'))
                 if action=='connection_limits':return await self.read_work.run(limits.listing,ident)
                 if action=='connection_limit_receipt':return await self.read_work.run(limits.receipt,ident,request.get('requestId'))
-                return await asyncio.to_thread(limits.refresh,ident,request.get('input'))
+                result=await asyncio.to_thread(limits.refresh,ident,request.get('input'))
+                from quota_wait_host import notify
+                notify(self,ident)
+                return result
             if action in ('zai_quota','zai_quota_ensure','zai_quota_receipt','zai_quota_refresh'):
                 from zai_quota import Quota
                 ident=identity(request.get('id'));quota=Quota(self.config['providers'])
@@ -807,6 +812,10 @@ class Host:
             store.row(session_id)
             row = get_run(store, run_id)
             if row['session_id'] != session_id: raise ProjectFault('Run not found.', 404)
+            from quota_wait import control as quota_control
+            latest=store.db.execute('SELECT id FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(session_id,)).fetchone()
+            if latest and latest['id']==run_id:
+                with store.db:quota_control(store,session_id,'The user explicitly stopped the original session run.')
             from message_store import Messages
             Messages(store).hold(session_id, 'The user stopped this session. Continue the queue explicitly.')
             if row['busy'] or await self.active_unit(run_id):

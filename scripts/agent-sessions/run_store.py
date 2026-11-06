@@ -195,11 +195,13 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     if original is None:
         from quota_wait import freeze as freeze_quota
         freeze_quota(store,session_id,snapshot)
+    elif 'quotaWait' in original:
+        snapshot['quotaWait']=original['quotaWait'].copy()
     return snapshot, attachments, request_hash
 
 
 @guarded
-def admit(store, session_id, data, provider_dir, image_capability=None, frozen=None, keepalive=None):
+def admit(store, session_id, data, provider_dir, image_capability=None, frozen=None, keepalive=None, quota_resume=None):
     goal_mode = data.get('mode') == 'goal'
     expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'} | ({'attachments'} if 'attachments' in data else set())
     if (set(data) - set(CAPABILITIES) != expected
@@ -243,6 +245,12 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         if keepalive is not None:
             from goal_keepalive import require as require_keepalive
             require_keepalive(store,session_id,keepalive)
+        if quota_resume is None and frozen is None and keepalive is None:
+            from quota_wait import control
+            control(store,session_id,'New explicit input replaced previous automatic continuation.')
+        if quota_resume is not None:
+            from quota_wait_resume import validate as validate_quota_resume
+            validate_quota_resume(store,session_id,quota_resume)
         snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None, original=frozen,keepalive=keepalive)
         if frozen is not None:
             # Adding a capability to new captures must not upgrade old queued
@@ -251,6 +259,9 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
             freeze_retry(snapshot,original=frozen)
             if snapshot != frozen: raise ProjectFault('The queued selection changed. The queue was held; review its original input.',409)
             snapshot = frozen
+        if quota_resume is not None:
+            validate_quota_resume(store,session_id,quota_resume,snapshot)
+            snapshot['quotaResume']=quota_resume
         from model_choice import admission as model_admission
         model_admission(store,session_id,data,snapshot)
         ident = snapshot.get('apiRunId') or snapshot.get('claudeRunId') or str(uuid.uuid4()); stamp = now()
@@ -267,7 +278,9 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
                 # A new explicit ordinary send authorizes its own chain. Empty
                 # holds from an earlier Stop must not disable future input.
                 store.db.execute('UPDATE session_inboxes SET held=0,reason=NULL,revision=revision+1 WHERE session_id=?',(session_id,))
-        if not goal_mode:
+        if quota_resume is not None:
+            item(store,session_id,ident,{'id':'quota-continuation-'+key,'runId':ident,'type':'notice','status':'completed','text':'Automatically continuing the existing task after fresh quota availability.','quotaWaitId':quota_resume['waitId']},False)
+        elif not goal_mode:
             item(store, session_id, ident, {'id': 'user-' + key, 'runId': ident, 'type': 'user', 'text': data['text'], 'status': 'completed',
                 **({'attachments':attachments} if attachments else {})}, False)
         unavailable = snapshot.get('skillAccess', {}).get('unavailable', [])
@@ -343,6 +356,8 @@ def events(store, session_id, after=0, *, details=True, through=None):
 
 
 def request_text(store, run_id):
+    config=json.loads(get_run(store,run_id)['config'])
+    if config.get('quotaResume'):return config['quotaResume']['prompt']
     row = store.db.execute("SELECT payload FROM items WHERE run_id=? AND item_id LIKE 'user-%' LIMIT 1", (run_id,)).fetchone()
     if row is None: raise ProjectFault('Run input is unavailable.')
     return json.loads(row['payload'])['text']

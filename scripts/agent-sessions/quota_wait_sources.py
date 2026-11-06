@@ -43,7 +43,7 @@ def read(providers,wait):
             if meter.get('limitReached'):holds.append({'reason':'The native account still reports a reached limit.'})
         if q.get('ordinaryUsageAllowed') is False:holds.append({'reason':'Ordinary account usage remains unavailable.'})
     else:return {'state':'unknown','reason':'This connection has no confirmed account-limit reader. No model probe was started.','windows':[],'startedAt':None,'observedAt':None,'source':None,'holds':[],'nextCheckAt':None}
-    return {'state':'current' if current else 'stale' if observed else 'unknown','reason':error,'windows':windows,'startedAt':started,'observedAt':observed,'source':source,'holds':holds,'nextCheckAt':next_check}
+    return {'allowanceAllowed':q.get('ordinaryUsageAllowed') if kind=='codex-subscription' else None,'state':'current' if current else 'stale' if observed else 'unknown','reason':error,'windows':windows,'startedAt':started,'observedAt':observed,'source':source,'holds':holds,'nextCheckAt':next_check}
 
 def summary(value):
     return {'state':value['state'],'checkedAt':value.get('observedAt'),'startedAt':value.get('startedAt'),'nextCheckAt':value.get('nextCheckAt'),'reason':value.get('reason'),

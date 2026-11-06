@@ -136,6 +136,8 @@ class Choices:
             db.execute('INSERT INTO session_model_choices VALUES (?,?,?,?,?,?,NULL,?,?) ON CONFLICT(session_id) DO UPDATE SET revision=excluded.revision,request_id=excluded.request_id,after_run_id=excluded.after_run_id,state=excluded.state,payload=excluded.payload,reason=NULL,updated_at=excluded.updated_at,state_revision=excluded.state_revision',
                 (sid,revision,rid,after,state,encode(payload),stamp,(current['state_revision'] if current else 0)+1))
             db.execute('INSERT INTO requests VALUES (?,?,?,?,?)',(rid,'model_choice',fingerprint,sid,encode({'receipt':original,'intent':payload})))
+            from quota_wait import control
+            control(self.store,sid,'An accepted model choice permanently ended the previous quota wait.')
             from run_store import event
             event(self.store,sid,None,'modelChoice',public(self.store,sid),False)
             db.execute('UPDATE sessions SET updated_at=? WHERE id=?',(stamp,sid))
@@ -154,6 +156,8 @@ def settings_guard(store,sid,data):
 
 
 def changed_settings(store,sid):
+    from quota_wait import control
+    control(store,sid,'Accepted model or provider settings permanently ended the previous quota wait.')
     saved=row(store,sid)
     if saved is not None:
         store.db.execute("UPDATE session_model_choices SET revision=revision+1,state_revision=state_revision+1,state='cancelled',reason=NULL,updated_at=? WHERE session_id=?",(now(),sid))

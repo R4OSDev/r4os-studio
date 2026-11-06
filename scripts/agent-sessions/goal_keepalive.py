@@ -140,6 +140,9 @@ def accept(goals, sid, data):
             value.pop('dispatch',None);write(store,sid,value)
             from goal_keepalive_clock import record
             record(store,sid,value)
+        if not noop:
+            from quota_wait import control
+            control(store,sid,'Explicit Goal control ended the previous automatic quota continuation.',only_goal=action!='play')
         result={'requestId':rid,'action':action,'state':'confirmed','snapshot':snapshot(store,sid)}
         fingerprint=hashlib.sha256(encode({'sessionId':sid,**data}).encode()).hexdigest()
         db.execute('INSERT INTO goal_commands VALUES(?,?,?,?,?,?,?,?)',

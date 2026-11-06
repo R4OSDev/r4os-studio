@@ -11,7 +11,7 @@ from store import ProjectFault
 
 CONTEXT_INDEXES = {
     'conversation_checkpoint': "conversation_records(session_id,through_seq DESC,seq DESC) WHERE kind='checkpoint'",
-    'conversation_last_user': "conversation_records(session_id,seq DESC) WHERE kind='message' AND role='user' AND (json_extract(origin,'$.kind') IS NULL OR json_extract(origin,'$.kind')!='goalContinuation')",
+    'conversation_last_human': "conversation_records(session_id,seq DESC) WHERE kind='message' AND role='user' AND (json_extract(origin,'$.kind') IS NULL OR json_extract(origin,'$.kind') NOT IN ('goalContinuation','quotaContinuation'))",
     'conversation_last_assistant': "conversation_records(session_id,seq DESC) WHERE kind='message' AND role='assistant' AND json_type(origin,'$.providerResponseId') IS NOT NULL",
 }
 FORMAT = 1
