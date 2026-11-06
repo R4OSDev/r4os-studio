@@ -112,6 +112,42 @@ def reorder(db, reference, data, now):
     return {'kind': kind, 'ids': ids}
 
 
+def apply_change(db, reference, action, data, now):
+    if not isinstance(data, dict):
+        raise RoadmapFault('Invalid roadmap input.', 400)
+    if action not in ('create', 'update', 'append_notes', 'replace_notes', 'delete', 'reorder', 'set_current'):
+        raise RoadmapFault('Unsupported roadmap mutation.', 400)
+    target(db, reference, needs_id=action not in ('create', 'reorder'))
+    if action == 'create':
+        changed = create(db, reference, data, now)
+    elif action in ('update', 'append_notes', 'replace_notes'):
+        update(db, reference, data, now, action)
+        changed = None
+    elif action == 'delete':
+        fields(data, ['confirm'])
+        if data['confirm'] is not True or reference.get('kind') == 'roadmap':
+            raise RoadmapFault('Explicitly confirm removal of the selected roadmap entry.', 400)
+        row = target(db, reference)
+        if reference['kind'] == 'version' and row['id'] == root_row(db)['current_version_id']:
+            raise RoadmapFault('Select another current version before removing this version.', 409)
+        db.execute('DELETE FROM ' + KINDS[reference['kind']] + ' WHERE id=?', (row['id'],))
+        changed = {'id': row['id'], 'kind': reference['kind'], 'deleted': True}
+    elif action == 'reorder':
+        changed = reorder(db, reference, data, now)
+    elif action == 'set_current':
+        fields(data)
+        row = target(db, reference)
+        if reference['kind'] != 'version':
+            raise RoadmapFault('Select a main version.', 400)
+        db.execute('UPDATE roadmap SET current_version_id=?', (row['id'],))
+        changed = entity(db, 'version', row)
+    else:
+        raise RoadmapFault('Unsupported roadmap mutation.', 400)
+    if changed is None:
+        changed = entity(db, reference['kind'], target(db, reference))
+    return changed
+
+
 def mutate(db, project_id, body, initialize=False):
     if initialize:
         fields(body, ['requestId'])
@@ -140,40 +176,8 @@ def mutate(db, project_id, body, initialize=False):
                 raise RoadmapFault('The roadmap changed. Reload its current version and revision before saving.', 409)
             if db.execute("SELECT id FROM workflows WHERE phase NOT IN ('complete','cancelled','aborted') LIMIT 1").fetchone():
                 raise RoadmapFault('Reconcile the current roadmap workflow before editing.', 409)
-            action, reference, data = body['action'], body['target'], body.get('input', {})
-            if not isinstance(data, dict):
-                raise RoadmapFault('Invalid roadmap input.', 400)
-            if action not in ('create', 'update', 'append_notes', 'replace_notes', 'delete', 'reorder', 'set_current'):
-                raise RoadmapFault('Unsupported roadmap mutation.', 400)
-            target(db, reference, needs_id=action not in ('create', 'reorder'))
-            if action == 'create':
-                changed = create(db, reference, data, now)
-            elif action in ('update', 'append_notes', 'replace_notes'):
-                update(db, reference, data, now, action)
-                changed = None
-            elif action == 'delete':
-                fields(data, ['confirm'])
-                if data['confirm'] is not True or reference.get('kind') == 'roadmap':
-                    raise RoadmapFault('Explicitly confirm removal of the selected roadmap entry.', 400)
-                row = target(db, reference)
-                if reference['kind'] == 'version' and row['id'] == root['current_version_id']:
-                    raise RoadmapFault('Select another current version before removing this version.', 409)
-                db.execute('DELETE FROM ' + KINDS[reference['kind']] + ' WHERE id=?', (row['id'],))
-                changed = {'id': row['id'], 'kind': reference['kind'], 'deleted': True}
-            elif action == 'reorder':
-                changed = reorder(db, reference, data, now)
-            elif action == 'set_current':
-                fields(data)
-                row = target(db, reference)
-                if reference['kind'] != 'version':
-                    raise RoadmapFault('Select a main version.', 400)
-                db.execute('UPDATE roadmap SET current_version_id=?', (row['id'],))
-                changed = entity(db, 'version', row)
-            else:
-                raise RoadmapFault('Unsupported roadmap mutation.', 400)
+            changed=apply_change(db,body['target'],body['action'],body.get('input',{}),now)
             db.execute('UPDATE roadmap SET revision=revision+1,updated_at=?', (now,))
-            if changed is None:
-                changed = entity(db, reference['kind'], target(db, reference))
             result = {**binding(db), 'entity': changed}
         db.execute('INSERT INTO receipts(request_id,request_hash,revision,result,created_at) VALUES(?,?,?,?,?)',
                    (body['requestId'], fingerprint, result['revision'], json.dumps(result, ensure_ascii=False), now))

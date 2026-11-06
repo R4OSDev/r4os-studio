@@ -1,3 +1,7 @@
+## 0.11.58
+
+Project roadmaps support atomic batches through the browser client/API and studio_update_roadmap (operation=batch). A batch contains1–128 ordinary mutations and may name creates with key; later parent/target IDs or reorder IDs can use $key. All changes are first validated in a private SQLite clone under the original write transaction, then committed with one revision and original receipt. A late error commits nothing. Existing CRUD, parent rights, workflow gates, explicit deletion and current-version protections share the same mutation handlers.
+
 ## 0.11.57
 
 System → Settings → Context stores a global context budget (default/reset 250,000 tokens, range 1–10,000,000) with revision checks and original save receipts. New Studio runs freeze the policy; older accepted runs and queued inputs keep their original configuration. Compaction uses the smaller of the budget and 80% of the selected model window, includes cached input and retains existing byte/protocol guards. Media uses a conservative serialized-byte planning proxy; no estimate is presented as measured usage. Exact current human input and the canonical archive remain available after checkpoints.

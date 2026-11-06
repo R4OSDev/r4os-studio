@@ -41,7 +41,7 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
     database = projects / project_id / 'Sessions/Sessions.sqlite'; regular(database)
     # Serialize short domain mutations with Stop admission. Never reacquire the
     # workspace lock independently of the inherited open file description.
-    short_mutation = tool == 'update_roadmap' and arguments.get('operation') in ('initialize', 'mutate')
+    short_mutation = tool == 'update_roadmap' and arguments.get('operation') in ('initialize', 'mutate','batch')
     db = sqlite3.connect(database.as_uri() + ('?mode=rw' if short_mutation else '?mode=ro'), uri=True, timeout=3)
     try:
         if short_mutation: db.execute('BEGIN IMMEDIATE')
@@ -150,7 +150,7 @@ def call(projects, project_id, tool, arguments, actor=None):
         return compact(operation(projects, {'operation': 'initialize', 'projectId': project_id, **data}))
     if op == 'export':
         fields(data, ['requestId', 'versionId', 'expectedRevision', 'currentVersionId'])
-    elif op != 'mutate': raise ProjectFault('Unsupported Roadmap update.', 400)
+    elif op not in ('mutate','batch'): raise ProjectFault('Unsupported Roadmap update.', 400)
     return compact(operation(projects, {'operation': op, 'projectId': project_id, 'input': data}))
 
 

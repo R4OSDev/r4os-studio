@@ -2146,7 +2146,7 @@
     },
     {
       "name": "studio_update_roadmap",
-      "description": "Change this project’s shared roadmap with exact operation-, action- and target-specific fields. initialize takes requestId only. mutate needs requestId, expectedRevision, currentVersionId, target and action. For create/update input: version uses title/number/vision/notes/status; subversion uses title/number/description/notes/status; task/acceptance uses description/notes/status and NEVER title; roadmap update uses description/notes. Create requires title for version/subversion, description for task/acceptance. Update supplies only changed fields. Task/acceptance status: open/done/discarded; version/subversion: open/complete/discarded. create/reorder targets omit id; other targets need id. Subversion needs versionId; task/acceptance also subversionId. append_notes/replace_notes take only input.notes. delete takes input.confirm=true. reorder takes input.ids containing the full ordered collection. set_current targets a version with no input or empty input. export needs requestId, versionId, expectedRevision and currentVersionId and prepares a complete immutable snapshot. Preserve notes and separate acceptance checks; record actual evidence before done. Use stable UUID request IDs and read receipt before an uncertain retry. No automatic cleanup or rollover. For roadmap root updates, target.id is the root ID from initialize entity.id or overview roadmap.id, NEVER currentVersionId. Existing version/subversion/task/acceptance targets use their own exact ID and required parent IDs; create/reorder target the parent collection without a new entry ID.",
+      "description": "Change this project’s shared roadmap with exact operation-, action- and target-specific fields. initialize takes requestId only. mutate needs requestId, expectedRevision, currentVersionId, target and action. For create/update input: version uses title/number/vision/notes/status; subversion uses title/number/description/notes/status; task/acceptance uses description/notes/status and NEVER title; roadmap update uses description/notes. Create requires title for version/subversion, description for task/acceptance. Update supplies only changed fields. Task/acceptance status: open/done/discarded; version/subversion: open/complete/discarded. create/reorder targets omit id; other targets need id. Subversion needs versionId; task/acceptance also subversionId. append_notes/replace_notes take only input.notes. delete takes input.confirm=true. reorder takes input.ids containing the full ordered collection. set_current targets a version with no input or empty input. export needs requestId, versionId, expectedRevision and currentVersionId and prepares a complete immutable snapshot. Preserve notes and separate acceptance checks; record actual evidence before done. Use stable UUID request IDs and read receipt before an uncertain retry. No automatic cleanup or rollover. For roadmap root updates, target.id is the root ID from initialize entity.id or overview roadmap.id, NEVER currentVersionId. Existing version/subversion/task/acceptance targets use their own exact ID and required parent IDs; create/reorder target the parent collection without a new entry ID. batch takes requestId, expectedRevision, currentVersionId and operations (1–128, at most128KiB). Each operation has action/target/input as mutate; create may set a unique key. Later target.id/versionId/subversionId or reorder input.ids may use $key. The entire batch is validated before source changes and committed with one revision/receipt; any error leaves no partial changes. Prefer one batch for a complete subversion with tasks/acceptances.",
       "inputSchema": {
         "oneOf": [
           {
@@ -2767,6 +2767,583 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "currentVersionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "description": "Separate current-version binding from the latest read, not the roadmap root identity or an inferred target ID."
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "batch"
+                ]
+              },
+              "operations": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 128,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "object"
+                    },
+                    "input": {
+                      "type": "object"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                      "description": "Optional unique name for create; later target IDs/input.ids can reference it as $key."
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "target"
+                  ],
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "create",
+                                "update"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "input"
+                          ],
+                          "allOf": [
+                            {
+                              "oneOf": [
+                                {
+                                  "properties": {
+                                    "target": {
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "roadmap"
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "input": {
+                                      "type": "object",
+                                      "properties": {
+                                        "notes": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        },
+                                        "description": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        }
+                                      },
+                                      "required": [],
+                                      "additionalProperties": false,
+                                      "minProperties": 1,
+                                      "description": "Only fields belonging to this entry type."
+                                    }
+                                  }
+                                },
+                                {
+                                  "properties": {
+                                    "target": {
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "version"
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "input": {
+                                      "type": "object",
+                                      "properties": {
+                                        "notes": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        },
+                                        "number": {
+                                          "type": "string",
+                                          "maxLength": 64
+                                        },
+                                        "title": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 240
+                                        },
+                                        "vision": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        },
+                                        "status": {
+                                          "type": "string",
+                                          "enum": [
+                                            "open",
+                                            "complete",
+                                            "discarded"
+                                          ]
+                                        }
+                                      },
+                                      "required": [],
+                                      "additionalProperties": false,
+                                      "minProperties": 1,
+                                      "description": "Only fields belonging to this entry type."
+                                    }
+                                  }
+                                },
+                                {
+                                  "properties": {
+                                    "target": {
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "subversion"
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "input": {
+                                      "type": "object",
+                                      "properties": {
+                                        "notes": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        },
+                                        "number": {
+                                          "type": "string",
+                                          "maxLength": 64
+                                        },
+                                        "title": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 240
+                                        },
+                                        "description": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        },
+                                        "status": {
+                                          "type": "string",
+                                          "enum": [
+                                            "open",
+                                            "complete",
+                                            "discarded"
+                                          ]
+                                        }
+                                      },
+                                      "required": [],
+                                      "additionalProperties": false,
+                                      "minProperties": 1,
+                                      "description": "Only fields belonging to this entry type."
+                                    }
+                                  }
+                                },
+                                {
+                                  "properties": {
+                                    "target": {
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "task",
+                                            "acceptance"
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "input": {
+                                      "type": "object",
+                                      "properties": {
+                                        "notes": {
+                                          "type": "string",
+                                          "maxLength": 32768
+                                        },
+                                        "description": {
+                                          "type": "string",
+                                          "maxLength": 32768,
+                                          "minLength": 1
+                                        },
+                                        "status": {
+                                          "type": "string",
+                                          "enum": [
+                                            "open",
+                                            "done",
+                                            "discarded"
+                                          ]
+                                        }
+                                      },
+                                      "required": [],
+                                      "additionalProperties": false,
+                                      "minProperties": 1,
+                                      "description": "Task and acceptance text uses description; title is not supported."
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "append_notes",
+                                "replace_notes"
+                              ]
+                            },
+                            "input": {
+                              "type": "object",
+                              "properties": {
+                                "notes": {
+                                  "type": "string",
+                                  "maxLength": 32768
+                                }
+                              },
+                              "required": [
+                                "notes"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "input"
+                          ]
+                        },
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "delete"
+                              ]
+                            },
+                            "target": {
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "version",
+                                    "subversion",
+                                    "task",
+                                    "acceptance"
+                                  ]
+                                }
+                              }
+                            },
+                            "input": {
+                              "type": "object",
+                              "properties": {
+                                "confirm": {
+                                  "type": "boolean",
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "confirm"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "input"
+                          ]
+                        },
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "reorder"
+                              ]
+                            },
+                            "input": {
+                              "type": "object",
+                              "properties": {
+                                "ids": {
+                                  "type": "array",
+                                  "maxItems": 500,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 65,
+                                    "description": "Exact UUID or $key of an earlier create in this same batch."
+                                  }
+                                }
+                              },
+                              "required": [
+                                "ids"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "input"
+                          ]
+                        },
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "set_current"
+                              ]
+                            },
+                            "target": {
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "version"
+                                  ]
+                                }
+                              }
+                            },
+                            "input": {
+                              "type": "object",
+                              "properties": {},
+                              "required": [],
+                              "additionalProperties": false
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "create",
+                                "reorder"
+                              ]
+                            },
+                            "target": {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "version"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "subversion"
+                                      ]
+                                    },
+                                    "versionId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "versionId"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "task",
+                                        "acceptance"
+                                      ]
+                                    },
+                                    "versionId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    },
+                                    "subversionId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "versionId",
+                                    "subversionId"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": [
+                                "update",
+                                "append_notes",
+                                "replace_notes",
+                                "delete",
+                                "set_current"
+                              ]
+                            },
+                            "target": {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "roadmap",
+                                        "version"
+                                      ]
+                                    },
+                                    "id": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "id"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "subversion"
+                                      ]
+                                    },
+                                    "versionId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    },
+                                    "id": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "versionId",
+                                    "id"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "task",
+                                        "acceptance"
+                                      ]
+                                    },
+                                    "versionId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    },
+                                    "subversionId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    },
+                                    "id": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 65,
+                                      "description": "Exact UUID or $key of an earlier create in this same batch."
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "versionId",
+                                    "subversionId",
+                                    "id"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "requestId",
+              "expectedRevision",
+              "currentVersionId",
+              "operation",
+              "operations"
+            ],
+            "additionalProperties": false
           }
         ]
       }

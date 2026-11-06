@@ -102,3 +102,8 @@ export interface RoadmapWorkflow extends RoadmapBinding {
 }
 export type RoadmapWorkflowSummary = Omit<RoadmapWorkflow, 'documents'> & { summaryTruncated: boolean };
 export interface RoadmapWorkflowPage { items: RoadmapWorkflowSummary[]; nextCursor: string | null }
+
+/** Target IDs and reorder input.ids may use $key for an earlier batch create. */
+export type RoadmapBatchOperation = Pick<RoadmapMutation,'target'|'action'|'input'> & {key?:string};
+export interface RoadmapBatch {requestId:string;expectedRevision:number;currentVersionId:string;operations:RoadmapBatchOperation[]}
+export interface RoadmapBatchResult extends RoadmapBinding {requestId:string;operations:{index:number;key?:string;entity:RoadmapMutationResult['entity']}[];references:Record<string,string>}

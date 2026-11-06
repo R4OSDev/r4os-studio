@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { RoadmapMutation, RoadmapTarget } from '../../../../shared/project-roadmaps.js';
+import type { RoadmapBatch, RoadmapMutation, RoadmapTarget } from '../../../../shared/project-roadmaps.js';
 import type { ProjectSessions } from '../projects/sessions.js';
 import { roadmapStore } from './store.js';
 import { ProjectError } from '../projects/store.js';
@@ -45,6 +45,10 @@ export function roadmapRoutes(app: FastifyInstance, directory: string, sessions:
     const names = [...path.matchAll(/:([a-zA-Z]+)/g)].map((match) => match[1]);
     return { type: 'object', required: names, properties: Object.fromEntries(names.map((name) => [name, uuid])) };
   };
+  app.post<{Params:Params;Body:RoadmapBatch}>(base+'/batches',{bodyLimit:128*1024,schema:{params:parameterSchema(base)}},async(request,reply)=>{
+    sessions.mutation(request,reply);
+    return roadmapStore(directory,{operation:'batch',projectId:request.params.id,input:request.body});
+  });
   app.get<{ Params: Params; Querystring: Query }>(base, {
     schema: { params: parameterSchema(base), querystring: pageQuery },
   }, async (request, reply) => {

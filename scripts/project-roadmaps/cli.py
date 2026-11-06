@@ -18,11 +18,11 @@ from exports import chunk, open_archive, prepare
 def _operation(projects, request):
     fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset', 'workflowId'])
     name = request['operation']
-    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'export', 'export_info', 'export_chunk', 'workflows', 'workflow'):
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'batch', 'export', 'export_info', 'export_chunk', 'workflows', 'workflow'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
     if name in ('read', 'initialize'):
         fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])
-    elif name in ('mutate', 'export'):
+    elif name in ('mutate', 'batch', 'export'):
         fields(request, ['operation', 'projectId', 'input'])
     with connection(projects, request['projectId'], initialize=name == 'initialize') as db:
         if db is None:
@@ -33,6 +33,9 @@ def _operation(projects, request):
             if name not in ('read', 'overview'):
                 raise ProjectFault('Initialize this project roadmap before continuing.', 404)
             return {'exists': False, 'projectId': request['projectId']}
+        if name == 'batch':
+            from batches import batch
+            return batch(db,request['projectId'],request['input'])
         if name == 'mutate':
             return mutate(db, request['projectId'], request['input'])
         if name in ('workflows', 'workflow'):
