@@ -70,6 +70,7 @@ class Worker:
         self.development = DevelopmentTools(self)
         from skill_tools import SkillTools
         self.skills = SkillTools(self)
+        self.vision_helper = None
         self.goal_worker = None
         from goal_keepalive_run import RunGoal
         self.keepalive_goal=RunGoal(self) if self.config.get('goalKeepalive') else None
@@ -303,7 +304,7 @@ class Worker:
         with self.store.db:
             self.store.db.execute('BEGIN IMMEDIATE')
             row = get_run(self.store, self.run_id)
-            admission_closed = self.stopping or not row['busy'] or row['state'] == 'stopping'
+            admission_closed = self.closing or self.stopping or not row['busy'] or row['state'] == 'stopping'
             self.store.db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,NULL)',
                                   (self.run_id, call_id, name, hashed, 'intent', encode(arguments)))
         tool_id = name.replace('studio_', 'studio.', 1)
@@ -380,6 +381,7 @@ class Worker:
     async def _stop(self):
         try:
             self.stopping = True
+            if self.vision_helper: await self.vision_helper.close()
             await self.provider_retry.cancel_for_control()
             await self.skill_mcp.close()
             if self.goal_worker:
@@ -400,6 +402,8 @@ class Worker:
                 self.done.set()
 
     async def cleanup(self):
+        self.closing=True
+        if self.vision_helper: await self.vision_helper.close()
         if self.keepalive_goal and self.goal_worker is not self.keepalive_goal:await self.keepalive_goal.close()
         if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
         self.closing=True
@@ -443,7 +447,7 @@ class Worker:
                     self.error='The original human Goal Play evidence changed. Preserve the run and review it.'
                     raise __import__('store').ProjectFault(self.error,409)
             if self.store.owner_type == 'project': await self.build_snapshots.start()
-            transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid())})
+            transition(self.store, self.run_id, 'starting', worker={'release': self.manifest['release'], 'pid': os.getpid(), 'birth': __import__('lease').birth(os.getpid()), **__import__('model_operations').worker_identity()})
             state = self.store.directory / self.session_id / 'Codex'
             provider_home = Path(self.manifest['providers']) / self.config['providerId']
             if self.config.get('apiProvider'):

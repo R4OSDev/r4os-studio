@@ -7,6 +7,10 @@ from studio_engine import model_binding
 from store import ProjectFault
 
 
+def output_budget(model):
+    return min(8192,model['maxOutputTokens'],max(1,model['contextWindow']//4))
+
+
 def reason(provider, listing, model):
     if not provider['enabled'] or provider['auth'] != 'none' and not provider['keyConfigured']: return 'Connection unavailable.'
     if provider['protocol'] not in ('responses','chat-completions','messages') or listing['stale']: return 'Current transport/model metadata unavailable.'
@@ -24,7 +28,7 @@ def reason(provider, listing, model):
             value = model.get('messages', {})
             if value.get('thinkingType') not in ('adaptive','enabled') and not (model['defaultEffort'] == 'none' and value.get('thinkingDisabled')):
                 return 'Messages thinking/default contract unavailable.'
-            if value.get('thinkingType') == 'enabled' and provider['kind'] != 'zai-coding-plan' and not 1024 <= value.get('thinkingBudget',0) < min(8192,model['maxOutputTokens']):
+            if value.get('thinkingType') == 'enabled' and provider['kind'] != 'zai-coding-plan' and not 1024 <= value.get('thinkingBudget',0) < output_budget(model):
                 return 'Messages thinking budget exceeds the bounded helper output.'
     from api_server import unavailable
     errors = unavailable(provider,model)

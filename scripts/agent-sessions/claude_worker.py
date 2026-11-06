@@ -339,7 +339,7 @@ class ClaudeWorker(Worker):
             self.credential_worker={'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())}
             ClaudeRunLeases(self.manifest['providers']).claim(credential,self.credential_worker);self.credential_lease=credential
             if self.store.owner_type=='project':await self.build_snapshots.start()
-            transition(self.store,self.run_id,'starting',worker={'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid())})
+            transition(self.store,self.run_id,'starting',worker={'release':self.manifest['release'],'pid':os.getpid(),'birth':__import__('lease').birth(os.getpid()),**__import__('model_operations').worker_identity()})
             if self.claude_goal:
                 self.claude_goal.start()
                 from claude_goal_control import ClaudeGoalControl

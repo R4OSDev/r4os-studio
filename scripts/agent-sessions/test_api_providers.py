@@ -158,7 +158,7 @@ class Providers(unittest.TestCase):
                     self.assertTrue(asyncio.run(inspect_session(host,store,sid))[0]['allowed'])
                 self.assertEqual(dict(store.row(fixture.sid)),legacy)
                 self.assertNotIn(self.secret,encode(result))
-        finally:fixture.tearDown()
+        finally:fixture.tearDown();fixture.doCleanups()
 
     def test_chat_capability_gate_rejects_required_unrepresentable_semantics(self):
         import copy
@@ -177,12 +177,9 @@ class Providers(unittest.TestCase):
         model['studio_chat']['reasoning']='effort';self.assertEqual(chat_policy(model,'low')['reasoning'],'effort')
 
     def test_unqualified_chat_model_never_admits_a_run_or_credential_reservation(self):
-        from unittest.mock import patch
-        from test_runs import Runs
-        from profile import PROFILE,CODEX_VERSION,CODEX_SHA256
+        import test_runs as fixtures
         from session_store import encode
-        from run_store import admit
-        fixture=Runs();fixture.setUp()
+        fixture=fixtures.Runs();fixture.setUp()
         try:
             fixture.providers.chmod(0o700);apis=ApiProviders(fixture.providers)
             provider=apis.mutate('create',None,{**self.input,'protocol':'chat-completions'})['provider'];ident=provider['id']
@@ -190,13 +187,15 @@ class Providers(unittest.TestCase):
             catalog=models/(ident+'.json');catalog.write_text(encode({'schema':1,'providerId':ident,'configRevision':1,
                 'models':[{'slug':'fixture','visibility':'list','use_responses_lite':False,'input_modalities':['text'],
                     'supported_reasoning_levels':[{'effort':'none'}]}]}));catalog.chmod(0o600)
-            with fixture.open() as store,patch('session_store.engine',return_value={'profile':PROFILE,'version':CODEX_VERSION,'sha256':CODEX_SHA256,'available':True}):
-                session=store.create({'requestId':request(),'name':'Unqualified own model','providerId':ident,'model':'fixture','effort':'none'},fixture.providers)
-                with self.assertRaisesRegex(ProjectFault,'explicit text/function/streaming'):
-                    admit(store,session['id'],{'requestId':request(),'revision':1,'text':'Own input remains unsent.'},fixture.providers)
+            with fixture.open() as store:
+                # Current common metadata rejects this unqualified model before
+                # creating a session, rather than waiting for run admission.
+                with self.assertRaises(ProjectFault) as denied:
+                    store.create({'requestId':request(),'name':'Unqualified own model','providerId':ident,'model':'fixture','effort':'none'},fixture.providers)
+                self.assertEqual(denied.exception.code,400)
                 self.assertEqual(store.db.execute('SELECT COUNT(*) FROM runs').fetchone()[0],0)
                 with apis.connect() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM leases').fetchone()[0],0)
-        finally:fixture.tearDown()
+        finally:fixture.tearDown();fixture.doCleanups()
 
     def test_endpoint_and_key_boundaries_before_transport(self):
         self.assertEqual(endpoint('http://localhost:11434/v1/','local')['baseUrl'],'http://127.0.0.1:11434/v1')
@@ -222,7 +221,8 @@ class Providers(unittest.TestCase):
     def test_host_closes_admission_before_cancel_and_receipt_never_cancels(self):
         from host import Host
         value=self.create();calls=[];available=[False]
-        host=SimpleNamespace(config={'providers':str(self.root)})
+        from coordinator_work import ReadWork
+        host=SimpleNamespace(config={'providers':str(self.root)},read_work=ReadWork(ProjectFault))
         async def handle(data):
             if data.get('operation')=='cancel_provider':
                 calls.append(data['providerId']);self.assertFalse(self.store.get(value['id'])['enabled'])

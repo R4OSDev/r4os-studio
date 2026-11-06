@@ -84,10 +84,14 @@ class Operations:
     def put(self,rid,phase,value):
         with self.store.db:self.store.db.execute('UPDATE studio_model_calls SET phase=?,data=? WHERE request_id=?',(phase,encode(value),rid))
 
-    def begin(self,run_id,rid):
+    def begin(self,run_id,rid,child=None):
         row=get_run(self.store,run_id);config=json.loads(row['config'])
+        if child is not None:
+            if child.get('purpose') != 'vision' or child.get('parentRunId') != run_id or child['snapshot']['apiRunId'] != rid: raise ProjectFault('Invalid Vision operation binding.',409)
+            config = child['snapshot']
         data={'runId':run_id,'requestId':rid,'sessionId':row['session_id'],'owner':{'type':self.store.owner_type,'id':self.store.owner_id},
             'selection':{key:config[key] for key in ('providerId','model','effort','apiProvider')},'createdAt':now()}
+        if child is not None: data['vision'] = child
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
 
     def process(self,rid,stage,child,request_sha256=None):
@@ -140,10 +144,10 @@ def worker_identity():
     return {'runEndProtocol':1,'invocationId':os.environ.get('INVOCATION_ID'), 'bootId':boot(),'cgroup':cgroup(os.getpid())}
 
 
-def confirm_end(store,manifest,observed):
+def confirm_end(store,manifest,observed,auxiliary=False):
     """An ended exact unit permits credential release, never reconstructs a reply."""
     row=get_run(store,manifest['runId']);worker=json.loads(row['worker'] or '{}');config=json.loads(row['config'])
-    if (row['busy'] or config['engine'].get('kind')!='studio' or worker.get('runEndProtocol')!=1
+    if (row['busy'] or not auxiliary and config['engine'].get('kind')!='studio' or worker.get('runEndProtocol')!=1
             or row['session_id']!=manifest['sessionId'] or worker.get('release')!=manifest['release']
             or binding(manifest)!=(store.owner_type,store.owner_id)
             or {'type':store.owner_type,'id':store.owner_id}!=config.get('owner')):return False

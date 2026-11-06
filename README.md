@@ -1,3 +1,23 @@
+## Bounded external Vision operations (0.11.28)
+
+A private image-to-text helper uses the existing Responses, Chat Completions or
+Messages transport once, without tools or an agent loop. Its original operation
+binds parent run/tool, authorized screenshot/hash/question, settings revision and
+actual connection/model facts. It holds a separate purpose-bound credential
+lease, retaining the main lease and selection. Raw responses, reported usage,
+request hash and actual child process end use the existing model journal and
+statistics, attributed to the Vision selection. Duplicate delivery reads its
+original result, including unknown outcomes, without another request.
+
+PNG integrity/pixel/byte limits, a conservative complete-input byte ceiling
+within the documented context, explicit output-token limit, 16 KiB result bound
+and 90-second deadline bound each request. Byte admission is not a reported token
+measurement. Only actual provider usage is counted. Stop closes the child;
+settings changes keep admitted selections frozen. Disconnect blocks/cancels that
+connection, preserves its credential until confirmed end, and does not create a
+hold for a different main provider. Original unit/process recovery can release
+child leases without repeating an inference. Screenshot integration follows in29.
+
 ## Vision fallback settings (0.11.27)
 
 System → Settings → Fallback optionally saves one existing connection/model for

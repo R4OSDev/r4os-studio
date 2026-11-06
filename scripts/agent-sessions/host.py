@@ -77,13 +77,19 @@ class Host:
 
     async def reconcile_ended(self,store,meta):
         row=get_run(store,meta['runId']);config=json.loads(row['config'])
-        if config['engine'].get('kind')!='studio' or row['busy']:return False
+        if row['busy']:return False
+        auxiliary=config['engine'].get('kind')!='studio'
+        if auxiliary and not (store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='studio_model_calls'").fetchone()
+                and store.db.execute("SELECT 1 FROM studio_model_calls WHERE run_id=? AND json_extract(data,'$.vision.purpose')='vision'",(row['id'],)).fetchone()):return False
         if binding(meta)!=(store.owner_type,store.owner_id) or row['session_id']!=meta['sessionId']:return False
         from model_operations import confirm_end
         observed=dict(line.split('=',1) for line in (await systemctl('show',UNIT.format(row['id']),
             '--property=ActiveState','--property=MainPID','--property=InvocationID','--property=ControlGroup',
             '--property=ExecMainPID','--property=ExecMainCode','--property=ExecMainStatus','--property=Result')).splitlines() if '=' in line)
-        if not confirm_end(store,meta,observed):return False
+        if not confirm_end(store,meta,observed,auxiliary=auxiliary):return False
+        from vision_analysis import release_ended
+        release_ended(store,row['id'],self.config['providers'])
+        if auxiliary:return True
         from api_provider_store import ApiProviders
         worker=json.loads(get_run(store,row['id'])['worker'])
         ApiProviders(self.config['providers']).release(row['id'],store.owner_type,store.owner_id,row['session_id'],
@@ -175,6 +181,16 @@ class Host:
                     if value:
                         try:await self.reconcile_ended(store,value)
                         except (OSError,ProjectFault):pass  # Missing end evidence keeps the original lease.
+                # A prior pass may have committed parent end before a child
+                # credential-release acknowledgement. Recover that original
+                # binding even when the parent end is already confirmed.
+                if store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='studio_model_calls'").fetchone():
+                    pending_vision=store.db.execute("SELECT DISTINCT r.* FROM runs r JOIN studio_model_calls c ON c.run_id=r.id WHERE r.busy=0 AND json_extract(c.data,'$.vision.purpose')='vision' AND json_extract(c.data,'$.vision.leaseReleased') IS NOT 1").fetchall()
+                    for row in pending_vision:
+                        value=manifests.get(row['id'])
+                        if value:
+                            try:await self.reconcile_ended(store,value)
+                            except (OSError,ProjectFault):pass
             finally: store.close()
         await self.check_unbound()
 
@@ -311,7 +327,7 @@ class Host:
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
                 if revocation:result['planLogout']=revocation
             return result
-        if op == 'capabilities': return {'visionFallbackSettings':1, 'systemTools':1, 'goalClockCycles':1, 'goalKeepalive':1, 'deferredModelChoice':1, 'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'visionAnalysis':1, 'visionFallbackSettings':1, 'systemTools':1, 'goalClockCycles':1, 'goalKeepalive':1, 'deferredModelChoice':1, 'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')

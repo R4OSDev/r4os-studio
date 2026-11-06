@@ -152,19 +152,7 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
         raise ProjectFault('The selected model needs current, explicit text/function/streaming and reasoning facts.', 409)
     from studio_engine import model_binding
     snapshot['apiProvider'] = model_binding(provider)
-    snapshot['apiModel'] = {key:copy.deepcopy(model[key]) for key in ('contextWindow','maxOutputTokens')}
-    snapshot['apiModel']['reasoning'] = model['declaredCapabilities']['reasoning']
-    snapshot['apiModel']['imageInput'] = model['capabilities']['imageInput']
-    if model.get('messages'): snapshot['apiModel']['messages'] = copy.deepcopy(model['messages'])
-    if snapshot['apiModel']['maxOutputTokens'] is None: snapshot['apiModel'].pop('maxOutputTokens')
-    if provider['protocol'] == 'chat-completions':
-        policy = {'schema':1, 'systemRole':'system', 'reasoning':'none' if model['declaredCapabilities']['reasoning']=='unsupported' else 'effort',
-                  'functionTools':True, 'streaming':True}
-        if 'reasoning' in model:
-            policy.update(schema=2, reasoningFacts=model['reasoning'], efforts=model['efforts'], selectedEffort=snapshot['effort'])
-        if provider['kind'] == 'zai-coding-plan':
-            policy.update(provider=provider['kind'], imageInput=model['capabilities']['imageInput']=='supported', maxOutputTokens=model['maxOutputTokens'])
-        snapshot['apiChat'] = policy
+    snapshot.update(studio_model_facts(provider,model,snapshot['effort']))
     if provider['kind'] == 'zai-coding-plan':
         from zai_client import freeze as freeze_client
         snapshot['apiZaiClient'] = freeze_client(store,sid,provider)
@@ -180,3 +168,21 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
     snapshot['apiRunId'] = future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation'] = False
     snapshot['studioGoalPreparation'] = data.get('liveGoalPreparation') == 1
+
+
+def studio_model_facts(provider,model,effort,function_tools=True):
+    result = {}
+    result['apiModel'] = {key:copy.deepcopy(model[key]) for key in ('contextWindow','maxOutputTokens')}
+    result['apiModel']['reasoning'] = model['declaredCapabilities']['reasoning']
+    result['apiModel']['imageInput'] = model['capabilities']['imageInput']
+    if model.get('messages'): result['apiModel']['messages'] = copy.deepcopy(model['messages'])
+    if result['apiModel']['maxOutputTokens'] is None: result['apiModel'].pop('maxOutputTokens')
+    if provider['protocol'] == 'chat-completions':
+        policy = {'schema':1, 'systemRole':'system', 'reasoning':'none' if model['declaredCapabilities']['reasoning']=='unsupported' else 'effort',
+                  'functionTools':function_tools, 'streaming':True}
+        if 'reasoning' in model:
+            policy.update(schema=2, reasoningFacts=model['reasoning'], efforts=model['efforts'], selectedEffort=effort)
+        if provider['kind'] == 'zai-coding-plan':
+            policy.update(provider=provider['kind'], imageInput=model['capabilities']['imageInput']=='supported', maxOutputTokens=model['maxOutputTokens'])
+        result['apiChat'] = policy
+    return result

@@ -60,6 +60,12 @@ def collect(projects, ident, hosts):
     project = projects / ident
     if project.exists() or project.is_symlink(): folder(project)
     sessions = rows(project / 'Sessions/Sessions.sqlite', 'sessions', 'id')
+    session_database = project / 'Sessions/Sessions.sqlite'
+    if session_database.exists():
+        with closing(sqlite3.connect(session_database.as_uri()+'?mode=ro',uri=True,timeout=5)) as state:
+            if state.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='studio_model_calls'").fetchone() and state.execute(
+                    "SELECT 1 FROM studio_model_calls WHERE json_extract(data,'$.vision.purpose')='vision' AND json_extract(data,'$.vision.leaseReleased') IS NOT 1 LIMIT 1").fetchone():
+                raise ProjectFault('Reconcile the original Vision credential/process end before deleting its evidence.',409)
     runs = rows(project / 'Sessions/Sessions.sqlite', 'runs', 'id,busy')
     jobs = rows(project / 'Development/Development.sqlite', 'jobs', "id,kind,state,busy,CASE WHEN kind='execution' AND state='unknown' THEN payload ELSE '{}' END AS payload")
     if any(r['busy'] for r in runs + jobs):
