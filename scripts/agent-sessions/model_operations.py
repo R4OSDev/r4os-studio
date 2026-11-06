@@ -121,7 +121,12 @@ class Operations:
             data['error']['category']=getattr(error,'category','interrupted')
             data['error']['details']=getattr(error,'details',None)
             data['error']['partial']=getattr(error,'partial',None)
-            self.put(rid,'unknown' if attempted else 'failed',data)
+            proof=getattr(error,'quota_evidence',None)
+            if proof and proof.get('kind')=='confirmed-primary-quota' and not data.get('vision'):
+                data['quotaEvidence']=proof
+                if not attempted:data['processEnd']={'confirmed':True,'observedBy':'not-dispatched','at':now()}
+                self.put(rid,'failed',data)
+            else:self.put(rid,'unknown' if attempted else 'failed',data)
         from studio_usage import record
         record(self.store,self.row(rid)[0])
         self.raw_pending.pop(rid,None);self.raw_remaining.pop(rid,None)

@@ -1,3 +1,7 @@
+## 0.11.32
+
+Only newly accepted, proven primary quota stops register durable reset waits in the existing session journal. Complete negative model responses and concrete fresh account observations remain distinct from unknown transport outcomes, generic 429s, Vision errors and local Goal budgets. Registered waits share existing bounded account readers without holding model workers or inference leases. No historical session is activated; automatic continuation follows in 0.11.33.
+
 ## 0.11.31
 
 Visible AI Limits and AI Provider views request fresh Z.AI monitoring on opening/return and roughly every minute. The existing bounded helper and original receipts merge concurrent automatic/manual demand. Durable attempt times, 60–900 second error backoff and provider Retry-After are independent of the last successful observation. Hidden views add no demand; no model request or session continuation is started.

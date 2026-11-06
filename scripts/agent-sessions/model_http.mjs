@@ -77,7 +77,7 @@ if (configuration && !finished) {
               && (typeof key !== 'string' || !String(value).includes(key))) code = String(value);
           } catch { /* Never forward provider error text or reflected credentials. */ }
           fail(code, status, { providerBodyBase64: Buffer.concat(errors).toString('base64'),
-            requestId: incoming.headers['x-request-id'] ?? incoming.headers['request-id'] ?? null,
+            httpResponseComplete: true, requestId: incoming.headers['x-request-id'] ?? incoming.headers['request-id'] ?? null,
             retryAfter: incoming.headers['retry-after'] ?? null });
         });
         incoming.once('error', () => fail('model_http_error', status));

@@ -21,7 +21,13 @@ export interface ModelChoiceInput extends ModelChoice { requestId:string; revisi
 export interface PendingModelChoice { revision:number; requestId:string; afterRunId:string; state:'pending'|'blocked'; choice:ModelChoice; reason:string|null; updatedAt:string }
 export interface ModelChoiceReceipt { requestId:string; sessionId:string; selectionRevision:number; afterRunId:string; state:'pending'|'cancelled'; choice:ModelChoice; acceptedAt:string }
 export interface ModelChoiceResult { receipt:ModelChoiceReceipt; session:AgentSession }
+export interface SessionQuotaWait {
+  revision: number; state: 'idle' | 'waiting' | 'dispatching' | 'resumed' | 'cancelled' | 'unknown'; active: boolean; waitId: string | null;
+  sourceRunId?: string; providerId?: string; model?: string; reason?: string; createdAt?: string; negativeAt?: string; resetAt?: string | null; resumedRunId?: string;
+  observation?: { state: string; checkedAt?: string | null; nextCheckAt?: string | null; reason?: string | null; windows?: { id: string; label: string; remaining: number | null; resetAt: string | null }[] };
+}
 export interface AgentSession {
+  quotaWait?: SessionQuotaWait;
   context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
   permissions: ToolPermissions; engine: { kind?: 'claude-code' | 'studio'; toolScope?: 'project' | 'skill'; profile?: string; version: string; sha256: string; available?: boolean; reason?: string;

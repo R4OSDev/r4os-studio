@@ -47,8 +47,8 @@ export class NativeAccessServer {
           try {
             const value = JSON.parse(raw.toString('utf8')) as { action?: string; id?: unknown; binding?: NativeBinding };
             if (Object.keys(value).some(key => !['action', 'id', 'binding'].includes(key)) || typeof value.id !== 'string'
-              || !['snapshot', 'credential'].includes(value.action ?? '') || value.action === 'credential' && !value.binding) throw new ProviderError('Invalid private account request.');
-            const result = await this.manager.nativeAccess(value.id, value.binding, value.action === 'credential');
+              || !['snapshot', 'credential', 'limits'].includes(value.action ?? '') || ['credential', 'limits'].includes(value.action ?? '') && !value.binding) throw new ProviderError('Invalid private account request.');
+            const result = value.action === 'limits' ? await this.manager.nativeLimits(value.id, value.binding!) : await this.manager.nativeAccess(value.id, value.binding, value.action === 'credential');
             socket.end(JSON.stringify({ result }) + '\n');
           } catch (error) {
             socket.end(JSON.stringify({ error: error instanceof ProviderError ? error.message : 'The private OpenAI account access is unavailable.', code: error instanceof ProviderError ? error.statusCode : 503 }) + '\n');

@@ -117,3 +117,23 @@ async def retire(host,ident,remove=False):
         await recover(host,ident)
         await host.handle({'operation':'cancel_provider','providerId':ident})
         await asyncio.to_thread(api.mutate,operation,ident,data,True,False,True)
+
+
+def limits(providers,ident,expected):
+    """Only existing account/rateLimits/read; no model, credits or reset consume."""
+    import os
+    api=ApiProviders(providers);private(api.parent,directory=True);path=api.parent/'.a.sock';expected=binding(expected)
+    info=path.lstat()
+    if not stat.S_ISSOCK(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600 or info.st_uid!=os.geteuid() or info.st_gid!=os.getegid():
+        raise ProjectFault('The original OpenAI account-limit service is unavailable.',503)
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(55);client.connect(str(path));client.sendall((encode({'action':'limits','id':identity(ident),'binding':expected})+'\n').encode());raw=b''
+        while b'\n' not in raw:
+            chunk=client.recv(16384)
+            if not chunk or len(raw)+len(chunk)>524288:raise ProjectFault('The original OpenAI limits could not be confirmed.',503)
+            raw+=chunk
+    value=json.loads(raw)
+    if 'error' in value:raise ProjectFault(value['error'],value.get('code',503))
+    result=value['result']
+    if binding(result['binding'])!=expected or not isinstance(result.get('usage'),dict):raise ProjectFault('The original OpenAI usage account changed.',409)
+    return result

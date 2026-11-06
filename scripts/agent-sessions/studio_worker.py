@@ -191,15 +191,19 @@ class StudioWorker(Worker):
             from claude_plan import ClaudePlan
             plan=ClaudePlan(self.manifest['providers'])
             try:await asyncio.to_thread(plan.require_included,self.config['apiProvider'])
-            except ProjectFault:raise ModelFault('claude_subscription_unavailable',429,not_dispatched=True) from None
+            except ProjectFault:
+                error=ModelFault('claude_subscription_unavailable',429,not_dispatched=True)
+                self.quota_rejected(error)
+                raise error from None
             self.credential=await asyncio.to_thread(plan.credential,self.config['apiProvider'],self.config['apiClaudeGrant'])
             self.validate_lease()
             if not self.active():raise asyncio.CancelledError()
         if self.config['apiProvider']['kind']=='zai-coding-plan':
             from zai_limits import state
             if state(self.manifest['providers'],self.config['apiProvider'],self.config['model']):
-                await self.goal_worker.pause(status='usageLimited',reason='The original subscription has a retained native limit. Review its actual account state.')
-                raise ModelFault('zai_subscription_exhausted',429,not_dispatched=True)
+                error=ModelFault('zai_subscription_exhausted',429,not_dispatched=True)
+                if not self.quota_rejected(error):await self.goal_worker.pause(status='usageLimited',reason='The original subscription has a retained native limit. Review its actual account state.')
+                raise error
         if self.goal_worker.execution and not self.goal_worker.active:
             raise GoalHalted()
         self.model = self.transport(); self.turn_requested = True
@@ -215,16 +219,28 @@ class StudioWorker(Worker):
         except (asyncio.CancelledError,ProjectFault) as error:
             unsent=isinstance(error,ModelFault) and error.not_dispatched
             if isinstance(error,ModelFault):self.observe_limit(error)
+            from quota_wait import evidence,snapshot_evidence,register
+            proof=evidence(self.config,error) or snapshot_evidence(self.config,error,self.manifest['providers'])
+            if proof:error.quota_evidence=proof
             self.operations.finish(request_id,error=error,attempted=self.model.attempted and not unsent)
+            waiting=register(self,request_id,proof) if proof else None
             if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
             if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
-                if not unsent:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
+                if not unsent and not waiting:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
             raise
         self.operations.finish(request_id,result=result,attempted=self.model.attempted)
         self.provider_retry.direct_complete()
         if execution and execution == self.goal_worker.execution:self.goal_worker.observe(result,request_id)
         result['origin']['studioRequestId'] = request_id
         return result
+
+    def quota_rejected(self,error):
+        from quota_wait import snapshot_evidence,register
+        proof=snapshot_evidence(self.config,error,self.manifest['providers'])
+        if not proof:return False
+        request_id=str(uuid.uuid4());error.quota_evidence=proof
+        self.operations.begin(self.run_id,request_id);self.operations.finish(request_id,error=error,attempted=False)
+        return bool(register(self,request_id,proof))
 
     def observe_limit(self,error):
         if self.config['apiProvider']['kind']!='zai-coding-plan' or not error.details:return
@@ -235,7 +251,7 @@ class StudioWorker(Worker):
             nested=raw.get('error');code=nested.get('code',raw.get('code')) if isinstance(nested,dict) else raw.get('code')
             from zai_limits import REASONS,observe
             if str(code) not in REASONS:return
-            error.category='quota' if str(code) in ('1308','1310','1316','1317','1320','1321') else 'access'
+            error.category='quota' if str(code) in ('1308','1310','1316','1317','1318','1319','1320','1321') else 'access'
             error.args=(REASONS[str(code)],)
             ordinal=self.store.db.execute('SELECT COUNT(*) FROM studio_model_calls WHERE run_id=?',(self.run_id,)).fetchone()[0]
             observe(self.manifest['providers'],self.config['apiProvider'],self.config['model'],self.run_id,

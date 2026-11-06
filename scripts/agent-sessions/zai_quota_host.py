@@ -30,7 +30,10 @@ async def run(host,ident,rid):
     finally:
         ended=await close(child)
         try:
-            if ended:store.finish(ident,rid,body,error,proof,retry_after)
+            if ended:
+                store.finish(ident,rid,body,error,proof,retry_after)
+                from quota_wait_host import notify
+                notify(host,ident)
             else:store.unknown(ident,rid)
         except Exception:pass  # Keep the original credential lease on uncertainty.
 

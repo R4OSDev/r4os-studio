@@ -40,6 +40,7 @@ class Host:
         self.goal_readback_lock = asyncio.Lock()
         self.image_capability_lock=asyncio.Lock()
         self.inboxes=set();self.keepalives=set()
+        self.quota_waits=set();self.quota_tasks={};self.quota_next={};self.quota_scopes={};self.quota_samples={};self.quota_reads={}
         self.message_tasks={}
         self.skill_delete_tasks={}
         self.session_delete_tasks={}
@@ -168,6 +169,9 @@ class Host:
                 from goal_keepalive import exists as keepalive_exists
                 if keepalive_exists(store):
                     self.keepalives.update((kind,project_id,r['session_id']) for r in store.db.execute('SELECT session_id FROM session_keepalive WHERE active=1'))
+                from quota_wait import has as has_waits
+                if has_waits(store):
+                    self.quota_waits.update((kind,project_id,r['session_id']) for r in store.db.execute("SELECT session_id FROM session_quota_wait WHERE state='waiting'"))
                 # Repair stale pending cards from earlier compatible releases
                 # using confirmed receipts, without replaying any tool operation.
                 finished = set()
@@ -221,6 +225,8 @@ class Host:
                 from message_store import observe_run
                 with store.db: observe_run(store, row['session_id'], run_id, row['state'], row['turn_id'])
                 await self.reconcile_ended(store,meta)
+                from quota_wait_host import registered
+                registered(self,store,row['session_id'])
                 self.active.pop(run_id, None)
             finally: store.close()
         await self.check_unbound()
@@ -899,10 +905,12 @@ async def main():
                     await host.dispatch_queues()
                     from goal_keepalive_host import schedule as schedule_goals
                     schedule_goals(host)
+                    from quota_wait_host import schedule as schedule_quota
+                    schedule_quota(host)
                     from skill_source_host import dispatch as dispatch_sources
                     await dispatch_sources(host)
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)
-                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.source_tasks and not host.claude_auth.busy and not host.plan_login.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and not host.read_work.pending and target != Path(__file__).resolve().parents[2]:
+                    if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.quota_tasks and not host.quota_reads and not host.source_tasks and not host.claude_auth.busy and not host.plan_login.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and not host.read_work.pending and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
                         if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:

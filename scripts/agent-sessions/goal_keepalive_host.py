@@ -26,6 +26,9 @@ async def dispatch(host,kind,ident,sid):
             store=host.store(ident,kind);value=control.row(store,sid)
             if not value or not value['active']:
                 host.keepalives.discard((kind,ident,sid));return
+            from quota_wait import row as quota_wait
+            waiting=quota_wait(store,sid)
+            if waiting and waiting['state'] in ('waiting','dispatching'):return
             from message_store import pending_queue
             if pending_queue(store,sid):return
             from run_boundary import require

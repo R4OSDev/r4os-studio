@@ -173,7 +173,7 @@ class Limits:
                         from openrouter_limits import normalize
                         public, extra = normalize(body), None
                     public['checkedAt'] = received
-                    value = {'binding': binding(provider), 'checkedAtUnix': time.time(), 'lastAttemptAt': time.time(), 'identity': frozen['identity'],
+                    value = {'binding': binding(provider), 'checkedAtUnix': time.time(), 'lastAttemptAt': time.time(), 'attemptedAt':original['createdAt'], 'identity': frozen['identity'],
                              'extraUsageEnabled': extra, 'error': None, 'public': public}
                     write_json(path, value)
                     original['responseOriginal'] = body

@@ -333,7 +333,8 @@ PRAGMA user_version=1;
                 'engine': engine, 'context':context, 'revision': row['revision'],
                 'skillOverrides': skill_preferences.read(self.projects, self.owner_type, self.owner_id, row['id']),
                 'createdAt': row['created_at'], 'updatedAt': row['updated_at'],
-                'latestRun': self.run_present(latest) if latest else None,**model_choice(self,row['id'])}
+                'latestRun': self.run_present(latest) if latest else None,**model_choice(self,row['id']),
+                'quotaWait': __import__('quota_wait').public(self,row['id'])}
 
     def list(self):
         from session_lifetime import state

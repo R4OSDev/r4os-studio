@@ -192,6 +192,9 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     freeze_claude(store,session_id,data,provider_dir,snapshot,queue_context=queued_claude)
     from retry_protocol import freeze as freeze_retry
     freeze_retry(snapshot)
+    if original is None:
+        from quota_wait import freeze as freeze_quota
+        freeze_quota(store,session_id,snapshot)
     return snapshot, attachments, request_hash
 
 

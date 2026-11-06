@@ -194,15 +194,29 @@ export class ProviderManager {
     for (let attempt = 0; attempt < 2; attempt++) {
       await this.usageScope(id, runtime);
       const epoch = runtime.usageEpoch;
+      const startedAt = new Date().toISOString();
       const usage = await readUsage(runtime.client);
       await this.usageScope(id, runtime);
       if (this.runtimes.get(id) !== runtime || runtime.retired || runtime.unavailable) throw new Error('Account runtime changed.');
       if (epoch !== runtime.usageEpoch) continue;
       const scope = this.present(await this.record(id)).account?.scope;
       if (scope) usage.accountScope = scope;
-      this.usages.set(id, usage); return usage;
+      this.usages.set(id, usage); this.usageReads.set(id, { usage, startedAt }); return usage;
     }
     throw new Error('Account usage changed while reading. Refresh a full snapshot.');
+  }
+
+  private usageReads = new Map<string, { usage: ProviderUsage; startedAt: string }>();
+
+  async nativeLimits(id: string, expected: NativeBinding) {
+    return this.exclusive(id, async () => {
+      const account = await this.nativeAccessLocked(id, expected);
+      const runtime = await this.connectedRuntime(id); await this.usageScope(id, runtime);
+      const cached = this.usages.get(id), original = this.usageReads.get(id);
+      const usage = cached && original?.usage === cached && Date.now() - Date.parse(cached.fetchedAt) < 60_000 ? cached : await this.readUsageLocked(id, runtime);
+      await this.nativeAccessLocked(id, expected);
+      return { binding: account.binding, usage, startedAt: this.usageReads.get(id)?.startedAt ?? null };
+    });
   }
 
   async usage(id: string, refresh = false): Promise<ProviderUsage> {
