@@ -50,7 +50,9 @@ def sha256(raw):
 
 
 def regular_bytes(path, limit=MAX_METADATA):
+    from inventory_reads import watch
     path = Path(path)
+    watch(path)
     if path.absolute() != path.resolve(strict=True):
         fail('contains an indirect metadata path.')
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)

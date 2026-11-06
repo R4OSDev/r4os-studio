@@ -34,6 +34,12 @@ export interface ComponentJob {
 export interface ComponentsStatus {
   enabled: boolean; components: Record<ComponentKind, ComponentInventory>; job: ComponentJob | null;
   message: string; csrfToken?: string;
-  features?: { sdkSets?: number; sdkSelection?: number; sdkProfiles?: number }; profileRevision?: string;
+  features?: { sdkSets?: number; sdkSelection?: number; sdkProfiles?: number; componentProgress?: number }; profileRevision?: string;
+  generation?: string;
+  inventory?: { revision: string | null; checkedAt: string; reused: boolean };
   sdkOperation?: { requestId: string; phase: 'complete' };
+}
+export interface ComponentsProgress {
+  enabled: boolean; job: ComponentJob | null; profileRevision: string; generation: string;
+  inventoryRevision: string | null; features: { componentProgress: number };
 }

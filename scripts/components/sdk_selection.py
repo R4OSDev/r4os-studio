@@ -22,6 +22,12 @@ def receipt_path(manager, request_id):
 
 
 def start(manager, action, identity, request_id=None, expected_revision=None, manifest_hash=None):
+    result = _admit(manager, action, identity, request_id, expected_revision, manifest_hash)
+    # Compose display state after the original admission/receipt lock is released.
+    return {**manager.status(), **result}
+
+
+def _admit(manager, action, identity, request_id=None, expected_revision=None, manifest_hash=None):
     if action not in ('download', 'default') or not isinstance(identity, str) or not re.fullmatch('[a-f0-9]{40}', identity):
         raise ValueError('Invalid SDK operation.')
     if request_id is not None and (not isinstance(expected_revision, str) or not SHA256.fullmatch(expected_revision)):
@@ -29,6 +35,7 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
     if manifest_hash is not None and (not isinstance(manifest_hash, str) or not SHA256.fullmatch(manifest_hash)):
         raise ValueError('Invalid SDK release checksum.')
     with manager.lock:
+        manager.check_mutation()
         request_id = request_id or str(uuid.uuid4())
         path = receipt_path(manager, request_id)
         previous = regular_json(path, 512 * 1024) if path.exists() or path.is_symlink() else None
@@ -41,10 +48,10 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
             if previous.get('phase') != 'complete':
                 previous.update(phase='complete', completedAt=now())
                 atomic(path, previous)
-            return {**manager.status(), 'sdkOperation': {'requestId': request_id, 'phase': 'complete'}}
+            return {'sdkOperation': {'requestId': request_id, 'phase': 'complete'}}
         if manager.busy:
             if manager.job.get('requestId') == request_id:
-                return manager.status()
+                return {}
             raise ValueError('Another component operation is already running.')
         if action == 'default' and profile_revision(manager.state) != expected_revision:
             raise ValueError('The component default changed. Refresh before selecting an SDK again.')
@@ -71,7 +78,7 @@ def start(manager, action, identity, request_id=None, expected_revision=None, ma
         manager.job = {'kind': 'sdk', 'action': action, 'requestId': request_id, 'phase': 'working',
                        'message': 'Resolving SDK components…', 'error': None}
         threading.Thread(target=work, args=(manager, path, receipt), daemon=True).start()
-        return manager.status()
+        return {}
 
 
 

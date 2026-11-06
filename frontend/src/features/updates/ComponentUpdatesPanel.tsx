@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import type { ComponentKind, ComponentsStatus } from '../../../../shared/components';
+import { useState } from 'react';
+import type { ComponentKind } from '../../../../shared/components';
 import './styles.css';
 import { SdkUpdatesPanel } from './SdkUpdatesPanel';
+import { useComponents } from './useComponents';
 
 export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', rust: 'Rust', qemu: 'QEMU', codex: 'Codex', r4upack: 'R4UPack', r4os: 'R4OS Releases' };
 
@@ -11,28 +12,14 @@ export function ComponentUpdatesPanel({ kind: viewKind }: { kind: ComponentKind 
 
 function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
   const kind: ComponentKind = viewKind === 'c' ? 'zig' : viewKind;
-  const [status, setStatus] = useState<ComponentsStatus | null>(null);
-  const [error, setError] = useState('');
+  const { status, error, setError, receive, refresh, refreshing } = useComponents();
   const [requesting, setRequesting] = useState(false);
   const [selection, setSelection] = useState('');
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    async function refresh() {
-      try {
-        const response = await fetch('/api/updates/components', { cache: 'no-store', signal: controller.signal });
-        if (!response.ok) throw new Error('Component versions could not be loaded.');
-        setStatus(await response.json()); setLoaded(true);
-      } catch (cause) { if (!controller.signal.aborted) setError((cause as Error).message); }
-    }
-    void refresh();
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 2000);
-    return () => { controller.abort(); window.clearInterval(timer); };
-  }, []);
+  const loaded = !!status;
   const inventory = status?.components[kind];
   const active = inventory?.installed.find((value) => value.id === inventory.activeId);
   const selected = selection || inventory?.activeId || inventory?.installed[0]?.id || '';
-  const busy = requesting || status?.job?.phase === 'working';
+  const busy = requesting || refreshing || !!error || status?.job?.phase === 'working';
   const sdkOwned = (kind === 'zig' || kind === 'rust') && status?.features?.sdkProfiles === 1;
   async function action(command: 'check' | 'download' | 'default', id?: string, older = false) {
     if (!status) return;
@@ -44,7 +31,7 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? 'The component operation failed.');
-      setStatus({ ...result, csrfToken: status.csrfToken });
+      receive({ ...result, csrfToken: status.csrfToken });
     } catch (cause) { setError((cause as Error).message); }
     finally { setRequesting(false); }
   }
@@ -58,6 +45,8 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
       {kind === 'codex' && <p className="updates-help">Only the latest Codex version is available to download. Previously installed versions remain selectable.</p>}
       {kind === 'rust' && <p className="updates-help">Compiler and build tools follow the SDK's original tool profile.</p>}
       {kind === 'r4os' && <p className="updates-help">The default is used for new virtual machines. Existing virtual machines keep their selected release.</p>}
+      <div className="updates-actions"><button type="button" disabled={requesting || refreshing} onClick={() => void refresh()}>{refreshing ? 'Checking inventory…' : 'Refresh inventory'}</button></div>
+      {status?.inventory?.checkedAt && <p className="updates-help">Inventory checked: {new Date(status.inventory.checkedAt).toLocaleString()}</p>}
       {!loaded && !error && <p role="status">Loading component versions…</p>}
       {status && !status.enabled && <p className="updates-alert">{status.message}</p>}
       {(error || inventory?.error) && <p className="updates-alert" role="alert">{error || inventory?.error}</p>}
@@ -68,11 +57,11 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
       {!sdkOwned && <div className="updates-actions"><button type="button" disabled={!status?.enabled || busy} onClick={() => void action('check')}>{kind === 'r4upack' ? 'Check qualified profiles' : 'Check for updates'}</button></div>}
       {!sdkOwned && <div className="component-default">
         <label htmlFor={`default-${kind}`}>Active default</label>
-        <select id={`default-${kind}`} value={selected} disabled={!status?.enabled || busy || !inventory?.installed.length} onChange={(event) => setSelection(event.target.value)}>
+        <select id={`default-${kind}`} value={selected} disabled={!status?.enabled || busy || !inventory?.installed.length} onChange={(event) => { setSelection(event.target.value); void refresh(); }}>
           {!inventory?.installed.length && <option value="">No installed versions</option>}
           {inventory?.installed.map((value) => <option key={value.id} value={value.id}>{value.version}{value.sdkVersion ? ` · SDK ${value.sdkVersion}` : ''}{value.revision ? ` · ${value.revision.slice(0, 8)}` : ''}{value.external ? ' · system installation' : ''}</option>)}
         </select>
-        <button type="button" disabled={!status?.enabled || busy || !selected || selected === inventory?.activeId} onClick={() => void action('default', selected)}>Use as default</button>
+        <button type="button" disabled={!status?.enabled || busy || !selected || !inventory?.installed.some(value => value.id === selected) || selected === inventory?.activeId} onClick={() => void action('default', selected)}>Use as default</button>
       </div>}
       <div className="component-version-list">
         {versions.map((value) => {

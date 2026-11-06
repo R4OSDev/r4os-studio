@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import stat
+from inventory_reads import watch
 from urllib.error import HTTPError
 
 from common import read_url
@@ -29,6 +30,7 @@ def profile_revision(state):
 
 
 def regular_json(path, limit):
+    watch(path)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(stream.fileno())
@@ -69,6 +71,7 @@ def parse_manifest(selected, raw):
 
 def resolve(manager, selected, fetch=True):
     path = cache_path(manager, selected)
+    watch(path)
     url = manifest_url(selected)
     if path.exists() or path.is_symlink():
         saved = regular_json(path, 3 * MAX_MANIFEST)

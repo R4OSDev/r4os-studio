@@ -7,6 +7,7 @@ import re
 import shutil
 import tarfile
 import tempfile
+from inventory_reads import watch
 
 from common import download, publish, read_url
 import sdk_host
@@ -37,6 +38,7 @@ def paths(root, revision):
     package.checksums(package.regular_bytes(base / 'SHA256SUMS.txt'), manifest_raw, document)
     result = {name: Path(root) / package.relative(value) for name, value in saved['paths'].items()}
     for path in result.values():
+        watch(path)
         if path.resolve(strict=True) != path.absolute():
             raise ValueError('An SDK package root is missing or indirect.')
     return base, saved, document, result
@@ -138,9 +140,12 @@ def host_records(root, kind):
         return []
     result = []
     directory = Path(root) / 'Packages'
+    watch(directory)
     if not directory.is_dir():
         return result
     for entry in directory.iterdir():
+        watch(entry)
+        watch(entry / 'bundle.json')
         if not package.COMMIT.fullmatch(entry.name) or not (entry / 'bundle.json').is_file():
             continue
         try:

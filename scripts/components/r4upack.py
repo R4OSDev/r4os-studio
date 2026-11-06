@@ -7,6 +7,7 @@ import platform
 import stat
 import subprocess
 import tempfile
+from inventory_reads import watch
 
 from common import read_url, publish
 from service import atomic, digest, now
@@ -20,6 +21,7 @@ SPEC_HASH = hashlib.sha256(json.dumps(SPEC, sort_keys=True, separators=(',', ':'
 
 def regular(path, limit=16 * 1024**2):
     path = Path(path).absolute()
+    watch(path)
     info = path.lstat()
     if path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > limit:
         raise ValueError('R4UPack requires an unlinked regular file at its bound path.')
@@ -49,6 +51,7 @@ def identity(context):
 
 def verify(directory, binary=None, root=None):
     directory = Path(directory).absolute()
+    watch(directory)
     if directory.resolve(strict=True) != directory or not directory.is_dir():
         raise ValueError('Invalid R4UPack profile directory.')
     value = json.loads(regular(directory / '.studio-component.json').read_text())
@@ -81,6 +84,7 @@ def verify(directory, binary=None, root=None):
 def inventory(root, external=None):
     root = Path(root); records = []
     folder = root / 'Toolchains/R4UPack'
+    watch(folder)
     if folder.exists():
         if folder.resolve(strict=True) != folder:
             raise ValueError('The R4UPack profile folder is linked.')

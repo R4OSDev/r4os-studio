@@ -5576,3 +5576,29 @@ read behind an older poll. Leaving the view aborts its read and rejects late
 answers; authentication changes invalidate the old result before obtaining a
 fresh token. Mutations keep their original request and are never retried by
 the polling helper. Hidden views start no idle overview reads.
+
+
+### Component inventory and progress
+
+Component views share one read at a time. Running jobs use the protected small
+progress projection every2seconds; idle views check it every15seconds and read
+inventory every30seconds. Hidden views start no periodic work. Manual inventory
+refresh and version selection request a full check. A changed host/profile
+generation loads matching inventory before new actions become available.
+
+The component manager prepares inventory outside its state lock and applies it
+only to the matching profile/catalog generation. Display reuse lasts at most
+30seconds and tracks at most8192 identities of files/directories actually read
+by the original verifiers, including SDK prerequisite and packer inputs. Changed,
+missing, replaced or indirect inputs invalidate that read; uncacheable inputs
+always take the original full path. Each response retains the actual inventory
+check time. Job progress performs no inventory traversal or executable hashing.
+
+Installation, default selection and execution still use their full original
+validators. Read reuse cannot qualify an executable or alter existing SDK/worker
+pins. Mutation admission and maintenance gates remain serialized. Original SDK
+request IDs, expected profiles, payloads and durable receipt recovery remain
+unchanged. A late poll cannot overwrite a confirmed mutation; failed refreshes
+retain the prior inventory and selection, with new actions blocked until a
+successful check. Changed-generation progress alone does not discard an original
+pending SDK operation.

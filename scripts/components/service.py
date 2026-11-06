@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+from inventory_reads import watch
 
 KINDS = ('sdk', 'contract', 'libraries', 'zig', 'rust', 'qemu', 'codex', 'r4upack', 'r4os')
 FOLDERS = {'sdk': 'SDK', 'contract': 'Contract', 'libraries': 'Libraries',
@@ -45,6 +46,7 @@ def atomic(path, value):
 
 
 def digest(path):
+    watch(path)
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
@@ -57,6 +59,7 @@ def run(args, timeout=60, **kwargs):
 
 
 def package_info(path):
+    watch(Path(path) / 'build.zig.zon')
     return parse_package_info((Path(path) / 'build.zig.zon').read_text())
 
 
@@ -88,6 +91,10 @@ class Manager:
         self.external = external or {}
         self.adapters = adapters or {}
         self.lock = threading.RLock()
+        self.inventory_read_lock = threading.Lock()
+        self.inventory_cache = None
+        self.inventory_epoch = 0
+        self.inventory_nonce = os.urandom(12).hex()
         self.busy = False
         self.job = None
         self.catalogs = {}
@@ -113,17 +120,21 @@ class Manager:
             return inventory(self.root, self.external.get(kind))
         records = []
         folder = self.root / FOLDERS[kind]
+        watch(folder)
         if folder.is_dir():
             for path in folder.iterdir():
+                watch(path)
                 if path.name.startswith('.') or path.is_symlink() or not path.is_dir():
                     continue
                 marker = path / ('image.json' if kind == 'r4os' else '.studio-component.json')
+                watch(marker)
                 if not marker.is_file() or marker.is_symlink():
                     continue
                 try:
                     record = json.loads(marker.read_text())
                     if kind == 'r4os':
                         disk = path / 'disk.img'
+                        watch(disk)
                         if (record.get('schema') != 1 or record.get('id') != path.name or record.get('disk') != 'disk.img'
                                 or record.get('variant') != 'full' or record.get('architecture') != 'x86_64'
                                 or not re.fullmatch('[a-f0-9]{64}', record.get('sha256', ''))
@@ -143,11 +154,13 @@ class Manager:
                         if record.get('installationMethod') == 'r4os-sdk-profile':
                             continue  # Retired SDK-specific installation; never executable inventory.
                         binary = path / 'bin/rustc'
+                        watch(binary)
                         if not binary.is_file() or not record.get('fileHashes'):
                             continue
                         record['binary'] = str(binary)
                     elif kind in ('qemu', 'codex'):
                         binary = path / ('bin/qemu-system-x86_64' if kind == 'qemu' else 'codex')
+                        watch(binary)
                         if not binary.is_file():
                             continue
                         record['binary'] = str(binary)
@@ -162,6 +175,7 @@ class Manager:
         if kind in self.external:
             record = self.external[kind]
             try:
+                watch(record['binary'])
                 info = Path(record['binary']).stat()
                 if info.st_size == record['binarySize'] and info.st_mtime_ns == record['binaryMtimeNs']:
                     records.append(record)
@@ -179,48 +193,29 @@ class Manager:
             raise ValueError('The component defaults need recovery; no legacy profile was selected.')
         if actual != self.state:
             self.state = actual
+            self.inventory_epoch += 1
 
-    def status(self):
-        from sdk_sets import profile_revision, summary
-        with self.lock:
-            self.refresh_profile()
-            components = {}
-            inventories = {}; packer_error = None
-            for kind in KINDS:
-                try: inventories[kind] = self.installed(kind)
-                except (OSError, ValueError, TypeError, KeyError) as error:
-                    if kind != 'r4upack': raise
-                    inventories[kind] = []; packer_error = str(error)[:500]
-            for kind in KINDS:
-                catalog = self.catalogs.get(kind, {})
-                active = self.state['defaults'].get(kind)
-                if kind == 'r4upack':
-                    from r4upack import selected
-                    try:
-                        active = selected(self.root, inventories[kind])
-                        if active is None and (self.root / 'Profiles/r4upack.json').exists():
-                            packer_error = 'The selected R4UPack profile is missing or changed. Existing files were preserved.'
-                    except (OSError, ValueError, TypeError, KeyError) as error:
-                        active = None; packer_error = str(error)[:500]
-                installed = inventories[kind]
-                components[kind] = {'installed': [public(record) for record in installed],
-                                    'available': [public(record) for record in catalog.get('versions', [])],
-                                    'activeId': active['id'] if active else None,
-                                    'latestId': catalog.get('latestId'), 'checkedAt': catalog.get('checkedAt'),
-                                    'error': packer_error if kind == 'r4upack' and packer_error else catalog.get('error'), 'hasMore': catalog.get('hasMore', False)}
-            for record in components['sdk']['installed'] + components['sdk']['available']:
-                value = self.sdk_sets.get(record['id'], {'state': 'unresolved', 'reason': 'Check SDK versions to resolve the matching packages.'})
-                record['sdkSet'] = summary(value, inventories, self.state['defaults'])
-            return {'enabled': True, 'components': components, 'job': copy.deepcopy(self.job),
-                    'features': {'sdkSets': 1, 'sdkSelection': 1, 'sdkProfiles': 1, 'sdkMigration': 1}, 'profileRevision': profile_revision(self.state),
-                    'message': ('Explicit SDK maintenance is pending.' if (self.root / 'Profiles/sdk-host-maintenance.json').exists()
-                                else 'Downloads and active defaults are managed independently.')}
+    def status(self, refresh=False):
+        from inventory_status import status
+        return status(self, refresh)
+
+    def progress_status(self):
+        from inventory_status import progress
+        return progress(self)
+
+    def check_mutation(self):
+        """Called under the existing admission lock, immediately before effects."""
+        self.refresh_profile()
+        if (self.root / 'Profiles/sdk-host-maintenance.json').exists():
+            raise ValueError('SDK host maintenance is in progress. Retry after it completes.')
 
     def progress(self, message, **values):
         with self.lock:
             if self.job is None:
                 self.job = {'kind': 'sdk', 'action': 'maintenance', 'phase': 'working', 'error': None}
             self.job.update(message=message, **values)
+            if values.get('phase') in ('complete', 'failed'):
+                self.inventory_epoch += 1
 
     def start(self, kind, action, identity=None, older=False):
         if kind in ('contract', 'libraries', 'zig', 'rust'):
@@ -233,6 +228,7 @@ class Manager:
         if identity is not None and not IDENTITY.fullmatch(identity):
             raise ValueError('Invalid version identity.')
         with self.lock:
+            self.check_mutation()
             if self.busy:
                 raise ValueError('Another component operation is already running.')
             if kind not in self.adapters:
@@ -265,6 +261,7 @@ class Manager:
                             self.sdk_sets[selected['id']] = value
                 with self.lock:
                     self.catalogs[kind] = {**catalog, 'checkedAt': now(), 'error': None}
+                    self.inventory_epoch += 1
             else:
                 catalog = self.catalogs.get(kind, {})
                 record = next((value for value in catalog.get('versions', []) if value['id'] == identity), None)
@@ -283,6 +280,7 @@ class Manager:
                 if action == 'check':
                     self.catalogs.setdefault(kind, {})['error'] = message
                 self.job.update(phase='failed', message='The component operation failed. Existing versions were kept.', error=message)
+                self.inventory_epoch += 1
         finally:
             with self.lock:
                 self.busy = False
@@ -291,8 +289,10 @@ class Manager:
         if kind == 'r4upack':
             from r4upack import choose
             with self.lock:
+                self.check_mutation()
                 if self.busy: raise ValueError('Wait for the current component operation to finish.')
                 choose(self.root, identity, self.installed(kind))
+                self.inventory_epoch += 1
             return self.status()
         if kind == 'sdk':
             from sdk_selection import start
@@ -302,6 +302,7 @@ class Manager:
         if kind not in KINDS or not IDENTITY.fullmatch(identity):
             raise ValueError('Invalid component version.')
         with self.lock:
+            self.check_mutation()
             if self.busy:
                 raise ValueError('Wait for the current component operation to finish.')
             if kind in ('zig', 'rust') and self.state['defaults'].get('sdk'):
@@ -309,10 +310,6 @@ class Manager:
             record = next((value for value in self.installed(kind) if value['id'] == identity), None)
             if not record:
                 raise ValueError('Only a complete local installation can be selected as default.')
-            if kind in ('contract', 'libraries') and self.state['defaults'].get('sdk'):
-                if self.state['defaults'].get(kind, {}).get('id') == identity:
-                    return self.status()
-                raise ValueError('Select the SDK to change its Contract and Libraries together.')
             defaults = copy.deepcopy(self.state['defaults'])
             defaults[kind] = record
             sdk = defaults.get('sdk', {})
@@ -350,19 +347,24 @@ class Handler(socketserver.StreamRequestHandler):
             if len(line) > 4096 or not line.endswith(b'\n'):
                 raise ValueError('Invalid component request.')
             request = json.loads(line)
-            allowed = {'command', 'kind', 'id', 'older', 'requestId', 'expectedProfileRevision', 'manifestSha256'}
+            allowed = {'command', 'kind', 'id', 'older', 'requestId', 'expectedProfileRevision', 'manifestSha256', 'refresh'}
             if not isinstance(request, dict) or set(request) - allowed:
                 raise ValueError('Unsupported component request.')
             command = request.get('command')
             manager = self.server.manager
-            with manager.lock:
-                manager.refresh_profile()
-                if command != 'status' and (manager.root / 'Profiles/sdk-host-maintenance.json').exists():
-                    raise ValueError('SDK host maintenance is in progress. Retry after it completes.')
-                if command == 'status' and set(request) == {'command'}:
-                    result = manager.status()
-                elif command in ('default', 'download') and request.get('kind') == 'sdk':
-                    if not {'command', 'kind', 'id'} <= set(request) or 'older' in request:
+            if command == 'status' and set(request) <= {'command', 'refresh'} and type(request.get('refresh', False)) is bool:
+                result = manager.status(request.get('refresh', False))
+            elif command == 'progress' and set(request) == {'command'}:
+                result = manager.progress_status()
+            else:
+                with manager.lock:
+                    manager.refresh_profile()
+                    if (manager.root / 'Profiles/sdk-host-maintenance.json').exists():
+                        raise ValueError('SDK host maintenance is in progress. Retry after it completes.')
+                # Mutators retain their own admission/effect locks. Inventory
+                # composition after those locks must not hold up job progress.
+                if command in ('default', 'download') and request.get('kind') == 'sdk':
+                    if not {'command', 'kind', 'id'} <= set(request) or set(request) - (allowed - {'refresh', 'older'}):
                         raise ValueError('Unsupported SDK operation.')
                     from sdk_selection import start
                     result = start(manager, command, request['id'], request.get('requestId'),

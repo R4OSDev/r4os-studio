@@ -1,6 +1,6 @@
 import { createConnection } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import type { ComponentKind, ComponentsStatus } from '../../../../shared/components.js';
+import type { ComponentKind, ComponentsProgress, ComponentsStatus } from '../../../../shared/components.js';
 import type { UpdateSessions } from './sessions.js';
 import { UpdateError } from './client.js';
 
@@ -11,11 +11,11 @@ interface ComponentRequest {
   kind: ComponentKind; id?: string; older?: boolean;
   requestId?: string; expectedProfileRevision?: string; manifestSha256?: string;
 }
-function command(value: Record<string, unknown>): Promise<ComponentsStatus> {
+function command<T = ComponentsStatus>(value: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     const socket = createConnection(process.env.STUDIO_COMPONENT_SOCKET ?? '/run/r4os-studio-components/control.sock');
     let pending = '', settled = false;
-    socket.setTimeout(value.command === 'default' && value.kind === 'rust' ? 60_000 : 5_000);
+    socket.setTimeout(value.command === 'status' ? 30_000 : value.command === 'default' && value.kind === 'rust' ? 60_000 : 5_000);
     socket.on('connect', () => socket.write(JSON.stringify(value) + '\n'));
     socket.on('data', (chunk) => {
       pending += chunk.toString();
@@ -26,7 +26,9 @@ function command(value: Record<string, unknown>): Promise<ComponentsStatus> {
       try {
         const response = JSON.parse(pending.split('\n')[0]);
         if (response.error) reject(new UpdateError(response.error, response.code ?? 409));
-        else if (response.status?.components) resolve(response.status);
+        else if (value.command === 'progress' ? response.status?.features?.componentProgress === 1
+          && typeof response.status.generation === 'string' && typeof response.status.profileRevision === 'string'
+          && Object.hasOwn(response.status, 'job') && Object.hasOwn(response.status, 'inventoryRevision') : response.status?.components) resolve(response.status);
         else reject(new UpdateError('The component service returned an invalid response.'));
       } catch { reject(new UpdateError('The component service returned an invalid response.')); }
     });
@@ -37,15 +39,20 @@ function command(value: Record<string, unknown>): Promise<ComponentsStatus> {
 }
 
 export async function componentRoutes(app: FastifyInstance, sessions: UpdateSessions) {
-  app.get('/components', async (request, reply) => {
+  app.get<{ Querystring: { refresh?: boolean } }>('/components', { schema: { querystring: { type: 'object', additionalProperties: false,
+    properties: { refresh: { type: 'boolean' } } } } }, async (request, reply) => {
     const session = sessions.session(request, reply, true);
-    const status = await command({ command: 'status' }).catch((): ComponentsStatus => ({
+    const status = await command({ command: 'status', ...(request.query.refresh ? { refresh: true } : {}) }).catch((cause): ComponentsStatus => ({
       enabled: false, components: Object.fromEntries(kinds.map((kind) => [kind, {
         installed: [], available: [], activeId: null, latestId: null, checkedAt: null, error: null, hasMore: false,
       }])) as unknown as ComponentsStatus['components'], job: null,
-      message: 'Component host support is not configured. A host administrator must install the component service.',
+      message: cause instanceof Error ? cause.message : 'Component host support is not configured. A host administrator must install the component service.',
     }));
     return { ...status, csrfToken: session.token };
+  });
+  app.get('/components/progress', async (request, reply) => {
+    sessions.session(request, reply);
+    return command<ComponentsProgress>({ command: 'progress' });
   });
   for (const action of ['check', 'download', 'default']) {
     app.post<{ Body: ComponentRequest }>(`/components/${action}`, {

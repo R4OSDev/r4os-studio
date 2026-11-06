@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ComponentsStatus } from '../../../../shared/components';
+import { useComponents } from './useComponents';
 
 type SdkRequest = { kind: 'sdk'; id: string; requestId: string; expectedProfileRevision: string; manifestSha256?: string };
 type Pending = { command: 'download' | 'default'; body: SdkRequest };
@@ -20,32 +21,18 @@ function requestId() {
 }
 
 export function SdkUpdatesPanel() {
-  const [status, setStatus] = useState<ComponentsStatus | null>(null);
-  const [error, setError] = useState(''), [selection, setSelection] = useState('');
+  const [selection, setSelection] = useState('');
   const [requesting, setRequesting] = useState(false);
   const [pending, setPending] = useState<Pending | null>(remembered);
   const pendingRef = useRef(pending);
-  const receive = useCallback((value: ComponentsStatus) => {
-    setStatus(value);
+  const received = useCallback((value: ComponentsStatus) => {
     if (pendingRef.current && ((value.job?.requestId === pendingRef.current.body.requestId && value.job.phase === 'complete')
       || value.sdkOperation?.requestId === pendingRef.current.body.requestId)) {
       try { sessionStorage.removeItem(pendingKey); } catch { /* In-memory receipt remains sufficient for this page. */ }
       pendingRef.current = null; setPending(null);
     }
   }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    async function refresh() {
-      try {
-        const response = await fetch('/api/updates/components', { cache: 'no-store', signal: controller.signal });
-        if (!response.ok) throw new Error('SDK versions could not be loaded.');
-        receive(await response.json());
-      } catch (cause) { if (!controller.signal.aborted) setError((cause as Error).message); }
-    }
-    void refresh();
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 2000);
-    return () => { controller.abort(); window.clearInterval(timer); };
-  }, [receive]);
+  const { status, error, setError, receive, refresh, refreshing } = useComponents(received);
   const inventory = status?.components.sdk;
   const versions = [...(inventory?.available ?? []).map((remote) => ({ ...remote, ...inventory?.installed.find((local) => local.id === remote.id) })),
     ...(inventory?.installed ?? []).filter((local) => !inventory?.available.some((remote) => remote.id === local.id))];
@@ -54,7 +41,7 @@ export function SdkUpdatesPanel() {
   const active = inventory?.installed.find((value) => value.id === inventory.activeId);
   const capable = status?.enabled && status.features?.sdkSelection === 1 && status.features?.sdkProfiles === 1;
   const busy = requesting || status?.job?.phase === 'working';
-  const blocked = !capable || busy || !!pending;
+  const blocked = !capable || busy || !!pending || refreshing || !!error;
 
   async function send(command: 'check' | 'download' | 'default', body: Record<string, unknown>) {
     if (!status) return;
@@ -89,6 +76,8 @@ export function SdkUpdatesPanel() {
   return <section className="updates-content" aria-label="SDK updates"><div className="updates-card">
     <div className="updates-title"><h2>SDK</h2><span className="updates-version">{active ? `Default: ${active.version}` : 'No active default'}</span></div>
     <p className="updates-help">The SDK determines build profiles, tools, Contract and system libraries. Existing projects require an explicit SDK migration.</p>
+    <div className="updates-actions"><button type="button" disabled={requesting || refreshing} onClick={() => void refresh()}>{refreshing ? 'Checking inventory…' : 'Refresh inventory'}</button></div>
+    {status?.inventory?.checkedAt && <p className="updates-help">Inventory checked: {new Date(status.inventory.checkedAt).toLocaleString()}</p>}
     {!status && !error && <p role="status">Loading SDK versions…</p>}
     {status && !status.enabled && <p className="updates-alert">{status.message}</p>}
     {status?.enabled && !capable && <p className="updates-alert">The component service is switching releases. Retry shortly.</p>}
@@ -102,7 +91,7 @@ export function SdkUpdatesPanel() {
     </div>}
     <div className="updates-actions"><button type="button" disabled={blocked} onClick={() => void send('check', { kind: 'sdk' })}>Check for updates</button></div>
     <div className="component-default"><label htmlFor="sdk-version">SDK version</label>
-      <select id="sdk-version" value={selectedId} disabled={!capable || busy || !!pending || !versions.length} onChange={(event) => setSelection(event.target.value)}>
+      <select id="sdk-version" value={selectedId} disabled={!capable || busy || !!pending || refreshing || !versions.length} onChange={(event) => { setSelection(event.target.value); void refresh(); }}>
         {!versions.length && <option value="">No versions loaded</option>}
         {versions.map((value) => <option key={value.id} value={value.id}>{value.version} · {value.id.slice(0, 8)}</option>)}
       </select>
