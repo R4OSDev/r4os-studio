@@ -1,3 +1,7 @@
+## 0.11.44
+
+SDK downloads retain additional release assets such as `libraries-runtime` as verified package payloads. Only declared source and host-tool archives are extracted into Studio's installation roots, preventing the SDK 0.64.152 download from failing with a raw role-name error. Every asset keeps its original size/hash checks and native SDK verification. Retry retains the original request; downloads preserve component defaults and existing project pins.
+
 ## 0.11.43
 
 Assigned-VM diagnostic capture and graceful project-VM stop/restart now respect the existing service filesystem isolation. New input admission obtains a small, revision-checked VM identity from the development coordinator over bounded read-only IPC. VM workers retain local lease, process, boot, project and permission checks; the private bridge and coordinator keep full current VM/image validation before power actions. Agent and VM-worker access to Instances remains blocked. Existing accepted inputs retain their original context; send a new input to use the corrected VM diagnosis binding.

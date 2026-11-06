@@ -234,7 +234,10 @@ def prepare(manager, selected):
             if partial.stat().st_size != item['bytes']:
                 raise ValueError('The SDK package asset size changed.')
             partial.rename(target)
-        if 'prefix' in item:
+        # Only source/host-tool archives have Studio installation roots.
+        # Other SDK assets, including libraries-runtime, remain verified
+        # payloads for the native SDK package verifier.
+        if item['role'] in targets:
             destination = targets[item['role']]
             if destination.exists():
                 if destination.is_symlink() or destination.resolve() != destination.absolute():
