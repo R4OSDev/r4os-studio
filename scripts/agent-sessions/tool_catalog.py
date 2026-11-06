@@ -162,3 +162,8 @@ def validate_arguments(name,value,scope='project'):
         required = 'title' if kind in ('version', 'subversion') else 'description'
         if required not in value['input']:
             raise ValueError('arguments.input: ' + kind + ' create requires ' + required + '.')
+
+
+def native_capabilities():
+    """Permission capabilities, deliberately not callable tool declarations."""
+    return [{'id':'web_search','defaultEnabled':True},{'id':'image_generation','defaultEnabled':True}]

@@ -17,7 +17,7 @@ from store import connect as project_connect, operation as project_operation, Pr
 from layout import workspace, folder
 from profile import PROFILE, NOTES_SKILL_PROFILE, permission_tools, default_enabled
 from owner import owner_type, binding, skill_workspace
-from tool_catalog import tool_scope
+from tool_catalog import tool_scope, native_capabilities
 import skill_preferences
 
 TOOL_IDS = tuple('studio.' + name for name in permission_tools(PROFILE))
@@ -148,7 +148,7 @@ def options(provider_dir, r4os, selected_profile=PROFILE):
     from studio_engine import engine as studio_engine
     default_engine=studio_engine(tool_scope(selected_profile)) if any(v['type']=='api' for v in values) else next((v['engine'] for v in values if v.get('engine')),None) or engine(r4os,selected_profile)
     return {'providers': values, 'tools': [{'id': 'studio.' + v, 'defaultEnabled': default_enabled(v)} for v in permission_tools(selected_profile)],
-            'nativeTools': [{'id': 'web_search', 'defaultEnabled': True},{'id':'image_generation','defaultEnabled':True}],
+            'nativeTools': native_capabilities(),
             'engine': default_engine}
 
 

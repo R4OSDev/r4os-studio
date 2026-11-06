@@ -1,11 +1,32 @@
 import type { FastifyInstance } from 'fastify';
 import type { SystemPrompt } from '../../../../shared/system-prompt.js';
 import { ProjectSessions } from '../projects/sessions.js';
+import { agentHost } from '../agent-sessions/host.js';
 import { ProjectError, projectStore } from '../projects/store.js';
 
 export async function settingsRoutes(app: FastifyInstance, { directory }: { directory: string }) {
   const sessions = new ProjectSessions('settings');
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
+  app.get('/tools', async (request, reply) => {
+    sessions.session(request, reply, true);
+    return agentHost({ operation: 'system_tools' });
+  });
+  const hash = { type: 'string', pattern: '^[a-f0-9]{64}$' };
+  const source = { type: 'string', pattern: '^(studio|native|skills|skill-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})$' };
+  for (const details of [false, true]) {
+    app.get<{ Params: { sourceId: string; toolId?: string }; Querystring: { identity: string; after?: string } }>(
+      '/tools/:sourceId' + (details ? '/:toolId' : ''), {
+        schema: {
+          params: { type: 'object', additionalProperties: false, required: details ? ['sourceId','toolId'] : ['sourceId'],
+            properties: { sourceId: source, ...(details ? { toolId: hash } : {}) } },
+          querystring: { type: 'object', additionalProperties: false, required: ['identity'],
+            properties: { identity: hash, ...(details ? {} : { after: { type: 'string', pattern: '^(0|[1-9][0-9]{0,5})$' } }) } },
+        },
+      }, async (request, reply) => {
+        sessions.session(request, reply);
+        return agentHost({ operation: 'system_tools', ...request.params, ...request.query });
+      });
+  }
   for (const [path, helper] of [['system-prompt', 'system_prompt'], ['skill-manager-prompt', 'skill_prompt']] as const) {
     const current = (operation: string, input?: unknown) => projectStore<SystemPrompt>(directory,
       { operation, ...(input === undefined ? {} : { input }) }, helper);

@@ -7,11 +7,14 @@ from session_store import SessionStore, identity
 from store import ProjectFault
 
 OPERATIONS = frozenset(('events', 'goal', 'goal_receipt', 'goal_clock', 'run_receipt',
-    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt'))
+    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools'))
 
 
 def read(config, request):
     op = request['operation']
+    if op == 'system_tools':
+        from system_tool_catalog import read as tool_catalog_read
+        return tool_catalog_read(config['projects'], request)
     if op == 'statistics':
         from stats_store import read as statistics, scope
         selection = request.get('scope', 'global')

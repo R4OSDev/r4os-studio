@@ -1,3 +1,16 @@
+## Read-only system tool metadata (0.11.25)
+
+The protected Settings tools API reads the installed original Studio contracts,
+preserves scope variants, and pages prepared MCP metadata bound to the current
+published skill/source/runtime/catalog identity. Details retain the original JSON
+Schema, including operations, references and required fields. Native coverage is
+explicitly partial when installed metadata does not declare built-in schemas;
+permission capabilities are identified separately and never counted as tools.
+No runtime, discovery, provider probe, login or inference is started. A narrow
+bounded metadata reader avoids hashing executable programs, while execution
+validation remains unchanged. Missing/changed sources cannot reuse older cached
+metadata. The System → Tools interface follows in 0.11.26.
+
 ## Assigned project VM lifecycle tools (0.11.20)
 
 The GOAL timer now follows a durable monotone session cycle through normal run
