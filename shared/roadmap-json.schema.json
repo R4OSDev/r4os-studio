@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "R4OS Studio portable roadmap JSON v1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "r4os-studio-roadmap"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "roadmap",
+        "version",
+        "subversion"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "roadmapId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "currentVersionId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "exportId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "projectId",
+        "roadmapId",
+        "revision",
+        "currentVersionId",
+        "exportId",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "completeness": {
+      "type": "object",
+      "properties": {
+        "storedTreeComplete": {
+          "const": true
+        },
+        "archivedTreesIncluded": {
+          "const": false
+        }
+      },
+      "required": [
+        "storedTreeComplete",
+        "archivedTreesIncluded"
+      ],
+      "additionalProperties": false
+    },
+    "archiveReferences": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+          },
+          "versionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+          },
+          "phase": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 1024
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "byteLength": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100663296
+              },
+              "exportId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+              },
+              "encoding": {
+                "const": "utf-8"
+              }
+            },
+            "additionalProperties": false
+          },
+          "subtreeIncluded": {
+            "const": false
+          }
+        },
+        "required": [
+          "workflowId",
+          "versionId",
+          "phase",
+          "number",
+          "archive",
+          "subtreeIncluded"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "data": {}
+  },
+  "required": [
+    "schema",
+    "schemaVersion",
+    "scope",
+    "source",
+    "completeness",
+    "archiveReferences",
+    "data"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "const": "roadmap"
+        },
+        "data": {
+          "$ref": "#/$defs/roadmap"
+        }
+      }
+    },
+    {
+      "properties": {
+        "scope": {
+          "const": "version"
+        },
+        "data": {
+          "$ref": "#/$defs/version"
+        }
+      }
+    },
+    {
+      "properties": {
+        "scope": {
+          "const": "subversion"
+        },
+        "data": {
+          "$ref": "#/$defs/subversion"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "item": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "subversionId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "done",
+            "discarded"
+          ]
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "id",
+        "notes",
+        "revision",
+        "createdAt",
+        "updatedAt",
+        "subversionId",
+        "description",
+        "status",
+        "order"
+      ],
+      "additionalProperties": false
+    },
+    "subversion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "versionId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "number": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "complete",
+            "discarded"
+          ]
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "acceptances": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "notes",
+        "revision",
+        "createdAt",
+        "updatedAt",
+        "versionId",
+        "number",
+        "title",
+        "description",
+        "status",
+        "order",
+        "tasks",
+        "acceptances"
+      ],
+      "additionalProperties": false
+    },
+    "version": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "number": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.X$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "vision": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "complete",
+            "discarded"
+          ]
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "subversions": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/subversion"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "notes",
+        "revision",
+        "createdAt",
+        "updatedAt",
+        "number",
+        "title",
+        "vision",
+        "status",
+        "order",
+        "subversions"
+      ],
+      "additionalProperties": false
+    },
+    "roadmap": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "currentVersionId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+        },
+        "versions": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "$ref": "#/$defs/version"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "notes",
+        "revision",
+        "createdAt",
+        "updatedAt",
+        "projectId",
+        "description",
+        "currentVersionId",
+        "versions"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

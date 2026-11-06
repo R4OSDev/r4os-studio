@@ -127,6 +127,20 @@ def read(projects, project_id, arguments):
             row = db.execute('SELECT revision,result FROM receipts WHERE request_id=?', (extra['requestId'],)).fetchone()
             if row is None: raise ProjectFault('No confirmed Roadmap receipt exists for this request ID. Inspect before retrying.', 404)
             return {'requestId': extra['requestId'], 'revision': row['revision'], 'confirmed': True, 'result': compact(json.loads(row['result']))}
+    if view=='json':
+        fields(extra,['requestId','expectedRevision','currentVersionId','scope'],['versionId','subversionId'])
+        metadata=operation(projects,{'operation':'json_export',**common,'input':extra})
+        from exports import open_archive
+        with open_archive(projects,project_id,metadata['id']) as (_,stream):
+            if metadata['byteLength']<=32768:
+                return {'snapshot':metadata,'completeInline':True,'document':json.load(stream)}
+        return {'snapshot':metadata,'completeInline':False,'readback':{'view':'json_chunk','exportId':metadata['id'],'offset':0,'byteLimit':8192},'notice':'The complete original JSON file is retained. No content was silently truncated; use bounded readback or download.'}
+    if view in ('json_info','json_chunk'):
+        fields(extra,['exportId'],['offset','byteLimit'] if view=='json_chunk' else [])
+        info=operation(projects,{'operation':'export_info',**common,'exportId':extra['exportId']})
+        if info.get('format')!='json':raise ProjectFault('The selected original is not a JSON snapshot.',400)
+        if view=='json_info':return info
+        return operation(projects,{'operation':'export_chunk',**common,'exportId':extra['exportId'],'offset':extra.get('offset',0),'limit':extra.get('byteLimit',8192)})
     if view == 'export_info':
         fields(extra, ['exportId'])
         return operation(projects, {'operation': view, **common, **extra})

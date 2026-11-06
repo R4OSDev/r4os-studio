@@ -32,6 +32,10 @@ export function roadmapExportRoutes(app: FastifyInstance, directory: string, ses
     sessions.mutation(request, reply);
     return roadmapStore<RoadmapExport>(directory, { operation: 'export', projectId: request.params.id, input: request.body });
   });
+  app.post<{Params:{id:string};Body:unknown}>('/:id/roadmap/json-exports',{bodyLimit:8192,schema:{params:{type:'object',required:['id'],properties:{id:uuid}}}},async(request,reply)=>{
+    sessions.mutation(request,reply);
+    return roadmapStore(directory,{operation:'json_export',projectId:request.params.id,input:request.body});
+  });
   app.get<{ Params: { id: string; exportId: string } }>('/:id/roadmap/exports/:exportId', { schema: { params } }, async (request, reply) => {
     sessions.session(request, reply);
     return roadmapStore<RoadmapExport>(directory, { operation: 'export_info', projectId: request.params.id, exportId: request.params.exportId });
@@ -85,7 +89,7 @@ export function roadmapExportRoutes(app: FastifyInstance, directory: string, ses
       if (ready.sha256 !== info.sha256 || ready.byteLength !== info.byteLength || ready.id !== info.id || ready.filename !== info.filename) {
         throw new ProjectError('The archive changed before download. Existing data was preserved.');
       }
-      reply.header('Content-Type', 'text/plain; charset=utf-8').header('Content-Disposition', `attachment; filename="${info.filename}"`)
+      reply.header('Content-Type', info.format==='json'?'application/json; charset=utf-8':'text/plain; charset=utf-8').header('Content-Disposition', `attachment; filename="${info.filename}"`)
         .header('Content-Length', info.byteLength).header('X-Content-SHA256', info.sha256);
       if (remainder.length) output.write(remainder);
       child.stdout.pipe(output);

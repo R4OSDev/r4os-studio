@@ -7,6 +7,7 @@ import { mutate, roadmapRequest } from './api';
 import { versionStatusLabels } from './model';
 import { Subversions } from './Subversions';
 import type { EntryEditor } from './Subversions';
+import { ExportJson } from './ExportJson';
 import { ExportVersion } from './ExportVersion';
 import { CleanupWorkflows } from './CleanupWorkflows';
 import './styles.css';
@@ -82,6 +83,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
   const summary=model.version?<><h2>{model.version.number} · {model.version.title}</h2><Progress progress={model.version.progress}/></>:null;
   const versionActions=model.version&&state?.exists?<>
     <ExportVersion key={model.version.id+':'+model.epoch} id={id} versionId={model.version.id} token={token} binding={state.roadmap} disabled={dirty||actionBusy||formBusy||blocked} busyChanged={setActionBusy}/>
+    <ExportJson key={model.version.id+':json'} id={id} token={token} binding={state.roadmap} selection={{scope:'version',versionId:model.version.id}} disabled={dirty||actionBusy||formBusy||blocked} busyChanged={setActionBusy}/>
     <span className="roadmap-status" role="status" aria-label="Saved version status">{versionStatusLabels[model.version.status]}{state.roadmap.currentVersionId===model.version.id?' · Current':''}</span>
   </>:null;
   return <section className="roadmap" aria-label="Project roadmap" aria-busy={model.loading} inert={model.loading}>
@@ -96,7 +98,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
         <RoadmapForm blocked={blocked} refreshing={model.loading} key={'new:' + model.epoch} id={id} token={token} binding={{ revision: state.roadmap.revision, currentVersionId: state.roadmap.currentVersionId }}
           target={{ kind: 'version' }} initial={{ number: '', title: 'New', vision: '', notes: '', status: 'open' }} create
           saved={onSaved} cancel={closeCreate} dirtyChanged={dirtyChanged} busyChanged={setFormBusy} />
-      </VersionDialog> : !selectedVersionId ? <div className="roadmap-card"><h3>Overview</h3><Progress progress={state.roadmap.progress} />
+      </VersionDialog> : !selectedVersionId ? <div className="roadmap-card"><h3>Overview</h3><Progress progress={state.roadmap.progress} /><ExportJson id={id} token={token} binding={state.roadmap} selection={{scope:'roadmap'}} disabled={dirty||actionBusy||formBusy||blocked} busyChanged={setActionBusy}/>
         <RoadmapForm blocked={blocked} refreshing={model.loading} key={state.roadmap.id + ':' + model.epoch} id={id} token={token}
           binding={{ revision: state.roadmap.revision, currentVersionId: state.roadmap.currentVersionId }}
           target={{ kind: 'roadmap', id: state.roadmap.id }} initial={{ description: state.roadmap.description, notes: state.roadmap.notes }}

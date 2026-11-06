@@ -22,6 +22,7 @@ MAX_ARCHIVE_BYTES = 96 * 1024 * 1024
 MAX_CACHE_BYTES = 512 * 1024 * 1024
 PUBLIC = ('id', 'projectId', 'roadmapId', 'versionId', 'number', 'filename', 'revision',
           'currentVersionId', 'encoding', 'byteLength', 'sha256', 'createdAt')
+JSON_PUBLIC=('format','scope','targetId','schemaVersion','storedTreeComplete','archivedTreesIncluded')
 
 
 def cache_directory(projects, project_id, create=False):
@@ -51,12 +52,16 @@ def manifest(directory, project_id, export_id):
     folder(path)
     info_file = path / 'export.json'; regular(info_file, 8192)
     value = json.loads(info_file.read_text(encoding='utf-8'))
-    fields(value, [*PUBLIC, 'schema', 'requestHash'])
+    fields(value, [*PUBLIC, 'schema', 'requestHash'],JSON_PUBLIC)
     if (value['schema'] != 1 or value['id'] != export_id or value['projectId'] != project_id
-            or value['encoding'] != 'utf-8' or not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.X', value['number'])
-            or value['filename'] != value['number'] + '.txt'
+            or value['encoding'] != 'utf-8' or not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(X|0|[1-9]\d*)', value['number'])
+            or value['filename'] != ('roadmap.json' if value.get('format')=='json' and value.get('scope')=='roadmap' else value['number'] + ('.json' if value.get('format')=='json' else '.txt'))
             or not re.fullmatch(r'[a-f0-9]{64}', value['sha256']) or not re.fullmatch(r'[a-f0-9]{64}', value['requestHash'])):
         raise RoadmapFault('Invalid saved export metadata. Existing files were preserved.', 503)
+    if value.get('format')=='json':
+        if (set(JSON_PUBLIC)-value.keys() or value['scope'] not in ('roadmap','version','subversion') or value['schemaVersion']!=1 or value['storedTreeComplete'] is not True or value['archivedTreesIncluded'] is not False):raise RoadmapFault('Invalid saved JSON snapshot metadata.',503)
+        identity(value['targetId'])
+    elif any(key in value for key in JSON_PUBLIC) or not value['number'].endswith('.X'):raise RoadmapFault('Invalid saved export format.',503)
     for key in ('roadmapId', 'versionId', 'currentVersionId'):
         identity(value[key])
     integer(value['revision'], 1, 9007199254740991)
@@ -65,14 +70,14 @@ def manifest(directory, project_id, export_id):
 
 
 def public(value):
-    return {key: value[key] for key in PUBLIC}
+    return {key: value[key] for key in (*PUBLIC,*JSON_PUBLIC) if key in value}
 
 
 @contextmanager
 def open_archive(projects, project_id, export_id):
     directory = cache_directory(projects, project_id)
     value = manifest(directory, project_id, export_id)
-    path = directory / export_id / 'archive.txt'
+    path = directory / export_id / ('archive.json' if value.get('format')=='json' else 'archive.txt')
     info = regular(path, MAX_ARCHIVE_BYTES)
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, 'rb') as stream:
@@ -123,12 +128,15 @@ def record_receipt(db, request_id, fingerprint, result):
         db.rollback()
 
 
-def prepare(db, projects, project_id, body):
-    fields(body, ['requestId', 'versionId', 'expectedRevision', 'currentVersionId'])
-    for key in ('requestId', 'versionId', 'currentVersionId'):
+def prepare(db, projects, project_id, body, json_mode=False):
+    if json_mode:
+        from json_format import selection
+        selection(db,body,verify=False)
+    else:fields(body, ['requestId', 'versionId', 'expectedRevision', 'currentVersionId'])
+    for key in ('requestId', 'currentVersionId',*(['versionId'] if 'versionId' in body else [])):
         identity(body[key])
     integer(body['expectedRevision'], 1, 9007199254740991)
-    fingerprint = hashlib.sha256(json.dumps({'operation': 'export', 'projectId': project_id, **body},
+    fingerprint = hashlib.sha256(json.dumps({'operation': 'json_export' if json_mode else 'export', 'projectId': project_id, **body},
                                            sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
     original = db.execute('SELECT request_hash,result FROM receipts WHERE request_id=?', (body['requestId'],)).fetchone()
     if original and original['request_hash'] != fingerprint:
@@ -176,24 +184,31 @@ def prepare(db, projects, project_id, body):
             frozen = root_row(copied)
             if frozen['project_id'] != project_id or frozen['revision'] != body['expectedRevision'] or frozen['current_version_id'] != body['currentVersionId']:
                 raise RoadmapFault('The roadmap changed during snapshot preparation. Retry after reloading.', 409)
-            version = copied.execute('SELECT * FROM versions WHERE id=?', (body['versionId'],)).fetchone()
+            version = copied.execute('SELECT * FROM versions WHERE id=?', (body.get('versionId',frozen['current_version_id']),)).fetchone()
             if version is None:
                 raise RoadmapFault('Main version not found in this project.', 404)
+            selected=None;created_at=timestamp()
+            if json_mode:
+                selected=selection(copied,body)
+                from json_format import document
+                parts=document(copied,project_id,body,body['requestId'],created_at)
+            else:parts=archive_text(copied,version)
             digest, size = hashlib.sha256(), 0
-            fd = os.open(stage / 'archive.txt', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            fd = os.open(stage / ('archive.json' if json_mode else 'archive.txt'), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, 'wb') as output:
-                for part in archive_text(copied, version):
+                for part in parts:
                     raw = part.encode('utf-8'); size += len(raw)
                     if size > MAX_ARCHIVE_BYTES or time.monotonic() > deadline:
                         raise RoadmapFault('The complete archive exceeds the export limit. No partial archive was published.', 413)
                     output.write(raw); digest.update(raw)
                 output.flush(); os.fchmod(output.fileno(), 0o400); os.fsync(output.fileno())
-            number = f'{version["major"]}.{version["minor"]}.X'
+            number = f'{version["major"]}.{version["minor"]}.'+(str(selected['patch']) if json_mode and body['scope']=='subversion' else 'X')
             value = {'schema': 1, 'id': body['requestId'], 'projectId': project_id, 'roadmapId': frozen['id'],
-                     'versionId': version['id'], 'number': number, 'filename': number + '.txt',
+                     'versionId': version['id'], 'number': number, 'filename': ('roadmap.json' if json_mode and body['scope']=='roadmap' else number+('.json' if json_mode else '.txt')),
                      'revision': frozen['revision'], 'currentVersionId': frozen['current_version_id'],
                      'encoding': 'utf-8', 'byteLength': size, 'sha256': digest.hexdigest(),
-                     'createdAt': timestamp(), 'requestHash': fingerprint}
+                     'createdAt': created_at, 'requestHash': fingerprint}
+            if json_mode:value.update(format='json',scope=body['scope'],targetId=selected['id'],schemaVersion=1,storedTreeComplete=True,archivedTreesIncluded=False)
         finally:
             copied.close()
         # The sealed archive is the stable snapshot. Discard only our temporary

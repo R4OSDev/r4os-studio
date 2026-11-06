@@ -1,3 +1,7 @@
+## 0.11.59
+
+Download complete versioned JSON for a subversion, main version or whole stored project roadmap. JSON v1 preserves all notes, text, status, ordering, identities and provenance. Whole-roadmap exports contain every stored main version; deleted archived trees are explicitly excluded and listed by archive reference. The existing immutable export storage provides a coherent snapshot, SHA256, byte length, original request recovery, UTF-8 chunk reads and streaming downloads. Agent read_roadmap view=json returns small complete documents directly and gives original-file readback for larger ones. Existing text export remains available.
+
 ## 0.11.58
 
 Project roadmaps support atomic batches through the browser client/API and studio_update_roadmap (operation=batch). A batch contains1–128 ordinary mutations and may name creates with key; later parent/target IDs or reorder IDs can use $key. All changes are first validated in a private SQLite clone under the original write transaction, then committed with one revision and original receipt. A late error commits nothing. Existing CRUD, parent rights, workflow gates, explicit deletion and current-version protections share the same mutation handlers.

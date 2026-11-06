@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../app/Icon';
 import type { RoadmapBinding, RoadmapItem, RoadmapMutation, RoadmapSubversionHeader, RoadmapTarget } from '../../../../shared/project-roadmaps';
 import { ProjectRequestError, projectRequestId } from '../projects/api';
+import {ExportJson} from './ExportJson';
 import { mutate } from './api';
 import { itemStatusLabels, versionStatusLabels } from './model';
 import { useRoadmapPage } from './useRoadmapPage';
@@ -121,6 +122,7 @@ function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }
       {actions.error && <p className="project-error" role="alert">{actions.error}</p>}
       <div className="roadmap-entry-actions" role="group" aria-label="Entry actions">
         {pending ? <button type="button" disabled={props.disabled} onClick={() => void actions.perform('update', target, {})}>Confirm original change</button> : <>
+          <ExportJson id={props.id} token={props.token} binding={props.binding} selection={{scope:'subversion',versionId:props.versionId,subversionId:sub.id}} disabled={props.disabled} busyChanged={props.busyChanged}/>
           <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: 'Edit subversion', target,
             initial: { number: sub.number, title: sub.title, description: sub.description, notes: sub.notes, status: sub.status } })}>Edit subversion</button>
           <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: 'Append subversion notes', target, initial: { notes: '' }, notesMode: 'append_notes' })}>Append notes</button>

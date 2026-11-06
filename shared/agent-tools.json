@@ -1483,7 +1483,7 @@
     },
     {
       "name": "studio_read_roadmap",
-      "description": "Read this project’s shared internal roadmap. Send only the fields declared for the selected view. overview: optional cursor/limit; current/revision: view only. These reads return the latest revision; expectedRevision is allowed only for text. versions: optional cursor/limit; subversions: versionId; tasks/acceptances: versionId and subversionId; each collection accepts optional cursor/limit. entry: exact target with id and parent IDs. text: exact target, field, optional offset/byteLimit/expectedRevision; notes exists on every entry, vision only on versions, description on roadmap/subversion/task/acceptance. Previews are incomplete; use text pages and UTF-8 nextOffset for complete content. receipt(requestId) reconciles an original mutation; export_info/export_chunk require exportId. Read current before changes. No path or foreign project can be selected.",
+      "description": "Read this project’s shared internal roadmap. Send only the fields declared for the selected view. overview: optional cursor/limit; current/revision: view only. These reads return the latest revision; expectedRevision is allowed only for text. versions: optional cursor/limit; subversions: versionId; tasks/acceptances: versionId and subversionId; each collection accepts optional cursor/limit. entry: exact target with id and parent IDs. text: exact target, field, optional offset/byteLimit/expectedRevision; notes exists on every entry, vision only on versions, description on roadmap/subversion/task/acceptance. Previews are incomplete; use text pages and UTF-8 nextOffset for complete content. receipt(requestId) reconciles an original mutation; export_info/export_chunk require exportId. Read current before changes. No path or foreign project can be selected. view=json prepares/reads complete portable JSON for scope=roadmap (all stored versions), version or subversion (all tasks/acceptances). Pass requestId, expectedRevision, currentVersionId and exact scope parent IDs. Up to32KiB is returned completely inline; larger snapshots give hash/length and json_info/json_chunk readback on the immutable original exportId. Archive references explicitly exclude deleted historical subtrees. No automatic cleanup or current-version change.",
       "inputSchema": {
         "oneOf": [
           {
@@ -1881,6 +1881,196 @@
             "required": [
               "view",
               "exportId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "json_info"
+                ]
+              },
+              "exportId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              }
+            },
+            "required": [
+              "view",
+              "exportId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "json_chunk"
+                ]
+              },
+              "exportId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100663296
+              },
+              "byteLimit": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 8192
+              }
+            },
+            "required": [
+              "view",
+              "exportId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "json"
+                ]
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "currentVersionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "roadmap"
+                ]
+              }
+            },
+            "required": [
+              "view",
+              "requestId",
+              "expectedRevision",
+              "currentVersionId",
+              "scope"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "json"
+                ]
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "currentVersionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "version"
+                ]
+              },
+              "versionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              }
+            },
+            "required": [
+              "view",
+              "requestId",
+              "expectedRevision",
+              "currentVersionId",
+              "scope",
+              "versionId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "json"
+                ]
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "currentVersionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "subversion"
+                ]
+              },
+              "versionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "subversionId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36
+              }
+            },
+            "required": [
+              "view",
+              "requestId",
+              "expectedRevision",
+              "currentVersionId",
+              "scope",
+              "versionId",
+              "subversionId"
             ],
             "additionalProperties": false
           }

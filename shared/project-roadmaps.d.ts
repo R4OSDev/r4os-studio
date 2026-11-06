@@ -71,6 +71,7 @@ export interface RoadmapMutationResult extends RoadmapBinding {
     | { kind: RoadmapTarget['kind']; ids: string[] };
 }
 export interface RoadmapExport extends RoadmapBinding {
+  format?:'json'; scope?:'roadmap'|'version'|'subversion';targetId?:string;schemaVersion?:1;storedTreeComplete?:true;archivedTreesIncluded?:false;
   id: string;
   projectId: string;
   roadmapId: string;
@@ -107,3 +108,6 @@ export interface RoadmapWorkflowPage { items: RoadmapWorkflowSummary[]; nextCurs
 export type RoadmapBatchOperation = Pick<RoadmapMutation,'target'|'action'|'input'> & {key?:string};
 export interface RoadmapBatch {requestId:string;expectedRevision:number;currentVersionId:string;operations:RoadmapBatchOperation[]}
 export interface RoadmapBatchResult extends RoadmapBinding {requestId:string;operations:{index:number;key?:string;entity:RoadmapMutationResult['entity']}[];references:Record<string,string>}
+
+export type RoadmapJsonInput = {requestId:string;expectedRevision:number;currentVersionId:string} & ({scope:'roadmap'}|{scope:'version';versionId:string}|{scope:'subversion';versionId:string;subversionId:string});
+export interface RoadmapJsonDocument {schema:'r4os-studio-roadmap';schemaVersion:1;scope:'roadmap'|'version'|'subversion';source:{projectId:string;roadmapId:string;revision:number;currentVersionId:string;exportId:string;createdAt:string};completeness:{storedTreeComplete:true;archivedTreesIncluded:false};archiveReferences:unknown[];data:ProjectRoadmap|RoadmapVersion|RoadmapSubversion}
