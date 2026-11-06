@@ -6,25 +6,31 @@ import { runtimePath, VmError } from './paths.js';
 import { ConsoleTickets, ConsoleBridge } from './console.js';
 import { PointerControllers } from './pointer.js';
 import type { VmInput, VmReleaseChange, VmDevelopmentAccessInput, VmResetInput, VmConsoleMode } from '../../../../shared/virtual-machines.js';
-import { VmManager } from './service.js';
+import { images, VmManager } from './service.js';
 import { VmSessions } from './sessions.js';
 import { qmp } from './qmp.js';
 import { withVmLease } from '../project-development/vm-lease.js';
 import { developmentVmBridge } from '../project-development/vm-bridge.js';
 import { developmentHost } from '../project-development/host.js';
 import { resetReceipt } from './reset.js';
+import { VmReleaseBatches } from './release-batch.js';
 
 const input = { type: 'object', additionalProperties: false, required: ['name', 'cpus', 'memoryMiB'], properties: {
   name: { type: 'string', minLength: 1, maxLength: 80 }, cpus: { type: 'integer', minimum: 1, maximum: 8 },
   memoryMiB: { type: 'integer', minimum: 2048, maximum: 16384 }, networkEnabled: { type: 'boolean' }, imageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' },
 } };
+function batchFields(body: unknown, fields: string[]) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !fields.includes(key)))
+    throw new VmError('Unexpected VM release batch fields.', 400);
+}
 export async function vmRoutes(app: FastifyInstance) {
   await app.register(websocket, { options: { maxPayload: 256 * 1024, perMessageDeflate: false } });
   const manager = new VmManager(), sessions = new VmSessions();
+  const releaseBatches = new VmReleaseBatches(manager);
   const tickets = new ConsoleTickets(), bridge = new ConsoleBridge(), pointers = new PointerControllers();
   const displayGrants = new WeakMap<object, VmConsoleMode>();
   developmentVmBridge(app, manager, bridge, pointers);
-  app.addHook('preClose', async () => { bridge.close(); await pointers.close(); });
+  app.addHook('preClose', async () => { bridge.close(); await pointers.close(); await releaseBatches.close(); });
   app.addHook('preValidation', async (request) => {
     const body = request.body as { networkEnabled?: unknown } | undefined;
     if (body && Object.hasOwn(body, 'networkEnabled') && typeof body.networkEnabled !== 'boolean') throw new VmError('Network must be enabled or disabled.', 400);
@@ -38,6 +44,33 @@ export async function vmRoutes(app: FastifyInstance) {
   });
   app.post<{ Body: VmInput }>('/', { schema: { body: input } }, async (request, reply) => {
     sessions.mutation(request, reply); return reply.code(201).send({ vm: await manager.create(request.body) });
+  });
+  app.get('/release-batches', async (request, reply) => {
+    const session = sessions.get(request, reply, true);
+    const [batches, local, support] = await Promise.all([releaseBatches.list(), images(),
+      developmentHost<{ features?: { vmReleaseBatch?: number } }>({ operation: 'capabilities' }).catch(() => null)]);
+    return { batches, images: local,
+      available: support?.features?.vmReleaseBatch === 1, csrfToken: session.token };
+  });
+  app.get<{ Params: { requestId: string } }>('/release-batches/:requestId', async (request, reply) => {
+    sessions.get(request, reply); return { batch: await releaseBatches.get(request.params.requestId) };
+  });
+  app.post<{ Body: { requestId: string; imageId: string; imageSha256: string } }>('/release-batches/preview', {
+    preValidation: async request => batchFields(request.body, ['requestId', 'imageId', 'imageSha256']),
+    bodyLimit: 2048, schema: { body: { type: 'object', additionalProperties: false, required: ['requestId', 'imageId', 'imageSha256'], properties: {
+      requestId: { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' },
+      imageId: { type: 'string', pattern: '^[a-zA-Z0-9_.-]{1,100}$' }, imageSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+    } } },
+  }, async (request, reply) => { sessions.mutation(request, reply); return { batch: await releaseBatches.preview(request.body) }; });
+  const batchConsent = { type: 'object', additionalProperties: false, required: ['previewDigest', 'confirm', 'stopRunning', 'resetSystem'], properties: {
+    previewDigest: { type: 'string', pattern: '^[a-f0-9]{64}$' }, confirm: { const: true }, stopRunning: { const: true }, resetSystem: { const: true },
+  } };
+  for (const action of ['confirm', 'resume'] as const) app.post<{ Params: { requestId: string }; Body: { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true } }>(`/release-batches/:requestId/${action}`, {
+    preValidation: async request => batchFields(request.body, ['previewDigest', 'confirm', 'stopRunning', 'resetSystem']),
+    bodyLimit: 2048, schema: { body: batchConsent },
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    return reply.code(202).send({ batch: await releaseBatches.confirm(request.params.requestId, request.body, action === 'resume') });
   });
   app.get<{ Params: { id: string } }>('/:id/development-access', async (request, reply) => {
     sessions.get(request, reply); await manager.config(request.params.id);

@@ -6,6 +6,7 @@ import { totalmem } from 'node:os';
 import type { VirtualMachine, VmConfig, VmImage, VmInput, VmState, VmReleaseChange, VmResetInput } from '../../../../shared/virtual-machines.js';
 import { networkAvailable } from './network.js';
 import { recoverRelease, replaceRelease } from './release.js';
+import type { ReleasePlan, VerifiedRelease } from './release.js';
 import { recoverReset, resetDisks, completedReset } from './reset.js';
 import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
@@ -167,20 +168,23 @@ export class VmManager {
       return this.get(id);
     });
   }
-  async changeRelease(id: string, input: VmReleaseChange) {
-    return this.locked('admission', () => this.locked(id, async () => {
+  async changeRelease(id: string, input: VmReleaseChange, options?: { plan: ReleasePlan; verified: VerifiedRelease; beforeCommit: () => Promise<void> }) {
+    // A batch already owns the cross-process maintenance lease. Do not hold the
+    // global start-admission lock over its hashing/staging/commit work.
+    const change = () => this.locked(id, async () => {
       const vm = await this.stopped(id), config = await this.config(id);
       if (input.confirm !== true) throw new VmError('Confirm the release change.', 400);
       // Retries and selecting the current release never erase guest changes.
-      if (config.imageId === input.imageId && config.imageSha256 === input.imageSha256) return vm;
+      if (!options && config.imageId === input.imageId && config.imageSha256 === input.imageSha256) return vm;
       if ((config.revision ?? config.imageSha256) !== input.expectedRevision || config.imageId !== input.expectedImageId || config.imageSha256 !== input.expectedImageSha256)
         throw new VmError('The VM changed after confirmation. Review its current release and confirm again.');
       const image = (await images()).find((image) => image.id === input.imageId && image.sha256 === input.imageSha256);
       if (!image) throw new VmError('The selected release is no longer available locally.');
       await finishShare(vmPath(id));
-      await replaceRelease(id, config, image, (await activeTool('qemu')).imageBinary!);
+      await replaceRelease(id, config, image, (await activeTool('qemu')).imageBinary!, options);
       return this.get(id);
-    }));
+    });
+    return options ? change() : this.locked('admission', change);
   }
   async action(id: string, action: string, beforeEffect?: () => Promise<void>) {
     // Global admission lock includes concurrent starts of different VMs.

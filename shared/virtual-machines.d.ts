@@ -26,6 +26,21 @@ export interface VmReleaseChange {
   imageId: string; imageSha256: string;
 }
 
+export type VmReleaseTargetState = 'pending' | 'stopping' | 'syncing' | 'updating' | 'updated' | 'already-current' | 'blocked' | 'failed' | 'unknown';
+export interface VmReleaseTarget {
+  id: string; name: string; expectedRevision: string; expectedImageId: string; expectedImageSha256: string;
+  requestId: string; operation: string; nextRevision: string; state: VmReleaseTargetState; reason?: string;
+}
+export interface VmReleaseBatch {
+  schema: 1; requestId: string; imageId: string; imageSha256: string; version: string; previewDigest: string;
+  createdAt: string; updatedAt: string; state: 'preview' | 'running' | 'paused' | 'complete';
+  consent?: { confirm: true; stopRunning: true; resetSystem: true };
+  targets: VmReleaseTarget[];
+}
+export interface VmReleaseBatchView extends VmReleaseBatch {
+  counts: Record<VmReleaseTargetState, number>;
+}
+
 export interface VmResetInput {
   kind: 'system' | 'exchange'; requestId: string; expectedRevision: string; confirm: true;
 }

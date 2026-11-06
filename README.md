@@ -1,5 +1,17 @@
 ## Assigned project VM lifecycle tools (0.11.20)
 
+Manual R4OS release batches use a saved preview of all current VM identities,
+source revisions and the selected local Full-image checksum. Confirmation
+explicitly allows graceful shutdown and replacement of C:/D:. A single serial
+background operation holds each VM maintenance lease through shutdown/export and
+the existing atomic release swap. Exchange, VM identity and assignments remain;
+VMs stay off. Already-current disks/revisions and the global default are retained.
+One verified image is shared by exact inode/size/nanosecond modification facts;
+changed images hold remaining targets. Private original child receipts recover
+committed swaps without replay; unknown steps remain visible. After a host restart,
+only explicit continuation processes the original untouched pending targets.
+
+
 Project agents now have separate **Start project VM**, **Stop project VM** and
 **Restart project VM** switches under Session settings → Tools → VM. Restart
 also requires the run's Start and Stop permissions. Existing sessions receive the

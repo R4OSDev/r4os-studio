@@ -200,8 +200,9 @@ class Host:
                     if 'error' in value: raise DevelopmentFault(value['error'], value.get('code', 503))
                     return value['result']
                 finally: self.git_validating -= 1
-        if op in ('reset_admission', 'reset_completed'):
-            if set(request) != ({'operation', 'vmId'} | ({'revision'} if op == 'reset_completed' else set())):
+        if op in ('reset_admission', 'reset_completed', 'release_admission', 'release_unknown', 'release_settled'):
+            release_batch = op.startswith('release_')
+            if set(request) != ({'operation', 'vmId'} | ({'revision'} if op == 'reset_completed' else {'requestId'} if release_batch else set())):
                 raise DevelopmentFault('Invalid VM reset admission.', 400)
             from lease import maintenance_active
             from access import vm_config
@@ -226,6 +227,30 @@ class Host:
                             job = json.loads(row[0])
                             if (job.get('binding') or {}).get('id') == vm_id:
                                 raise DevelopmentFault('Wait for VM development jobs to finish before resetting it.', 409)
+                if release_batch:
+                    from quarantine import path as quarantine_path, claim, release
+                    request_id = identity(request['requestId'])
+                    marker = quarantine_path(self.config['projects'], vm_id)
+                    if marker.is_symlink(): raise DevelopmentFault('Invalid VM recovery record.', 503)
+                    previous = json.loads(marker.read_text()) if marker.exists() else None
+                    if previous and (previous.get('jobId') != request_id or previous.get('kind') != 'vm_release_batch'):
+                        raise DevelopmentFault('This VM has an unconfirmed foreign operation. Reconcile it before a release batch.', 409)
+                    if op == 'release_unknown' and not previous:
+                        claim(self.config['projects'], vm_id, {'jobId': request_id, 'kind': 'vm_release_batch', 'reason': 'Original release batch power/commit in progress; no replay.'})
+                    if op == 'release_settled':
+                        record_path = Path(self.config['r4os']) / 'Instances' / vm_id / 'ReleaseRequests' / (request_id + '.json')
+                        if record_path.resolve(strict=True) != record_path: raise DevelopmentFault('Invalid original release receipt.', 409)
+                        receipt = json.loads(record_path.read_text())
+                        vm = vm_config(self.config['r4os'], vm_id)
+                        if receipt.get('schema') != 1 or receipt.get('vmId') != vm_id or receipt.get('requestId') != request_id or receipt.get('state') not in ('complete', 'aborted'):
+                            raise DevelopmentFault('The original release receipt has no confirmed outcome.', 409)
+                        revision = receipt['nextRevision'] if receipt['state'] == 'complete' else receipt['expectedRevision']
+                        if vm['revision'] != revision: raise DevelopmentFault('The released VM revision changed.', 409)
+                        state = await systemctl('show', 'r4os-studio-vm@' + vm_id + '.service', '--property=ActiveState,MainPID,ControlPID')
+                        observed = dict(line.split('=', 1) for line in state.splitlines() if '=' in line)
+                        if observed.get('ActiveState') not in ('inactive', 'failed') or observed.get('MainPID') != '0' or observed.get('ControlPID') != '0':
+                            raise DevelopmentFault('The release VM process/export worker has not ended.', 409)
+                        if previous: release(self.config['projects'], vm_id, request_id)
                 if op == 'reset_completed':
                     if vm_config(self.config['r4os'], vm_id)['revision'] != request['revision']:
                         raise DevelopmentFault('The reset VM revision changed.', 409)
@@ -341,7 +366,7 @@ class Host:
             from package_support import available
             from project_ssh import supported as ssh_supported
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'vmReleaseBatch':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
                     'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version']}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
