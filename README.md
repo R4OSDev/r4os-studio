@@ -1,5 +1,18 @@
 ## Assigned project VM lifecycle tools (0.11.20)
 
+The GOAL timer now follows a durable monotone session cycle through normal run
+changes and reload. Pause freezes the measured prefix; Start resumes it; Stop
+creates a new zero display cycle while the current run continues. Saving controls
+show an explicit pending timer until their original receipt confirms them. Clock
+responses carry owner/session, control revision and cycle ID so older ticks cannot
+restore a reset. Historical goal_clocks, numeric outbox receipts, total runtime,
+usage/costs and consumed budgets remain intact; the resettable display is separate.
+Known legacy display prefixes and overlapping older executions are retained with
+honest coverage and are never re-counted as new time. Existing bounded statistics
+reconciliation transports the original new cycle receipts; no second clock poller
+or database was added.
+
+
 GOAL **Start / Pause / Stop** now control session keepalive. Start during a run
 changes only the next boundary; an idle session starts one ordinary run with the
 saved objective. Pause preserves the clock; Stop immediately resets it. Both

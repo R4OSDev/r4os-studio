@@ -168,6 +168,10 @@ async def inspect(host, store, sid):
         blockers.append('A queued, pending or unconfirmed message still belongs to this session.')
     if has(store.db,'goal_commands') and store.db.execute("SELECT 1 FROM goal_commands WHERE session_id=? AND state='pending' LIMIT 1",(sid,)).fetchone():
         blockers.append('An original Goal command is still pending.')
+    from goal_keepalive import row as keepalive_row
+    keepalive=keepalive_row(store,sid)
+    if keepalive and (keepalive['active'] or keepalive['phase']=='unknown'):
+        blockers.append('Pause or stop session Goal keepalive and confirm its original receipt first.')
     if has(store.db,'session_goals'):
         goal = store.db.execute('SELECT phase,native FROM session_goals WHERE session_id=?',(sid,)).fetchone()
         if goal and (goal['phase'] != 'idle' or json.loads(goal['native'] or '{}').get('status') == 'active'):
@@ -256,7 +260,10 @@ async def delete(host, kind, owner, sid, data):
             # The exclusive gate is borrowed by numeric capture, never reacquired.
             store.session_uses[sid]=None
             from usage_stats import Usage
-            Usage(store,sid).scan(); Source(store).flush(include_acknowledged=True)
+            Usage(store,sid).scan()
+            from goal_keepalive_clock import reconcile as reconcile_goal_clock
+            reconcile_goal_clock(store,sid)
+            Source(store).flush(include_acknowledged=True)
             preserve_pending(store.projects,store.directory/'Sessions.sqlite')
             with store.db:
                 store.db.execute('INSERT INTO session_deletions VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)',

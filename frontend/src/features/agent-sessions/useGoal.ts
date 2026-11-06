@@ -40,9 +40,12 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
       throw new Error('The Goal source does not match this Studio conversation.');
     setGoal((previous) => {
       if (previous?.keepalive && !value.keepalive) return previous;
+      if (previous?.revision===value.revision && previous.keepalive?.clock && value.keepalive && !value.keepalive.clock) return previous;
       if (previous && previous.revision > value.revision) return previous;
       const samePlay = previous?.goal?.source !== 'studio-claude' || value.goal?.source === 'studio-claude'
         && previous.goal.goalId === value.goal.goalId && previous.goal.executionId === value.goal.executionId;
+      if (previous?.revision === value.revision && previous.keepalive?.clock && value.keepalive?.clock
+        && previous.keepalive.clock.cycleId===value.keepalive.clock.cycleId && previous.keepalive.clock.durationMs>value.keepalive.clock.durationMs) return previous;
       if (previous?.revision === value.revision && previous.goal && value.goal && samePlay
         && (previous.goal.updatedAt > value.goal.updatedAt || typeof previous.goal.tokensUsed === 'number' && typeof value.goal.tokensUsed === 'number' && previous.goal.tokensUsed > value.goal.tokensUsed
           || previous.goal.timeUsedSeconds > value.goal.timeUsedSeconds)) return previous;

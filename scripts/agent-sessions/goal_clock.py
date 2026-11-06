@@ -15,6 +15,11 @@ def exists(store):return store.db.execute("SELECT 1 FROM sqlite_master WHERE nam
 
 def snapshot(store,sid,monotonic=time.monotonic_ns):
     store.row(sid)
+    from goal_keepalive import row as keepalive_row
+    value=keepalive_row(store,sid)
+    if value:
+        from goal_keepalive_clock import snapshot as keepalive_snapshot
+        return keepalive_snapshot(store,sid,value)
     if not exists(store):return None
     row=store.db.execute('SELECT * FROM goal_clocks WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(sid,)).fetchone()
     if not row:return None

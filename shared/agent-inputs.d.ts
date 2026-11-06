@@ -29,7 +29,7 @@ export interface GoalCommand {
   tokenBudget?: number | null; timeBudgetMs?: number | null;
 }
 export interface SessionGoal {
-  keepalive?: { active: boolean; generation: number };
+  keepalive?: { active: boolean; generation: number; clock?: import('./statistics.js').GoalClockSnapshot };
   owner: SessionOwner; sessionId: string; threadId: string | null;
   revision: number; goal: NativeGoal | StudioClaudeGoal | StudioGoal | null;
   lastIntent: GoalAction | null;

@@ -6,7 +6,10 @@ export interface StatisticsSnapshot {
   longestGoalMs?: number | null;
   coverage: { state: 'notReported' | 'partial' | 'unavailable'; since: string | null; updatedAt: string | null; historicalComplete: boolean; hasGaps: boolean; delayed?: boolean };
 }
-export interface GoalClockSnapshot { executionId: string; durationMs: number; state: 'running' | 'ended' | 'unknown'; referenceAt: string; sampledAt: string; staleAfterMs: number; ageMs: number }
+export interface GoalClockSnapshot { executionId: string; durationMs: number; state: 'running' | 'ended' | 'unknown'; referenceAt: string; sampledAt: string; staleAfterMs: number; ageMs: number;
+  mode?: 'keepalive'; cycleId?: string; controlRevision?: number; generation?: number;
+  owner?: {type:'project'|'skill';id:string}; sessionId?: string;
+}
 export interface GoalTotalSnapshot { schema: 1; durationMs: string | null; state: 'running' | 'idle' | 'unknown'; referenceAt: string; sampledAt: string | null;
   live: { executionId: string; ageMs: number; staleAfterMs: number } | null;
   coverage: { state: 'complete' | 'partial' | 'unavailable'; measuredExecutions: number; missingExecutions: number; reasons: string[] } }

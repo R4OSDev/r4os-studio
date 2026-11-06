@@ -50,6 +50,10 @@ def contexts(projects,ident):
                 for row in db.execute("SELECT * FROM session_messages WHERE mode='queue' AND state IN ('queued','dispatching')"):
                     if kind=='skill' and owner==ident or references(json.loads(row['frozen']).get('config',{}),ident):
                         contexts.append({'ownerType':kind,'ownerId':owner,'sessionId':row['session_id'],'reason':'A queued request still binds this skill revision.'})
+            if has(db,'session_keepalive'):
+                for row in db.execute('SELECT session_id,payload FROM session_keepalive WHERE active=1'):
+                    if kind=='skill' and owner==ident:
+                        contexts.append({'ownerType':kind,'ownerId':owner,'sessionId':row['session_id'],'reason':'Pause session Goal keepalive before deleting this skill.'})
             if has(db,'goal_commands'):
                 for row in db.execute("SELECT * FROM goal_commands WHERE state='pending'"):
                     command=json.loads(row['payload'])
@@ -65,7 +69,7 @@ def scope(db,root,ident):
         with database(path) as sessions:
             session_ids=[r[0] for r in sessions.execute('SELECT id FROM sessions ORDER BY id')];session_count=len(session_ids)
             for table in [r[0] for r in sessions.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]:
-                if table.startswith('statistic') or table=='goal_clocks':continue
+                if table.startswith('statistic') or table in ('goal_clocks','goal_keepalive_cycles'):continue
                 if table in ('events','items','tools'):
                     metadata.append((table,*sessions.execute('SELECT COUNT(*),COALESCE(MAX(rowid),0) FROM "'+table+'"').fetchone()))
                 else:

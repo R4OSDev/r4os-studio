@@ -4,7 +4,6 @@ import hashlib
 import json
 import time
 import uuid
-from pathlib import Path
 from session_store import encode, identity, now
 from store import ProjectFault
 from goal_contract import objective
@@ -18,6 +17,8 @@ def schema(store):
     store.db.execute('''CREATE TABLE IF NOT EXISTS session_keepalive(
         session_id TEXT PRIMARY KEY REFERENCES sessions(id),revision INTEGER NOT NULL,active INTEGER NOT NULL,payload TEXT NOT NULL)''')
     store.db.execute('CREATE INDEX IF NOT EXISTS active_session_keepalive ON session_keepalive(active,session_id)')
+    from goal_keepalive_clock import schema as clock_schema
+    clock_schema(store)
 
 
 def row(store, sid):
@@ -43,36 +44,28 @@ def publish(store,sid):
 
 
 def elapsed(value,budget=False):
-    goal=value.get('goal');clock=value.get('clock')
-    if not goal:return 0,True
-    if not clock:return goal.get('timeUsedSeconds',0)*1_000_000_000,goal.get('timeUsageKnown',False)
-    total=clock.get('budgetNs',clock['elapsedNs']) if budget else clock['elapsedNs']
-    known=clock.get('budgetKnown',clock['known']) if budget else clock['known']
-    if clock.get('startedNs') is not None:
-        if clock['bootId']==Path('/proc/sys/kernel/random/boot_id').read_text().strip() and time.monotonic_ns()>=clock['startedNs']:
-            total+=time.monotonic_ns()-clock['startedNs']
-        else:known=False
-    return total,known
+    from goal_keepalive_clock import elapsed as measured
+    return measured(value,budget)
 
 
-def checkpoint(value,reset=False,new_goal=False):
-    total,known=elapsed(value)
-    spent,spent_known=elapsed(value,budget=True)
-    value['clock']={'elapsedNs':0 if reset else total,'known':True if reset else known,'startedNs':None,
-        'budgetNs':0 if new_goal else spent,'budgetKnown':True if new_goal else spent_known,
-        'bootId':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
-    if value.get('goal'):value['goal'].update(timeUsedSeconds=value['clock']['elapsedNs']//1_000_000_000,timeUsageKnown=value['clock']['known'])
+def checkpoint(value,reset=False,new_goal=False,store=None,sid=None,request_id=None):
+    from goal_keepalive_clock import checkpoint as measured
+    return measured(value,reset,new_goal,store,sid,request_id)
 
 
 def snapshot(store, sid):
     value=row(store,sid)
     if value is None:return None
     session=store.row(sid);goal=copy.deepcopy(value['goal'])
-    if goal:
-        total,known=elapsed(value);goal.update(threadId=session['thread_id'] or sid,timeUsedSeconds=total//1_000_000_000,timeUsageKnown=known)
+    if goal:goal.update(threadId=session['thread_id'] or sid)
     result={'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':sid,'threadId':session['thread_id'],
         'revision':value['revision'],'goal':goal,'lastIntent':value.get('lastIntent'),'phase':value.get('phase','idle'),
         'keepalive':{'active':value['active'],'generation':value['generation']}}
+    from goal_keepalive_clock import snapshot as clock_snapshot,budget_snapshot
+    result['keepalive']['clock']=clock_snapshot(store,sid,value)
+    if goal:
+        spent,known=budget_snapshot(store,sid,value)
+        goal.update(timeUsedSeconds=spent//1_000_000_000,timeUsageKnown=known)
     for name in ('requestId','runId','reason'):
         if value.get(name) is not None:result[name]=value[name]
     return result
@@ -136,15 +129,17 @@ def accept(goals, sid, data):
                 value['tools']=goal_selection(store,sid);value['playRequestId']=rid
         if not noop:
             changed=action=='save' and (not value['goal'] or not goal or value['goal']['goalId']!=goal['goalId'])
-            checkpoint(value,reset=action=='stop' or changed,new_goal=changed)
+            checkpoint(value,reset=action=='stop' or changed,new_goal=changed,store=store,sid=sid,request_id=rid)
             value.update(revision=value['revision']+1,generation=value['generation']+1,active=action=='play',goal=goal,
                 lastIntent=action,requestId=rid,phase='idle',reason=None)
             if goal:
-                goal.update(timeUsedSeconds=value['clock']['elapsedNs']//1_000_000_000,timeUsageKnown=value['clock']['known'])
+                goal.update(timeUsedSeconds=value['clock']['budgetNs']//1_000_000_000,timeUsageKnown=value['clock']['budgetKnown'])
                 goal.update(status='active' if value['active'] else 'paused',updatedAt=int(time.time()))
-                if action=='stop':goal.update(timeUsedSeconds=0,timeUsageKnown=True)
-            if value['active']:value['clock']['startedNs']=time.monotonic_ns()
+            if value['active']:
+                value['clock']['startedNs']=time.monotonic_ns();value['clock']['hasStarted']=True
             value.pop('dispatch',None);write(store,sid,value)
+            from goal_keepalive_clock import record
+            record(store,sid,value)
         result={'requestId':rid,'action':action,'state':'confirmed','snapshot':snapshot(store,sid)}
         fingerprint=hashlib.sha256(encode({'sessionId':sid,**data}).encode()).hexdigest()
         db.execute('INSERT INTO goal_commands VALUES(?,?,?,?,?,?,?,?)',
@@ -154,23 +149,32 @@ def accept(goals, sid, data):
         if db.in_transaction:db.rollback()
 
 
-def block(store,sid,reason,unknown=False,status='blocked'):
-    value=row(store,sid)
-    if not value or not value['active']:return
-    checkpoint(value)
-    value.update(active=False,revision=value['revision']+1,phase='unknown' if unknown else 'idle',reason=reason)
-    value['goal'].update(status=status,updatedAt=int(time.time()))
-    with store.db:
+def block(store,sid,reason,unknown=False,status='blocked',expected=None):
+    own=not store.db.in_transaction
+    if own:store.db.execute('BEGIN IMMEDIATE')
+    try:
+        value=row(store,sid)
+        if not value or not value['active'] or expected is not None and value['generation']!=expected:return
+        checkpoint(value,store=store,sid=sid)
+        value.update(active=False,revision=value['revision']+1,phase='unknown' if unknown else 'idle',reason=reason)
+        value['goal'].update(status=status,updatedAt=int(time.time()))
         write(store,sid,value)
+        from goal_keepalive_clock import record
+        record(store,sid,value)
         publish(store,sid)
+        if own:store.db.commit()
+    finally:
+        if own and store.db.in_transaction:store.db.rollback()
 
 
 def prepare(store,sid,after):
     value=row(store,sid)
     if not value or not value['active'] or value['phase']!='idle' or not value['goal'] or value['goal']['status']!='active':return None
+    from goal_keepalive_clock import ensure
+    ensure(store,sid,value)
     goal=value['goal']
     used,known=elapsed(value);spent,spent_known=elapsed(value,budget=True)
-    goal.update(timeUsedSeconds=used//1_000_000_000,timeUsageKnown=known)
+    goal.update(timeUsedSeconds=spent//1_000_000_000,timeUsageKnown=spent_known)
     if goal.get('timeBudgetMs') is not None and (not spent_known or spent>=goal['timeBudgetMs']*1_000_000):
         block(store,sid,'The original Goal time budget is exhausted or its elapsed time is unknown.',status='budgetLimited');return None
     if goal.get('tokenBudget') is not None and (goal.get('tokensUsed') is None or goal['tokensUsed']>=goal['tokenBudget']):

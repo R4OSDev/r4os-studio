@@ -39,7 +39,7 @@ class RunGoal:
     async def pause(self,status='paused',reason=None,**kwargs):
         value=control.row(self.w.store,self.w.session_id)
         if value and value['generation']==self.original['generation'] and value['goal']['goalId']==self.goal['goalId']:
-            control.block(self.w.store,self.w.session_id,reason or 'The original Goal run reached a limit.',status=status)
+            control.block(self.w.store,self.w.session_id,reason or 'The original Goal run reached a limit.',status=status,expected=self.original['generation'])
     async def tool(self,name,arguments):
         if name=='get_goal':return {'success':True,'output':encode({'goal':self.current(),'runId':self.w.run_id,'keepaliveChangesApplyAfterRun':True})}
         store=self.w.store
@@ -52,9 +52,11 @@ class RunGoal:
         try:
             value=control.row(store,self.w.session_id);applies=bool(value and value['generation']==self.original['generation'] and value['goal']['goalId']==self.goal['goalId'])
             if applies:
-                control.checkpoint(value)
+                control.checkpoint(value,store=store,sid=self.w.session_id)
                 value.update(active=False,revision=value['revision']+1,reason=arguments['reason']);value['goal'].update(status=arguments['status'],updatedAt=int(time.time()))
                 control.write(store,self.w.session_id,value)
+                from goal_keepalive_clock import record
+                record(store,self.w.session_id,value)
                 control.publish(store,self.w.session_id)
             store.db.commit()
         finally:

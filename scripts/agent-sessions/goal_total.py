@@ -35,6 +35,7 @@ def snapshot(store, sid, monotonic=time.monotonic_ns):
             for row in db.execute('SELECT request_id,payload,state,stage FROM goal_commands WHERE session_id=?',(sid,)):
                 try:
                     payload=json.loads(row['payload'])
+                    if payload.get('_keepalive')==1:continue
                     if payload.get('action')!='play': continue
                     rid=identity(row['request_id'])
                     # Admission alone adds no elapsed time; native mutations can.
@@ -62,6 +63,20 @@ def snapshot(store, sid, monotonic=time.monotonic_ns):
                     plays.add(rid);clocks[key]=(dict(row),dict(run));measurements[key]=elapsed
                     samples.append(row['checkpoint_at'])
                 except (ProjectFault,ValueError,KeyError,TypeError): reasons.add('invalid_clock_evidence')
+        from goal_keepalive import row as keepalive_row
+        from goal_keepalive_clock import entries as cycle_entries
+        current=keepalive_row(store,sid);cycles={}
+        if current and current.get('playRequestId') and not current.get('clock',{}).get('cycleId'):
+            reasons.add('missing_keepalive_cycle_measurement')
+        for entry in cycle_entries(store,sid,current):
+            try:
+                rid=identity(entry['cycleId']);elapsed=entry['measuredNs']
+                if type(elapsed) is not int or not 0<=elapsed//1_000_000<=MAX_NUMBER:raise ValueError()
+                key=hashed({'owner':owner,'session':sid,'play':rid});plays.add(rid);expected.add(rid)
+                measurements[key]=elapsed;cycles[key]=entry;samples.append(entry['sampledAt'])
+                reasons.update(entry['reasons'])
+                if entry['state']=='unknown':reasons.add('execution_time_unconfirmed')
+            except (ProjectFault,ValueError,TypeError,KeyError):reasons.add('invalid_clock_cycle_evidence')
         keys={hashed({'owner':owner,'session':sid,'play':rid}):rid for rid in plays}
         receipt_uncertain=set()
 
@@ -119,9 +134,12 @@ def snapshot(store, sid, monotonic=time.monotonic_ns):
                 reasons.add('clock_restore_gap');continue
             if clock['state']=='unknown':reasons.add('execution_time_unconfirmed')
             elif clock['state']=='running':running.append((key,clock,run))
-        for key in measurements.keys()-clocks.keys():
+        for key in measurements.keys()-clocks.keys()-cycles.keys():
             reasons.add('clock_source_missing')
             if key in receipt_uncertain:reasons.add('execution_time_unconfirmed')
+        cycle_live=[(key,entry) for key,entry in cycles.items() if entry['state']=='running' and entry['liveMeasured']]
+        for key,entry in cycles.items():
+            if measurements[key]>entry['measuredNs']:reasons.add('clock_restore_gap')
         live=None
         if len(running)>1:reasons.add('multiple_live_clocks')
         elif running:
@@ -133,6 +151,10 @@ def snapshot(store, sid, monotonic=time.monotonic_ns):
                         or (Path('/proc')/str(clock['pid'])).stat().st_uid!=os.geteuid() or not 0<=age<=FRESH_MS): raise ValueError()
                 live={'executionId':clock['execution_id'],'ageMs':age,'staleAfterMs':FRESH_MS}
             except (OSError,ValueError,TypeError,KeyError):reasons.add('live_clock_unconfirmed')
+        if cycle_live:
+            if len(cycle_live)>1 or live:reasons.add('multiple_live_clocks');live=None
+            elif measurements[cycle_live[0][0]]==cycle_live[0][1]['measuredNs']:
+                live={'executionId':cycle_live[0][1]['cycleId'],'ageMs':0,'staleAfterMs':FRESH_MS}
         known_zero=not plays and not measurements and (marker or session['thread_id'] is None or commands) and not reasons
         total=sum(measurements.values())//1_000_000 if measurements else 0 if known_zero else None
         if total is None:reasons.add('time_not_reported')

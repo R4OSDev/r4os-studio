@@ -15,6 +15,8 @@ def preserve_pending(projects,path):
     if path.resolve(strict=True)!=path.absolute() or not path.is_file():raise ProjectFault('Statistics source could not be retained before deletion.',503)
     with closing(sqlite3.connect(path,timeout=2)) as db:
         db.row_factory=sqlite3.Row
+        from goal_keepalive_clock import retain_before_delete
+        retain_before_delete(db,projects,path)
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='statistic_receipts'").fetchone():return 0
         try:Source(SimpleNamespace(db=db,projects=projects)).flush()
         except Exception:pass  # The separate numeric outbox survives source deletion.

@@ -266,7 +266,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <AttachmentCards control={attachments} disabled={sending || !!pending} />
       <div className="agent-composer-footer">
         <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} runStopDisabled={!session||settings||stopping} inputBusy={sending || !!pending}
-          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
+          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} goal={goal.goal} pending={goal.pending} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
         {session && <ComposerSettings key={base} session={session} projectId={projectId} token={token} active={active} disabled={sending || !!pending || settings || goal.changing || goalEditor}
           busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
             if(currentScope.current===selectionScope&&value.id===sessionId&&value.owner.id===projectId&&value.owner.type===scope){setSession(old=>mergeSession(old,value));changed();}

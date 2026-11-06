@@ -71,7 +71,7 @@ async def dispatch(host,kind,ident,sid):
             try:
                 value=control.row(store,sid)
                 if value and value['active'] and ('execution' not in locals() or value['generation']==execution['generation']):
-                    control.block(store,sid,str(error),unknown='unconfirmed' in str(error).lower() or 'unknown' in str(error).lower())
+                    control.block(store,sid,str(error),unknown='unconfirmed' in str(error).lower() or 'unknown' in str(error).lower(),expected=value['generation'])
             except Exception:pass
     except Exception:
         if store:

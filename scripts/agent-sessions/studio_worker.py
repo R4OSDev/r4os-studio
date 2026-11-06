@@ -324,7 +324,7 @@ class StudioWorker(Worker):
                 if not self.active():
                     self.outcome='unknown' if self.uncertain_effect else 'interrupted';return
                 if self.message_worker.messages.waiting_after(self.session_id,self.run_id):
-                    if self.goal_worker.active:await self.goal_worker.pause(reason='The original answer ended. Explicit after-response input continues through the saved queue.')
+                    if self.goal_worker.active and not self.config.get('goalKeepalive'):await self.goal_worker.pause(reason='The original answer ended. Explicit after-response input continues through the saved queue.')
                     self.outcome='completed';return
                 if self.message_worker.boundary():
                     # A human input authorizes another ordinary model call. A
@@ -421,7 +421,7 @@ class StudioWorker(Worker):
                 if self.lease: self.lease.close()
                 reconcile_items(self.store, self.run_id, self.outcome)
                 transition(self.store, self.run_id, self.outcome, self.error, turn_id=self.turn_id)
-                if self.message_worker and self.goal_worker.execution and self.goal_worker.current() and self.goal_worker.current()['status'] in ('budgetLimited','usageLimited','blocked'):
+                if not self.config.get('goalKeepalive') and self.message_worker and self.goal_worker.execution and self.goal_worker.current() and self.goal_worker.current()['status'] in ('budgetLimited','usageLimited','blocked'):
                     self.message_worker.messages.hold(self.session_id,'The original Goal reached a limit or blockade. Review its receipt, then continue the queue explicitly.')
                 try:
                     from studio_usage import scan

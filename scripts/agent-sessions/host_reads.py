@@ -112,6 +112,8 @@ def reconcile_statistics(config, cursor, session_cursors, observations=None, act
                 key=owner_key;index=session_cursors.get(key,0);sid=sessions[index%len(sessions)]['id'];next_index=index+1
                 store.row(sid)  # Revalidate current owner/session before any numeric write.
                 Usage(store,sid).scan()
+                from goal_keepalive_clock import reconcile as reconcile_goal_clock
+                reconcile_goal_clock(store,sid)
             Source(store).flush(include_acknowledged=sweep,begin_sweep=begin)
             info=store._statistics_flush_status
             # Prove no pending write was inserted between checking the outbox
