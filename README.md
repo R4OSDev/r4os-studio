@@ -1,3 +1,7 @@
+## 0.11.34
+
+Project and skill sessions show “Waiting for limit reset” and “Stop waiting” only for a confirmed active reset wait. Cancellation has an owner/session/wait/revision-bound original receipt, persists across reply loss/reload, and ends only future automatic continuation and its monitoring demand. Shared checks and an already admitted run continue. Session events and existing recovery reads share monotonic wait revisions; no new session poller or confirmation dialog.
+
 ## 0.11.33
 
 Registered primary quota waits admit one continuation of the existing conversation only after a fresh matching positive account observation and the full original process/tool/context barrier. Accepted model/provider changes cancel the intent immediately, including next-run choices; switching back never restores it. Human queue input has priority, Goal controls/budgets remain authoritative, and a repeated quota rejection never creates an inference loop. Original requests and uncertain launch outcomes are read, never replayed.

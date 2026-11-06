@@ -19,9 +19,9 @@ def row(store,sid):
 
 def public(store,sid):
     value=row(store,sid)
-    if value is None:return {'revision':0,'state':'idle','active':False,'waitId':None}
+    if value is None:return {'schema':1,'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':sid,'revision':0,'state':'idle','active':False,'waitId':None}
     fields=('id','sourceRunId','providerId','model','reason','createdAt','negativeAt','resetAt','observation','resumedRunId')
-    return {'revision':value['revision'],'state':value['state'],'active':value['state']=='waiting','waitId':value.get('id'),
+    return {'schema':1,'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':sid,'revision':value['revision'],'state':value['state'],'active':value['state']=='waiting','waitId':value.get('id'),
         **{k:value[k] for k in fields if k in value and k!='id'}}
 
 def put(store,sid,value,publish=True):
@@ -172,5 +172,41 @@ def register(worker,operation,proof):
         put(store,sid,value)
         store.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)',(rid,'quota_wait',digest(value),sid,encode({'original':value})))
         store.db.commit();return value
+    finally:
+        if store.db.in_transaction:store.db.rollback()
+
+
+def result(store,sid,receipt):
+    return {'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':sid,'receipt':receipt,'quotaWait':public(store,sid),'session':store.get(sid)}
+
+def cancellation(store,sid,rid):
+    store.row(sid)
+    saved=store.db.execute("SELECT response FROM requests WHERE request_id=? AND session_id=? AND kind='quota_wait_cancel'",(identity(rid),sid)).fetchone()
+    if not saved:raise ProjectFault('Original wait cancellation not found.',404)
+    return result(store,sid,json.loads(saved[0])['receipt'])
+
+def cancel(store,sid,data):
+    store.row(sid)
+    if (not isinstance(data,dict) or set(data)!={'requestId','waitId','revision'} or type(data['revision']) is not int or data['revision']<1):
+        raise ProjectFault('Provide the original wait ID, revision and cancellation request.',400)
+    rid=identity(data['requestId']);wait_id=identity(data['waitId']);fingerprint=digest({'sessionId':sid,**data})
+    store.db.execute('BEGIN IMMEDIATE')
+    try:
+        old=store.db.execute('SELECT * FROM requests WHERE request_id=?',(rid,)).fetchone()
+        if old:
+            if old['kind']!='quota_wait_cancel' or old['session_id']!=sid or old['payload_hash']!=fingerprint:raise ProjectFault('This cancellation request belongs to another original action.',409)
+            return result(store,sid,json.loads(old['response'])['receipt'])
+        value=row(store,sid)
+        if not value or value.get('id')!=wait_id:raise ProjectFault('The original quota wait changed. Read this session before stopping it.',409)
+        original=store.db.execute("SELECT response FROM requests WHERE request_id=? AND session_id=? AND kind='quota_wait'",(wait_id,sid)).fetchone()
+        minimum=json.loads(original[0])['original']['revision'] if original else value['revision']
+        if not minimum<=data['revision']<=value['revision']:raise ProjectFault('The original quota wait revision changed.',409)
+        outcome='already-admitted' if value['state'] in ('dispatching','resumed') else 'already-ended'
+        if value['state']=='waiting':
+            control(store,sid,'The user stopped waiting for the quota reset.')
+            outcome='cancelled'
+        receipt={'requestId':rid,'waitId':wait_id,'sessionId':sid,'state':'confirmed','outcome':outcome,'confirmedAt':now()}
+        store.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)',(rid,'quota_wait_cancel',fingerprint,sid,encode({'receipt':receipt,'input':data})))
+        store.db.commit();return result(store,sid,receipt)
     finally:
         if store.db.in_transaction:store.db.rollback()

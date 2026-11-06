@@ -7,7 +7,7 @@ from session_store import SessionStore, identity
 from store import ProjectFault
 
 OPERATIONS = frozenset(('events', 'goal', 'goal_receipt', 'goal_clock', 'run_receipt',
-    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools', 'fallback', 'fallback_receipt'))
+    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools', 'fallback', 'fallback_receipt','quota_wait','quota_wait_receipt'))
 
 
 def read(config, request):
@@ -51,6 +51,9 @@ def read(config, request):
             row = store.db.execute('SELECT * FROM runs WHERE session_id=? AND request_id=?', (sid,identity(request['requestId']))).fetchone()
             if not row: raise ProjectFault('Original run request not found.', 404)
             return store.run_present(row)
+        if op in ('quota_wait','quota_wait_receipt'):
+            from quota_wait import public,cancellation
+            return {'quotaWait':public(store,sid)} if op=='quota_wait' else cancellation(store,sid,request['requestId'])
         if op=='model_choice_receipt':
             from model_choice import receipt
             return {'receipt':receipt(store,sid,request['requestId']),'session':store.get(sid)}

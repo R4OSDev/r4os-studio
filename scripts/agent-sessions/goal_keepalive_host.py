@@ -35,10 +35,14 @@ async def dispatch(host,kind,ident,sid):
             source=await require(host,store,sid)
             if source is not None and source['state']!='completed':
                 waiting=quota_wait(store,sid);prior=json.loads(source['config']).get('goalKeepalive') or {}
+                play=store.db.execute('SELECT created_at FROM goal_commands WHERE request_id=?',(value.get('playRequestId'),)).fetchone()
                 explicit_restart=bool(waiting and waiting['state']=='cancelled' and waiting.get('sourceRunId')==source['id']
                     and value.get('lastIntent')=='play' and value['generation']>prior.get('generation',0)
-                    and value.get('playRequestId')!=prior.get('playRequestId') and source['state']=='failed')
+                    and value.get('playRequestId')!=prior.get('playRequestId') and source['state']=='failed'
+                    and play and play['created_at']>waiting.get('createdAt',''))
                 if not explicit_restart:
+                    if waiting and waiting['state']=='cancelled' and waiting.get('sourceRunId')==source['id']:
+                        return  # This cancelled intent cannot rearm Goal or alter its clock/control.
                     control.block(store,sid,'The previous run did not complete normally. Continue explicitly.');return
             execution=control.prepare(store,sid,source['id'] if source else None)
             if not execution:return

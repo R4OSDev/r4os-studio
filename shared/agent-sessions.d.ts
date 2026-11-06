@@ -21,7 +21,10 @@ export interface ModelChoiceInput extends ModelChoice { requestId:string; revisi
 export interface PendingModelChoice { revision:number; requestId:string; afterRunId:string; state:'pending'|'blocked'; choice:ModelChoice; reason:string|null; updatedAt:string }
 export interface ModelChoiceReceipt { requestId:string; sessionId:string; selectionRevision:number; afterRunId:string; state:'pending'|'cancelled'; choice:ModelChoice; acceptedAt:string }
 export interface ModelChoiceResult { receipt:ModelChoiceReceipt; session:AgentSession }
+export interface QuotaWaitCancelInput { requestId: string; waitId: string; revision: number }
+export interface QuotaWaitResult { session?: AgentSession; owner: SessionOwner; sessionId: string; quotaWait: SessionQuotaWait; receipt: { requestId: string; waitId: string; sessionId: string; state: 'confirmed'; outcome: 'cancelled' | 'already-admitted' | 'already-ended' } }
 export interface SessionQuotaWait {
+  schema?: 1; owner?: SessionOwner; sessionId?: string;
   revision: number; state: 'idle' | 'waiting' | 'dispatching' | 'resumed' | 'cancelled' | 'unknown'; active: boolean; waitId: string | null;
   sourceRunId?: string; providerId?: string; model?: string; reason?: string; createdAt?: string; negativeAt?: string; resetAt?: string | null; resumedRunId?: string;
   observation?: { state: string; checkedAt?: string | null; nextCheckAt?: string | null; reason?: string | null; windows?: { id: string; label: string; remaining: number | null; resetAt: string | null }[] };

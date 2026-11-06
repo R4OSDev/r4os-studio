@@ -14,6 +14,9 @@ import { useSessionApi, sessionPath, busyRun, ProjectRequestError } from './api'
 import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
+import { QuotaWaitStatus } from './QuotaWaitStatus';
+import { useQuotaWait } from './useQuotaWait';
+import type { SessionQuotaWait } from '../../../../shared/agent-sessions';
 import { ProviderRetryStatus } from './ProviderRetryStatus';
 import { ComposerSettings } from './ComposerSettings';
 import { useGoal } from './useGoal';
@@ -102,16 +105,25 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const result = await projectRequest<{ session: AgentSession }>(base);
     if(currentScope.current===selectionScope)setSession(old=>mergeSession(old,result.session));
   }, [base, projectRequest,selectionScope]);
+  const acceptQuota=useCallback((value:SessionQuotaWait,snapshot?:AgentSession)=>{
+    if(retired.current||currentScope.current!==selectionScope)return;
+    if(value.owner&&(value.owner.type!==scope||value.owner.id!==projectId)||value.sessionId&&value.sessionId!==sessionId)return;
+    setSession(old=>{
+      const current=snapshot&&snapshot.id===sessionId&&snapshot.owner.id===projectId&&snapshot.owner.type===scope?mergeSession(old,snapshot):old;
+      return current&&value.revision>(current.quotaWait?.revision??0)?{...current,quotaWait:value}:current;
+    });
+  },[selectionScope,scope,projectId,sessionId]);
+  const quotaControl=useQuotaWait(projectId,sessionId,token,session?.quotaWait,acceptQuota,refreshAuth);
   const goal = useGoal(projectId, sessionId, session, token, refreshAuth, refreshSession);
   const observeGoal = goal.observe;
   useEffect(() => {
-    busyChanged(choiceSaving || sending || stopping || goal.posting); return () => busyChanged(false);
-  }, [choiceSaving, sending, stopping, goal.posting, busyChanged]);
+    busyChanged(choiceSaving || sending || stopping || goal.posting || quotaControl.busy); return () => busyChanged(false);
+  }, [choiceSaving, sending, stopping, goal.posting, quotaControl.busy, busyChanged]);
   const load = useCallback(async (signal: AbortSignal) => {
     const [h, r] = await Promise.all([projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal),
       projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal)]);
     if (signal.aborted||currentScope.current!==selectionScope) return;
-    deltas.clear(); last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
+    deltas.clear(); last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(old=>mergeSession(old,r.session)); setError('');
   }, [base, projectRequest, deltas,selectionScope]);
   useEffect(() => {
     const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false, connected = false;
@@ -150,6 +162,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         if (value.schema===1 && value.sessionId===sessionId && value.owner.type===scope && value.owner.id===projectId)
           setSession(s => s && value.revision>(s.context?.revision ?? 0) ? {...s,context:value} : s);
       }
+      if(event.kind==='quotaWait')acceptQuota(event.payload as SessionQuotaWait);
       if(event.kind==='modelChoice')void projectRequest<{session:AgentSession}>(base,'','GET',undefined,controller.signal).then(result=>{
         if(!controller.signal.aborted&&currentScope.current===selectionScope&&result.session.id===sessionId&&result.session.owner.type===scope&&result.session.owner.id===projectId)
           setSession(old=>mergeSession(old,result.session));
@@ -174,13 +187,13 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       window.clearTimeout(timer); setConnection('Reconnecting');
       timer = window.setTimeout(() => { void refreshAuth().then(async () => {
         // A closed SSE can also mean another browser tab deleted this session.
-        try { await projectRequest(base); } catch (failure) { if ((failure as ProjectRequestError).status === 410) { deleted(); return; } throw failure; }
+        try { const current=await projectRequest<{session:AgentSession}>(base); if(!controller.signal.aborted&&currentScope.current===selectionScope)setSession(old=>mergeSession(old,current.session)); } catch (failure) { if ((failure as ProjectRequestError).status === 410) { deleted(); return; } throw failure; }
         if (!loaded) { await load(controller.signal); loaded = true; } connect();
       }).catch(retry); }, Math.min(1000 * 2 ** attempt++, 10000));
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); deltas.clear(); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope,acceptQuota]);
   useEffect(()=>{const hidden=()=>{deltas.flush();if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[deltas]);
   const run = session?.latestRun;
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
@@ -238,6 +251,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       </div>
     </div>
     <ProviderRetryStatus key={base} run={run}/>
+    <QuotaWaitStatus wait={session?.quotaWait} run={run} control={quotaControl}/>
     {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
     {error && <p className="agent-error" role="alert">{error}</p>}
     {composer.error && <p className="agent-error" role="status">{composer.error}</p>}
@@ -295,7 +309,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     {showNotes && session && <EnvironmentNotes key={notes.key} session={session} notes={notes} token={token} reauth={refreshAuth} close={() => setShowNotes(false)} run={run} stop={stop} />}
     {statistics && <SessionStatistics ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setStatistics(false)} run={run} stop={stop} />}
     {gallery&&<ScreenshotGallery key={base} ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setGallery(false)} run={run} stop={stop}/>}
-    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={setSession} dirtyChanged={dirtyChanged} busyChanged={busyChanged} deleteSession={() => setDeleting(true)} close={() => setSettings(false)} saved={(s) => { setSession(s); setSettings(false); changed(); }} />}
+    {settings && session && <SessionSettings session={session} projectId={projectId} token={token} reloaded={value=>setSession(old=>mergeSession(old,value))} dirtyChanged={dirtyChanged} busyChanged={busyChanged} deleteSession={() => setDeleting(true)} close={() => setSettings(false)} saved={(s) => { setSession(old=>mergeSession(old,s)); setSettings(false); changed(); }} />}
     {deleting && <DeleteSessionDialog projectId={projectId} sessionId={sessionId} token={token} reauth={refreshAuth} close={() => setDeleting(false)} deleted={deleted} />}
   </section>;
 }
