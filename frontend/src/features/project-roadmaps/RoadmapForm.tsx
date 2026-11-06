@@ -17,12 +17,12 @@ function savedRequest(key: string, target: RoadmapTarget, action: string): Roadm
   return value;
 }
 
-export function RoadmapForm({ id, token, binding, target, initial, create = false, notesMode = 'edit', saved, cancel, dirtyChanged, busyChanged,versionLayout }: {
+export function RoadmapForm({ id, token, binding, target, initial, create = false, notesMode = 'edit', saved, cancel, dirtyChanged, busyChanged,versionLayout, blocked = false, refreshing = false }: {
   id: string; token: string; binding: RoadmapBinding; target: RoadmapTarget; initial: Input; create?: boolean;
   notesMode?: 'edit' | 'append_notes' | 'replace_notes';
   saved: (result: RoadmapMutationResult) => void; cancel: () => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
-  versionLayout?:{summary:ReactNode;actions:ReactNode};
+  versionLayout?:{summary:ReactNode;actions:ReactNode}; blocked?: boolean; refreshing?: boolean;
 }) {
   const parent = 'subversionId' in target ? `.${target.versionId}.${target.subversionId}` : 'versionId' in target ? '.' + target.versionId : '';
   const key = `studio.roadmap.request.${id}.${target.kind}${parent}.${target.id ?? 'new'}${notesMode !== 'edit' ? '.' + notesMode : ''}`;
@@ -47,7 +47,7 @@ export function RoadmapForm({ id, token, binding, target, initial, create = fals
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy || conflict || recovery.error) return;
+    if (busy || conflict || recovery.error || blocked || refreshing) return;
     const input = { ...draft };
     if (create && !input.number) delete input.number;
     for (const [field, value] of Object.entries(input)) {
@@ -83,7 +83,7 @@ export function RoadmapForm({ id, token, binding, target, initial, create = fals
   </select></div>;
   const version=!!versionLayout&&target.kind==='version'&&!create&&notesMode==='edit';
   return <form className={`roadmap-form${version?' roadmap-version-form':''}`} aria-label={create ? 'New roadmap entry' : 'Roadmap entry settings'} onSubmit={(event) => void submit(event)}>
-    <fieldset className="project-fields" disabled={busy || !!pending || !!recovery.error}>
+    <fieldset className="project-fields" disabled={busy || !!pending || !!recovery.error || refreshing}>
       {version?<>
         <div className="roadmap-version-top"><div className="roadmap-version-summary">{versionLayout.summary}</div>
           <div className="roadmap-version-fields"><div className="roadmap-version-actions">{versionLayout.actions}</div>
@@ -110,7 +110,7 @@ export function RoadmapForm({ id, token, binding, target, initial, create = fals
     {conflict && <p className="project-message" role="status">Your input is retained. Refresh the roadmap when you are ready to discard it and load the current version.</p>}
     <div className="project-actions">
       <button type="button" disabled={busy || !!pending} onClick={cancel}>Cancel</button>
-      <button type="submit" className="project-primary" disabled={busy || conflict || !!recovery.error || (!dirty && !create)}>
+      <button type="submit" className="project-primary" disabled={busy || conflict || !!recovery.error || blocked || (!dirty && !create)}>
         {busy ? 'Saving…' : pending ? 'Retry original request' : create ? target.kind === 'version' ? 'Create version' : target.kind === 'subversion' ? 'Create subversion' : isItem && target.kind === 'task' ? 'Create task' : 'Create acceptance item' : notesMode === 'append_notes' ? 'Append notes' : 'Save changes'}
       </button>
     </div>

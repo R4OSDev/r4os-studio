@@ -10,7 +10,7 @@ export function RoadmapNavigation({ model, selected, choose, create, disabled }:
     <div className="nav-items">
       <button className={`nav-item ${!selected ? 'selected' : ''}`} type="button" disabled={disabled}
         aria-current={!selected ? 'page' : undefined} onClick={() => choose()}>Overview</button>
-      <button className="nav-item project-new" type="button" disabled={disabled || !state?.exists}
+      <button className="nav-item project-new" type="button" disabled={disabled || !state?.exists || !!model.error || model.remoteChanged || model.loading}
         onClick={create}><span className="project-plus" aria-hidden="true">+</span><span>New Version</span></button>
       {model.loading && <p className="project-nav-message" role="status">Loading roadmap…</p>}
       {state?.exists && state.versions.items.map((version) => <button key={version.id} type="button"

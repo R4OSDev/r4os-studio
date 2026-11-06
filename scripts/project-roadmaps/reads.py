@@ -11,7 +11,7 @@ def root_row(db):
 
 
 def binding(db):
-    root = root_row(db)
+    root = db.execute('SELECT revision,current_version_id FROM roadmap WHERE singleton=1').fetchone()
     return {'revision': root['revision'], 'currentVersionId': root['current_version_id']}
 
 
@@ -30,33 +30,54 @@ def progress(db, version_id=None, subversion_id=None):
     return result
 
 
-def entity(db, kind, row):
+def page_aggregates(db, kind, rows):
+    if kind not in ('version','subversion') or not rows:return None
+    ids=[row['id'] for row in rows];slots=','.join('?' for _ in ids)
+    values={ident:{table:{'open':0,'done':0,'discarded':0,'total':0} for table in ('tasks','acceptances')} for ident in ids}
+    for table in ('tasks','acceptances'):
+        totals="SUM(t.status='open'),SUM(t.status='done'),SUM(t.status='discarded'),COUNT(*)"
+        if kind=='version':
+            query='SELECT s.version_id,'+totals+' FROM '+table+' t JOIN subversions s ON s.id=t.subversion_id WHERE s.version_id IN ('+slots+') GROUP BY s.version_id'
+        else:query='SELECT t.subversion_id,'+totals+' FROM '+table+' t WHERE t.subversion_id IN ('+slots+') GROUP BY t.subversion_id'
+        for parent,opened,done,discarded,total in db.execute(query,ids):
+            values[parent][table]={'open':opened,'done':done,'discarded':discarded,'total':total}
+    counts={};parents={}
+    if kind=='version':
+        counts=dict(db.execute('SELECT version_id,COUNT(*) FROM subversions WHERE version_id IN ('+slots+') GROUP BY version_id',ids))
+    else:
+        version_ids=list({row['version_id'] for row in rows})
+        parents={row['id']:row for row in db.execute('SELECT id,major,minor FROM versions WHERE id IN ('+','.join('?' for _ in version_ids)+')',version_ids)}
+    return {'progress':values,'counts':counts,'parents':parents}
+
+
+def entity(db, kind, row, aggregates=None):
     if kind == 'roadmap':
         return {**common(row), 'projectId': row['project_id'], 'description': row['description'],
                 'currentVersionId': row['current_version_id'], 'progress': progress(db)}
     if kind == 'version':
         return {**common(row), 'number': f'{row["major"]}.{row["minor"]}.X',
                 'title': row['title'], 'vision': row['vision'], 'status': row['status'], 'order': row['position'],
-                'subversionCount': db.execute('SELECT count(*) FROM subversions WHERE version_id=?', (row['id'],)).fetchone()[0],
-                'progress': progress(db, version_id=row['id'])}
+                'subversionCount': aggregates['counts'].get(row['id'],0) if aggregates is not None else db.execute('SELECT count(*) FROM subversions WHERE version_id=?', (row['id'],)).fetchone()[0],
+                'progress': aggregates['progress'][row['id']] if aggregates is not None else progress(db, version_id=row['id'])}
     if kind == 'subversion':
-        parent = db.execute('SELECT major,minor FROM versions WHERE id=?', (row['version_id'],)).fetchone()
+        parent = aggregates['parents'][row['version_id']] if aggregates is not None else db.execute('SELECT major,minor FROM versions WHERE id=?', (row['version_id'],)).fetchone()
         return {**common(row), 'versionId': row['version_id'], 'number': f'{parent["major"]}.{parent["minor"]}.{row["patch"]}',
                 'title': row['title'], 'description': row['description'], 'status': row['status'],
-                'order': row['position'], 'progress': progress(db, subversion_id=row['id'])}
+                'order': row['position'], 'progress': aggregates['progress'][row['id']] if aggregates is not None else progress(db, subversion_id=row['id'])}
     return item(row)
 
 
 def page(db, project_id, request):
     fields(request, ['collection'], ['versionId', 'subversionId', 'cursor', 'limit'])
     collection = request['collection']
-    definitions = {'versions': ('version', 'roadmap_id', root_row(db)['id'], 'position,major,minor,id'),
+    definitions = {'versions': ('version', 'roadmap_id', None, 'position,major,minor,id'),
                    'subversions': ('subversion', 'version_id', request.get('versionId'), 'position,patch,id'),
                    'tasks': ('task', 'subversion_id', request.get('subversionId'), 'position,id'),
                    'acceptances': ('acceptance', 'subversion_id', request.get('subversionId'), 'position,id')}
     if not isinstance(collection, str) or collection not in definitions:
         raise RoadmapFault('Invalid roadmap collection.', 400)
     kind, parent_key, parent_id, ordering = definitions[collection]
+    if collection=='versions':parent_id=db.execute('SELECT id FROM roadmap WHERE singleton=1').fetchone()[0]
     reference = {'kind': kind, **{k: request[k] for k in ('versionId', 'subversionId') if k in request}}
     target(db, reference, needs_id=False)
     limit = integer(request.get('limit', 10), 1, 20)
@@ -80,7 +101,8 @@ def page(db, project_id, request):
     cursor = None
     if len(rows) > limit:
         cursor = base64.urlsafe_b64encode(json.dumps({**scope, 'offset': offset + limit}, separators=(',', ':')).encode()).decode().rstrip('=')
-    return {**bound, 'items': [entity(db, kind, row) for row in rows[:limit]], 'nextCursor': cursor}
+    visible=rows[:limit];aggregates=page_aggregates(db,kind,visible)
+    return {**bound, 'items': [entity(db, kind, row, aggregates) for row in visible], 'nextCursor': cursor}
 
 
 def read(db, project_id, request):

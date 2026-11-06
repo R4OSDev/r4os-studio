@@ -52,11 +52,11 @@ export type RoadmapRecord = RoadmapHeader | RoadmapVersionHeader | RoadmapSubver
 export type RoadmapTarget = { kind: 'roadmap' | 'version'; id?: string }
   | { kind: 'subversion'; id?: string; versionId: string }
   | { kind: 'task' | 'acceptance'; id?: string; versionId: string; subversionId: string };
-export interface RoadmapBinding { revision: number; currentVersionId: string }
+export interface RoadmapBinding { sourceGeneration?: string; revision: number; currentVersionId: string }
 export interface RoadmapPage<T = RoadmapRecord> extends RoadmapBinding { items: T[]; nextCursor: string | null }
 export interface RoadmapRead<T = RoadmapRecord> extends RoadmapBinding { entity: T }
 export type RoadmapOverview = { exists: false; projectId: string }
-  | { exists: true; roadmap: RoadmapHeader; versions: RoadmapPage<RoadmapVersionHeader> };
+  | { exists: true; sourceGeneration?: string; roadmap: RoadmapHeader; versions: RoadmapPage<RoadmapVersionHeader> };
 export interface RoadmapMutation {
   requestId: string;
   expectedRevision: number;

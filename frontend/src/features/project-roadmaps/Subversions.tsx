@@ -51,10 +51,12 @@ function NoteDetails({ notes }: { notes: string }) {
     <div className="roadmap-note-text" tabIndex={0}>{notes || 'No notes yet.'}</div></details>;
 }
 
-function ItemCollection(props: Shared & { subversionId: string; kind: 'task' | 'acceptance' }) {
+function ItemCollection(input: Shared & { subversionId: string; kind: 'task' | 'acceptance' }) {
+  const props = { ...input, disabled: input.disabled };
   const collection = props.kind === 'task' ? 'tasks' : 'acceptances';
   const path = `/versions/${props.versionId}/subversions/${props.subversionId}/${collection}`;
-  const list = useRoadmapPage<RoadmapItem>(props.id, path, props.binding.revision);
+  const list = useRoadmapPage<RoadmapItem>(props.id, path, props.binding.revision, props.binding.sourceGeneration);
+  props.disabled ||= !!list.error || list.loading;
   const actions = useActions(props);
   const target: RoadmapTarget = { kind: props.kind, versionId: props.versionId, subversionId: props.subversionId };
   const items = list.page?.items ?? [];
@@ -133,8 +135,10 @@ function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }
   </details>;
 }
 
-export function Subversions(props: Shared) {
-  const list = useRoadmapPage<RoadmapSubversionHeader>(props.id, `/versions/${props.versionId}/subversions`, props.binding.revision);
+export function Subversions(input: Shared) {
+  const props = { ...input, disabled: input.disabled };
+  const list = useRoadmapPage<RoadmapSubversionHeader>(props.id, `/versions/${props.versionId}/subversions`, props.binding.revision, props.binding.sourceGeneration);
+  props.disabled ||= !!list.error || list.loading;
   const actions = useActions(props);
   const target: RoadmapTarget = { kind: 'subversion', versionId: props.versionId };
   const entries = list.page?.items ?? [];
@@ -149,7 +153,7 @@ export function Subversions(props: Shared) {
       <button type="button" disabled={props.disabled} onClick={() => props.edit({ title: 'New subversion', target,
         initial: { number: '', title: '', description: '', notes: '', status: 'open' }, create: true })}>Add subversion</button></div>
     {(list.error || actions.error) && <p className="project-error" role="alert">{list.error || actions.error}</p>}
-    {props.disabled && <p className="project-message">Save or cancel the current edit before changing another entry.</p>}
+    {props.disabled && <p className="project-message">Finish the current edit or refresh before changing another entry.</p>}
     {list.loading && <p role="status">Loading subversions…</p>}
     {pending && <button type="button" disabled={props.disabled} onClick={() => void actions.perform('reorder', target, {})}>Confirm original order change</button>}
     {entries.map((sub, index) => <div className="roadmap-subversion-row" key={sub.id}>

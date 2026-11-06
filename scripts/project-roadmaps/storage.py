@@ -39,25 +39,25 @@ def folder(path):
         raise RoadmapFault('Invalid roadmap directory. Existing data was preserved.', 503)
 
 
-def open_database(path, identity):
+def open_database(path, identity, verify_integrity=True):
     regular(path)
     for suffix in ('-journal', '-wal', '-shm'):
         sidecar = path.with_name(path.name + suffix)
         if sidecar.exists() or sidecar.is_symlink():
             regular(sidecar)
-    db = sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=3)
+    db = sqlite3.connect(path.as_uri() + ('?mode=rw' if verify_integrity else '?mode=ro'), uri=True, timeout=3)
     try:
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
         if (db.execute('PRAGMA user_version').fetchone()[0] != SCHEMA_VERSION
                 or db.execute('PRAGMA application_id').fetchone()[0] != APPLICATION_ID):
             raise RoadmapFault('Unsupported roadmap database. Existing data was preserved.', 503)
-        if db.execute('PRAGMA quick_check(1)').fetchone()[0] != 'ok':
+        if verify_integrity and db.execute('PRAGMA quick_check(1)').fetchone()[0] != 'ok':
             raise RoadmapFault('The roadmap database needs maintenance. Existing data was preserved.', 503)
         row = db.execute('SELECT project_id FROM roadmap WHERE singleton=1').fetchone()
         if row is None or row['project_id'] != identity:
             raise RoadmapFault('The roadmap belongs to a different project or is incomplete.', 503)
-        if db.execute('PRAGMA foreign_key_check').fetchone():
+        if verify_integrity and db.execute('PRAGMA foreign_key_check').fetchone():
             raise RoadmapFault('The roadmap hierarchy needs maintenance. Existing data was preserved.', 503)
         db.execute('PRAGMA synchronous=FULL')
         return db
@@ -117,7 +117,7 @@ def create_database(path, identity):
 
 
 @contextmanager
-def connection(projects, identity, initialize=False):
+def connection(projects, identity, initialize=False, verify_integrity=True):
     projects = Path(projects).absolute()
     # Lifetime locks coordinate deletion, not workspace edits or agent runs.
     with acquire(projects, identity):
@@ -143,7 +143,7 @@ def connection(projects, identity, initialize=False):
                 yield None
                 return
             create_database(path, identity)
-        db = open_database(path, identity)
+        db = open_database(path, identity, verify_integrity=verify_integrity)
         try:
             yield db
         finally:

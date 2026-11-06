@@ -5538,3 +5538,23 @@ the latest pending hint before sending its original revision-bound mutation.
 Keyboard Move, hidden/archived positions, original-request recovery and server
 receipts retain authority over the result. Browser code manages interaction;
 the existing private Board helper supplies verified reads and mutations.
+
+
+### Roadmap reads and refresh
+
+Roadmap pages aggregate exact task/acceptance status totals and subversion counts
+for the bounded requested page. A browser revision probe can reuse a fully
+verified unchanged file generation for at most30seconds, with at most64 project
+scopes. Each probe still reads the actual project, schema, owner and coherent
+revision/current version under the original project lifetime gates. Changed,
+expired or unverified generations take the full integrity path; snapshot,
+mutation, export and recovery checks remain complete. Private file facts never
+leave the adapter. An opaque source marker also exposes equal-revision database
+replacement independently in each browser.
+
+After a project binding is known, overview and selected version load in parallel.
+Unchanged background checks retain ready data and local drafts. Verification
+errors or remote changes block new writes without clearing input. Explicit full
+refresh retains the view until its response and disables inputs, including open
+modal forms; mixed revision/source pages are rejected. Original mutation and
+export receipts retain their existing recovery behavior.
