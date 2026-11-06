@@ -93,6 +93,10 @@ def permission_tools(scope='project'):
 def validate_arguments(name,value,scope='project'):
     if name in ('deploy_project','run_project') and isinstance(value,dict) and any(key in value for key in ('desktopShortcut','desktopLink')):
         raise ValueError('Studio desktop automation was removed. Use normal deploy/run or the project VM SSH tool for a requested guest shortcut.')
+    if name=='write_file' and isinstance(value,dict) and 'expectedSha256' in value:
+        from file_worker import validate_expected,Fault
+        try:validate_expected(value['expectedSha256'])
+        except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
     definition=next((item for item in catalog()[tool_scope(scope)] if item['name']=='studio_'+name),None)
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root=definition['inputSchema']

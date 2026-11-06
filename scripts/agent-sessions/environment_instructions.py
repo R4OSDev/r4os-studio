@@ -2,7 +2,7 @@
 import json
 
 
-def compose(project):
+def compose(project, config=None):
     from host_linker import qualify
     pins = project.get('pins', {})
     context = {'projectRevision': project.get('revision'), 'language': project.get('language'),
@@ -11,14 +11,19 @@ def compose(project):
         value = pins.get(name)
         if isinstance(value, dict):
             context[name] = {key: value[key] for key in ('version', 'revision') if key in value}
+    from tool_catalog import specifications
+    config=config or {};permissions=config.get('permissions',{})
+    context['ownWindowControl']={'registered':'studio_control_app_window' in {item['name'] for item in specifications(config)},
+        'permittedByFrozenRights':all(permissions.get('studio.'+key) is True for key in ('control_app_window','run_project')),
+        'guestAndDeploymentVerified':False}
     return ('\n\nSTUDIO PROJECT ENVIRONMENT: Current project metadata at worker startup: '
         + json.dumps(context, ensure_ascii=False, sort_keys=True) + '. '
         'This describes configured host build inputs, not the capabilities of a running guest or an older deployed artifact. '
         'Use the original build/deployment pins and authenticated guest evidence for that target; do not change pins to work around missing APIs. '
-        'Studio currently has no qualified own-window resize/minimize/restore adapter. Legacy WINSVC record operations and '
-        'gui_set_window_info are not proof of applied Desktop geometry. The qualified SDK0.64.92/Contract0.64.45 WindowMode '
-        'request describes decorated/fullscreen mode only; do not invent size, minimize or restore fields, global input or local ABI numbers. '
-        'Keep requested window-action and outside-client drag checks open until a supported native contract and actual effects are established. '
+        'Current Studio registers studio_control_app_window for its owned application. Registration and frozen permission do not establish guest readiness. '
+        'Control requires a requested windowControl execution, a verified compatible deployment/helper/native guest contract and its current owned process/window binding. '
+        'Use the declared resize/minimize/restore operations only when those receipts and permissions allow them; confirm the actual effect. '
+        'Legacy WINSVC records or gui_set_window_info alone do not prove applied geometry. Do not invent ABI fields, global input or native capabilities from SDK/version numbers. '
         'For C GUI work, distinguish the higher app_gui.h message facade from technical generated raw focus/font enums and native window flags; '
         'WindowService flags are not interchangeable with GuiWindowFlag. Inspect the selected SDK/Contract sources before using an enum. '
         'Long staging names failed on the observed Full0.87.14 Exchange provider while checked short basenames worked; '

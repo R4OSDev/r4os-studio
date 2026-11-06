@@ -1,3 +1,7 @@
+## 0.11.42
+
+Current development guidance distinguishes registered tools, frozen rights and verified guest/deployment capabilities, including own-window control. It points project reads to sdk/contract roots and /sdk,/contract or SDK_ROOT/CONTRACT_ROOT in the host terminal, and keeps host/SSH/skill/VM scopes separate. File creation requires JSON null; malformed expected hashes (including the string "null") fail clearly before file access, while valid stale hashes remain conflicts. Optional Environment Notes policy2 highlights evidenced environment blockers and useful suggestions, retaining current-read/revision/dedup/deletion protections and Notes-off. Saved prompts, project instructions, old accepted inputs and user notes are preserved.
+
 ## 0.11.41
 
 Managed skill discovery supports bounded literal queries over the frozen tools/prompts catalogue, with exact native names and skill/revision/hash/query-bound continuation. Search reads verified metadata and starts no client. Exact schema reads include a small orientation hint and the full original reference/hash/page path; native schemas and arguments stay unchanged. Missing or absent wrapper names are rejected before starting a client. System → Tools retains its existing list.

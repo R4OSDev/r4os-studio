@@ -72,7 +72,13 @@ def read(root, path, limit=8*1024*1024):
 def sha(value): return hashlib.sha256(value).hexdigest()
 
 
+def validate_expected(expected):
+    if expected is not None and (not isinstance(expected,str) or not re.fullmatch('[a-f0-9]{64}',expected)):
+        raise Fault('Use JSON null for a new file, or the exact lowercase 64-character SHA-256 read from an existing file. The string "null" is not JSON null. No file was written.')
+
+
 def check(root, path, expected):
+    validate_expected(expected)
     try: value, info = read(root, path)
     except FileNotFoundError:
         if expected is not None: raise Fault('File disappeared. Read the current file before changing it.')
@@ -218,6 +224,7 @@ def search(root, args):
 
 
 def execute(tool, args):
+    if tool == 'write_file': validate_expected(args.get('expectedSha256'))
     root_name = args.get('root', 'workspace'); root = root_fd(root_name)
     try:
         if tool == 'read_file':
