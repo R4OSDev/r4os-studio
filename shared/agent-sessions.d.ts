@@ -86,6 +86,8 @@ export interface SessionItem extends Partial<TerminalTimingFields> {
   generatedImages?: import('./generated-images.js').GeneratedImage[];
   imageErrors?: string[];
   imageDelivery?: 'pixels' | 'reference-only';
+  captureState?: 'confirmed';
+  visionAnalysis?: { state: 'not-requested' | 'native' | 'completed' | 'failed' | 'unknown'; text?: string; reason?: string; providerId?: string; model?: string; reportedModel?: string };
   generatedAsset?: import('./generated-images.js').GeneratedAsset;
   attachments?: import('./agent-inputs.js').FrozenAttachment[];
   id: string; runId: string; turnId?: string; type: string; text?: string; tool?: string; status?: string;

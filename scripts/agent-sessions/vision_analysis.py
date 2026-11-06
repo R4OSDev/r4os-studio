@@ -38,6 +38,12 @@ def configured(worker):
     return {**setting, 'target':freeze(worker.manifest['providers'],setting['vision'])}
 
 
+def validate_question(question):
+    if (not isinstance(question,str) or not question.strip() or len(question.encode()) > 4096
+            or any(ord(c)<32 and c not in '\n\t\r' for c in question)):
+        raise ProjectFault('Provide an image question of at most 4 KiB.',400)
+
+
 def png(data):
     raw = base64.b64decode(data['base64'],validate=True); meta = data['metadata']
     if (not 33 <= len(raw) <= MAX_IMAGE or raw[:8] != b'\x89PNG\r\n\x1a\n' or raw[12:16] != b'IHDR' or raw[8:12] != b'\x00\x00\x00\r'
@@ -81,9 +87,7 @@ def authorize(w, call_id, data, question):
             {key:worker[key] for key in ('pid','birth','release')})
     arguments = json.loads(tool['intent'])
     if arguments.get('analysisQuestion',arguments.get('question')) != question: raise ProjectFault('The original image question changed.',409)
-    if (not isinstance(question,str) or not question.strip() or len(question.encode()) > 4096
-            or any(ord(c)<32 and c not in '\n\t\r' for c in question)):
-        raise ProjectFault('Provide an image question of at most 4 KiB.',400)
+    validate_question(question)
     meta = data['metadata']
     if (meta.get('kind') != 'screenshot' or meta.get('projectId') != w.store.owner_id
             or (meta.get('observer') or {}).get('sessionId') != w.session_id or meta.get('jobId') != arguments.get('jobId')):

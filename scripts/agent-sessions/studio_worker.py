@@ -97,6 +97,8 @@ class StudioWorker(Worker):
                     or meta.get('projectId')!=self.manifest.get('projectId') or meta.get('kind')!='screenshot'
                     or hashlib.sha256(base64.b64decode(image_data.get('base64',''),validate=True)).hexdigest()!=meta.get('sha256')):
                 raise ProjectFault('The original screenshot reference changed.',409)
+            if result.get('imageDelivery')=='reference-only' and self.config.get('apiModel',{}).get('imageInput')!='supported':
+                return result
             images.append({'data':image_data['base64'],'mimeType':'image/png'})
         declared=result.get('skillMcp',{}).get('imageCount',len(images))
         if not images:return {**result,'imageErrors':['Original service images are retained but unavailable for this image transport.']} if declared else result

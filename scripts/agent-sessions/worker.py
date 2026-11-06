@@ -278,6 +278,9 @@ class Worker:
                 return await output(replay(self,name[7:],arguments,previous))
             if previous['result']:
                 result = json.loads(previous['result'])
+                if result.get('image') and result.get('error')=='unknown' and name in ('studio_capture_vm','studio_send_vm_input'):
+                    self.unconfirmed()
+                    return await output(result)
                 if name == 'studio_read_development_job':
                     result = self.development.replay_read(arguments, result)
                 if result.get('error') != 'unknown':
@@ -341,7 +344,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'skillMcp', 'skillMcpRequest'):
+        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'skillMcp', 'skillMcpRequest'):
             if key in result: value[key] = result[key]
         if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
             from terminal_timing import FIELDS as terminal_time_fields

@@ -1,3 +1,7 @@
+## 0.11.29
+
+Assigned VM screenshots support capture-only and explicit external Vision analysis without changing the main model. `studio_capture_vm` accepts `analysisQuestion` or `action=inspect` for an existing image. A usable configured fallback is required for non-Vision capture. Failed analysis retains the image; capture, gesture and inference are never automatically repeated. Native Vision and explicit GUI assessment remain separate.
+
 ## Bounded external Vision operations (0.11.28)
 
 A private image-to-text helper uses the existing Responses, Chat Completions or

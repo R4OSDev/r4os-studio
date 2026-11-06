@@ -515,44 +515,111 @@
     },
     {
       "name": "studio_capture_vm",
-      "description": "Capture the assigned VM as an actual native image for this session's job. Image-capable models only. Includes time, boot/process, image ID, dimensions and GUI revision. When asked for a screenshot, embed the returned presentation.markdown in your reply to show the stored image outside tool calls. Reuse confirmed references without another capture. Inspect the image before GUI input. action=assess records an attributed visual judgment against explicit criteria using an image captured in this agent run; requires evidenceId/state/notes.",
+      "description": "Capture the assigned VM for this session job. Native Vision is delivered directly. A non-Vision main model needs a configured usable Vision fallback: capture without analysisQuestion saves and presents the screenshot without inference; analysisQuestion requests one attributed external analysis. action=inspect with jobId/evidenceId/question analyses the same saved screenshot without another capture. The main model remains unchanged and receives no pixels without native Vision. Analysis failure retains the confirmed image/presentation. No retry or fallback chain. Embed the exact presentation.markdown to show the saved image. action=assess separately records an attributed visual judgment against explicit criteria from an image captured in this agent run; it never calls Vision or proves GUI success by itself.",
       "inputSchema": {
-        "type": "object",
-        "properties": {
-          "jobId": {
-            "type": "string",
-            "maxLength": 36,
-            "description": "Opaque Studio UUID from a confirmed tool result."
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "capture"
+                ]
+              },
+              "analysisQuestion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+              }
+            },
+            "required": [
+              "jobId"
+            ],
+            "additionalProperties": false
           },
-          "action": {
-            "type": "string",
-            "enum": [
-              "capture",
-              "assess"
-            ]
+          {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "inspect"
+                ]
+              },
+              "evidenceId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+              }
+            },
+            "required": [
+              "jobId",
+              "action",
+              "evidenceId",
+              "question"
+            ],
+            "additionalProperties": false
           },
-          "evidenceId": {
-            "type": "string",
-            "maxLength": 36,
-            "description": "Opaque Studio UUID from a confirmed tool result."
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "passed",
-              "failed",
-              "inconclusive"
-            ]
-          },
-          "notes": {
-            "type": "string",
-            "maxLength": 1024
+          {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "assess"
+                ]
+              },
+              "evidenceId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "passed",
+                  "failed",
+                  "inconclusive"
+                ]
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 1024
+              }
+            },
+            "required": [
+              "jobId",
+              "action",
+              "evidenceId",
+              "state",
+              "notes"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "jobId"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {

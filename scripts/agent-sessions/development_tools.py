@@ -31,6 +31,7 @@ class DevelopmentTools:
     def image_capable(self):
         worker = self.worker
         if worker.config['engine'].get('kind')=='studio':return worker.config.get('apiModel',{}).get('imageInput')=='supported'
+        if worker.config['engine'].get('kind')=='claude-code':return worker.config.get('claudeModel',{}).get('imageInput')=='supported'
         try:
             models = json.loads((worker.store.directory / worker.session_id / 'Codex/models.json').read_text())['models']
             return 'image' in next(v for v in models if v['slug'] == worker.config['model']).get('input_modalities', [])
@@ -52,16 +53,67 @@ class DevelopmentTools:
             if len(images)<result['skillMcp'].get('imageCount',0):
                 content.append({'type':'inputText','text':'Some original skill images remain in the retained result because this model or its image transport limit cannot deliver them. Retention does not confirm visual inspection.'})
         if result.get('image'):
-            if not self.image_capable() or not self.worker.config['permissions'].get('studio.capture_vm'):
+            if not self.worker.config['permissions'].get('studio.capture_vm') or (not self.image_capable() and result.get('imageDelivery') != 'reference-only'):
                 return {'success': False, 'contentItems': [{'type': 'inputText', 'text': 'Image inspection is unavailable for this model or permission.'}]}
             image = result['image']
             data = image_data if image_data is not None else await self.request('evidence', id=image['jobId'], evidenceId=image['id'])
-            if data['metadata']['sha256'] != image['sha256'] or (image_data is not None and (
-                data['metadata'] != image or image['projectId'] != self.worker.manifest['projectId'] or image['kind'] != 'screenshot')):
+            if (data['metadata'] != image or image['projectId'] != self.worker.manifest['projectId'] or image['kind'] != 'screenshot'
+                    or (image.get('observer') or {}).get('sessionId') != self.worker.session_id):
                 raise ValueError('Image identity changed.')
             # Transient RPC image only. Durable tools/events retain opaque refs.
-            content.append({'type': 'inputImage', 'imageUrl': 'data:image/png;base64,' + data['base64']})
+            if self.image_capable():
+                content.append({'type': 'inputImage', 'imageUrl': 'data:image/png;base64,' + data['base64']})
+            else:
+                content.append({'type':'inputText','text':'The saved screenshot reference is available for presentation. This model did not receive pixels. Any visionAnalysis is attributed external image analysis, not this model’s own perception or proof of GUI actions.'})
         return {'success': result['success'], 'contentItems': content}
+
+    def capture_capable(self):
+        from contracts import DevelopmentFault
+        from store import ProjectFault
+        if not self.worker.config['permissions'].get('studio.capture_vm'):
+            raise DevelopmentFault('Image inspection is disabled in the original run.',403)
+        if not self.image_capable():
+            from vision_analysis import configured
+            try: configured(self.worker)
+            except ProjectFault as error: raise DevelopmentFault(str(error),error.code) from None
+
+    def screenshot(self,data,job_id):
+        from contracts import DevelopmentFault
+        from session_store import encode
+        metadata = data['metadata']
+        if (metadata.get('projectId') != self.worker.manifest['projectId'] or metadata.get('jobId') != job_id
+                or metadata.get('kind') != 'screenshot' or (metadata.get('observer') or {}).get('sessionId') != self.worker.session_id):
+            raise DevelopmentFault('The screenshot does not match this session.',403)
+        reference = 'studio-image:' + metadata['jobId'] + '/' + metadata['id']
+        presentation = {'reference':reference,'markdown':'![VM screenshot]('+reference+')',
+            'instruction':'Reuse this exact saved image reference in your reply; do not capture again just to present it.'}
+        return {'success':True,'output':encode({**metadata,'presentation':presentation}),
+            'development':{'jobId':job_id},'image':metadata,'presentation':presentation,
+            'captureState':'confirmed','imageDelivery':'pixels' if self.image_capable() else 'reference-only',
+            '_transientImage':data}
+
+    async def analyse_screenshot(self,result,data,question,call_id):
+        from session_store import encode
+        from store import ProjectFault
+        if question is None: analysis = {'state':'not-requested'}
+        elif self.image_capable():
+            analysis = {'state':'native','question':question,'reason':'Answer using the original image delivered directly to the main model. No fallback was called.'}
+        else:
+            from vision_analysis import Vision
+            if self.worker.vision_helper is None: self.worker.vision_helper = Vision(self.worker)
+            try: analysis = await self.worker.vision_helper.analyse(call_id,data,question)
+            except asyncio.CancelledError:
+                analysis = {'state':'unknown','reason':'The image analysis was interrupted. Its original operation was not repeated.'}
+            except ProjectFault as error:
+                analysis = {'state':'unknown' if error.code==503 else 'failed','reason':str(error)}
+            except Exception:
+                analysis = {'state':'unknown','reason':'The original image analysis could not be confirmed. The saved screenshot is retained; no request was repeated.'}
+        result['visionAnalysis'] = analysis
+        if analysis['state'] in ('failed','unknown'):
+            result.update(success=False,error='unknown' if analysis['state']=='unknown' else 'unavailable')
+        result['output'] = encode({**data['metadata'],'presentation':result['presentation'],
+            'captureState':'confirmed','imageDelivery':result['imageDelivery'],'visionAnalysis':analysis})
+        return result
 
     async def call(self, name, value, call_id):
         from profile import UPDATE_TOOLS
@@ -160,7 +212,7 @@ class DevelopmentTools:
                     'output': encode(self.present(stopped,{'job': stopped, 'stop': receipt})), 'developmentStop': receipt,
                     'development': {'jobId': stopped['id'], 'kind': stopped['kind'], 'state': stopped['state']}}
             if name == 'capture_vm':
-                if not self.image_capable(): raise DevelopmentFault('This model has no confirmed native image capability. Choose an image-capable model.', 409)
+                self.capture_capable()
                 if value.get('action', 'capture') == 'assess':
                     if set(value) != {'jobId', 'action', 'evidenceId', 'state', 'notes'}: raise DevelopmentFault('Provide image ID, state and notes for assessment.', 400)
                     job = await self.request('assess', id=value['jobId'], input={'requestId': request_id,
@@ -171,16 +223,19 @@ class DevelopmentTools:
                     result.update(success=True)
                     result.pop('error', None)
                     return result
-                if set(value) - {'jobId', 'action'}: raise DevelopmentFault('Unexpected capture fields.', 400)
-                data = await self.request('capture', id=value['jobId'], input={'requestId': request_id})
-                metadata = data['metadata']
-                if metadata.get('projectId') != self.worker.manifest['projectId'] or (metadata.get('observer') or {}).get('sessionId') != self.worker.session_id:
-                    raise DevelopmentFault('The screenshot does not match this session.', 403)
-                reference = 'studio-image:' + metadata['jobId'] + '/' + metadata['id']
-                presentation = {'reference': reference, 'markdown': '![VM screenshot](' + reference + ')',
-                    'instruction': 'When the user asks to see the screenshot, include this image Markdown in your response. You may supply a descriptive alt text. The saved image is reused; do not capture again just to present it.'}
-                return {'success': True, 'output': encode({**metadata, 'presentation': presentation}), 'development': {'jobId': value['jobId']}, 'image': metadata,
-                    **({'_transientImage': data} if data.get('authorizedForAgentOutput') is True else {})}
+                action = value.get('action','capture')
+                if action not in ('capture','inspect'): raise DevelopmentFault('Unknown screenshot action.',400)
+                allowed = {'jobId','action','evidenceId','question'} if action=='inspect' else {'jobId','action','analysisQuestion'}
+                if set(value)-allowed: raise DevelopmentFault('Unexpected screenshot fields.',400)
+                question = value.get('question' if action=='inspect' else 'analysisQuestion')
+                if action=='inspect' or question is not None:
+                    from vision_analysis import validate_question
+                    try: validate_question(question)
+                    except __import__('store').ProjectFault as error: raise DevelopmentFault(str(error),error.code) from None
+                data = (await self.request('evidence',id=value['jobId'],evidenceId=value['evidenceId']) if action=='inspect'
+                    else await self.request('capture',id=value['jobId'],input={'requestId':request_id}))
+                result = self.screenshot(data,value['jobId'])
+                return await self.analyse_screenshot(result,data,question,call_id)
             if name == 'control_app_window':
                 data = await self.request('window', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
                 return {'success': data.get('confirmed', False), 'output': encode(data), 'development': {'jobId': value['jobId']}}
@@ -195,12 +250,15 @@ class DevelopmentTools:
                     capability = await broker_call({'operation': 'capabilities'})
                     if capability.get('features', {}).get('dragInterrupt') != 1:
                         raise DevelopmentFault('Drag interrupts require the current development coordinator; no input was admitted.', 503)
-                if value.get('observeAfterStep') is not None and not self.image_capable():
-                    raise DevelopmentFault('An intermediate gesture image requires an image-capable model.', 409)
+                if value.get('observeAfterStep') is not None: self.capture_capable()
                 data = await self.request('input', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
                 observation = data.pop('observation', None)
-                return {'success': data.get('complete', True), 'output': encode(data), 'development': {'jobId': value['jobId']},
-                    **({'image': observation['metadata'], '_transientImage': observation} if observation else {})}
+                result = {'success':data.get('complete',True),'output':encode(data),'development':{'jobId':value['jobId']}}
+                if observation:
+                    image = self.screenshot(observation,value['jobId'])
+                    result.update({k:v for k,v in image.items() if k not in ('success','output','development')})
+                    result['visionAnalysis'] = {'state':'not-requested'}
+                return result
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
