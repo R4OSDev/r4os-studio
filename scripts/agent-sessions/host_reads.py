@@ -73,7 +73,7 @@ def read(config, request):
         store.close()
 
 
-def reconcile_statistics(config, cursor, session_cursors):
+def reconcile_statistics(config, cursor, session_cursors, observations=None, active_owners=(), force=False):
     # One original owner/session per bounded pass, with all lifetimes, SQLite
     # transactions and deduplicated numeric writes wholly inside this thread.
     from skill_lifecycle import api as lifecycle
@@ -82,28 +82,47 @@ def reconcile_statistics(config, cursor, session_cursors):
     from usage_stats import Usage
     from stats_store import Source
     from stats_lifecycle import flush_pending
+    from stats_reconcile import source_facts, target_hint, pending, plan
+    import time
+    def result(index,key=None,next_index=None,observation=None):
+        base=(index,key,next_index)
+        return (*base,observation) if observations is not None else base
     with lifecycle.lock(Path(config['projects']).parent/'Skills',fault=ProjectFault):
         with closing(connect(Path(config['projects']),read_only=True)) as db:
             registered=[('project',r['id']) for r in db.execute("SELECT id FROM projects WHERE state='ready' ORDER BY id")]+owners(config['projects'])
         flush_pending(config['projects'])
-        if not registered: return cursor,None,None
-        kind,ident=registered[cursor%len(registered)]
+        if not registered:return result(cursor)
+        kind,ident=registered[cursor%len(registered)];owner_key=(kind,ident)
         root=skills_root(config['projects']) if kind=='skill' else Path(config['projects'])
-        if not (root/ident/'Sessions/Sessions.sqlite').is_file(): return cursor+1,None,None
-        key=None;next_index=None;store=None
+        path=root/ident/'Sessions/Sessions.sqlite'
+        if not path.is_file():return result(cursor+1,observation=(owner_key,None))
+        old=(observations or {}).get(owner_key)
+        before=source_facts(path);target=target_hint(config['projects'])
+        skip,sweep,begin=plan(old,before,target,force or owner_key in active_owners)
+        if observations is None:sweep=True;begin=False;skip=False
+        if skip:return result(cursor+1,observation=(owner_key,old))
+        key=None;next_index=None;store=None;candidate=None;final_facts=None
         try:
             store=SessionStore(config['projects'],config['r4os'],ident,kind)
             sessions=store.db.execute('SELECT id FROM sessions ORDER BY id').fetchall()
-            if not sessions:
-                Source(store).flush(include_acknowledged=True)
-                return cursor+1,None,None
-            key=(kind,ident);index=session_cursors.get(key,0);sid=sessions[index%len(sessions)]['id'];next_index=index+1
-            store.row(sid)  # Revalidate current owner/session before any numeric write.
-            Usage(store,sid).scan();Source(store).flush(include_acknowledged=True)
-            return cursor+1,key,next_index
+            if sessions:
+                key=owner_key;index=session_cursors.get(key,0);sid=sessions[index%len(sessions)]['id'];next_index=index+1
+                store.row(sid)  # Revalidate current owner/session before any numeric write.
+                Usage(store,sid).scan()
+            Source(store).flush(include_acknowledged=sweep,begin_sweep=begin)
+            info=store._statistics_flush_status
+            # Prove no pending write was inserted between checking the outbox
+            # and observing its file generation. A changed close/WAL falls back.
+            final_facts=source_facts(path)
+            no_pending=not pending(store)
+            candidate={'source':final_facts if no_pending else None,'target':target_hint(config['projects']),
+                'sweeping':bool(sweep and not info['archiveComplete']),
+                'checked':time.monotonic() if sweep and info['archiveComplete'] else old.get('checked',0) if old else 0}
         except (ProjectFault,OSError,sqlite3.Error):
-            # Failed originals stay in their outbox for the existing next pass;
-            # one unavailable owner must not starve every other owner/session.
-            return cursor+1,key,next_index
+            # Originals stay in their outbox. One unavailable owner cannot
+            # starve every other owner/session or leave a positive idle proof.
+            return result(cursor+1,key,next_index,(owner_key,None))
         finally:
             if store is not None:store.close()
+        if candidate and (final_facts is None or final_facts!=source_facts(path)):candidate['source']=None
+        return result(cursor+1,key,next_index,(owner_key,candidate))

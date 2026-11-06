@@ -23,6 +23,7 @@ class Usage:
         Source(self.store).schema()
         with self.store.db:
             self.store.db.execute('CREATE TABLE IF NOT EXISTS statistic_usage(key TEXT PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT,turn_id TEXT NOT NULL,origin TEXT NOT NULL)')
+            self.store.db.execute('CREATE INDEX IF NOT EXISTS statistic_usage_response ON statistic_usage(run_id,turn_id,origin)')
             self.store.db.execute('CREATE TABLE IF NOT EXISTS statistic_history(key TEXT PRIMARY KEY,inode TEXT NOT NULL,offset INTEGER NOT NULL,skipping INTEGER NOT NULL)')
     def ingest(self,thread,turn,response,usage,camel=False,run_id=None):
         if thread!=self.store.row(self.sid)['thread_id'] or not all(valid_id(x) for x in (thread,turn,response)):return False

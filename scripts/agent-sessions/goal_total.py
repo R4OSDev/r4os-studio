@@ -47,10 +47,15 @@ def snapshot(store, sid, monotonic=time.monotonic_ns):
                 if execution: plays.add(identity(execution['requestId']))
             except (ProjectFault,ValueError,KeyError,TypeError): reasons.add('invalid_activation_evidence')
         if has(db,'goal_clocks'):
-            for row in db.execute('SELECT * FROM goal_clocks WHERE session_id=? ORDER BY rowid',(sid,)):
+            for row in db.execute('''SELECT c.*,r.session_id AS clock_run_session_id,
+                    r.busy AS clock_run_busy,r.worker AS clock_run_worker
+                    FROM goal_clocks c LEFT JOIN runs r ON r.id=c.run_id
+                    WHERE c.session_id=? ORDER BY c.rowid''',(sid,)):
                 try:
                     rid=identity(row['execution_id']); elapsed=row['elapsed_ns']
-                    run=db.execute('SELECT session_id,busy,worker FROM runs WHERE id=?',(identity(row['run_id']),)).fetchone()
+                    identity(row['run_id'])
+                    run=None if row['clock_run_session_id'] is None else {
+                        'session_id':row['clock_run_session_id'],'busy':row['clock_run_busy'],'worker':row['clock_run_worker']}
                     if (run is None or run['session_id']!=sid or type(elapsed) is not int or not 0<=elapsed//1_000_000<=MAX_NUMBER
                             or row['state'] not in ('running','ended','unknown')): raise ValueError()
                     key=hashed({'owner':owner,'session':sid,'play':rid})

@@ -61,6 +61,9 @@ def record(store,row):
 
 def scan(store,sid,limit=200):
     if not store.db.execute("SELECT 1 FROM sqlite_master WHERE name='studio_model_calls'").fetchone():return 0
+    if not getattr(store,'_studio_usage_index_ready',False):
+        with store.db:store.db.execute('CREATE INDEX IF NOT EXISTS studio_usage_calls ON studio_model_calls(run_id,phase)')
+        store._studio_usage_index_ready=True
     from usage_stats import Usage
     Usage(store,sid).schema()
     rows=store.db.execute("""SELECT c.* FROM studio_model_calls c JOIN runs r ON r.id=c.run_id

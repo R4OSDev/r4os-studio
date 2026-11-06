@@ -5602,3 +5602,27 @@ unchanged. A late poll cannot overwrite a confirmed mutation; failed refreshes
 retain the prior inventory and selection, with new actions blocked until a
 successful check. Changed-generation progress alone does not discard an original
 pending SDK operation.
+
+
+### Numeric statistics reconciliation
+
+Numeric outbox delivery applies at most128 original receipts in one FULL target
+transaction, preserving per-item conflicts and monotone Goal maxima. One grouped
+source acknowledgement follows only after that target commit is confirmed and
+matches each original key/payload. A changed source payload stays pending; a
+lost commit response or a crash before source ACK replays the same numeric keys
+without double credit. Fatal target failures roll the whole batch back.
+
+The existing bounded coordinator worker retains every original owner/session
+lifetime gate. Up to128 plain observations suppress redundant inactive-source
+work for30seconds; active or unbound work still gets scanned. Source changes or
+pending writes bypass the idle proof. Target loss/replacement and common restore
+hints start a new archived sweep; periodic sweeps also cover in-place restores.
+Each complete sweep advances in128-row chunks without an idle pause between
+chunks. Explicit restore/delete reconciliation remains eager. No idle proof
+authorizes a numeric write, and a racing source write invalidates the proof.
+
+Scoped Goal-receipt and model-usage indexes avoid unrelated history scans. Goal
+time reads join their original run flags in one query while retaining the
+original config parsing, coverage and worker/clock checks. Existing receipts,
+usage origins, uncertainty and historical Unknown states remain unchanged.

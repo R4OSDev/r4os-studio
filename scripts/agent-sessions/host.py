@@ -53,7 +53,7 @@ class Host:
         self.plan_login=Login(config['providers'])
         from claude_plan import ClaudePlan
         self.claude_plan=ClaudePlan(config['providers'])
-        self.stats_cursor=0;self.stats_sessions={}
+        self.stats_cursor=0;self.stats_sessions={};self.stats_observations={}
         self.read_work=ReadWork(ProjectFault)
 
     def store(self, ident, kind='project'): return SessionStore(self.config['projects'], self.config['r4os'], ident, kind)
@@ -792,10 +792,22 @@ class Host:
         cursor=self.stats_cursor
         from host_reads import reconcile_statistics
         try:
-            result=await self.read_work.run(reconcile_statistics,self.config,cursor,dict(self.stats_sessions))
+            active_owners=set()
+            for meta in self.active.values():
+                try:active_owners.add(binding(meta))
+                except ProjectFault:pass
+            result=await self.read_work.run(reconcile_statistics,self.config,cursor,dict(self.stats_sessions),
+                dict(getattr(self,'stats_observations',{})),active_owners,bool(self.unbound))
             if cursor!=self.stats_cursor: return  # Discard an obsolete cursor result.
             self.stats_cursor=result[0]
-            if result[1] is not None: self.stats_sessions[result[1]]=result[2]
+            if result[1] is not None and result[2] is not None:self.stats_sessions[result[1]]=result[2]
+            if result[3] is not None:
+                key,value=result[3]
+                if not hasattr(self,'stats_observations'):self.stats_observations={}
+                self.stats_observations.pop(key,None)
+                if value is not None:self.stats_observations[key]=value
+                from stats_reconcile import MAX_OBSERVATIONS
+                while len(self.stats_observations)>MAX_OBSERVATIONS:self.stats_observations.pop(next(iter(self.stats_observations)))
         finally:self.stats_work_running=False
 
     async def connection(self, reader, writer):
