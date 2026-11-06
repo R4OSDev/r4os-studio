@@ -210,6 +210,9 @@ async def main():
         elif job['kind'] in ('vm_stop','vm_restart'):
             from vm_lifecycle import VmLifecycle
             await asyncio.wait_for(VmLifecycle(store,job).run(),LIMITS['vmLifecycleTimeoutSeconds'])
+        elif job['kind'] == 'observation':
+            from vm_observation import run as observe_vm
+            await asyncio.wait_for(observe_vm(store, job), 60)
         elif job['kind'] == 'ssh':
             from project_ssh import SshCommand
             await SshCommand(store, job).run()

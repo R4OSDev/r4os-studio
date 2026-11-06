@@ -46,6 +46,7 @@ def cursor(state,sid,value):
 
 def source_rows(db,where,args):
     return db.execute('SELECT e.rowid AS publication,e.id,e.job_id,e.payload,json_extract(j.payload,\'$.sessionId\') AS job_session,'
+        'j.kind AS job_kind,j.request_id AS job_request,json_extract(j.payload,\'$.observationCall.toolCallId\') AS observation_call,'
         'json_extract(j.payload,\'$.projectId\') AS project,json_extract(j.payload,\'$.target\') AS target '
         'FROM evidence e LEFT JOIN jobs j ON j.id=e.job_id WHERE '+where+' ORDER BY e.rowid LIMIT '+str(BATCH),args).fetchall()
 
@@ -64,10 +65,15 @@ def project(store,source,rows,sid):
     if runs:
         marks=','.join('?' for _ in runs)
         jobs=sorted({row['job_id'] for row,_ in parsed});job_marks=','.join('?' for _ in jobs)
-        query='SELECT t.run_id,t.call_id,t.tool,json_extract(t.intent,\'$.jobId\') AS job_id,json_extract(t.intent,\'$.action\') AS action,json_type(t.intent,\'$.observeAfterStep\') AS observe,json_extract(t.result,\'$.image\') AS image FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.run_id IN ('+marks+") AND t.tool IN ('studio_capture_vm','studio_send_vm_input') AND json_extract(t.intent,'$.jobId') IN ("+job_marks+')'
-        for row in store.db.execute(query,(sid,*sorted(runs),*jobs)):
+        observation_calls=sorted({row['observation_call'] for row,_ in parsed if row['job_kind']=='observation' and row['observation_call']})
+        matching="json_extract(t.intent,'$.jobId') IN ("+job_marks+')'
+        if observation_calls:matching+=' OR t.call_id IN ('+','.join('?' for _ in observation_calls)+')'
+        query='SELECT t.run_id,t.call_id,t.tool,json_extract(t.intent,\'$.jobId\') AS job_id,json_extract(t.intent,\'$.scope\') AS scope,json_extract(t.intent,\'$.action\') AS action,json_type(t.intent,\'$.observeAfterStep\') AS observe,json_extract(t.result,\'$.image\') AS image FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.run_id IN ('+marks+") AND t.tool IN ('studio_capture_vm','studio_send_vm_input') AND ("+matching+')'
+        for row in store.db.execute(query,(sid,*sorted(runs),*jobs,*observation_calls)):
             try:
-                arguments={'jobId':row['job_id']};result={'image':json.loads(row['image'])} if row['image'] else None
+                arguments=({'jobId':row['job_id']} if row['job_id'] else {})
+                if row['scope'] is not None:arguments['scope']=row['scope']
+                result={'image':json.loads(row['image'])} if row['image'] else None
                 if row['tool']=='studio_capture_vm' and row['action'] not in (None,'capture'):continue
                 if row['tool']=='studio_send_vm_input' and row['observe'] is None:continue
                 request=str(uuid.uuid5(uuid.UUID(row['run_id']),'development:'+row['call_id']))
@@ -96,7 +102,11 @@ def project(store,source,rows,sid):
             and isinstance(value.get('sha256'),str) and len(value['sha256'])==64 and all(c in '0123456789abcdef' for c in value['sha256']))
         match=None
         for call,request,tool,arguments,result in tools.get(observer.get('agentRunId'),[]):
-            if arguments.get('jobId')!=row['job_id']:continue
+            unbound_capture = (tool == 'studio_capture_vm' and arguments.get('scope') == 'vm'
+                and 'jobId' not in arguments and row['job_kind'] == 'observation' and row['job_request'] == request
+                and value.get('observationMode') == 'vm-diagnostic' and value.get('diagnosticOnly') is True
+                and value.get('inputReference') is False and value.get('completionReference') is False)
+            if arguments.get('jobId')!=row['job_id'] and not unbound_capture:continue
             operation='capture' if tool=='studio_capture_vm' else 'input';origin=value.get('captureOrigin') or {}
             direct=isinstance(origin,dict) and origin.get('requestId')==request and origin.get('operation')==operation
             receipt=requests.get(request);action=(receipt or {}).get('result') or {}
@@ -112,6 +122,7 @@ def project(store,source,rows,sid):
             **match,'vmId':vm,'bootId':value.get('bootId'),'createdAt':value.get('createdAt'),
             'width':value['width'],'height':value['height'],'bytes':value['bytes'],'sha256':value['sha256'],
             'source':'agent-vm-capture','reference':'studio-image:'+row['job_id']+'/'+row['id'],
+            **({'observationMode':'vm-diagnostic'} if value.get('observationMode') == 'vm-diagnostic' else {}),
             **({'diagnosticOnly':True,'contentUnconfirmed':True} if value.get('diagnosticOnly') is True else {})}
         yield row,entry,False
 

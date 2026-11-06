@@ -118,7 +118,8 @@ class Execution:
             authorization = authorize(self.store, message['owner'], message['operation'], message['peerPid'], self.store.get(self.job['id']))
         operation = message.get('operation')
         if self.completion and operation != 'complete_check': raise DevelopmentFault('This execution is completing its checks; no further input or capture is admitted.')
-        if operation not in ('capture', 'input', 'window', 'complete_check') or set(message) != ({'operation', 'requestId'} | ({'input'} if operation in ('input','window') else set()) | ({'owner', 'peerPid'} if authorization else set())):
+        capture_scope = {'scope'} if operation == 'capture' and message.get('scope') == 'vm' else set()
+        if operation not in ('capture', 'input', 'window', 'complete_check') or set(message) != ({'operation', 'requestId'} | capture_scope | ({'input'} if operation in ('input','window') else set()) | ({'owner', 'peerPid'} if authorization else set())):
             raise DevelopmentFault('Invalid execution action.', 400)
         previous = admit(self.store, self.job['id'], message)
         if previous is not None:
@@ -153,7 +154,8 @@ class Execution:
                 return state, {'pendingCompletion': True}
             if operation == 'capture':
                 result = await capture(self.store, job, lease, state, observer={**message['owner'], 'model': authorization['model']} if authorization else None, control=control, consume=self.output,
-                    origin={'requestId':message['requestId'],'operation':'capture'} if authorization else None)
+                    origin={'requestId':message['requestId'],'operation':'capture'} if authorization else None,
+                    vm_diagnostic=message.get('scope') == 'vm', validate=lambda: guard(self.store, job, lease))
                 finish(self.store, message['requestId'], {'evidenceId': result['metadata']['id']})
                 return state, result
             value = message['input']

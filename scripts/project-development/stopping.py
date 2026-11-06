@@ -21,7 +21,7 @@ def receipt(store, job, requested, worker_active):
     if job['kind'] != 'execution':
         result.update(confirmed=True, outcome='stopped' if requested else 'already-ended',
             reason='The host worker has ended. The job outcome and any completed guest writes are retained.',
-            guestEffectsMayRemain=job['kind'] not in ('build', 'package'))
+            guestEffectsMayRemain=job['kind'] not in ('build', 'package', 'observation'))
         return result
     result['scope'] = 'owned-process'
     work = store.root / 'ExecutionWork' / job['id']

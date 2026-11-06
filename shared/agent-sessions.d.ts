@@ -108,6 +108,7 @@ export interface SessionItem extends Partial<TerminalTimingFields> {
 }
 export interface SessionHistory { items: SessionItem[]; before: number | null; cursor: number }
 export interface SessionScreenshot {
+  observationMode?: 'vm-diagnostic';
   diagnosticOnly?: true; contentUnconfirmed?: true;
   id:string;projectId:string;sessionId:string;jobId:string;runId:string;toolCallId:string;requestId:string;tool:string;
   publication:number;vmId:string|null;bootId:string|null;createdAt:string|null;

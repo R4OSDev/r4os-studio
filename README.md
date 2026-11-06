@@ -1,3 +1,7 @@
+## 0.11.38
+
+`studio_capture_vm` accepts explicit `scope=vm` to observe the assigned, already running VM without an app job or live window. A bounded observation job freezes the original project/VM/image/boot and capture receipt, with the same permissions, image budget and Vision paths as existing screenshots. Diagnostic images appear in chat and Gallery and cannot authorize input or app-test completion. App-bound capture retains its strict window checks; no VM, app, SDK or SSH is started by diagnosis.
+
 ## 0.11.37
 
 System → Settings → Fallback offers independent Vision and Image generation selections with separate drafts, Save/Clear and original request recovery. Studio sessions can enable image generation and its tool permission; supported OpenAI accounts use GPT Image 2 directly, while other main models can use the configured image fallback. Original images appear in chat with previews/downloads and keep the existing authorized project import path. Image analysis and image generation keep the main conversation model unchanged.

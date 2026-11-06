@@ -117,8 +117,14 @@ class Jobs:
         if kind == 'package':
             from package_jobs import admit
             return admit(self, request, owner)
-        if kind not in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh'): raise DevelopmentFault('This development operation is not available.', 400)
+        if kind not in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'observation'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
+        if kind == 'observation':
+            expected.add('toolCallId')
+            call = request.get('toolCallId')
+            if (not owner or not isinstance(call, str) or not 1 <= len(call) <= 256
+                or str(uuid.uuid5(uuid.UUID(identity(owner.get('agentRunId'))), 'development:' + call)) != request.get('requestId')):
+                raise DevelopmentFault('VM observation requires its original owned tool call.', 403)
         if kind in ('vm_stop','vm_restart') and (not owner or not owner.get('agentRunId')):
             raise DevelopmentFault('VM lifecycle requires an active project agent owner.',403)
         if kind == 'ssh':
@@ -188,6 +194,7 @@ class Jobs:
                 from sdk_inputs import read
                 job['sdkInputs'] = read(self.workspace)
             if kind == 'ssh': job['sshCommand'] = request['command']
+            if kind == 'observation': job['observationCall'] = {'runId': owner['agentRunId'], 'toolCallId': request['toolCallId']}
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))

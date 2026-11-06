@@ -479,7 +479,8 @@
                       "deploy",
                       "execution",
                       "vm_start",
-                      "ssh"
+                      "ssh",
+                      "observation"
                     ]
                   }
                 },
@@ -515,7 +516,7 @@
     },
     {
       "name": "studio_capture_vm",
-      "description": "Capture the assigned VM for this session job. Native Vision is delivered directly. A non-Vision main model needs a configured usable Vision fallback: capture without analysisQuestion saves and presents the screenshot without inference; analysisQuestion requests one attributed external analysis. action=inspect with jobId/evidenceId/question analyses the same saved screenshot without another capture. The main model remains unchanged and receives no pixels without native Vision. Analysis failure retains the confirmed image/presentation. No retry or fallback chain. Embed the exact presentation.markdown to show the saved image. action=assess separately records an attributed visual judgment against explicit criteria from an image captured in this agent run; it never calls Vision or proves GUI success by itself.",
+      "description": "Capture a job-bound app view with jobId, or explicitly choose scope=vm for a diagnostic screen of the assigned already-running VM. scope=vm without jobId creates a bounded observation job and needs no app, window, guest helper or SSH; with an active own jobId it uses that reservation. VM diagnosis requires the project/VM/image frozen in this accepted input. It never starts a VM/app, sends input or proves app readiness/test success; diagnostic images cannot authorize input or assess. A missing app window says nothing about whether the VM has a Desktop. Capture the assigned VM for this session job. Native Vision is delivered directly. A non-Vision main model needs a configured usable Vision fallback: capture without analysisQuestion saves and presents the screenshot without inference; analysisQuestion requests one attributed external analysis. action=inspect with jobId/evidenceId/question analyses the same saved screenshot without another capture. The main model remains unchanged and receives no pixels without native Vision. Analysis failure retains the confirmed image/presentation. No retry or fallback chain. Embed the exact presentation.markdown to show the saved image. action=assess separately records an attributed visual judgment against explicit criteria from an image captured in this agent run; it never calls Vision or proves GUI success by itself.",
       "inputSchema": {
         "oneOf": [
           {
@@ -541,6 +542,39 @@
             },
             "required": [
               "jobId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "capture"
+                ]
+              },
+              "analysisQuestion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "vm"
+                ],
+                "description": "Explicit assigned-VM diagnosis; no app input or completion proof. Omit jobId when no app job is available."
+              }
+            },
+            "required": [
+              "scope"
             ],
             "additionalProperties": false
           },

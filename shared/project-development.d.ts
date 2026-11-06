@@ -1,7 +1,7 @@
 import type { ProjectPins, ProjectTemplate } from './projects.js';
 
 /** Studio contracts; these are not R4OS ABI or SDK interfaces. */
-export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'update_transfer' | 'update_install' | 'update_commit' | 'update_verify' | 'update_recovery' | 'deploy' | 'execution' | 'vm_start' | 'vm_stop' | 'vm_restart' | 'ssh';
+export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'update_transfer' | 'update_install' | 'update_commit' | 'update_verify' | 'update_recovery' | 'deploy' | 'execution' | 'vm_start' | 'vm_stop' | 'vm_restart' | 'ssh' | 'observation';
 export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
   | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
@@ -144,6 +144,7 @@ export interface DesktopLaunchReceipt {
   statusErrorlevel?: number;
 }
 export interface DevelopmentEvidence {
+  observationMode?: 'vm-diagnostic';
   diagnosticOnly?: true; contentUnconfirmed?: true; inputReference?: false; completionReference?: false;
   gestureObservation?: {
     id: string; acceptedBefore: number; acceptedAfter: number;
@@ -166,8 +167,8 @@ export interface DevelopmentEvidence {
   width?: number;
   height?: number;
   guestRevision?: number;
-  windowVisible?: boolean;
-  windowFocused?: boolean;
+  windowVisible?: boolean | null;
+  windowFocused?: boolean | null;
   windowObservation?: {
     instanceId: number; generation: string; windowId: number;
     windowWidth: number; windowHeight: number; windowVisible: boolean; windowFocused: boolean;
@@ -175,7 +176,8 @@ export interface DevelopmentEvidence {
   /** The screen was captured between two observations; no atomic guest-frame claim. */
   captureObservation?: {
     version: 1; mode: 'observed-interval'; startedAt: string; completedAt: string;
-    elapsedMilliseconds: number; revisionBefore: number; revisionAfter: number; contentChanged: boolean;
+    elapsedMilliseconds: number; revisionBefore?: number; revisionAfter?: number; contentChanged?: boolean;
+    appReadinessConfirmed?: false;
   };
 }
 export interface DevelopmentStopReceipt {
@@ -193,6 +195,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  observationMode?: 'vm-diagnostic'; captureState?: 'pending' | 'confirmed'; evidenceId?: string;
   vmLifecycle?: { kind: 'vm_stop' | 'vm_restart'; phase: string; noop?: boolean; shutdownDispatched?: boolean; newBootId?: string; readyAt?: string; qemuEnded?: boolean; stopped?: { confirmed: boolean; observedAt: string } };
   sdkInputs?: DevelopmentSdkInputs;
   sdkResolution?: Record<string, unknown>;

@@ -13,6 +13,7 @@ PERMISSIONS = {'build': 'build_project', 'deploy': 'deploy_project', 'execution'
     'input': 'send_vm_input', 'stop_job': 'stop_development_job', 'complete_check': 'complete_development_job'}
 PERMISSIONS['window'] = 'control_app_window'
 PERMISSIONS['session_jobs'] = 'read_development_job'
+PERMISSIONS['observation'] = PERMISSIONS['wait_observation'] = 'capture_vm'
 
 PERMISSIONS.update(UPDATE_PERMISSIONS)
 
@@ -96,5 +97,10 @@ def authorize_job(store, job, allow_stopping=False):
         if not row[3] or row[1]!='running':raise DevelopmentFault('VM lifecycle requires its original active agent run.',403)
         if job['kind']=='vm_restart' and not permits(config,store.id,'start_project_vm','stop_project_vm','restart_project_vm'):
             raise DevelopmentFault('Restart no longer has its frozen start/stop/restart permissions.',403)
+    if job['kind'] == 'observation':
+        if not row[3] or row[1] != 'running' or config.get('revision') != row[5]:
+            raise DevelopmentFault('VM observation requires its original active agent snapshot.', 403)
+        from vm_observation import require_context
+        require_context(config, {'revision': job['projectRevision'], 'vmId': job['binding']['id']}, job['binding'])
     if job['kind'] == 'vm_start' and (config.get('owner', {}).get('type') != 'project' or not row[3] or row[1] != 'running'):
         raise DevelopmentFault('VM startup requires its original active agent turn.', 403)

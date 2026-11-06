@@ -178,6 +178,11 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['skillManagerPrompt'] = skill_prompt_snapshot(store.projects)
     else:
         snapshot['projectPins'] = store.project['pins']
+        if original is not None:
+            if 'vmObservation' in original: snapshot['vmObservation'] = original['vmObservation']
+        elif snapshot['permissions'].get('studio.capture_vm'):
+            from vm_observation_context import snapshot as vm_snapshot
+            snapshot['vmObservation'] = vm_snapshot(store)
         # Trusted private metadata only; the terminal/Workspace cannot supply a
         # destination. Missing context stays explicit and cannot grant Push.
         from tool_defaults import repository_binding

@@ -24,7 +24,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'observation', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -225,16 +225,40 @@ class DevelopmentTools:
                     return result
                 action = value.get('action','capture')
                 if action not in ('capture','inspect'): raise DevelopmentFault('Unknown screenshot action.',400)
-                allowed = {'jobId','action','evidenceId','question'} if action=='inspect' else {'jobId','action','analysisQuestion'}
+                allowed = {'jobId','action','evidenceId','question'} if action=='inspect' else {'jobId','action','analysisQuestion','scope'}
                 if set(value)-allowed: raise DevelopmentFault('Unexpected screenshot fields.',400)
                 question = value.get('question' if action=='inspect' else 'analysisQuestion')
                 if action=='inspect' or question is not None:
                     from vision_analysis import validate_question
                     try: validate_question(question)
                     except __import__('store').ProjectFault as error: raise DevelopmentFault(str(error),error.code) from None
-                data = (await self.request('evidence',id=value['jobId'],evidenceId=value['evidenceId']) if action=='inspect'
-                    else await self.request('capture',id=value['jobId'],input={'requestId':request_id}))
-                result = self.screenshot(data,value['jobId'])
+                if 'scope' in value and value['scope'] != 'vm': raise DevelopmentFault('Choose the explicit vm diagnosis scope.', 400)
+                diagnostic = value.get('scope') == 'vm'
+                if diagnostic:
+                    from vm_worker import broker_call
+                    capability = await broker_call({'operation':'capabilities'})
+                    if capability.get('features',{}).get('vmObservation') != 1:
+                        raise DevelopmentFault('VM diagnosis requires the current development coordinator.', 503)
+                if action == 'inspect':
+                    data = await self.request('evidence', id=value['jobId'], evidenceId=value['evidenceId'])
+                elif diagnostic and 'jobId' not in value:
+                    context = self.worker.config.get('vmObservation') or {}
+                    if context.get('available') is not True:
+                        raise DevelopmentFault('VM diagnosis was unavailable in this accepted input. Review the assigned VM and send a new input.', 409)
+                    settings = await self.request('settings')
+                    job = await self.request('observation', input={'requestId':request_id,
+                        'projectRevision':context['projectRevision'], 'settingsRevision':settings['revision'], 'toolCallId':call_id})
+                    waited = await self.wait_for_job('capture_vm', job, call_id, value)
+                    if not waited['success']: return waited
+                    page = await self.request('wait_observation', id=job['id'])
+                    job = page['job']
+                    if job.get('captureState') != 'confirmed' or not job.get('evidenceId'):
+                        raise DevelopmentFault('The original observation has no confirmed image receipt. Do not recapture automatically.', 503)
+                    data = await self.request('evidence', id=job['id'], evidenceId=job['evidenceId'])
+                else:
+                    data = await self.request('capture', id=value['jobId'], input={'requestId':request_id,
+                        **({'scope':'vm'} if diagnostic else {})})
+                result = self.screenshot(data,data['metadata']['jobId'])
                 return await self.analyse_screenshot(result,data,question,call_id)
             if name == 'control_app_window':
                 data = await self.request('window', id=value['jobId'], input={'requestId': request_id, 'input': {k: v for k, v in value.items() if k != 'jobId'}})
@@ -264,7 +288,7 @@ class DevelopmentTools:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
                     **({'developmentRequest': {'requestId':request_id,'originRunId':self.worker.run_id,'toolCallId':call_id,
                          'receiptState':'unknown' if getattr(error,'uncertain',False) else 'request_error'}}
-                       if job is None and name in ('build_project','deploy_project','run_project','start_project_vm','stop_project_vm','restart_project_vm') else {}),
+                       if job is None and name in ('build_project','deploy_project','run_project','start_project_vm','stop_project_vm','restart_project_vm','capture_vm') else {}),
                     **({'development': {'jobId': job['id']}} if job else
                        {'development': {'jobId': value['jobId']}} if name in ('control_app_window','send_vm_input') else {})}
 
@@ -304,11 +328,12 @@ class DevelopmentTools:
     async def wait_for_job(self, name, job, call_id, arguments):
         from contracts import ACTIVE, DevelopmentFault, UnconfirmedGuestEffect, LIMITS
         from run_store import item
-        worker = self.worker; operation = {'build_project': 'wait_build', 'deploy_project': 'wait_deploy', 'run_project': 'wait_execution'}[name]
+        worker = self.worker; operation = {'build_project': 'wait_build', 'deploy_project': 'wait_deploy', 'run_project': 'wait_execution', 'capture_vm':'wait_observation'}[name]
         value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.' + name,
                  'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id'],'requestId':job.get('requestId')}}
         worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
         timeout = LIMITS['buildTimeoutSeconds'] + 300 if name == 'build_project' else (660 if name == 'deploy_project' else job['settings']['timeoutSeconds'] + 300)
+        if name == 'capture_vm': timeout = 120
         deadline = asyncio.get_running_loop().time() + timeout; page = None; legacy_build_wait = False
         while job['state'] in ACTIVE:
             if worker.stopping:
