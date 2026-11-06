@@ -121,14 +121,32 @@ def validate_arguments(name,value,scope='project'):
         rule = resolve(rule)
         for candidate in rule.get('allOf', []): validate(candidate, v, path)
         if 'oneOf' in rule:
-            matched = 0
+            matched = 0; failures = []
             for candidate in rule['oneOf']:
                 try: validate(candidate, v, path); matched += 1
-                except ValueError: pass
+                except ValueError as error: failures.append((candidate, str(error)))
             if matched != 1:
                 selected = [candidate for candidate in rule['oneOf'] if selects(candidate, v)]
                 if matched == 0 and len(selected) == 1:
                     validate(selected[0], v, path)
+                if matched == 0:
+                    possible = selected or rule['oneOf']
+                    if isinstance(v, dict) and possible:
+                        required = [set(resolve(candidate).get('required', [])) for candidate in possible]
+                        missing = sorted(set.intersection(*required) - v.keys())
+                        if missing:
+                            hints = []
+                            for key in missing[:2]:
+                                values = []
+                                for candidate in possible:
+                                    for value in resolve(candidate).get('properties', {}).get(key, {}).get('enum', []):
+                                        if value not in values: values.append(value)
+                                if values: hints.append(key + ' allowed values: ' + ', '.join(str(value)[:64] for value in values[:12]))
+                            detail = '; '.join(['missing fields: ' + ', '.join(missing[:8]), *hints])
+                            raise ValueError(path + ': ' + detail)
+                    errors = list(dict.fromkeys(error for candidate, error in failures if candidate in possible))
+                    detail = ' | '.join(error[:280] for error in errors[:3])
+                    raise ValueError(path + ': no declared variant matches; possible variant errors: ' + detail)
                 raise ValueError(path + ': select exactly one declared operation, view and target with its required fields.')
         if not any(key in rule for key in ('type', 'properties', 'required')): return
         types = rule.get('type', 'object') if isinstance(rule.get('type'), list) else [rule.get('type', 'object')]

@@ -1,3 +1,7 @@
+## 0.11.47
+
+Studio renews the single tool-argument correction allowance after a fully successful tool batch, so an unrelated schema mistake later in a long run can be corrected. Consecutive invalid batches remain bounded; text replies, failed/partial batches and uncertain effects do not renew the allowance. Union-schema errors now name common missing required fields and declared choices, or bounded alternative variant errors. Tool schemas, permissions, whole-batch prevalidation and original receipt/identity checks remain unchanged. Existing failed runs and blocked Goals require explicit continuation.
+
 ## 0.11.46
 
 New VM release-update previews use force stop by default. The existing confirmation names force stop and records its consent with the original preview; retained older requests keep their original stop policy. The batch uses the existing VM service stop, with its final identity/lease guard before the effect, and still requires all VM processes and Exchange export to finish before replacing an image. It never repeats an unconfirmed stop or reset. Ordinary VM shutdown/restart controls keep their existing behavior.

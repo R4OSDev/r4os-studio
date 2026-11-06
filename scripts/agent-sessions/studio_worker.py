@@ -333,7 +333,7 @@ class StudioWorker(Worker):
                     if isinstance(error,ToolArgumentsFault):
                         feedback['validation']={'code':'invalidArguments','errors':error.details,'correctionAvailable':correctable}
                         feedback['output']+=(' Correct the schema errors using the declared fields and original target IDs, then issue fresh tool calls. No call in this batch ran.'
-                            if correctable else ' The single argument-correction opportunity is unavailable; this run ends.')
+                            if correctable else ' No further correction is available before a successful tool batch or while earlier effects are unconfirmed; this run ends.')
                     self.conversation.append(self.run_id, 'rejected-' + str(self.round) + '-' + str(index), 'tool',
                         [{'type':'tool_result', 'callId':call['callId'], 'result':feedback}],
                         {'admissionOnly':True, 'reasonCode':error.code, 'turnId':self.turn_id})
@@ -365,6 +365,7 @@ class StudioWorker(Worker):
                 self.outcome = 'completed'; return
             # Broker locks serialize workspace effects. Keeping the batch ordered
             # also makes dependent write/read pairs deterministic.
+            batch_succeeded=True
             for index, call in enumerate(calls):
                 await self.goal_worker.boundary(allow_play=False)
                 if not self.active() or self.goal_worker.execution and not self.goal_worker.active:
@@ -372,11 +373,12 @@ class StudioWorker(Worker):
                         self.conversation.append(self.run_id,'not-admitted-'+str(self.round)+'-'+str(offset),'tool',
                             [{'type':'tool_result','callId':remaining['callId'],'result':{'success':False,'error':'notAdmitted',
                               'output':'The original run stopped before this tool was admitted.'}}],{'admissionOnly':True})
-                    break
+                    batch_succeeded=False;break
                 bound_id = self.receipt_id(call['callId'])
                 from functools import partial
                 self.operation = asyncio.create_task(self.bound_tool(call['name'], call['arguments'], bound_id, partial(self.tool_result,call_id=bound_id)))
                 result = await self.operation
+                if result.get('success') is not True or result.get('partialChangesPossible'):batch_succeeded=False
                 reply = {**result,'studioReceiptId':bound_id}
                 media=[{'type':'image','reference':value['presentation']['reference']} for value in result.get('images',[])] if self.config.get('apiModel',{}).get('imageInput')=='supported' else []
                 self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
@@ -384,6 +386,9 @@ class StudioWorker(Worker):
                     {'toolReceiptId': bound_id, 'turnId': self.turn_id})
                 if result.get('error') == 'unknown' or result.get('partialChangesPossible') and result.get('error') == 'interrupted':
                     self.unconfirmed()
+            # An unrelated later schema error gets its own correction. Text,
+            # failed/partial batches and uncertain effects never renew it.
+            if batch_succeeded and not self.uncertain_effect:correction_used=False
         self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
 
     async def run(self):
@@ -462,4 +467,4 @@ class GoalHalted(Exception):
 class ToolArgumentsFault(ModelFault):
     def __init__(self,errors):
         super().__init__('model_invalid_tool_arguments',details=errors)
-        self.args=('The tool batch failed argument validation before execution. The single correction opportunity is exhausted or unavailable.',)
+        self.args=('The tool batch failed argument validation before execution. The consecutive correction allowance is exhausted or earlier effects are unconfirmed.',)
