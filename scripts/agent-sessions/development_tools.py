@@ -184,12 +184,16 @@ class DevelopmentTools:
                 mode=value.get('view','summary') if self.compact() else 'legacy'
                 if value.get('channel') and mode != 'output': raise DevelopmentFault('A stdout/stderr channel requires view=output.',400)
                 if value.get('cursor') and mode not in ('details','inventory'): raise DevelopmentFault('A detail cursor requires its original details/inventory view.',400)
-                page = await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0), **({'channel':value['channel']} if value.get('channel') else {}), **({'metadataOnly':True} if mode!='output' and self.compact() else {}))
+                if 'tailBytes' in value and mode != 'tail': raise DevelopmentFault('tailBytes requires view=tail.', 400)
+                if mode == 'tail' and any(k in value for k in ('offset','cursor','channel')):
+                    raise DevelopmentFault('view=tail excludes offset, cursor and channel. Continue with view=output and nextOffset.', 400)
+                page = (await self.request('read_job', id=value['jobId'], tailBytes=value.get('tailBytes',8192)) if mode == 'tail' else
+                    await self.request('read_job', id=value['jobId'], offset=value.get('offset', 0), **({'channel':value['channel']} if value.get('channel') else {}), **({'metadataOnly':True} if mode!='output' and self.compact() else {})))
                 if not self.compact() or mode=='inventory':page=await self.with_artifact(page['job'],page)
                 result=self.result(page['job'],page)
-                if mode in ('details','inventory','output'):
+                if mode in ('details','inventory','output','tail'):
                     from development_projection import view
-                    result['output']=encode(view(page,mode,value.get('cursor'),value.get('offset',0)))
+                    result['output']=encode(view(page,mode,value.get('cursor'),page.get('startOffset',0) if mode=='tail' else value.get('offset',0)))
                 # The read succeeded even when the original job is unknown.
                 # Keep its state/evidence visible without declaring a new
                 # unconfirmed effect or aborting the native Goal on a read.

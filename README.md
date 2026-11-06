@@ -1,3 +1,7 @@
+## 0.11.40
+
+Failed builds expose a small original-log diagnostic excerpt with byte range, hash, job revision and capture limits. `studio_read_development_job` `view=tail` seeks over at most 8192 bytes of the existing build log; follow `nextOffset` with `view=output`. Tail excludes offset/cursor/channel. The browser offers Read log tail. ANSI removal affects only derived previews; original UTF-8/binary bytes, ordinary output cursors and full inventories are retained. Excerpts do not establish a complete error list, SDK failure or native build success and never repeat a build.
+
 ## 0.11.39
 
 Desktop job summaries and the job card expose the same small read-only diagnosis: original DESKRUN symbolic error, terminal/status, process identity, earlier window/content, current window, native app exit and cleanup. Launcher/SSH exit values remain separate from app exits. Completed observation does not establish app-test success, negative R4OS values are not interpreted as POSIX signals, and missing window evidence does not establish a missing Desktop. Original jobs and receipt/detail/output bytes are preserved.

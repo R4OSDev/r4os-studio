@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DesktopDiagnostics as Diagnosis, DevelopmentEvidence, DevelopmentExecutionEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
+import type { DesktopDiagnostics as Diagnosis, DevelopmentLogExcerpt, DevelopmentEvidence, DevelopmentExecutionEvidence, DevelopmentJob, DevelopmentJobPage } from '../../../../shared/project-development';
 import { busyRun, projectRequest, projectRequestId } from './api';
 import { CodeBlock } from './Transcript';
 import { UpdateRecord } from '../projects/UpdateRecord';
@@ -22,6 +22,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
   const [open, setOpen] = useState(false), [output, setOutput] = useState(''), [more, setMore] = useState(false), [loading, setLoading] = useState(false);
   const [evidence, setEvidence] = useState<DevelopmentEvidence[]>([]);
   const [executionEvidence, setExecutionEvidence] = useState<DevelopmentExecutionEvidence | null>(null);
+  const [preview,setPreview]=useState<DevelopmentLogExcerpt|null>(null);
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
   const cursor = useRef(0), [kind, setKind] = useState('Output'), [truncated, setTruncated] = useState(false);
   const recoveryId = useRef<string | null>(null);
@@ -32,17 +33,17 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     const refresh = async () => {
       try {
         const page = await projectRequest<DevelopmentJobPage>(path + '?metadataOnly=true', '', 'GET', undefined, controller.signal);
-        if (controller.signal.aborted) return; setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setDiagnosis(page.desktopDiagnostics ?? null); setError('');
+        if (controller.signal.aborted) return; setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setDiagnosis(page.desktopDiagnostics ?? null); setPreview(page.diagnosticPreview ?? null); setError('');
         if (busyRun(page.job.state)) timer = window.setTimeout(() => void refresh(), 2000);
       } catch (e) { if (!controller.signal.aborted) { setError((e as Error).message); timer = window.setTimeout(() => void refresh(), 4000); } }
     };
     void refresh(); return () => { controller.abort(); window.clearTimeout(timer); };
   }, [path]);
-  async function readOutput() {
+  async function readOutput(tail=false) {
     if (loading) return; setLoading(true);
     try {
-      const page = await projectRequest<DevelopmentJobPage>(path + '?offset=' + cursor.current);
-      setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setDiagnosis(page.desktopDiagnostics ?? null); setOutput((old) => old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : page.outputKind === 'diagnostic' ? 'Diagnostic output' : 'Build output');
+      const page = await projectRequest<DevelopmentJobPage>(path + (tail?'?tailBytes=8192':'?offset=' + cursor.current));
+      setJob(page.job); setEvidence(page.evidence); setExecutionEvidence(page.executionEvidence ?? null); setDiagnosis(page.desktopDiagnostics ?? null); setPreview(page.diagnosticPreview ?? null); setOutput((old) => tail?page.output:old + page.output); setKind(page.outputKind === 'console' ? 'Console output' : page.outputKind === 'diagnostic' ? 'Diagnostic output' : 'Build output');
       setMore(page.hasMore ?? (page.nextOffset > cursor.current || busyRun(page.job.state))); cursor.current = page.nextOffset; setTruncated(page.truncated); setError('');
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }
@@ -82,6 +83,7 @@ export function DevelopmentCard({ projectId, jobId, token }: { projectId: string
     {job?.updateInstallation && <UpdateRecord projectId={projectId} updateId={job.updateInstallation.id} token={token} />}
     {open && job && (job.kind === 'package' || job.kind.startsWith('update_')) && <details><summary>Original package / native receipts</summary><CodeBlock text={JSON.stringify({ plan: job.updatePlan, package: job.updatePackage, preflight: job.updateProbe, transfer: job.updateTransfer, update: job.updateInstallation }, null, 2)} label="Copy original update receipts" language="json" /></details>}
     {job?.checkCompletion && <p>{job.checkCompletion.state === 'completed' ? 'Checks completed · Application closed' : job.checkCompletion.state === 'closing' ? 'Completing checks · Closing application' : 'Check completion failed'}</p>}
+    {preview && <div aria-label="Build diagnostic excerpt"><p>Original build log excerpt · Bytes {preview.startOffset}–{preview.nextOffset} of {preview.totalBytes} · Revision {preview.jobRevision}{preview.captureLimitReached?' · Capture limit reached':''}</p><CodeBlock text={preview.text} label="Copy build diagnostic excerpt" language="Build log"/><p>Excerpt only; complete errors and context may be outside this range. Project source diagnostics and SDK inventory are separate evidence.</p><button type="button" disabled={loading} onClick={()=>{setOpen(true);void readOutput(true);}}>Read log tail</button></div>}
     {diagnosis && <DesktopDiagnostics value={diagnosis}/>}
     {executionEvidence && <div className="development-execution-evidence" aria-label="Execution evidence">
       <p>Process end: {executionEvidence.processEndConfirmed ? 'Confirmed' : 'Unconfirmed'} · Helper cleanup: {executionEvidence.cleanupConfirmed ? 'Confirmed' : 'Unconfirmed'}</p>

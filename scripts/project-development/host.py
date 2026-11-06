@@ -55,7 +55,7 @@ class Host:
             op = request['operation']
             if op == 'settings': return store.settings()
             if op == 'jobs': return store.list()
-            if op == 'read_job': return store.page(request['id'], request.get('offset',0), metadata_only=request.get('metadataOnly',False), channel=request.get('channel'))
+            if op == 'read_job': return store.page(request['id'], request.get('offset',0), metadata_only=request.get('metadataOnly',False), channel=request.get('channel'), tail_bytes=request.get('tailBytes'))
             if op == 'artifact': return store.artifact(request['id'])
             if op == 'deployment': return store.deployment(request['id'])
             if op == 'session_jobs':
@@ -381,7 +381,7 @@ class Host:
         if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', 'wait_build', 'wait_deploy', 'wait_execution', 'wait_observation', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'job_request': allowed.add('requestId')
         if op == 'evidence_history': allowed.add('before')
-        if op == 'read_job': allowed.update(('offset', 'metadataOnly', 'channel'))
+        if op == 'read_job': allowed.update(('offset', 'metadataOnly', 'channel', 'tailBytes'))
         if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'window', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
@@ -390,6 +390,8 @@ class Host:
         if op in ('deploy', 'execution'):
             from retired_desktop import request as reject_retired
             reject_retired(request.get('input'))
+        if op == 'read_job' and 'tailBytes' in request and any(k in request for k in ('offset', 'channel', 'metadataOnly')):
+            raise DevelopmentFault('Tail reads exclude offset, channel and metadataOnly.', 400)
         if request.get('owner') is None and op in ('settings','jobs','job_request','session_jobs','read_job','artifact','deployment'):
             return await self.read_work.run(self.read,request)
         store = self.store(identity(request['projectId']))
@@ -509,7 +511,7 @@ class Host:
                 from settings import update
                 return update(store, request['input'])
             if op == 'jobs': return store.list()
-            if op == 'read_job': return store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False), channel=request.get('channel'))
+            if op == 'read_job': return store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False), channel=request.get('channel'), tail_bytes=request.get('tailBytes'))
             if op == 'artifact': return store.artifact(request['id'])
             if op == 'deployment': return store.deployment(request['id'])
             if op == 'assess':

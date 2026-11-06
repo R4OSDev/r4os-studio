@@ -76,6 +76,7 @@ def summary(job,page=None):
     diagnosis = page.get('desktopDiagnostics') or diagnose(job, page.get('executionEvidence'))
     if diagnosis: value['desktopDiagnostics'] = diagnosis
     if page.get('stop'):value['stop']=page['stop']
+    if page.get('diagnosticPreview'):value['diagnosticPreview']=page['diagnosticPreview']
     value['outputPage']=output_state(page)
     # A preview consumes no cursor. Explicit output begins at the original requested offset.
     if page.get('output'):value['outputPreview']={'text':fragment(page['output'][:500]),'consumesCursor':False}
@@ -84,14 +85,14 @@ def summary(job,page=None):
             'presentation':value['presentation'],'outputPage':value['outputPage'],
             'check':pick(small.get('check',{}),('state','assessment')),'checkCompletion':small.get('checkCompletion'),
             'readiness':pick(small.get('readiness',{}),('state','reasonCode')),
-            'desktopDiagnostics': diagnosis,
+            'desktopDiagnostics': diagnosis, 'diagnosticPreview': page.get('diagnosticPreview'),
             'notice':'Detailed checks, artifacts and cleanup receipts are retained in view=details.'}
     return value
 
 
 def view(page,kind,cursor=None,offset=0):
     job=page['job'];binding={'jobId':job['id'],'view':kind,'revision':job['revision']}
-    if kind=='output':
+    if kind in ('output','tail'):
         if cursor:raise DevelopmentFault('Output uses nextOffset, not a detail cursor.',400)
         if page.get('rawOutputBase64'):
             raw=base64.b64decode(page['rawOutputBase64'],validate=True);end=min(len(raw),4000)
@@ -105,7 +106,7 @@ def view(page,kind,cursor=None,offset=0):
             content={'encoding':'base64','data':base64.b64encode(raw).decode()};count=len(raw)
         else:
             text=fragment(page.get('output',''));content={'encoding':'utf-8','text':text};count=len(text.encode())
-        return {**binding,'output':content,**output_state(page),'startOffset':offset,'pageBytes':count,'nextOffset':offset+count,
+        return {**binding,'output':content,**({'tailRead':page['tailRead']} if page.get('tailRead') else {}),**output_state(page),'startOffset':offset,'pageBytes':count,'nextOffset':offset+count,
             'hasMore':offset+count<page.get('totalBytes',offset+count),'jobState':job['state'],
             'mayGrow':job['state'] in ('queued','starting','running','stopping'),'detailsOmitted':False}
     if kind not in ('details','inventory'):raise DevelopmentFault('Unknown development presentation view.',400)

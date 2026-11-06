@@ -260,7 +260,7 @@
     },
     {
       "name": "studio_build_project",
-      "description": "Build an immutable snapshot of this project with its pinned offline SDK/compiler. Finish all live terminal commands first. This call waits in the harness until the original build completes and returns its artifactId or terminal error. The durable job link and progress appear immediately. Do not poll, sleep or resubmit while it waits. No VM action.",
+      "description": "Build an immutable snapshot of this project with its pinned offline SDK/compiler. Finish all live terminal commands first. This call waits in the harness until the original build completes and returns its artifactId or terminal error. The durable job link and progress appear immediately. Do not poll, sleep or resubmit while it waits. No VM action. A failed build includes a bounded original-log diagnosticPreview. Read the original job with view=tail for compiler/source context; inventory is not a build proof or evidence of an SDK defect. Fix project compiler errors in project code; do not automatically retry or create an Environment Note.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -385,7 +385,7 @@
     },
     {
       "name": "studio_read_development_job",
-      "description": "Read this session's original development job without replay. Default summary is compact. view=details or inventory returns UTF-8 JSON fragments with snapshot hash and a cursor; continue the same view/cursor. view=output returns a bounded original log page; continue from nextOffset while hasMore. totalBytes counts saved bytes; captureLimitReached/truncated is distinct from page hasMore and captureTruncated. A saved partial log is not complete native console evidence. Missing exit/cleanup remains unconfirmed. Snapshot changes reject a stale cursor; reread from the first page, never relaunch. waitMilliseconds only delays this read. If a tool presentation lost the job ID, use lookup={} to list this session's original job references (default10/max25; continue lookup.before=nextBefore). Optional requestId is the original Studio UUID, not a DESKRUN key. Alternatively supply both original originRunId and toolCallId. Lookup returns metadata only, never starts or replays work. Use a found id as jobId for a normal read; do not combine lookup with other top-level fields. Read the original desktopDiagnostics and executionEvidence: DESKRUN error/terminal/SSH exit describe the launcher, separately from app exit and cleanup. A confirmed process existed but does not prove user code or content readiness; completed observation is not test success. Preserve symbolic native errors and do not interpret negative R4OS exits as POSIX signals. Missing app-window evidence does not prove that the VM has no Desktop. Use read_development_job details and optional explicit scope=vm diagnosis; HELP describes commands, not current state. Do not relaunch or change pins to fill missing evidence.",
+      "description": "Read this session's original development job without replay. Default summary is compact. view=details or inventory returns UTF-8 JSON fragments with snapshot hash and a cursor; continue the same view/cursor. view=output returns a bounded original log page; continue from nextOffset while hasMore. totalBytes counts saved bytes; captureLimitReached/truncated is distinct from page hasMore and captureTruncated. A saved partial log is not complete native console evidence. Missing exit/cleanup remains unconfirmed. Snapshot changes reject a stale cursor; reread from the first page, never relaunch. waitMilliseconds only delays this read. If a tool presentation lost the job ID, use lookup={} to list this session's original job references (default10/max25; continue lookup.before=nextBefore). Optional requestId is the original Studio UUID, not a DESKRUN key. Alternatively supply both original originRunId and toolCallId. Lookup returns metadata only, never starts or replays work. Use a found id as jobId for a normal read; do not combine lookup with other top-level fields. Read the original desktopDiagnostics and executionEvidence: DESKRUN error/terminal/SSH exit describe the launcher, separately from app exit and cleanup. A confirmed process existed but does not prove user code or content readiness; completed observation is not test success. Preserve symbolic native errors and do not interpret negative R4OS exits as POSIX signals. Missing app-window evidence does not prove that the VM has no Desktop. Use read_development_job details and optional explicit scope=vm diagnosis; HELP describes commands, not current state. Do not relaunch or change pins to fill missing evidence. For a failed build, diagnosticPreview is a bounded excerpt from the original log. view=tail with optional tailBytes (1–8192, default8192) seeks directly near the end; excludes offset/cursor/channel. Continue with view=output and nextOffset. The preview consumes no normal cursor. It is not a full error list or build proof. Project compiler source errors need project fixes; SDK inventory does not establish an SDK/environment defect. No automatic build retry or Environment Note.",
       "inputSchema": {
         "oneOf": [
           {
@@ -412,7 +412,8 @@
                   "summary",
                   "details",
                   "inventory",
-                  "output"
+                  "output",
+                  "tail"
                 ]
               },
               "cursor": {
@@ -427,6 +428,12 @@
                   "stderr"
                 ],
                 "description": "For SSH output only; omit for the combined log. Each channel has its own byte offsets."
+              },
+              "tailBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8192,
+                "description": "Only view=tail, original build log. Excludes offset/cursor/channel. Follow nextOffset with view=output for more original context."
               }
             },
             "required": [

@@ -151,12 +151,14 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     security.session(request, reply);
     return { deployment: await developmentHost({ operation: 'deployment', projectId: request.params.id, id: request.params.deploymentId }) };
   });
-  app.get<{ Params: { id: string; jobId: string }; Querystring: { offset?: number; metadataOnly?: boolean; channel?: 'stdout' | 'stderr' } }>(base + '/jobs/:jobId', {
+  app.get<{ Params: { id: string; jobId: string }; Querystring: { offset?: number; metadataOnly?: boolean; channel?: 'stdout' | 'stderr'; tailBytes?: number } }>(base + '/jobs/:jobId', {
     schema: { params: jobParams, querystring: { type: 'object', additionalProperties: false,
-      properties: { offset: { type: 'integer', minimum: 0, maximum: 2097152 }, metadataOnly: { type: 'boolean' }, channel: { enum: ['stdout','stderr'] } } } },
+      properties: { offset: { type: 'integer', minimum: 0, maximum: 2097152 }, metadataOnly: { type: 'boolean' }, tailBytes: {type:'integer',minimum:1,maximum:8192}, channel: { enum: ['stdout','stderr'] } } } },
   }, async (request, reply) => {
     security.session(request, reply);
-    const read = { operation: 'read_job', projectId: request.params.id, id: request.params.jobId, offset: request.query.offset ?? 0, ...(request.query.channel ? {channel:request.query.channel} : {}) };
+    if(request.query.tailBytes!==undefined&&['offset','metadataOnly','channel'].some(key=>key in request.query))throw new ProjectError('Tail reads exclude offset, metadataOnly and channel.',400);
+    const read = { operation: 'read_job', projectId: request.params.id, id: request.params.jobId,
+      ...(request.query.tailBytes===undefined?{offset:request.query.offset??0}:{tailBytes:request.query.tailBytes}), ...(request.query.channel ? {channel:request.query.channel} : {}) };
     if (!request.query.metadataOnly) return developmentHost<DevelopmentJobPage>(read);
     try { return await developmentHost<DevelopmentJobPage>({ ...read, metadataOnly: true }); }
     catch (error) {
@@ -164,7 +166,7 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
       // Only repeat the identical read using its older metadata contract.
       if (!(error instanceof ProjectError) || error.statusCode !== 400 || error.message !== 'Unsupported development coordinator operation.') throw error;
       const page = await developmentHost<DevelopmentJobPage>(read);
-      return { ...page, output: '', nextOffset: read.offset };
+      return { ...page, output: '', nextOffset: request.query.offset ?? 0 };
     }
   });
   app.post<{ Params: { id: string; jobId: string } }>(base + '/jobs/:jobId/stop', {

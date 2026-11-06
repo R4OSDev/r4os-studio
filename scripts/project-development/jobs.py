@@ -241,7 +241,7 @@ class Jobs:
             self.db.commit(); return job
         except BaseException: self.db.rollback(); raise
 
-    def page(self, job_id, offset=0, metadata_only=False, channel=None):
+    def page(self, job_id, offset=0, metadata_only=False, channel=None, tail_bytes=None):
         job = self.get(job_id)
         # Presentation-only projection for historical records; never migrate a saved deployment.
         if not job.get('package') and job.get('deploymentId'):
@@ -272,7 +272,13 @@ class Jobs:
         data = b''; size = path.stat().st_size if path.exists() else 0
         if path.exists() or path.is_symlink():
             if path.is_symlink() or path.resolve() != path: raise DevelopmentFault('Invalid development evidence.', 503)
-        if path.exists() and not metadata_only:
+        tail = None
+        if tail_bytes is not None:
+            if offset != 0 or metadata_only or channel is not None or job['kind'] != 'build':
+                raise DevelopmentFault('Tail reads require an original build log without offset, channel or metadataOnly.', 400)
+            from log_tail import read as read_tail
+            data, tail = read_tail(path, tail_bytes); offset = tail['startOffset']; size = tail['totalBytes']
+        if tail is None and path.exists() and not metadata_only:
             with path.open('rb') as stream:
                 stream.seek(offset); first=stream.read(1)
                 if first and 0x80<=first[0]<=0xbf:
@@ -302,11 +308,14 @@ class Jobs:
                     'source':'saved-artifact-receipt','currentBytesVerified':False}}
             except DevelopmentFault:artifact_summary={'artifactUnavailable':'Original artifact receipt unavailable.'}
         from evidence import list_for
+        from log_tail import preview
+        diagnostic_preview = preview(path, job) if tail is None else None
         from execution_evidence import describe
         from desktop_diagnostics import describe as diagnose
         execution = describe(self, job) if job['kind'] == 'execution' else None
         diagnosis = diagnose(job, execution) if job['kind'] == 'execution' else None
-        return {'job': job,**artifact_summary, **({'channel': channel} if channel else {}), 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
+        return {'job': job,**artifact_summary, **({'tailRead': {**tail, 'jobRevision': job['revision']}} if tail is not None else {}),
+                **({'diagnosticPreview': diagnostic_preview} if diagnostic_preview is not None else {}), **({'channel': channel} if channel else {}), 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
                 'totalBytes':size,'hasMore':offset+len(data)<size,'captureLimitReached':size>=capture_limit,
                 'captureTruncated':channel_state.get('truncated') if channel else job.get('captureTruncated'),'nextOffset': offset + len(data),
                 'truncated':channel_state.get('truncated', False) if channel else path.exists() and path.stat().st_size >= capture_limit,

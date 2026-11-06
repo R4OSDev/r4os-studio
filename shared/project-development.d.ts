@@ -285,7 +285,15 @@ export interface DesktopDiagnostics {
   processEndConfirmed: boolean; cleanupConfirmed: boolean;
   console: {state: string; reason?: string; bytes?: number};
 }
+export interface DevelopmentLogExcerpt {
+  source: string; state: string; jobRevision: number; startOffset: number; nextOffset: number;
+  pageBytes: number; totalBytes: number; sha256?: string; text: string; encoding: string;
+  excerptOnly: true; consumesCursor: false; captureLimitReached: boolean; captureTruncated?: boolean | null;
+  changedDuringRead?: boolean; displayTruncated: boolean; notice: string;
+}
 export interface DevelopmentJobPage {
+  diagnosticPreview?: DevelopmentLogExcerpt;
+  tailRead?: {source: string; state: string; jobRevision: number; startOffset: number; nextOffset: number; totalBytes: number; pageBytes: number; sha256?: string; changedDuringRead?: boolean};
   desktopDiagnostics?: DesktopDiagnostics | null;
   artifactSummary?: { id: string; kind?: DevelopmentArtifact['kind']; role?: ProjectTemplate };
   startOffset?:number;pageBytes?:number;totalBytes?:number;hasMore?:boolean;
