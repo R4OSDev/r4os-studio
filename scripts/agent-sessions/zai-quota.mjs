@@ -4,7 +4,7 @@
  */
 import https from 'node:https';
 import net from 'node:net';
-import { ZAI_BASE } from './api_zai.mjs';
+import { ZAI_ENDPOINTS } from './api_zai.mjs';
 let request, finished = false;
 const finish = value => {
   if (finished) return; finished = true; request?.destroy();
@@ -24,8 +24,9 @@ const input = await new Promise(resolve => {
   };
   process.stdin.on('data', read);
 });
-if (!input || input.binding?.kind !== 'zai-coding-plan' || input.binding.baseUrl !== ZAI_BASE
-  || input.binding.auth !== 'bearer' || input.binding.protocol !== 'chat-completions'
+if (!input || input.binding?.kind !== 'zai-coding-plan' || !Object.hasOwn(ZAI_ENDPOINTS, input.binding.protocol)
+  || input.binding.baseUrl !== ZAI_ENDPOINTS[input.binding.protocol] || input.binding.auth !== 'bearer'
+  || (input.binding.server ?? 'custom') !== 'custom' || Object.hasOwn(input.binding, 'openrouter')
   || typeof input.key !== 'string' || !/^[\x21-\x7e]{1,8192}$/.test(input.key)
   || !Array.isArray(input.addresses) || !input.addresses.length || input.addresses.length > 64 || input.addresses.some(value => !net.isIP(value))) fail('format');
 if (finished) process.exit(0);

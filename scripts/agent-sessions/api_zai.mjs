@@ -4,7 +4,9 @@
  * sends its User-Agent and session affinity, without x-opencode-client.
  */
 import { ChatFault } from './api_chat_fault.mjs';
-export const ZAI_BASE = 'https://api.z.ai/api/coding/paas/v4';
+import { readFileSync } from 'node:fs';
+export const ZAI_ENDPOINTS = Object.freeze(JSON.parse(readFileSync(new URL('../../shared/zai-endpoints.json', import.meta.url), 'utf8')));
+export const ZAI_BASE = ZAI_ENDPOINTS['chat-completions'];
 export const ZAI_ERRORS = Object.freeze({
   '1302': 'rate_limit_exceeded', '1305': 'api_service_unavailable',
   '1308': 'zai_subscription_exhausted', '1310': 'zai_subscription_exhausted',

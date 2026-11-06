@@ -5,7 +5,7 @@ import net from 'node:net';
 import { modelCatalog } from './api_model_metadata.mjs';
 import { routerSettings, routerHeaders } from './api_openrouter.mjs';
 import { readFileSync } from 'node:fs';
-import { ZAI_BASE } from './api_zai.mjs';
+import { ZAI_BASE, ZAI_ENDPOINTS } from './api_zai.mjs';
 
 const MAX_BODY = 4 * 1024 * 1024;
 let request, socket, finished = false;
@@ -40,7 +40,7 @@ try {
   const literal = target.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(literal) && !addresses.includes(literal)) throw Error();
   if (binding.kind === 'zai-coding-plan') {
-    const bases = { 'chat-completions': ZAI_BASE, messages: 'https://api.z.ai/api/anthropic/v1' };
+    const bases = ZAI_ENDPOINTS;
     if (!Object.hasOwn(bases, binding.protocol) || binding.baseUrl !== bases[binding.protocol] || binding.auth !== 'bearer') throw Error();
     // Both model protocols share Z.AI's published model catalog. This GET
     // never changes the selected inference route or attempts a model call.

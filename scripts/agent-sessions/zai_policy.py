@@ -1,10 +1,12 @@
 """Z.AI Coding Plan product boundary; never the prepaid general API."""
+import json
+from pathlib import Path
 from store import ProjectFault
 
 KIND = 'zai-coding-plan'
-BASE_URL = 'https://api.z.ai/api/coding/paas/v4'
-MESSAGES_URL = 'https://api.z.ai/api/anthropic/v1'
-ENDPOINTS = {'chat-completions': BASE_URL, 'messages': MESSAGES_URL}
+ENDPOINTS = json.loads((Path(__file__).resolve().parents[2]/'shared/zai-endpoints.json').read_text())
+BASE_URL = ENDPOINTS['chat-completions']
+MESSAGES_URL = ENDPOINTS['messages']
 
 
 def require(value):

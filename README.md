@@ -1,3 +1,7 @@
+## 0.11.30
+
+Z.AI subscription monitoring accepts the canonical Chat Completions and Messages endpoint pairs from one shared endpoint contract. Both retain the fixed quota GET, original credential revision and raw monitor authorization. Crossed endpoints, other products and hosts remain rejected; the model connection is never rewritten.
+
 ## 0.11.29
 
 Assigned VM screenshots support capture-only and explicit external Vision analysis without changing the main model. `studio_capture_vm` accepts `analysisQuestion` or `action=inspect` for an existing image. A usable configured fallback is required for non-Vision capture. Failed analysis retains the image; capture, gesture and inference are never automatically repeated. Native Vision and explicit GUI assessment remain separate.
