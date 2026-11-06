@@ -78,7 +78,7 @@ def specifications(scope='project'):
 
 
 def native_specifications(scope='project'):
-    return [t for t in specifications(scope) if t['name'][7:] not in (*GOAL_TOOLS,*WEB_TOOLS)]
+    return [t for t in specifications(scope) if t['name'][7:] not in ((*WEB_TOOLS,) if isinstance(scope,dict) and scope.get('goalKeepalive') else (*GOAL_TOOLS,*WEB_TOOLS))]
 
 
 def tools_for(scope='project'):

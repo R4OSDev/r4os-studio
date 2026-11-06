@@ -60,6 +60,8 @@ def base(config):
 
 def compose(config, project=None):
     text = base(config)
+    from goal_keepalive import instructions as keepalive_instructions
+    text += keepalive_instructions(config)
     from active_tools import instructions as current_tool_instructions
     text += current_tool_instructions(config)
     if config['engine'].get('kind') == 'studio':

@@ -1,5 +1,19 @@
 ## Assigned project VM lifecycle tools (0.11.20)
 
+GOAL **Start / Pause / Stop** now control session keepalive. Start during a run
+changes only the next boundary; an idle session starts one ordinary run with the
+saved objective. Pause preserves the clock; Stop immediately resets it. Both
+leave the current prompt, permissions, model/tool rounds and processes running
+normally. **Stop current run** remains a separate action. Automatic Goal runs
+use the normal coordinator admission/launch path after confirmed whole-process,
+tool and history end. Human queued input keeps priority and its frozen selection;
+next-run model choices apply at their existing full boundary. Original commands
+and control generations prevent duplicate/late continuations. Current Goal runs
+retain their original context when later controls change, and complete/blocked
+reports cannot overwrite a newer Goal generation. Native histories and active
+older workers are preserved.
+
+
 System → Updates → R4OS Releases offers **Update VMs** immediately after
 **Use as default**, independently of the selected default. Its Cancel-first
 preview lists all source/target releases and statuses and explicitly confirms

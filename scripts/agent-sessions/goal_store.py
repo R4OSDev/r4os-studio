@@ -1,10 +1,9 @@
 from skill_lifecycle import goal_guard
 """Additive native Goal observations and idempotent, session-bound user intent."""
-import hashlib
 import json
 from session_store import identity, encode, now
 from store import ProjectFault
-from goal_contract import native_goal, objective
+from goal_contract import native_goal
 
 
 def exists(store):
@@ -31,6 +30,9 @@ class Goals:
 
     def snapshot(self, sid):
         session = self.store.row(sid)
+        from goal_keepalive import snapshot as keepalive_snapshot
+        current=keepalive_snapshot(self.store,sid)
+        if current is not None:return current
         if json.loads(session['engine']).get('kind')=='claude-code':
             from claude_goal_store import snapshot
             return snapshot(self,sid)
@@ -62,72 +64,8 @@ class Goals:
 
     @goal_guard
     def accept(self, sid, data):
-        if self.store.get(sid)['engine'].get('kind')=='claude-code':
-            from claude_goal_store import accept
-            return accept(self,sid,data)
-        studio = self.store.get(sid)['engine'].get('kind') == 'studio'
-        if self.store.get(sid)['engine'].get('api') and not studio:
-            from api_goals import require
-            require(self.store.get(sid)['engine'])
-        if (not isinstance(data, dict) or not set(data) <= {'requestId','revision','action','objective','sessionRevision','target',*({'tokenBudget','timeBudgetMs'} if studio else set())}
-                or not {'requestId','revision','action'} <= set(data) or type(data['revision']) is not int
-                or ('sessionRevision' in data and (type(data['sessionRevision']) is not int or data['sessionRevision']<1))
-                or data['action'] not in ('save','play','pause','stop')
-                or (('objective' in data) != (data['action'] == 'save'))):
-            raise ProjectFault('Invalid Goal command.', 400)
-        if studio:
-            from studio_goal import budget
-            for name in ('tokenBudget','timeBudgetMs'):
-                if name in data:
-                    if data['action'] != 'save': raise ProjectFault('Budgets can only be changed by an explicit Save.',400)
-                    budget(data[name])
-        key = identity(data['requestId']); self.store.row(sid)
-        if 'target' in data:
-            from goal_live import target
-            target(data['target'])
-        try:
-            if data['action'] == 'save': objective(data['objective'], allow_empty=True)
-        except ValueError as error: raise ProjectFault(str(error), 400) from None
-        fingerprint = hashlib.sha256(encode({'sessionId': sid, **data}).encode()).hexdigest()
-        self.schema()
-        if 'target' in data:
-            from goal_live import LiveGoals
-            LiveGoals(self.store).schema()
-        self.store.db.execute('BEGIN IMMEDIATE')
-        try:
-            previous = self.store.db.execute('SELECT * FROM goal_commands WHERE request_id=?', (key,)).fetchone()
-            if previous:
-                if previous['fingerprint'] != fingerprint: raise ProjectFault('This request ID belongs to another Goal command.', 409)
-                return self.receipt(sid, key), False
-            snapshot = self.snapshot(sid)
-            if snapshot['revision'] != data['revision']: raise ProjectFault('The Goal changed. Reload before changing it.', 409)
-            if data['action']=='play' and data.get('sessionRevision')!=self.store.row(sid)['revision']:
-                raise ProjectFault('Session settings changed. Reload before pressing Play.',409)
-            if pending(self.store): raise ProjectFault('Reconcile the original pending Goal command first.', 409)
-            if snapshot['phase'] == 'unknown' and data['action'] not in ('pause','stop'):
-                raise ProjectFault('Pause the original unconfirmed Goal before changing it.', 409)
-            if self.store.db.execute('SELECT COUNT(*) FROM goal_commands WHERE session_id=?', (sid,)).fetchone()[0] >= 4096:
-                raise ProjectFault('This session reached its Goal command history limit.', 409)
-            if data['action'] == 'play' and not snapshot['goal']: raise ProjectFault('Save a Goal before pressing Play.', 409)
-            if studio and data['action']=='play' and snapshot['goal']['status']=='active':
-                raise ProjectFault('This original Goal is already active.',409)
-            captured={}
-            if data['action']=='play':
-                from model_choice import row as model_row,capture as model_capture,values as model_values
-                if model_row(self.store,sid) is not None:
-                    selection,choice=model_capture(self.store,sid,self.store.get(sid))
-                    captured={'_modelSelection':{'choice':model_values(selection),'modelChoice':choice}}
-                from active_tools import goal_selection
-                captured['_toolSelection']=goal_selection(self.store,sid)
-            self.store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
-                (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal'],**captured}), 'pending', 'accepted', now()))
-            if 'target' in data: LiveGoals(self.store).bind(sid,data,snapshot['goal'])
-            self.store.db.execute('''INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',?,NULL,NULL)
-              ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,phase='pending',request_id=excluded.request_id,reason=NULL''',
-                (sid, key))
-            self.store.db.commit(); return self.receipt(sid, key), True
-        finally:
-            if self.store.db.in_transaction: self.store.db.rollback()
+        from goal_keepalive import accept
+        return accept(self,sid,data)
 
     def stage(self, sid, rid, stage):
         with self.store.db:

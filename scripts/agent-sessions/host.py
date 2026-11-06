@@ -39,7 +39,7 @@ class Host:
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
         self.goal_readback_lock = asyncio.Lock()
         self.image_capability_lock=asyncio.Lock()
-        self.inboxes=set()
+        self.inboxes=set();self.keepalives=set()
         self.message_tasks={}
         self.skill_delete_tasks={}
         self.session_delete_tasks={}
@@ -159,6 +159,9 @@ class Host:
                         target=json.loads(command['payload']).get('target')
                         if target and target['runId'] in self.active: live_plays.add(command['request_id'])
                 Goals(store).recover(live_plays)
+                from goal_keepalive import exists as keepalive_exists
+                if keepalive_exists(store):
+                    self.keepalives.update((kind,project_id,r['session_id']) for r in store.db.execute('SELECT session_id FROM session_keepalive WHERE active=1'))
                 # Repair stale pending cards from earlier compatible releases
                 # using confirmed receipts, without replaying any tool operation.
                 finished = set()
@@ -305,7 +308,7 @@ class Host:
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
                 if revocation:result['planLogout']=revocation
             return result
-        if op == 'capabilities': return {'deferredModelChoice':1, 'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'goalKeepalive':1, 'deferredModelChoice':1, 'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
@@ -489,6 +492,13 @@ class Host:
                 try:return await inspect(store,session_id,self.config['providers'],request.get('selection'))
                 finally:store.close()
         if op=='goal_readback':
+            current=self.store(project_id,kind)
+            try:
+                from goal_keepalive import row as keepalive_row
+                if keepalive_row(current,session_id):
+                    from goal_store import Goals
+                    return {'goal':Goals(current).snapshot(session_id),'nativeRead':False,'superseded':False}
+            finally:current.close()
             from goal_readback import readback
             if self.goal_readback_lock.locked():raise ProjectFault('Another native Goal readback is in progress.',429)
             async with self.goal_readback_lock:
@@ -501,18 +511,16 @@ class Host:
                 store = self.store(project_id, kind)
                 try:
                     goals = Goals(store)
-                    if self.unbound: raise ProjectFault('Reconcile the original unbound workers before changing a Goal.',503)
-                    if len(self.goal_tasks) >= 2: raise ProjectFault('Goal controls are busy. Read the original request before retrying.',429)
-                    previous=__import__('goal_store').exists(store) and store.db.execute('SELECT 1 FROM goal_commands WHERE request_id=?',(request['input'].get('requestId'),)).fetchone()
-                    if request['input'].get('target') and not previous:
-                        target=request['input']['target']; meta=self.active.get(target.get('runId'))
-                        if not meta or binding(meta)!=(kind,project_id) or meta['sessionId']!=session_id:
-                            raise ProjectFault('The live Goal target has no confirmed original worker binding.',409)
-                        validate_release(meta)
-                        original=get_run(store,target['runId'])
-                        if json.loads(original['worker'] or '{}').get('release')!=meta['release'] or not await self.goal_worker_matches(meta,original):
-                            raise ProjectFault('The original live Goal worker identity or release changed.',403)
+                    if self.unbound and request['input'].get('action') not in ('pause','stop'):
+                        raise ProjectFault('Reconcile the original unbound workers before starting a Goal.',503)
                     result, fresh = goals.accept(session_id, request['input'])
+                    if result['snapshot'].get('keepalive') is not None:
+                        key=(kind,project_id,session_id)
+                        from goal_keepalive import row as keepalive_row
+                        current=keepalive_row(store,session_id)
+                        if current and current['active']:self.keepalives.add(key)
+                        else:self.keepalives.discard(key)
+                        return result
                     if request['input'].get('action') in ('pause','stop'):
                         from message_store import Messages
                         Messages(store).hold(session_id, 'The user paused or stopped this session. Continue explicitly.')
@@ -656,9 +664,9 @@ class Host:
                 from goal_store import Goals, pending
                 goal = Goals(store).snapshot(sid)
                 if pending(store) or goal['phase'] not in ('idle',): continue
-                if goal['goal'] and goal['goal']['status'] == 'active':
+                if not goal.get('keepalive') and goal['goal'] and goal['goal']['status'] == 'active':
                     messages.hold(sid, 'Pause the original Goal before continuing this queue.'); continue
-                if goal['goal'] and goal['goal'].get('source')=='studio' and goal['goal']['status'] in ('budgetLimited','usageLimited','blocked'):
+                if not goal.get('keepalive') and goal['goal'] and goal['goal'].get('source')=='studio' and goal['goal']['status'] in ('budgetLimited','usageLimited','blocked'):
                     last=store.db.execute('SELECT id FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(sid,)).fetchone()
                     if last and goal.get('runId')==last['id'] and not messages.resumed_after(sid,last['id']):
                         messages.hold(sid,'Review the original Goal limit or blockade and continue this queue explicitly.');continue
@@ -867,6 +875,8 @@ async def main():
                 async with host.lock:
                     await host.refresh()
                     await host.dispatch_queues()
+                    from goal_keepalive_host import schedule as schedule_goals
+                    schedule_goals(host)
                     from skill_source_host import dispatch as dispatch_sources
                     await dispatch_sources(host)
                     target = Path('/opt/r4os-studio/current').resolve(strict=True)

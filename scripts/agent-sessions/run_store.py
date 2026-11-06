@@ -58,7 +58,7 @@ def get_run(store, run_id):
     return row
 
 
-def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None, original=None):
+def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None, original=None, keepalive=None):
     """Freeze a complete accepted selection without admitting a concurrent run."""
     session = store.get(session_id)
     from model_choice import capture as model_selection
@@ -180,6 +180,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot.update(remote_snapshot(store, tool_scope(session), data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+    from goal_keepalive import freeze as freeze_keepalive
+    freeze_keepalive(store,session_id,snapshot,keepalive,original)
     from api_models import freeze as freeze_api
     freeze_api(store,session_id,data,provider_dir,snapshot,original=original)
     if original is not None:
@@ -194,7 +196,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
 
 
 @guarded
-def admit(store, session_id, data, provider_dir, image_capability=None, frozen=None):
+def admit(store, session_id, data, provider_dir, image_capability=None, frozen=None, keepalive=None):
     goal_mode = data.get('mode') == 'goal'
     expected = {'requestId', 'revision', 'mode', 'goalRequestId'} if goal_mode else {'requestId', 'revision', 'text'} | ({'attachments'} if 'attachments' in data else set())
     if (set(data) - set(CAPABILITIES) != expected
@@ -235,7 +237,10 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
         if store.owner_type == 'project':
             from project_maintenance import pending_git
             if pending_git(store.projects, store.project_id): raise ProjectFault('Reconcile the original Git pull before starting another agent run.', 409)
-        snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None, original=frozen)
+        if keepalive is not None:
+            from goal_keepalive import require as require_keepalive
+            require_keepalive(store,session_id,keepalive)
+        snapshot, attachments, request_hash = capture_input(store, session_id, data, provider_dir, image_capability, command if goal_mode else None, frozen.get('attachments') if frozen else None, original=frozen,keepalive=keepalive)
         if frozen is not None:
             # Adding a capability to new captures must not upgrade old queued
             # inputs or change their already reserved API lease hash.

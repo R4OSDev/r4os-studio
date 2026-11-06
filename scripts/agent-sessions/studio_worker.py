@@ -37,7 +37,7 @@ class StudioWorker(Worker):
         from studio_context import StudioContext
         self.context = StudioContext(self)
         from studio_goal import StudioGoal
-        self.goal_worker = StudioGoal(self)
+        self.goal_worker = self.keepalive_goal or StudioGoal(self)
 
     def declarations(self):
         def allowed(name):
@@ -333,7 +333,7 @@ class StudioWorker(Worker):
                         self.goal_worker.execution=None;self.goal_worker.dormant=True
                     continue
                 await self.goal_worker.boundary()
-                if self.goal_worker.active:
+                if self.goal_worker.active and not self.config.get('goalKeepalive'):
                     self.conversation.append(self.run_id,'goal-continuation-'+str(self.round),'user',
                         [{'type':'text','text':'Continue the explicitly activated Goal. Report complete or blocked with studio_update_goal when justified; preserve unknown effects.'}],
                         {'kind':'goalContinuation','executionId':self.goal_worker.execution,'humanPlayRequestId':self.goal_worker.execution})

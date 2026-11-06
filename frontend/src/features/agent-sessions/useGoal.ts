@@ -23,21 +23,23 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   const [goal, setGoal] = useState<SessionGoal | null>(null);
   const [available, setAvailable] = useState(false), [execution, setExecution] = useState(false);
   const [liveExecution, setLiveExecution] = useState(false);
+  const [keepalive, setKeepalive] = useState(false);
   const [readback, setReadback] = useState(false), [checking, setChecking] = useState(false);
   const [pending, setPending] = useState<GoalCommand | null>(() => stored(key));
   const [posting, setPosting] = useState(false), [error, setError] = useState('');
   const [checkAgain, setCheckAgain] = useState(false), [refresh, setRefresh] = useState(0);
   const generation = useRef(0), inflight = useRef(false);
-  const apiSession = !!session?.engine.api, claudeSession = session?.engine.kind === 'claude-code', studioSession = session?.engine.kind === 'studio', engineKnown = !!session;
+  const claudeSession = session?.engine.kind === 'claude-code', studioSession = session?.engine.kind === 'studio', engineKnown = !!session;
   useEffect(() => { const current = ++generation.current; return () => { generation.current = current + 1; }; }, [base]);
   const observe = useCallback((value: SessionGoal) => {
     if (value.sessionId !== sessionId || value.owner.id !== projectId || value.owner.type !== scope)
       throw new Error('This Goal belongs to another session.');
-    if (engineKnown && value.goal && (claudeSession !== (value.goal.source === 'studio-claude')))
+    if (!value.keepalive && engineKnown && value.goal && (claudeSession !== (value.goal.source === 'studio-claude')))
       throw new Error('The Goal source does not match the original session engine.');
-    if (engineKnown && value.goal && studioSession !== (value.goal.source === 'studio'))
+    if (!value.keepalive && engineKnown && value.goal && studioSession !== (value.goal.source === 'studio'))
       throw new Error('The Goal source does not match this Studio conversation.');
     setGoal((previous) => {
+      if (previous?.keepalive && !value.keepalive) return previous;
       if (previous && previous.revision > value.revision) return previous;
       const samePlay = previous?.goal?.source !== 'studio-claude' || value.goal?.source === 'studio-claude'
         && previous.goal.goalId === value.goal.goalId && previous.goal.executionId === value.goal.executionId;
@@ -54,21 +56,19 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
       if (document.hidden) return;
       const [state, support] = await Promise.all([
         request<{ goal: SessionGoal }>(base, '', 'GET', undefined, controller.signal),
-        request<{ studioGoals?: number; apiNativeGoals?: number; claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
+        request<{ goalKeepalive?: number; studioGoals?: number; apiNativeGoals?: number; claudeGoals?: number; claudeGoalExecution?: number; claudeLiveGoals?: number; liveGoalControl?: number; nativeGoals?: number; nativeGoalExecution?: number; nativeGoalReadback?: number; nativeImageInputs?: number; documentInputs?: number; enabled?: boolean }>('/agent-capabilities', '', 'GET', undefined, controller.signal),
       ]);
       if (controller.signal.aborted || current !== generation.current) return;
-      const controls = studioSession ? support.studioGoals === 1 : claudeSession ? support.claudeGoals === 1 : support.nativeGoals === 1;
-      const runs = studioSession ? controls : claudeSession ? support.claudeGoalExecution === 1 : support.nativeGoalExecution === 2 && support.nativeImageInputs === 1 && support.documentInputs === 1;
-      const engineReady = studioSession ? support.studioGoals === 1 : !apiSession || support.apiNativeGoals === 1;
-      observe(state.goal); setAvailable(engineReady && controls && support.enabled !== false);
-      setExecution(engineReady && controls && runs && support.enabled !== false);
-      setReadback(engineReady && (claudeSession ? controls : support.nativeGoalReadback === 1)); setLiveExecution(engineReady && (claudeSession ? support.claudeLiveGoals === 1 : support.liveGoalControl === 1));
-      if ((!engineReady || !controls || !runs) && !document.hidden)
-        timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
+      if (support.goalKeepalive === 1) {
+        observe(state.goal); setAvailable(support.enabled !== false); setExecution(support.enabled !== false);
+        setKeepalive(true); setLiveExecution(true); setReadback(false); return;
+      }
+      observe(state.goal); setAvailable(false); setExecution(false); setKeepalive(false); setLiveExecution(false); setReadback(false);
+      if (!document.hidden) timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
     };
     void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [base, request, observe, refresh, apiSession, claudeSession, studioSession]);
+  }, [base, request, observe, refresh, claudeSession, studioSession]);
 
   useEffect(() => {
     const refresh = () => { if (!document.hidden) setRefresh(value => value + 1); };
@@ -138,6 +138,8 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   async function perform(action: GoalAction, objective?: string, revision?: number) {
     if (!goal || !available || pending || posting || checking || !session) return false;
     const run = session.latestRun;
+    if (keepalive) return submit({ requestId: projectRequestId(), revision: revision ?? goal.revision, action,
+      ...(action === 'save' ? { objective: objective ?? '' } : {}), ...(action === 'play' ? { sessionRevision: session.revision } : {}) });
     const retryControl = (action === 'pause' || action === 'stop') && busyRun(run?.state) && !!goal.goal
       && (run?.mode === 'goal' || run?.goalActivation?.state === 'confirmed')
       && (run?.providerRetry?.state === 'waiting' || run?.providerRetry?.state === 'submitting');
@@ -161,7 +163,7 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
       if (issue.status === 403) await refreshAuth().catch(() => undefined);
     } finally { if (current === generation.current) setChecking(false); }
   }
-  return { goal, available, execution, liveExecution, claude: claudeSession, pending, posting, checking, error, checkAgain, observe, perform,
+  return { goal, available, execution, liveExecution, keepalive, claude: claudeSession, pending, posting, checking, error, checkAgain, observe, perform,
     changing: checking || posting || !!pending || goal?.phase === 'pending', draftKey: key + '.draft',
     retry: () => pending ? submit(pending) : Promise.resolve(false),
     check };
