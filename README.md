@@ -1,3 +1,7 @@
+## 0.11.55
+
+Claude subscription usage disclosures and refresh controls are removed from the shared project/skill session header, including their display-only polling and countdown state. Provider limits and original check recovery remain under System; quota admission, run errors and waiting/continuation controls retain their existing behavior.
+
 ## 0.11.54
 
 Claude tool declarations expose the existing object fields and describe all original input variants without sending unsupported composition at the schema root. Canonical tool schemas, argument shapes, permissions and whole-batch validation remain unchanged. Other connectors keep their original schemas. Model-selection preflight now prepares the full current scope catalog; the worker still dispatches only permission-filtered tools. Unsupported root forms fail before dispatch, and a proven Claude schema rejection gets a specific error without exposing provider text or retrying the request.

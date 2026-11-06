@@ -4,9 +4,6 @@ import { applyDeltas, SessionDeltas } from './sessionDeltas';
 import { publishSessionActivity } from './sessionActivity';
 import { invalidateSessionReads } from './sessionReads';
 import { useEnvironmentNotes } from './useEnvironmentNotes';
-import { SessionClaudeLimits } from './SessionClaudeLimits';
-import { SessionConnectionLimits } from './SessionConnectionLimits';
-import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionContext, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
@@ -49,7 +46,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const selectionScope=scope+':'+projectId+':'+sessionId,currentScope=useRef(selectionScope);
   useLayoutEffect(()=>{currentScope.current=selectionScope;},[selectionScope]);
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
-  const [claudeQuota, setClaudeQuota] = useState<ClaudeRateObservation | null>(null);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
   const [connection, setConnection] = useState('Connecting'), [stopping, setStopping] = useState(false);
   const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), last = useRef(0);
@@ -168,7 +164,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
           setSession(old=>mergeSession(old,result.session));
       }).catch(()=>{/* Original choice stays visible until its next confirmed read. */});
       if (event.kind === 'environmentNotes') observeNotes(event.payload as { revision: number; count: number });
-      if (event.kind === 'claudeQuota') setClaudeQuota(event.payload as ClaudeRateObservation);
       if (event.kind === 'goal') observeGoal(event.payload as SessionGoal);
       if (event.kind === 'notice') {
         const notice = event.payload as { text: string };
@@ -241,8 +236,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving ||choiceUnconfirmed|| !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     {session && session.engine.kind !== 'studio' && <p className="agent-plan-usage" role="status">Native {session.engine.kind === 'claude-code' ? 'Claude' : 'OpenAI'} conversation. Review an explicit conversion under Session settings → Conversation to use the Studio runtime.</p>}
     {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
-    {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
-    {session?.engine.api?.kind === 'claude-plan' && <SessionConnectionLimits key={base + session.providerId} base={base} token={token} providerId={session.providerId} />}
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={0}
       onWheel={transcript.onWheel} onScroll={transcript.onScroll} onKeyDown={transcript.onKeyDown}
       onPointerDown={transcript.onPointerDown} onTouchStart={transcript.onTouchStart} onTouchMove={transcript.onTouchMove}>
