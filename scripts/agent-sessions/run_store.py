@@ -61,6 +61,8 @@ def get_run(store, run_id):
 def capture_input(store, session_id, data, provider_dir, image_capability=None, goal_command=None, saved_attachments=None, queued_claude=None, original=None):
     """Freeze a complete accepted selection without admitting a concurrent run."""
     session = store.get(session_id)
+    from model_choice import capture as model_selection
+    session,model_choice=model_selection(store,session_id,session,original,goal_command)
     from codex_runtime import for_input
     try: session = for_input(store, session, original)
     except (OSError, ValueError, KeyError, TypeError):
@@ -82,6 +84,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     modalities=qualify(store,session_id,session,provider_dir,attachments)
     request_hash=fingerprint(session_id,data,attachments)
     snapshot = {k: session[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'engine', 'revision')}
+    if model_choice is not None:snapshot['modelChoice']=model_choice
     # This affects the immutable API lease hash, so freeze it before reserve.
     snapshot['contextProtocol'] = 1
     snapshot['inputContractVersion']=1
@@ -226,6 +229,8 @@ def admit(store, session_id, data, provider_dir, image_capability=None, frozen=N
             freeze_retry(snapshot,original=frozen)
             if snapshot != frozen: raise ProjectFault('The queued selection changed. The queue was held; review its original input.',409)
             snapshot = frozen
+        from model_choice import admission as model_admission
+        model_admission(store,session_id,data,snapshot)
         ident = snapshot.get('apiRunId') or snapshot.get('claudeRunId') or str(uuid.uuid4()); stamp = now()
         store.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?,NULL)',
                          (ident, session_id, key, request_hash, 'queued', 1, encode(snapshot), stamp))

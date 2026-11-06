@@ -59,7 +59,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
     setSaving(true); setError('');
     try {
       const { revision, name, permissions, providerId, model, effort, fastMode } = draft;
-      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision, name: name.trim(), permissions, providerId, model, effort, fastMode, webSearchEnabled: draft.webSearchEnabled ?? true, imageGenerationEnabled: draft.imageGenerationEnabled ?? true, environmentNotesEnabled: draft.environmentNotesEnabled ?? true, ...(scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true } : {}), skillOverrides: draft.skillOverrides ?? {} });
+      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision,selectionRevision:draft.selectionRevision??0, name: name.trim(), permissions, providerId, model, effort, fastMode, webSearchEnabled: draft.webSearchEnabled ?? true, imageGenerationEnabled: draft.imageGenerationEnabled ?? true, environmentNotesEnabled: draft.environmentNotesEnabled ?? true, ...(scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true } : {}), skillOverrides: draft.skillOverrides ?? {} });
       saved(result.session);
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }

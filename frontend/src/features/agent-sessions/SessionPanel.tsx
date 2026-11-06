@@ -8,7 +8,7 @@ import { SessionClaudeLimits } from './SessionClaudeLimits';
 import { SessionConnectionLimits } from './SessionConnectionLimits';
 import type { ClaudeRateObservation } from '../../../../shared/claude-subscription';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionContext, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
 import { useSessionApi, sessionPath, busyRun, ProjectRequestError } from './api';
 import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
@@ -25,6 +25,7 @@ import { useMessageComposer } from './useMessageComposer';
 import { useMessageInbox } from './useMessageInbox';
 import { MessageQueue } from './MessageQueue';
 import { useTranscriptFollow } from './useTranscriptFollow';
+import {mergeSession} from './sessionState';
 
 const EnvironmentNotes = deferView(() => import('./EnvironmentNotes').then(module => ({default: module.EnvironmentNotes})), props => props.close());
 const ScreenshotGallery = deferView(() => import('./ScreenshotGallery').then(module => ({default: module.ScreenshotGallery})), props => props.close());
@@ -42,6 +43,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
 }) {
   const { request: projectRequest, base: apiBase, scope } = useSessionApi();
   const base = sessionPath(projectId, sessionId);
+  const selectionScope=scope+':'+projectId+':'+sessionId,currentScope=useRef(selectionScope);
+  useLayoutEffect(()=>{currentScope.current=selectionScope;},[selectionScope]);
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
   const [claudeQuota, setClaudeQuota] = useState<ClaudeRateObservation | null>(null);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
@@ -80,6 +83,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const notes = useEnvironmentNotes(projectId, sessionId, refreshAuth, showNotes);
   const observeNotes = notes.observe;
   const [choiceSaving, setChoiceSaving] = useState(false);
+  const [choiceUnconfirmed,setChoiceUnconfirmed]=useState(false);
   const [goalEditor, setGoalEditor] = useState(false);
   const [dragging, setDragging] = useState(false), dragDepth = useRef(0);
   const attachments = useAttachments(projectId, sessionId, session, token, refreshAuth);
@@ -96,8 +100,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
 
   const refreshSession = useCallback(async () => {
     const result = await projectRequest<{ session: AgentSession }>(base);
-    setSession(result.session);
-  }, [base, projectRequest]);
+    if(currentScope.current===selectionScope)setSession(old=>mergeSession(old,result.session));
+  }, [base, projectRequest,selectionScope]);
   const goal = useGoal(projectId, sessionId, session, token, refreshAuth, refreshSession);
   const observeGoal = goal.observe;
   useEffect(() => {
@@ -106,9 +110,9 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const load = useCallback(async (signal: AbortSignal) => {
     const [h, r] = await Promise.all([projectRequest<SessionHistory>(base + '/history', '', 'GET', undefined, signal),
       projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, signal)]);
-    if (signal.aborted) return;
+    if (signal.aborted||currentScope.current!==selectionScope) return;
     deltas.clear(); last.current = h.cursor; assistantIds.current=new Set(h.items.filter(i=>i.type==='assistant').map(itemKey));setLiveText(null);setItems(h.items); setBefore(h.before); setSession(r.session); setError('');
-  }, [base, projectRequest, deltas]);
+  }, [base, projectRequest, deltas,selectionScope]);
   useEffect(() => {
     const controller = new AbortController(); let source: EventSource | undefined, timer: number | undefined, attempt = 0, loaded = false, connected = false;
     const receive = (event: AgentEvent) => {
@@ -146,6 +150,10 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         if (value.schema===1 && value.sessionId===sessionId && value.owner.type===scope && value.owner.id===projectId)
           setSession(s => s && value.revision>(s.context?.revision ?? 0) ? {...s,context:value} : s);
       }
+      if(event.kind==='modelChoice')void projectRequest<{session:AgentSession}>(base,'','GET',undefined,controller.signal).then(result=>{
+        if(!controller.signal.aborted&&currentScope.current===selectionScope&&result.session.id===sessionId&&result.session.owner.type===scope&&result.session.owner.id===projectId)
+          setSession(old=>mergeSession(old,result.session));
+      }).catch(()=>{/* Original choice stays visible until its next confirmed read. */});
       if (event.kind === 'environmentNotes') observeNotes(event.payload as { revision: number; count: number });
       if (event.kind === 'claudeQuota') setClaudeQuota(event.payload as ClaudeRateObservation);
       if (event.kind === 'goal') observeGoal(event.payload as SessionGoal);
@@ -172,14 +180,14 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     };
     void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); deltas.clear(); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope]);
   useEffect(()=>{const hidden=()=>{deltas.flush();if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[deltas]);
   const run = session?.latestRun;
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
   const active = busyRun(run?.state) || nativeActive;
   const waiting = inbox.inbox?.messages.some(value => value.mode === 'queue' && ['queued','dispatching'].includes(value.state)) ?? false;
   const queueMode = active || waiting;
-  const blocked = choiceSaving || settings || deleting || goalEditor || (goal.changing && !goal.claude) || goal.goal?.phase === 'unknown';
+  const blocked = choiceSaving ||choiceUnconfirmed|| settings || deleting || goalEditor || (goal.changing && !goal.claude) || goal.goal?.phase === 'unknown';
   const empty = !text.trim() && !attachments.hasFiles;
   const direct = !!run?.messageSupport && !!run.threadId && !!run.turnId && !attachments.hasFiles;
   const afterResponse = (session?.engine.kind === 'studio' || inbox.boundWaiting && session?.engine.kind === 'claude-code') && run?.messageWaitTarget;
@@ -217,7 +225,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         <button type="button" className="agent-settings-button" aria-label="Screenshot gallery" title="Screenshot gallery" aria-haspopup="dialog" aria-expanded={gallery} disabled={!session} onClick={()=>setGallery(true)}><Icon name="image"/></button>
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
-        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving || !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
+        <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving ||choiceUnconfirmed|| !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     {session && session.engine.kind !== 'studio' && <p className="agent-plan-usage" role="status">Native {session.engine.kind === 'claude-code' ? 'Claude' : 'OpenAI'} conversation. Review an explicit conversion under Session settings → Conversation to use the Studio runtime.</p>}
     {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
     {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
@@ -257,10 +265,12 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         }} />
       <AttachmentCards control={attachments} disabled={sending || !!pending} />
       <div className="agent-composer-footer">
-        <GoalControls control={goal} run={run} disabled={!session || choiceSaving || settings || stopping} inputBusy={sending || !!pending}
+        <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} runStopDisabled={!session||settings||stopping} inputBusy={sending || !!pending}
           runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
-        {session && <ComposerSettings session={session} projectId={projectId} token={token} disabled={active || sending || !!pending || settings || goal.changing || goalEditor}
-          busyChanged={setChoiceSaving} refreshAuth={refreshAuth} saved={(value) => { setSession(value); changed(); }} />}
+        {session && <ComposerSettings key={base} session={session} projectId={projectId} token={token} active={active} disabled={sending || !!pending || settings || goal.changing || goalEditor}
+          busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
+            if(currentScope.current===selectionScope&&value.id===sessionId&&value.owner.id===projectId&&value.owner.type===scope){setSession(old=>mergeSession(old,value));changed();}
+          }} />}
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
         <div className="agent-compose-actions">{busyRun(run?.state) && (run?.mode !== 'goal' || !goal.available || !!goal.error) && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
           {active && <button type="button" title={direct && session?.engine.kind === 'studio' ? 'Accept before the next model turn; the current request stays unchanged' : afterResponse ? 'Wait for this response, then continue the same conversation' : 'Append to the original active turn'} disabled={sending || !!pending || blocked || empty || !!attachments.issue || (!direct && !afterResponse)} onClick={() => void send(true)}>{direct ? 'Send now' : afterResponse ? 'After response' : 'Send now'}</button>}

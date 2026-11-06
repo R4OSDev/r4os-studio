@@ -111,8 +111,14 @@ class Goals:
             if data['action'] == 'play' and not snapshot['goal']: raise ProjectFault('Save a Goal before pressing Play.', 409)
             if studio and data['action']=='play' and snapshot['goal']['status']=='active':
                 raise ProjectFault('This original Goal is already active.',409)
+            captured={}
+            if data['action']=='play':
+                from model_choice import row as model_row,capture as model_capture,values as model_values
+                if model_row(self.store,sid) is not None:
+                    selection,choice=model_capture(self.store,sid,self.store.get(sid))
+                    captured={'_modelSelection':{'choice':model_values(selection),'modelChoice':choice}}
             self.store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
-                (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal']}), 'pending', 'accepted', now()))
+                (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal'],**captured}), 'pending', 'accepted', now()))
             if 'target' in data: LiveGoals(self.store).bind(sid,data,snapshot['goal'])
             self.store.db.execute('''INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',?,NULL,NULL)
               ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,phase='pending',request_id=excluded.request_id,reason=NULL''',

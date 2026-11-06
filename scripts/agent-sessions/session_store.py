@@ -327,12 +327,13 @@ PRAGMA user_version=1;
             settings['roadmapAccess'] = availability(self.owner_type)
             from remote_context import availability as remote_availability
             settings['remoteHostAccess'] = remote_availability(self, self.owner_type)
+        from model_choice import public as model_choice
         return {'id': row['id'], 'owner': {'type': self.owner_type, 'id': self.owner_id},
                 ('skillId' if self.owner_type == 'skill' else 'projectId'): row['project_id'], 'name': row['name'], **settings,
                 'engine': engine, 'context':context, 'revision': row['revision'],
                 'skillOverrides': skill_preferences.read(self.projects, self.owner_type, self.owner_id, row['id']),
                 'createdAt': row['created_at'], 'updatedAt': row['updated_at'],
-                'latestRun': self.run_present(latest) if latest else None}
+                'latestRun': self.run_present(latest) if latest else None,**model_choice(self,row['id'])}
 
     def list(self):
         from session_lifetime import state
@@ -416,8 +417,10 @@ PRAGMA user_version=1;
 
     @guarded
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'selectionRevision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
+        if 'selectionRevision' in data and (type(data['selectionRevision']) is not int or data['selectionRevision']<0):
+            raise ProjectFault('Invalid model-choice revision.',400)
         if 'roadmapEnabled' in data and (self.owner_type != 'project' or type(data['roadmapEnabled']) is not bool):
             raise ProjectFault('Roadmap is a boolean setting for project sessions only.', 400)
         if 'fastMode' in data and type(data['fastMode']) is not bool:
@@ -429,6 +432,8 @@ PRAGMA user_version=1;
         self.db.execute('BEGIN IMMEDIATE')
         try:
             previous = self.get(session_id)
+            from model_choice import settings_guard,changed_settings
+            settings_guard(self,session_id,data)
             if data.get('providerId',previous['providerId'])!=previous['providerId']:
                 new_api=any(v['id']==data['providerId'] and v.get('type')=='api' for v in providers(provider_dir))
                 new_claude=any(v['id']==data['providerId'] and v.get('type')=='claude-subscription' for v in providers(provider_dir))
@@ -461,6 +466,8 @@ PRAGMA user_version=1;
                     selected_engine = change(self, session_id, provider_dir, value)
                     self.db.execute('UPDATE sessions SET engine=? WHERE id=?', (encode(selected_engine),session_id))
                 if skill_change: skill_preferences.write(self, session_id, choices)
+                if runtime_change or any(value[k]!=previous[k] for k in ('providerId','model','effort','fastMode')):
+                    changed_settings(self,session_id)
                 self.db.execute('UPDATE sessions SET name=?,settings=?,revision=revision+1,updated_at=? WHERE id=?',
                                 (text(value['name'], 120), encode(settings), now(), session_id))
             self.db.commit(); return self.get(session_id)
@@ -511,6 +518,7 @@ PRAGMA user_version=1;
             saved=self.db.execute('SELECT a.request_id,c.state FROM goal_activations a JOIN goal_commands c USING(request_id) WHERE a.run_id=? ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1',(r['id'],)).fetchone()
             if saved: activation={'requestId':saved['request_id'],'state':saved['state']}
         return {'id': r['id'], 'sessionId': r['session_id'], 'state': r['state'], 'error': r['error'],
+                'selection':{key:config.get(key,False if key=='fastMode' else None) for key in ('providerId','model','effort','fastMode')},
                 'engine': {key: config['engine'][key] for key in ('version', 'sha256') if key in config.get('engine', {})},
                 **({'providerRetry': retry} if retry else {}),
                 'threadId':thread,'turnId':r['turn_id'],'messageSupport':support,

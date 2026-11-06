@@ -28,8 +28,9 @@ export function goalLabel(control: Control, run?: AgentRun | null) {
   return status ? ({ active: 'Active', paused: 'Paused', blocked: 'Blocked', usageLimited: 'Usage limit', budgetLimited: 'Budget limit', complete: 'Complete' })[status] : 'Ready';
 }
 
-export function GoalControls({ control, run, disabled, editor, openEditor, stopRun, inputBusy = false, runtime }: {
+export function GoalControls({ control, run, disabled, editor, openEditor, stopRun, inputBusy = false, runtime, runStopDisabled }: {
   control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; stopRun: () => Promise<void>; inputBusy?: boolean; runtime?: ReactNode;
+  runStopDisabled?:boolean;
 }) {
   const group = useRef<HTMLDivElement>(null), textButton = useRef<HTMLButtonElement>(null);
   const state = control.goal, status = state?.goal?.status;
@@ -54,7 +55,7 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
         <button type="button" aria-label="Pause goal" title={retryingGoal ? 'Cancel automatic continuation and pause this Goal' : control.claude ? 'Pause after the current admitted step' : 'Pause after the current turn'} aria-pressed={!!(confirmed && status === 'paused' && !stopped)}
           disabled={!ready || ((!state?.goal || status !== 'active') && state?.phase !== 'unknown' && !retryingGoal)} onClick={() => void control.perform('pause')}><Icon name="pause" /></button>
         <button type="button" aria-label="Stop goal" title="Pause the Goal and interrupt its run" aria-pressed={!!stopped}
-          disabled={disabled || (!canStopRun && (!ready || (!state?.goal && state?.phase !== 'unknown') || (status === 'complete' && state?.phase !== 'unknown')))}
+          disabled={canStopRun?(runStopDisabled??disabled):disabled||!ready||(!state?.goal&&state?.phase!=='unknown')||(status==='complete'&&state?.phase!=='unknown')}
           onClick={() => { if (canStopRun) void stopRun(); else void control.perform('stop'); }}><Icon name="stop" /></button>
       </div>
       <div className="agent-goal-state-stack"><span className="agent-goal-state" role="status" title={state?.reason ?? goalLabel(control, run)}>{goalLabel(control, run)}</span>{runtime}</div>

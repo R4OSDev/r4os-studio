@@ -1,36 +1,53 @@
 import { useSessionOptions } from './useSessionOptions';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentSession } from '../../../../shared/agent-sessions';
-import { useSessionApi, ProjectRequestError, sessionPath } from './api';
+import { useSessionApi, ProjectRequestError, projectRequestId,sessionPath,busyRun } from './api';
+import {useModelChoice} from './useModelChoice';
 
 import { availableModels, effortLabel, providerAllowed, providerLabel } from './modelChoices';
 import {ContextIndicator} from './ContextIndicator';
 
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
 
-export function ComposerSettings({ session, projectId, token, disabled, saved, busyChanged, refreshAuth }: {
-  session: AgentSession; projectId: string; token: string; disabled: boolean;
+export function ComposerSettings({ session, projectId, token, disabled, active=false, saved, busyChanged, unconfirmedChanged, refreshAuth }: {
+  session: AgentSession; projectId: string; token: string; disabled: boolean; active?:boolean;
   saved: (session: AgentSession) => void; busyChanged: (value: boolean) => void; refreshAuth: () => Promise<void>;
+  unconfirmedChanged?:(value:boolean)=>void;
 }) {
   const { request: projectRequest } = useSessionApi();
   const { options, error: optionsError } = useSessionOptions(projectId);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<Choice | null>(null), inflight = useRef(false);
-  useEffect(() => () => busyChanged(false), [busyChanged]);
+  const focusTarget=useRef<Element|null>(null);
+  const modelChoice=useModelChoice(projectId,session.id,token,saved,refreshAuth);
+  useEffect(()=>{busyChanged(!!pending||modelChoice.busy);return()=>busyChanged(false);},[pending,modelChoice.busy,busyChanged]);
+  useEffect(()=>{unconfirmedChanged?.(!!modelChoice.pending);return()=>unconfirmedChanged?.(false);},[modelChoice.pending,unconfirmedChanged]);
 
-  const choice = pending ?? session;
+  const choice = pending ?? {...session,...(modelChoice.pending??session.pendingModel?.choice)};
   const account = options?.providers.find((value) => value.id === choice.providerId);
   const model = account?.models.find((value) => value.id === choice.model);
-  const controlsDisabled=disabled||!!pending||!options;
+  const deferred=active||!!session.pendingModel;
+  const controlsDisabled=disabled||!!pending||modelChoice.busy||!!modelChoice.pending||!options||(deferred&&!session.latestRun);
+  useLayoutEffect(()=>{
+    if(controlsDisabled||!focusTarget.current)return;
+    const control=focusTarget.current;focusTarget.current=null;
+    if(control instanceof HTMLElement&&control.isConnected&&document.activeElement===document.body)control.focus({preventScroll:true});
+  },[controlsDisabled]);
   async function change(values: Partial<Choice>) {
-    if (disabled || inflight.current) return;
-    const control = document.activeElement;
+    if (controlsDisabled || inflight.current) return;
+    focusTarget.current = document.activeElement;
     inflight.current = true;
-    setPending({ providerId: session.providerId, model: session.model, effort: session.effort, fastMode: session.fastMode, ...values });
-    busyChanged(true); setError('');
+    const next={providerId:choice.providerId,model:choice.model,effort:choice.effort,fastMode:choice.fastMode,...values};
+    setError('');
     const path = sessionPath(projectId, session.id);
     try {
-      const result = await projectRequest<{ session: AgentSession }>(path + '/settings', token, 'PATCH', { revision: session.revision, ...values });
+      if(deferred&&session.latestRun) {
+        await modelChoice.send({requestId:projectRequestId(),revision:session.revision,selectionRevision:session.selectionRevision??0,
+          afterRunId:session.latestRun.id,model:next.model,effort:next.effort,fastMode:next.fastMode});
+        return;
+      }
+      setPending(next);
+      const result = await projectRequest<{ session: AgentSession }>(path + '/settings', token, 'PATCH', { revision: session.revision,selectionRevision:session.selectionRevision??0, ...values });
       saved(result.session);
     } catch (failure) {
       setError((failure as Error).message);
@@ -38,17 +55,15 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
       // Resolve a conflict/lost save reply by reading; never repeat the mutation.
       try { saved((await projectRequest<{ session: AgentSession }>(path)).session); } catch { /* Retain the original error and last known selection. */ }
     } finally {
-      inflight.current = false; setPending(null); busyChanged(false);
-      requestAnimationFrame(() => {
-        if (control instanceof HTMLElement && control.isConnected && document.activeElement === document.body) control.focus({ preventScroll: true });
-      });
+      inflight.current = false; setPending(null);
+
     }
   }
 
   return <div className="agent-composer-settings">
-    <fieldset className="agent-model-controls" aria-label="Run settings" aria-busy={!!pending}>
+    <fieldset className="agent-model-controls" aria-label="Run settings" aria-busy={!!pending||modelChoice.busy}>
       <label className="agent-account-choice"><span>Account</span>
-        <select aria-label="Account" value={choice.providerId} disabled={controlsDisabled} onChange={(event) => {
+        <select aria-label="Account" value={choice.providerId} disabled={controlsDisabled||deferred} onChange={(event) => {
           const nextAccount = options?.providers.find((value) => value.id === event.target.value);
           const nextModel = availableModels(nextAccount).find((value) => value.id === choice.model) ?? availableModels(nextAccount)[0];
           void change({ providerId: event.target.value, model: nextModel?.id ?? '',
@@ -82,8 +97,20 @@ export function ComposerSettings({ session, projectId, token, disabled, saved, b
         </select>
       </label>}<ContextIndicator context={session.context}/></div>
     </fieldset>
+    {session.pendingModel&&<div className="agent-pending-model" role="status">
+      <p>{busyRun(session.latestRun?.state)?`Current run: ${session.latestRun?.selection?.model??session.model} · `:''}Next run: {session.pendingModel.choice.model} · {session.pendingModel.state==='blocked'?'Blocked':'Pending'}</p>
+      {session.pendingModel.reason&&<p>{session.pendingModel.reason}</p>}
+      <button type="button" disabled={controlsDisabled} onClick={()=>void change({model:session.model,effort:session.effort,fastMode:session.fastMode})}>Cancel model change</button>
+    </div>}
+    {!session.pendingModel&&busyRun(session.latestRun?.state)&&session.latestRun?.selection&&session.latestRun.selection.model!==session.model
+      &&<p className="agent-terminal-hint" role="status">Current run: {session.latestRun.selection.model} · Following inputs: {session.model}</p>}
+    {modelChoice.pending&&<div className="agent-pending-model" role="status">
+      <p>{modelChoice.busy?'Checking model choice…':'Model choice unconfirmed.'}</p>
+      <button type="button" disabled={modelChoice.busy} onClick={()=>void modelChoice.read()}>Check original choice</button>
+      <button type="button" disabled={modelChoice.busy} onClick={()=>void modelChoice.retry()}>Retry same choice</button>
+    </div>}
     {session.engine.kind !== 'studio' && <p className="agent-terminal-hint">This conversation uses a native connection. Review a conversion in Session settings → Conversation to use a different direct connection.</p>}
     {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
-    {(error || optionsError) && <p className="agent-choice-error" role="alert">{error || optionsError}</p>}
+    {(error ||modelChoice.error|| optionsError) && <p className="agent-choice-error" role="alert">{error ||modelChoice.error|| optionsError}</p>}
   </div>;
 }

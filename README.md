@@ -1,3 +1,19 @@
+## Change the next model during a run (0.11.18)
+
+In project and skill sessions, **Model** remains available while a run is active.
+Choose a compatible model on the same connection, then save. Studio shows the
+current run model and the pending choice separately. Cancel the choice to keep
+the saved model for future inputs; already accepted queued inputs retain their
+original model and credentials.
+
+A choice never starts or interrupts a run. The complete current run, including
+tools, retries, steering and Goal rounds, keeps its frozen configuration. Before
+admitting subsequent work, the host verifies the original process and tool
+receipts, current model/credential facts and the complete conversation context.
+An unresolved outcome or incompatible context leaves a visible blocked choice.
+After a lost save response, check its original receipt or explicitly retry that
+same request. Reload preserves the request, draft and attachments.
+
 ## Native OpenAI browser sign-in (0.10.21)
 
 Choose **OpenAI · ChatGPT subscription** when connecting a new account.

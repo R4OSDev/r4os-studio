@@ -305,7 +305,7 @@ class Host:
                 result=await asyncio.to_thread(store.mutate,action,ident,request.get('input'),True)
                 if revocation:result['planLogout']=revocation
             return result
-        if op == 'capabilities': return {'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
+        if op == 'capabilities': return {'deferredModelChoice':1, 'studioGoals':1, 'enabled': not bool(self.unbound), 'protocol': 1, 'sessionDeletion':1, 'attachmentValidation':1, 'attachmentFiles':1, 'projectActivity':1, 'apiProviders':1, 'apiModelCatalog':1, 'apiOpenRouter':1, 'apiReasoningHistory':1, 'apiLocal':1, 'apiUsageOrigins':1, 'apiNativeGoals':1, 'claudeProviders':1, 'claudeMetadataControl':1, 'claudeAuthentication':1, 'claudeSubscriptionLimits':1, 'claudeGoals':1, 'claudeGoalExecution':1, 'claudeLiveGoals':1, 'apiResponses':1, 'apiChat':1, 'sessionMessages': 1, 'messageQueue': 1, 'claudeBoundMessages':1, 'messageSteering': 1, 'runReceipts': 1, 'statistics':1, 'skillDeletion':1, 'skillSources':1, 'skillMcp':1, 'environmentNotes':1, 'environmentNotesSettings':1, 'liveGoalPreparation':1, 'liveGoalControl':1, 'nativeGoals': 1, 'nativeGoalExecution': 2, 'nativeGoalReadback': 1, 'nativeImageInputs': 1, 'documentInputs': 1, 'imageGenerationSettings':1, 'projectDeletionLocks': 1, 'projectPinLocks': 1, 'projectInstructions': 1, 'vmStartTools': 1, 'skillSessions': 1, 'skillAuthorTools': 1, 'globalSkills': 1, 'skillScripts': 1, 'nativeWebSearch': 1, 'roadmapSettings': 1, 'roadmapTools': 1, 'remoteHostTools': 1, 'maxActiveRuns': self.max_active_runs, 'version': json.loads((Path(__file__).resolve().parents[2] / 'shared/version.json').read_text())['version']}
         if op == 'claude_provider':
             from claude_provider_store import ClaudeProviders
             store=ClaudeProviders(self.config['providers']);action=request.get('action')
@@ -417,6 +417,13 @@ class Host:
             return {'stopped': True}
         kind, project_id = binding(request)
         session_id = identity(request['sessionId'])
+        if op=='choose_model':
+            from model_choice import Choices
+            async with self.lock:
+                await self.refresh()
+                store=self.store(project_id,kind)
+                try:return Choices(store).accept(session_id,request['input'],self.config['providers'],bool(self.unbound))
+                finally:store.close()
         if op == 'delete_environment_notes':
             from environment_notes import Notes
             store=self.store(project_id,kind)
@@ -430,7 +437,8 @@ class Host:
             if op == 'submit_message' and request.get('input',{}).get('mode') != 'steer':
                 preliminary = self.store(project_id, kind)
                 try:
-                    selected = preliminary.get(session_id)
+                    from model_choice import capture as model_capture
+                    selected,_ = model_capture(preliminary,session_id,preliminary.get(session_id))
                     from message_store import exists
                     previous = exists(preliminary) and preliminary.db.execute('SELECT 1 FROM session_messages WHERE request_id=?', (request['input'].get('requestId'),)).fetchone()
                     latest = preliminary.db.execute('SELECT config FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (session_id,)).fetchone()
@@ -441,7 +449,7 @@ class Host:
                     if not previous and capability is None and selected.get('imageGenerationEnabled', True):
                         from image_generation import inspect
                         if self.image_capability_lock.locked(): raise ProjectFault('Image capability is busy. Your message was preserved.', 429)
-                        async with self.image_capability_lock: capability = await inspect(preliminary, session_id, self.config['providers'])
+                        async with self.image_capability_lock: capability = await inspect(preliminary, session_id, self.config['providers'],{'model':selected['model']})
                 finally: preliminary.close()
             async with self.lock:
                 if op == 'message_control': await self.refresh()
@@ -522,11 +530,12 @@ class Host:
                 preliminary=self.store(project_id,kind)
                 try:
                     previous=preliminary.db.execute('SELECT 1 FROM runs WHERE request_id=?',(request['input'].get('requestId'),)).fetchone()
-                    selected=preliminary.get(session_id)
+                    from model_choice import capture as model_capture
+                    selected,_=model_capture(preliminary,session_id,preliminary.get(session_id))
                     if not previous and selected.get('imageGenerationEnabled',True):
                         from image_generation import inspect
                         if self.image_capability_lock.locked():raise ProjectFault('An image capability read is in progress. No run was started; try again shortly.',429)
-                        async with self.image_capability_lock:image_capability=await inspect(preliminary,session_id,self.config['providers'])
+                        async with self.image_capability_lock:image_capability=await inspect(preliminary,session_id,self.config['providers'],{'model':selected['model']})
                 finally:preliminary.close()
             async with self.lock:
                 await self.refresh()
@@ -574,6 +583,9 @@ class Host:
                             raise ProjectFault('This immutable worker release cannot provide managed skill tools.',503)
                     if not previous and len(self.active) >= self.max_active_runs:
                         raise ProjectFault(f'The host is already running its maximum number of agent runs ({self.max_active_runs}). No run was started. Retry the same request when a slot is available.', 429)
+                    if not previous:
+                        from model_choice import prepare as prepare_model_choice
+                        await prepare_model_choice(self,store,session_id,request['input'])
                     run, fresh = admit(store, session_id, request['input'], self.config['providers'],image_capability)
                     if not fresh: return run
                     return await self.launch_admitted(store, run, kind, project_id, session_id)
@@ -651,6 +663,8 @@ class Host:
                     if last and goal.get('runId')==last['id'] and not messages.resumed_after(sid,last['id']):
                         messages.hold(sid,'Review the original Goal limit or blockade and continue this queue explicitly.');continue
                 config = frozen['config']
+                from model_choice import prepare as prepare_model_choice
+                await prepare_model_choice(self,store,sid,frozen['runInput'],config)
                 from studio_engine import release_for
                 release_for(config['engine'],Path(self.config.get('workerReleaseRoot','/opt/r4os-studio/current')).resolve(strict=True))
                 run, fresh = admit(store, sid, frozen['runInput'], self.config['providers'], config.get('imageGenerationCapability'), config)

@@ -15,7 +15,12 @@ export type ToolPermissions = Record<AgentToolId, boolean>;
 export type SessionOwner = { type: 'project'; id: string } | { type: 'skill'; id: string };
 export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface ProviderRetry { state: 'waiting' | 'submitting' | 'continuing' | 'completed' | 'cancelled' | 'exhausted' | 'unknown'; sequence: number; attempt: number; maxAttempts: number; nextAttempt: number; remainingMs: number; error: string; httpStatusCode: number | null; sampledAt: string }
-export interface AgentRun { engine?: { version?: string; sha256?: string }; id: string; sessionId: string; owner?: SessionOwner; mode?: 'goal'; state: RunState; error: string | null; createdAt: string; completedAt: string | null; threadId?: string | null; turnId?: string | null; messageSupport?: boolean; messageWaitTarget?: import('./agent-messages.js').AfterResponseTarget; goalControlSupport?: boolean; goalActivation?: { requestId: string; state: 'pending' | 'confirmed' | 'failed' | 'unknown' }; providerRetry?: ProviderRetry }
+export interface AgentRun { engine?: { version?: string; sha256?: string }; selection?: ModelChoice & {providerId:string}; id: string; sessionId: string; owner?: SessionOwner; mode?: 'goal'; state: RunState; error: string | null; createdAt: string; completedAt: string | null; threadId?: string | null; turnId?: string | null; messageSupport?: boolean; messageWaitTarget?: import('./agent-messages.js').AfterResponseTarget; goalControlSupport?: boolean; goalActivation?: { requestId: string; state: 'pending' | 'confirmed' | 'failed' | 'unknown' }; providerRetry?: ProviderRetry }
+export interface ModelChoice { model:string; effort:string; fastMode:boolean }
+export interface ModelChoiceInput extends ModelChoice { requestId:string; revision:number; selectionRevision:number; afterRunId:string }
+export interface PendingModelChoice { revision:number; requestId:string; afterRunId:string; state:'pending'|'blocked'; choice:ModelChoice; reason:string|null; updatedAt:string }
+export interface ModelChoiceReceipt { requestId:string; sessionId:string; selectionRevision:number; afterRunId:string; state:'pending'|'cancelled'; choice:ModelChoice; acceptedAt:string }
+export interface ModelChoiceResult { receipt:ModelChoiceReceipt; session:AgentSession }
 export interface AgentSession {
   context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
@@ -30,6 +35,9 @@ export interface AgentSession {
   remoteHostAccess?: { available: boolean; assignedId?: string | null; hostName?: string; reason?: string };
   revision: number; createdAt: string; updatedAt: string; latestRun: AgentRun | null;
   skillOverrides: Record<string, boolean>;
+  selectionRevision?:number;
+  selectionStateRevision?:number;
+  pendingModel?:PendingModelChoice|null;
 }
 export type AgentSessionSummary = Pick<AgentSession, 'id' | 'owner' | 'projectId' | 'skillId' | 'name' | 'revision' | 'createdAt' | 'updatedAt'> & {
   latestRun: Pick<AgentRun, 'id' | 'state'> | null;
@@ -50,6 +58,7 @@ export interface SessionContext {
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {
+  selectionRevision?:number;
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
   webSearchEnabled?: boolean;
   environmentNotesEnabled?: boolean;

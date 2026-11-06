@@ -24,8 +24,13 @@ def saved(store,sid):
 
 def empty(store,row):
     engine=json.loads(row['engine']);settings=json.loads(row['settings'])
-    latest=store.db.execute('SELECT config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
-    if latest:engine=json.loads(latest['config'])['engine']
+    latest=store.db.execute('SELECT config,busy FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
+    if latest:
+        accepted=json.loads(latest['config']);engine=accepted['engine']
+        from model_choice import row as model_choice
+        if (latest['busy'] and settings['providerId']==accepted.get('providerId')
+                and row['revision']==accepted.get('revision') and model_choice(store,row['id']) is not None):
+            settings={**settings,**{key:accepted[key] for key in ('providerId','model') if key in accepted}}
     return {'schema':1,'revision':0,'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':row['id'],
         'engine':engine['kind'] if engine.get('kind') in ('claude-code', 'studio') else 'codex',
         'engineVersion':engine.get('version'),'engineSha256':engine.get('sha256'),
@@ -62,7 +67,10 @@ class Context:
         if not qualified(w.config['engine']):return False
         session=w.store.row(w.session_id);settings=json.loads(session['settings'])
         if (not w.thread_id or session['thread_id']!=w.thread_id or not qualified(json.loads(session['engine']))
-            or any(settings[k]!=w.config[k] for k in ('providerId','model'))):return False
+            or settings['providerId']!=w.config['providerId']):return False
+        if settings['model']!=w.config['model']:
+            from model_choice import row as model_choice
+            if model_choice(w.store,w.session_id) is None or session['revision']!=w.config['revision']:return False
         row=w.store.db.execute('SELECT id,busy FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(w.session_id,)).fetchone()
         return bool(row and row['id']==w.run_id and row['busy'])
 
