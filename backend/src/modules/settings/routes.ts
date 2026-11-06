@@ -23,7 +23,19 @@ export async function settingsRoutes(app: FastifyInstance, { directory }: { dire
       return agentHost({ operation: 'fallback_save', purpose, input: request.body });
     });
   }
-  app.get('/tools', async (request, reply) => {
+  app.get('/context', async (request, reply) => {
+    const session=sessions.session(request,reply,true);reply.header('Cache-Control','private, no-store');
+    return {...await agentHost<Record<string,unknown>>({operation:'context_settings'}),csrfToken:session.token};
+  });
+  app.get<{Params:{requestId:string}}>('/context/requests/:requestId', async (request,reply) => {
+    sessions.session(request,reply);reply.header('Cache-Control','private, no-store');
+    return agentHost({operation:'context_settings_receipt',requestId:request.params.requestId});
+  });
+  app.post('/context',{bodyLimit:4096},async(request,reply) => {
+    sessions.mutation(request,reply);reply.header('Cache-Control','private, no-store');
+    return agentHost({operation:'context_settings_save',input:request.body});
+  });
+  app.get('/tools' , async (request, reply) => {
     sessions.session(request, reply, true);
     return agentHost({ operation: 'system_tools' });
   });

@@ -1,0 +1,5 @@
+.context-settings { overflow-wrap:anywhere; }
+.context-settings label { display:block; margin-bottom:10px; font-weight:600; }
+.context-settings input { width:100%; min-width:0; padding:12px; border:1px solid #4b3b5d; border-radius:7px; background:#17111f; color:#f0e7fa; font:inherit; }
+.context-settings input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.context-settings p { line-height:1.6; }

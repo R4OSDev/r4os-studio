@@ -19,6 +19,7 @@ import { parseRemoteHostRoute, remoteHostHash } from '../features/remote-hosts/l
 import { StatusWorkspace } from '../features/status/StatusWorkspace';
 import { AiLimitsPanel } from '../features/status/AiLimitsPanel';
 
+const ContextSettingsPanel = deferView(() => import('../features/settings/ContextSettingsPanel').then(module => ({default: module.ContextSettingsPanel})));
 const VisionFallbackPanel = deferView(() => import('../features/settings/VisionFallbackPanel').then(module => ({default: module.VisionFallbackPanel})));
 const SystemToolsPanel = deferView(() => import('../features/system-tools/SystemToolsPanel').then(module => ({default: module.SystemToolsPanel})));
 const StatisticsPanel = deferView(() => import('../features/statistics/StatisticsPanel').then(module => ({default: module.StatisticsPanel})));
@@ -131,6 +132,7 @@ export function App() {
   const selectedComponent = remotePage ? (activeRemoteHost ? remoteHosts.hosts.indexOf(activeRemoteHost) + 1 : 0) : vmPage ? (activeVm ? vms.vms.indexOf(activeVm) + 1 : 0) : selected.item;
   const item = componentItems[selectedComponent];
   const providerPage = tab === 'System' && group.name === 'Settings' && item === 'AI Provider';
+  const contextPage = tab === 'System' && group.name === 'Settings' && item === 'Context';
   const fallbackPage = tab === 'System' && group.name === 'Settings' && item === 'Fallback';
   const systemToolsPage = tab === 'System' && group.name === 'Tools';
   const singleColumnPage = tab === 'System' && ['Statistics', 'Tools'].includes(group.name);
@@ -285,7 +287,7 @@ export function App() {
 
         <main className="main-area">
           <div className="page-heading"><h1>{systemToolsPage ? 'Tools' : statisticsPage ? 'Statistics' : remotePage ? activeRemoteHost?.name ?? (remoteHostId ? 'Remote Host' : 'New Remote Host') : vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
-          {fallbackPage ? <VisionFallbackPanel setLeaveGuard={setSettingsLeaveGuard} /> : systemToolsPage ? <SystemToolsPanel /> : statisticsPage ? <StatisticsPanel /> : remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} setLeaveGuard={setSettingsLeaveGuard} /> : null}
+          {contextPage ? <ContextSettingsPanel setLeaveGuard={setSettingsLeaveGuard} /> : fallbackPage ? <VisionFallbackPanel setLeaveGuard={setSettingsLeaveGuard} /> : systemToolsPage ? <SystemToolsPanel /> : statisticsPage ? <StatisticsPanel /> : remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} setLeaveGuard={setSettingsLeaveGuard} /> : null}
         </main>
         </>}
       </div>

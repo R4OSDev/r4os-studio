@@ -59,7 +59,7 @@ def row_value(db, kind='system'):
     if version != 1:
         raise ProjectFault('Unsupported prompt storage.', 503)
     row = db.execute('SELECT prompt,revision FROM system_prompt WHERE id=1').fetchone()
-    if row is None and kind == 'system' and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('global_fallback','global_image_fallback')").fetchone():
+    if row is None and kind == 'system' and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('global_fallback','global_image_fallback','global_context')").fetchone():
         return value(kind=kind)
     if row is None or type(row[1]) is not int or not 1 <= row[1] <= 9007199254740991:
         raise ProjectFault('Prompt storage is unavailable.', 503)

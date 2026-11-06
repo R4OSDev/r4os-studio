@@ -1,3 +1,7 @@
+## 0.11.57
+
+System → Settings → Context stores a global context budget (default/reset 250,000 tokens, range 1–10,000,000) with revision checks and original save receipts. New Studio runs freeze the policy; older accepted runs and queued inputs keep their original configuration. Compaction uses the smaller of the budget and 80% of the selected model window, includes cached input and retains existing byte/protocol guards. Media uses a conservative serialized-byte planning proxy; no estimate is presented as measured usage. Exact current human input and the canonical archive remain available after checkpoints.
+
 ## 0.11.56
 
 Claude subscription Messages requests opt in to the default five-minute prompt cache with a stable tools/system prefix and an automatic conversation breakpoint. Environment Notes declarations are available from the first accepted run round; execution still requires the original live running state and owner. Original prompt text, signed blocks and tool argument validation are retained. Reported cache reads/writes remain separate usage facts and both count toward context occupancy.

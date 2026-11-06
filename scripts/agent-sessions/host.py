@@ -257,6 +257,9 @@ class Host:
             self.attachment_decodes += 1
             try: return await asyncio.to_thread(decode_pending if op=='decode_pending_attachment' else preview_generated, self, request)
             finally: self.attachment_decodes -= 1
+        if op == 'context_settings_save':
+            from context_policy import update
+            return await self.read_work.run(update,self.config['projects'],request.get('input'))
         if op == 'fallback_save':
             from global_fallback import update
             return await self.read_work.run(update,self.config['projects'],self.config['providers'],request.get('input'),request.get('purpose','vision'))
