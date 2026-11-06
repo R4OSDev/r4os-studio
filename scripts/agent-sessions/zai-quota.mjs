@@ -10,7 +10,12 @@ const finish = value => {
   if (finished) return; finished = true; request?.destroy();
   process.stdout.write(JSON.stringify(value) + '\n', () => process.exit(0));
 };
-const fail = code => finish({ ok: false, code });
+const fail = (code, extra = {}) => finish({ ok: false, code, ...extra });
+const retryAfter = value => {
+  if (typeof value !== 'string' || value.length > 80) return null;
+  const time = /^\d{1,10}$/.test(value) ? Date.now() + Number(value) * 1000 : Date.parse(value);
+  return Number.isFinite(time) && time > Date.now() && time <= 8640000000000000 ? new Date(time).toISOString() : null;
+};
 process.on('SIGTERM', () => fail('cancelled')); process.on('SIGINT', () => fail('cancelled'));
 process.stdin.on('end', () => fail('cancelled'));
 const input = await new Promise(resolve => {
@@ -39,7 +44,7 @@ request = https.request({ hostname: host, port: 443, path: '/api/monitor/usage/q
     if (options.all) callback(null, [{ address, family: net.isIP(address) }]); else callback(null, address, net.isIP(address));
   }, servername: host, rejectUnauthorized: true,
 }, response => {
-  if (response.statusCode !== 200) { fail([401,403].includes(response.statusCode) ? 'auth' : 'service'); return; }
+  if (response.statusCode !== 200) { fail(response.statusCode === 429 ? 'rate_limit' : [401,403].includes(response.statusCode) ? 'auth' : 'service', response.statusCode === 429 ? { retryAfterAt: retryAfter(response.headers['retry-after']) } : {}); return; }
   if (!String(response.headers['content-type'] ?? '').startsWith('application/json') || response.headers['content-encoding']) { fail('format'); return; }
   const chunks = []; let bytes = 0;
   response.on('data', chunk => { bytes += chunk.length; if (bytes > 262144) fail('format'); else chunks.push(chunk); });

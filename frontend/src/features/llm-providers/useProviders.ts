@@ -19,8 +19,11 @@ export function useProviders(usageVisible = true) {
   const usageGeneration = useRef(0);
   const usageRequests = useRef<Record<string, number>>({});
   const accountScopes = useRef<Record<string, string | undefined>>({});
+  const zaiFlights = useRef(new Set<string>());
   const connectionScopes = useRef<Record<string, { revision: number; credentialRevision: number; enabled: boolean }>>({});
   const [connectionLimits, setConnectionLimits] = useState<Record<string, ConnectionLimits | null>>({});
+  const connectionLimitsRef = useRef(connectionLimits);
+  useEffect(() => { connectionLimitsRef.current = connectionLimits; }, [connectionLimits]);
   const [usageByProvider, setUsageByProvider] = useState<Record<string, UsageObservation>>({});
   const [remainingByProvider, setRemainingByProvider] = useState<Record<string, number | null>>({});
 
@@ -88,7 +91,7 @@ export function useProviders(usageVisible = true) {
 
   const request = useCallback(<T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
     const usageId = /^\/([^/?]+)\/usage(?:\/resets)?(?:\?.*)?$/.exec(path)?.[1];
-    const limit = method === 'GET' ? /^\/api-connections\/([^/?]+)\/(limits|subscription-limits)$/.exec(path) : null;
+    const limit = method === 'GET' ? /^\/api-connections\/([^/?]+)\/(limits|subscription-limits)(?:\?ensureFresh=true)?$/.exec(path) : null;
     const limitId = limit?.[1];
     const configId = method === 'GET' ? /^\/api-connections\/([^/?]+)$/.exec(path)?.[1] : undefined;
     const sampleId = usageId ?? limitId ?? (configId ? 'config:'+configId : undefined);
@@ -133,7 +136,7 @@ export function useProviders(usageVisible = true) {
   useEffect(() => {
     if (!usageVisible) return;
     let lastAccountRead = 0;
-    const refresh = () => {
+    const refresh = (demand = false) => {
       if (document.hidden) return;
       const accountDue = Date.now() - lastAccountRead >= 60_000;
       if (accountDue) lastAccountRead = Date.now();
@@ -144,16 +147,22 @@ export function useProviders(usageVisible = true) {
       }
       for (const provider of apiProviders) {
         if (provider.enabled && provider.keyConfigured && provider.kind === 'zai-coding-plan') {
-          void request(`/api-connections/${provider.id}/subscription-limits`).catch(() => { /* Only the existing cached observation is read. */ });
+          const pending = connectionLimitsRef.current[provider.id]?.zai?.monitor?.pendingState === 'pending';
+          if ((!accountDue && !demand && !pending) || zaiFlights.current.has(provider.id)) continue;
+          zaiFlights.current.add(provider.id);
+          void request(`/api-connections/${provider.id}/subscription-limits${accountDue || demand ? '?ensureFresh=true' : ''}`)
+            .catch(() => { /* Shared state retains the original stale/unknown evidence. */ })
+            .finally(() => zaiFlights.current.delete(provider.id));
         } else if (accountDue && provider.enabled && provider.keyConfigured && ['claude-plan', 'openrouter'].includes(provider.kind)) {
           void request(`/api-connections/${provider.id}/limits`).catch(() => { /* Cached limits retain their source and stale state. */ });
         }
       }
     };
     refresh();
-    const timer = setInterval(refresh, 15_000);
-    document.addEventListener('visibilitychange', refresh);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+    const timer = setInterval(refresh, 2_000);
+    const visible = () => refresh(true);
+    document.addEventListener('visibilitychange', visible); window.addEventListener('focus', visible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', visible); };
   }, [data.providers, apiProviders, request, usageVisible]);
 
   const managed = new Set(apiProviders.filter(p => p.kind === 'codex-subscription').map(p => p.id));

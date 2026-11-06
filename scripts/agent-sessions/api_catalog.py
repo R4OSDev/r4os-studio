@@ -151,8 +151,12 @@ class Catalogs:
                 secret=db.execute('SELECT value FROM secrets.credentials WHERE provider_id=? AND revision=?',(ident,binding['credentialRevision'])).fetchone()
                 if secret is None:raise ProjectFault('The selected metadata credential revision is unavailable.',409)
                 credential=key(secret[0])
+            self.claimed(db,binding,rid)
             db.execute("UPDATE catalog_requests SET held=1,phase='active',child=? WHERE id=?",(encode(child),rid))
             return credential
+
+    def claimed(self,db,binding,rid):
+        pass
 
     def finish(self,ident,rid,models=None,error=None,child=None,truncated=False):
         with self.api.connect(write=True) as db:

@@ -23,5 +23,7 @@ export function useConnectionLimits(provider: ApiProvider, api: ProviderApi) {
   }, [provider.id, request, zai]);
   const sample = api.connectionLimits[provider.id];
   const matching = sample?.configRevision === provider.revision && sample.credentialRevision === provider.credentialRevision ? sample : null;
-  return useSubscriptionLimits<ConnectionLimits>(provider.id, transport, matching, provider.revision);
+  const controls = useSubscriptionLimits<ConnectionLimits>(provider.id, transport, matching, provider.revision);
+  const original = matching?.zai?.monitor;
+  return { ...controls, busy: controls.busy || original?.pendingState === 'pending', pending: controls.pending || !!original?.pendingRequestId };
 }

@@ -7,6 +7,7 @@ export interface ZaiSubscriptionLimits {
   providerId: string; configRevision: number; credentialRevision: number;
   state: 'current' | 'stale' | 'unknown'; scopeId: string | null; checkedAt: string | null;
   error: string | null; level: string | null; limits: ZaiQuotaWindow[];
+  monitor?: { lastAttemptAt: string | null; nextAutoAt: string | null; failures: number; retryAfterAt: string | null; lastRequestId: string | null; pendingRequestId: string | null; pendingState: 'pending' | 'unknown' | null };
   holds?: { model: string | null; reason: string; resetAt: string | null; observedAt: string }[];
 }
 export interface ZaiQuotaMutation {

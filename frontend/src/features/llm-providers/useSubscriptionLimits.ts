@@ -21,7 +21,8 @@ export function useSubscriptionLimits<T extends { configRevision: number; state:
   const [pending, setPending] = useState<Original | null>(() => original(key) ?? original(legacyKey));
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
-  const inflight = useRef(false), mounted = useRef(true);
+  const inflight = useRef(false), mounted = useRef(true), providerRevision = useRef(revision ?? sample?.configRevision ?? 1);
+  useEffect(() => { providerRevision.current = revision ?? sample?.configRevision ?? 1; }, [revision, sample?.configRevision]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const read = useCallback(async () => {
     const next = await request<T | null>('/limits');
@@ -46,6 +47,11 @@ export function useSubscriptionLimits<T extends { configRevision: number; state:
   const accept = useCallback(async (result: ZaiQuotaMutation) => {
     if (!mounted.current) return;
     setNotFound(false);
+    if (result.state === 'pending' || result.state === 'unknown') {
+      const next = { requestId: result.requestId, providerRevision: providerRevision.current };
+      sessionStorage.setItem(key, JSON.stringify(next)); sessionStorage.removeItem(legacyKey); setPending(next);
+      if (result.state === 'unknown') setError(result.error ?? 'The original check is unconfirmed. No replacement check was sent.');
+    }
     if (result.state === 'complete' || result.state === 'failed') {
       sessionStorage.removeItem(key); sessionStorage.removeItem(legacyKey); setPending(null);
       setError(result.error ?? '');

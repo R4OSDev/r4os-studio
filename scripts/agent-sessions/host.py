@@ -292,9 +292,12 @@ class Host:
                 if action=='connection_limits':return await self.read_work.run(limits.listing,ident)
                 if action=='connection_limit_receipt':return await self.read_work.run(limits.receipt,ident,request.get('requestId'))
                 return await asyncio.to_thread(limits.refresh,ident,request.get('input'))
-            if action in ('zai_quota','zai_quota_receipt','zai_quota_refresh'):
+            if action in ('zai_quota','zai_quota_ensure','zai_quota_receipt','zai_quota_refresh'):
                 from zai_quota import Quota
                 ident=identity(request.get('id'));quota=Quota(self.config['providers'])
+                if action=='zai_quota_ensure':
+                    from zai_quota_host import ensure
+                    return await ensure(self,ident)
                 if action=='zai_quota':return await self.read_work.run(quota.listing,ident)
                 if action=='zai_quota_receipt':return await self.read_work.run(quota.receipt,ident,request.get('requestId'))
                 from zai_quota_host import start as check_quota

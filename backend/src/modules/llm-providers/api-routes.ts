@@ -121,9 +121,9 @@ export function apiProviderRoutes(app: FastifyInstance, sessions: ProviderSessio
     sessions.get(request, reply); reply.header('Cache-Control', 'private, no-store');
     return agentHost({ operation: 'api_provider', action: 'connection_limit_receipt', id: request.params.id, requestId: request.params.requestId });
   });
-  app.get<{ Params: { id: string } }>(base + '/:id/subscription-limits', { schema: { params } }, async (request, reply) => {
-    sessions.get(request, reply);
-    return agentHost({ operation: 'api_provider', action: 'zai_quota', id: request.params.id });
+  app.get<{ Params: { id: string }; Querystring: { ensureFresh?: string } }>(base + '/:id/subscription-limits', { schema: { params, querystring: { type: 'object', additionalProperties: false, properties: { ensureFresh: { type: 'string', enum: ['true'] } } } } }, async (request, reply) => {
+    sessions.get(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return agentHost({ operation: 'api_provider', action: request.query.ensureFresh === 'true' ? 'zai_quota_ensure' : 'zai_quota', id: request.params.id });
   });
   app.post<{ Params: { id: string }; Body: { requestId: string; providerRevision: number } }>(base + '/:id/subscription-limits/check', {
     bodyLimit: 1024, preValidation: async request => modelInput(request.body, false),

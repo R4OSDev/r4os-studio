@@ -8,7 +8,7 @@ from session_store import identity, encode, now
 from store import ProjectFault
 from zai_policy import require
 
-ERRORS = {'auth':'Z.AI rejected the subscription monitoring credential.',
+ERRORS = {'rate_limit':'The Z.AI monitoring service requested a wait before another quota check.', 'auth':'Z.AI rejected the subscription monitoring credential.',
           'service':'Z.AI subscription limits are temporarily unavailable.',
           'format':'Z.AI returned an unsupported subscription limit response.',
           'timeout':'The Z.AI limit check timed out.', 'cancelled':'The original Z.AI limit check was cancelled.'}
@@ -66,14 +66,19 @@ def scope(db,binding,create=False):
 class Quota(Catalogs):
     def schema(self,db):
         super().schema(db)
+        from zai_monitor import schema
+        schema(db)
         db.execute('CREATE TABLE IF NOT EXISTS zai_quota_accounts(provider_id TEXT NOT NULL,credential_revision INTEGER NOT NULL,scope_id TEXT NOT NULL,PRIMARY KEY(provider_id,credential_revision))')
         db.execute('CREATE TABLE IF NOT EXISTS zai_quota(provider_id TEXT PRIMARY KEY,config_revision INTEGER NOT NULL,credential_revision INTEGER NOT NULL,scope_id TEXT,checked_at TEXT,data TEXT,error TEXT)')
 
     def receipt(self,ident,rid):
         with self.api.connect() as db:
-            row=self.request(db,ident,rid)
-            if row['operation']!='quota_refresh':raise ProjectFault('This original request is not a subscription check.',409)
-            return json.loads(row['result']) if row['result'] else {'requestId':rid,'providerId':ident,'state':'pending'}
+            return self.receipt_in(db,ident,rid)
+
+    def receipt_in(self,db,ident,rid):
+        row=self.request(db,ident,rid)
+        if row['operation']!='quota_refresh':raise ProjectFault('This original request is not a subscription check.',409)
+        return json.loads(row['result']) if row['result'] else {'requestId':rid,'providerId':ident,'state':'pending'}
 
     def listing(self,ident,model=None):
         with self.api.connect() as db:
@@ -91,29 +96,27 @@ class Quota(Catalogs):
             if exact and row['checked_at'] and not row['error']:
                 try:current=0<=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(row['checked_at'])).total_seconds()<90
                 except ValueError:pass
-            return {'providerId':ident,'configRevision':provider['revision'],'credentialRevision':provider['credentialRevision'],
+            from zai_monitor import public
+            return {'monitor':public(db,provider),'providerId':ident,'configRevision':provider['revision'],'credentialRevision':provider['credentialRevision'],
                 'state':'current' if current else 'stale' if exact and row['data'] else 'unknown',
                 'scopeId':account,'checkedAt':row['checked_at'] if exact else None,
                 'error':ERRORS.get(row['error'],ERRORS['service']) if exact and row['error'] else None,'holds':holds,**value}
 
     def start_refresh(self,ident,data,allowed=True):
-        self.api.get(ident)
-        with self.api.connect(write=True) as db:
-            self.schema(db);rid,fingerprint,old=self.original(db,ident,data,'quota_refresh')
-            if old:return old,False
-            provider=self.api.current(db,ident);require(provider)
-            if (not isinstance(data,dict) or set(data)!={'requestId','providerRevision'}
-                    or type(data['providerRevision']) is not int or data['providerRevision']!=provider['revision']):
-                raise ProjectFault('Subscription settings changed. Reload before checking limits.',409)
-            if not allowed:raise ProjectFault('Subscription checks are busy. No new request was sent.',429)
-            if not provider['enabled']:raise ProjectFault('Connect your Z.AI subscription before checking limits.',409)
-            if db.execute("SELECT 1 FROM catalog_requests WHERE provider_id=? AND phase!='complete'",(ident,)).fetchone():
-                raise ProjectFault('Read the original provider check before starting another.',409)
-            binding={k:provider[k] for k in ('id','kind','baseUrl','protocol','auth','revision','credentialRevision')}
-            db.execute("INSERT INTO catalog_requests VALUES (?,?,?,?,?,'reserved',0,NULL,NULL,?)",(rid,ident,'quota_refresh',fingerprint,encode(binding),now()))
-            return {'requestId':rid,'providerId':ident,'state':'pending'},True
+        if not isinstance(data,dict) or set(data)!={'requestId','providerRevision'}:
+            raise ProjectFault('Provide the original request and provider revision.',400)
+        from zai_monitor import admit
+        return admit(self,ident,allowed,data)
 
-    def finish(self,ident,rid,body=None,error=None,child=None):
+    def ensure(self,ident,allowed=True):
+        from zai_monitor import admit
+        return admit(self,ident,allowed)
+
+    def claimed(self,db,binding,rid):
+        from zai_monitor import claimed
+        claimed(db,binding,rid)
+
+    def finish(self,ident,rid,body=None,error=None,child=None,retry_after=None):
         with self.api.connect(write=True) as db:
             self.schema(db);row=self.request(db,ident,rid)
             if row['phase']=='complete':return json.loads(row['result'])
@@ -121,7 +124,8 @@ class Quota(Catalogs):
             if row['held'] and (not child or json.loads(row['child'] or 'null')!=child or self.alive(child)):
                 raise ProjectFault('The original subscription transport has not closed. Its credential was preserved.',503)
             provider=self.api.current(db,ident,retired=True);binding=json.loads(row['binding'])
-            if not error and (not provider['enabled'] or any(provider[k]!=v for k,v in binding.items())):error='cancelled'
+            exact=provider['enabled'] and all(provider[k]==v for k,v in binding.items())
+            if not error and not exact:error='cancelled'
             value=None;observed=None
             if not error:
                 secret=db.execute('SELECT value FROM secrets.credentials WHERE provider_id=? AND revision=?',
@@ -135,14 +139,19 @@ class Quota(Catalogs):
             if error and previous and previous['config_revision']==binding['revision'] and previous['credential_revision']==binding['credentialRevision']:
                 value=json.loads(previous['data']) if previous['data'] else None;observed=previous['checked_at']
             account=scope(db,binding,create=True) if row['held'] else scope(db,binding)
-            if not error:
+            if not error and exact:
                 from zai_limits import refresh
                 refresh(db,binding,value,observed)
-            db.execute('INSERT INTO zai_quota VALUES (?,?,?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET config_revision=excluded.config_revision,credential_revision=excluded.credential_revision,scope_id=excluded.scope_id,checked_at=excluded.checked_at,data=excluded.data,error=excluded.error',
-                (ident,binding['revision'],binding['credentialRevision'],account,observed,encode(value) if value is not None else None,error))
+            if exact:
+                db.execute('INSERT INTO zai_quota VALUES (?,?,?,?,?,?,?) ON CONFLICT(provider_id) DO UPDATE SET config_revision=excluded.config_revision,credential_revision=excluded.credential_revision,scope_id=excluded.scope_id,checked_at=excluded.checked_at,data=excluded.data,error=excluded.error',
+                    (ident,binding['revision'],binding['credentialRevision'],account,observed,encode(value) if value is not None else None,error))
             # Original native response remains private in this completed request,
             # independently of the current cached projection and run statistics.
-            original={**binding,'quotaOriginal':body if not error else None,'quotaObservedAt':observed}
+            from zai_monitor import record,finished
+            monitor=record(db,binding)
+            attempted=monitor['lastAttemptAt'] if monitor['lastRequestId']==rid else None
+            finished(db,binding,rid,error,retry_after)
+            original={**binding,'quotaOriginal':body if not error else None,'quotaObservedAt':observed,'quotaAttemptedAt':attempted,'quotaRetryAfterAt':retry_after}
             result={'requestId':rid,'providerId':ident,'state':'failed' if error else 'complete'}
             if error:result['error']=ERRORS.get(error,ERRORS['service'])
             db.execute("UPDATE catalog_requests SET phase='complete',held=0,binding=?,result=? WHERE id=?",(encode(original),encode(result),rid))

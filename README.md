@@ -1,3 +1,7 @@
+## 0.11.31
+
+Visible AI Limits and AI Provider views request fresh Z.AI monitoring on opening/return and roughly every minute. The existing bounded helper and original receipts merge concurrent automatic/manual demand. Durable attempt times, 60–900 second error backoff and provider Retry-After are independent of the last successful observation. Hidden views add no demand; no model request or session continuation is started.
+
 ## 0.11.30
 
 Z.AI subscription monitoring accepts the canonical Chat Completions and Messages endpoint pairs from one shared endpoint contract. Both retain the fixed quota GET, original credential revision and raw monitor authorization. Crossed endpoints, other products and hosts remain rejected; the model connection is never rewritten.
