@@ -12,4 +12,5 @@ export const navigation: NavigationGroup[] = [
   { name: 'Remote Hosts', icon: 'system', items: [] },
   { name: 'Updates', icon: 'box', items: ['R4OS Studio', 'Components', 'Tools', 'R4OS Releases'] },
   { name: 'Statistics', icon: 'statistics', items: [] },
+  { name: 'Tools', icon: 'box', items: [] },
 ];

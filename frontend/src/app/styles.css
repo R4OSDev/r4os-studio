@@ -84,3 +84,8 @@ h2 { margin: 14px 0 12px; color: #ece2fa; font-size: clamp(21px, 2vw, 29px); lin
 
 .view-status { margin: 16px; color: #b8a4ce; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .view-status button { padding: 8px 12px; border: 1px solid #57416a; border-radius: 5px; background: #30223d; color: #d8b9f5; }
+
+/* Shared single-area layout: System Statistics and Tools use only column 1. */
+@media(min-width:801px) { .workspace.single-area-workspace { grid-template-columns:var(--navigation-column-width) minmax(0,1fr); } }
+.navigation.single-area-workspace { grid-template-columns:minmax(0,1fr); }
+@media(max-width:800px) { .navigation.single-area-workspace { min-height:0; } }

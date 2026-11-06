@@ -9,7 +9,10 @@ permission capabilities are identified separately and never counted as tools.
 No runtime, discovery, provider probe, login or inference is started. A narrow
 bounded metadata reader avoids hashing executable programs, while execution
 validation remains unchanged. Missing/changed sources cannot reuse older cached
-metadata. The System → Tools interface follows in 0.11.26.
+metadata. System → Tools (#system/tools) now uses column 1 and the full remaining width.
+Closed accordion rows load no details; pages contain at most 60 tools per source,
+with explicit continuation and a shared three-read limit. Source changes and
+expired access discard old responses. The top Tools tab stays the Skill workspace.
 
 ## Assigned project VM lifecycle tools (0.11.20)
 

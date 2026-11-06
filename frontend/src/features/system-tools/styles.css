@@ -1,0 +1,25 @@
+.system-tools-panel { padding:24px 36px 40px; min-width:0; color:var(--text); }
+.system-tools-panel p { font-size:12px; line-height:1.65; overflow-wrap:anywhere; }
+.system-tools-intro { display:flex; gap:20px; align-items:center; justify-content:space-between; }
+.system-tools-intro p { margin:0; color:var(--muted); }
+.system-tools-panel button { color:var(--text); background:#2d2339; border:1px solid var(--line); border-radius:5px; padding:8px 12px; font:inherit; cursor:pointer; }
+.system-tools-panel button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.system-tools-panel button:disabled { cursor:default; opacity:.5; }
+.system-tools-intro>button { flex-shrink:0; font-size:12px; }
+.system-tool-coverage,.system-tool-provenance { color:var(--muted); }
+.system-tool-source { margin-top:28px; min-width:0; }
+.system-tool-source h2 { display:flex; flex-wrap:wrap; gap:8px 20px; align-items:baseline; font-size:16px; }
+.system-tool-source h2>span { font-size:11px; letter-spacing:0; color:var(--muted); }
+.system-tool-row { border:1px solid #3b2d49; border-bottom-width:0; min-width:0; }
+.system-tool-row:last-of-type { border-bottom-width:1px; }
+.system-tools-panel .system-tool-toggle { display:grid; grid-template-columns:14px minmax(0,1fr) auto; gap:9px; width:100%; border:0; border-radius:0; padding:11px 12px; text-align:left; background:#21192b; }
+.system-tool-toggle:hover { background:#2d203a; }
+.system-tool-name { font:12px ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
+.system-tool-origin { font-size:10px; color:#b4a2c6; overflow-wrap:anywhere; max-width:240px; }
+.system-tool-detail { padding:10px 22px 20px 35px; background:#19131f; min-width:0; }
+.system-tool-detail h3 { font-size:12px; font-weight:500; }
+.system-tool-detail pre { padding:14px; font:11px/1.6 ui-monospace,Consolas,monospace; color:#d8c8e7; background:#120e18; white-space:pre-wrap; overflow-wrap:anywhere; max-height:540px; overflow:auto; }
+.system-tool-context { color:#ba9dd5; }
+.system-tool-pages { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:12px; font-size:11px; }
+.system-tool-pages>span { margin-right:auto; color:var(--muted); }
+@media(max-width:800px) { .system-tools-panel { padding:20px 16px 32px; } .system-tools-intro { flex-wrap:wrap; gap:12px; } .system-tools-panel .system-tool-toggle { grid-template-columns:14px minmax(0,1fr); } .system-tool-origin { grid-column:2; max-width:none; } .system-tool-detail { padding:8px 12px 16px; } }
