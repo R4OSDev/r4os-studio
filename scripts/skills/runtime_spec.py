@@ -28,7 +28,7 @@ def relative(value):
     return value
 
 
-def load(skills, ident, binding, complete=False):
+def load(skills, ident, binding, complete=False, catalog_only=False):
     runtime = binding['runtime']
     if binding['recipe'] != 'rea' or not isinstance(runtime, dict): raise ValueError('No managed runtime is bound.')
     path = relative(runtime['path'])
@@ -45,6 +45,7 @@ def load(skills, ident, binding, complete=False):
     for key in ('node', 'entry', 'catalog'):
         item = value[key]; relative(item['path'])
         if not re.fullmatch('[a-f0-9]{64}', item['sha256']): raise ValueError('Invalid runtime component identity.')
+        if catalog_only and key != 'catalog': continue
         actual = read(root / item['path'], 256 * 1024 * 1024 if key == 'node' else MAX_MANIFEST)
         if hashlib.sha256(actual).hexdigest() != item['sha256']: raise ValueError('The managed ' + key + ' changed.')
     if value['entry'].get('arguments') != ['mcp']: raise ValueError('Unexpected managed REA start arguments.')

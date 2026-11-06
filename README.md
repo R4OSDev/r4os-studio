@@ -1,3 +1,7 @@
+## 0.11.41
+
+Managed skill discovery supports bounded literal queries over the frozen tools/prompts catalogue, with exact native names and skill/revision/hash/query-bound continuation. Search reads verified metadata and starts no client. Exact schema reads include a small orientation hint and the full original reference/hash/page path; native schemas and arguments stay unchanged. Missing or absent wrapper names are rejected before starting a client. System → Tools retains its existing list.
+
 ## 0.11.40
 
 Failed builds expose a small original-log diagnostic excerpt with byte range, hash, job revision and capture limits. `studio_read_development_job` `view=tail` seeks over at most 8192 bytes of the existing build log; follow `nextOffset` with `view=output`. Tail excludes offset/cursor/channel. The browser offers Read log tail. ANSI removal affects only derived previews; original UTF-8/binary bytes, ordinary output cursors and full inventories are retained. Excerpts do not establish a complete error list, SDK failure or native build success and never repeat a build.

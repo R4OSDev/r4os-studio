@@ -11,6 +11,9 @@ import skill_runtime
 
 PAGE = 49152
 
+class WrapperFault(McpFault):
+    wrapper_not_sent = True
+
 
 class SkillTools:
     def __init__(self, worker, starter=None):
@@ -31,9 +34,16 @@ class SkillTools:
         return value
 
     async def catalog(self, entry):
-        if entry['id'] not in self.catalogs:
-            self.catalogs[entry['id']] = (await asyncio.to_thread(skill_runtime.load, self.worker, entry))[2]
-        return self.catalogs[entry['id']]
+        key=hashlib.sha256(encoded({k:entry[k] for k in ('id','revision','activeRevision','activeHash','mcp')})).hexdigest()
+        def facts(path):
+            if path.resolve(strict=True)!=path:raise McpFault('The frozen catalogue metadata path changed.')
+            value=path.stat();return (value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        cached=self.catalogs.get(entry['id'])
+        if cached and cached['key']==key and all(facts(path)==value for path,value in cached['facts']):return cached['catalog']
+        root,manifest,catalog=await asyncio.to_thread(skill_runtime.load,self.worker,entry,catalog_only=True)
+        self.catalogs[entry['id']]={'key':key,'catalog':catalog,
+            'facts':[(path,facts(path)) for path in (root/'runtime.json',root/manifest['catalog']['path'])]}
+        return catalog
 
     async def client(self, entry):
         if self.worker.stopping or getattr(self.worker,'closing',False) or not self.worker.lease:
@@ -100,11 +110,12 @@ class SkillTools:
 
     async def discover(self, args, call_id):
         if not args.get('skillId'):
+            if any(k in args for k in ('query','searchCursor')):raise McpFault('Choose one enabled skillId before searching its frozen metadata.')
             entries = self.worker.config.get('skillAccess', {}).get('entries', [])
             rows=[]
             for entry in entries:
                 if not entry.get('mcp'):continue
-                _,manifest,_=await asyncio.to_thread(skill_runtime.load,self.worker,entry)
+                _,manifest,_=await asyncio.to_thread(skill_runtime.load,self.worker,entry,catalog_only=True)
                 rows.append(dict(id=entry['id'],name=entry['name'],tools=entry['mcp']['tools'],
                     version=entry['mcp']['sourceBinding']['runtime']['version'],
                     namespace=dict(workspace='/workspace',session='/session',node='/runtime/'+manifest['node']['path'],
@@ -113,6 +124,9 @@ class SkillTools:
                         webAccess=self.worker.config['permissions'].get('studio.skill_network') is True)))
             return dict(success=True,output=encoded({'skills':rows}).decode())
         entry = self.entry(args['skillId'])
+        kind = args.get('kind','tools')
+        if ('query' in args or 'searchCursor' in args) and kind not in ('tools','prompts'):
+            raise McpFault('Literal metadata search is available only for tools and prompts; no native client was started.')
         catalog = await self.catalog(entry)
         kind = args.get('kind','tools')
         if kind in ('tools','prompts'):
@@ -123,11 +137,18 @@ class SkillTools:
             if capability not in client.capabilities: return dict(success=True, output=encoded(dict(kind=kind,items=[],available=False,reason='The native server does not advertise resources.')).decode())
             values = await client.listing('resources/templates/list' if kind=='resourceTemplates' else 'resources/list',
                                          'resourceTemplates' if kind=='resourceTemplates' else 'resources')
+        if 'query' in args or 'searchCursor' in args:
+            from skill_catalog_search import search
+            return dict(success=True,output=encoded(search(entry,kind,values,args)).decode())
         if args.get('name') is not None:
             value = next((v for v in values if v.get('name',v.get('uri'))==args['name']),None)
-            if value is None: raise McpFault('This item is absent from the complete frozen skill catalogue.')
+            if value is None: raise McpFault('This exact name is absent from the complete frozen skill catalogue. Use studio_skill_discover with this skillId/kind and query, or list with offset; choose an actual returned name.')
             metadata, raw = self.retain(entry,value,call_id,'schema')
-            return self.page(metadata,raw,args.get('schemaOffset',0))
+            result=self.page(metadata,raw,args.get('schemaOffset',0))
+            if kind=='tools':
+                from skill_catalog_search import orientation
+                page=json.loads(result['output']);page['schemaOrientation']=orientation(value,page);result['output']=encoded(page).decode()
+            return result
         offset, limit = args.get('offset',0),args.get('limit',12)
         selected = values[offset:offset+limit]
         rows = [dict(name=v.get('name'),title=v.get('title'),descriptionPreview=v.get('description','')[:600],
@@ -138,6 +159,17 @@ class SkillTools:
 
     async def invoke(self, args, call_id):
         entry = self.entry(args['skillId'])
+        method, name = args.get('method','tools/call'),args.get('name')
+        if method not in ('tools/call','prompts/get','resources/read','completion/complete'):
+            raise WrapperFault('Wrapper not submitted: unsupported method.')
+        if method!='completion/complete' and (not isinstance(name,str) or not name.strip()):
+            raise WrapperFault('Wrapper not submitted: provide the exact native name (or resource URI). Search studio_skill_discover with skillId/query, then read the complete schema.')
+        if method=='completion/complete' and name is not None:
+            raise WrapperFault('Wrapper not submitted: completion takes full native params without name.')
+        if method in ('tools/call','prompts/get'):
+            catalog=await self.catalog(entry)
+            if name not in {v['name'] for v in catalog.get('tools' if method=='tools/call' else 'prompts',[])}:
+                raise WrapperFault('Wrapper not submitted: this exact name is absent from the frozen catalogue. Search studio_skill_discover with this skillId/query and choose an actual returned name.')
         try: parameters = strict(args['argumentsJson'].encode())
         except (ValueError, UnicodeError): raise McpFault('argumentsJson must be strict JSON, retaining all original nulls, unions and fields.') from None
         if not isinstance(parameters,dict): raise McpFault('Native MCP arguments must be a JSON object.')
@@ -189,6 +221,7 @@ class SkillTools:
         except McpFault as error:
             unknown = bool(error.request_id and isinstance(error.state,dict) and not error.state.get('providerEndConfirmed',False))
             return dict(success=False,error='unknown' if unknown else 'skillUnavailable',output=str(error),
+                        **({'requestNotSent':True} if getattr(error,'wrapper_not_sent',False) else {}),
                         **({'partialChangesPossible':True,'skillMcpRequest':error.request_id} if unknown else {}))
         except (OSError,ValueError,KeyError,TypeError):
             return dict(success=False,error='skillUnavailable',output='The frozen skill runtime or original result is unavailable or changed. No alternate skill/runtime was selected.')

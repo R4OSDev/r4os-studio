@@ -21,10 +21,10 @@ def freeze(projects, ident, source):
         raise ProjectFault('The managed skill runtime is incomplete or changed. Review its original preparation before running.', 409) from None
 
 
-def load(worker, entry, complete=False):
+def load(worker, entry, complete=False, catalog_only=False):
     frozen = entry.get('mcp')
     if not isinstance(frozen, dict) or frozen.get('schema') != 1: raise McpFault('This accepted run has no managed runtime for the selected skill.')
-    root, manifest, catalog = runtime_spec.load(skills_root(worker.store.projects), entry['id'], frozen['sourceBinding'], complete=complete)
+    root, manifest, catalog = runtime_spec.load(skills_root(worker.store.projects), entry['id'], frozen['sourceBinding'], complete=complete, catalog_only=catalog_only)
     if (manifest['catalog']['sha256'] != frozen['catalogHash']
             or hashlib.sha256(encoded(catalog['tools'])).hexdigest() != frozen['toolsHash']
             or len(catalog['tools']) != frozen['tools']): raise McpFault('The frozen MCP catalogue changed.')

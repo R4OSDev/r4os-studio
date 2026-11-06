@@ -3613,7 +3613,7 @@
     },
     {
       "name": "studio_skill_discover",
-      "description": "Discover every tool and its exact original schema from an enabled managed skill. Omit skillId to list runtimes. Select a native name to read its complete schema; follow returned result pages if needed. This does not run an analysis.",
+      "description": "List or search the complete frozen tools/prompts catalogue of one enabled managed skill without starting its client. query is a case-insensitive literal name/description substring (1–160 UTF-8 bytes); follow nextCursor as searchCursor with the same skillId/kind/query. Query excludes name/offset/schemaOffset. Omit query and choose an exact returned name to read its unchanged complete schema. schemaOrientation is only a hint; if complete=false, read every studio_read_skill_result page using reference/nextOffset and the same sha256. Missing or guessed names grant no capability. Resources listing keeps its existing native capability path.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3650,6 +3650,16 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 33554432
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "searchCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
           }
         },
         "required": [],
@@ -3658,7 +3668,7 @@
     },
     {
       "name": "studio_skill_call",
-      "description": "Call the exact native method of an enabled managed skill through its frozen runtime. Read its schema first. argumentsJson contains the unchanged native JSON object (including nulls/unions); never coerce it to fit another provider schema. Tools use name plus their argument object. Prompts use name plus prompt arguments; resource reads use their URI as name and {}; completion uses its full native params and no name. Original results are retained, including Evidence and images. A client timeout or Unknown is not permission to repeat.",
+      "description": "Call the exact native method of an enabled managed skill through its frozen runtime. Read its schema first. argumentsJson contains the unchanged native JSON object (including nulls/unions); never coerce it to fit another provider schema. Tools use name plus their argument object. Prompts use name plus prompt arguments; resource reads use their URI as name and {}; completion uses its full native params and no name. Original results are retained, including Evidence and images. A client timeout or Unknown is not permission to repeat. Search first, then use the exact returned name and read all original schema pages, including native required fields. Missing/absent wrapper names are rejected before client start; argumentsJson is not corrected or filled in. A target opened in old history may since have been closed or lost; use the permitted native state checks and original receipts, never automatically reopen or repeat analysis.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4291,7 +4301,7 @@
     },
     {
       "name": "studio_skill_discover",
-      "description": "Discover every tool and its exact original schema from an enabled managed skill. Omit skillId to list runtimes. Select a native name to read its complete schema; follow returned result pages if needed. This does not run an analysis.",
+      "description": "List or search the complete frozen tools/prompts catalogue of one enabled managed skill without starting its client. query is a case-insensitive literal name/description substring (1–160 UTF-8 bytes); follow nextCursor as searchCursor with the same skillId/kind/query. Query excludes name/offset/schemaOffset. Omit query and choose an exact returned name to read its unchanged complete schema. schemaOrientation is only a hint; if complete=false, read every studio_read_skill_result page using reference/nextOffset and the same sha256. Missing or guessed names grant no capability. Resources listing keeps its existing native capability path.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4328,6 +4338,16 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 33554432
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "searchCursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
           }
         },
         "required": [],
@@ -4336,7 +4356,7 @@
     },
     {
       "name": "studio_skill_call",
-      "description": "Call the exact native method of an enabled managed skill through its frozen runtime. Read its schema first. argumentsJson contains the unchanged native JSON object (including nulls/unions); never coerce it to fit another provider schema. Tools use name plus their argument object. Prompts use name plus prompt arguments; resource reads use their URI as name and {}; completion uses its full native params and no name. Original results are retained, including Evidence and images. A client timeout or Unknown is not permission to repeat.",
+      "description": "Call the exact native method of an enabled managed skill through its frozen runtime. Read its schema first. argumentsJson contains the unchanged native JSON object (including nulls/unions); never coerce it to fit another provider schema. Tools use name plus their argument object. Prompts use name plus prompt arguments; resource reads use their URI as name and {}; completion uses its full native params and no name. Original results are retained, including Evidence and images. A client timeout or Unknown is not permission to repeat. Search first, then use the exact returned name and read all original schema pages, including native required fields. Missing/absent wrapper names are rejected before client start; argumentsJson is not corrected or filled in. A target opened in old history may since have been closed or lost; use the permitted native state checks and original receipts, never automatically reopen or repeat analysis.",
       "inputSchema": {
         "type": "object",
         "properties": {
