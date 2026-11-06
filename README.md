@@ -1,3 +1,7 @@
+## 0.11.39
+
+Desktop job summaries and the job card expose the same small read-only diagnosis: original DESKRUN symbolic error, terminal/status, process identity, earlier window/content, current window, native app exit and cleanup. Launcher/SSH exit values remain separate from app exits. Completed observation does not establish app-test success, negative R4OS values are not interpreted as POSIX signals, and missing window evidence does not establish a missing Desktop. Original jobs and receipt/detail/output bytes are preserved.
+
 ## 0.11.38
 
 `studio_capture_vm` accepts explicit `scope=vm` to observe the assigned, already running VM without an app job or live window. A bounded observation job freezes the original project/VM/image/boot and capture receipt, with the same permissions, image budget and Vision paths as existing screenshots. Diagnostic images appear in chat and Gallery and cannot authorize input or app-test completion. App-bound capture retains its strict window checks; no VM, app, SDK or SSH is started by diagnosis.

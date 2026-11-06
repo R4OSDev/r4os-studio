@@ -273,7 +273,20 @@ export interface DevelopmentJob {
   createdAt: string;
   completedAt: string | null;
 }
+export interface DesktopDiagnostics {
+  version: 1; source: string; jobState: string; checkState: string; cause: 'unresolved'; notice: string;
+  launch: {state: string; adapter?: string; contract?: string; request?: string | null; phase?: string;
+    error?: string; errorlevel?: number; terminal?: boolean; sshExitCode?: number;
+    transportUncertain?: boolean; statusError?: string; statusErrorlevel?: number};
+  process: {confirmed: boolean; instanceId?: number; generation?: string};
+  window: {earlier: {window?: number; content?: string; checkedAt?: string; contentConfirmed: boolean};
+    current: {state?: string; windowId?: number; windowWidth?: number; windowHeight?: number; windowVisible?: boolean; windowFocused?: boolean}};
+  appExit: {confirmed: boolean; code: number | null; source: string; interpretation: string; stopReason?: string | null; exitReason?: number};
+  processEndConfirmed: boolean; cleanupConfirmed: boolean;
+  console: {state: string; reason?: string; bytes?: number};
+}
 export interface DevelopmentJobPage {
+  desktopDiagnostics?: DesktopDiagnostics | null;
   artifactSummary?: { id: string; kind?: DevelopmentArtifact['kind']; role?: ProjectTemplate };
   startOffset?:number;pageBytes?:number;totalBytes?:number;hasMore?:boolean;
   captureLimitReached?:boolean;captureTruncated?:boolean|null;outputEncoding?:'utf-8'|'replacement';rawOutputBase64?:string;
@@ -288,6 +301,7 @@ export interface DevelopmentJobPage {
 }
 /** Independent findings read from matching private originals; grants no lifecycle action. */
 export interface DevelopmentExecutionEvidence {
+  completion?: {stopReason?: string | null; exitReason?: number; consoleObserved?: boolean};
   version: 1;
   source?: 'private-guest-close-receipt' | 'private-guest-observation' | 'native-retained-completion';
   processEndConfirmed: boolean;

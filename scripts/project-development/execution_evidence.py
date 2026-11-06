@@ -40,6 +40,7 @@ def describe(store, job):
                        for key in ('state', 'instanceId', 'generation', 'closeConfirmed', 'exitCode', 'completionSequence'))): return result
         state = value.get('completion') if closed or retained or watchdog else value.get('observation')
         if not isinstance(state, dict) or any(state.get(key) != process[key] for key in ('instanceId', 'generation')): return result
+        result['completion'] = {k: state[k] for k in ('stopReason', 'exitReason', 'consoleObserved') if k in state}
         result['source'] = ('native-retained-completion' if retained else 'original-watchdog-completion' if watchdog else
                             'private-guest-close-receipt' if closed else 'private-guest-observation')
         result['processEndConfirmed'] = state.get('state') == 'completed' and state.get('closeConfirmed') is True

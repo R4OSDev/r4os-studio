@@ -303,13 +303,16 @@ class Jobs:
             except DevelopmentFault:artifact_summary={'artifactUnavailable':'Original artifact receipt unavailable.'}
         from evidence import list_for
         from execution_evidence import describe
+        from desktop_diagnostics import describe as diagnose
+        execution = describe(self, job) if job['kind'] == 'execution' else None
+        diagnosis = diagnose(job, execution) if job['kind'] == 'execution' else None
         return {'job': job,**artifact_summary, **({'channel': channel} if channel else {}), 'output': text,'outputEncoding':encoding,**raw_output,'startOffset':offset,'pageBytes':len(data),
                 'totalBytes':size,'hasMore':offset+len(data)<size,'captureLimitReached':size>=capture_limit,
                 'captureTruncated':channel_state.get('truncated') if channel else job.get('captureTruncated'),'nextOffset': offset + len(data),
                 'truncated':channel_state.get('truncated', False) if channel else path.exists() and path.stat().st_size >= capture_limit,
                 'outputKind': 'build' if job['kind'] == 'build' else 'console' if job['kind'] == 'execution' else 'diagnostic',
                 'evidence': list_for(self, job_id),
-                **({'executionEvidence': describe(self, job)} if job['kind'] == 'execution' else {})}
+                **({'executionEvidence': execution, 'desktopDiagnostics': diagnosis} if job['kind'] == 'execution' else {})}
 
     def artifact_metadata(self, artifact_id, recovering=False):
         """Private ownership lookup; callers must verify bytes before using files."""

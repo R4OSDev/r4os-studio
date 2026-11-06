@@ -57,7 +57,7 @@ def summary(job,page=None):
         small['check']['findings']=[short(v,200) for v in check.get('findings',[])[:4]]
         small['check']['evidenceIds']=check.get('evidenceIds',[])[:8]
         small['check']['criteriaDetails']='Read view=details; all configured criteria remain unchanged.'
-    if job.get('desktopLaunch'):small['desktopLaunch']=pick(job['desktopLaunch'],('request','phase','errorlevel','content','window','process_id','process_generation','statusErrorlevel'))
+    if job.get('desktopLaunch'):small['desktopLaunch']=pick(job['desktopLaunch'],('adapter','contract','request','phase','error','errorlevel','terminal','content','window','process_id','process_generation','sshExitCode','transportUncertain','statusError','statusErrorlevel'))
     if job.get('outputFiles') is not None:
         small['outputFiles']=[{**pick(v,('name','state','id','sha256','bytes','containsExpectedText')),
             **({'error':short(v['error'],160)} if v.get('error') else {})} for v in job['outputFiles'][:8]]
@@ -72,6 +72,9 @@ def summary(job,page=None):
         value['artifact']={**pick(artifact,('id','entry','packageSha256','sourceSha256','manifestSha256','buildProof')),
             'fileCount':len(artifact.get('files',[])), 'inventoryView':'inventory'}
     if page.get('executionEvidence'):value['executionEvidence']=page['executionEvidence']
+    from desktop_diagnostics import describe as diagnose
+    diagnosis = page.get('desktopDiagnostics') or diagnose(job, page.get('executionEvidence'))
+    if diagnosis: value['desktopDiagnostics'] = diagnosis
     if page.get('stop'):value['stop']=page['stop']
     value['outputPage']=output_state(page)
     # A preview consumes no cursor. Explicit output begins at the original requested offset.
@@ -81,6 +84,7 @@ def summary(job,page=None):
             'presentation':value['presentation'],'outputPage':value['outputPage'],
             'check':pick(small.get('check',{}),('state','assessment')),'checkCompletion':small.get('checkCompletion'),
             'readiness':pick(small.get('readiness',{}),('state','reasonCode')),
+            'desktopDiagnostics': diagnosis,
             'notice':'Detailed checks, artifacts and cleanup receipts are retained in view=details.'}
     return value
 

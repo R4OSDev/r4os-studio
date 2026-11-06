@@ -217,6 +217,8 @@ class DesktopLaunch:
             self.attempt['transport'] = {k: response[k] for k in ('sshExitCode','transportUncertain',
                 'localSshProcessId','startedAt','observedAt','elapsedMilliseconds') if k in response}
             self.attempt['transport'].update(stdoutBytes=len(response['stdout']), stderrBytes=len(response['stderr']))
+        if native is not None:
+            self.attempt['nativeDiagnostic'] = {'adapter': 'DESKRUN', 'contract': '0.1.1', **{k: native[k] for k in ('phase', 'error', 'errorlevel', 'terminal') if k in native}}
         if native is not None and native.get('phase') != 'before_submit':
             self.attempt.update(nativeRequest=native['request'], nativeRequestConfirmed=True,
                 nativePhase=native['phase'], nativeErrorlevel=native['errorlevel'],
@@ -253,7 +255,7 @@ class DesktopLaunch:
             self.evidence_launch = value.copy()
         if value['phase'] == 'before_submit':
             if starting:
-                self.record_attempt('not_submitted', response=response)
+                self.record_attempt('not_submitted', response=response, native=value)
                 raise NotSubmitted('DESKRUN rejected the launch before submission: ' + value['error'] + '.')
             if self.value:
                 self.store.update(self.job['id'], desktopLaunch={**self.value, 'statusError': value['error'], 'statusErrorlevel': value['errorlevel'], 'checkedAt': now()})
