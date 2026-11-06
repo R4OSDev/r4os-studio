@@ -1,3 +1,7 @@
+## 0.11.54
+
+Claude tool declarations expose the existing object fields and describe all original input variants without sending unsupported composition at the schema root. Canonical tool schemas, argument shapes, permissions and whole-batch validation remain unchanged. Other connectors keep their original schemas. Model-selection preflight now prepares the full current scope catalog; the worker still dispatches only permission-filtered tools. Unsupported root forms fail before dispatch, and a proven Claude schema rejection gets a specific error without exposing provider text or retrying the request.
+
 ## 0.11.53
 
 Model changes validate the same active checkpoint, latest exact instruction and conversation tail used by Studio runs. Superseded archived patch observations no longer reject a usable active context. A historical unknown Stop can cross a model route only with its exact canonical record, original receipt/result and verified committed process-end recovery; its unknown result is retained as historical data alongside an explicit end-proof notice. Model selection and the worker use the same projection, and prepared-request reuse checks the current proof scope. Other unconfirmed observations still block. Local context errors identify the preparation failure and state that no model request was sent. No history is rewritten, no action is repeated and no model is automatically selected.

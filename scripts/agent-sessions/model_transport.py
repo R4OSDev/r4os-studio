@@ -36,6 +36,12 @@ class ModelFault(ProjectFault):
         if code=='claude_subscription_unavailable':
             self.category='quota'
             self.args=('Refresh this Claude connection’s subscription limits to confirm included usage and disabled paid extra usage. No model request was sent.',)
+        if code=='model_tool_schema_unavailable':
+            self.category='protocol'
+            self.args=('A Studio tool schema cannot be represented for this model. No model request was sent.',)
+        if code=='model_tool_schema_rejected':
+            self.category='protocol'
+            self.args=('The model service rejected a Studio tool input schema. The request was not repeated.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -257,7 +263,11 @@ class ModelTransport:
                 frame = loads(raw)
                 if not isinstance(frame, dict): raise ModelFault()
                 if frame.get('type') == 'error':
-                    raise ModelFault(frame.get('code', 'model_transport_error'), frame.get('httpStatus'),
+                    code = frame.get('code', 'model_transport_error')
+                    if self.binding.get('kind') == 'claude-plan':
+                        from claude_tool_schema import rejected
+                        if rejected(frame.get('httpStatus'), frame.get('details')): code = 'model_tool_schema_rejected'
+                    raise ModelFault(code, frame.get('httpStatus'),
                         not_dispatched=frame.get('notDispatched') is True,details=frame.get('details'))
                 if frame.get('type') == 'end':
                     if ended: raise ModelFault()

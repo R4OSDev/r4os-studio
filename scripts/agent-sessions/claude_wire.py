@@ -16,9 +16,11 @@ def headers():
 
 
 def request(body, tools):
+    from claude_tool_schema import input_schema
     names = {tool['name']: PREFIX+tool['name'] for tool in tools}
     for tool in body['tools']:
         tool['name'] = names[tool['name']]
+        tool['input_schema'] = input_schema(tool['input_schema'])
     first = next((m for m in body['messages'] if m['role'] == 'user'), {})
     text = next((p['text'] for p in first.get('content', []) if p.get('type') == 'text'), '')
     # The original client's sampled indices are UTF-16 code units.

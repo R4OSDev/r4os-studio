@@ -97,11 +97,15 @@ def validate_context(store, sid, messages, selection):
     transport.media_resolver = media
     from studio_history import recoveries
     transport.history_resolver = lambda messages: recoveries(store, sid, messages)
-    try: transport.prepare(messages, '', [], selection['effort'])
+    from tool_catalog import specifications
+    # Local compatibility preflight covers every current tool in this scope;
+    # only the worker's permission-filtered declarations are ever dispatched.
+    try: transport.prepare(messages, '', specifications(store.owner_type), selection['effort'])
     except ModelFault as error:
         reasons = {'model_context_unconfirmed_tool': 'An active historical tool observation still lacks a verified original recovery.',
                    'model_context_unpaired': 'The active context contains an unmatched tool call or result.',
                    'model_context_not_portable': 'Original provider content cannot be safely projected to this model.',
+                   'model_tool_schema_unavailable': 'A Studio tool schema cannot be represented for this provider.',
                    'model_content_unavailable': 'The active context contains content unavailable to this model.'}
         reason = reasons.get(error.code, 'Local request preparation failed (' + error.code + ').')
         raise ProjectFault('The selected model cannot continue this original context: ' + reason + ' No model request was sent.', 409) from None
