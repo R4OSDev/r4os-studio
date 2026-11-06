@@ -7,11 +7,14 @@ from session_store import SessionStore, identity
 from store import ProjectFault
 
 OPERATIONS = frozenset(('events', 'goal', 'goal_receipt', 'goal_clock', 'run_receipt',
-    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools'))
+    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools', 'fallback', 'fallback_receipt'))
 
 
 def read(config, request):
     op = request['operation']
+    if op in ('fallback','fallback_receipt'):
+        from global_fallback import present, receipt
+        return present(config['projects'],config['providers']) if op == 'fallback' else receipt(config['projects'],request.get('requestId'))
     if op == 'system_tools':
         from system_tool_catalog import read as tool_catalog_read
         return tool_catalog_read(config['projects'], request)

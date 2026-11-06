@@ -1,0 +1,7 @@
+.vision-fallback h2 { margin:0 0 12px; font-size:19px; }
+.vision-fallback p { font-size:12px; line-height:1.7; color:var(--muted); overflow-wrap:anywhere; }
+.vision-fallback label { display:block; font-size:12px; margin:20px 0 8px; }
+.vision-fallback select { width:100%; min-width:0; max-width:100%; color:var(--text); background:#20172a; border:1px solid #58416d; border-radius:5px; padding:10px; font:inherit; font-size:12px; }
+.vision-fallback .vision-fallback-state { color:var(--text); }
+.vision-fallback-saved { font:11px ui-monospace,Consolas,monospace; }
+.vision-fallback .system-prompt-actions { flex-wrap:wrap; gap:12px; }

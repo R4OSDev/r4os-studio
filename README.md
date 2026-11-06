@@ -1,3 +1,14 @@
+## Vision fallback settings (0.11.27)
+
+System → Settings → Fallback optionally saves one existing connection/model for
+requested image analysis. Its independent revision and original Save/Clear
+receipts share the existing global Settings.sqlite; prompts, backups and restored
+settings keep their own values. Only confirmed image/text/transport/default facts
+qualify a target; function tools are not required. Unavailable saved identities
+stay visible. Reading or saving never probes, signs in or calls a model. Drafts,
+receipt recovery and explicit original-request retry survive navigation/reload.
+The actual bounded image helper and screenshot integration follow in 28–29.
+
 ## Read-only system tool metadata (0.11.25)
 
 The protected Settings tools API reads the installed original Studio contracts,
