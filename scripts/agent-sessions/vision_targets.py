@@ -8,7 +8,8 @@ from store import ProjectFault
 
 
 def output_budget(model):
-    return min(8192,model['maxOutputTokens'],max(1,model['contextWindow']//4))
+    # This is our bounded helper policy, never a reported provider maximum.
+    return min(8192,model.get('maxOutputTokens') or 8192,max(1,model['contextWindow']//4))
 
 
 def reason(provider, listing, model):
@@ -16,14 +17,15 @@ def reason(provider, listing, model):
     if provider['protocol'] not in ('responses','chat-completions','messages') or listing['stale']: return 'Current transport/model metadata unavailable.'
     caps = model['declaredCapabilities']
     if any(caps[k] != 'supported' for k in ('text','imageInput','streaming')): return 'Text, image input and streaming must be confirmed.'
-    if not model['contextWindow'] or not model['maxOutputTokens']: return 'Confirmed context and output limits are required.'
+    if not model['contextWindow']: return 'A confirmed context limit is required.'
     if model['defaultEffort'] is None or model['defaultEffort'] not in model['efforts']: return 'Documented model default unavailable.'
     if caps['reasoning'] == 'unknown': return 'Reasoning contract unavailable.'
     if caps['reasoning'] == 'supported':
-        try:
-            facts = reasoning_facts(model['reasoning'])
-            if not facts or model.get('reasoningMetadata') and model['reasoningMetadata']['facts'] != facts: return 'Current documented reasoning facts must be applied.'
-        except (KeyError, ProjectFault): return 'Documented reasoning facts unavailable.'
+        if 'reasoning' in model or model.get('reasoningMetadata'):
+            try:
+                facts = reasoning_facts(model['reasoning'])
+                if not facts or model.get('reasoningMetadata') and model['reasoningMetadata']['facts'] != facts: return 'Current documented reasoning facts must be applied.'
+            except (KeyError, ProjectFault): return 'Documented reasoning facts unavailable.'
         if provider['protocol'] == 'messages':
             value = model.get('messages', {})
             if value.get('thinkingType') not in ('adaptive','enabled') and not (model['defaultEffort'] == 'none' and value.get('thinkingDisabled')):

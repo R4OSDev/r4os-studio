@@ -107,6 +107,9 @@ def snapshot(w,operation,setting):
              'visionChild':{'purpose':'vision','parentRunId':w.run_id,'operationId':operation,'settingsRevision':setting['revision']}}
     value.update(studio_model_facts(provider,model,effort,function_tools=False))
     value['apiModel']['maxOutputTokens'] = output_budget(model)
+    value['visionChild']['bounds'] = {'maxTextBytes':MAX_TEXT,'deadlineSeconds':TIMEOUT,
+        'reservedOutputTokens':output_budget(model),
+        'requestOutputTokenLimit':None if provider['kind']=='codex-subscription' else output_budget(model)}
     if provider['kind'] == 'zai-coding-plan':
         from zai_client import freeze
         value['apiZaiClient'] = freeze(w.store,w.session_id,provider)
@@ -128,7 +131,10 @@ class VisionTransport(ModelTransport):
         maximum = self.binding['maxOutputTokens']
         protocol = self.binding['protocol']
         field = 'max_output_tokens' if protocol == 'responses' else 'max_tokens' if protocol == 'messages' or self.binding.get('server') in ('ollama','lm-studio') or self.binding['kind'] == 'zai-coding-plan' else 'max_completion_tokens'
-        body[field] = maximum
+        # The native account backend has its own Responses contract. It does
+        # not expose the public API's max_output_tokens parameter. Retain our
+        # input reservation, actual output byte bound and child deadline.
+        if self.binding['kind'] != 'codex-subscription': body[field] = maximum
         if not body.get('tools'): body.pop('tools',None)
         # Bound the entire serialized input conservatively, including image data;
         # this byte ceiling is a local admission bound, not reported token usage.

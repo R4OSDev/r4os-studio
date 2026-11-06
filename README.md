@@ -1,5 +1,7 @@
 ## 0.11.34
 
+0.11.35 corrects Vision fallback eligibility for models with confirmed image input but omitted output maxima or optional reasoning detail. Local helper bounds remain separate from provider metadata; the native OpenAI account transport retains its own request contract. Main model, image originals and original operation receipts remain unchanged.
+
 Project and skill sessions show “Waiting for limit reset” and “Stop waiting” only for a confirmed active reset wait. Cancellation has an owner/session/wait/revision-bound original receipt, persists across reply loss/reload, and ends only future automatic continuation and its monitoring demand. Shared checks and an already admitted run continue. Session events and existing recovery reads share monotonic wait revisions; no new session poller or confirmation dialog.
 
 ## 0.11.33
