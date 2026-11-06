@@ -244,7 +244,8 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     {session?.engine.kind === 'claude-code' && <SessionClaudeLimits key={base} base={base} token={token} observation={claudeQuota?.studioSessionId === sessionId ? claudeQuota : null} />}
     {session?.engine.api?.kind === 'claude-plan' && <SessionConnectionLimits key={base + session.providerId} base={base} token={token} providerId={session.providerId} />}
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={0}
-      onWheel={transcript.onWheel} onScroll={transcript.onScroll}>
+      onWheel={transcript.onWheel} onScroll={transcript.onScroll} onKeyDown={transcript.onKeyDown}
+      onPointerDown={transcript.onPointerDown} onTouchStart={transcript.onTouchStart} onTouchMove={transcript.onTouchMove}>
       <div ref={transcriptContent}>
       {!items.length && session && <p className="agent-empty">Start a conversation.</p>}
       <SessionTranscript before={before} older={older} loadOlder={loadOlder} log={log} following={transcript.following} pauseFollowing={transcript.pause} resumeFollowing={transcript.resume} viewChanged={transcript.viewChanged} items={items} projectId={projectId} sessionId={sessionId} token={token} liveText={active&&run?.id===liveText?.runId?liveText:null}/>

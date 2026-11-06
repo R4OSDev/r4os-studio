@@ -1,3 +1,7 @@
+## 0.11.48
+
+Scrolling back to the bottom of a long session restores the latest-message window and keeps following new messages and streamed text. A pinned history window no longer pauses following again as the next message arrives. Downward scrolling at the bottom also resumes following without the Latest messages button. Reading older messages, text selection, history anchors and independent tool-output scrolling retain their positions. The shared provider stream and the 80-block rendering limit are unchanged.
+
 ## 0.11.47
 
 Studio renews the single tool-argument correction allowance after a fully successful tool batch, so an unrelated schema mistake later in a long run can be corrected. Consecutive invalid batches remain bounded; text replies, failed/partial batches and uncertain effects do not renew the allowance. Union-schema errors now name common missing required fields and declared choices, or bounded alternative variant errors. Tool schemas, permissions, whole-batch prevalidation and original receipt/identity checks remain unchanged. Existing failed runs and blocked Goals require explicit continuation.

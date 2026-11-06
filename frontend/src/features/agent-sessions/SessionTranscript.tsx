@@ -152,7 +152,8 @@ export const SessionTranscript=memo(function SessionTranscript({items, projectId
   const [groups]=useState(()=>new Groups()), entries=useMemo(()=>groups.project(items),[groups,items]);
   const [startKey,setStartKey]=useState<string|null>(null), root=useRef<HTMLDivElement>(null);
   const anchor=useRef<{key:string;top:number}|null>(null), pendingEarlier=useRef<string|null>(null);
-  const start = startKey ? Math.max(0,entries.findIndex(entry=>entry.key===startKey)) : Math.max(0,entries.length-WINDOW), end=Math.min(entries.length,start+WINDOW);
+  if(following&&startKey!==null)setStartKey(null);
+  const start = !following && startKey ? Math.max(0,entries.findIndex(entry=>entry.key===startKey)) : Math.max(0,entries.length-WINDOW), end=Math.min(entries.length,start+WINDOW);
   useLayoutEffect(()=>{viewChanged(end===entries.length);},[end,entries.length,viewChanged]);
   const capture=()=>{
     const viewport=log.current; if(!viewport)return;
@@ -161,6 +162,10 @@ export const SessionTranscript=memo(function SessionTranscript({items, projectId
     if(row)anchor.current={key:row.dataset.transcriptKey!,top:row.getBoundingClientRect().top};
   };
   useLayoutEffect(()=>{
+    if(following){
+      anchor.current=null;pendingEarlier.current=null;
+      return;
+    }
     if (pendingEarlier.current && entries[0]?.key !== pendingEarlier.current) {
       const offset=entries.findIndex(entry=>entry.key===pendingEarlier.current); pendingEarlier.current=null;
       setStartKey(entries[Math.max(0,offset-STEP)]?.key??null);return;
@@ -169,10 +174,10 @@ export const SessionTranscript=memo(function SessionTranscript({items, projectId
     const saved=anchor.current;
     if(saved&&log.current){
       const row=Array.from(root.current?.querySelectorAll<HTMLElement>('[data-transcript-key]')??[]).find(element=>element.dataset.transcriptKey===saved.key);
-      if(row)log.current.scrollBy({top:row.getBoundingClientRect().top-saved.top});
+      if(row){log.current.scrollBy({top:row.getBoundingClientRect().top-saved.top});pauseFollowing();}
       anchor.current=null;
     }
-  },[entries,following,startKey,start,log]);
+  },[entries,following,startKey,start,log,pauseFollowing]);
   useEffect(()=>{
     const selection=()=>{const value=document.getSelection();if(value&&!value.isCollapsed&&value.rangeCount&&root.current&&value.getRangeAt(0).intersectsNode(root.current))pauseFollowing();};
     document.addEventListener('selectionchange',selection);return()=>document.removeEventListener('selectionchange',selection);
@@ -189,6 +194,6 @@ export const SessionTranscript=memo(function SessionTranscript({items, projectId
       ?<ToolCallBlock tools={entry.tools} projectId={projectId} sessionId={sessionId} token={token}/>
       :<Message item={entry.item} projectId={projectId} sessionId={sessionId} live={entry.item.status==='running'&&liveText?.runId===entry.item.runId&&liveText?.itemId===entry.item.id}/>}</div>)}
     {end<entries.length&&<button type="button" className="agent-older" onClick={()=>{capture();pauseFollowing();setStartKey(entries[start+STEP].key);}}>Load later messages</button>}
-    {startKey!==null&&<button type="button" className="agent-older" onClick={()=>{anchor.current=null;setStartKey(null);resumeFollowing();}}>Latest messages</button>}
+    {startKey!==null&&!following&&<button type="button" className="agent-older" onClick={()=>{anchor.current=null;setStartKey(null);resumeFollowing();}}>Latest messages</button>}
   </div>;
 });
