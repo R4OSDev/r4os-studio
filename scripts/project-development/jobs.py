@@ -117,8 +117,10 @@ class Jobs:
         if kind == 'package':
             from package_jobs import admit
             return admit(self, request, owner)
-        if kind not in ('build', 'deploy', 'execution', 'vm_start', 'ssh'): raise DevelopmentFault('This development operation is not available.', 400)
+        if kind not in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh'): raise DevelopmentFault('This development operation is not available.', 400)
         expected = {'requestId', 'projectRevision', 'settingsRevision'} | ({'artifactId'} if kind == 'deploy' else ({'deploymentId'} if kind == 'execution' else set()))
+        if kind in ('vm_stop','vm_restart') and (not owner or not owner.get('agentRunId')):
+            raise DevelopmentFault('VM lifecycle requires an active project agent owner.',403)
         if kind == 'ssh':
             expected.add('command')
             from project_ssh import command

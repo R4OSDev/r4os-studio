@@ -66,7 +66,7 @@ def maintenance_active(projects, vm_id):
     return True
 
 
-def inspect(projects, lease_id, token=None, check_boot=True):
+def inspect(projects, lease_id, token=None, check_boot=True, cleanup=False):
     root = Path(projects) / '.studio/development'; path = root / 'leases' / (identity(lease_id) + '.json')
     if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid VM reservation.', 403)
     value = json.loads(path.read_text())
@@ -87,7 +87,11 @@ def inspect(projects, lease_id, token=None, check_boot=True):
     if lock.resolve(strict=True) != lock: raise DevelopmentFault('Invalid VM reservation file.', 503)
     with lock.open('a') as stream:
         try: fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError: return value
+        except BlockingIOError:
+            if value['scope'].get('lifecycleKind'):
+                from vm_lifecycle import validate_lease
+                value={**value,'lifecycle':validate_lease(projects,value,cleanup=cleanup)}
+            return value
     raise DevelopmentFault('The VM reservation lock is no longer held.', 409)
 
 
@@ -108,7 +112,7 @@ def main():
                 idle(projects,sys.argv[3])
             print(encode({'locked': True, 'developmentHost': True}), flush=True); sys.stdin.buffer.read(1)
     elif op == 'inspect':
-        request = json.loads(sys.stdin.buffer.read(8193)); value = inspect(projects, request['leaseId'], request['token'], request.get('checkBoot', True))
+        request = json.loads(sys.stdin.buffer.read(8193)); value = inspect(projects, request['leaseId'], request['token'], request.get('checkBoot', True),request.get('lifecycleCleanup',False) is True)
         # A private bridge needs the bound scope, never a reusable credential.
         value.pop('token'); print(encode({'result': value}))
     else: raise DevelopmentFault('Unsupported VM reservation operation.', 400)

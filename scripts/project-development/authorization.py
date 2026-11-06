@@ -7,7 +7,7 @@ from update_authorization import PERMISSIONS as UPDATE_PERMISSIONS, permission a
 
 PERMISSIONS = {'build': 'build_project', 'deploy': 'deploy_project', 'execution': 'run_project',
     'wait_build': 'build_project', 'wait_deploy': 'deploy_project', 'wait_execution': 'run_project',
-    'ssh': 'run_vm_command', 'vm_start': 'start_project_vm', 'wait_vm_start': 'start_project_vm',
+    'ssh': 'run_vm_command', 'vm_start': 'start_project_vm', 'wait_vm_start': 'start_project_vm', 'vm_stop':'stop_project_vm','vm_restart':'restart_project_vm','wait_vm_stop':'stop_project_vm','wait_vm_restart':'restart_project_vm',
     'read_job': 'read_development_job', 'artifact': 'read_development_job', 'deployment': 'read_development_job',
     'evidence': 'capture_vm', 'evidence_history': 'capture_vm', 'capture': 'capture_vm', 'assess': 'capture_vm',
     'input': 'send_vm_input', 'stop_job': 'stop_development_job', 'complete_check': 'complete_development_job'}
@@ -54,6 +54,10 @@ def authorize(store, owner, operation, peer_pid, job=None, stopping=False, recov
         raise DevelopmentFault('Window control requires an app project and its own run/control permissions.', 403)
     if job and (job['projectId'] != store.id or job.get('sessionId') != owner['sessionId']):
         raise DevelopmentFault('This development job belongs to another session.', 403)
+    if operation in ('vm_stop','vm_restart','wait_vm_stop','wait_vm_restart'):
+        if row[1]!='running' or not row[0]:raise DevelopmentFault('VM lifecycle requires its original active agent run.',403)
+        if operation in ('vm_restart','wait_vm_restart') and not permits(config,store.id,'start_project_vm','stop_project_vm','restart_project_vm'):
+            raise DevelopmentFault('Restart additionally requires the original start and stop permissions.',403)
     if operation in ('vm_start', 'wait_vm_start') and config.get('owner', {}).get('type') != 'project':
         raise DevelopmentFault('VM startup requires an app project.', 403)
     if operation == 'complete_check' and (config.get('owner', {}).get('type') != 'project' or not all(config['permissions'].get('studio.' + name) for name in ('run_project', 'stop_development_job'))):
@@ -69,7 +73,7 @@ def authorize_job(store, job, allow_stopping=False):
     path = store.projects / store.id / 'Sessions/Sessions.sqlite'
     if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid delegated session storage.', 403)
     db = sqlite3.connect('file:' + str(path) + '?mode=ro', uri=True)
-    try: row = db.execute('SELECT session_id,state,config,busy FROM runs WHERE id=?', (job['agentRunId'],)).fetchone()
+    try: row = db.execute('SELECT r.session_id,r.state,r.config,r.busy,r.worker,s.revision FROM runs r JOIN sessions s ON s.id=r.session_id WHERE r.id=?', (job['agentRunId'],)).fetchone()
     finally: db.close()
     config = json.loads(row[2]) if row else {}
     permission = update_permission(job['kind'],job) if job['kind'] in UPDATE_PERMISSIONS else PERMISSIONS[job['kind']]
@@ -82,5 +86,15 @@ def authorize_job(store, job, allow_stopping=False):
             raise DevelopmentFault('This original run has no app-project update binding.',403)
         if job.get('recoveryAction')=='resume-batch' and not config['permissions'].get('studio.commit_update'):
             raise DevelopmentFault('This batch resume no longer has its frozen commit permission.',403)
+    if job['kind'] in ('vm_stop','vm_restart'):
+        if config.get('revision')!=row[5]:raise DevelopmentFault('The original agent settings revision changed.',403)
+        from lease import birth
+        worker=json.loads(row[4] or '{}')
+        try:
+            if not worker.get('pid') or worker.get('birth')!=birth(worker['pid']):raise ValueError()
+        except (OSError,ValueError):raise DevelopmentFault('The original agent worker ended or its process identity changed.',403) from None
+        if not row[3] or row[1]!='running':raise DevelopmentFault('VM lifecycle requires its original active agent run.',403)
+        if job['kind']=='vm_restart' and not permits(config,store.id,'start_project_vm','stop_project_vm','restart_project_vm'):
+            raise DevelopmentFault('Restart no longer has its frozen start/stop/restart permissions.',403)
     if job['kind'] == 'vm_start' and (config.get('owner', {}).get('type') != 'project' or not row[3] or row[1] != 'running'):
         raise DevelopmentFault('VM startup requires its original active agent turn.', 403)

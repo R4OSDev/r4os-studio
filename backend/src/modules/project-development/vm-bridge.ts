@@ -12,14 +12,16 @@ import type { ConsoleBridge } from '../virtual-machines/console.js';
 import type { PointerControllers } from '../virtual-machines/pointer.js';
 import { qmp } from '../virtual-machines/qmp.js';
 import { exec, unitState } from '../virtual-machines/systemd.js';
+import { lifecycleInfo, lifecycleEffect, lifecycleTarget, type LifecycleProof } from './vm-lifecycle.js';
 
 interface Lease {
   id: string; vmId: string;
+  lifecycle?: LifecycleProof;
   scope: { kind: 'access' | 'job' | 'recovery'; projectId?: string; projectRevision?: number;
     vmRevision: string; imageId: string; imageSha256: string; bootId?: string };
 }
 
-function inspectLease(leaseId: string, token: string, checkBoot = true): Promise<Lease> {
+function inspectLease(leaseId: string, token: string, checkBoot = true, lifecycleCleanup = false): Promise<Lease> {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/project-development/lease.py', import.meta.url)),
       'inspect', projectsDirectory()], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
@@ -32,7 +34,7 @@ function inspectLease(leaseId: string, token: string, checkBoot = true): Promise
       try { const value = JSON.parse(data); if (value.error) reject(new VmError(value.error, value.code)); else resolve(value.result); }
       catch { reject(new VmError('Invalid VM reservation response.', 503)); }
     });
-    child.stdin.end(JSON.stringify({ leaseId, token, checkBoot }));
+    child.stdin.end(JSON.stringify({ leaseId, token, checkBoot, lifecycleCleanup }));
   });
 }
 
@@ -56,12 +58,12 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           const request = JSON.parse(pending.split('\n')[0]);
           if (!request || typeof request !== 'object' || Object.keys(request).some((k) => !['operation', 'leaseId', 'token', 'port'].includes(k))
             || !validId(request.leaseId) || !/^[a-f0-9]{64}$/.test(request.token)) throw new VmError('Invalid private VM request.', 400);
-          if (!['info', 'start', 'forward_open', 'forward_close', 'capture', 'capture_running'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
-          const lease = await inspectLease(request.leaseId, request.token, request.operation !== 'forward_close'), id = lease.vmId;
+          if (!['info', 'start', 'shutdown', 'lifecycle_info', 'forward_open', 'forward_close', 'capture', 'capture_running'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
+          const lease = await inspectLease(request.leaseId, request.token, request.operation !== 'forward_close', request.operation === 'forward_close'), id = lease.vmId;
           const config = await manager.config(id), scope = lease.scope;
           if ((config.revision ?? config.imageSha256) !== scope.vmRevision || config.imageId !== scope.imageId || config.imageSha256 !== scope.imageSha256)
             throw new VmError('The reserved VM configuration or image changed.');
-          if (scope.kind === 'job') {
+          if (scope.kind === 'job' && !(request.operation === 'forward_close' && lease.lifecycle)) {
             const { projectStore } = await import('../projects/store.js');
             const project = await projectStore<{ vmId: string | null; revision: number }>(projectsDirectory(), { operation: 'get', id: scope.projectId });
             if (project.vmId !== id || project.revision !== scope.projectRevision) throw new VmError('The project VM assignment changed.');
@@ -74,7 +76,19 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           // development operation, and drain/release held relative mouse input.
           consoles.closeControls(id); await pointers.closeVm(id);
           let result: unknown;
-          if (request.operation === 'info') {
+          if (request.operation === 'lifecycle_info') {
+            if (!lease.lifecycle) throw new VmError('This reservation has no VM lifecycle authority.', 403);
+            result = await lifecycleInfo(manager, id, lease.lifecycle);
+          } else if (request.operation === 'shutdown' || request.operation === 'start' && lease.lifecycle) {
+            if (!lease.lifecycle) throw new VmError('This reservation has no VM lifecycle authority.', 403);
+            const action = request.operation === 'shutdown' ? 'shutdown' : 'start';
+            result = { vm: await manager.action(id, action, async () => {
+              const fresh = await inspectLease(request.leaseId, request.token, false);
+              if (fresh.vmId !== id || !fresh.lifecycle) throw new VmError('The original VM lifecycle reservation changed.', 403);
+              lifecycleTarget(await manager.get(id), fresh.scope);
+              await lifecycleEffect(manager, id, fresh.lifecycle, action);
+            }) };
+          } else if (request.operation === 'info') {
             const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=InvocationID', '--value'], { timeout: 5000 });
             result = { vm: await manager.get(id), invocationId: stdout.trim(), exchange: await exchangeIdentity(vmPath(id)),
               exchangeWorker: await exchangeWorkerCapability(id) };

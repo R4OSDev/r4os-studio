@@ -39,7 +39,7 @@ def prepare(worker,history,prepared,broker):
         'ownerId':worker.store.owner_id,'model':config['model'],'toolScope':tool_scope(config)}
     if binding!=broker.binding:raise ProjectFault('The original native bridge binding changed.',409)
     tools=[{'name':t['name'][7:],'description':t['description'],'inputSchema':t['inputSchema']}
-        for t in native_specifications(tool_scope(config))]
+        for t in native_specifications(config)]
     goal=getattr(worker,'claude_goal',None)
     live=config.get('claudeGoalPreparation') is True
     if goal or live:

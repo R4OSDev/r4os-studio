@@ -1,12 +1,12 @@
 import type { ProjectPins, ProjectTemplate } from './projects.js';
 
 /** Studio contracts; these are not R4OS ABI or SDK interfaces. */
-export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'update_transfer' | 'update_install' | 'update_commit' | 'update_verify' | 'update_recovery' | 'deploy' | 'execution' | 'vm_start' | 'ssh';
+export type DevelopmentJobKind = 'build' | 'package' | 'update_probe' | 'update_transfer' | 'update_install' | 'update_commit' | 'update_verify' | 'update_recovery' | 'deploy' | 'execution' | 'vm_start' | 'vm_stop' | 'vm_restart' | 'ssh';
 export type DevelopmentJobState = 'queued' | 'starting' | 'running' | 'stopping'
   | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export type DevelopmentCheckState = 'not-run' | 'passed' | 'failed' | 'inconclusive';
 export type DevelopmentToolId = 'studio.build_project' | 'studio.deploy_project' | 'studio.run_project'
-  | 'studio.complete_development_job' | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm' | 'studio.run_vm_command';
+  | 'studio.complete_development_job' | 'studio.read_development_job' | 'studio.stop_development_job' | 'studio.capture_vm' | 'studio.send_vm_input' | 'studio.start_project_vm' | 'studio.stop_project_vm' | 'studio.restart_project_vm' | 'studio.run_vm_command';
 
 export interface DevelopmentCapability {
   reasonCode?: string | null;
@@ -193,6 +193,7 @@ export interface DevelopmentCheck {
   assessment: 'host' | 'agent' | 'user' | null;
 }
 export interface DevelopmentJob {
+  vmLifecycle?: { kind: 'vm_stop' | 'vm_restart'; phase: string; noop?: boolean; shutdownDispatched?: boolean; newBootId?: string; readyAt?: string; qemuEnded?: boolean; stopped?: { confirmed: boolean; observedAt: string } };
   sdkInputs?: DevelopmentSdkInputs;
   sdkResolution?: Record<string, unknown>;
   sdkDevelopment?: { sha256: string; sdkSource: Record<string, unknown> } | null;

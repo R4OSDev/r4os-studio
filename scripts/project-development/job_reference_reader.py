@@ -17,7 +17,7 @@ def identity(value):
     return str(uuid.UUID(value))
 
 KINDS = ('build','package','update_probe','update_transfer','update_install','update_commit',
-    'update_verify','update_recovery','deploy','execution','vm_start','ssh')
+    'update_verify','update_recovery','deploy','execution','vm_start','vm_stop','vm_restart','ssh')
 
 
 def validate(query):
@@ -56,7 +56,7 @@ def listing(projects, project_id, session_id, query=None):
             run = session_db.execute('SELECT 1 FROM runs WHERE id=? AND session_id=?',(query['originRunId'],session_id)).fetchone()
             tool = session_db.execute('SELECT tool FROM tools WHERE run_id=? AND call_id=?',
                                       (query['originRunId'],query['toolCallId'])).fetchone()
-            if not run or not tool or tool[0] not in ('studio_build_project','studio_deploy_project','studio_run_project','studio_start_project_vm'):
+            if not run or not tool or tool[0] not in ('studio_build_project','studio_deploy_project','studio_run_project','studio_start_project_vm','studio_stop_project_vm','studio_restart_project_vm'):
                 raise JobReferenceFault('The original admission call does not belong to this session.',404)
             original_request = str(uuid.uuid5(uuid.UUID(query['originRunId']),'development:'+query['toolCallId']))
     result = {'schemaVersion':1,'projectId':project_id,'sessionId':session_id,'readOnly':True,

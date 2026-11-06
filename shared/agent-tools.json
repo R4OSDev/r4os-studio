@@ -836,6 +836,26 @@
       }
     },
     {
+      "name": "studio_stop_project_vm",
+      "description": "Gracefully shut down only this project's assigned VM. This call waits in the Studio harness for the original QEMU process and service/export worker to end and Exchange synchronization to finish. Already fully stopped is a confirmed no-op. No SSH login is needed. Never forces shutdown, stops another job, changes settings or repeats an uncertain power action. Inspect the original job after an interrupted or lost reply.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "studio_restart_project_vm",
+      "description": "Restart only this project's currently running assigned VM as one original job: graceful shutdown, confirmed process/export end, one start, and fresh authenticated SSH/VER readiness on a new boot. Requires this run's restart, stop and start permissions plus Network and enabled development access. A stopped VM must use start_project_vm. Never forces shutdown, stops other jobs, changes settings or repeats an uncertain effect. Wait in the harness; do not poll or resubmit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "studio_run_vm_command",
       "description": "Run one free R4OS SSH command on this project's currently assigned VM. Studio keeps target, login and host key private. No build/deployment/desktop receipt needed. Returns the durable original job immediately; read_development_job observes output/status and stop_development_job stops only the SSH client. No interactive stdin/PTY, POSIX shell or automatic VM start. Never repeat a command after a lost response: use the original session job lookup.",
       "inputSchema": {

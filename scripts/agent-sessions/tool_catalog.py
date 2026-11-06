@@ -2,6 +2,7 @@
 from copy import deepcopy
 from functools import lru_cache
 import json
+import hashlib
 from pathlib import Path
 
 GOAL_TOOLS = ('get_goal', 'update_goal')
@@ -62,6 +63,17 @@ def specifications(scope='project'):
         schema['properties'] = properties
         schema['required'] = [name for name in variants[0].get('required', [])
                               if all(name in part.get('required', []) for part in variants)]
+    saved=scope.get('toolCatalog') if isinstance(scope,dict) else None
+    if saved is not None:
+        if (not isinstance(saved,dict) or saved.get('scope')!=tool_scope(scope)
+                or not isinstance(saved.get('tools'),list) or len(set(saved['tools']))!=len(saved['tools'])):
+            raise ValueError('The original tool catalog binding is invalid.')
+        by_name={t['name']:t for t in tools}
+        if any(name not in by_name for name in saved['tools']):raise ValueError('The original accepted tool catalog is unavailable.')
+        tools=[by_name[name] for name in saved['tools']]
+        raw=json.dumps(tools,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+        if hashlib.sha256(raw).hexdigest()!=saved.get('sha256'):
+            raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
     return tools
 
 

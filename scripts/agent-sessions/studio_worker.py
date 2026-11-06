@@ -53,7 +53,7 @@ class StudioWorker(Worker):
                 try: require(self); return True
                 except ProjectFault: return False
             return self.config['permissions'].get('studio.' + name, False)
-        return [tool for tool in specifications(tool_scope(self.config)) if allowed(tool['name'][7:])]
+        return [tool for tool in specifications(self.config) if allowed(tool['name'][7:])]
 
     def validate_calls(self, calls, tools, rejected=()):
         names = {tool['name'] for tool in tools}; ids = set()

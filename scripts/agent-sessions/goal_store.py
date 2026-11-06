@@ -117,6 +117,8 @@ class Goals:
                 if model_row(self.store,sid) is not None:
                     selection,choice=model_capture(self.store,sid,self.store.get(sid))
                     captured={'_modelSelection':{'choice':model_values(selection),'modelChoice':choice}}
+                from active_tools import goal_selection
+                captured['_toolSelection']=goal_selection(self.store,sid)
             self.store.db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',
                 (key, sid, fingerprint, encode({**data,'_previousPhase':snapshot['phase'],'_goal':snapshot['goal'],**captured}), 'pending', 'accepted', now()))
             if 'target' in data: LiveGoals(self.store).bind(sid,data,snapshot['goal'])

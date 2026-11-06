@@ -230,6 +230,7 @@ class Worker:
         if self.provider_retry.state in ('waiting', 'submitting'):
             return await output({'success': False, 'error': 'interrupted', 'output': 'No native tool is admitted while the original continuation is waiting.'})
         if (not name.startswith('studio_') or name[7:] not in tools_for(tool_scope(self.config)) or params.get('namespace') is not None
+            or self.config.get('toolCatalog') is not None and name not in self.config['toolCatalog']['tools']
             or params.get('threadId') != self.thread_id or params.get('turnId') != self.turn_id):
             return await output({'success': False, 'error': 'invalidCall', 'output': 'This call does not belong to the active Studio run.'})
         return await self.bound_tool(name,params['arguments'],params['callId'])
@@ -241,6 +242,7 @@ class Worker:
         if output is None:
             async def output(result,image_data=None):return await self.development.native_output(result,image_data)
         if (not isinstance(name,str) or not name.startswith('studio_') or name[7:] not in tools_for(tool_scope(self.config))
+            or self.config.get('toolCatalog') is not None and name not in self.config['toolCatalog']['tools']
             or not isinstance(call_id,str) or not 1<=len(call_id.encode())<=256 or any(ord(c)<=32 or ord(c)==127 for c in call_id)):
             return await output({'success':False,'error':'invalidCall','output':'This tool is outside the original Studio run binding.'})
         if not isinstance(arguments, dict) or len(encode(arguments).encode()) > 131072:
@@ -319,7 +321,7 @@ class Worker:
                     if name == 'studio_read_project_git' else
                     {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True})
             except Exception:
-                uncertain = name[7:] in ('import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
+                uncertain = name[7:] in ('import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 uncertain = uncertain or name == 'studio_control_app_window' and (not isinstance(arguments,dict) or arguments.get('action') != 'status')
                 uncertain = uncertain or name == 'studio_skill_call'
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
@@ -523,7 +525,7 @@ class Worker:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
                 response = await self.client.request('thread/start', {**native_provider,'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
-                           'ephemeral': False, 'dynamicTools': native_specifications(tool_scope(self.config)), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})},
+                           'ephemeral': False, 'dynamicTools': native_specifications(self.config), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})},
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
                 with self.store.db:

@@ -38,6 +38,10 @@ def summary(job,page=None):
     small['error']=short(job.get('error'),512)
     for key in ('process','desktopLaunchBudget','desktopLaunchAttempt','desktopLinkActivation','windowControl','desktopShortcut','lastKeyPlan','ssh'):
         if isinstance(job.get(key),dict):small[key]=job[key]
+    if job.get('vmStart'):small['vmStart']=pick(job['vmStart'],('ready','started','bootId','checkedAt','guestRelease','guestKernel'))
+    if job.get('vmLifecycle'):
+        lifecycle=job['vmLifecycle'];small['vmLifecycle']=pick(lifecycle,('kind','phase','noop','shutdownDispatched','newBootId','readyAt','qemuEnded'))
+        if lifecycle.get('stopped'):small['vmLifecycle']['stopped']=pick(lifecycle['stopped'],('confirmed','observedAt'))
     if job.get('checkCompletion'):small['checkCompletion']=pick(job['checkCompletion'],('requestId','reason','state','cancelled','closed','completedAt'))
     if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed'))
     if job.get('target'):small['target']=pick(job['target'],('vmId','bootId'))

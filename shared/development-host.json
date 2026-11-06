@@ -22,7 +22,9 @@
     "screenshotMaxHeight": 1024,
     "vmReadyTimeoutSeconds": 180,
     "vmStartTimeoutSeconds": 300,
-    "packageTimeoutSeconds": 60
+    "packageTimeoutSeconds": 60,
+    "vmStopTimeoutSeconds": 900,
+    "vmLifecycleTimeoutSeconds": 1200
   },
   "features": {
     "agentTools": 2,

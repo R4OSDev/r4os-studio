@@ -28,13 +28,19 @@ async def bind(host, request, peer_pid):
     try:
         job = store.get(request['jobId']); vm = vm_config(store.r4os, lease['vmId'])
         authorize_job(store, job)
-        if (job['kind'] != 'vm_start' or job['state'] != 'running' or not job.get('agentRunId') or job['binding']['id'] != vm['id']
+        if (job['kind'] not in ('vm_start','vm_restart') or job['state'] != 'running' or not job.get('agentRunId') or job['binding']['id'] != vm['id']
                 or any(job['binding'][k] != vm[k] for k in ('revision', 'imageId', 'imageSha256'))
                 or store.project['vmId'] != vm['id'] or store.project['revision'] != job['projectRevision']):
             raise DevelopmentFault('This VM start no longer has its original project binding.')
         info = await vm_call(SimpleNamespace(id=request['leaseId'], token=request['token']), 'info')
         if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM is no longer running.')
+        if job['kind']=='vm_restart':
+            lifecycle=job.get('vmLifecycle') or {}
+            if (not (lifecycle.get('stopped') or {}).get('confirmed') or info['invocationId']==lifecycle.get('original',{}).get('unit',{}).get('invocationId')):
+                raise DevelopmentFault('Restart needs its confirmed original stop and a new VM invocation.')
         boot = await host.boots.ensure(vm, info['invocationId'])
+        if job['kind']=='vm_restart' and boot['bootId']==job['vmLifecycle']['original']['bootId']:
+            raise DevelopmentFault('Restart has no new confirmed boot generation.')
         record = host.access.record(vm['id'])
         if complete:
             target = job.get('vmStart') or {}
@@ -59,7 +65,11 @@ async def bind(host, request, peer_pid):
             host.access.save_record(vm['id'], record)
             target = {**target, 'ready': True, 'checkedAt': checked, 'guestRelease': version['release'], 'guestKernel': version['kernel']}
             save(folder(store.root / 'VmStartWork' / job['id']) / 'ready.json', target)
-            return store.update(job['id'], 'completed', phase='ssh_ready', vmStart=target, exitCode=0, error=None)
+            extra={}
+            if job['kind']=='vm_restart':
+                extra['vmLifecycle']={**job['vmLifecycle'],'phase':'ready','newBootId':boot['bootId'],'readyAt':checked,'vmStart':target}
+                save(folder(store.root/'VmLifecycleWork'/job['id'])/'ready.json',extra['vmLifecycle'])
+            return store.update(job['id'], 'completed', phase='ssh_ready', vmStart=target, exitCode=0, error=None,**extra)
         target = {'ready': False, 'started': bool((job.get('vmStart') or {}).get('started')), 'vmId': vm['id'],
                   'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'],
                   'bootId': boot['bootId'], 'accessRevision': record['revision']}
@@ -75,7 +85,10 @@ class VmStart:
         self.log = store.evidence(job['id']) / 'output.log'
 
     def phase(self, value, message):
-        self.store.update(self.job['id'], phase=value)
+        extra={}
+        if self.job['kind']=='vm_restart' and value in ('waiting_for_vm','waiting_for_ssh'):
+            extra['vmLifecycle']={**self.store.get(self.job['id'])['vmLifecycle'],'phase':value}
+        self.store.update(self.job['id'], phase=value,**extra)
         with self.log.open('ab') as stream: stream.write((message + '\n').encode())
 
     async def run(self):
@@ -88,47 +101,57 @@ class VmStart:
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'], 'jobId': job['id'],
                  'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256']}
         async with reserve(store, job, scope, timeout=90) as lease:
-            guard(store, job, lease)
-            info = await vm_call(lease, 'info'); admission(store.projects, vm['id'], info['vm']['state'])
-            started = False
-            if info['vm']['state'] in ('stopped', 'failed'):
-                self.phase('starting_vm', 'Starting the assigned virtual machine.')
-                save(self.work / 'start-intent.json', {'jobId': job['id'], 'vmId': vm['id'], 'createdAt': now()})
-                try: await vm_call(lease, 'start')
-                except DevelopmentFault as error:
-                    if error.code < 500: raise
-                    raise UnconfirmedGuestEffect('The VM start was not confirmed. ' + str(error) + ' It was not repeated; inspect this job and the VM state.') from None
-                started = True
-            elif info['vm']['state'] not in ('running', 'starting'):
-                raise DevelopmentFault('Wait for the assigned VM to finish stopping before starting it.')
-            store.update(job['id'], vmStart={'started': started, 'ready': False})
-            self.phase('waiting_for_vm', 'Waiting for the VM process and its boot monitor.')
-            deadline = asyncio.get_running_loop().time() + LIMITS['vmReadyTimeoutSeconds']
+            return await self.run_reserved(lease,scope)
+
+    async def run_reserved(self,lease,scope):
+        from access import Access,SshTransport,guest_version
+        from vm_client import vm_call
+        from vm_worker import guard,broker_call
+        from quarantine import admission
+        store,job,vm=self.store,self.job,self.job['binding']
+        guard(store, job, lease)
+        info = await vm_call(lease, 'info'); admission(store.projects, vm['id'], info['vm']['state'])
+        started = False
+        if job['kind']=='vm_restart' and info['vm']['state'] not in ('stopped','failed'):
+            raise DevelopmentFault('The VM changed after the original stop. Restart cannot adopt another start.')
+        if info['vm']['state'] in ('stopped', 'failed'):
+            self.phase('starting_vm', 'Starting the assigned virtual machine.')
+            save(self.work / 'start-intent.json', {'jobId': job['id'], 'vmId': vm['id'], 'createdAt': now()})
+            try: await vm_call(lease, 'start')
+            except DevelopmentFault as error:
+                if error.code < 500: raise
+                raise UnconfirmedGuestEffect('The VM start was not confirmed. ' + str(error) + ' It was not repeated; inspect this job and the VM state.') from None
+            started = True
+        elif info['vm']['state'] not in ('running', 'starting'):
+            raise DevelopmentFault('Wait for the assigned VM to finish stopping before starting it.')
+        store.update(job['id'], vmStart={'started': started, 'ready': False})
+        self.phase('waiting_for_vm', 'Waiting for the VM process and its boot monitor.')
+        deadline = asyncio.get_running_loop().time() + LIMITS['vmReadyTimeoutSeconds']
+        while True:
+            guard(store, job, lease); info = await vm_call(lease, 'info')
+            if info['vm']['state'] == 'running': break
+            if info['vm']['state'] in ('stopped', 'failed', 'stopping'): raise DevelopmentFault('The assigned VM stopped before SSH became ready.')
+            if asyncio.get_running_loop().time() >= deadline: raise DevelopmentFault('VM startup timed out before its process became ready.')
+            await asyncio.sleep(1)
+        target = await broker_call({'operation': 'bind_vm_start', 'projectId': store.id, 'jobId': job['id'],
+                                    'leaseId': lease.id, 'token': lease.token})
+        scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
+        access = Access(store.projects, store.r4os, None)
+        self.phase('waiting_for_ssh', 'Waiting for authenticated SSH and the R4OS version response.')
+        async with SshTransport(access, vm, lease) as ssh:
+            if ssh.record['revision'] != target['accessRevision']:
+                raise DevelopmentFault('Saved VM access changed during startup.')
             while True:
-                guard(store, job, lease); info = await vm_call(lease, 'info')
-                if info['vm']['state'] == 'running': break
-                if info['vm']['state'] in ('stopped', 'failed', 'stopping'): raise DevelopmentFault('The assigned VM stopped before SSH became ready.')
-                if asyncio.get_running_loop().time() >= deadline: raise DevelopmentFault('VM startup timed out before its process became ready.')
-                await asyncio.sleep(1)
-            target = await broker_call({'operation': 'bind_vm_start', 'projectId': store.id, 'jobId': job['id'],
-                                        'leaseId': lease.id, 'token': lease.token})
-            scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)
-            access = Access(store.projects, store.r4os, None)
-            self.phase('waiting_for_ssh', 'Waiting for authenticated SSH and the R4OS version response.')
-            async with SshTransport(access, vm, lease) as ssh:
-                if ssh.record['revision'] != target['accessRevision']:
-                    raise DevelopmentFault('Saved VM access changed during startup.')
-                while True:
-                    guard(store, job, lease)
-                    remaining = deadline - asyncio.get_running_loop().time()
-                    if remaining <= 0: raise DevelopmentFault('SSH readiness timed out. The VM remains running; check its console and development access settings.')
-                    try:
-                        response = await ssh.exec('VER', timeout=min(10, remaining))
-                        version = guest_version(response); guard(store, job, lease)
-                        ssh.publish_host_key()
-                        result = await broker_call({'operation': 'complete_vm_start', 'projectId': store.id, 'jobId': job['id'],
-                            'leaseId': lease.id, 'token': lease.token, 'version': version})
-                        with self.log.open('ab') as stream: stream.write(b'SSH ready. Authenticated guest version confirmed.\n')
-                        return result
-                    except SshNotReady:
-                        await asyncio.sleep(min(2, max(0, deadline - asyncio.get_running_loop().time())))
+                guard(store, job, lease)
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0: raise DevelopmentFault('SSH readiness timed out. The VM remains running; check its console and development access settings.')
+                try:
+                    response = await ssh.exec('VER', timeout=min(10, remaining))
+                    version = guest_version(response); guard(store, job, lease)
+                    ssh.publish_host_key()
+                    result = await broker_call({'operation': 'complete_vm_start', 'projectId': store.id, 'jobId': job['id'],
+                        'leaseId': lease.id, 'token': lease.token, 'version': version})
+                    with self.log.open('ab') as stream: stream.write(b'SSH ready. Authenticated guest version confirmed.\n')
+                    return result
+                except SshNotReady:
+                    await asyncio.sleep(min(2, max(0, deadline - asyncio.get_running_loop().time())))

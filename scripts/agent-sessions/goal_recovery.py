@@ -7,7 +7,7 @@ from contextlib import closing
 
 
 DEVELOPMENT = {'studio_build_project': 'build', 'studio_deploy_project': 'deploy',
-    'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_run_vm_command': 'ssh', 'studio_read_development_job': None,
+    'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_stop_project_vm':'vm_stop','studio_restart_project_vm':'vm_restart', 'studio_run_vm_command': 'ssh', 'studio_read_development_job': None,
     'studio_capture_vm': 'execution', 'studio_control_app_window': 'execution',
     'studio_complete_development_job': 'execution'}
 
@@ -87,7 +87,7 @@ def development(store, sid, tool):
             if (str(uuid.UUID(job_id)) != job_id or (reference is not None and job_id != reference)
                     or job.get('projectId') != store.owner_id or job.get('sessionId') != sid
                     or job.get('state') not in ('queued', 'starting', 'running', 'stopping', 'completed', 'failed', 'interrupted', 'unknown')
-                    or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start', 'ssh')): return None
+                    or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh')): return None
             if window or completion:
                 if (job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution'
                     or not execution_action_receipt(store, db, job, tool, request, sid)): return None

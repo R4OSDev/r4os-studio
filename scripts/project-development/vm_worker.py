@@ -207,6 +207,9 @@ async def main():
             from vm_start import VmStart
             try: await asyncio.wait_for(VmStart(store, job).run(), LIMITS['vmStartTimeoutSeconds'])
             except asyncio.TimeoutError: raise DevelopmentFault('VM start and SSH readiness exceeded the host deadline. Inspect the saved job before retrying.') from None
+        elif job['kind'] in ('vm_stop','vm_restart'):
+            from vm_lifecycle import VmLifecycle
+            await asyncio.wait_for(VmLifecycle(store,job).run(),LIMITS['vmLifecycleTimeoutSeconds'])
         elif job['kind'] == 'ssh':
             from project_ssh import SshCommand
             await SshCommand(store, job).run()
@@ -236,8 +239,12 @@ async def main():
             await asyncio.wait_for(execution.run(), job['settings']['timeoutSeconds'] + 240)
         else: raise DevelopmentFault('This VM worker does not support this job kind.')
     except BaseException as error:
-        message = str(error) if isinstance(error, DevelopmentFault) else 'The VM operation did not complete. Inspect its preserved transfer receipts before retrying.'
+        message = str(error) if isinstance(error, DevelopmentFault) else ('The VM lifecycle wait ended. Inspect its saved phases and original power receipts; nothing was repeated.' if job['kind'] in ('vm_stop','vm_restart') else 'The VM operation did not complete. Inspect its preserved transfer receipts before retrying.')
         uncertain = bool(getattr(error, 'uncertain', False))
+        if job['kind'] in ('vm_stop','vm_restart'):
+            from vm_lifecycle import interrupted_effect,quarantine_unknown
+            uncertain=uncertain or interrupted_effect(store,job)
+            if uncertain:quarantine_unknown(store,job,message)
         state = 'unknown' if uncertain else ('interrupted' if interrupted else 'failed')
         if job['kind'] == 'execution':
             from checks import evaluate

@@ -37,6 +37,9 @@ def local(store, job):
     if job['state'] != 'unknown': return None
     if job.get('desktopShortcutRequested') or job.get('desktopLinkRequested'): return None
     if (job.get('recovery') or {}).get('guestEndConfirmed'): return job
+    if job['kind'] in ('vm_stop','vm_restart'):
+        from vm_lifecycle import recovered
+        return recovered(store,job)
     if job['kind'] == 'ssh':
         from project_ssh import local as ssh_result
         return ssh_result(store, job)
@@ -148,6 +151,9 @@ async def reconcile(store, job, host=None):
         result = local(store, job)
         if result: return result
     except (OSError, ValueError, KeyError): raise DevelopmentFault('The saved recovery evidence is damaged. Existing files were preserved.') from None
+    if job['kind'] in ('vm_stop','vm_restart'):
+        return store.recovered(job['id'],'unknown',receipt('unconfirmed-vm-lifecycle',guestEndConfirmed=False,
+            reason='No original terminal lifecycle receipt. Inspect its saved phases; no shutdown, start, export or SSH action was repeated.'))
     if job['kind'] == 'vm_start':
         return store.recovered(job['id'], 'unknown', receipt('unconfirmed-vm-start', guestEndConfirmed=False,
             reason='This VM start has no terminal SSH readiness receipt. Its state remains unknown; no start or SSH probe was repeated.'))

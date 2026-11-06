@@ -182,7 +182,7 @@ export class VmManager {
       return this.get(id);
     }));
   }
-  async action(id: string, action: string) {
+  async action(id: string, action: string, beforeEffect?: () => Promise<void>) {
     // Global admission lock includes concurrent starts of different VMs.
     return this.locked('admission', () => this.locked(id, async () => {
       const vm = await this.get(id);
@@ -191,12 +191,12 @@ export class VmManager {
         const active = (await this.list()).filter((v) => !['stopped', 'failed'].includes(v.state));
         if (active.reduce((sum, v) => sum + v.memoryMiB, vm.memoryMiB) > totalmem() / 1024 / 1024 * .75)
           throw new VmError('The running VMs would exceed 75% of host memory.');
-        await control(id, 'start');
+        await beforeEffect?.(); await control(id, 'start');
       } else if (action === 'sync-exchange') { await this.stopped(id); await finishShare(vmPath(id)); }
       else if (action === 'force-stop') await control(id, 'stop');
       else {
         if (!['running', 'paused'].includes(vm.state)) throw new VmError('The VM is not running.');
-        await qmp(id, action === 'shutdown' ? 'system_powerdown' : 'system_reset');
+        await beforeEffect?.(); await qmp(id, action === 'shutdown' ? 'system_powerdown' : 'system_reset');
       }
       return this.get(id);
     }));

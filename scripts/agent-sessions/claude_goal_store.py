@@ -120,6 +120,9 @@ def accept(goals,sid,data):
             if not live and ClaudeHistory(store,sid).get()['phase'] not in ('allocated','ready'):
                 raise ProjectFault('The original native Claude history is unconfirmed. No Goal was started.',409)
         payload={**data,'_goal':saved,'_previousPhase':current['phase'],**({'_claudeTarget':bound} if bound else {}),**({'_claudeLiveTarget':live} if live else {})}
+        if data['action']=='play':
+            from active_tools import goal_selection
+            payload['_toolSelection']=goal_selection(store,sid)
         db.execute('INSERT INTO goal_commands VALUES (?,?,?,?,?,?,NULL,?)',(key,sid,hashed,encode(payload),'pending','accepted',now()))
         db.execute('''INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',?,NULL,NULL)
             ON CONFLICT(session_id) DO UPDATE SET revision=revision+1,phase='pending',request_id=excluded.request_id,reason=NULL''',(sid,key))

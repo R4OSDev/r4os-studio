@@ -130,7 +130,21 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['imageInputModalities']=selected_model['inputModalities']
     snapshot['owner'] = {'type': store.owner_type, 'id': store.owner_id}
     from active_tools import snapshot as tool_snapshot
-    snapshot['toolCatalog'] = tool_snapshot(snapshot)
+    if original is not None:
+        # Catalog additions affect future inputs, never accepted permissions or
+        # the full-config hash of an older queued reservation.
+        snapshot['permissions']=original['permissions'].copy()
+        if 'toolCatalog' in original:snapshot['toolCatalog']=original['toolCatalog']
+    elif goal_mode:
+        tools=json.loads(command['payload']).get('_toolSelection')
+        if tools:
+            snapshot['permissions']=tools['permissions'].copy();snapshot['toolCatalog']=tools['catalog']
+        else:
+            # A Play accepted before lifecycle tools existed cannot acquire
+            # their permissions merely because its dispatch crossed a release.
+            for name in ('studio.stop_project_vm','studio.restart_project_vm'):snapshot['permissions'].pop(name,None)
+            snapshot['toolCatalog']=tool_snapshot(snapshot,exclude=('studio_stop_project_vm','studio_restart_project_vm'))
+    else:snapshot['toolCatalog'] = tool_snapshot(snapshot)
     if snapshot['engine'].get('kind') not in ('claude-code', 'studio'):
         from native_tools import provider as native_provider
         try:

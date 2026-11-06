@@ -1,3 +1,26 @@
+## Assigned project VM lifecycle tools (0.11.20)
+
+Project agents now have separate **Start project VM**, **Stop project VM** and
+**Restart project VM** switches under Session settings → Tools → VM. Restart
+also requires the run's Start and Stop permissions. Existing sessions receive the
+current catalog for later work; active runs, accepted queues and Goal Play
+commands retain their captured tools and permissions. Skill sessions cannot use
+these project tools, and agents cannot supply another VM ID or a host command.
+
+Stop requests graceful shutdown and waits for the original process group,
+service/export workers and Exchange synchronization to finish. Already fully
+stopped is a confirmed no-op; Stop requires no SSH login. Restart holds the same
+reservation across stop/export and one subsequent start, then requires a new
+boot and fresh authenticated SSH/VER readiness. Use Start for a stopped VM.
+No lifecycle tool forces a shutdown or changes VM settings, images or pins.
+
+The tool waits in Studio's harness and retains its original job link. A lost
+reply, timeout or cancellation never automatically repeats a power action.
+Unconfirmed power phases preserve their receipts and block further lifecycle
+work through the existing quarantine. Recovery reads committed original stop or
+readiness receipts; it cannot infer success from the VM's present state or
+replay shutdown/start. **Stop job** continues to cancel only its own job.
+
 ## Exchange file manager (0.11.19)
 
 System → Virtual Machines → a VM → **Exchange** now has a folder tree,

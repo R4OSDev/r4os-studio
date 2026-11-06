@@ -24,7 +24,7 @@ class DevelopmentTools:
             return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
                 'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'ssh', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -76,11 +76,11 @@ class DevelopmentTools:
             if name in ('deploy_project', 'run_project'):
                 from retired_desktop import request as reject_retired
                 reject_retired(value)
-            if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm', 'run_vm_command'):
-                if name == 'start_project_vm':
+            if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command'):
+                if name in ('start_project_vm','stop_project_vm','restart_project_vm'):
                     from vm_worker import broker_call
                     capabilities = await broker_call({'operation': 'capabilities'})
-                    if capabilities.get('features', {}).get('vmStart') != 1:
+                    if capabilities.get('features', {}).get('vmStart' if name=='start_project_vm' else 'vmLifecycle') != 1:
                         raise DevelopmentFault('VM start support requires development host maintenance.', 503)
                 if name == 'run_vm_command':
                     from vm_worker import broker_call
@@ -93,7 +93,7 @@ class DevelopmentTools:
                 try: revision = store.project['revision']
                 finally: store.close()
                 body = {'requestId': request_id, 'projectRevision': revision, 'settingsRevision': settings['revision']}
-                operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start', 'run_vm_command': 'ssh'}[name]
+                operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start', 'stop_project_vm':'vm_stop','restart_project_vm':'vm_restart', 'run_vm_command': 'ssh'}[name]
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']
                 if name == 'run_project':
@@ -115,7 +115,7 @@ class DevelopmentTools:
                     # Admission returns the durable original immediately; no model
                     # tool-wait deadline is a guest completion claim.
                     return self.result(job)
-                if name == 'start_project_vm': return await self.wait_for_vm(job, call_id, value)
+                if name in ('start_project_vm','stop_project_vm','restart_project_vm'): return await self.wait_for_vm(job, call_id, value,name)
                 if name in ('build_project', 'deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
@@ -206,34 +206,39 @@ class DevelopmentTools:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
                     **({'developmentRequest': {'requestId':request_id,'originRunId':self.worker.run_id,'toolCallId':call_id,
                          'receiptState':'unknown' if getattr(error,'uncertain',False) else 'request_error'}}
-                       if job is None and name in ('build_project','deploy_project','run_project','start_project_vm') else {}),
+                       if job is None and name in ('build_project','deploy_project','run_project','start_project_vm','stop_project_vm','restart_project_vm') else {}),
                     **({'development': {'jobId': job['id']}} if job else
                        {'development': {'jobId': value['jobId']}} if name in ('control_app_window','send_vm_input') else {})}
 
-    async def wait_for_vm(self, job, call_id, arguments):
+    async def wait_for_vm(self, job, call_id, arguments, name='start_project_vm'):
         from contracts import ACTIVE, DevelopmentFault, LIMITS, UnconfirmedGuestEffect
         from run_store import item
         worker = self.worker
         # Publish the durable job link immediately, but hold the native tool
         # response. Codex resumes this turn only after a terminal receipt.
-        value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.start_project_vm',
+        value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.'+name,
                  'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id'],'requestId':job.get('requestId')}}
         worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
-        deadline = asyncio.get_running_loop().time() + LIMITS['vmStartTimeoutSeconds'] + 60
+        deadline = asyncio.get_running_loop().time() + LIMITS['vmStartTimeoutSeconds' if name=='start_project_vm' else 'vmLifecycleTimeoutSeconds'] + 60
         while job['state'] in ACTIVE:
             if worker.stopping:
-                return {'success': False, 'error': 'interrupted', 'output': 'VM readiness wait stopped. The VM may remain running.',
+                return {'success': False, 'error': 'interrupted', 'output': 'VM readiness wait stopped. The VM may remain running.' if name=='start_project_vm' else 'VM lifecycle wait stopped. Inspect the original job and VM state; no power action was repeated.',
                         'development': {'jobId': job['id']}}
             if asyncio.get_running_loop().time() >= deadline:
                 raise UnconfirmedGuestEffect('The VM start outcome could not be read before the harness deadline. Inspect the saved job; no start was repeated.')
-            try: job = await self.request('wait_vm_start', id=job['id'])
+            try: job = await self.request({'start_project_vm':'wait_vm_start','stop_project_vm':'wait_vm_stop','restart_project_vm':'wait_vm_restart'}[name], id=job['id'])
             except DevelopmentFault as error:
                 if error.code != 503 or getattr(error, 'uncertain', False): raise
                 # Reconnect only to the read-only wait for the same job. Never
                 # repeat admission or VM start after a lost coordinator reply.
                 await asyncio.sleep(1)
         result = self.result(job)
-        ready = job['state'] == 'completed' and (job.get('vmStart') or {}).get('ready') is True
+        lifecycle=job.get('vmLifecycle') or {}
+        ready=job['state']=='completed' and (job.get('vmStart') or {}).get('ready') is True
+        if name=='stop_project_vm':ready=job['state']=='completed' and lifecycle.get('stopped',{}).get('confirmed') is True
+        elif name=='restart_project_vm':
+            ready=bool(ready and lifecycle.get('stopped',{}).get('confirmed') and lifecycle.get('newBootId')
+                and lifecycle['newBootId']!=lifecycle.get('original',{}).get('bootId'))
         if not ready and result['success']:
             result.update(success=False, error='interrupted' if job['state'] == 'interrupted' else 'failed')
         return result

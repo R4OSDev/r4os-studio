@@ -152,7 +152,7 @@ def synchronize(store, sid, run_id, config):
         raise ValueError('The original native metadata identity changed.')
     if record['payload'].get('model_provider') != current['provider']:
         raise ValueError('The original native provider metadata is inconsistent.')
-    desired = [{'type': 'function', **item} for item in native_specifications(tool_scope(config))]
+    desired = [{'type': 'function', **item} for item in native_specifications(config)]
     desired_provider = config.get('nativeModelProvider', current['provider'])
     if record['payload'].get('dynamic_tools') == desired and current['provider'] == desired_provider:
         return {'changed': False, 'threadId': current['threadId']}
