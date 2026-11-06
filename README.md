@@ -5626,3 +5626,30 @@ Scoped Goal-receipt and model-usage indexes avoid unrelated history scans. Goal
 time reads join their original run flags in one query while retaining the
 original config parsing, coverage and worker/clock checks. Existing receipts,
 usage origins, uncertainty and historical Unknown states remain unchanged.
+
+### Git inspection and local remote history
+
+Git inspection and last-job projection run outside the coordinator state lock,
+using up to four existing socket handler threads without another pool or queue.
+Each actual agent inspection retains its inherited lease, frozen repository and
+project lifetime checks, including final verification. Preview publication is
+serialized per project so its original snapshot/selection quotas cannot race.
+Release adoption waits for actual readers to finish. No read performs a remote
+Git operation.
+
+Last-job display keeps up to64 derived project projections/4MiB for five seconds.
+New jobs, completion and reconciliation invalidate their project; selected
+original-file and catalog identity changes invalidate reuse. Original uncertain
+actions retain priority over completed actions and read jobs. A restart rebuilds
+from original files and preserves unknown effects without replay.
+
+Local Remote Host history uses a host/update/id index and one bounded merge of
+33 candidates. Up to64 unchanged project/host summaries share a4MiB/30second
+cache tied to full database/journal/WAL and directory identities. Changed,
+replaced, indirect or invalid sources take original integrity verification;
+project names and ready owners come from the current catalog. Each read holds
+the original project lifetime gate. Cache entries contain display data only,
+with no database handles, leases or execution authority. Existing bounded
+background read work retains cancellation and release-adoption barriers.
+Reviews, saved credential bindings and original results remain authoritative;
+this local view starts no SSH check, job or model request.

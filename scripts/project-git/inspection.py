@@ -1,7 +1,9 @@
 """Scoped immutable Git previews/selections; never commit, fetch, pull or push."""
 from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import stat
@@ -145,6 +147,19 @@ def validate_selection(action,agent,identity):
 
 
 def inspect(config,project,agent,query):
+    # Immutable preview publication still serializes per project: its original
+    # count/byte admission cannot race another preview after the global state
+    # lock is released. Unrelated projects and job reads keep running.
+    base=storage(config['projects'],project)
+    descriptor=os.open(base,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        try:fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise ProjectFault('Another Git inspection is active for this project. Read again shortly.',409) from None
+        return inspect_locked(config,project,agent,query)
+    finally:os.close(descriptor)
+
+
+def inspect_locked(config,project,agent,query):
     if not isinstance(query,dict):raise ProjectFault('Use a declared Git inspection view.',400)
     view=query.get('view')
     allowed={'status':{'snapshotId','offset','limit'},'diff':{'snapshotId','path','offset'},

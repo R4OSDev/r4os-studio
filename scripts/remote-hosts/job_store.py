@@ -15,6 +15,7 @@ SCHEMA = f'''
 CREATE TABLE jobs(id TEXT PRIMARY KEY,request_id TEXT NOT NULL UNIQUE,fingerprint TEXT NOT NULL,
  session_id TEXT NOT NULL,run_id TEXT NOT NULL,host_id TEXT NOT NULL,state TEXT NOT NULL,
  phase TEXT NOT NULL,payload TEXT NOT NULL,result TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX remote_jobs_host_updated ON jobs(host_id,updated_at DESC,id DESC);
 PRAGMA user_version=1;
 PRAGMA application_id={APPLICATION_ID};
 '''
@@ -43,7 +44,9 @@ def connection(projects, project_id, create=False):
     try:
         if db.execute('PRAGMA application_id').fetchone()[0] != APPLICATION_ID or db.execute('PRAGMA user_version').fetchone()[0] != 1 or db.execute('PRAGMA quick_check(1)').fetchone()[0] != 'ok':
             raise CatalogFault('Remote job schema or integrity needs maintenance. Original data was preserved.', 503)
-        db.execute('PRAGMA synchronous=FULL'); yield db
+        db.execute('PRAGMA synchronous=FULL')
+        db.execute('CREATE INDEX IF NOT EXISTS remote_jobs_host_updated ON jobs(host_id,updated_at DESC,id DESC)')
+        yield db
     finally: db.close()
 
 

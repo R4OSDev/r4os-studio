@@ -28,6 +28,9 @@ class Coordinator:
         self.config, self.config_path = config, config_path
         self.base = Path(config['projects']) / '.studio/github/Jobs'; self.base.mkdir(mode=0o700, parents=True, exist_ok=True); folder(self.base)
         self.lock = threading.RLock(); self.processes = {}; self.started = {}
+        self.reads = 0
+        from job_reads import LastJobs
+        self.last_jobs = LastJobs(self.base, self.public)
         for directory in self.base.iterdir():
             project_id(directory.name); job = document(directory / 'job.json')
             if job['state'] in ('running', 'queued'):
@@ -52,10 +55,35 @@ class Coordinator:
                 job.update(state='unknown', error='Git worker ended without a confirmed receipt.', updatedAt=now()); save(path, job)
             del self.processes[identity]
             self.started.pop(identity, None)
+            self.last_jobs.invalidate(job['projectId'])
+
+    def read(self, operation, data, peer_pid, lease_fd):
+        # Socket handler threads already own their descriptors. Keep the slot
+        # until inspection and every lifetime/agent gate have actually closed.
+        with self.lock:
+            self.poll()
+            if self.reads >= 4: raise ProjectFault('Local Git readers are busy. Try this read again shortly.', 429)
+            self.reads += 1
+        try:
+            if operation == 'last_job': return self.last_jobs.read(project_id(data.get('projectId')))
+            if set(data) != {'operation','projectId','agent','input'} or lease_fd is None:
+                raise ProjectFault('Invalid own Git inspection request.',400)
+            from agent import AgentLease
+            from inspection import inspect
+            project=project_id(data['projectId'])
+            owner=AgentLease(self.config,project,data['agent'],lease_fd,peer_pid,read_only=True);owner.verify()
+            with locks(self.config['projects'],project,mutate=False):
+                result=inspect(self.config,project,owner,data['input'])
+                owner.verify()
+                return result
+        finally:
+            with self.lock: self.reads -= 1
 
     def request(self, data, peer_pid=None, lease_fd=None):
         if not isinstance(data, dict): raise ProjectFault('Invalid Git request.', 400)
         operation = data.get('operation')
+        if operation in ('agent_inspect', 'last_job'):
+            return self.read(operation, data, peer_pid, lease_fd)
         with self.lock:
             self.poll()
             if operation == 'capabilities':
@@ -64,25 +92,6 @@ class Coordinator:
                     raise ProjectFault('Git release capabilities are incompatible.', 503)
                 return {'available': True, 'protocol': 1, 'maxJobs': 2, 'kinds': manifest['actions'], 'limits': manifest['limits'],
                     'agentReadVersion':1,'agentSelectionVersion':1}
-            if operation == 'agent_inspect':
-                if set(data) != {'operation','projectId','agent','input'} or lease_fd is None:
-                    raise ProjectFault('Invalid own Git inspection request.',400)
-                from agent import AgentLease
-                from inspection import inspect
-                project=project_id(data['projectId'])
-                owner=AgentLease(self.config,project,data['agent'],lease_fd,peer_pid,read_only=True);owner.verify()
-                with locks(self.config['projects'],project,mutate=False):
-                    result=inspect(self.config,project,owner,data['input'])
-                    owner.verify()
-                    return result
-            if operation == 'last_job':
-                project = project_id(data.get('projectId'))
-                matches = [document(path / 'job.json') for path in self.base.iterdir()]
-                matches = [v for v in matches if v['projectId'] == project]
-                actions = [v for v in matches if v['kind'] not in READS]
-                unresolved = [v for v in actions if v['state'] == 'unknown']
-                matches = unresolved or actions or matches
-                return self.public(max(matches, key=lambda v: v['createdAt'])) if matches else None
             if operation in ('job', 'cancel', 'reconcile'):
                 identity = project_id(data.get('requestId')); project_id(data.get('projectId'))
                 path = self.base / identity / 'job.json'
@@ -103,10 +112,12 @@ class Coordinator:
                                 result = reconcile(self.config, job)
                         if result is not None:
                             job.update(state='completed', phase='reconciled', result=result, error=None, updatedAt=now()); save(path, job)
+                            self.last_jobs.invalidate(job['projectId'])
                     return self.public(job)
                 if operation == 'cancel' and identity in self.processes:
                     os.killpg(self.processes[identity].pid, signal.SIGTERM)
                     job.update(state='unknown', error='Git operation stopped. Reconcile any pending effect.', updatedAt=now()); save(path, job)
+                    self.last_jobs.invalidate(job['projectId'])
                 return self.public(job)
             agent = operation == 'agent_submit'
             if operation not in ('submit', 'agent_submit') or set(data) != ({'operation', 'projectId', 'requestId', 'kind', 'input'} | ({'agent'} if agent else set())):
@@ -163,6 +174,7 @@ class Coordinator:
             if agent: job['agent'] = data['agent']
             if check_binding is not None: job['checkBinding'] = check_binding
             save(path, job)
+            self.last_jobs.invalidate(project)
             try:
                 process = subprocess.Popen(['/usr/bin/python3', '-B', release + '/scripts/project-git/worker.py', str(self.config_path), identity] + ([str(lease_fd)] if agent else []),
                                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -215,7 +227,7 @@ def main():
                 coordinator.poll()
                 # Adopt new immutable host code only at idle; old accepted workers remain pinned.
                 release = coordinator.release()
-                if not coordinator.processes and release != str(Path(__file__).resolve().parents[2]):
+                if not coordinator.processes and not coordinator.reads and release != str(Path(__file__).resolve().parents[2]):
                     os.execv('/usr/bin/python3', ['/usr/bin/python3', '-B', release + '/scripts/project-git/host.py'])
 
 

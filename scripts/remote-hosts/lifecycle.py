@@ -1,6 +1,7 @@
 """Human-only local uncertainty review; original remote outcomes never change."""
 from contextlib import closing
 import hashlib
+import heapq
 import json
 from pathlib import Path
 import sqlite3
@@ -18,17 +19,16 @@ def projects_at(projects):
     return values
 
 
-def listings(projects, host_id):
-    identity(host_id); values = []
-    for project_id, name in projects_at(projects):
-        with jobs.connection(projects, project_id) as db:
-            if db is None: continue
-            rows = db.execute('SELECT id,request_id,session_id,run_id,host_id,state,phase,payload,NULL AS result,created_at,updated_at FROM jobs WHERE host_id=? ORDER BY updated_at DESC LIMIT 33', (host_id,)).fetchall()
-            for row in rows:
-                value = jobs.public(row)
-                values.append({**{k: value[k] for k in ('id', 'projectId', 'sessionId', 'hostId', 'hostName', 'requestId', 'operation', 'state', 'phase', 'createdAt', 'updatedAt')},
-                               'projectName': name, 'commandPreview': value.get('command', '')[:160], 'action': value.get('transfer', {}).get('action')})
-        values.sort(key=lambda value: (value['updatedAt'], value['id']), reverse=True); values = values[:33]
+def listings(projects, host_id, cache=None):
+    identity(host_id)
+    from history_reads import summaries
+    def candidates():
+        for project_id,name in projects_at(projects):
+            with acquire(projects,project_id,pins_recovery=True):
+                rows=cache.read(projects,project_id,host_id) if cache is not None else summaries(projects,project_id,host_id)
+            for value in rows:yield {**value,'projectName':name}
+    # At most33 retained candidates, regardless of the number of project stores.
+    values=heapq.nlargest(33,candidates(),key=lambda value:(value['updatedAt'],value['id']))
     selected = []; used = 0
     for value in values[:32]:
         size = len(encode(value).encode('ascii', errors='backslashreplace'))

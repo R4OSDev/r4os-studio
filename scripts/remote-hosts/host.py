@@ -25,6 +25,8 @@ class Host:
         self.transport = transport; self.active = {}; self.connections = set()
         self.accepting = True
         self.read_work = ReadWork(CatalogFault)
+        from history_reads import HistoryReads
+        self.history_reads = HistoryReads()
         from commands import Commands
         self.commands = Commands(self.directory, self.runtime, transport)
         supported = json.loads((Path(__file__).resolve().parents[2] / 'shared/update-host.json').read_text()).get('agentToolProfiles', [])
@@ -45,7 +47,7 @@ class Host:
             import lifecycle
             required = ['protocol', 'operation', 'hostId'] + (['projectId', 'jobId'] if op != 'jobs' else []) + (['input'] if op == 'review_job' else ['requestId'] if op == 'review_receipt' else [])
             fields(request, required)
-            if op == 'jobs': return await self.read_work.run(lifecycle.listings,self.commands.projects,request['hostId'])
+            if op == 'jobs': return await self.read_work.run(lifecycle.listings,self.commands.projects,request['hostId'],self.history_reads)
             if op == 'job': return await self.read_work.run(lifecycle.details,self.commands.projects,request['projectId'],request['hostId'],request['jobId'])
             if op == 'review_receipt': return await self.read_work.run(lifecycle.receipt,self.commands.projects,request['projectId'],request['hostId'],request['jobId'],request['requestId'])
             if not self.accepting: raise CatalogFault('Remote support is adopting a release. Preserve this review request.', 503)
