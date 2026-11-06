@@ -101,12 +101,17 @@ class StudioWorker(Worker):
             if result.get('imageDelivery')=='reference-only' and self.config.get('apiModel',{}).get('imageInput')!='supported':
                 return result
             images.append({'data':image_data['base64'],'mimeType':'image/png'})
-        declared=result.get('skillMcp',{}).get('imageCount',len(images))
-        if not images:return {**result,'imageErrors':['Original service images are retained but unavailable for this image transport.']} if declared else result
         from generated_images import GeneratedImages
         registered=[];errors=[]
+        if result.get('generatedImage'):
+            original=GeneratedImages(self.store,self.session_id)
+            meta=original.get(result['generatedImage']['id']);original.path(meta['id'])
+            if meta!=result['generatedImage']:raise ProjectFault('The original generated image receipt changed.',409)
+            registered.append(meta)
+        declared=result.get('skillMcp',{}).get('imageCount',len(images))
+        if not images and not registered:return {**result,'imageErrors':['Original service images are retained but unavailable for this image transport.']} if declared else result
         for index,block in enumerate(images):
-            try:registered.append(GeneratedImages(self.store,self.session_id).accept_tool(self.run_id,self.thread_id,call_id,index,block))
+            try:registered.append(GeneratedImages(self.store,self.session_id).accept_tool(self.run_id,self.thread_id or 'studio-'+self.session_id,call_id,index,block))
             except ProjectFault as error:errors.append(str(error))
         value={**result,'images':registered}
         value['imageDelivery']='pixels' if self.config.get('apiModel',{}).get('imageInput')=='supported' else 'reference-only'

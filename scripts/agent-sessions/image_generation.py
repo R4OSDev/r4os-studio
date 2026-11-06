@@ -42,6 +42,22 @@ async def inspect(store,sid,provider_dir,overrides=None,rpc_factory=CodexRPC,bri
     if set(overrides)-{'providerId','model'}:raise ProjectFault('Unexpected image capability fields.',400)
     session={**session,**overrides};identity(session['providerId'])
     if not any(value['id']==session['providerId'] for value in providers(provider_dir)):raise ProjectFault('Connect the selected provider before checking image capability.',409)
+    if session['engine'].get('kind')=='studio':
+        from image_targets import select
+        from generated_images import GeneratedImages
+        # Read target availability independently of the not-yet-saved switches.
+        # This grants no run/tool permission and performs no provider request.
+        selected=select(store.projects,provider_dir,{**session,'imageGenerationEnabled':True,
+            'permissions':{**session.get('permissions',{}),'studio.generate_image':True}})
+        available=selected['available'];reason=selected.get('reason')
+        if available:
+            target=selected['target'];reason=('Image generation is available through '+target.get('providerName',target['provider']['id'])+' / '+target['modelName']+
+                (' on this connection.' if selected['source']=='main-account' else ' using the configured fallback.'))
+            try:GeneratedImages(store,sid).check_capacity()
+            except (ProjectFault,ValueError,OSError) as error:
+                available=False;reason=str(error) if isinstance(error,ProjectFault) else 'Private image storage requires review. Original files were preserved.'
+        return {'schema':1,'providerId':session['providerId'],'model':session['model'],'engine':session['engine'],
+            'checkedAt':now(),'state':'available' if available else 'unavailable','available':available,'qualified':available,'reason':reason}
     model=next((value for value in provider_models(provider_dir,session['providerId']) if value['id']==session['model']),None)
     fallback=evaluate(session,model,None,None,session['engine'],bridge)
     if fallback['state']=='unavailable' or not model:return fallback

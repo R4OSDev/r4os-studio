@@ -1,3 +1,7 @@
+## 0.11.37
+
+System → Settings → Fallback offers independent Vision and Image generation selections with separate drafts, Save/Clear and original request recovery. Studio sessions can enable image generation and its tool permission; supported OpenAI accounts use GPT Image 2 directly, while other main models can use the configured image fallback. Original images appear in chat with previews/downloads and keep the existing authorized project import path. Image analysis and image generation keep the main conversation model unchanged.
+
 ## 0.11.36
 
 Studio image creation and editing use a bounded standalone OpenAI image operation through the existing account connection. Each original request has its own model, usage, process-end and lease receipt; retries reuse the original outcome. An optional image generation fallback has independent settings and revision in the existing Settings.sqlite. Main model selection, Vision settings, original images and permissions remain intact.

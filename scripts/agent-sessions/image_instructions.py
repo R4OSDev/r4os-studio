@@ -8,15 +8,29 @@ def compose(config):
     profile=tool_scope(config);permissions=config.get('permissions',{})
     try:tools=tools_for(profile)
     except ValueError:tools=()
-    enabled=config.get('nativeImageGeneration') is True
-    reason=config.get('imageGenerationCapability',{}).get('reason','No matching native image capability was confirmed.')
-    reason=''.join(c for c in str(reason) if ord(c)>=32)[:400]
-    text=('\n\nCURRENT STUDIO IMAGE CONTRACT: '+('Native image_gen.imagegen is enabled for this frozen account/provider/model run. ' if enabled else 'Native image generation is unavailable or disabled for this run. '+reason+' '))
-    text+=('Use the native tool only for requested visual assets. Set transparent_background=true for requested transparency/cutouts; otherwise false. Preserve existing transparency on edits unless asked to change it. '
-        'Inspect the actual available reference image before editing; do not claim to have inspected an unavailable workspace image. Edits use explicitly available reference images: use actual native paths from confirmed output or selected, accepted image inputs, or the smallest sufficient recent-image count; never both reference mechanisms. '
-        'Unsent uploads are not inputs. The native process has no project workspace; do not invent project paths there. Private native output paths are not project files. '
-        'Preserve original image bytes. A failed, limited, declined or unconfirmed image request must not be regenerated automatically; reconcile its original item/output. Reuse confirmed outputs on rebuilds and Goal continuation. '
-        'If the authorized Goal requires unavailable images, report the concrete blocker and block/pause that Goal through its available native controls instead of starting a retry loop. Do not switch accounts/models or add API keys. ')
+    studio=config.get('engine',{}).get('kind')=='studio'
+    if studio:
+        selected=config.get('imageGenerationTarget',{})
+        enabled=bool(config.get('imageGenerationEnabled') and permissions.get('studio.generate_image') and selected.get('available'))
+        reason=selected.get('reason','No matching image connection was frozen for this run.')
+        reason=''.join(c for c in str(reason) if ord(c)>=32)[:400]
+        text=('\n\nCURRENT STUDIO IMAGE CONTRACT: '+('studio_generate_image is enabled for requested image creation and editing in this frozen run. ' if enabled else 'Studio image generation is unavailable or disabled for this run. '+reason+' '))
+        text+=('Use studio_generate_image only for requested visual assets. Its prompt describes the image or edit; set transparentBackground=true for requested transparency/cutouts, otherwise false. '
+            'For edits pass the original session imageIds from confirmed generated images and/or attachmentIds of explicitly accepted image inputs, at most five references in total. '
+            'Reference IDs refer to original stored bytes; never invent host paths, substitute URLs or regenerate a reference image. Preserve transparency on edits unless asked to change it. '
+            'The bounded image operation uses its own supported account connection or the explicitly configured image generation fallback without changing your main model, thread or account selection. '
+            'If your main model has no image input, the returned image metadata/reference does not mean you have visually inspected its pixels. '
+            'Unsent uploads are not inputs. There is no second agent to delegate the task to. ')
+    else:
+        enabled=config.get('nativeImageGeneration') is True
+        reason=config.get('imageGenerationCapability',{}).get('reason','No matching native image capability was confirmed.')
+        reason=''.join(c for c in str(reason) if ord(c)>=32)[:400]
+        text=('\n\nCURRENT STUDIO IMAGE CONTRACT: '+('Native image_gen.imagegen is enabled for this frozen account/provider/model run. ' if enabled else 'Native image generation is unavailable or disabled for this run. '+reason+' '))
+        text+=('Use the native tool only for requested visual assets. Set transparent_background=true for requested transparency/cutouts; otherwise false. Preserve existing transparency on edits unless asked to change it. '
+            'Inspect the actual available reference image before editing; do not claim to have inspected an unavailable workspace image. Edits use explicitly available reference images: use actual native paths from confirmed output or selected, accepted image inputs, or the smallest sufficient recent-image count; never both reference mechanisms. '
+            'Unsent uploads are not inputs. The native process has no project workspace; do not invent project paths there. Private native output paths are not project files. ')
+    text+=('Preserve original image bytes. A failed, limited, declined or unconfirmed image request must not be regenerated automatically; reconcile its original item/output. Reuse confirmed outputs on rebuilds and Goal continuation. '
+        'If the authorized Goal requires unavailable images, report the concrete blocker and block/pause that Goal through its available controls instead of starting a retry loop. Do not switch accounts/models or add API keys. ')
     if permissions.get('studio.list_generated_images'):
         text+='After generation use studio_list_generated_images for confirmed session-bound Studio image IDs and hashes. For a requested inline image use its exact returned presentation.markdown reference; never render private host/native paths or invent image URLs. '
     else:text+='The image listing permission is disabled; do not claim to have listed Studio image IDs. '

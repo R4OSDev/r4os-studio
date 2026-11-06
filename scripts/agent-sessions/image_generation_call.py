@@ -29,7 +29,7 @@ def references(w,args):
         meta=images.get(identity(ident));data=images.path(ident).read_bytes()
         result.append({'image_url':'data:'+meta['mediaType']+';base64,'+base64.b64encode(data).decode()});hashes.append(meta['sha256'])
     if attachments:
-        if not w.config['permissions'].get('studio.read_attachment'):raise ProjectFault('Reading image attachments is disabled.',403)
+        if not w.config['permissions'].get('studio.read_attachment') or not w.config['permissions'].get('studio.read_file'):raise ProjectFault('Reading image attachments requires Read attachment and Read file.',403)
         from image_inputs import history,file_path
         accepted={m['id']:m for m in history(w.store,w.session_id)}
         for ident in attachments:
@@ -112,7 +112,8 @@ class ImageGeneration:
                 if not done:raise ModelFault('image_request_timeout')
                 if task not in done:await watcher
                 result=await task
-                meta=images.accept(w.run_id,w.thread_id,{'id':op,'result':result['imageResponse']['data'][0]['b64_json']})
+                # Studio conversation identity is session-owned, without an SDK thread.
+                meta=images.accept(w.run_id,w.thread_id or 'studio-'+w.session_id,{'id':op,'result':result['imageResponse']['data'][0]['b64_json']})
             finally:
                 watcher.cancel();await asyncio.gather(watcher,return_exceptions=True)
                 if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)

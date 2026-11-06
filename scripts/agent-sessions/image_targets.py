@@ -41,7 +41,7 @@ def freeze(providers,selection):
     from studio_engine import model_binding
     account=frozen(providers,provider);record=accounts(providers).get(provider['id'],{})
     if record.get('authGeneration')!=account['generation']:raise ProjectFault('The original image account generation changed.',409)
-    return {'provider':model_binding(provider),'modelId':facts['modelId'],'modelName':facts['modelName'],
+    return {'provider':model_binding(provider),'providerName':provider['name'],'modelId':facts['modelId'],'modelName':facts['modelName'],
         'account':account,'contract':copy.deepcopy(facts)}
 
 def select(projects,providers,session):

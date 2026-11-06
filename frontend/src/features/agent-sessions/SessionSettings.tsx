@@ -44,15 +44,16 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   const hasImageTools = 'studio.list_generated_images' in draft.permissions;
   const studio = draft.engine.kind === 'studio';
   const hostedToolsUnavailable=!!draft.engine.api||draft.engine.kind==='claude-code';
+  const imageToolsUnavailable=hostedToolsUnavailable && !studio;
   const imageKey = draft.providerId + ':' + draft.model;
   useEffect(() => {
-    if (hostedToolsUnavailable || tab !== 'Tools' || draft.imageGenerationEnabled === false || !hasImageTools) return;
+    if (imageToolsUnavailable || tab !== 'Tools' || draft.imageGenerationEnabled === false || !hasImageTools) return;
     const controller = new AbortController(), query = new URLSearchParams({ providerId: draft.providerId, model: draft.model });
     void projectRequest<NativeImageCapability>(sessionPath(projectId, session.id) + '/image-capability?' + query, '', 'GET', undefined, controller.signal)
       .then(value => { if (!controller.signal.aborted) setImageCapability({ key: imageKey, value }); })
       .catch((failure: Error) => { if (!controller.signal.aborted) setImageCapability({ key: imageKey, error: failure.message }); });
     return () => controller.abort();
-  }, [tab, hostedToolsUnavailable, draft.imageGenerationEnabled, hasImageTools, draft.providerId, draft.model, imageKey, projectId, session.id, projectRequest]);
+  }, [tab, imageToolsUnavailable, draft.imageGenerationEnabled, hasImageTools, draft.providerId, draft.model, imageKey, projectId, session.id, projectRequest]);
   const patch = (values: Partial<AgentSession>) => setDraft((old) => ({ ...old, ...values }));
   async function submit(e: FormEvent) {
     e.preventDefault(); if (saving || reloading || runtimeBusy) return;
@@ -119,9 +120,9 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content stays in its original history.</p>
           <p className="agent-terminal-hint" role="status">{draft.roadmapAccess?.available ? 'Roadmap tools available in this session.' : draft.roadmapAccess?.reason ?? 'Roadmap tools are unavailable through the active host.'}</p>
         </fieldset>}{(scope === 'skill' ? ['Files', 'Terminal', 'Skills', 'Images'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub', 'Remote Hosts', 'Images']).map((group) => <fieldset key={group}><legend>{group}</legend>
-          {group === 'Images' && <><label className="agent-permission"><span>Image generation</span><input type="checkbox" role="switch" aria-label="Image generation" disabled={hostedToolsUnavailable} checked={draft.imageGenerationEnabled ?? true} onChange={event => patch({ imageGenerationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
-            <p className="agent-terminal-hint">Generate image uses this switch. On by default for supported native providers. Effective only when this account, provider, model and worker support native image generation. Changes apply from the next run; saving settings does not generate images.</p>
-            <p className="agent-terminal-hint" role="status">{studio ? 'Selected skill services can produce images through the common tool broker. Their own model access and rights apply; confirmed outputs appear in this chat. Hosted provider image generation is a separate native capability.' : hostedToolsUnavailable ? 'Native image generation is unavailable through this provider adapter.' : draft.imageGenerationEnabled === false ? 'Image generation is off for the next run.' : !hasImageTools ? 'Image tools are unavailable through the active provider.' : imageCapability?.key === imageKey ? imageCapability.value?.reason ?? imageCapability.error : 'Checking native image capability…'}</p>
+          {group === 'Images' && <><label className="agent-permission"><span>Image generation</span><input type="checkbox" role="switch" aria-label="Image generation" disabled={imageToolsUnavailable} checked={draft.imageGenerationEnabled ?? true} onChange={event => patch({ imageGenerationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
+            <p className="agent-terminal-hint">Requested image creation and edits need this switch and Generate image permission. The session uses its own supported image connection or the configured Image generation fallback. Changes apply from the next run; saving generates no images.</p>
+            <p className="agent-terminal-hint" role="status">{imageToolsUnavailable ? 'Native image generation is unavailable through this provider adapter.' : draft.imageGenerationEnabled === false ? 'Image generation is off for the next run.' : !hasImageTools ? 'Image tools are unavailable through the active provider.' : imageCapability?.key === imageKey ? imageCapability.value?.reason ?? imageCapability.error : 'Checking image capability…'}</p>
             <p className="agent-terminal-hint">{scope === 'project' ? 'Project import also needs Write file, and Create directory for new folders. Register the asset and verify its finished R4X resources.' : 'These images belong to this skill session. No project import or project filesystem is available.'}</p></>}
 
           {tools.filter((id) => (scope === 'skill' ? id in draft.permissions : !['studio.validate_skill', 'studio.save_skill'].includes(id)) && (imageToolIds.includes(id) ? 'Images' : remoteToolIds.includes(id) ? 'Remote Hosts' : ['studio.push_project','studio.read_project_git'].includes(id) ? 'GitHub' : updateToolIds.includes(id) ? 'Updates' : ['studio.validate_skill', 'studio.save_skill'].includes(id) ? 'Skills' : ['studio.exec_command', 'studio.write_stdin', 'studio.terminate_process'].includes(id) ? 'Terminal' : ['studio.build_project', 'studio.deploy_project', 'studio.run_project', 'studio.read_development_job', 'studio.stop_development_job', 'studio.complete_development_job'].includes(id) ? 'Build' : ['studio.capture_vm', 'studio.send_vm_input', 'studio.start_project_vm', 'studio.stop_project_vm', 'studio.restart_project_vm', 'studio.run_vm_command', 'studio.control_app_window'].includes(id) ? 'VM' : 'Files') === group).map((id) => <label key={id} className="agent-permission">

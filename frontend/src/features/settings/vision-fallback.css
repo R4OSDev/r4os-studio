@@ -5,3 +5,5 @@
 .vision-fallback .vision-fallback-state { color:var(--text); }
 .vision-fallback-saved { font:11px ui-monospace,Consolas,monospace; }
 .vision-fallback .system-prompt-actions { flex-wrap:wrap; gap:12px; }
+.fallback-panels { min-width:0; padding-bottom:1px; }
+.fallback-panels .system-prompt-panel + .system-prompt-panel { margin-top:0; }

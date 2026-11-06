@@ -125,7 +125,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
             from image_targets import select as image_target
             snapshot['imageGenerationTarget']=image_target(store.projects,provider_dir,session)
     snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
-    snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
+    snapshot['nativeImageGeneration']=bool(snapshot['engine'].get('kind')!='studio' and data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
     from generated_images import GeneratedImages
     generated_history=bool(GeneratedImages(store,session_id).rows())
     if snapshot['nativeImageGeneration'] or generated_history and snapshot['engine'].get('kind')!='studio':

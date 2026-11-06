@@ -5,7 +5,7 @@ async def execute(worker,name,args,call_id):
     if name=='list_generated_images':
         from generated_images import GeneratedImages
         from session_store import encode
-        return {'success':True,'output':encode({'images':GeneratedImages(worker.store,worker.session_id).list(),'generationEnabled':worker.config.get('nativeImageGeneration') is True})}
+        return {'success':True,'output':encode({'images':GeneratedImages(worker.store,worker.session_id).list(),'generationEnabled':worker.config.get('nativeImageGeneration') is True or bool(worker.config.get('imageGenerationEnabled') and worker.config.get('permissions',{}).get('studio.generate_image') and worker.config.get('imageGenerationTarget',{}).get('available'))})}
     from image_import import import_image
     try:return await import_image(worker,args,call_id)
     except ProjectFault as error:

@@ -41,8 +41,8 @@ const ToolDetails = memo(function ToolDetails({ i, jobId, projectId, sessionId, 
   const { scope } = useSessionApi();
   return <>
         {i.tool === 'web_search' || i.tool === 'studio.web_search' ? <WebSearchCard value={i.webSearch} /> : <CodeBlock text={JSON.stringify(i.arguments, null, 2) ?? ''} label="Copy arguments" language="Arguments" />}
-        {(i.tool === 'image_gen.imagegen' || i.generatedAsset) && <GeneratedCard value={i.generatedImage} asset={i.generatedAsset} projectId={projectId} sessionId={sessionId} status={i.status} />}
-        {i.generatedImages?.map(image => <GeneratedCard key={image.id} value={image} asset={null} projectId={projectId} sessionId={sessionId} status={i.status} />)}
+        {(i.tool === 'image_gen.imagegen' || i.tool === 'studio.generate_image' || i.generatedAsset) && <GeneratedCard value={i.generatedImage} asset={i.generatedAsset} projectId={projectId} sessionId={sessionId} status={i.status} />}
+        {i.generatedImages?.filter(image => image.id !== i.generatedImage?.id).map(image => <GeneratedCard key={image.id} value={image} asset={null} projectId={projectId} sessionId={sessionId} status={i.status} />)}
         {i.imageErrors?.map((error,index) => <p key={index} role="status">{error}</p>)}
         {!!i.generatedImages?.length && i.imageDelivery === 'reference-only' && <p>This model received the image reference. It did not receive the image pixels.</p>}
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
