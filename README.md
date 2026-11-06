@@ -1,3 +1,7 @@
+## 0.11.50
+
+Desktop execution Stop waits up to five seconds for the original retained process completion when its handle disappears before the final native receipt arrives. This uses only status polls after the original stop was sent, bound to the acknowledged Desktop lease and exact process generation. The existing process-reap and cleanup checks still determine the stop receipt; missing evidence or a deadline remains unknown. No stop, launch or input is repeated, and process closure does not prove application test success.
+
 ## 0.11.49
 
 Studio allows up to five further attempts to correct invalid tool arguments after a batch is rejected before execution. A sixth consecutive invalid batch ends the run. A fully successful nonempty tool batch renews all five correction opportunities; text replies, failed or partial batches and uncertain effects do not. This applies to project and skill sessions using Studio. Whole-batch prevalidation, call identities, permissions and original receipts are preserved. Dispatched actions are not retried and existing blocked sessions require explicit continuation.

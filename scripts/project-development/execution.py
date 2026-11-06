@@ -466,7 +466,7 @@ class Execution:
                             return final
                         if state['state'] == 'unknown':
                             from completion import await_original_close
-                            state = await await_original_close(self, control, state, lease, natural=not self.completion)
+                            state = await await_original_close(self, control, state, lease, natural=not self.completion, stopping=stop_sent)
                             self.last = state
                             if state['state'] == 'completed': continue
                         if state['state'] == 'unknown': raise UnconfirmedGuestEffect('The generation-owned process status became unknown.')
