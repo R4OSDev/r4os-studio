@@ -1,3 +1,7 @@
+## 0.11.49
+
+Studio allows up to five further attempts to correct invalid tool arguments after a batch is rejected before execution. A sixth consecutive invalid batch ends the run. A fully successful nonempty tool batch renews all five correction opportunities; text replies, failed or partial batches and uncertain effects do not. This applies to project and skill sessions using Studio. Whole-batch prevalidation, call identities, permissions and original receipts are preserved. Dispatched actions are not retried and existing blocked sessions require explicit continuation.
+
 ## 0.11.48
 
 Scrolling back to the bottom of a long session restores the latest-message window and keeps following new messages and streamed text. A pinned history window no longer pauses following again as the next message arrives. Downward scrolling at the bottom also resumes following without the Latest messages button. Reading older messages, text selection, history anchors and independent tool-output scrolling retain their positions. The shared provider stream and the 80-block rendering limit are unchanged.

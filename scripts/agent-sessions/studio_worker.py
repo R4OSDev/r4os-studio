@@ -307,7 +307,7 @@ class StudioWorker(Worker):
     async def cycle(self):
         from instructions import compose
         instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
-        correction_used=False; rejected=set()
+        correction_attempts=0; rejected=set()
         while self.active():
             await self.goal_worker.boundary(allow_play=False)
             if self.active() and (not self.goal_worker.execution or self.goal_worker.active):self.message_worker.boundary()
@@ -327,7 +327,7 @@ class StudioWorker(Worker):
             try:
                 self.validate_calls(calls, tools, rejected)  # Validate the entire set before any host effect.
             except ModelFault as error:
-                correctable=isinstance(error,ToolArgumentsFault) and not correction_used and not self.uncertain_effect
+                correctable=isinstance(error,ToolArgumentsFault) and correction_attempts<5 and not self.uncertain_effect
                 for index, call in enumerate(calls):
                     feedback={'success':False,'error':'notAdmitted','output':'This entire tool batch was rejected before host execution.'}
                     if isinstance(error,ToolArgumentsFault):
@@ -338,7 +338,7 @@ class StudioWorker(Worker):
                         [{'type':'tool_result', 'callId':call['callId'], 'result':feedback}],
                         {'admissionOnly':True, 'reasonCode':error.code, 'turnId':self.turn_id})
                 if correctable:
-                    correction_used=True;rejected.update(call['callId'] for call in calls)
+                    correction_attempts+=1;rejected.update(call['callId'] for call in calls)
                     continue
                 raise
             if not calls:
@@ -388,7 +388,7 @@ class StudioWorker(Worker):
                     self.unconfirmed()
             # An unrelated later schema error gets its own correction. Text,
             # failed/partial batches and uncertain effects never renew it.
-            if batch_succeeded and not self.uncertain_effect:correction_used=False
+            if batch_succeeded and not self.uncertain_effect:correction_attempts=0
         self.outcome = 'unknown' if self.uncertain_effect else 'interrupted'
 
     async def run(self):
