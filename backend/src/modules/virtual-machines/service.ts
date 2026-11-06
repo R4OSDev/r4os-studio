@@ -197,7 +197,7 @@ export class VmManager {
           throw new VmError('The running VMs would exceed 75% of host memory.');
         await beforeEffect?.(); await control(id, 'start');
       } else if (action === 'sync-exchange') { await this.stopped(id); await finishShare(vmPath(id)); }
-      else if (action === 'force-stop') await control(id, 'stop');
+      else if (action === 'force-stop') { await beforeEffect?.(); await control(id, 'stop'); }
       else {
         if (!['running', 'paused'].includes(vm.state)) throw new VmError('The VM is not running.');
         await beforeEffect?.(); await qmp(id, action === 'shutdown' ? 'system_powerdown' : 'system_reset');

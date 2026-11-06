@@ -63,10 +63,10 @@ export async function vmRoutes(app: FastifyInstance) {
     } } },
   }, async (request, reply) => { sessions.mutation(request, reply); return { batch: await releaseBatches.preview(request.body) }; });
   const batchConsent = { type: 'object', additionalProperties: false, required: ['previewDigest', 'confirm', 'stopRunning', 'resetSystem'], properties: {
-    previewDigest: { type: 'string', pattern: '^[a-f0-9]{64}$' }, confirm: { const: true }, stopRunning: { const: true }, resetSystem: { const: true },
+    previewDigest: { type: 'string', pattern: '^[a-f0-9]{64}$' }, confirm: { const: true }, stopRunning: { const: true }, resetSystem: { const: true }, forceStopRunning: { const: true },
   } };
-  for (const action of ['confirm', 'resume'] as const) app.post<{ Params: { requestId: string }; Body: { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true } }>(`/release-batches/:requestId/${action}`, {
-    preValidation: async request => batchFields(request.body, ['previewDigest', 'confirm', 'stopRunning', 'resetSystem']),
+  for (const action of ['confirm', 'resume'] as const) app.post<{ Params: { requestId: string }; Body: { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true; forceStopRunning?: true } }>(`/release-batches/:requestId/${action}`, {
+    preValidation: async request => batchFields(request.body, ['previewDigest', 'confirm', 'stopRunning', 'resetSystem', 'forceStopRunning']),
     bodyLimit: 2048, schema: { body: batchConsent },
   }, async (request, reply) => {
     sessions.mutation(request, reply);

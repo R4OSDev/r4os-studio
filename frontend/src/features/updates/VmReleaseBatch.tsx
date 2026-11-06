@@ -4,7 +4,7 @@ import type { VmImage, VmReleaseBatchView } from '../../../../shared/virtual-mac
 import { vmRequest, vmRequestId, VmRequestError } from '../virtual-machines/api';
 
 interface Choice { id: string; version: string; sha256?: string }
-interface Consent { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true }
+interface Consent { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true; forceStopRunning?: true }
 interface Ticket { requestId: string; imageId: string; imageSha256: string; intent?: 'confirm' | 'resume'; consent?: Consent }
 interface Inventory { batches: VmReleaseBatchView[]; images: VmImage[]; available: boolean; csrfToken: string }
 interface Driver { preview: () => Promise<void>; submit: (resume?: boolean) => Promise<void>; read: (inventory?: boolean) => Promise<void>; cancel: () => void }
@@ -15,7 +15,9 @@ function saved(): Ticket | null {
     return value && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value.requestId)
       && typeof value.imageId === 'string' && /^[a-f0-9]{64}$/.test(value.imageSha256)
       && (!value.intent || ['confirm', 'resume'].includes(value.intent) && value.consent?.confirm === true
-        && value.consent.stopRunning === true && value.consent.resetSystem === true && /^[a-f0-9]{64}$/.test(value.consent.previewDigest)) ? value : null;
+        && value.consent.stopRunning === true && value.consent.resetSystem === true
+        && (value.consent.forceStopRunning === undefined || value.consent.forceStopRunning === true)
+        && /^[a-f0-9]{64}$/.test(value.consent.previewDigest)) ? value : null;
   } catch { return null; }
 }
 function preserve(ticket: Ticket | null) {
@@ -104,7 +106,8 @@ function useReleaseBatch(choice?: Choice) {
           if (!ticket.intent) {
             if (!resume && (selected.current?.id !== current.imageId || selected.current.sha256 !== current.imageSha256))
               throw new Error('The selected release changed. Cancel and prepare a new preview.');
-            const consent: Consent = { previewDigest: current.previewDigest, confirm: true, stopRunning: true, resetSystem: true };
+            const consent: Consent = { previewDigest: current.previewDigest, confirm: true, stopRunning: true, resetSystem: true,
+              ...(current.stopMode === 'force' ? { forceStopRunning: true as const } : {}) };
             updateTicket({ ...ticket, intent: resume ? 'resume' : 'confirm', consent });
           }
           const original = ticket; setReview(false);
@@ -195,14 +198,17 @@ export function VmReleaseBatchStatus({ control, choice, older = false }: { contr
       <h2 id="vm-batch-title">Update VMs to {batch.version}?</h2>
       <p>Target release: <strong>{batch.version}</strong> · {batch.imageId}</p>
       {older && <p>An older release is selected.</p>}
-      <p>Free running VMs will shut down gracefully. All C:/D: files and installed programs on changed VMs will be deleted.</p>
+      {batch.stopMode === 'force'
+        ? <p>Running VMs will be force-stopped before updating. Unsaved guest changes may be lost.</p>
+        : <p>This original preview uses graceful shutdown. Cancel and prepare a new preview to use force stop.</p>}
+      <p>All C:/D: files and installed programs on changed VMs will be deleted.</p>
       <p>Exchange, VM settings, project assignments and saved access will be kept. VMs remain stopped. Already current VMs keep their disks.</p>
       <p>{batch.targets.length} VMs in this snapshot. Status is checked again before each update. No new VMs will be added to this batch.</p>
       {!batch.targets.length && <p>No VMs to update.</p>}
       <Targets batch={batch} images={images} />
       {stale && <p role="alert">The selection changed. Cancel and prepare a new preview.</p>}
       <footer><button type="button" ref={cancel} disabled={control.busy} onClick={control.cancel}>Cancel</button>
-        <button type="button" className="vm-batch-confirm" disabled={control.busy || stale || !batch.targets.length} onClick={() => void control.confirm()}>Shut down and update VMs</button></footer>
+        <button type="button" className="vm-batch-confirm" disabled={control.busy || stale || !batch.targets.length} onClick={() => void control.confirm()}>{batch.stopMode === 'force' ? 'Force stop and update VMs' : 'Shut down and update VMs'}</button></footer>
     </dialog>, document.body)}
   </>;
 }

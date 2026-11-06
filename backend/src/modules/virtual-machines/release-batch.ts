@@ -44,6 +44,8 @@ export class VmReleaseBatches {
     const value = await readJournal<VmReleaseBatch>(path(id));
     if (!value) throw new VmError('Original VM release batch not found.', 404);
     if (value.schema !== 1 || value.requestId !== id || !['preview', 'running', 'paused', 'complete'].includes(value.state)
+      || value.stopMode !== undefined && value.stopMode !== 'force'
+      || value.stopMode === 'force' && value.state !== 'preview' && value.consent?.forceStopRunning !== true
       || !Array.isArray(value.targets) || value.targets.length > 32 || new Set(value.targets.map(v => v.id)).size !== value.targets.length
       || value.targets.some(v => !validId(v.id) || !validId(v.requestId) || !validId(v.operation) || !validId(v.nextRevision) || !states.includes(v.state)))
       throw new VmError('The original VM release batch needs maintenance.');
@@ -104,18 +106,23 @@ export class VmReleaseBatches {
           });
         } catch (error) { target.state = 'blocked'; target.reason = (error as Error).message; }
       }
-      const previewDigest = createHash('sha256').update(JSON.stringify({ imageId: image.id, imageSha256: image.sha256, targets })).digest('hex');
+      const stopMode = 'force' as const;
+      const previewDigest = createHash('sha256').update(JSON.stringify({ imageId: image.id, imageSha256: image.sha256, stopMode, targets })).digest('hex');
       const stamp = new Date().toISOString();
       const batch: VmReleaseBatch = { schema: 1, requestId: input.requestId, imageId: image.id, imageSha256: image.sha256, version: image.version,
-        previewDigest, createdAt: stamp, updatedAt: stamp, state: 'preview', targets };
+        previewDigest, stopMode, createdAt: stamp, updatedAt: stamp, state: 'preview', targets };
       await this.save(batch); return view(batch);
     });
   }
-  async confirm(id: string, input: { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true }, resume = false) {
+  async confirm(id: string, input: { previewDigest: string; confirm: true; stopRunning: true; resetSystem: true; forceStopRunning?: true }, resume = false) {
     return this.manager.locked('release-batch-control', async () => {
       const batch = await this.read(id);
       if (input.confirm !== true || input.stopRunning !== true || input.resetSystem !== true || input.previewDigest !== batch.previewDigest)
-        throw new VmError('Confirm the original target list, graceful shutdown and C:/D: reset.', 400);
+        throw new VmError('Confirm the original target list, VM stop and C:/D: reset.', 400);
+      if (batch.stopMode === 'force' && input.forceStopRunning !== true)
+        throw new VmError('Confirm force stopping the running VMs before this update.', 400);
+      if (batch.stopMode !== 'force' && input.forceStopRunning !== undefined)
+        throw new VmError('This original preview uses graceful shutdown. Prepare a new preview to use force stop.', 400);
       if (this.closing) throw new VmError('Studio is shutting down. Read the original batch after reload.', 503);
       if (this.running && this.running !== id) throw new VmError('Another VM release batch is running.');
       if (batch.state !== (resume ? 'paused' : 'preview')) return view(batch);
@@ -128,7 +135,8 @@ export class VmReleaseBatches {
       const support = await this.services.host({ operation: 'capabilities' }) as { features?: { vmReleaseBatch?: number } };
       if (support.features?.vmReleaseBatch !== 1) throw new VmError('Wait for the development coordinator to adopt this Studio release.', 503);
       if (!resume) for (const target of batch.targets) { target.state = 'pending'; delete target.reason; }
-      batch.consent = { confirm: true, stopRunning: true, resetSystem: true }; batch.state = 'running';
+      batch.consent = { confirm: true, stopRunning: true, resetSystem: true,
+        ...(batch.stopMode === 'force' ? { forceStopRunning: true as const } : {}) }; batch.state = 'running';
       await this.save(batch); this.running = id;
       this.worker = this.run(batch).catch(() => {
         // A failed durable write leaves the original journal recoverable; never
@@ -181,7 +189,8 @@ export class VmReleaseBatches {
           if (observed.vm.state === 'running' || observed.vm.state === 'paused') {
             if (!observed.process || observed.unit.controlPid !== '0' || !observed.unit.invocationId) throw new VmError('The running VM identity is not stable.');
             proof = { ...proof, phase: 'shutdown_intent', original: { unit: observed.unit, process: observed.process, bootId: observed.unit.invocationId } };
-            await this.manager.action(target.id, 'shutdown', async () => {
+            const action = batch.stopMode === 'force' ? 'force-stop' : 'shutdown';
+            await this.manager.action(target.id, action, async () => {
               guard(); await this.services.host({ operation: 'release_admission', vmId: target.id, requestId: target.requestId });
               const current = await this.services.observe(this.manager, target.id, proof); lifecycleTarget(current.vm, expected);
               if (current.unit.invocationId !== proof.original!.unit.invocationId || current.process?.pid !== proof.original!.process.pid
@@ -194,7 +203,9 @@ export class VmReleaseBatches {
               guard(); observed = await this.services.observe(this.manager, target.id, proof); lifecycleTarget(observed.vm, expected);
               if (observed.fullyStopped && !observed.originalProcessAlive && observed.exportComplete) break;
               if (observed.fullyStopped && !observed.originalProcessAlive && observed.vm.shareSync?.error) throw new VmError(observed.vm.shareSync.error);
-              if (Date.now() >= deadline || this.closing) throw new VmError('Original VM shutdown/export has no confirmed end. No force stop was sent.');
+              if (Date.now() >= deadline || this.closing) throw new VmError(batch.stopMode === 'force'
+                ? 'Original VM force stop/export has no confirmed end. No stop or reset was repeated.'
+                : 'Original VM shutdown/export has no confirmed end. No force stop was sent.');
               if (observed.fullyStopped && target.state !== 'syncing') { target.state = 'syncing'; await this.save(batch); }
               await this.services.delay();
             }

@@ -34,7 +34,8 @@ export interface VmReleaseTarget {
 export interface VmReleaseBatch {
   schema: 1; requestId: string; imageId: string; imageSha256: string; version: string; previewDigest: string;
   createdAt: string; updatedAt: string; state: 'preview' | 'running' | 'paused' | 'complete';
-  consent?: { confirm: true; stopRunning: true; resetSystem: true };
+  stopMode?: 'force';
+  consent?: { confirm: true; stopRunning: true; resetSystem: true; forceStopRunning?: true };
   targets: VmReleaseTarget[];
 }
 export interface VmReleaseBatchView extends VmReleaseBatch {
