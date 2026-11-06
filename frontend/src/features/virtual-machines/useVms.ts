@@ -31,10 +31,13 @@ export function useVms(enabled: boolean) {
     active.current = reader;
     const initial = window.setTimeout(() => { setData(empty); setError(''); setLoading(true); void reader.load(true); }, 0);
     const timer = window.setInterval(() => { if (!document.hidden) void reader.load(false); }, 4000);
+    const changed = () => { if (!document.hidden) void reader.load(true); };
+    window.addEventListener('studio:vms-changed', changed);
     return () => {
       reader.live = false; reader.controller?.abort();
       if (active.current === reader) active.current = null;
       window.clearTimeout(initial); window.clearInterval(timer);
+      window.removeEventListener('studio:vms-changed', changed);
     };
   }, [enabled]);
   return { ...data, error, loading, reload,

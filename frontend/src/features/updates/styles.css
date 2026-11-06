@@ -3,6 +3,22 @@
 .component-default select { min-width: 0; max-width: 100%; padding: 10px; border: 1px solid #61467d; border-radius: 5px; background: #120f18; color: #eee5fa; }
 .component-default button, .component-version button { padding: 10px 13px; border: 1px solid #61467d; border-radius: 5px; background: #30213e; }
 .component-default button:disabled, .component-version button:disabled { opacity: .45; cursor: default; }
+.vm-batch-progress, .vm-batch-error { flex-basis: 100%; min-width: 0; }
+.vm-batch-progress { margin-top: 12px; padding: 16px; border: 1px solid var(--line, #493359); border-radius: 7px; background: #18121f; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.vm-batch-progress h3 { margin: 0 0 10px; font-size: 15px; }
+.vm-batch-targets { list-style: none; padding: 0; margin: 16px 0; }
+.vm-batch-targets li { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 12px 0; border-bottom: 1px solid #3a2a48; }
+.vm-batch-targets strong { flex: 1 1 130px; }
+.vm-batch-targets small { flex-basis: 100%; color: #b9a8c7; }
+.vm-batch-state { color: #d4b3fa; }
+.vm-batch-dialog { width: min(650px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); box-sizing: border-box; padding: 24px; overflow: auto; background: #1b1623; color: #eee5fa; border: 1px solid #74528f; border-radius: 10px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.vm-batch-dialog::backdrop { background: #08050bbc; }
+.vm-batch-dialog h2 { margin: 0 0 16px; font-size: 20px; }
+.vm-batch-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.vm-batch-dialog button { padding: 10px 14px; border: 1px solid #74528f; border-radius: 5px; background: #30213e; color: inherit; }
+.vm-batch-dialog .vm-batch-confirm { background: #55314d; border-color: #a37896; }
+.vm-batch-dialog button:disabled { opacity: .45; }
+@media(max-width:440px) { .vm-batch-dialog { padding: 16px; } .vm-batch-targets li > span { flex-basis: 100%; } .vm-batch-progress { padding: 12px; } }
 .component-version { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 0; border-top: 1px solid #30253b; font-size: 12px; }
 .component-version > div { min-width: 0; }
 .component-version small { display: block; margin-top: 7px; color: #b0a2c0; overflow-wrap: anywhere; font-size: 10px; }

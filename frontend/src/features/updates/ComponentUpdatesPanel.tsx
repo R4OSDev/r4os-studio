@@ -3,6 +3,7 @@ import type { ComponentKind } from '../../../../shared/components';
 import './styles.css';
 import { SdkUpdatesPanel } from './SdkUpdatesPanel';
 import { useComponents } from './useComponents';
+import { VmReleaseBatchActions } from './VmReleaseBatch';
 
 export const componentNames: Record<ComponentKind | 'c', string> = { sdk: 'SDK', contract: 'Contract', libraries: 'Libraries', zig: 'Zig', c: 'C', rust: 'Rust', qemu: 'QEMU', codex: 'Codex', r4upack: 'R4UPack', r4os: 'R4OS Releases' };
 
@@ -62,6 +63,8 @@ function ToolUpdatesPanel({ kind: viewKind }: { kind: ComponentKind | 'c' }) {
           {inventory?.installed.map((value) => <option key={value.id} value={value.id}>{value.version}{value.sdkVersion ? ` · SDK ${value.sdkVersion}` : ''}{value.revision ? ` · ${value.revision.slice(0, 8)}` : ''}{value.external ? ' · system installation' : ''}</option>)}
         </select>
         <button type="button" disabled={!status?.enabled || busy || !selected || !inventory?.installed.some(value => value.id === selected) || selected === inventory?.activeId} onClick={() => void action('default', selected)}>Use as default</button>
+        {kind === 'r4os' && <VmReleaseBatchActions choice={inventory?.installed.find(value => value.id === selected)} disabled={!status?.enabled || busy}
+          older={!!inventory?.available.some(value => value.version.localeCompare(inventory.installed.find(item => item.id === selected)?.version ?? '', undefined, { numeric: true }) > 0)} />}
       </div>}
       <div className="component-version-list">
         {versions.map((value) => {

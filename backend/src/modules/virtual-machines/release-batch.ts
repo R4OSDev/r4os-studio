@@ -119,6 +119,12 @@ export class VmReleaseBatches {
       if (this.closing) throw new VmError('Studio is shutting down. Read the original batch after reload.', 503);
       if (this.running && this.running !== id) throw new VmError('Another VM release batch is running.');
       if (batch.state !== (resume ? 'paused' : 'preview')) return view(batch);
+      if (!resume) {
+        const current = await this.manager.list();
+        if (current.length !== batch.targets.length || batch.targets.some(target => !current.some(vm => vm.id === target.id
+          && (vm.revision ?? vm.imageSha256) === target.expectedRevision && vm.imageId === target.expectedImageId && vm.imageSha256 === target.expectedImageSha256)))
+          throw new VmError('The VM list or a source revision changed. Cancel and prepare a new preview.');
+      }
       const support = await this.services.host({ operation: 'capabilities' }) as { features?: { vmReleaseBatch?: number } };
       if (support.features?.vmReleaseBatch !== 1) throw new VmError('Wait for the development coordinator to adopt this Studio release.', 503);
       if (!resume) for (const target of batch.targets) { target.state = 'pending'; delete target.reason; }

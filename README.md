@@ -1,5 +1,17 @@
 ## Assigned project VM lifecycle tools (0.11.20)
 
+System → Updates → R4OS Releases offers **Update VMs** immediately after
+**Use as default**, independently of the selected default. Its Cancel-first
+preview lists all source/target releases and statuses and explicitly confirms
+graceful shutdown, C:/D: and program deletion, preserved Exchange/settings/
+assignments/access, and stopped final VMs. Changed VM snapshots require a new
+preview. One browser ticket follows the original batch through reload/navigation;
+response loss reads its original receipt, with explicit same-request retry only.
+The batch target stays fixed when the dropdown changes. Progress distinguishes
+updated/current/pending/blocked/failed/unknown, and confirmed changes invalidate
+the existing VM overview.
+
+
 Manual R4OS release batches use a saved preview of all current VM identities,
 source revisions and the selected local Full-image checksum. Confirmation
 explicitly allows graceful shutdown and replacement of C:/D:. A single serial
