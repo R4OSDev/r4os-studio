@@ -6,9 +6,8 @@ import { runtimePath, VmError } from './paths.js';
 import { ConsoleTickets, ConsoleBridge } from './console.js';
 import { PointerControllers } from './pointer.js';
 import type { VmInput, VmReleaseChange, VmDevelopmentAccessInput, VmResetInput, VmConsoleMode } from '../../../../shared/virtual-machines.js';
-import { VmManager, images, defaultImage } from './service.js';
+import { VmManager } from './service.js';
 import { VmSessions } from './sessions.js';
-import { networkAvailable } from './network.js';
 import { qmp } from './qmp.js';
 import { withVmLease } from '../project-development/vm-lease.js';
 import { developmentVmBridge } from '../project-development/vm-bridge.js';
@@ -30,11 +29,11 @@ export async function vmRoutes(app: FastifyInstance) {
     if (body && Object.hasOwn(body, 'networkEnabled') && typeof body.networkEnabled !== 'boolean') throw new VmError('Network must be enabled or disabled.', 400);
   });
   app.addHook('onRequest', async (request, reply) => sessions.validateRequest(request, reply));
-  app.get('/', async (request, reply) => {
+  app.addHook('onResponse', async (request) => { if (request.method !== 'GET') manager.invalidateDisplay(); });
+  app.get<{ Querystring: { refresh?: boolean } }>('/', { schema: { querystring: { type: 'object', additionalProperties: false, properties: { refresh: { type: 'boolean' } } } } }, async (request, reply) => {
     const session = sessions.get(request, reply, true);
-    const local = await images();
-    return { vms: await manager.list(), images: local, defaultImageId: (await defaultImage(local))?.id ?? null,
-      csrfToken: session.token, available: await manager.available(), networkAvailable: await networkAvailable() };
+    const [vms, metadata] = await Promise.all([manager.list(), manager.displayMetadata(request.query.refresh)]);
+    return { vms, ...metadata, csrfToken: session.token };
   });
   app.post<{ Body: VmInput }>('/', { schema: { body: input } }, async (request, reply) => {
     sessions.mutation(request, reply); return reply.code(201).send({ vm: await manager.create(request.body) });

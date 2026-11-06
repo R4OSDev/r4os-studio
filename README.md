@@ -5558,3 +5558,21 @@ errors or remote changes block new writes without clearing input. Explicit full
 refresh retains the view until its response and disables inputs, including open
 modal forms; mixed revision/source pages are rejected. Original mutation and
 export receipts retain their existing recovery behavior.
+
+
+### VM overview refresh
+
+The VM overview reads systemd states in bounded batches of at most32 units,
+matching replies by unit identity. Only active/starting units require QMP.
+Missing state replies are errors rather than an assumed stopped VM. Every tick
+still reads VM configuration and current service/share state. Display-only host
+capabilities, image inventory and defaults can reuse an unchanged file identity
+for at most30seconds. Profile, tool, template/drop-in, network and image changes
+invalidate that metadata; explicit refresh bypasses it. Actual start, stop,
+reset and release admissions retain their fresh checks and existing worker pins.
+
+Visible polling shares one in-flight read. Manual refresh queues a fresh full
+read behind an older poll. Leaving the view aborts its read and rejects late
+answers; authentication changes invalidate the old result before obtaining a
+fresh token. Mutations keep their original request and are never retried by
+the polling helper. Hidden views start no idle overview reads.

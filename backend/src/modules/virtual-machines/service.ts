@@ -9,7 +9,8 @@ import { recoverRelease, replaceRelease } from './release.js';
 import { recoverReset, resetDisks, completedReset } from './reset.js';
 import { activeTool } from '../components/tools.js';
 import { root, runtimePath, vmPath, validId, VmError } from './paths.js';
-import { exec, unitState, control } from './systemd.js';
+import { exec, unitState, unitStates, control } from './systemd.js';
+import { overviewFingerprint } from './overview.js';
 import { qmp } from './qmp.js';
 import { reservedExchangeName } from './exchange-identity.js';
 import { shareFiles, validSharePath, boundShare } from './share.js';
@@ -54,6 +55,24 @@ export async function defaultImage(local: VmImage[]): Promise<VmImage | undefine
 }
 
 export class VmManager {
+  private display?: { key: string; expires: number; value: { images: VmImage[]; defaultImageId: string | null; available: boolean; networkAvailable: boolean } };
+  private displayRead?: { key: string | null; promise: Promise<NonNullable<VmManager['display']>['value']> };
+  private displayEpoch = 0;
+  invalidateDisplay() { this.display = undefined; this.displayEpoch++; }
+  async displayMetadata(force = false) {
+    const key = await overviewFingerprint();
+    if (!force && key && this.display?.key === key && this.display.expires > Date.now()) return this.display.value;
+    if (this.displayRead?.key === key) return this.displayRead.promise;
+    const epoch = this.displayEpoch;
+    const promise = (async () => {
+      const [local, available, network] = await Promise.all([images(), this.available(), networkAvailable()]);
+      const value = { images: local, defaultImageId: (await defaultImage(local))?.id ?? null, available, networkAvailable: network };
+      if (key && epoch === this.displayEpoch && key === await overviewFingerprint()) this.display = { key, expires: Date.now() + 30_000, value };
+      return value;
+    })();
+    this.displayRead = { key, promise };
+    try { return await promise; } finally { if (this.displayRead?.promise === promise) this.displayRead = undefined; }
+  }
   private recovery = new Map<string, Promise<void>>();
   private verifiedImages = new Map<string, string>();
   private locks = new Map<string, Promise<unknown>>();
@@ -79,13 +98,18 @@ export class VmManager {
   async get(id: string): Promise<VirtualMachine> {
     const config = await this.config(id);
     const unit = await unitState(id);
+    return this.describe(id, config, unit);
+  }
+  private async describe(id: string, config: VmConfig, unit: Record<string, string>): Promise<VirtualMachine> {
+    if (!unit.ActiveState) throw new VmError('The VM service state could not be verified.', 503);
     let state: VmState = 'stopped';
     if (unit.ActiveState === 'failed') state = 'failed';
     else if (unit.ActiveState === 'deactivating') state = 'stopping';
-    else if (['active', 'activating'].includes(unit.ActiveState)) {
+    else if (['active', 'activating', 'reloading', 'refreshing'].includes(unit.ActiveState)) {
       state = 'starting';
       try { const status = await qmp(id, 'query-status'); state = status.running ? 'running' : 'paused'; } catch { /* booting */ }
     }
+    else if (unit.ActiveState !== 'inactive') state = 'stopping';
     const sync = await shareState(vmPath(id)).catch(() => ({ pending: true, error: 'The exchange sync state is invalid. Inspect it or explicitly reset the Exchange partition.', lastSyncedAt: undefined }));
     return { ...config, networkEnabled: config.networkEnabled ?? false, state, shareSync: sync && { pending: sync.pending, error: sync.error, lastSyncedAt: sync.lastSyncedAt }, shareMode: 'fat32-persistent', sharePath: join(vmPath(id), 'Exchange/Share'),
       ...(state === 'failed' ? { error: 'The VM stopped with an error. Check Logs.' } : {}) };
@@ -93,7 +117,9 @@ export class VmManager {
   async list() {
     await mkdir(join(root, 'Instances'), { recursive: true, mode: 0o700 });
     const entries = await readdir(join(root, 'Instances'));
-    const result = await Promise.all(entries.filter(validId).map((id) => this.get(id)));
+    const ids = entries.filter(validId);
+    const [configs, states] = await Promise.all([Promise.all(ids.map(id => this.config(id))), unitStates(ids)]);
+    const result = await Promise.all(configs.map((config, index) => this.describe(ids[index], config, states.get(ids[index])!)));
     return result.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
   async create(input: VmInput) {
