@@ -1,7 +1,7 @@
 """Small OAuth Messages compatibility mapping; Studio instructions stay intact.
 
 Wire reference: ex-machina-co/opencode-anthropic-auth 93cdd23b95f8.
-Only the connector's identity/billing metadata and tool-name namespace change.
+The connector adds identity/billing metadata, tool namespace and prompt caching.
 No prompt sanitization, native runtime, conversation loop or tool execution.
 """
 import hashlib
@@ -34,4 +34,9 @@ def request(body, tools):
                       {'type': 'text', 'text': "You are a Claude agent, built on Anthropic's Claude Agent SDK."}]
     if original:
         body['system'].append({'type': 'text', 'text': original})
+    # One stable tools/system prefix plus the growing conversation. Both use
+    # the documented default five-minute TTL; no longer paid TTL is requested.
+    # Signed assistant blocks and original tool schemas stay untouched.
+    body['system'][-1]['cache_control'] = {'type': 'ephemeral'}
+    body['cache_control'] = {'type': 'ephemeral'}
     return body

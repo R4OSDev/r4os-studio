@@ -46,9 +46,8 @@ class StudioWorker(Worker):
             if name == 'get_goal': return True
             if name == 'update_goal': return self.goal_worker.active
             if name in NOTE_TOOLS:
-                from environment_note_tools import require
-                try: require(self); return True
-                except ProjectFault: return False
+                from environment_note_tools import declared
+                return declared(self)
             if name in ROADMAP_TOOLS:
                 from roadmap_access import require
                 try: require(self); return True

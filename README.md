@@ -1,3 +1,7 @@
+## 0.11.56
+
+Claude subscription Messages requests opt in to the default five-minute prompt cache with a stable tools/system prefix and an automatic conversation breakpoint. Environment Notes declarations are available from the first accepted run round; execution still requires the original live running state and owner. Original prompt text, signed blocks and tool argument validation are retained. Reported cache reads/writes remain separate usage facts and both count toward context occupancy.
+
 ## 0.11.55
 
 Claude subscription usage disclosures and refresh controls are removed from the shared project/skill session header, including their display-only polling and countdown state. Provider limits and original check recovery remain under System; quota admission, run errors and waiting/continuation controls retain their existing behavior.

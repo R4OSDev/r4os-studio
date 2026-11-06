@@ -6,6 +6,14 @@ from store import ProjectFault
 def availability(profile):
     return {'available': tool_scope(profile) in ('project', 'skill')}
 
+def declared(worker):
+    """Frozen declaration rights, independent of the first starting/running turn."""
+    row=worker.store.db.execute('SELECT session_id FROM runs WHERE id=?',(worker.run_id,)).fetchone()
+    return (worker.config.get('environmentNotesEnabled') is True
+        and availability(tool_scope(worker.config))['available']
+        and worker.config.get('owner')=={'type':worker.store.owner_type,'id':worker.store.owner_id}
+        and row is not None and row['session_id']==worker.session_id)
+
 def require(worker):
     row=worker.store.db.execute('SELECT session_id,busy,state FROM runs WHERE id=?',(worker.run_id,)).fetchone()
     if (worker.config.get('environmentNotesEnabled') is not True
