@@ -15,8 +15,8 @@ def binding_fields(job):
         'sessionId':job['sessionId'],'agentRunId':job['agentRunId']}
 
 
-def validate_lease(projects,lease,cleanup=False):
-    """Fresh private bridge authority, derived from the original job and run."""
+def validate_lease(projects,lease,cleanup=False,*,check_vm_metadata=True):
+    """Bridge authority checks VM metadata; sandboxed workers retain local checks."""
     scope=lease['scope'];kind=scope.get('lifecycleKind')
     if kind not in KINDS or scope.get('kind')!='job':raise DevelopmentFault('This lease has no project VM lifecycle authority.',403)
     with closing(Jobs(projects,scope['r4os'],scope['projectId'])) as store:
@@ -30,10 +30,11 @@ def validate_lease(projects,lease,cleanup=False):
                 or any(binding.get(key)!=scope.get(field) for key,field in (('revision','vmRevision'),('imageId','imageId'),('imageSha256','imageSha256')))):
             raise DevelopmentFault('The original VM lifecycle/project binding changed.',403)
         if cleanup:return {'kind':kind,**(job.get('vmLifecycle') or {'phase':'cleanup'})}
-        from access import vm_config
-        current=vm_config(scope['r4os'],lease['vmId'])
-        if any(current[key]!=binding[key] for key in ('revision','imageId','imageSha256')):
-            raise DevelopmentFault('The original VM image or settings revision changed.')
+        if check_vm_metadata:
+            from access import vm_config
+            current=vm_config(scope['r4os'],lease['vmId'])
+            if any(current[key]!=binding[key] for key in ('revision','imageId','imageSha256')):
+                raise DevelopmentFault('The original VM image or settings revision changed.')
         from update_state import idle
         idle(projects,lease['vmId'])
         from quarantine import path

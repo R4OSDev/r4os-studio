@@ -45,7 +45,9 @@ def guard(store, job, lease=None, allow_stopping=False):
     finally: db.close()
     if (current['revision'] != job['projectRevision'] or current['vmId'] != job['binding']['id'] or current['pins'] != job['pins']):
         raise DevelopmentFault('Project settings or its VM assignment changed. No further guest action was authorized.')
-    if lease: inspect(store.projects, lease.id, lease.token)
+    # Instances is deliberately inaccessible here. The private VM bridge and
+    # coordinator inspect the same lease with full VM metadata before effects.
+    if lease: inspect(store.projects, lease.id, lease.token, check_vm_metadata=False)
 
 
 class Deployment:

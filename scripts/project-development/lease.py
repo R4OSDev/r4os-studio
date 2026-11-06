@@ -66,7 +66,7 @@ def maintenance_active(projects, vm_id):
     return True
 
 
-def inspect(projects, lease_id, token=None, check_boot=True, cleanup=False):
+def inspect(projects, lease_id, token=None, check_boot=True, cleanup=False, *, check_vm_metadata=True):
     root = Path(projects) / '.studio/development'; path = root / 'leases' / (identity(lease_id) + '.json')
     if path.resolve(strict=True) != path: raise DevelopmentFault('Invalid VM reservation.', 403)
     value = json.loads(path.read_text())
@@ -90,7 +90,7 @@ def inspect(projects, lease_id, token=None, check_boot=True, cleanup=False):
         except BlockingIOError:
             if value['scope'].get('lifecycleKind'):
                 from vm_lifecycle import validate_lease
-                value={**value,'lifecycle':validate_lease(projects,value,cleanup=cleanup)}
+                value={**value,'lifecycle':validate_lease(projects,value,cleanup=cleanup,check_vm_metadata=check_vm_metadata)}
             return value
     raise DevelopmentFault('The VM reservation lock is no longer held.', 409)
 

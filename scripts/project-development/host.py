@@ -176,6 +176,10 @@ class Host:
 
     async def handle(self, request, peer_pid=None):
         op = request.get('operation')
+        if op == 'project_vm_context':
+            if set(request) != {'operation', 'projectId'}: raise DevelopmentFault('Invalid project VM context request.', 400)
+            from vm_context import snapshot
+            return await self.read_work.run(snapshot, self.config, identity(request['projectId']))
         if op in ('github_import_finish', 'github_pull_validate', 'project_pins_apply'):
             fields = {'operation', 'projectId', 'input'} | ({'hosts'} if op == 'project_pins_apply' else set())
             if set(request) != fields or not isinstance(request.get('input'), dict): raise DevelopmentFault('Invalid SDK validation request.', 400)

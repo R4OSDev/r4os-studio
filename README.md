@@ -1,3 +1,7 @@
+## 0.11.43
+
+Assigned-VM diagnostic capture and graceful project-VM stop/restart now respect the existing service filesystem isolation. New input admission obtains a small, revision-checked VM identity from the development coordinator over bounded read-only IPC. VM workers retain local lease, process, boot, project and permission checks; the private bridge and coordinator keep full current VM/image validation before power actions. Agent and VM-worker access to Instances remains blocked. Existing accepted inputs retain their original context; send a new input to use the corrected VM diagnosis binding.
+
 ## 0.11.42
 
 Current development guidance distinguishes registered tools, frozen rights and verified guest/deployment capabilities, including own-window control. It points project reads to sdk/contract roots and /sdk,/contract or SDK_ROOT/CONTRACT_ROOT in the host terminal, and keeps host/SSH/skill/VM scopes separate. File creation requires JSON null; malformed expected hashes (including the string "null") fail clearly before file access, while valid stale hashes remain conflicts. Optional Environment Notes policy2 highlights evidenced environment blockers and useful suggestions, retaining current-read/revision/dedup/deletion protections and Notes-off. Saved prompts, project instructions, old accepted inputs and user notes are preserved.
