@@ -10,7 +10,7 @@ from validation import fields,identity,integer
 
 MAX_OPERATIONS=128
 
-def apply_operations(db,operations,now,maximum=MAX_OPERATIONS):
+def apply_operations(db,operations,now,maximum=MAX_OPERATIONS,create_ids=None,preserve_text=False):
     if not isinstance(operations,list) or not 1<=len(operations)<=maximum:
         raise RoadmapFault('operations must contain 1 to '+str(maximum)+' changes.',400)
     references={};results=[]
@@ -31,7 +31,9 @@ def apply_operations(db,operations,now,maximum=MAX_OPERATIONS):
         reference={key:resolve(value,path+'.target.'+key) if key in ('id','versionId','subversionId') else value for key,value in reference.items()}
         data=operation.get('input',{})
         if isinstance(data,dict) and isinstance(data.get('ids'),list):data={**data,'ids':[resolve(v,path+'.input.ids') for v in data['ids']]}
-        try:changed=apply_change(db,reference,operation['action'],data,now)
+        try:
+            if create_ids is None:changed=apply_change(db,reference,operation['action'],data,now)
+            else:changed=apply_change(db,reference,operation['action'],data,now,create_ids.get(str(index)),preserve_text)
         except (RoadmapFault,sqlite3.IntegrityError) as error:
             code=error.code if isinstance(error,RoadmapFault) else 409
             raise RoadmapFault(path+'.input/target: '+(str(error) if isinstance(error,RoadmapFault) else 'Entry conflicts with its parent, number or status.'),code) from None
@@ -39,13 +41,13 @@ def apply_operations(db,operations,now,maximum=MAX_OPERATIONS):
         results.append({'index':index,**({'key':operation['key']} if 'key' in operation else {}),'entity':changed})
     return {'operations':results,'references':references}
 
-def validate_operations(db,operations,now,maximum=MAX_OPERATIONS):
+def validate_operations(db,operations,now,maximum=MAX_OPERATIONS,create_ids=None,preserve_text=False):
     # A private SQLite clone validates all domain constraints before the first
     # source write. The original IMMEDIATE transaction holds a stable revision.
     clone=sqlite3.connect(':memory:')
     try:
         clone.deserialize(db.serialize());clone.row_factory=sqlite3.Row;clone.execute('PRAGMA foreign_keys=ON')
-        result=apply_operations(clone,operations,now,maximum)
+        result=apply_operations(clone,operations,now,maximum,create_ids,preserve_text)
         if clone.execute('PRAGMA foreign_key_check').fetchone():raise RoadmapFault('operations contain an invalid parent binding.',400)
         return result
     finally:clone.close()

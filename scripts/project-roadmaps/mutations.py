@@ -8,7 +8,7 @@ from storage import RoadmapFault, timestamp
 from validation import KINDS, fields, identity, integer, number, target, text
 
 
-def selected_input(value, allowed, require_description=False, context='Roadmap input'):
+def selected_input(value, allowed, require_description=False, context='Roadmap input', preserve_text=False):
     fields(value, optional=allowed, context=context,
            hint='Task and acceptance text uses description; title is not supported.' if require_description else '')
     result = {}
@@ -18,18 +18,19 @@ def selected_input(value, allowed, require_description=False, context='Roadmap i
         elif key == 'number':
             result[key] = val
         else:
-            result[key] = text(val, 240 if key == 'title' else 32768,
+            checked = text(val, 240 if key == 'title' else 32768,
                                required=key == 'title' or (key == 'description' and require_description))
+            result[key] = val if preserve_text else checked
     return result
 
 
-def create(db, reference, data, now):
+def create(db, reference, data, now, record_id=None, preserve_text=False):
     target(db, reference, needs_id=False); kind = reference['kind']
     if kind == 'roadmap':
         raise RoadmapFault('This project already has its roadmap.', 409)
     allowed = ('number', 'title', 'vision', 'notes', 'status') if kind == 'version' else (
         ('number', 'title', 'description', 'notes', 'status') if kind == 'subversion' else ('description', 'notes', 'status'))
-    value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'), context=kind + ' create input')
+    value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'), context=kind + ' create input',preserve_text=preserve_text)
     required = 'title' if kind in ('version', 'subversion') else 'description'
     if required not in value:
         raise RoadmapFault(kind + ' create input requires ' + required + '.', 400)
@@ -39,7 +40,7 @@ def create(db, reference, data, now):
     parent_key, parent_id = ('roadmap_id', root_row(db)['id']) if kind == 'version' else (
         ('version_id', reference['versionId']) if kind == 'subversion' else ('subversion_id', reference['subversionId']))
     position = db.execute('SELECT coalesce(max(position),-1)+1 FROM ' + table + ' WHERE ' + parent_key + '=?', (parent_id,)).fetchone()[0]
-    record = {'id': str(uuid.uuid4()), parent_key: parent_id, 'position': position,
+    record = {'id': identity(record_id) if record_id is not None else str(uuid.uuid4()), parent_key: parent_id, 'position': position,
               'created_at': now, 'updated_at': now, **{k: v for k, v in value.items() if k != 'number'}}
     if kind == 'version':
         current = db.execute('SELECT * FROM versions WHERE id=?', (root_row(db)['current_version_id'],)).fetchone()
@@ -58,7 +59,7 @@ def create(db, reference, data, now):
     return entity(db, kind, row)
 
 
-def update(db, reference, data, now, action):
+def update(db, reference, data, now, action, preserve_text=False):
     row = target(db, reference); kind = reference['kind']; table = KINDS[kind]
     if action in ('append_notes', 'replace_notes'):
         fields(data, ['notes'])
@@ -69,7 +70,7 @@ def update(db, reference, data, now, action):
         allowed = ('description', 'notes') if kind == 'roadmap' else (
             ('number', 'title', 'vision', 'notes', 'status') if kind == 'version' else (
                 ('number', 'title', 'description', 'notes', 'status') if kind == 'subversion' else ('description', 'notes', 'status')))
-        value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'), context=kind + ' update input')
+        value = selected_input(data, allowed, require_description=kind in ('task', 'acceptance'), context=kind + ' update input',preserve_text=preserve_text)
         if not value:
             raise RoadmapFault('Select a field to change.', 400)
         if 'status' in value:
@@ -112,16 +113,16 @@ def reorder(db, reference, data, now):
     return {'kind': kind, 'ids': ids}
 
 
-def apply_change(db, reference, action, data, now):
+def apply_change(db, reference, action, data, now, new_id=None, preserve_text=False):
     if not isinstance(data, dict):
         raise RoadmapFault('Invalid roadmap input.', 400)
     if action not in ('create', 'update', 'append_notes', 'replace_notes', 'delete', 'reorder', 'set_current'):
         raise RoadmapFault('Unsupported roadmap mutation.', 400)
     target(db, reference, needs_id=action not in ('create', 'reorder'))
     if action == 'create':
-        changed = create(db, reference, data, now)
+        changed = create(db, reference, data, now,new_id,preserve_text)
     elif action in ('update', 'append_notes', 'replace_notes'):
-        update(db, reference, data, now, action)
+        update(db, reference, data, now, action,preserve_text)
         changed = None
     elif action == 'delete':
         fields(data, ['confirm'])

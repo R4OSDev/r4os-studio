@@ -47,9 +47,14 @@ export function roadmapExportRoutes(app: FastifyInstance, directory: string, ses
     return download(request.params.id, info, reply);
   });
 
-  async function download(projectId: string, info: RoadmapExport, reply: FastifyReply) {
+  app.get<{Params:{id:string;exportId:string}}>('/:id/roadmap/json-imports/previews/:exportId/content',{schema:{params}},async(request,reply)=>{
+    sessions.session(request,reply);
+    const value=await roadmapStore<{previewId:string;sha256:string;byteLength:number}>(directory,{operation:'import_preview_read',projectId:request.params.id,previewId:request.params.exportId});
+    return download(request.params.id,{id:value.previewId,filename:'import-preview.json',sha256:value.sha256,byteLength:value.byteLength,format:'json'},reply,true);
+  });
+  async function download(projectId: string, info: Pick<RoadmapExport,'id'|'filename'|'sha256'|'byteLength'|'format'>, reply: FastifyReply, importPlan=false) {
     if (active.size >= 2) throw new ProjectError('Two roadmap downloads are already active. Retry shortly.', 429);
-    const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/project-roadmaps/stream_export.py', import.meta.url)), directory, projectId, info.id],
+    const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/project-roadmaps/stream_export.py', import.meta.url)), directory, projectId, info.id,...(importPlan?['--import-plan']:[])],
       { stdio: ['ignore', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
     active.add(child);
     const output = new PassThrough({ highWaterMark: 65536 });

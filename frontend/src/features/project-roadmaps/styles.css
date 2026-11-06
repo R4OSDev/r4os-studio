@@ -115,3 +115,13 @@
 .roadmap-cleanup-body dt { font-weight: 600; }
 .roadmap-cleanup-body code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .roadmap-cleanup-summary { white-space: pre-wrap; }
+
+.roadmap-json-import { margin-bottom:18px; overflow-wrap:anywhere; }
+.roadmap-json-import>summary { cursor:pointer; font-size:14px; font-weight:600; }
+.roadmap-json-import label { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:14px 0; font-size:12px; }
+.roadmap-json-import input[type=file],.roadmap-json-import select { max-width:100%; min-width:0; padding:9px; border:1px solid #604971; border-radius:6px; background:#21182b; color:inherit; }
+.roadmap-json-import button { margin:6px 10px 6px 0; }
+.roadmap-json-import a { color:#d1aff9; }
+.roadmap-import-preview { padding:14px; border:1px solid #604971; border-radius:6px; font-size:12px; line-height:1.6; }
+.roadmap-import-preview ul { padding-left:18px; max-height:320px; overflow:auto; }
+.roadmap-import-preview code { overflow-wrap:anywhere; }

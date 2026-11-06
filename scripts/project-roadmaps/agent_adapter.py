@@ -41,7 +41,7 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
     database = projects / project_id / 'Sessions/Sessions.sqlite'; regular(database)
     # Serialize short domain mutations with Stop admission. Never reacquire the
     # workspace lock independently of the inherited open file description.
-    short_mutation = tool == 'update_roadmap' and arguments.get('operation') in ('initialize', 'mutate','batch')
+    short_mutation = tool == 'update_roadmap' and arguments.get('operation') in ('initialize', 'mutate','batch','import_apply')
     db = sqlite3.connect(database.as_uri() + ('?mode=rw' if short_mutation else '?mode=ro'), uri=True, timeout=3)
     try:
         if short_mutation: db.execute('BEGIN IMMEDIATE')
@@ -127,6 +127,9 @@ def read(projects, project_id, arguments):
             row = db.execute('SELECT revision,result FROM receipts WHERE request_id=?', (extra['requestId'],)).fetchone()
             if row is None: raise ProjectFault('No confirmed Roadmap receipt exists for this request ID. Inspect before retrying.', 404)
             return {'requestId': extra['requestId'], 'revision': row['revision'], 'confirmed': True, 'result': compact(json.loads(row['result']))}
+    if view in ('import_preview','import_preview_chunk'):
+        fields(extra,['previewId'],['offset','byteLimit'] if view=='import_preview_chunk' else [])
+        return operation(projects,{'operation':'import_preview_chunk' if view=='import_preview_chunk' else 'import_preview_read',**common,'previewId':extra['previewId'],**({'offset':extra.get('offset',0),'limit':extra.get('byteLimit',8192)} if view=='import_preview_chunk' else {})})
     if view=='json':
         fields(extra,['requestId','expectedRevision','currentVersionId','scope'],['versionId','subversionId'])
         metadata=operation(projects,{'operation':'json_export',**common,'input':extra})
@@ -164,8 +167,8 @@ def call(projects, project_id, tool, arguments, actor=None):
         return compact(operation(projects, {'operation': 'initialize', 'projectId': project_id, **data}))
     if op == 'export':
         fields(data, ['requestId', 'versionId', 'expectedRevision', 'currentVersionId'])
-    elif op not in ('mutate','batch'): raise ProjectFault('Unsupported Roadmap update.', 400)
-    return compact(operation(projects, {'operation': op, 'projectId': project_id, 'input': data}))
+    elif op not in ('mutate','batch','import_preview','import_apply'): raise ProjectFault('Unsupported Roadmap update.', 400)
+    return compact(operation(projects, {'operation': op, 'projectId': project_id, 'input': data},actor=actor))
 
 
 def main():

@@ -20,7 +20,12 @@ def main():
     with connection(projects, project_id) as db:
         if db is None:
             raise ProjectFault('This roadmap is unavailable.', 404)
-        with open_archive(projects, project_id, export_id) as (info, stream):
+        if len(sys.argv)==5 and sys.argv[4]=='--import-plan':
+            from json_import import open_plan
+            source=open_plan(projects,project_id,export_id)
+        else:source=open_archive(projects,project_id,export_id)
+        with source as (info, stream):
+            if 'previewId' in info:info={**info,'id':info['previewId'],'filename':'import-preview.json','format':'json'}
             sys.stdout.buffer.write((json.dumps({'result': info}) + '\n').encode())
             sys.stdout.buffer.flush()
             started = True

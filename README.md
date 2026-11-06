@@ -1,3 +1,7 @@
+## 0.11.60
+
+Project roadmaps can upload complete JSON v1 files (up to16MiB), inspect the original document and full preview/mapping, then apply one confirmed atomic import. Add mode reports number conflicts; update matches version/subversion numbers and child positions within the chosen destination. Source IDs remain provenance. Preview files reserve destination IDs, bind the original SHA256/length and target revision, and retain all before/after fields. No omitted entries are deleted, current version is unchanged, and archived trees are not restored. Original upload/preview/apply requests survive reply loss and browser reload. File hashing runs off the UI thread. Agents share preview/apply and readback, accepting inline JSON or exact project-bound export/Workspace file references with Read-file authorization.
+
 ## 0.11.59
 
 Download complete versioned JSON for a subversion, main version or whole stored project roadmap. JSON v1 preserves all notes, text, status, ordering, identities and provenance. Whole-roadmap exports contain every stored main version; deleted archived trees are explicitly excluded and listed by archive reference. The existing immutable export storage provides a coherent snapshot, SHA256, byte length, original request recovery, UTF-8 chunk reads and streaming downloads. Agent read_roadmap view=json returns small complete documents directly and gives original-file readback for larger ones. Existing text export remains available.

@@ -111,3 +111,12 @@ export interface RoadmapBatchResult extends RoadmapBinding {requestId:string;ope
 
 export type RoadmapJsonInput = {requestId:string;expectedRevision:number;currentVersionId:string} & ({scope:'roadmap'}|{scope:'version';versionId:string}|{scope:'subversion';versionId:string;subversionId:string});
 export interface RoadmapJsonDocument {schema:'r4os-studio-roadmap';schemaVersion:1;scope:'roadmap'|'version'|'subversion';source:{projectId:string;roadmapId:string;revision:number;currentVersionId:string;exportId:string;createdAt:string};completeness:{storedTreeComplete:true;archivedTreesIncluded:false};archiveReferences:unknown[];data:ProjectRoadmap|RoadmapVersion|RoadmapSubversion}
+
+export interface RoadmapImportPreview extends RoadmapBinding {
+ previewId:string;projectId:string;sha256:string;byteLength:number;scope:'roadmap'|'version'|'subversion';mode:'add'|'update';
+ source:{id:string;sha256:string;byteLength:number;scope:string};counts:{create:number;update:number;delete:0};conflicts:string[];conflictCount:number;canApply:boolean;matching:string;currentVersionChanged:false;archiveReferencesIgnored:number;
+ changes:{kind:string;sourceId:string;targetId:string;action:string;fields:string[]}[];
+ mapping:{kind:string;sourceId:string;targetId:string;action:string;sourceNumber?:string;targetNumber?:string;previousNumber?:string;sourceOrder?:number;targetOrder?:number}[];totalChanges:number;detailsTruncated:boolean;
+}
+export interface RoadmapImportApply {requestId:string;previewId:string;previewSha256:string;expectedRevision:number;currentVersionId:string;confirm:true}
+export interface RoadmapImportResult extends RoadmapBinding {requestId:string;previewId:string;confirmed:true;counts:{create:number;update:number;delete:0};currentVersionChanged:false}

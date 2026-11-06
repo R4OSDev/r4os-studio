@@ -15,14 +15,14 @@ from mutations import mutate
 from exports import chunk, open_archive, prepare
 
 
-def _operation(projects, request):
-    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset', 'workflowId'])
+def _operation(projects, request,actor=None):
+    fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset', 'workflowId','previewId'])
     name = request['operation']
-    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'batch', 'export', 'json_export','export_info', 'export_chunk', 'workflows', 'workflow'):
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'batch', 'export', 'json_export','import_preview','import_apply','import_preview_read','import_preview_chunk','import_receipt','export_info', 'export_chunk', 'workflows', 'workflow'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
     if name in ('read', 'initialize'):
         fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])
-    elif name in ('mutate', 'batch', 'export','json_export'):
+    elif name in ('mutate', 'batch', 'export','json_export','import_preview','import_apply'):
         fields(request, ['operation', 'projectId', 'input'])
     with connection(projects, request['projectId'], initialize=name == 'initialize') as db:
         if db is None:
@@ -33,6 +33,21 @@ def _operation(projects, request):
             if name not in ('read', 'overview'):
                 raise ProjectFault('Initialize this project roadmap before continuing.', 404)
             return {'exists': False, 'projectId': request['projectId']}
+        if name in ('import_preview','import_apply'):
+            from json_import import preview,apply_preview
+            return preview(db,projects,request['projectId'],request['input'],actor) if name=='import_preview' else apply_preview(db,projects,request['projectId'],request['input'])
+        if name in ('import_preview_read','import_preview_chunk'):
+            from json_import import read_preview
+            fields(request,['operation','projectId','previewId'],['offset','limit'] if name=='import_preview_chunk' else [])
+            return read_preview(projects,request['projectId'],request['previewId'],request.get('offset',0) if name=='import_preview_chunk' else None,request.get('limit',8192))
+        if name=='import_receipt':
+            from validation import identity
+            fields(request,['operation','projectId','requestId']);identity(request['requestId'])
+            row=db.execute('SELECT result FROM receipts WHERE request_id=?',(request['requestId'],)).fetchone()
+            if row is None:raise ProjectFault('Original import request not found.',404)
+            value=json.loads(row[0])
+            if 'previewId' not in value or value.get('confirmed') is not True:raise ProjectFault('This receipt belongs to another operation.',409)
+            return value
         if name == 'batch':
             from batches import batch
             return batch(db,request['projectId'],request['input'])
@@ -56,13 +71,13 @@ def _operation(projects, request):
         return read(db, request['projectId'], request)
 
 
-def operation(projects,request,proof=None):
-    if proof is None:return _operation(projects,request)
+def operation(projects,request,proof=None,actor=None):
+    if proof is None:return _operation(projects,request,actor)
     # Only the fixed browser adapter opts into this private envelope. Agent,
     # export and direct callers keep their existing public result contract.
     from generation import capture
     before=capture(projects,request['projectId'])
-    result=_operation(projects,request)
+    result=_operation(projects,request,actor)
     after=capture(projects,request['projectId'])
     binding=result.get('roadmap') if isinstance(result,dict) and result.get('exists') else result
     if before is not None and before==after and isinstance(binding,dict) and type(binding.get('revision')) is int and isinstance(binding.get('currentVersionId'),str):

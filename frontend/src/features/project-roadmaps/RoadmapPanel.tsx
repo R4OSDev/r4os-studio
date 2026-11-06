@@ -7,6 +7,7 @@ import { mutate, roadmapRequest } from './api';
 import { versionStatusLabels } from './model';
 import { Subversions } from './Subversions';
 import type { EntryEditor } from './Subversions';
+import {ImportJson} from './ImportJson';
 import { ExportJson } from './ExportJson';
 import { ExportVersion } from './ExportVersion';
 import { CleanupWorkflows } from './CleanupWorkflows';
@@ -94,6 +95,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
       <p>Initialize one shared roadmap for this project, starting with an empty 0.1.X version.</p>
       <button type="button" className="roadmap-primary" disabled={actionBusy || blocked} onClick={() => void initialize()}>{actionBusy ? 'Initializing…' : 'Initialize roadmap'}</button></div>}
     {state?.exists && <>
+      {!creating&&<ImportJson key={id+':json-import'} id={id} token={token} binding={state.roadmap} rootId={state.roadmap.id} versionId={selectedVersionId??state.roadmap.currentVersionId} disabled={dirty||actionBusy||formBusy||blocked} busyChanged={setActionBusy} changed={model.reload}/>}
       {creating ? <VersionDialog close={() => { if (!formBusy) closeCreate(); }}>
         <RoadmapForm blocked={blocked} refreshing={model.loading} key={'new:' + model.epoch} id={id} token={token} binding={{ revision: state.roadmap.revision, currentVersionId: state.roadmap.currentVersionId }}
           target={{ kind: 'version' }} initial={{ number: '', title: 'New', vision: '', notes: '', status: 'open' }} create
