@@ -266,10 +266,11 @@ class ApiProviders:
             raise ProjectFault('The original API run binding is unavailable.',409)
         value = {'schema':1,'owner':{'type':owner_type,'id':identity(owner_id)},'sessionId':identity(sid),
             'requestId':identity(rid),'configSha256':hashlib.sha256(encode(snapshot).encode()).hexdigest()}
-        if snapshot.get('visionChild'):
-            child=snapshot['visionChild']
-            if child.get('purpose')!='vision' or identity(child.get('operationId'))!=run_id or identity(child.get('parentRunId'))==run_id: raise ProjectFault('Invalid Vision lease binding.',409)
-            value.update(schema=2,purpose='vision',parentRunId=identity(child['parentRunId']),operationId=run_id)
+        children=[snapshot[k] for k in ('visionChild','imageChild') if snapshot.get(k)]
+        if children:
+            child=children[0]
+            if len(children)!=1 or child.get('purpose') not in ('vision','image-generation') or identity(child.get('operationId'))!=run_id or identity(child.get('parentRunId'))==run_id: raise ProjectFault('Invalid image operation lease binding.',409)
+            value.update(schema=2,purpose=child['purpose'],parentRunId=identity(child['parentRunId']),operationId=run_id)
         return value
 
     def creation_receipt(self,rid):
@@ -352,7 +353,7 @@ class ApiProviders:
             try:
                 value=json.loads(row['binding'])
                 if (set(value)!=({'schema','owner','sessionId','requestId','configSha256'} | ({'purpose','parentRunId','operationId'} if value.get('schema')==2 else set())) or type(value['schema']) is not int or value['schema'] not in (1,2)
-                        or value['schema']==2 and (value['purpose']!='vision' or identity(value['parentRunId'])==row['run_id'] or value['operationId']!=row['run_id'])
+                        or value['schema']==2 and (value['purpose'] not in ('vision','image-generation') or identity(value['parentRunId'])==row['run_id'] or value['operationId']!=row['run_id'])
                         or set(value['owner'])!={'type','id'} or value['owner']['type'] not in ('project','skill')
                         or len(value['configSha256'])!=64):continue
                 for candidate in (row['run_id'],value['owner']['id'],value['sessionId'],value['requestId']):identity(candidate)
@@ -362,7 +363,7 @@ class ApiProviders:
     def held_session(self,provider_id,owner_type,owner_id,sid):
         with self.connect() as db:
             if db is None:return False
-            for row in db.execute("SELECT binding FROM leases WHERE state!='released' AND (provider_id=? OR json_extract(binding,'$.purpose')='vision')",(identity(provider_id),)):
+            for row in db.execute("SELECT binding FROM leases WHERE state!='released' AND (provider_id=? OR json_extract(binding,'$.purpose') IN ('vision','image-generation'))",(identity(provider_id),)):
                 try:
                     value=json.loads(row['binding'])
                     if value['owner']=={'type':owner_type,'id':owner_id} and value['sessionId']==sid:return True

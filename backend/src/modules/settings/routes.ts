@@ -7,18 +7,22 @@ import { ProjectError, projectStore } from '../projects/store.js';
 export async function settingsRoutes(app: FastifyInstance, { directory }: { directory: string }) {
   const sessions = new ProjectSessions('settings');
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
-  app.get('/fallback', async (request, reply) => {
-    const session = sessions.session(request, reply, true);
-    return { ...await agentHost<Record<string, unknown>>({ operation: 'fallback' }), csrfToken: session.token };
-  });
-  app.get<{Params:{requestId:string}}>('/fallback/requests/:requestId', async (request, reply) => {
-    sessions.session(request, reply);
-    return agentHost({ operation: 'fallback_receipt', requestId: request.params.requestId });
-  });
-  app.post<{Body:{requestId:string;revision:number;vision:unknown}}>('/fallback', { bodyLimit: 4096 }, async (request, reply) => {
-    sessions.mutation(request, reply);
-    return agentHost({ operation: 'fallback_save', input: request.body });
-  });
+  for (const purpose of ['vision','image-generation'] as const) {
+    const base = purpose === 'vision' ? '/fallback' : '/fallback/image-generation';
+    app.get(base, async (request, reply) => {
+      const session = sessions.session(request, reply, true);
+      reply.header('Cache-Control','private, no-store');
+      return { ...await agentHost<Record<string, unknown>>({ operation: 'fallback', purpose }), csrfToken: session.token };
+    });
+    app.get<{Params:{requestId:string}}>(base+'/requests/:requestId', async (request, reply) => {
+      sessions.session(request, reply);reply.header('Cache-Control','private, no-store');
+      return agentHost({ operation: 'fallback_receipt', purpose, requestId: request.params.requestId });
+    });
+    app.post(base, { bodyLimit: 4096 }, async (request, reply) => {
+      sessions.mutation(request, reply);reply.header('Cache-Control','private, no-store');
+      return agentHost({ operation: 'fallback_save', purpose, input: request.body });
+    });
+  }
   app.get('/tools', async (request, reply) => {
     sessions.session(request, reply, true);
     return agentHost({ operation: 'system_tools' });

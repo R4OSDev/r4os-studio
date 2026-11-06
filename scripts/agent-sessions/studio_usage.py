@@ -53,6 +53,8 @@ def record(store,row):
         'adapter':'studio-'+connection['protocol']+'-v1','requestId':rid,'requestedModel':selected['model'],
         'responseState':row['phase'],'reported':data.get('origin')}
     if data.get('vision'): origin.update(purpose='vision',parentToolCallId=data['vision']['parentToolCallId'],imageSha256=data['vision']['imageSha256'],settingsRevision=data['vision']['settingsRevision'])
+    if data.get('imageGeneration'):
+        child=data['imageGeneration'];origin.update(purpose='image-generation',parentToolCallId=child['parentToolCallId'],settingsRevision=child['settingsRevision'],imageInputSha256=child['imageInputSha256'])
     with store.db:
         store.db.execute('CREATE TABLE IF NOT EXISTS statistic_api_origins(key TEXT PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,origin TEXT NOT NULL)')
         store.db.execute('INSERT OR IGNORE INTO statistic_api_origins VALUES (?,?,?,?)',(receipt['key'],sid,row['run_id'],encode(origin)))

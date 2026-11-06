@@ -42,6 +42,7 @@ class StudioWorker(Worker):
     def declarations(self):
         def allowed(name):
             if name in __import__('tool_catalog').WEB_TOOLS:return self.config.get('webSearchEnabled',False)
+            if name == 'generate_image': return self.config.get('imageGenerationEnabled',False) and self.config['permissions'].get('studio.generate_image',False) and self.config.get('imageGenerationTarget',{}).get('available',False)
             if name == 'get_goal': return True
             if name == 'update_goal': return self.goal_worker.active
             if name in NOTE_TOOLS:

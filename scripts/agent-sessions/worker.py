@@ -71,6 +71,7 @@ class Worker:
         from skill_tools import SkillTools
         self.skills = SkillTools(self)
         self.vision_helper = None
+        self.generation_helper = None
         self.goal_worker = None
         from goal_keepalive_run import RunGoal
         self.keepalive_goal=RunGoal(self) if self.config.get('goalKeepalive') else None
@@ -191,6 +192,12 @@ class Worker:
         if self.keepalive_goal and name in ('get_goal','update_goal'):return await self.keepalive_goal.tool(name,arguments)
         if name in ('skill_discover','skill_call','read_skill_result'):
             return await self.skill_mcp.call(name,arguments,call_id)
+        if name=='generate_image':
+            from image_generation_call import ImageGeneration
+            try:
+                if self.generation_helper is None:self.generation_helper=ImageGeneration(self)
+                return await self.generation_helper.generate(call_id,arguments)
+            except ProjectFault as error:return {'success':False,'error':'imageUnavailable','output':str(error)}
         if name in NOTE_TOOLS:
             from environment_note_tools import execute
             return execute(self,name,arguments,call_id)
@@ -328,7 +335,7 @@ class Worker:
                     if name == 'studio_read_project_git' else
                     {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True})
             except Exception:
-                uncertain = name[7:] in ('import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
+                uncertain = name[7:] in ('generate_image','import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 uncertain = uncertain or name == 'studio_control_app_window' and (not isinstance(arguments,dict) or arguments.get('action') != 'status')
                 uncertain = uncertain or name == 'studio_skill_call'
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
@@ -344,7 +351,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'skillMcp', 'skillMcpRequest'):
+        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'generatedImage', 'imageGeneration', 'skillMcp', 'skillMcpRequest'):
             if key in result: value[key] = result[key]
         if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
             from terminal_timing import FIELDS as terminal_time_fields
@@ -385,6 +392,7 @@ class Worker:
         try:
             self.stopping = True
             if self.vision_helper: await self.vision_helper.close()
+            if self.generation_helper: await self.generation_helper.close()
             await self.provider_retry.cancel_for_control()
             await self.skill_mcp.close()
             if self.goal_worker:
@@ -407,6 +415,7 @@ class Worker:
     async def cleanup(self):
         self.closing=True
         if self.vision_helper: await self.vision_helper.close()
+        if self.generation_helper: await self.generation_helper.close()
         if self.keepalive_goal and self.goal_worker is not self.keepalive_goal:await self.keepalive_goal.close()
         if self.stop_task and self.stop_task is not asyncio.current_task():await asyncio.gather(self.stop_task,return_exceptions=True)
         self.closing=True

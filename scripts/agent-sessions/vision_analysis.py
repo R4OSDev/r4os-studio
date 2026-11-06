@@ -288,7 +288,7 @@ class Vision:
 def release_ended(store,run_id,providers):
     """Caller has confirmed the entire original parent unit and process end."""
     if not store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='studio_model_calls'").fetchone(): return
-    pending = "run_id=? AND json_extract(data,'$.vision.purpose')='vision' AND json_extract(data,'$.vision.leaseReleased') IS NOT 1"
+    pending = "run_id=? AND ((json_extract(data,'$.vision.purpose')='vision' AND json_extract(data,'$.vision.leaseReleased') IS NOT 1) OR (json_extract(data,'$.imageGeneration.purpose')='image-generation' AND json_extract(data,'$.imageGeneration.leaseReleased') IS NOT 1))"
     rows = store.db.execute('SELECT * FROM studio_model_calls WHERE '+pending,(run_id,)).fetchall()
     if not rows: return  # Ordinary runs incur no reconciliation/writes here.
     parent = get_run(store,run_id); worker = json.loads(parent['worker'] or '{}')
@@ -298,9 +298,9 @@ def release_ended(store,run_id,providers):
         if not operations.reconcile(run_id): raise ProjectFault('Original Vision process end remains unconfirmed.',503)
         rows = store.db.execute('SELECT * FROM studio_model_calls WHERE '+pending,(run_id,)).fetchall()
     for row in rows:
-        value = json.loads(row['data']); child = value.get('vision')
+        value = json.loads(row['data']); child = value.get('vision') or value.get('imageGeneration')
         if not child: continue
-        if (child['parentRunId'] != run_id or child['purpose'] != 'vision' or value['sessionId'] != parent['session_id']
+        if (child['parentRunId'] != run_id or child['purpose'] not in ('vision','image-generation') or value['sessionId'] != parent['session_id']
                 or any(child['worker'].get(k) != worker.get(k) for k in ('pid','birth','release'))): raise ProjectFault('The Vision parent binding changed.',503)
         ApiProviders(providers).release(row['request_id'],store.owner_type,store.owner_id,value['sessionId'],row['request_id'],child['snapshot'],child['worker'])
         child['leaseReleased'] = True

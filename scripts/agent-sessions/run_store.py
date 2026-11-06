@@ -118,6 +118,12 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     from image_generation import freeze as freeze_image_capability
     if original is not None:image_capability=original.get('imageGenerationCapability')
     snapshot['imageGenerationEnabled']=session.get('imageGenerationEnabled',True)
+    if snapshot['engine'].get('kind')=='studio':
+        if original is not None:
+            if 'imageGenerationTarget' in original:snapshot['imageGenerationTarget']=original['imageGenerationTarget']
+        else:
+            from image_targets import select as image_target
+            snapshot['imageGenerationTarget']=image_target(store.projects,provider_dir,session)
     snapshot['imageGenerationCapability']=freeze_image_capability(session,image_capability)
     snapshot['nativeImageGeneration']=bool(data.get('imageGenerationSettings')==1 and snapshot['imageGenerationEnabled'] and snapshot['imageGenerationCapability']['available'])
     from generated_images import GeneratedImages

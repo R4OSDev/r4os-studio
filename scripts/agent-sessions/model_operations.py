@@ -87,11 +87,11 @@ class Operations:
     def begin(self,run_id,rid,child=None):
         row=get_run(self.store,run_id);config=json.loads(row['config'])
         if child is not None:
-            if child.get('purpose') != 'vision' or child.get('parentRunId') != run_id or child['snapshot']['apiRunId'] != rid: raise ProjectFault('Invalid Vision operation binding.',409)
+            if child.get('purpose') not in ('vision','image-generation') or child.get('parentRunId') != run_id or child['snapshot']['apiRunId'] != rid: raise ProjectFault('Invalid image operation binding.',409)
             config = child['snapshot']
         data={'runId':run_id,'requestId':rid,'sessionId':row['session_id'],'owner':{'type':self.store.owner_type,'id':self.store.owner_id},
             'selection':{key:config[key] for key in ('providerId','model','effort','apiProvider')},'createdAt':now()}
-        if child is not None: data['vision'] = child
+        if child is not None: data['vision' if child['purpose']=='vision' else 'imageGeneration'] = child
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
 
     def process(self,rid,stage,child,request_sha256=None):
@@ -122,7 +122,7 @@ class Operations:
             data['error']['details']=getattr(error,'details',None)
             data['error']['partial']=getattr(error,'partial',None)
             proof=getattr(error,'quota_evidence',None)
-            if proof and proof.get('kind')=='confirmed-primary-quota' and not data.get('vision'):
+            if proof and proof.get('kind')=='confirmed-primary-quota' and not data.get('vision') and not data.get('imageGeneration'):
                 data['quotaEvidence']=proof
                 if not attempted:data['processEnd']={'confirmed':True,'observedBy':'not-dispatched','at':now()}
                 self.put(rid,'failed',data)

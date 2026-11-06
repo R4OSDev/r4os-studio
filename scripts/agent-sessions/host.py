@@ -81,7 +81,7 @@ class Host:
         if row['busy']:return False
         auxiliary=config['engine'].get('kind')!='studio'
         if auxiliary and not (store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='studio_model_calls'").fetchone()
-                and store.db.execute("SELECT 1 FROM studio_model_calls WHERE run_id=? AND json_extract(data,'$.vision.purpose')='vision'",(row['id'],)).fetchone()):return False
+                and store.db.execute("SELECT 1 FROM studio_model_calls WHERE run_id=? AND (json_extract(data,'$.vision.purpose')='vision' OR json_extract(data,'$.imageGeneration.purpose')='image-generation')",(row['id'],)).fetchone()):return False
         if binding(meta)!=(store.owner_type,store.owner_id) or row['session_id']!=meta['sessionId']:return False
         from model_operations import confirm_end
         observed=dict(line.split('=',1) for line in (await systemctl('show',UNIT.format(row['id']),
@@ -259,7 +259,7 @@ class Host:
             finally: self.attachment_decodes -= 1
         if op == 'fallback_save':
             from global_fallback import update
-            return await self.read_work.run(update,self.config['projects'],self.config['providers'],request.get('input'))
+            return await self.read_work.run(update,self.config['projects'],self.config['providers'],request.get('input'),request.get('purpose','vision'))
         if op == 'project_activity':
             from project_activity import snapshot
             return await snapshot(self)

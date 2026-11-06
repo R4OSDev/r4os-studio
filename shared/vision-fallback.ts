@@ -5,3 +5,6 @@ export interface VisionSettings {
   models: { id: string; name: string; available: boolean; reason: string | null }[] }[];
 }
 export interface VisionSettingsInput { requestId: string; revision: number; vision: VisionSelection | null }
+
+export type ImageGenerationSettings = Omit<VisionSettings,'vision'> & { imageGeneration: VisionSelection | null };
+export interface ImageGenerationSettingsInput { requestId: string; revision: number; imageGeneration: VisionSelection | null }

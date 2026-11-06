@@ -161,11 +161,11 @@ def validate_settings(data, provider_dir, *, direct=None):
     text(data['name'], 120)
     candidate = next((v for v in providers(provider_dir) if v['id'] == data['providerId']), None)
     if candidate is None: raise ProjectFault('Connect the selected provider before saving these settings.', 409)
-    if candidate.get('type')=='api' and (data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
+    common = data.get('engine',{}).get('kind')=='studio' if direct is None else direct
+    if candidate.get('type')=='api' and (data.get('fastMode',False) or data.get('imageGenerationEnabled',False) and not common):
         raise ProjectFault('Hosted web/image generation and Fast Mode are not qualified for this API model.',409)
     if candidate.get('type')=='claude-subscription' and (data.get('webSearchEnabled',False) or data.get('imageGenerationEnabled',False) or data.get('fastMode',False)):
         raise ProjectFault('Hosted web/image generation and Fast Mode are unavailable for this native Claude adapter.',409)
-    common = data.get('engine',{}).get('kind')=='studio' if direct is None else direct
     model = next((m for m in provider_models(provider_dir, data['providerId'], direct=common and candidate.get('type')=='api') if m['id'] == data['model']), None)
     if model is None or data['effort'] not in model['efforts']:
         raise ProjectFault('Select an available model and reasoning effort.', 400)

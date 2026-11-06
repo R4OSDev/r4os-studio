@@ -153,6 +153,9 @@ class ModelTransport:
             return Messages(self.binding, tools)
         raise ModelFault('model_protocol_unavailable')
 
+    def decoder(self):
+        return SSE()
+
     def freeze_scope(self):
         return (dumps([self.binding,self.chat_policy,self.client,self.headers]), self.credential)
 
@@ -227,7 +230,7 @@ class ModelTransport:
         addresses = await resolve_binding(self.binding)
         bootstrap = dumps({'binding': self.binding, 'addresses': addresses, 'key': self.credential,
                            'body': raw_body, 'extraHeaders': self.headers}).encode()
-        ended = False; decoder = SSE()
+        ended = False; decoder = self.decoder()
         try:
             self.child = await asyncio.create_subprocess_exec('/usr/bin/node', str(Path(__file__).with_name('model_http.mjs')),
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,

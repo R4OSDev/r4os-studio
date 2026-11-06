@@ -14,7 +14,7 @@ def read(config, request):
     op = request['operation']
     if op in ('fallback','fallback_receipt'):
         from global_fallback import present, receipt
-        return present(config['projects'],config['providers']) if op == 'fallback' else receipt(config['projects'],request.get('requestId'))
+        return present(config['projects'],config['providers'],request.get('purpose','vision')) if op == 'fallback' else receipt(config['projects'],request.get('requestId'),request.get('purpose','vision'))
     if op == 'system_tools':
         from system_tool_catalog import read as tool_catalog_read
         return tool_catalog_read(config['projects'], request)

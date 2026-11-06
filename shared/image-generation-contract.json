@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "modelId": "gpt-image-2",
+  "modelName": "GPT Image 2",
+  "sourceRevision": "8c076942cb70fba8e5c4732c23f1faabc4aed484",
+  "source": "codex-rs/ext/image-generation/src/tool.rs",
+  "generatePath": "images/generations",
+  "editPath": "images/edits"
+}
