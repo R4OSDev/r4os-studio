@@ -1,3 +1,7 @@
+## 0.11.52
+
+Automatic continuations, direct Studio model changes and applying a next-run model choice share the same read-only tool-receipt barrier. An exactly bound, committed execution-Stop recovery with confirmed process closure no longer blocks a model change solely because its original tool result remains unknown. All outstanding receipts are checked; other unknown effects, pending calls and missing results still block. Historical runs/results, active-run boundaries, queued inputs, model/context qualification and quota-wait cancellation keep their existing contracts. The check starts no model work and replays no action.
+
 ## 0.11.51
 
 Internal tool-rejection, nonadmission and Goal-continuation messages carry their run ID, so later runs can use the same round without colliding with older conversation records. Original IDs/content remain immutable and the five correction opportunities are preserved. Historical unknown execution-Stop receipts carry current committed recovery metadata into new model context. An exact original process-end recovery can clear that historical receipt's continuation barrier without changing the old run or tool result; other unknown effects and an unknown latest run still block automatic continuation. No action is replayed and application criteria remain separate from process closure.

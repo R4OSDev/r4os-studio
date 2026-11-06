@@ -16,10 +16,8 @@ async def require(host,store,sid):
     if worker.get('pid') and alive(worker['pid'],worker.get('birth')):raise ProjectFault('The original worker process has not ended.',423)
     if (worker and config['engine'].get('kind')=='studio' or worker.get('runEndProtocol')==1) and worker.get('processEnd',{}).get('confirmed') is not True:
         raise ProjectFault('The original model/worker process group end is unconfirmed.',409)
-    from goal_recovery import resolved_stop
-    for tool in store.db.execute("SELECT t.run_id,t.call_id,t.tool,t.state,substr(t.result,1,262145) AS result,substr(t.intent,1,8193) AS intent FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND (t.state NOT IN ('completed','failed') OR t.result IS NULL)",(sid,)):
-        if not resolved_stop(store,sid,tool):
-            raise ProjectFault('An original tool receipt has no confirmed end. No automatic continuation was admitted.',409)
+    from tool_receipt_boundary import require as require_tool_receipts
+    require_tool_receipts(store,sid,'An original tool receipt has no confirmed end. No automatic continuation was admitted.')
     if config['engine'].get('kind')=='claude-code':
         from claude_history import ClaudeHistory
         if ClaudeHistory(store,sid).get()['phase'] not in ('allocated','ready'):raise ProjectFault('The original Claude history is unconfirmed.',409)

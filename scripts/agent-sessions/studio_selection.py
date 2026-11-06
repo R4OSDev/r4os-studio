@@ -98,8 +98,8 @@ def change(store, sid, providers, value):
     from message_store import exists, OPEN
     if exists(store) and store.db.execute('SELECT 1 FROM session_messages WHERE session_id=? AND state IN (?,?,?,?)', (sid, *OPEN)).fetchone():
         raise ProjectFault('Finish, cancel or resolve the original queued input before changing its model connection.', 409)
-    if store.db.execute("SELECT 1 FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND (t.state='unknown' OR t.result IS NULL)", (sid,)).fetchone():
-        raise ProjectFault('Resolve the original tool receipt before changing its model connection.', 409)
+    from tool_receipt_boundary import require as require_tool_receipts
+    require_tool_receipts(store,sid,'Resolve the original tool receipt before changing its model connection.')
     selection = target(store, sid, providers, value)
     validate_context(store, sid, records(store, sid), selection)
     return selection['engine']

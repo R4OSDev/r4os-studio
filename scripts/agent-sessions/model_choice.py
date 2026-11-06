@@ -207,8 +207,8 @@ async def prepare(host,store,sid,data,frozen=None):
         source_config=json.loads(source['config'])
         if (worker and source_config['engine'].get('kind')=='studio' or worker.get('runEndProtocol')==1) and worker.get('processEnd',{}).get('confirmed') is not True:
             raise ProjectFault('The original model/worker process end is unconfirmed. The next-run choice was retained.',409)
-        if store.db.execute("SELECT 1 FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND (t.state='unknown' OR t.result IS NULL) LIMIT 1",(sid,)).fetchone():
-            raise ProjectFault('Resolve the original tool receipt before applying the next-run model.',409)
+        from tool_receipt_boundary import require as require_tool_receipts
+        require_tool_receipts(store,sid,'Resolve the original tool receipt before applying the next-run model.')
         if db.execute('SELECT 1 FROM runs WHERE busy=1 LIMIT 1').fetchone():
             raise ProjectFault('Another original run still owns this workspace. The next-run choice was retained.',409)
         if session['revision']!=intent['settingsRevision'] or session['providerId']!=intent['providerId']:
