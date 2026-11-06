@@ -138,6 +138,8 @@ class ModelTransport:
         self.flush_delay = None
         self.request_sha256 = None
         self.media_resolver = None
+        self.history_resolver = None
+        self.history_scope = ()
         self._frozen = None
 
     def parser(self, tools):
@@ -157,7 +159,8 @@ class ModelTransport:
         return SSE()
 
     def freeze_scope(self):
-        return (dumps([self.binding,self.chat_policy,self.client,self.headers]), self.credential)
+        return (dumps([self.binding,self.chat_policy,self.client,self.headers]), self.credential,
+                self.history_resolver, self.history_scope)
 
     def freeze(self, messages, instructions, tools, effort='', *, retain=True):
         # Used only for an immutable active worker snapshot. At most one bounded
@@ -174,11 +177,13 @@ class ModelTransport:
         return self._frozen['raw'] if self._frozen is not None and self._frozen['body'] is body else dumps(body)
 
     def prepare(self, messages, instructions, tools, effort=''):
+        recoveries = self.history_resolver(messages) if self.history_resolver else {}
+        self.history_scope = tuple(sorted((key, dumps(value)) for key, value in recoveries.items()))
         frozen = self._frozen
         if frozen is not None and frozen['scope'] == self.freeze_scope() and frozen['messages'] is messages and frozen['instructions'] == instructions and frozen['tools'] == dumps(tools) and frozen['effort'] == effort:
             return frozen['body'], self.parser(tools)  # Parser state belongs to this one attempt.
         from portable_history import project
-        messages = project(messages, self.binding)
+        messages = project(messages, self.binding, recoveries)
         if any(p['type'] in ('image','document') for m in messages for p in m['content']):
             from studio_media import resolve
             messages=resolve(messages,self.media_resolver)

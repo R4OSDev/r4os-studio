@@ -39,6 +39,11 @@ def records(store, sid):
     return validate_records(store, sid, result)
 
 
+def context_messages(store, sid):
+    from active_history import ActiveHistory
+    return ActiveHistory(store, sid).read(('model-selection',))[0]
+
+
 class RunConfigs:
     """Worker-local immutable accepted selections, bounded by count and bytes."""
     def __init__(self):
@@ -76,7 +81,7 @@ def validate_records(store, sid, result, configs=None):
 
 
 def validate_context(store, sid, messages, selection):
-    from model_transport import ModelTransport
+    from model_transport import ModelFault, ModelTransport
     from studio_media import Media
     from profile import regular
     worker = SimpleNamespace(store=store, session_id=sid, config=selection)
@@ -90,7 +95,16 @@ def validate_context(store, sid, messages, selection):
             regular(store.directory/sid/'GeneratedImages'/(identity(reference.split(':', 1)[1])+'.image'))
         return Media(worker).resolve(reference)
     transport.media_resolver = media
+    from studio_history import recoveries
+    transport.history_resolver = lambda messages: recoveries(store, sid, messages)
     try: transport.prepare(messages, '', [], selection['effort'])
+    except ModelFault as error:
+        reasons = {'model_context_unconfirmed_tool': 'An active historical tool observation still lacks a verified original recovery.',
+                   'model_context_unpaired': 'The active context contains an unmatched tool call or result.',
+                   'model_context_not_portable': 'Original provider content cannot be safely projected to this model.',
+                   'model_content_unavailable': 'The active context contains content unavailable to this model.'}
+        reason = reasons.get(error.code, 'Local request preparation failed (' + error.code + ').')
+        raise ProjectFault('The selected model cannot continue this original context: ' + reason + ' No model request was sent.', 409) from None
     except ProjectFault as error: raise ProjectFault('The selected model cannot continue this original context: '+str(error), 409) from None
 
 
@@ -101,5 +115,5 @@ def change(store, sid, providers, value):
     from tool_receipt_boundary import require as require_tool_receipts
     require_tool_receipts(store,sid,'Resolve the original tool receipt before changing its model connection.')
     selection = target(store, sid, providers, value)
-    validate_context(store, sid, records(store, sid), selection)
+    validate_context(store, sid, context_messages(store, sid), selection)
     return selection['engine']

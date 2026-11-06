@@ -218,8 +218,8 @@ async def prepare(host,store,sid,data,frozen=None):
         proof,selection,target=qualification(store,sid,session,choice,host.config['providers'])
         if proof!=intent['proof']:raise ProjectFault('The model facts or credential binding changed. Choose the next-run model again; the original input was retained.',409)
         if selection is not None:
-            from studio_selection import records,validate_context
-            validate_context(store,sid,records(store,sid),selection)
+            from studio_selection import context_messages,validate_context
+            validate_context(store,sid,context_messages(store,sid),selection)
         from image_inputs import qualify,history
         from document_inputs import qualify as qualify_documents
         qualify_documents(store,sid,target,history(store,sid));qualify(store,sid,target,host.config['providers'],[])

@@ -1,3 +1,7 @@
+## 0.11.53
+
+Model changes validate the same active checkpoint, latest exact instruction and conversation tail used by Studio runs. Superseded archived patch observations no longer reject a usable active context. A historical unknown Stop can cross a model route only with its exact canonical record, original receipt/result and verified committed process-end recovery; its unknown result is retained as historical data alongside an explicit end-proof notice. Model selection and the worker use the same projection, and prepared-request reuse checks the current proof scope. Other unconfirmed observations still block. Local context errors identify the preparation failure and state that no model request was sent. No history is rewritten, no action is repeated and no model is automatically selected.
+
 ## 0.11.52
 
 Automatic continuations, direct Studio model changes and applying a next-run model choice share the same read-only tool-receipt barrier. An exactly bound, committed execution-Stop recovery with confirmed process closure no longer blocks a model change solely because its original tool result remains unknown. All outstanding receipts are checked; other unknown effects, pending calls and missing results still block. Historical runs/results, active-run boundaries, queued inputs, model/context qualification and quota-wait cancellation keep their existing contracts. The check starts no model work and replays no action.

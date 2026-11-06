@@ -71,7 +71,7 @@ def visible(original, connector=None):
     return parts
 
 
-def project(messages, binding):
+def project(messages, binding, recoveries=None):
     result = []
     for message in messages:
         origin = message.get('origin', {}); selection = origin.get('selection', {})
@@ -85,8 +85,13 @@ def project(messages, binding):
             if len(originals) != 1 or message['role'] != 'assistant' or visible(originals[0], selection.get('connection', {}).get('kind')) != parts:
                 raise ModelFault('model_context_not_portable')
             parts = [{'type': 'text', 'text': 'HISTORICAL MODEL RESPONSE. Visible original content follows. Provider-private reasoning remains in its original archive and is unavailable to the selected model.'}, *parts]
+        notes = []
         for part in parts:
             if part['type'] == 'tool_result' and (part['result'].get('error') == 'unknown' or part['result'].get('partialChangesPossible')):
-                raise ModelFault('model_context_unconfirmed_tool')
-        result.append({**message, 'content': parts, 'origin': {**origin, 'foreignProjection': True}})
+                proof = (recoveries or {}).get((message.get('runId'), part['callId']))
+                if not proof: raise ModelFault('model_context_unconfirmed_tool')
+                notes.append({'type': 'text', 'text': 'STUDIO ORIGINAL PROCESS RECOVERY. The original tool observation remains unknown. '
+                    'Verified bound recovery confirms only the original guest process end, not the Stop effect, cleanup or application test success. '
+                    'Do not replay the original action. Current verified historical metadata:\n' + dumps(proof)})
+        result.append({**message, 'content': [*parts, *notes], 'origin': {**origin, 'foreignProjection': True}})
     return native_import(result)
