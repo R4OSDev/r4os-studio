@@ -197,6 +197,9 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     freeze_api(store,session_id,data,provider_dir,snapshot,original=original)
     from context_policy import freeze as freeze_context
     freeze_context(snapshot,store.projects,original)
+    if snapshot['engine'].get('kind')=='studio':
+        if original is None:snapshot['contextResultProtocol']=1
+        elif 'contextResultProtocol' in original:snapshot['contextResultProtocol']=original['contextResultProtocol']
     if original is not None:
         for key in ('nativeGoalPreparation','apiGoalProtocol'):
             if key in original:snapshot[key]=original[key]

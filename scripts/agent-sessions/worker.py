@@ -201,6 +201,10 @@ class Worker:
         if name in NOTE_TOOLS:
             from environment_note_tools import execute
             return execute(self,name,arguments,call_id)
+        if name=='read_context_result':
+            from context_results import execute
+            try:return await execute(self,arguments,call_id)
+            except ProjectFault as error:return {'success':False,'error':'unavailable','output':str(error)}
         if name in ('list_generated_images','import_generated_image'):
             from generation_tools import execute
             return await execute(self,name,arguments,call_id)

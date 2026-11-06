@@ -11,7 +11,7 @@ export const permissionToolLabels: Record<AgentToolId, string> = {
   'studio.skill_network':'Skill web access', 'studio.skill_discover':'Discover skill tools', 'studio.skill_call':'Call skill tool', 'studio.read_skill_result':'Read skill result',
   'studio.exec_command': 'Run command', 'studio.write_stdin': 'Process input', 'studio.terminate_process': 'Terminate process',
   'studio.list_directory': 'List directory', 'studio.read_file': 'Read file', 'studio.search': 'Search',
-  'studio.read_attachment': 'Read attachment',
+  'studio.read_attachment': 'Read attachment', 'studio.read_context_result':'Read original context result',
   'studio.generate_image':'Generate image', 'studio.list_generated_images': 'List generated images', 'studio.import_generated_image': 'Import generated image',
   'studio.write_file': 'Write file', 'studio.apply_patch': 'Apply patch', 'studio.create_directory': 'Create directory',
   'studio.build_project': 'Build project', 'studio.deploy_project': 'Deploy project', 'studio.run_project': 'Run project',

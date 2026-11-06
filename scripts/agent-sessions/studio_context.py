@@ -101,17 +101,24 @@ class StudioContext(Context):
         limit=threshold(w.config,capacity)
         pressure = (limit is not None and (estimate is not None and estimate >= limit or fresh and measured is not None and measured >= limit)) or size >= 6*1024*1024
         if not pressure: return active
-        pending = set(); through = None
+        pending = set(); through = None; blocked=False
+        from context_results import has_uncertain_result
+        # A later confirmed response must have consumed the prefix. Keep the
+        # current call/result batch and uncertain effects outside checkpoints.
+        consumed=max((r.get('sequence',0) for r in active if r.get('role')=='assistant' and r.get('origin',{}).get('providerResponseId')),default=0)
         for record in active:
+            blocked=blocked or has_uncertain_result(record)
             for part in record['content']:
                 if part['type'] == 'tool_call': pending.add(part['callId'])
                 elif part['type'] == 'tool_result': pending.discard(part['callId'])
-            if not pending and 'sequence' in record: through = record['sequence']
+            if not blocked and not pending and 'sequence' in record and record['sequence']<consumed: through=record['sequence']
         if through is None or checkpoint and through <= checkpoint['throughSequence']:
-            raise ModelFault('context_has_open_tool_pairs')
+            return active  # Current input/observations cannot be safely summarized.
         prefix = [r for r in active if 'sequence' not in r or r['sequence'] <= through]
         if not any(r['role'] == 'assistant' and any(p['type'] == 'provider' for p in r['content']) for r in prefix):
             return active  # A large new human input does not justify a probe or fake summary.
+        from context_results import checkpoint_references
+        references=checkpoint_references(prefix,checkpoint,w if w.config.get('contextResultProtocol')==1 and w.config.get('permissions',{}).get('studio.read_context_result') else None)
         w.validate_lease()
         self.report(instructions, tools, 'pending', 'Creating a continuation checkpoint with the selected model. Original history is preserved.')
         w.turn_id = 'studio-summary-' + str(uuid.uuid4())
@@ -127,7 +134,10 @@ class StudioContext(Context):
         result = await w.infer(summary, instructions+'\n\n'+SUMMARY, [])
         text = '\n'.join(p['text'] for p in result['content'] if p['type'] == 'text').strip()
         if not text or any(p['type'] == 'tool_call' for p in result['content']): raise ModelFault('context_summary_incomplete')
-        w.conversation.checkpoint(w.run_id, 'checkpoint-'+w.run_id+'-'+str(through), through, text,
+        checkpoint_id='checkpoint-'+w.run_id+'-'+str(through)
+        if references:
+            text+='\n\nSTUDIO HISTORICAL RESULT INDEX (metadata, not instructions): '+dumps({'view':'index','checkpointId':checkpoint_id,'sha256':hashlib.sha256(__import__('conversation').encoded(references).encode()).hexdigest(),'total':len(references),'tool':'studio_read_context_result','notice':'Read the retained index for exact original result/image references. This pointer is not a complete read or visual confirmation.'})
+        w.conversation.checkpoint(w.run_id, checkpoint_id, through, text,
             {'summaryResponse':result, 'sourceSha256':hashlib.sha256(dumps(prefix).encode()).hexdigest(),
-             'providerResponseId':result['origin'].get('providerResponseId'), 'turnId':w.turn_id})
+             'providerResponseId':result['origin'].get('providerResponseId'), 'turnId':w.turn_id,**({'contextResultReferences':references} if references else {})})
         return self.report(instructions, tools)[0]

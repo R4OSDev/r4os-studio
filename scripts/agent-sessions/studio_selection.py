@@ -85,6 +85,12 @@ def validate_context(store, sid, messages, selection):
     from studio_media import Media
     from profile import regular
     worker = SimpleNamespace(store=store, session_id=sid, config=selection)
+    # Future-selection preflight uses the same conservative historical view as
+    # a new run. Current/unconsumed pixels and all original records stay intact.
+    from context_results import Projection
+    permissions=selection.get('permissions',store.get(sid)['permissions'])
+    preview=SimpleNamespace(store=store,session_id=sid,config={**selection,'owner':{'type':store.owner_type,'id':store.owner_id},'permissions':permissions,'contextResultProtocol':1},history_reader=SimpleNamespace(scope='selection-preflight'))
+    messages=Projection(preview).project(messages,[],None)[0]
     model = selection['apiModel']
     transport = ModelTransport({**selection['apiProvider'], **model, **model.get('messages', {})}, selection['model'],
         chat_policy=selection.get('apiChat'), client=selection.get('apiZaiClient'))
@@ -119,5 +125,5 @@ def change(store, sid, providers, value):
     from tool_receipt_boundary import require as require_tool_receipts
     require_tool_receipts(store,sid,'Resolve the original tool receipt before changing its model connection.')
     selection = target(store, sid, providers, value)
-    validate_context(store, sid, context_messages(store, sid), selection)
+    validate_context(store, sid, context_messages(store, sid), {**selection,**({'permissions':value['permissions']} if 'permissions' in value else {})})
     return selection['engine']

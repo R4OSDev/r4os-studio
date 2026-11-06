@@ -26,6 +26,8 @@ class StudioWorker(Worker):
         self.conversation = Conversation(self.store, self.session_id)
         from active_history import ActiveHistory
         self.history_reader = ActiveHistory(self.store, self.session_id)
+        from context_results import Projection
+        self.context_results=Projection(self)
         self.model = None; self.operation = None; self.credential = None
         self.round = 0
         from model_operations import Operations
@@ -160,7 +162,7 @@ class StudioWorker(Worker):
         # Accepted records/configs are immutable. Recovery gets a new reader;
         # any changed current route or credential discards worker-local reuse.
         scope = encode([self.config, hashlib.sha256((self.credential or '').encode()).hexdigest()])
-        return self.history_reader.read(scope)
+        return self.context_results.project(*self.history_reader.read(scope))
 
     def transport(self):
         scope = encode([self.config, self.credential, getattr(self,'model_headers',None)])

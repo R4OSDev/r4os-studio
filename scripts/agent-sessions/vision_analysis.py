@@ -98,6 +98,12 @@ def authorize(w, call_id, data, question):
     return raw, meta
 
 
+async def authorize_call(w,call_id,data,question,historical=None):
+    if historical is None:return authorize(w,call_id,data,question)
+    from context_results import authorize_vision
+    return await authorize_vision(w,call_id,data,question,historical)
+
+
 def snapshot(w,operation,setting):
     from vision_targets import output_budget
     target = setting['target']; provider = target['provider']; model = target['model']; effort = target['effort']
@@ -168,15 +174,15 @@ class Vision:
             self.running.cancel(); await asyncio.gather(self.running,return_exceptions=True)
         if self.model: await self.model.close()
 
-    async def analyse(self,call_id,data,question):
+    async def analyse(self,call_id,data,question,*,historical=None):
         async with self.lock:
-            self.running = asyncio.create_task(self.once(call_id,data,question))
+            self.running = asyncio.create_task(self.once(call_id,data,question,historical=historical))
             try: return await self.running
             finally: self.running = None
 
-    async def once(self,call_id,data,question):
-        w = self.w; raw,meta = authorize(w,call_id,data,question)
-        image_ref = 'studio-image:'+meta['jobId']+'/'+meta['id']
+    async def once(self,call_id,data,question,*,historical=None):
+        w = self.w; raw,meta = await authorize_call(w,call_id,data,question,historical)
+        image_ref = ('studio-history-image:'+historical['reference']['runId'] if historical is not None else 'studio-image:'+meta['jobId'])+'/'+meta['id']
         question_hash = hashlib.sha256(question.encode()).hexdigest()
         op = str(uuid.uuid5(uuid.UUID(w.run_id),encode(['vision',call_id,image_ref,meta['sha256'],question_hash])))
         operations = Operations(w.store)
@@ -190,7 +196,8 @@ class Vision:
         setting = configured(w); frozen = snapshot(w,op,setting)
         parent_worker = {'release':w.manifest['release'],'pid':os.getpid(),'birth':birth(os.getpid())}
         binding = {'purpose':'vision','parentRunId':w.run_id,'parentToolCallId':call_id,'imageId':meta['id'],'imageSha256':meta['sha256'],
-                   'questionSha256':question_hash,'jobId':meta['jobId'],'imageReference':image_ref,'captureBootId':meta.get('bootId'),'settingsRevision':setting['revision'],'snapshot':frozen,'worker':parent_worker}
+                   'questionSha256':question_hash,'jobId':meta.get('jobId'),'imageReference':image_ref,'captureBootId':meta.get('bootId'),'settingsRevision':setting['revision'],'snapshot':frozen,'worker':parent_worker}
+        if historical is not None:binding['historicalResult']=historical
         operations.begin(w.run_id,op,child=binding)
         api = ApiProviders(w.manifest['providers']); claimed = False; result = None; error = None
         self.model = None; credential = None
@@ -211,7 +218,7 @@ class Vision:
                 await account_call(plan.require_included,provider)
                 credential = await account_call(plan.credential,provider,frozen['apiClaudeGrant'])
             api.validate_active(op,w.store.owner_type,w.store.owner_id,w.session_id,op,frozen,parent_worker)
-            authorize(w,call_id,data,question)  # Fresh parent/rights/bytes check after account access.
+            await authorize_call(w,call_id,data,question,historical)  # Fresh parent/rights/bytes check after account access.
             model = self.model = VisionTransport({**provider,**frozen['apiModel'],**frozen['apiModel'].get('messages',{})},frozen['model'],credential,
                 headers=headers,chat_policy=frozen.get('apiChat'),client=frozen.get('apiZaiClient'))
             model.media_resolver = lambda reference: {'type':'image','mediaType':'image/png','data':base64.b64encode(raw).decode()} if reference == image_ref else None

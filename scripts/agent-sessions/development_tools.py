@@ -52,8 +52,21 @@ class DevelopmentTools:
                 content.append({'type':'inputImage','imageUrl':'data:'+block['mimeType']+';base64,'+block['data']})
             if len(images)<result['skillMcp'].get('imageCount',0):
                 content.append({'type':'inputText','text':'Some original skill images remain in the retained result because this model or its image transport limit cannot deliver them. Retention does not confirm visual inspection.'})
+        if result.get('generatedImage') and self.image_capable():
+            from generated_images import GeneratedImages
+            import base64
+            images=GeneratedImages(self.worker.store,self.worker.session_id);meta=images.get(result['generatedImage']['id'])
+            if meta!=result['generatedImage']:raise ValueError('The original generated image metadata changed.')
+            raw=images.path(meta['id']).read_bytes()
+            content.append({'type':'inputImage','imageUrl':'data:'+meta['mediaType']+';base64,'+base64.b64encode(raw).decode()})
         if result.get('image'):
-            if not self.worker.config['permissions'].get('studio.capture_vm') or (not self.image_capable() and result.get('imageDelivery') != 'reference-only'):
+            historical=False
+            if result.get('contextReadback') and self.worker.config['permissions'].get('studio.read_context_result'):
+                from context_results import load
+                _,part,_=load(self.worker,result['contextReadback'])
+                if part['result'].get('image')!=result['image']:raise ValueError('The historical screenshot reference changed.')
+                historical=True
+            if not (self.worker.config['permissions'].get('studio.capture_vm') or historical) or (not self.image_capable() and result.get('imageDelivery') != 'reference-only'):
                 return {'success': False, 'contentItems': [{'type': 'inputText', 'text': 'Image inspection is unavailable for this model or permission.'}]}
             image = result['image']
             data = image_data if image_data is not None else await self.request('evidence', id=image['jobId'], evidenceId=image['id'])

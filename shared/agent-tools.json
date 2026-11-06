@@ -5398,6 +5398,275 @@
           }
         }
       }
+    },
+    {
+      "name": "studio_read_context_result",
+      "description": "Read an exact retained historical tool observation in this session without repeating its tool or capturing a new VM frame. Use the complete contextArchive.reference returned in the active history. view=result pages the original result JSON with UTF-8 byte offsets/byteLimit, full byte length and SHA256; the reference sha256 binds the original tool_result part, while the returned sha256 binds the paged result JSON. A page/preview is not a full read unless complete=true. view=image selects an existing imageIndex: native Vision receives original pixels; a text-only main model can supply question to request the existing configured Vision fallback, with no main-model change. Original owner/session/run/call/sequence/hash, parent rights and image bytes are rechecked. A historical image is not fresh GUI evidence and does not confirm actions or application success. If a checkpoint includes a historical result index pointer, view=index with its exact checkpointId/sha256 returns bounded original references. Missing/foreign/changed originals are rejected; nothing is regenerated or replayed.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "result"
+                ]
+              },
+              "reference": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "owner": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "project",
+                          "skill"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 36,
+                        "maxLength": 36
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "recordId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "partIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8191
+                  },
+                  "callId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  },
+                  "recordSha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "version",
+                  "owner",
+                  "sessionId",
+                  "runId",
+                  "recordId",
+                  "sequence",
+                  "partIndex",
+                  "callId",
+                  "sha256",
+                  "recordSha256"
+                ],
+                "additionalProperties": false
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 16777216
+              },
+              "byteLimit": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 32768
+              }
+            },
+            "required": [
+              "view",
+              "reference"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "image"
+                ]
+              },
+              "reference": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "owner": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "project",
+                          "skill"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 36,
+                        "maxLength": 36
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "recordId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "partIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8191
+                  },
+                  "callId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  },
+                  "recordSha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "version",
+                  "owner",
+                  "sessionId",
+                  "runId",
+                  "recordId",
+                  "sequence",
+                  "partIndex",
+                  "callId",
+                  "sha256",
+                  "recordSha256"
+                ],
+                "additionalProperties": false
+              },
+              "imageIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8191
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "required": [
+              "view",
+              "reference"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "index"
+                ]
+              },
+              "checkpointId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8192
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "required": [
+              "view",
+              "checkpointId",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
     }
   ],
   "skill": [
@@ -6089,6 +6358,275 @@
             "maximum": 2097152
           }
         }
+      }
+    },
+    {
+      "name": "studio_read_context_result",
+      "description": "Read an exact retained historical tool observation in this session without repeating its tool or capturing a new VM frame. Use the complete contextArchive.reference returned in the active history. view=result pages the original result JSON with UTF-8 byte offsets/byteLimit, full byte length and SHA256; the reference sha256 binds the original tool_result part, while the returned sha256 binds the paged result JSON. A page/preview is not a full read unless complete=true. view=image selects an existing imageIndex: native Vision receives original pixels; a text-only main model can supply question to request the existing configured Vision fallback, with no main-model change. Original owner/session/run/call/sequence/hash, parent rights and image bytes are rechecked. A historical image is not fresh GUI evidence and does not confirm actions or application success. If a checkpoint includes a historical result index pointer, view=index with its exact checkpointId/sha256 returns bounded original references. Missing/foreign/changed originals are rejected; nothing is regenerated or replayed.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "result"
+                ]
+              },
+              "reference": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "owner": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "project",
+                          "skill"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 36,
+                        "maxLength": 36
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "recordId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "partIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8191
+                  },
+                  "callId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  },
+                  "recordSha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "version",
+                  "owner",
+                  "sessionId",
+                  "runId",
+                  "recordId",
+                  "sequence",
+                  "partIndex",
+                  "callId",
+                  "sha256",
+                  "recordSha256"
+                ],
+                "additionalProperties": false
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 16777216
+              },
+              "byteLimit": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 32768
+              }
+            },
+            "required": [
+              "view",
+              "reference"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "image"
+                ]
+              },
+              "reference": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "owner": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "project",
+                          "skill"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 36,
+                        "maxLength": 36
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "recordId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "partIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8191
+                  },
+                  "callId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  },
+                  "recordSha256": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "version",
+                  "owner",
+                  "sessionId",
+                  "runId",
+                  "recordId",
+                  "sequence",
+                  "partIndex",
+                  "callId",
+                  "sha256",
+                  "recordSha256"
+                ],
+                "additionalProperties": false
+              },
+              "imageIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8191
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "required": [
+              "view",
+              "reference"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "index"
+                ]
+              },
+              "checkpointId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8192
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "required": [
+              "view",
+              "checkpointId",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        ]
       }
     }
   ]
