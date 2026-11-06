@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { BoardCardSummary, BoardSnapshot, BoardSearch } from '../../../../shared/project-boards';
 import { searchBoard } from './api';
 export function calendarToday() { const date = new Date(); return `${date.getFullYear().toString().padStart(4, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`; }
@@ -18,16 +18,17 @@ export function useBoardFilters(projectId: string, data: BoardSnapshot | null, r
     return () => { clearTimeout(timer); controller.abort(); };
   }, [projectId, boardId, revision, needle, refresh]);
   const searching = !!needle && (match?.query !== needle || match.value.boardId !== boardId || match.value.boardRevision !== revision);
-  function includes(card: BoardCardSummary) {
+  const today = calendarToday();
+  const includes = useCallback((card: BoardCardSummary) => {
     if (needle && (searching || !match?.value.cardIds.includes(card.id))) return false;
     if (label && !card.labelIds.includes(label) || priority && card.priority !== priority) return false;
-    const today = calendarToday();
     return !due || (due === 'none' ? !card.dueDate : !!card.dueDate && (due === 'overdue' ? card.dueDate < today : due === 'today' ? card.dueDate === today : card.dueDate > today));
-  }
-  return { query, setQuery, label, setLabel, priority, setPriority, due, setDue, active, searching, error: needle ? Array.from(needle).length > 256 ? 'Use at most256 search characters.' : error : '', includes,
-    clear: () => { setQuery(''); setLabel(''); setPriority(''); setDue(''); setError(''); } };
+  }, [needle, searching, match, label, priority, due, today]);
+  const clear = useCallback(() => { setQuery(''); setLabel(''); setPriority(''); setDue(''); setError(''); }, []);
+  return useMemo(() => ({ query, setQuery, label, setLabel, priority, setPriority, due, setDue, active, searching, error: needle ? Array.from(needle).length > 256 ? 'Use at most256 search characters.' : error : '', includes,
+    clear }), [query, label, priority, due, active, searching, needle, error, includes, clear]);
 }
-export function BoardFilters({ data, filters, showArchived }: { data: BoardSnapshot; showArchived: boolean; filters: ReturnType<typeof useBoardFilters> }) {
+export const BoardFilters = memo(function BoardFilters({ data, filters, showArchived }: { data: BoardSnapshot; showArchived: boolean; filters: ReturnType<typeof useBoardFilters> }) {
   const visible = data.cards.filter(card => (showArchived || !card.archived) && filters.includes(card)).length, total = data.cards.filter(card => showArchived || !card.archived).length;
   return <div className="board-filters" role="search" aria-label="Filter cards"><label>Search cards<input type="search" placeholder="Title or description" value={filters.query} maxLength={1024} onChange={event => filters.setQuery(event.target.value)} /></label>
     <label>Label<select value={filters.label} onChange={event => filters.setLabel(event.target.value)}><option value="">All labels</option>{data.labels.map(label => <option key={label.id} value={label.id}>{label.name}</option>)}{filters.label && !data.labels.some(label => label.id === filters.label) && <option value={filters.label}>Removed label</option>}</select></label>
@@ -37,4 +38,4 @@ export function BoardFilters({ data, filters, showArchived }: { data: BoardSnaps
     {filters.searching && <span role="status">Searching…</span>}{filters.error && <span className="project-error" role="alert">{filters.error}</span>}
     {filters.active && !filters.searching && !filters.error && !visible && <p className="board-empty">No cards match these filters.</p>}
   </div>;
-}
+});

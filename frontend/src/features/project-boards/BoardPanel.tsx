@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { BoardColumn, BoardSummary } from '../../../../shared/project-boards';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { BoardCardSummary, BoardColumn, BoardSummary } from '../../../../shared/project-boards';
 import { BoardForm, BoardOrderDialog } from './BoardForm';
 import type { BoardsModel } from './useBoards';
 import { useBoardChange } from './useBoardChange';
@@ -13,6 +13,8 @@ import { BoardLabelsDialog } from './BoardLabelsDialog';
 import { BoardFilters, useBoardFilters } from './BoardFilters';
 import { projectRequestId } from '../projects/api';
 import './styles.css';
+
+const emptyCards: BoardCardSummary[] = [];
 
 export function BoardPanel({ id, token, renewAuth, model, creating, closeCreate, created, removed, dirtyChanged, busyChanged }: {
   id: string; token: string; renewAuth: () => Promise<void>; model: BoardsModel; creating: boolean; closeCreate: () => void; created: (id: string) => void; removed: () => void;
@@ -73,7 +75,25 @@ export function BoardPanel({ id, token, renewAuth, model, creating, closeCreate,
   const data = model.snapshot, locked = control.busy || !!control.pending || model.loading;
   const readOnly = !!data?.board.archived;
   const filters = useBoardFilters(id, data, model.reload);
+  const allCards = data?.cards, include = filters.includes;
+  const grouped = useMemo(() => {
+    const columns = new Map<string, BoardCardSummary[]>();
+    for (const card of allCards ?? []) if ((showArchivedCards || !card.archived) && include(card)) {
+      const list = columns.get(card.columnId) ?? []; list.push(card); columns.set(card.columnId, list);
+    }
+    for (const list of columns.values()) list.sort((a, b) => a.position - b.position);
+    return columns;
+  }, [allCards, include, showArchivedCards]);
+  const cardColumns = useMemo(() => new Map(allCards?.map(card => [card.id, card.columnId])), [allCards]);
+  const titleChanged = useCallback((columnId: string, value: string) => setDrafts(old => old[columnId] === value ? old : { ...old, [columnId]: value }), []);
+  const latest = useRef({ data, control });
+  useLayoutEffect(() => { latest.current = { data, control }; });
+  const addCard = useCallback((columnId: string, title: string) => {
+    const { data, control } = latest.current;
+    if (data) void control.perform({ kind: 'mutate', boardId: data.board.id, body: { requestId: projectRequestId(), expectedRevision: data.board.revision, action: 'create_card', input: { columnId, title } } });
+  }, []);
   const drag = useBoardDrag(data, !locked && !readOnly && !showArchivedCards && !model.error && !model.loading && !movingEntry && !filters.active, body => void control.perform({ kind: 'mutate', boardId: data!.board.id, body }));
+  const hintColumn = drag.hint?.kind === 'column' || drag.hint?.edge === 'end' ? drag.hint.target : drag.hint ? cardColumns.get(drag.hint.target) : undefined;
   return <section className="project-boards" aria-label="Project boards">
     <header className="board-toolbar"><div><h2>{data?.board.name ?? 'Boards'}</h2>{data?.board.description && <p className="board-description">{data.board.description}</p>}</div>
       <div className="board-actions">{data && <><button type="button" disabled={locked || readOnly || !!model.error} onClick={() => setEditing(data.board)}>Edit Board</button>
@@ -92,10 +112,10 @@ export function BoardPanel({ id, token, renewAuth, model, creating, closeCreate,
     {control.pending && !creating && !editing && !columnEditor && !cardEditor && <div className="board-recovery"><p>The original Board change is unconfirmed.</p><button type="button" disabled={control.busy} onClick={() => void control.check()}>Check original change</button>
       <button type="button" disabled={control.busy} onClick={() => void control.retry()}>Retry original change</button></div>}
     {!model.loading && !data && !model.error && <p className="board-empty">No boards yet. Use New Board to organize this project’s work.</p>}
-    {data && <div className="board-canvas" aria-label="Board columns" tabIndex={0} onDragOver={drag.canvasOver} onDrop={drag.canvasDrop}>{data.columns.map(column => <BoardColumnView column={column} key={column.id} drag={drag} move={setMovingEntry}
-      cards={data.cards.filter(card => card.columnId === column.id && filters.includes(card))} labels={data.labels} showArchived={showArchivedCards} filtered={filters.active} title={drafts[column.id] ?? ''} titleChanged={value => setDrafts(old => ({ ...old, [column.id]: value }))}
-      locked={locked || readOnly || !!model.error || model.loading} viewLocked={locked || !!model.error || model.loading} minimum={data.columns.length < 2} edit={() => setColumnEditor(column)} remove={() => setRemovingColumn(column)} open={setCardEditor}
-      add={() => void control.perform({ kind: 'mutate', boardId: data.board.id, body: { requestId: projectRequestId(), expectedRevision: data.board.revision, action: 'create_card', input: { columnId: column.id, title: drafts[column.id] } } })} />)}</div>}
+    {data && <div className="board-canvas" aria-label="Board columns" tabIndex={0} onDragOver={drag.canvasOver} onDrop={drag.canvasDrop}>{data.columns.map(column => <BoardColumnView column={column} key={column.id} drag={drag.actions} move={setMovingEntry}
+      cards={grouped.get(column.id) ?? emptyCards} labels={data.labels} filtered={filters.active} title={drafts[column.id] ?? ''} titleChanged={titleChanged}
+      locked={locked || readOnly || !!model.error} viewLocked={locked || !!model.error} minimum={data.columns.length < 2} edit={setColumnEditor} remove={setRemovingColumn} open={setCardEditor}
+      add={addCard} marker={hintColumn === column.id ? drag.hint : undefined} dragEnabled={drag.enabled} />)}</div>}
     {creating && model.listing && <BoardForm listing={model.listing} control={control} close={closeCreate} dirtyChanged={setFormDirty} />}
     {editing && model.listing && <BoardForm initial={editing} current={data?.board} listing={model.listing} control={control} close={() => setEditing(null)} dirtyChanged={setFormDirty} />}
     {moving && model.listing && <BoardOrderDialog board={moving} listing={model.listing} control={control} close={() => setMoving(null)} />}

@@ -5520,3 +5520,21 @@ Chat rendering batches durable deltas per frame, mounts tool details on demand, 
 Studio continuation reads the confirmed checkpoint and required new records, retaining the exact latest human instruction. Bounded worker caches share validated records and one frozen wire request between estimation and dispatch; original archives remain available.
 
 Heavy Studio views and dialogs load when opened, with guarded recovery that keeps drafts. Release builds include Brotli/gzip public assets; hashed assets use immutable caching while HTML is revalidated for the current release.
+
+### Responsive Board reads and dragging (0.11.12)
+
+Board overviews batch label assignments, checklist totals and card counts;
+full descriptions and checklist text remain in the opened card detail. A small
+protected metadata read checks the catalog revision and private database source
+stamp during visible background reconciliation. An unchanged read retains the
+usable snapshot, local forms and quick drafts. Explicit Refresh reads full data.
+Database identity/stamp changes force a full read; schema, integrity, foreign-key,
+order and mutation revision checks still run through the existing store.
+
+Cards are grouped once per data/filter revision. Unchanged columns, card lists,
+rows and filters retain their references. Drag geometry and hints are coalesced
+per animation frame, identical hints keep their previous state, and Drop consumes
+the latest pending hint before sending its original revision-bound mutation.
+Keyboard Move, hidden/archived positions, original-request recovery and server
+receipts retain authority over the result. Browser code manages interaction;
+the existing private Board helper supplies verified reads and mutations.

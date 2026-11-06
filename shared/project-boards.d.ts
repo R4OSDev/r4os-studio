@@ -13,8 +13,10 @@ export interface BoardCard {
   labelIds: string[]; checklist: BoardChecklistItem[]; createdAt: string; updatedAt: string;
 }
 export type BoardCardSummary = Omit<BoardCard, 'description' | 'checklist'> & { descriptionPreview: string; checked: number; checklistCount: number };
-export interface BoardsListing { projectId: string; revision: number; boards: BoardSummary[] }
-export interface BoardSnapshot { projectId: string; revision: number; board: BoardSummary; columns: BoardColumn[]; cards: BoardCardSummary[]; labels: BoardLabel[] }
+export interface BoardReadVersion { source: string; stamp: string }
+export interface BoardReadMetadata { projectId: string; revision: number; readVersion: BoardReadVersion; boards: { id: string; revision: number; orderRevision: number }[] }
+export interface BoardsListing { readVersion?: BoardReadVersion; projectId: string; revision: number; boards: BoardSummary[] }
+export interface BoardSnapshot { readVersion?: BoardReadVersion; projectId: string; revision: number; board: BoardSummary; columns: BoardColumn[]; cards: BoardCardSummary[]; labels: BoardLabel[] }
 export interface BoardCreate { requestId: string; expectedRevision: number; name: string; description?: string }
 export interface BoardUpdate { requestId: string; expectedRevision: number; name?: string; description?: string }
 export interface BoardOrder { requestId: string; expectedRevision: number; ids: string[] }

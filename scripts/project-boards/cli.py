@@ -8,13 +8,13 @@ sys.path.insert(1,str(Path(__file__).resolve().parents[1]/'projects'))
 from store import ProjectFault
 from board_store import connection,SUPPORTED_FEATURE_LEVEL
 from board_validation import fields,identity,integer
-from board_model import listing,snapshot,receipt,card,card_row,board,search
+from board_model import listing,snapshot,receipt,card,card_row,board,search,metadata
 from board_mutations import mutate
 
 def operation(projects,request):
     fields(request,('operation','projectId'),('boardId','requestId','cardId','input','clientLevel','query'))
     project_id=identity(request['projectId']);op=request['operation']
-    if op not in ('list','get','receipt','create','update','reorder','mutate','card','search'):raise ProjectFault('Unsupported browser Board operation.',400)
+    if op not in ('list','get','receipt','create','update','reorder','mutate','card','search','metadata'):raise ProjectFault('Unsupported browser Board operation.',400)
     level=integer(request.get('clientLevel',1))
     if level>SUPPORTED_FEATURE_LEVEL:raise ProjectFault('Reload R4OS Studio to match the available Board features. Your data was preserved.',409)
     if op in ('mutate','card') and level<2:raise ProjectFault('Reload R4OS Studio to use Board cards and columns.',409)
@@ -22,7 +22,8 @@ def operation(projects,request):
     if op=='mutate' and request.get('input',{}).get('action') in ('archive_board','restore_board','delete_board','archive_card','restore_card') and level<4:raise ProjectFault('Reload R4OS Studio to use Board archives.',409)
     if 'boardId' in request:identity(request['boardId'])
     with connection(projects,project_id,op=='create',client_level=level) as db:
-        if db is not None and op in ('list','get','receipt','card','search'):db.execute('BEGIN')
+        if db is not None and op in ('list','get','receipt','card','search','metadata'):db.execute('BEGIN')
+        if op=='metadata':return metadata(db,project_id)
         if op=='list':return listing(db,project_id)
         if op=='receipt':return receipt(db,identity(request['requestId']))
         if db is None:raise ProjectFault('Board not found in this project.',404)

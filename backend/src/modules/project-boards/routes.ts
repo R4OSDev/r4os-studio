@@ -47,7 +47,7 @@ function strictEntry(value: BoardMutation) {
 export function boardRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions) {
   type Params = { id: string; boardId: string; requestId: string; cardId: string };
   for (const [suffix, operation, names] of [
-    ['', 'list', ['id']], ['/:boardId', 'get', ['id', 'boardId']], ['/receipts/:requestId', 'receipt', ['id', 'requestId']], ['/:boardId/cards/:cardId', 'card', ['id', 'boardId', 'cardId']],
+    ['', 'list', ['id']], ['/metadata', 'metadata', ['id']], ['/:boardId', 'get', ['id', 'boardId']], ['/receipts/:requestId', 'receipt', ['id', 'requestId']], ['/:boardId/cards/:cardId', 'card', ['id', 'boardId', 'cardId']],
   ] as const) app.get<{ Params: Params; Querystring: Query }>(base + suffix, { schema: { params: parameterSchema([...names]), querystring } }, async (request, reply) => {
     sessions.validate(request, reply); sessions.session(request, reply);
     return boardStore(directory, { operation, projectId: request.params.id, clientLevel: request.query.clientLevel ?? 1,

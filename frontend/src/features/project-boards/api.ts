@@ -1,9 +1,10 @@
-import type { BoardSearch, BoardCard, BoardCreate, BoardMutation, BoardOrder, BoardReceipt, BoardSnapshot, BoardsListing, BoardUpdate } from '../../../../shared/project-boards';
+import type { BoardReadMetadata, BoardSearch, BoardCard, BoardCreate, BoardMutation, BoardOrder, BoardReceipt, BoardSnapshot, BoardsListing, BoardUpdate } from '../../../../shared/project-boards';
 import { projectRequest } from '../projects/api';
 
 export function boardRequest<T>(projectId: string, path = '', token = '', method = 'GET', body?: unknown, signal?: AbortSignal) {
   return projectRequest<T>(`/${projectId}/boards${path}${path.includes('?') ? '&' : '?'}clientLevel=4`, token, method, body, signal);
 }
+export const readBoardMetadata = (projectId: string, signal?: AbortSignal) => boardRequest<BoardReadMetadata>(projectId, '/metadata', '', 'GET', undefined, signal);
 export const listBoards = (projectId: string, signal?: AbortSignal) => boardRequest<BoardsListing>(projectId, '', '', 'GET', undefined, signal);
 export const loadBoard = (projectId: string, boardId: string, signal?: AbortSignal) => boardRequest<BoardSnapshot>(projectId, '/' + boardId, '', 'GET', undefined, signal);
 export const readBoardReceipt = (projectId: string, requestId: string, signal?: AbortSignal) => boardRequest<BoardReceipt>(projectId, '/receipts/' + requestId, '', 'GET', undefined, signal);
