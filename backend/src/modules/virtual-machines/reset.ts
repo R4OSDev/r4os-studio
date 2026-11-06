@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, link } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { VmConfig, VmResetInput } from '../../../../shared/virtual-machines.js';
+import type { VmConfig, VmResetInput, VmResetReceipt } from '../../../../shared/virtual-machines.js';
 import { root, vmPath, validId, VmError } from './paths.js';
 import { createShareImage } from './share.js';
 import { exec } from './systemd.js';
@@ -34,6 +34,16 @@ async function save(path: string, value: unknown) {
 function matches(receipt: Receipt, input: VmResetInput) {
   return receipt.schema === 1 && validId(receipt.nextRevision) && receipt.kind === input.kind
     && receipt.requestId === input.requestId && receipt.expectedRevision === input.expectedRevision && receipt.confirm === true;
+}
+export async function resetReceipt(id: string, requestId: string): Promise<VmResetReceipt> {
+  if (!validId(id) || !validId(requestId)) throw new VmError('Invalid VM reset identity.', 400);
+  const value = await read<Receipt>(receiptPath(id, requestId));
+  if (value === undefined) throw new VmError('Original reset receipt not found. Check again or explicitly retry the same request.', 404);
+  if (!value || !matches(value, { ...value, requestId }) || !['system', 'exchange'].includes(value.kind)
+    || !['preparing', 'aborted', 'complete'].includes(value.state) || typeof value.expectedRevision !== 'string')
+    throw new VmError('The original VM reset receipt needs maintenance. Existing data was preserved.');
+  return { vmId: id, requestId, kind: value.kind, expectedRevision: value.expectedRevision,
+    confirm: true, nextRevision: value.nextRevision, state: value.state };
 }
 export async function recoverReset(id: string) {
   const journal = await read<Journal>(journalPath(id)); if (!journal) return;

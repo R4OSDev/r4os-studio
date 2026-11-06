@@ -29,6 +29,9 @@ export interface VmReleaseChange {
 export interface VmResetInput {
   kind: 'system' | 'exchange'; requestId: string; expectedRevision: string; confirm: true;
 }
+export interface VmResetReceipt extends VmResetInput {
+  vmId: string; nextRevision: string; state: 'preparing' | 'aborted' | 'complete';
+}
 
 export interface VmDevelopmentAccess {
   revision: number; vmRevision: string; enabled: boolean; username: string;

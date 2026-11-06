@@ -38,9 +38,9 @@ export function useVms(enabled: boolean) {
     };
   }, [enabled]);
   return { ...data, error, loading, reload,
-    request: async <T,>(path: string, method = 'GET', body?: unknown) => {
+    request: async <T,>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) => {
       const reader = active.current;
-      try { return await vmRequest<T>(path, data.csrfToken, method, body); }
+      try { return await vmRequest<T>(path, data.csrfToken, method, body, signal); }
       catch (cause) {
         if (cause instanceof VmRequestError && cause.status === 403 && reader?.live && active.current === reader) {
           reader.authEpoch++; reader.controller?.abort(); setData(old => ({ ...old, csrfToken: '' }));

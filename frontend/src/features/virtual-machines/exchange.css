@@ -1,0 +1,70 @@
+.vm-card-exchange { max-width: none; padding: 24px; background: transparent; border: 0; }
+.exchange-explorer { min-width: 0; }
+.exchange-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.exchange-heading > .icon { width: 27px; height: 27px; padding: 10px; box-sizing: content-box; border-radius: 9px; background: #291c39; color: #c6a4ef; }
+.exchange-heading h2 { font-size: 23px; margin: 0 0 5px; font-weight: 500; }
+.exchange-heading p { margin: 0; color: #aa9dbb; font-size: 12px; overflow-wrap: anywhere; }
+.exchange-heading .vm-status { margin-left: auto; }
+.exchange-manager { min-width: 0; border: 1px solid #3b2c49; border-radius: 8px; background: #1b1623; overflow: hidden; }
+.exchange-toolbar, .exchange-address { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #32283f; }
+.exchange-toolbar button, .exchange-address > button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 7px 10px; font-size: 12px; }
+.exchange-toolbar .button-primary { background: #412b58; border: 1px solid #765298; border-radius: 5px; color: #f2e7ff; }
+.exchange-toolbar .button-secondary, .exchange-address > button, .exchange-sync > button { background: #201927; border: 1px solid #473552; border-radius: 5px; color: #e5dfee; }
+.exchange-explorer button:disabled { opacity: .4; cursor: default; }
+.exchange-toolbar button:hover:not(:disabled), .exchange-address > button:hover:not(:disabled) { background: #372746; }
+.exchange-toolbar .icon, .exchange-address .icon { width: 16px; height: 16px; flex-shrink: 0; }
+.exchange-toolbar .exchange-empty { margin-left: auto; background: transparent; color: #ed9eae; border-color: transparent; }
+.exchange-toolbar .exchange-empty:hover:not(:disabled) { background: #35202d; border-color: #765068; }
+.exchange-address { flex-wrap: nowrap; }
+.exchange-address nav { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; flex: 1; min-width: 0; min-height: 34px; padding: 4px 7px; border: 1px solid #3c2e49; border-radius: 5px; background: #15101d; }
+.exchange-address nav > .icon { color: #c6a4ef; margin: 0 3px; }
+.exchange-address nav span { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+.exchange-address nav span .icon { width: 12px; height: 12px; color: #aa9dbb; }
+.exchange-address nav button { min-width: 0; max-width: 100%; padding: 3px 4px; border: 0; border-radius: 3px; background: transparent; color: #e5dfee; font: inherit; font-size: 12px; overflow-wrap: anywhere; text-align: left; }
+.exchange-address nav button:hover { background: #2b2137; }
+.exchange-body { display: grid; grid-template-columns: 155px minmax(0, 1fr); min-height: 350px; }
+.exchange-tree { min-width: 0; padding: 12px 8px; border-right: 1px solid #32283f; background: #19131f; overflow: auto; max-height: 650px; }
+.exchange-tree > p { margin: 2px 7px 10px; color: #aa9dbb; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.exchange-tree button { display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #e5dfee; font: inherit; font-size: 12px; text-align: left; }
+.exchange-tree button span { min-width: 0; overflow-wrap: anywhere; }
+.exchange-tree button .icon { width: 16px; height: 16px; color: #ba95e7; flex-shrink: 0; }
+.exchange-tree button:hover { background: #2b2137; }
+.exchange-tree button[aria-current] { background: #352345; border-color: #654488; color: #ecddff; }
+.exchange-table-wrap { min-width: 0; padding: 0 8px 12px; }
+.exchange-files { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 3px; font-size: 12px; }
+.exchange-files th { padding: 10px 9px; border-bottom: 1px solid #32283f; color: #aa9dbb; font-weight: 400; text-align: left; }
+.exchange-files th:first-child { width: 58%; }
+.exchange-files th:last-child { width: 20%; text-align: right; }
+.exchange-files td { padding: 10px 9px; color: #aa9dbb; border-block: 1px solid transparent; overflow-wrap: anywhere; }
+.exchange-files td:first-child { border-left: 1px solid transparent; border-radius: 5px 0 0 5px; }
+.exchange-files td:last-child { border-right: 1px solid transparent; border-radius: 0 5px 5px 0; text-align: right; font-variant-numeric: tabular-nums; }
+.exchange-files tbody tr:hover td { background: #251c30; }
+.exchange-files tr[aria-selected="true"] td { background: #352345; border-color: #654488; color: #e5dfee; }
+.exchange-files tr:focus-visible { outline: 2px solid #bf9aff; outline-offset: -2px; }
+.exchange-file-name { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 0; border: 0; background: transparent; color: #e5dfee; text-align: left; font: inherit; }
+.exchange-file-name span { min-width: 0; overflow-wrap: anywhere; }
+.exchange-file-name .icon { width: 18px; height: 18px; color: #bc9add; flex-shrink: 0; }
+.exchange-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding: 9px 13px; border-top: 1px solid #32283f; color: #aa9dbb; font-size: 11px; background: #19131f; overflow-wrap: anywhere; }
+.exchange-empty-state { display: grid; justify-items: center; align-content: center; min-height: 240px; color: #aa9dbb; font-size: 12px; }
+.exchange-empty-state .icon { width: 34px; height: 34px; color: #82659e; }
+.exchange-sync { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-top: 12px; color: #b6a7c7; font-size: 11px; line-height: 1.7; }
+.exchange-sync > span { flex: 1; min-width: 140px; }
+.exchange-sync details { max-width: 100%; }
+.exchange-sync details[open] { flex-basis: 100%; }
+.exchange-sync summary { color: #bda7d2; cursor: pointer; }
+.exchange-sync p, .exchange-sync code { display: block; max-width: 100%; overflow-wrap: anywhere; }
+.exchange-explorer > .vm-alert { margin-top: 12px; }
+.vm-reset-dialog { width: min(500px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 32px); overflow: auto; margin: auto; padding: 24px; border: 1px solid #765068; border-radius: 10px; background: #21182a; color: #e5dfee; font: inherit; }
+.vm-reset-dialog::backdrop { background: #09060dc9; }
+.vm-reset-dialog h2 { margin: 0 0 16px; font-size: 20px; font-weight: 500; }
+.vm-reset-dialog p { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.vm-reset-dialog footer, .vm-reset-recovery { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.vm-reset-dialog button, .vm-reset-recovery button { padding: 9px 12px; border: 1px solid #634a79; border-radius: 5px; background: #30223d; color: #e5dfee; font-size: 12px; }
+.vm-reset-dialog .button-danger { background: #563044; border-color: #965875; color: #ffe4ed; }
+.vm-reset-dialog button:disabled, .vm-reset-recovery button:disabled { opacity: .4; cursor: default; }
+.vm-reset-recovery { padding: 14px; border: 1px solid #765068; border-radius: 6px; margin-bottom: 20px; color: #e5dfee; }
+.vm-reset-recovery p { flex-basis: 100%; margin: 0; font-size: 12px; }
+@media (max-width: 720px) { .vm-card-exchange { padding: 4px; } .exchange-body { grid-template-columns: 120px minmax(0, 1fr); } }
+@media (max-width: 560px) { .exchange-tree { display: none; } .exchange-body { display: block; min-height: 300px; } .exchange-files th:first-child { width: 65%; } .exchange-files th:nth-child(2), .exchange-files td:nth-child(2) { display: none; } .exchange-files th:last-child { width: 35%; } .exchange-toolbar { padding: 8px; gap: 6px; } .exchange-toolbar .exchange-empty { margin-left: 0; } .exchange-heading { gap: 8px; flex-wrap: wrap; } .exchange-heading > .icon { width: 22px; height: 22px; padding: 8px; } .exchange-heading .vm-status { padding: 5px; font-size: 11px; } .exchange-address { padding: 8px; gap: 5px; } .exchange-address > button { padding: 6px; } .vm-reset-dialog { padding: 18px; } }
+
+.vm-settings-fields { min-width: 0; padding: 0; margin: 0; border: 0; }

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { VirtualMachine, VmFile, VmResetInput } from '../../../../shared/virtual-machines.js';
+import type { VirtualMachine } from '../../../../shared/virtual-machines.js';
 import type { VmApi } from './useVms';
 import { Icon } from '../../app/Icon';
 import { ReleaseSettings } from './ReleaseSettings';
 import { VmConsole } from './Console';
 import { DevelopmentAccess } from './DevelopmentAccess';
-import { vmRequestId } from './api';
-import exchangePolicy from '../../../../shared/exchange-host.json';
+import { ExchangeExplorer } from './ExchangeExplorer';
+import { useVmReset, VmResetDialog } from './VmReset';
 import './styles.css';
+import './exchange.css';
 
 function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: (id: string | null) => void }) {
   const [name, setName] = useState(vm?.name ?? 'R4OS VM');
@@ -36,49 +37,6 @@ function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: 
       {busy ? 'Saving…' : vm ? 'Save settings' : 'Create virtual machine'}</button>
   </form>;
 }
-function Exchange({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
-  const [path, setPath] = useState('');
-  const [files, setFiles] = useState<VmFile[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const stopped = ['stopped', 'failed'].includes(vm.state);
-  useEffect(() => {
-    let cancelled = false;
-    api.request<{ files: VmFile[] }>(`/${vm.id}/files`).then((result) => { if (!cancelled) { setFiles(result.files); setError(''); } }).catch((cause) => { if (!cancelled) setError(cause.message); });
-    return () => { cancelled = true; };
-  // Reload the host copy after VM state transitions or a completed synchronization.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vm.id, vm.state, vm.shareSync?.lastSyncedAt]);
-  async function refresh() { setFiles((await api.request<{ files: VmFile[] }>(`/${vm.id}/files`)).files); }
-  return <div>
-    <p className="vm-help">R4SHARE is a persistent FAT32 exchange drive. The guest assigns its drive letter. Guest changes are copied to this folder after the VM stops. Host changes are imported at the next start. C: and D: remain intact. Edit host files only while the VM is stopped; this is not a live shared folder.</p>
-    <code className="vm-path">{vm.sharePath}</code>
-    {vm.shareSync?.pending && <p className="vm-help">{stopped ? 'Guest changes still need synchronization.' : 'Guest changes will be synchronized after QEMU stops. The folder below shows the last host copy.'}</p>}
-    {vm.shareSync?.error && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
-    {stopped && vm.shareSync?.pending && <button className="button-secondary" disabled={busy} onClick={() => {
-      setBusy(true); setError(''); void api.request(`/${vm.id}/actions`, 'POST', { action: 'sync-exchange' }).then(async () => { await api.reload(); await refresh(); }).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
-    }}>Retry exchange sync</button>}
-    {vm.shareSync?.lastSyncedAt && <p className="vm-help">Last synchronized: {new Date(vm.shareSync.lastSyncedAt).toLocaleString()}</p>}
-    <nav aria-label="Exchange folder"><button className="button-secondary" disabled={!path} onClick={() => setPath(path.split('/').slice(0, -1).join('/'))}>Up</button><code>{path || '/'}</code></nav>
-    <label className="vm-upload">Upload artifact (up to 8 MiB)
-      <input type="file" disabled={!stopped || busy} onChange={(event) => {
-        const file = event.target.files?.[0]; if (!file) return;
-        event.target.value = ''; setBusy(true); setError('');
-        void (async () => {
-          if (file.size > 8 * 1024 * 1024) throw new Error('Files are limited to 8 MiB per upload.');
-          const bytes = new Uint8Array(await file.arrayBuffer()); let binary = '';
-          for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
-          await api.request(`/${vm.id}/files`, 'POST', { name: path ? path + '/' + file.name : file.name, content: btoa(binary) }); await refresh();
-        })().catch((cause) => setError(cause.message)).finally(() => setBusy(false));
-      }} />
-    </label>
-    {error && <p className="vm-alert" role="alert">{error}</p>}
-    <ul className="vm-files">{files.filter((file) => file.name.split('/').slice(0, -1).join('/') === path).map((file) => <li key={file.name}><span>{file.kind === 'directory' ? <button className="button-secondary" onClick={() => setPath(file.name)}>{file.name.split('/').pop()}/</button> : file.name.split('/').pop()}<small>{file.kind === 'directory' ? 'Folder' : `${file.size.toLocaleString()} bytes`}</small></span>
-      <button className="button-secondary" disabled={!stopped || busy} onClick={() => {
-        setBusy(true); setError(''); void api.request(`/${vm.id}/files/${encodeURIComponent(file.name)}`, 'DELETE').then(refresh).catch((cause) => setError(cause.message)).finally(() => setBusy(false));
-      }}>Remove</button></li>)}</ul>
-    {!files.some((file) => file.name.split('/').slice(0, -1).join('/') === path) && <p className="vm-help">The exchange folder is empty.</p>}
-    <p className="vm-help">Root files and Build subfolders only. ASCII names; no links. Up to {exchangePolicy.limits.files} files, {exchangePolicy.limits.bytes / 1024 ** 3} GiB, {exchangePolicy.limits.directories} folders and {exchangePolicy.limits.depth} levels, including reserved metadata. STXCHG.JSN is managed by Studio. Remove folders after emptying them. Existing VMs receive the larger drive after a full stop and start.</p>
-  </div>;
-}
 function Logs({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
   const [kind, setKind] = useState('serial'), [text, setText] = useState(''), [error, setError] = useState('');
   useEffect(() => {
@@ -92,59 +50,58 @@ function Logs({ api, vm }: { api: VmApi; vm: VirtualMachine }) {
   return <div><label className="vm-help">Log <select value={kind} onChange={(event) => setKind(event.target.value)}><option value="serial">Guest serial</option><option value="qemu">QEMU</option></select></label>
     {error && <p className="vm-alert">{error}</p>}<pre className="vm-log">{text || 'No log output yet.'}</pre></div>;
 }
-export function VmPanel({ api, vm, view, select }: { api: VmApi; vm?: VirtualMachine; view: string; select: (id: string | null) => void }) {
+function VmDetails({ api, vm, view, select }: { api: VmApi; vm?: VirtualMachine; view: string; select: (id: string | null) => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirm, setConfirm] = useState(''), [notice, setNotice] = useState('');
-  const [reset, setReset] = useState<VmResetInput | null>(null);
-  function confirmReset(kind: VmResetInput['kind']) {
-    if (!vm) return;
-    setReset({ kind, requestId: vmRequestId(), expectedRevision: vm.revision ?? vm.imageSha256, confirm: true });
-    setConfirm('reset-' + kind); setError('');
-  }
+  const reset = useVmReset(api, vm);
   async function action(name: string) {
     if (!vm) return; setBusy(true); setError(''); setNotice('');
     try { if (name === 'delete') { await api.request(`/${vm.id}`, 'DELETE', { confirm: true }); select(null); }
-      else if (name.startsWith('reset-')) {
-        if (!reset || name !== 'reset-' + reset.kind) throw new Error('Review the reset request again.');
-        await api.request(`/${vm.id}/reset`, 'POST', reset);
-        setReset(null); setNotice(reset.kind === 'system' ? 'System disks reset. The VM remains stopped.' : 'Exchange partition cleared. The VM remains stopped.');
-      }
       else { await api.request(`/${vm.id}/actions`, 'POST', { action: name });
         if (name === 'shutdown') setNotice('Shutdown requested. Wait for the guest to power off. If it does not respond, use Force Stop.'); }
       setConfirm(''); await api.reload();
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
+  const resetBlocked=reset.busy||!!reset.pending;
   return <div className="vm-shell">
     {vm && ['Overview', 'Console'].includes(view) && <div className="vm-header" aria-label="Virtual machine controls">
       <span className={`vm-status ${vm.state}`}>{vm.state}</span>
       <div className="vm-controls">
-        <button className="button-primary" disabled={busy || !stopped || !api.available} onClick={() => void action('start')}><Icon name="play" />Start</button>
-        <button className="button-secondary" disabled={busy || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => setConfirm('restart')}><Icon name="restart" />Restart</button>
-        <button className="button-secondary" disabled={busy || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => void action('shutdown')}><Icon name="power" />Shutdown</button>
-        <button className="button-danger" disabled={busy || stopped} onClick={() => setConfirm('force-stop')}><Icon name="stop" />Force Stop</button>
+        <button className="button-primary" disabled={busy || resetBlocked || !stopped || !api.available} onClick={() => void action('start')}><Icon name="play" />Start</button>
+        <button className="button-secondary" disabled={busy || resetBlocked || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => setConfirm('restart')}><Icon name="restart" />Restart</button>
+        <button className="button-secondary" disabled={busy || resetBlocked || stopped || vm.state === 'starting' || vm.state === 'stopping'} onClick={() => void action('shutdown')}><Icon name="power" />Shutdown</button>
+        <button className="button-danger" disabled={busy || resetBlocked || stopped} onClick={() => setConfirm('force-stop')}><Icon name="stop" />Force Stop</button>
       </div>
     </div>}
     <div className={`vm-content ${view === 'Console' && vm ? 'vm-content-console' : ''}`}>
     {api.error && <p className="vm-alert" role="alert">{api.error}</p>}
     {!api.loading && !api.available && <p className="vm-alert">VM host support is not installed. See the host setup documentation.</p>}
-    <section className={`vm-card ${view === 'Console' && vm ? 'vm-card-console' : ''}`}>
+    <section className={`vm-card ${view === 'Console' && vm ? 'vm-card-console' : view === 'Exchange' && vm ? 'vm-card-exchange' : ''}`}>
       {!vm ? <><h2>New virtual machine</h2><p className="vm-help">Create an independent R4OS instance. Multiple VMs can run at the same time.</p><VmForm api={api} select={select} /></> : <>
-        {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'reset-system'
-          ? `Reset the system disks of “${vm.name}”? All C:/D: changes and installed programs will be deleted. Exchange and VM settings will be kept.`
-          : confirm === 'reset-exchange' ? `Clear the Exchange partition of “${vm.name}”? All shared files, guest exchange files, conflicts and pending sync data will be deleted. System disks will be kept.`
-            : confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
-          <button className="button-danger" disabled={busy} onClick={() => void action(confirm)}>Confirm {confirm.replace('reset-', '')}{confirm.startsWith('reset-') ? ' reset' : ''}</button><button className="button-secondary" disabled={busy} onClick={() => { setConfirm(''); setReset(null); }}>Cancel</button></div>}
+        {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
+          <button className="button-danger" disabled={busy || resetBlocked} onClick={() => void action(confirm)}>Confirm {confirm}</button><button className="button-secondary" disabled={busy} onClick={() => { setConfirm(''); }}>Cancel</button></div>}
+        <VmResetDialog control={reset} vm={vm} />
+        {reset.notice && <p className="vm-help" role="status">{reset.notice}</p>}
+        {reset.error && !reset.review && <p className="vm-alert" role="alert">{reset.error}</p>}
+        {reset.pending && !reset.review && <div className="vm-reset-recovery" role="status"><p>Original {reset.pending.kind} reset {reset.aborted ? 'did not complete.' : reset.busy ? 'is being checked…' : 'is unconfirmed.'}</p>
+          <button type="button" className="button-secondary" disabled={reset.busy} onClick={() => void reset.read()}>Check original reset</button>
+          <button type="button" className="button-secondary" disabled={reset.busy} onClick={() => void reset.retry()}>Retry same reset</button>
+          {reset.aborted && <button type="button" className="button-secondary" disabled={reset.busy} onClick={reset.dismiss}>Close failed reset</button>}</div>}
         {notice && <p className="vm-help" role="status">{notice}</p>}
         {vm.shareSync?.error && view !== 'Exchange' && <p className="vm-alert" role="alert">{vm.shareSync.error}</p>}
         {(error || vm.error) && <p className="vm-alert" role="alert">{error || vm.error}</p>}
-        {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <Exchange key={vm.id} vm={vm} api={api} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
-          <VmForm api={api} vm={vm} select={select} /><DevelopmentAccess api={api} vm={vm} /><ReleaseSettings api={api} vm={vm} /><div className="vm-actions vm-settings-actions">
-            <button className="button-danger" disabled={busy || !stopped} onClick={() => confirmReset('system')}>Reset virtual machine</button>
-            <button className="button-danger" disabled={busy || !stopped} onClick={() => confirmReset('exchange')}>Reset Exchange Partition</button>
-            <button className="button-danger" disabled={busy || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
+        {view === 'Console' ? <VmConsole vm={vm} api={api} /> : view === 'Exchange' ? <ExchangeExplorer key={vm.id} vm={vm} api={api} reset={reset} /> : view === 'Logs' ? <Logs vm={vm} api={api} /> : view === 'Settings' ? <>
+          <fieldset className="vm-settings-fields" disabled={resetBlocked}><VmForm api={api} vm={vm} select={select} /><DevelopmentAccess api={api} vm={vm} /><ReleaseSettings api={api} vm={vm} /></fieldset><div className="vm-actions vm-settings-actions">
+            <button className="button-danger" disabled={busy || resetBlocked || !stopped} onClick={() => reset.open('system')}>Reset virtual machine</button>
+            <button className="button-danger" disabled={busy || resetBlocked || !stopped} onClick={() => reset.open('exchange')}>Reset Exchange Partition</button>
+            <button className="button-danger" disabled={busy || resetBlocked || !stopped} onClick={() => setConfirm('delete')}>Delete virtual machine</button></div></> :
           <><dl className="vm-properties">{[['Name', vm.name], ['Base image', vm.imageId], ['Virtual CPUs', vm.cpus], ['Memory', `${vm.memoryMiB} MiB`], ['Network', vm.networkEnabled ? 'Enabled' : 'Disabled'], ['Exchange drive', 'Persistent writable FAT32'], ['Created', new Date(vm.createdAt).toLocaleString()]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
             <p className="vm-help">System and data partitions are private to this VM. The base release is shared read-only. Project assignment will be added later.</p></>}
       </>}
     </section>
   </div></div>;
+}
+
+export function VmPanel(props: Parameters<typeof VmDetails>[0]) {
+  return <VmDetails key={props.vm?.id ?? 'new'} {...props} />;
 }

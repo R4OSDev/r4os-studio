@@ -1,3 +1,27 @@
+## Exchange file manager (0.11.19)
+
+System → Virtual Machines → a VM → **Exchange** now has a folder tree,
+clickable path, Up/Refresh, selectable Name/Type/Size table and compact status.
+Use the arrow keys to select rows, Enter to open a folder, **Upload file** for
+files up to 8 MiB, and **Remove** for the selected file or empty folder. Narrow
+views keep path navigation and essential actions available.
+
+**Empty Exchange** clears the whole selected VM's exchange drive, including
+root/subfolder files, guest exchange files, conflicts and pending synchronization.
+Its confirmation names the VM and starts with Cancel focused. System disks,
+base image, VM settings, project assignments and saved access are retained.
+The existing reset requires the VM and export workers to have fully stopped,
+an exclusive development lease and its original revision. It never starts or
+stops the VM. Settings → **Reset Exchange Partition** shares the same controls.
+
+After a lost response, Studio preserves the original request across reload.
+**Check original reset** reads its receipt; **Retry same reset** explicitly
+reuses its exact ID and confirmation. An uncertain reset keeps mutations guarded.
+A confirmed failed preparation can be closed before reviewing a new request.
+Only confirmed completion refreshes the inventory and returns to the root.
+Last host copy, actual last synchronization, pending errors and sync retry remain
+visible; host edits apply at the next start.
+
 ## Change the next model during a run (0.11.18)
 
 In project and skill sessions, **Model** remains available while a run is active.

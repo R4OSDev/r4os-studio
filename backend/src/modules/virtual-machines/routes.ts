@@ -12,6 +12,7 @@ import { qmp } from './qmp.js';
 import { withVmLease } from '../project-development/vm-lease.js';
 import { developmentVmBridge } from '../project-development/vm-bridge.js';
 import { developmentHost } from '../project-development/host.js';
+import { resetReceipt } from './reset.js';
 
 const input = { type: 'object', additionalProperties: false, required: ['name', 'cpus', 'memoryMiB'], properties: {
   name: { type: 'string', minLength: 1, maxLength: 80 }, cpus: { type: 'integer', minimum: 1, maximum: 8 },
@@ -82,6 +83,10 @@ export async function vmRoutes(app: FastifyInstance) {
   }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await withVmLease(request.params.id, () => manager.action(request.params.id, request.body.action), request.body.action === 'start' ? 'start' : ['shutdown', 'force-stop'].includes(request.body.action) ? 'stop' : undefined) }; });
   app.get<{ Params: { id: string } }>('/:id/files', async (request, reply) => {
     sessions.get(request, reply); return { files: await manager.files(request.params.id) };
+  });
+  app.get<{ Params: { id: string; requestId: string } }>('/:id/reset/requests/:requestId', async (request, reply) => {
+    sessions.get(request, reply); reply.header('Cache-Control', 'private, no-store');
+    return { receipt: await resetReceipt(request.params.id, request.params.requestId) };
   });
   app.post<{ Params: { id: string }; Body: VmResetInput }>('/:id/reset', {
     bodyLimit: 2048, schema: { body: { type: 'object', additionalProperties: false,
