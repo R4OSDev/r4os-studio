@@ -16,6 +16,7 @@ Environment=PORT=5010
 Environment="STUDIO_DATA_DIR=@APP_DIRECTORY@/Data/LLMProvider"
 ReadWritePaths="@APP_DIRECTORY@/Data/LLMProvider"
 ReadWritePaths="@APP_DIRECTORY@/Data/R4OS/Instances"
+ReadWritePaths="@APP_DIRECTORY@/Data/R4OS/ReleaseBatches"
 ReadWritePaths=-/run/r4os-studio-vms
 Restart=on-failure
 RestartSec=3s

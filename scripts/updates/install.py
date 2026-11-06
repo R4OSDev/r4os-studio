@@ -69,7 +69,7 @@ def main():
     data.mkdir(exist_ok=True)
     os.chown(data, studio.pw_uid, studio.pw_gid)
     data.chmod(0o700)
-    for suffix in ['LLMProvider', 'R4OS/Instances', 'R4OS/Images']:
+    for suffix in ['LLMProvider', 'R4OS/Instances', 'R4OS/Images', 'R4OS/ReleaseBatches']:
         path = data / suffix
         path.mkdir(parents=True, exist_ok=True)
         os.chown(path, studio.pw_uid, studio.pw_gid)
@@ -111,6 +111,7 @@ def main():
         f'Environment={quoted("STUDIO_DATA_DIR=" + str(data / "LLMProvider"))}\n'
         f'Environment={quoted("STUDIO_R4OS_DIR=" + str(data / "R4OS"))}\n'
         'Environment=STUDIO_UPDATE_SOCKET=/run/r4os-studio-updates/control.sock\n'
+        f'ReadWritePaths={quoted(data / "R4OS/ReleaseBatches")}\n'
         'ReadWritePaths=-/run/r4os-studio-updates\n')
     # Pin existing workers before replacing only the template. Never stop/restart any VM.
     template = unit_directory / 'r4os-studio-vm@.service'

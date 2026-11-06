@@ -1,3 +1,7 @@
+## 0.11.45
+
+The private VM release-batch journal is prepared with its own web-service write path. Opening R4OS Releases can list Update VMs operations without failing to create `ReleaseBatches`; the rest of the R4OS directory stays protected. Fresh update-support installs include the directory and permission. Existing hosts use the explicit local `python3 scripts/install-vm-release-batch-support.py` maintenance step as root, applied on the next regular Studio start. This setup preserves existing batch journals and does not update, stop or reset VMs. The normal updater continues to execute no downloaded privileged installers.
+
 ## 0.11.44
 
 SDK downloads retain additional release assets such as `libraries-runtime` as verified package payloads. Only declared source and host-tool archives are extracted into Studio's installation roots, preventing the SDK 0.64.152 download from failing with a raw role-name error. Every asset keeps its original size/hash checks and native SDK verification. Retry retains the original request; downloads preserve component defaults and existing project pins.
