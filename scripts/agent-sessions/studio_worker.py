@@ -321,7 +321,7 @@ class StudioWorker(Worker):
             calls = [part for part in result['content'] if part['type'] == 'tool_call']
             if self.goal_worker.execution and not self.goal_worker.active:
                 for index,call in enumerate(calls):
-                    self.conversation.append(self.run_id,'goal-not-admitted-'+str(self.round)+'-'+str(index),'tool',
+                    self.conversation.append(self.run_id,'goal-not-admitted-'+self.run_id+'-'+str(self.round)+'-'+str(index),'tool',
                         [{'type':'tool_result','callId':call['callId'],'result':{'success':False,'error':'notAdmitted','output':'The original Goal budget or control stopped further work before execution.'}}],{'admissionOnly':True,'executionId':self.goal_worker.execution})
                 self.outcome='completed';return
             try:
@@ -334,7 +334,7 @@ class StudioWorker(Worker):
                         feedback['validation']={'code':'invalidArguments','errors':error.details,'correctionAvailable':correctable}
                         feedback['output']+=(' Correct the schema errors using the declared fields and original target IDs, then issue fresh tool calls. No call in this batch ran.'
                             if correctable else ' No further correction is available before a successful tool batch or while earlier effects are unconfirmed; this run ends.')
-                    self.conversation.append(self.run_id, 'rejected-' + str(self.round) + '-' + str(index), 'tool',
+                    self.conversation.append(self.run_id, 'rejected-' + self.run_id + '-' + str(self.round) + '-' + str(index), 'tool',
                         [{'type':'tool_result', 'callId':call['callId'], 'result':feedback}],
                         {'admissionOnly':True, 'reasonCode':error.code, 'turnId':self.turn_id})
                 if correctable:
@@ -358,7 +358,7 @@ class StudioWorker(Worker):
                     continue
                 await self.goal_worker.boundary()
                 if self.goal_worker.active and not self.config.get('goalKeepalive'):
-                    self.conversation.append(self.run_id,'goal-continuation-'+str(self.round),'user',
+                    self.conversation.append(self.run_id,'goal-continuation-'+self.run_id+'-'+str(self.round),'user',
                         [{'type':'text','text':'Continue the explicitly activated Goal. Report complete or blocked with studio_update_goal when justified; preserve unknown effects.'}],
                         {'kind':'goalContinuation','executionId':self.goal_worker.execution,'humanPlayRequestId':self.goal_worker.execution})
                     continue
@@ -370,7 +370,7 @@ class StudioWorker(Worker):
                 await self.goal_worker.boundary(allow_play=False)
                 if not self.active() or self.goal_worker.execution and not self.goal_worker.active:
                     for offset, remaining in enumerate(calls[index:],index):
-                        self.conversation.append(self.run_id,'not-admitted-'+str(self.round)+'-'+str(offset),'tool',
+                        self.conversation.append(self.run_id,'not-admitted-'+self.run_id+'-'+str(self.round)+'-'+str(offset),'tool',
                             [{'type':'tool_result','callId':remaining['callId'],'result':{'success':False,'error':'notAdmitted',
                               'output':'The original run stopped before this tool was admitted.'}}],{'admissionOnly':True})
                     batch_succeeded=False;break

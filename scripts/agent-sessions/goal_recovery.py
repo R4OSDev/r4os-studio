@@ -9,7 +9,7 @@ from contextlib import closing
 DEVELOPMENT = {'studio_build_project': 'build', 'studio_deploy_project': 'deploy',
     'studio_run_project': 'execution', 'studio_start_project_vm': 'vm_start', 'studio_stop_project_vm':'vm_stop','studio_restart_project_vm':'vm_restart', 'studio_run_vm_command': 'ssh', 'studio_read_development_job': None,
     'studio_capture_vm': 'execution', 'studio_control_app_window': 'execution',
-    'studio_complete_development_job': 'execution'}
+    'studio_complete_development_job': 'execution', 'studio_stop_development_job': 'execution'}
 
 
 def assessment_receipt(db, job, tool, request, reference):
@@ -70,6 +70,15 @@ def development(store, sid, tool):
         reference = (result.get('development') or {}).get('jobId')
         window = tool['tool'] == 'studio_control_app_window'
         completion = tool['tool'] == 'studio_complete_development_job'
+        stopping = tool['tool'] == 'studio_stop_development_job'
+        if stopping:
+            intent = json.loads(tool['intent']) if tool['intent'] and len(tool['intent'].encode()) <= 8192 else None
+            stop = result.get('developmentStop') or {}
+            if (not isinstance(intent, dict) or set(intent) != {'jobId'} or reference is None
+                or intent['jobId'] != reference or type(stop.get('version')) is not int or stop['version'] != 1
+                or stop.get('jobId') != reference or stop.get('confirmed') is not False
+                or type(stop.get('requested')) is not bool or stop.get('outcome') != 'unconfirmed'
+                or (result.get('development') or {}).get('kind') != 'execution'): return None
         if (window or completion) and reference is None and tool['intent'] and len(tool['intent'].encode()) <= 8192:
             reference = json.loads(tool['intent']).get('jobId')
         if reference is not None and str(uuid.UUID(reference)) != reference: return None
@@ -77,7 +86,7 @@ def development(store, sid, tool):
         annotation = tool['tool'] == 'studio_capture_vm'
         request = str(uuid.uuid5(uuid.UUID(tool['run_id']), 'development:' + tool['call_id']))
         with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=.1)) as db:
-            if reading or annotation or window or completion:
+            if reading or annotation or window or completion or stopping:
                 if reference is None: return None
                 row = db.execute('SELECT request_id,substr(payload,1,2097153) FROM jobs WHERE id=?', (reference,)).fetchone()
             else:
@@ -88,7 +97,9 @@ def development(store, sid, tool):
                     or job.get('projectId') != store.owner_id or job.get('sessionId') != sid
                     or job.get('state') not in ('queued', 'starting', 'running', 'stopping', 'completed', 'failed', 'interrupted', 'unknown')
                     or job.get('kind') not in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh')): return None
-            if window or completion:
+            if stopping:
+                if job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution': return None
+            elif window or completion:
                 if (job.get('agentRunId') != tool['run_id'] or job['kind'] != 'execution'
                     or not execution_action_receipt(store, db, job, tool, request, sid)): return None
             elif annotation:
@@ -113,6 +124,7 @@ def development(store, sid, tool):
             if annotation: value.update(visualAssessment=True, effectConfirmed=True)
             if window: value.update(windowAction=True, effectConfirmed=False)
             if completion: value.update(checkCompletion=True, effectConfirmed=False)
+            if stopping: value.update(stopAction=True, effectConfirmed=False)
             recovery = job.get('recovery') or {}
             if (job['kind'] == 'ssh' and recovery.get('guestEndConfirmed') is True
                     and recovery.get('replayed') is False and recovery.get('schema') == 1
@@ -138,13 +150,29 @@ def development(store, sid, tool):
                     and recovery.get('replayed') is False and (job.get('guestState') or {}).get('closeConfirmed') is True
                     and recovery.get('source') in ('vm-stopped', 'vm-replaced', 'private-guest-close-receipt',
                         'native-retained-completion', 'original-watchdog-completion')):
-                proof = db.execute('SELECT substr(receipt,1,8193) FROM recoveries WHERE id=? AND job_id=?',
+                proof = db.execute('SELECT substr(receipt,1,8193),substr(previous,1,2097153) FROM recoveries WHERE id=? AND job_id=?',
                     (recovery.get('id'), job_id)).fetchone()
                 if proof and len(proof[0].encode()) <= 8192 and json.loads(proof[0]) == recovery:
+                    if stopping:
+                        if not proof[1] or len(proof[1].encode()) > 2097152: return None
+                        original = json.loads(proof[1]); process = job.get('process') or {}; state = job.get('guestState') or {}
+                        if (not isinstance(original, dict) or not isinstance(job.get('target'), dict) or not job['target']
+                            or type(process.get('instanceId')) is not int or process['instanceId'] <= 0
+                            or not isinstance(process.get('generation'), str) or not process['generation'].isdigit()
+                            or int(process['generation']) <= 0
+                            or any(original.get(k) != job.get(k) for k in ('id','kind','projectId','sessionId','agentRunId','executionId','deploymentId','target'))
+                            or any((original.get('process') or {}).get(k) != process.get(k) or state.get(k) != process.get(k)
+                                   for k in ('instanceId','generation'))): return None
                     value['recovery'] = {k: recovery[k] for k in ('id', 'source', 'guestEndConfirmed', 'replayed')}
             return value
     except (OSError, sqlite3.Error, ValueError, KeyError, TypeError, AttributeError):
         return None  # Missing or damaged evidence retains the original unknown warning.
+
+
+def resolved_stop(store, sid, tool):
+    if tool['tool'] != 'studio_stop_development_job' or tool['state'] != 'unknown' or not tool['result']: return False
+    value = development(store, sid, tool)
+    return bool(value and value.get('stopAction') and (value.get('recovery') or {}).get('guestEndConfirmed') is True)
 
 
 def snapshot(store, sid):

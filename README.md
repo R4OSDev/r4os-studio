@@ -1,3 +1,7 @@
+## 0.11.51
+
+Internal tool-rejection, nonadmission and Goal-continuation messages carry their run ID, so later runs can use the same round without colliding with older conversation records. Original IDs/content remain immutable and the five correction opportunities are preserved. Historical unknown execution-Stop receipts carry current committed recovery metadata into new model context. An exact original process-end recovery can clear that historical receipt's continuation barrier without changing the old run or tool result; other unknown effects and an unknown latest run still block automatic continuation. No action is replayed and application criteria remain separate from process closure.
+
 ## 0.11.50
 
 Desktop execution Stop waits up to five seconds for the original retained process completion when its handle disappears before the final native receipt arrives. This uses only status polls after the original stop was sent, bound to the acknowledged Desktop lease and exact process generation. The existing process-reap and cleanup checks still determine the stop receipt; missing evidence or a deadline remains unknown. No stop, launch or input is repeated, and process closure does not prove application test success.
