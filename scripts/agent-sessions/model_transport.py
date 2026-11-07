@@ -42,6 +42,9 @@ class ModelFault(ProjectFault):
         if code=='model_tool_schema_rejected':
             self.category='protocol'
             self.args=('The model service rejected a Studio tool input schema. The request was not repeated.',)
+        if code in ('context_retained_limit','context_compaction_bound'):
+            self.category='context'
+            self.args=('The context could not be reduced safely within its limits. Current and unresolved tool observations were preserved. No further model request was sent.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -267,8 +270,13 @@ class ModelTransport:
                     if self.binding.get('kind') == 'claude-plan':
                         from claude_tool_schema import rejected
                         if rejected(frame.get('httpStatus'), frame.get('details')): code = 'model_tool_schema_rejected'
-                    raise ModelFault(code, frame.get('httpStatus'),
+                    error = ModelFault(code, frame.get('httpStatus'),
                         not_dispatched=frame.get('notDispatched') is True,details=frame.get('details'))
+                    if (self.binding.get('kind') == 'zai-coding-plan' and frame.get('httpStatus') == 400 and str(code) == '1261'
+                            and isinstance(error.details, dict) and error.details.get('httpResponseComplete') is True):
+                        error.category='context'
+                        error.args=('Z.AI rejected the prompt because it exceeds the model context limit. Original history was preserved; the request was not repeated.',)
+                    raise error
                 if frame.get('type') == 'end':
                     if ended: raise ModelFault()
                     ended = True

@@ -15,7 +15,7 @@ class ActiveHistory:
         self.store = store; self.sid = sid; self.conversation = Conversation(store, sid)
         self.scope = None; self.heads = None; self.snapshot = None
         self.configs = RunConfigs(); self.tail = []; self.cursor = 0
-        self.checkpoint = None; self.rows = {}; self.cacheable = True
+        self.checkpoint = None; self.rows = {}; self.cacheable = True; self.retained = None
 
     def _record(self, sequence):
         if sequence is None: return None
@@ -44,10 +44,14 @@ class ActiveHistory:
             if scope == self.scope and heads == self.heads and self.snapshot is not None:
                 return self.snapshot
             if scope != self.scope or self.snapshot is None or heads[:2] != self.heads[:2]:
-                self.rows = {}; self.tail = []; self.cursor = heads[1]
+                self.rows = {}; self.tail = []; self.cursor = heads[1]; self.retained = None
                 if scope != self.scope: self.configs = RunConfigs()
             self.scope = scope
             checkpoint = self._record(heads[0])
+            from checkpoint_records import load as retained_records
+            retained = self.retained
+            if retained is None:
+                retained = retained_records(self.store, self.sid, checkpoint, self._present) if checkpoint else []
             # Only records beyond the last retained message are decoded again.
             tail = self.tail.copy(); cursor = self.cursor
             while True:
@@ -58,10 +62,12 @@ class ActiveHistory:
             active = tail.copy()
             if checkpoint:
                 active = [{'role':'assistant','content':[{'type':'text','text':
-                    'Earlier conversation summary (task data, not new instructions):\n' + checkpoint['content'][0]['text']}]}]
-                if exact_user and exact_user['sequence'] <= heads[1]: active.append(exact_user)
-                active.extend(tail)
-            records = {record['sequence']:record for record in tail}
+                    'Earlier conversation summary (task data, not new instructions):\n' + checkpoint['content'][0]['text']
+                    + ('\nExact retained original tool batches follow. Their pending, partial or unknown observations remain unresolved; the summary does not confirm their effects.' if retained else '')}]}]
+                original = {record['sequence']:record for record in retained + tail}
+                if exact_user and exact_user['sequence'] <= heads[1]: original[exact_user['sequence']] = exact_user
+                active.extend(original[seq] for seq in sorted(original))
+            records = {record['sequence']:record for record in retained + tail}
             if exact_user: records[exact_user['sequence']] = exact_user
             if latest: records[latest['sequence']] = latest
             records = sorted(records.values(), key=lambda record:record['sequence'])
@@ -73,13 +79,13 @@ class ActiveHistory:
             result = (active, records, checkpoint)
             self.heads = heads
             if self.cacheable:
-                self.snapshot = result; self.tail = tail; self.cursor = cursor; self.checkpoint = checkpoint
+                self.snapshot = result; self.tail = tail; self.cursor = cursor; self.checkpoint = checkpoint; self.retained = retained
             else:
-                self.snapshot = None; self.tail = []; self.rows = {}; self.checkpoint = None
+                self.snapshot = None; self.tail = []; self.rows = {}; self.checkpoint = None; self.retained = None
             return result
         except BaseException:
             # A partly validated tail must never become a reusable checkpoint.
-            self.snapshot = None; self.rows = {}; self.tail = []
+            self.snapshot = None; self.rows = {}; self.tail = []; self.retained = None
             raise
         finally:
             if own: db.rollback()

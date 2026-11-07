@@ -99,6 +99,8 @@ class Projection:
         if self.source is active and self.key==key and self.value is not None:return self.value,records,checkpoint
         if self.key!=key:self.cache.clear();self.bytes=0
         responses=[m.get('sequence',0) for m in active if m.get('role')=='assistant' and m.get('origin',{}).get('providerResponseId')]
+        from checkpoint_records import references
+        retained={ref['sequence'] for ref in references(checkpoint)}
         tools=[m.get('sequence',0) for m in active if m.get('role')=='tool']
         recent=responses[-KEEP_RESULTS] if len(responses)>=KEEP_RESULTS else 0
         human=max((m.get('sequence',0) for m in active if m.get('role')=='user' and m.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation')),default=0)
@@ -107,7 +109,7 @@ class Projection:
         for record in active:
             # Latest results, native/signed assistant blocks and exact human
             # instructions stay intact. Only confirmed, consumed tool rows vary.
-            if record.get('role')!='tool' or record.get('sequence',0)>=cutoff or record.get('sequence') in protected:
+            if record.get('role')!='tool' or record.get('sequence',0)>=cutoff or record.get('sequence') in protected or record.get('sequence') in retained:
                 result.append(record);continue
             original=record.get('content',[]);parts=[];projected=False
             saved=self.cache.get(record.get('sequence'))

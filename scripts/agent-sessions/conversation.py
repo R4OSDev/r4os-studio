@@ -81,7 +81,7 @@ class Conversation:
         row = self.store.db.execute('SELECT * FROM conversation_sessions WHERE session_id=?', (self.session_id,)).fetchone()
         if row is None:
             return None
-        if row['format'] != FORMAT:
+        if row['format'] not in (FORMAT, 2):
             raise ProjectFault('This conversation format is unavailable. Its original history was preserved.', 409)
         return {'format': row['format'], 'source': json.loads(row['source']), 'createdAt': row['created_at']}
 
@@ -158,6 +158,10 @@ class Conversation:
                                                (self.session_id, through_seq)).fetchone()
                 if source is None:
                     raise ProjectFault('The checkpoint source is not an original message in this conversation.', 409)
+            if kind == 'checkpoint' and origin.get('retainedContextRecords'):
+                # Older readers must refuse this view instead of silently
+                # omitting the exact observations retained below through_seq.
+                self.store.db.execute('UPDATE conversation_sessions SET format=2 WHERE session_id=?', (self.session_id,))
             from session_budgets import total as budget_total
             size = budget_total(self.store.db, self.session_id, 'conversation')
             if size + len(content_raw.encode()) + len(origin_raw.encode()) > MAX_HISTORY:
