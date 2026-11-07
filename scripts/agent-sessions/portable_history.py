@@ -90,8 +90,14 @@ def project(messages, binding, recoveries=None):
             if part['type'] == 'tool_result' and (part['result'].get('error') == 'unknown' or part['result'].get('partialChangesPossible')):
                 proof = (recoveries or {}).get((message.get('runId'), part['callId']))
                 if not proof: raise ModelFault('model_context_unconfirmed_tool')
-                notes.append({'type': 'text', 'text': 'STUDIO ORIGINAL PROCESS RECOVERY. The original tool observation remains unknown. '
-                    'Verified bound recovery confirms only the original guest process end, not the Stop effect, cleanup or application test success. '
-                    'Do not replay the original action. Current verified historical metadata:\n' + dumps(proof)})
+                if proof.get('kind')=='terminal-patch-observation':
+                    notes.append({'type':'text','text':'STUDIO ORIGINAL PATCH OBSERVATION. This patch failed and may have applied only part of its edits. '
+                        'Its original terminal receipt records post-attempt hashes or absence for every declared target; the original worker has ended. '
+                        'The original failure and partialChangesPossible marker are preserved. This is historical evidence, not patch success, rollback or verification of current files. '
+                        'Read current files before new edits; do not replay the historical patch. Verified original observation metadata:\n'+dumps(proof)})
+                else:
+                    notes.append({'type': 'text', 'text': 'STUDIO ORIGINAL PROCESS RECOVERY. The original tool observation remains unknown. '
+                        'Verified bound recovery confirms only the original guest process end, not the Stop effect, cleanup or application test success. '
+                        'Do not replay the original action. Current verified historical metadata:\n' + dumps(proof)})
         result.append({**message, 'content': [*parts, *notes], 'origin': {**origin, 'foreignProjection': True}})
     return native_import(result)

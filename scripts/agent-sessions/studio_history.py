@@ -1,4 +1,4 @@
-"""Bind visible historical Stop observations to verified original end proofs."""
+"""Bind historical observations to their verified original receipts and end proofs."""
 import hashlib
 import json
 import sqlite3
@@ -21,7 +21,8 @@ def recoveries(store, sid, messages):
                         or part['result'].get('studioReceiptId') != bound):
                     continue
                 row = store.db.execute("""SELECT t.run_id,t.call_id,t.tool,t.state,
-                    substr(t.result,1,262145) AS result,substr(t.intent,1,8193) AS intent,
+                    t.arguments_hash,substr(t.result,1,262145) AS result,substr(t.intent,1,131073) AS intent,
+                    r.state AS run_state,r.busy AS run_busy,substr(r.worker,1,32769) AS worker,
                     substr(c.content,1,1048577) AS content,substr(c.origin,1,8193) AS origin
                     FROM tools t JOIN runs r ON r.id=t.run_id
                     JOIN conversation_records c ON c.run_id=r.id AND c.session_id=r.session_id
@@ -32,9 +33,16 @@ def recoveries(store, sid, messages):
                         or len(row['content'].encode()) > 1048576 or len(row['origin'].encode()) > 8192
                         or json.loads(row['origin']).get('toolReceiptId') != bound
                         or encode(part) not in [encode(p) for p in json.loads(row['content'])]
-                        or encode(part['result']) != encode({**json.loads(row['result']), 'studioReceiptId': bound})
-                        or not resolved_stop(store, sid, row)):
+                        or encode(part['result']) != encode({**json.loads(row['result']), 'studioReceiptId': bound})):
                     continue
+                from patch_observations import confirmed
+                observation=confirmed(row)
+                if observation:
+                    result[(message['runId'], part['callId'])]={**observation,
+                        'sessionId':sid,'runId':message['runId'],'recordId':message['id'],
+                        'sequence':message['sequence']}
+                    continue
+                if not resolved_stop(store, sid, row):continue
                 value = development(store, sid, row)
                 if value and value.get('stopAction') and (value.get('recovery') or {}).get('guestEndConfirmed') is True:
                     result[(message['runId'], part['callId'])] = {k: value[k] for k in
