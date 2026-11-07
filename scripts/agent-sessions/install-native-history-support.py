@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Targeted host maintenance for growing native history; no service restarts."""
+"""Targeted host maintenance for growing agent journals; no service restarts."""
 import os
 from pathlib import Path
 import subprocess
 
 
 def main():
-    if os.geteuid() != 0: raise SystemExit('Run native-history host maintenance as root.')
+    if os.geteuid() != 0: raise SystemExit('Run agent-history host maintenance as root.')
     unit = 'r4os-studio-agent@.service'
     installed = Path('/etc/systemd/system') / unit
     text = installed.read_text()
@@ -16,11 +16,12 @@ def main():
     if installed.is_symlink() or any(line not in text.splitlines() for line in expected):
         raise SystemExit('Review the existing agent unit before native-history maintenance.')
     path = installed.with_name(unit + '.d') / '73-native-history.conf'
-    wanted = '[Service]\nLimitFSIZE=268435456:infinity\n'
-    if path.is_symlink() or (path.exists() and path.read_text() != wanted):
+    previous = '[Service]\nLimitFSIZE=268435456:infinity\n'
+    wanted = '[Service]\nLimitFSIZE=2147483648:infinity\n'
+    if path.is_symlink() or (path.exists() and path.read_text() not in (previous, wanted)):
         raise SystemExit('Review the existing native-history override before maintenance.')
     path.parent.mkdir(exist_ok=True)
-    if not path.exists():
+    if not path.exists() or path.read_text() != wanted:
         temporary = path.with_suffix('.tmp')
         with temporary.open('x') as stream:
             stream.write(wanted); stream.flush(); os.fsync(stream.fileno())
@@ -29,7 +30,7 @@ def main():
         try: os.fsync(fd)
         finally: os.close(fd)
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
-    print('Native-history support installed for future agent workers; no services, runs or VMs restarted.')
+    print('Agent-history support installed: 2 GiB soft file limit for future workers. Separate project-tool limits are unchanged; no services, runs or VMs restarted.')
 
 
 if __name__ == '__main__': main()
