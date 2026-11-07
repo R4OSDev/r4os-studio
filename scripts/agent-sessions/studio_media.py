@@ -36,6 +36,10 @@ class Media:
             from generated_images import GeneratedImages
             images=GeneratedImages(w.store,w.session_id);ident=identity(reference.split(':',1)[1])
             meta=images.get(ident);raw=images.path(ident).read_bytes();mime=meta['mediaType'];digest=meta['sha256']
+        elif reference.startswith('studio-image:'):
+            from screenshot_media import read
+            meta,raw=read(w.store,w.session_id,reference)
+            mime='image/png';digest=meta['sha256']
         else:raise ProjectFault('This media reference is unavailable in the current session.',403)
         if w.config.get('apiModel',{}).get('imageInput')!='supported':raise ModelFault('model_image_input_unavailable')
         if mime not in MIMES or hashlib.sha256(raw).hexdigest()!=digest:raise ProjectFault('The original media bytes changed. Its reference was preserved.',409)

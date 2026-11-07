@@ -92,6 +92,7 @@ class StudioWorker(Worker):
     async def tool_result(self, result, image_data=None, call_id=None):
         if not result.get('success') or not call_id:return result
         images=self.skill_mcp.images(result)
+        screenshot=None;registered=[];errors=[]
         if image_data:
             import base64
             meta=result.get('image')
@@ -101,28 +102,46 @@ class StudioWorker(Worker):
                 raise ProjectFault('The original screenshot reference changed.',409)
             if result.get('imageDelivery')=='reference-only' and self.config.get('apiModel',{}).get('imageInput')!='supported':
                 return result
-            images.append({'data':image_data['base64'],'mimeType':'image/png'})
+        if result.get('image'):
+            if self.config.get('apiModel',{}).get('imageInput')!='supported':return result
+            from screenshot_media import read,reference
+            try:
+                screenshot=reference(result['image'])
+                read(self.store,self.session_id,screenshot,expected=result['image'])
+            except (ProjectFault,KeyError,ValueError,TypeError) as error:
+                screenshot=None;errors.append(str(error))
         from generated_images import GeneratedImages
-        registered=[];errors=[]
         if result.get('generatedImage'):
             original=GeneratedImages(self.store,self.session_id)
             meta=original.get(result['generatedImage']['id']);original.path(meta['id'])
             if meta!=result['generatedImage']:raise ProjectFault('The original generated image receipt changed.',409)
             registered.append(meta)
         declared=result.get('skillMcp',{}).get('imageCount',len(images))
-        if not images and not registered:return {**result,'imageErrors':['Original service images are retained but unavailable for this image transport.']} if declared else result
+        if not images and not registered and not result.get('image'):
+            return {**result,'imageErrors':['Original service images are retained but unavailable for this image transport.'],'imageDelivery':'reference-only'} if declared else result
         for index,block in enumerate(images):
             try:registered.append(GeneratedImages(self.store,self.session_id).accept_tool(self.run_id,self.thread_id or 'studio-'+self.session_id,call_id,index,block))
             except ProjectFault as error:errors.append(str(error))
         value={**result,'images':registered}
-        value['imageDelivery']='pixels' if self.config.get('apiModel',{}).get('imageInput')=='supported' else 'reference-only'
+        if screenshot:value['screenshotReference']=screenshot
+        value['imageDelivery']='pixels' if (registered or screenshot) and self.config.get('apiModel',{}).get('imageInput')=='supported' else 'reference-only'
         if len(images)<declared:errors.append('Additional original images remain in the retained service result; they were not visually inspected.')
         if errors:value['imageErrors']=errors
-        if registered or errors:
+        if result.get('image') and not screenshot:
+            if value.get('visionAnalysis',{}).get('state')=='native':
+                value['visionAnalysis']={**value['visionAnalysis'],'state':'unavailable','reason':'The original screenshot was retained, but its pixels could not be delivered. No frame was captured again.'}
+            payload=json.loads(result['output'])
+            payload.update(imageDelivery=value['imageDelivery'])
+            if value.get('visionAnalysis'):payload['visionAnalysis']=value['visionAnalysis']
+            value['output']=encode(payload)
+        if registered or screenshot or errors:
             saved=self.store.db.execute('SELECT payload FROM items WHERE run_id=? AND item_id=?',(self.run_id,call_id)).fetchone()
             if saved:
                 public=json.loads(saved['payload']);public['generatedImages']=registered;public['imageErrors']=errors
                 public['imageDelivery']=value['imageDelivery']
+                if screenshot:public['screenshotReference']=screenshot
+                if value.get('visionAnalysis'):public['visionAnalysis']=value['visionAnalysis']
+                if result.get('image') and not screenshot:public['output']=value['output']
                 item(self.store,self.session_id,self.run_id,public)
         return value
 
@@ -384,6 +403,8 @@ class StudioWorker(Worker):
                 if result.get('success') is not True or result.get('partialChangesPossible'):batch_succeeded=False
                 reply = {**result,'studioReceiptId':bound_id}
                 media=[{'type':'image','reference':value['presentation']['reference']} for value in result.get('images',[])] if self.config.get('apiModel',{}).get('imageInput')=='supported' else []
+                if result.get('screenshotReference') and result.get('imageDelivery')=='pixels':
+                    media.append({'type':'image','reference':result['screenshotReference']})
                 self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
                     [{'type': 'tool_result', 'callId': call['callId'], 'result': reply},*media],
                     {'toolReceiptId': bound_id, 'turnId': self.turn_id})
