@@ -65,3 +65,7 @@ Every direct provider request checks the effective full-input limit before dispa
 ## 0.12.18
 
 Retain exact final provider request bodies with private compressed bounded storage, per-attempt identities and dispatch observations.
+
+## 0.12.19
+
+Expose per-request context estimates, frozen effective limits, measured usage and an indexed private request history with exact body reads.

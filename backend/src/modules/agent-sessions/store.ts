@@ -7,7 +7,7 @@ export function providerDirectory() {
   return process.env.STUDIO_DATA_DIR ?? fileURLToPath(new URL('../../../../Data/LLMProvider/', import.meta.url));
 }
 
-export function sessionStore<T>(directory: string, request: Record<string, unknown>, providers = providerDirectory()): Promise<T> {
+export function sessionStore<T>(directory: string, request: Record<string, unknown>, providers = providerDirectory(), maxOutput = 2 * 1024 * 1024): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/agent-sessions/session_store.py', import.meta.url)),
       directory, componentRoot(), providers], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
@@ -23,7 +23,7 @@ export function sessionStore<T>(directory: string, request: Record<string, unkno
     child.stdin.on('error', () => {});
     child.stdout.on('data', (chunk) => {
       output += chunk.toString();
-      if (output.length > 2 * 1024 * 1024) { child.kill('SIGKILL'); finish(new ProjectError('Session response is too large.')); }
+      if (output.length > maxOutput) { child.kill('SIGKILL'); finish(new ProjectError('Session response is too large.')); }
     });
     child.on('close', () => {
       try {

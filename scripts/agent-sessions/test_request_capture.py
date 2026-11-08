@@ -22,7 +22,7 @@ import test_runs as fixtures
 
 class RequestCapture(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.fixture=fixtures.Runs();self.fixture.setUp();self.addCleanup(self.fixture.tearDown)
+        self.fixture=fixtures.Runs();self.fixture.setUp();self.addCleanup(self.fixture.tearDown);self.addCleanup(self.fixture.doCleanups)
         self.store=self.enterContext(self.fixture.open());self.sid=self.fixture.sid
         self.run,_=admit(self.store,self.sid,self.fixture.data,self.fixture.providers)
         config=json.loads(self.store.db.execute('SELECT config FROM runs WHERE id=?',(self.run['id'],)).fetchone()[0])

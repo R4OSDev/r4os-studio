@@ -566,6 +566,15 @@ def operation(projects, r4os, provider_dir, request):
     try:
         op = request['operation']
         if op == 'list': return store.list()
+        if op == 'context_requests':
+            from request_history import page
+            return page(store,request['sessionId'],request.get('before'),request.get('limit',20))
+        if op == 'context_request':
+            from request_history import detail
+            return detail(store,request['sessionId'],request['requestId'])
+        if op == 'context_request_body':
+            from request_history import chunk
+            return chunk(store,request['sessionId'],request['requestId'],request.get('offset',0),request.get('limit',65536))
         if op == 'create': return store.create(request['input'], provider_dir)
         if op == 'get': return store.get(request['sessionId'])
         if op=='screenshots':

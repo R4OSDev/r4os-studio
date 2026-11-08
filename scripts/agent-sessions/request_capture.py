@@ -35,7 +35,7 @@ def schema(db):
         session_id TEXT PRIMARY KEY REFERENCES sessions(id),dropped INTEGER NOT NULL DEFAULT 0)''')
 
 
-def capture(store, operation, raw, binding, policy):
+def capture(store, operation, raw, binding, policy, estimate=None):
     data = raw.encode('utf-8')
     if not 0 < len(data) <= MAX_BODY:
         raise ProjectFault('The complete model request could not be recorded. No request was sent.', 503)
@@ -51,6 +51,8 @@ def capture(store, operation, raw, binding, policy):
         'owner':operation['owner'],'providerId':operation['selection']['providerId'],
         'model':binding['model'],'protocol':binding['protocol'],'bytes':len(data),
         'facts':facts,'contextPolicy':policy,'dispatchAt':None,'responseAt':None,'httpStatus':None}
+    from request_breakdown import analyze
+    metadata['context']=analyze(raw,facts,policy,estimate)
     packed = zlib.compress(data, 3)
     try:
         with store.db:

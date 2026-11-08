@@ -268,7 +268,8 @@ class ModelTransport:
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit',not_dispatched=True)
         self.check_input(body)
-        if self.capture_observer:self.capture_observer(raw_body,self.binding,self.context_policy)
+        if self.capture_observer:self.capture_observer(raw_body,self.binding,self.context_policy,
+            self._input_estimate[1] if self._input_estimate is not None and self._input_estimate[0]==raw_body else None)
         addresses = await resolve_binding(self.binding)
         bootstrap = dumps({'binding': self.binding, 'addresses': addresses, 'key': self.credential,
                            'body': raw_body, 'extraHeaders': self.headers}).encode()

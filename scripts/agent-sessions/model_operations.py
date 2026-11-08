@@ -98,7 +98,7 @@ class Operations:
     def observe(self,model,rid):
         """One observer contract for main, summary, vision and image requests."""
         from request_capture import capture,transport
-        model.capture_observer=lambda raw,binding,policy:capture(self.store,self.row(rid)[1],raw,binding,policy)
+        model.capture_observer=lambda raw,binding,policy,estimate:capture(self.store,self.row(rid)[1],raw,binding,policy,estimate)
         model.request_observer=lambda stage,status=None:transport(self.store,rid,stage,status)
         model.process_observer=lambda stage,child:self.process(rid,stage,child,model.request_sha256)
         model.event_observer=lambda raw:self.wire(rid,raw)

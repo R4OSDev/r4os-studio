@@ -13,6 +13,7 @@ import { generatedRoutes } from './generated-routes.js';
 import {screenshotRoutes} from './screenshot-routes.js';
 import { migrationRoutes } from './migration-routes.js';
 import { quotaWaitRoutes } from './quota-wait-routes.js';
+import {contextRequestRoutes} from './context-request-routes.js';
 import { modelChoiceRoutes } from './model-choice-routes.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
@@ -47,6 +48,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   migrationRoutes(app,security,ownerType);
   modelChoiceRoutes(app,security,ownerType);
   quotaWaitRoutes(app,security,ownerType);
+  contextRequestRoutes(app,directory,security,providers,ownerType);
   const route = '/:id/sessions';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
   if (ownerType === 'project') app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {
