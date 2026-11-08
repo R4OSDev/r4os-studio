@@ -14,6 +14,7 @@ from run_store import event, item, get_run
 from session_store import encode
 from store import ProjectFault
 from terminal_timing import Timing, retained as retained_timing, unknown as unknown_timing
+from terminal_group import Group
 
 
 def bounded_text(value, budget, tail=False):
@@ -32,8 +33,10 @@ class Process:
     def __init__(self, manager, ident, proc, master, cmd, timing=None):
         self.manager = manager; self.id = ident; self.proc = proc; self.master = master
         self.timing=timing or Timing();self.timing.bind_process(proc)
+        self.group = Group(proc.pid, self.timing.birth)
+        self.stop_lock = asyncio.Lock()
         self.pending = ''; self.dropped = False; self.bytes = 0; self.reason = None
-        self.changed = asyncio.Event(); self.finished = asyncio.Event(); self.readers = []
+        self.changed = asyncio.Event(); self.finished = asyncio.Event(); self.exited = asyncio.Event(); self.readers = []
         self.io_lock = asyncio.Lock()
         self.value = {'id': 'process-' + ident, 'runId': manager.worker.run_id, 'type': 'terminal',
                       'processId': ident, 'tool': 'studio.exec_command', 'arguments': {'cmd': cmd}, 'output': '', 'status': 'running'}
@@ -60,6 +63,7 @@ class Process:
             await asyncio.sleep(.05)
         if self.proc.returncode is not None:
             self.timing.end()
+            self.exited.set()
             try:self.publish()
             except (OSError,sqlite3.Error,ProjectFault):pass  # Normal final/poll publication remains authoritative.
 
@@ -107,11 +111,16 @@ class Process:
         self.timing.bind_limit(timeout)
         try:
             if self.proc.returncode is None:
-                await asyncio.wait_for(asyncio.shield(self.proc.wait()), self.timing.remaining_seconds())
-            else:await self.proc.wait()
+                await asyncio.wait_for(self.exited.wait(), self.timing.remaining_seconds())
         except asyncio.TimeoutError: await self.terminate('timeout')
         if self.proc.returncode is not None:self.timing.end()
-        # Namespace descendants keeping a pipe open must not delay cleanup.
+        # Also retire children after an ordinary shell exit. A finished handle
+        # must not leave a background command running in the workspace.
+        if not self.finished.is_set():
+            async with self.stop_lock:
+                self.value['processEndConfirmed'] = await self.group.stop()
+        if not self.value.get('processEndConfirmed'):
+            self.reason = self.reason or 'cleanupUnconfirmed'
         if self.readers:
             try: await asyncio.wait_for(asyncio.gather(*self.readers), 1)
             except asyncio.TimeoutError: pass
@@ -127,14 +136,10 @@ class Process:
 
     async def terminate(self, reason='terminated'):
         self.reason = self.reason or reason
-        if self.proc.returncode is None:
-            try: self.proc.terminate()
-            except ProcessLookupError: pass
-            try: await asyncio.wait_for(asyncio.shield(self.proc.wait()), 2)
-            except asyncio.TimeoutError:
-                try: self.proc.kill()
-                except ProcessLookupError: pass
-                await self.proc.wait()
+        async with self.stop_lock:
+            self.value['processEndConfirmed'] = await self.group.stop()
+            try: await asyncio.wait_for(asyncio.shield(self.proc.wait()), 1)
+            except asyncio.TimeoutError: self.value['processEndConfirmed'] = False
         if self.proc.returncode is not None:self.timing.end()
 
     async def result(self, wait):
@@ -150,6 +155,7 @@ class Process:
         return {'success': True, 'processId': self.id, 'state': 'exited' if self.finished.is_set() else 'running',
                 'output': text, 'outputTruncated': truncated, 'exitCode': self.proc.returncode,
                 'signal': -self.proc.returncode if self.proc.returncode is not None and self.proc.returncode < 0 else None, 'reason': self.reason,
+                'processEndConfirmed': self.value.get('processEndConfirmed') if self.finished.is_set() else None,
                 **self.timing.public()}
 
     async def input(self, args):
@@ -200,7 +206,8 @@ class Terminals:
                 if getattr(self.worker, 'stopping', False) or not admitted['busy'] or admitted['state'] == 'stopping':
                     return {'success': False, 'error': 'interrupted', 'output': 'The run stopped before the command started.'}
                 inner = ['/usr/bin/bash', '--noprofile', '--norc', '-c', args['cmd']]
-                if args.get('tty'): inner = ['/usr/bin/setsid', '--ctty', '--wait', *inner]
+                if args.get('tty'):
+                    inner = ['/usr/bin/python3', '-I', '-B', str(Path(__file__).with_name('terminal_pty.py')), *inner]
                 command = self.worker.workspace_tools.command(inner, workdir)
                 master = slave = None
                 try:
@@ -239,7 +246,8 @@ class Terminals:
             if name == 'write_stdin' and args.get('chars'):
                 return {'success': False, 'error': 'processExited', 'output': 'This process has exited.','processId':args['processId'],**retained_timing(value)}
             return {'success': True, 'processId': args['processId'], 'state': 'exited', 'output': '', 'outputTruncated': False,
-                'exitCode': value.get('exitCode'), 'signal': value.get('signal'), 'reason': value.get('reason'),**retained_timing(value)}
+                'exitCode': value.get('exitCode'), 'signal': value.get('signal'), 'reason': value.get('reason'),
+                'processEndConfirmed': value.get('processEndConfirmed'), **retained_timing(value)}
         async with process.io_lock:
             if name == 'write_stdin': return await process.input(args)
             if name == 'terminate_process':

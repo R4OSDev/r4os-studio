@@ -29,6 +29,38 @@ class TextBounds(unittest.TestCase):
 
 
 class Terminal(unittest.TestCase):
+    def test_stop_and_timeout_retire_children_without_stopping_another_terminal(self):
+        from terminal_group import identity
+        fixture = runs_tests.Runs(); fixture.setUp()
+        store = fixture.open().__enter__()
+        try:
+            run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
+            manager = Terminals(SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], workspace_tools=Box()))
+            async def scenario():
+                survivor = await manager.call('exec_command', {'cmd': 'sleep 60', 'yield_time_ms': 100})
+                try:
+                    for tty, timeout in ((False, False), (True, False), (False, True), (True, True)):
+                        started = asyncio.get_running_loop().time()
+                        result = await manager.call('exec_command', {'cmd': 'sleep 60 & echo CHILD:$!; wait',
+                            'tty': tty, 'timeout_ms': 600 if timeout else 120000, 'yield_time_ms': 100})
+                        output = result['output']
+                        while 'CHILD:' not in output:
+                            result = await manager.call('write_stdin', {'processId': result['processId'], 'yield_time_ms': 100})
+                            output += result['output']
+                        child = int(output.split('CHILD:')[1].split()[0])
+                        process = manager.processes[result['processId']]
+                        self.assertEqual(identity(child)[1:3], (process.proc.pid, process.proc.pid))
+                        if timeout: await asyncio.wait_for(process.finished.wait(), 6)
+                        else: await manager.call('terminate_process', {'processId': result['processId']})
+                        self.assertLess(asyncio.get_running_loop().time() - started, 6)
+                        self.assertTrue(process.value['processEndConfirmed'])
+                        self.assertEqual(process.reason, 'timeout' if timeout else 'terminated')
+                        self.assertTrue(identity(child) is None or identity(child)[0] == 'Z')
+                        self.assertIsNone(manager.processes[survivor['processId']].proc.returncode)
+                finally: await manager.close()
+            asyncio.run(scenario())
+        finally: store.close(); fixture.tearDown()
+
     def test_completed_commands_reuse_slots_and_old_handles_retain_final_status(self):
         fixture = runs_tests.Runs(); fixture.setUp()
         store = fixture.open().__enter__()
