@@ -50,10 +50,14 @@ def read(store,row):
         return {**snapshot,'state':'pending','reason':'The selection or native conversation changed. Waiting for a matching context measurement.'}
     latest=store.db.execute('SELECT id,busy,state,config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     if latest and latest['state']=='unknown':
+        if snapshot.get('usedTokens') is None:
+            return {**snapshot,'state':'unavailable','reason':'The latest execution is unconfirmed. No provider input measurement is available.'}
         return {**snapshot,'state':'stale','reason':'The latest execution is unconfirmed. This is the last measured context.'}
     if latest and latest['id']!=snapshot['runId']:
         config=json.loads(latest['config'])
         if config.get('contextProtocol')!=1:
+            if snapshot.get('usedTokens') is None:
+                return {**snapshot,'state':'unavailable','reason':'The latest worker has no qualified input measurement.'}
             return {**snapshot,'state':'stale','reason':'The latest worker does not report qualified context. This is an earlier measurement.'}
     return snapshot
 
@@ -89,6 +93,7 @@ class Context:
     def invalidate(self,reason,state='stale'):
         if not self.active():return
         w=self.w;value=saved(w.store,w.session_id) or empty(w.store,w.store.row(w.session_id))
+        if state=='stale' and value.get('usedTokens') is None:state='unavailable'
         self.write({**value,'state':state,'reason':reason})
 
     def native(self,response):

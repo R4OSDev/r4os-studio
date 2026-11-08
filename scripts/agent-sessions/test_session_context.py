@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import unittest
 import uuid
 import sqlite3
+from contextlib import closing
 
 from profile import CODEX_VERSION,CODEX_SHA256
 from run_store import admit,transition
@@ -15,7 +16,7 @@ import test_runs as fixtures
 class SessionContext(unittest.TestCase):
     def setUp(self):
         self.fixture=fixtures.Runs('test_concurrent_retry_snapshot_stop_and_replay');self.fixture.setUp()
-        self.addCleanup(self.fixture.tearDown);self.store=self.enterContext(self.fixture.open())
+        self.addCleanup(self.fixture.tearDown);self.addCleanup(self.fixture.doCleanups);self.store=self.enterContext(self.fixture.open())
         self.run,_=admit(self.store,self.fixture.sid,self.fixture.data,self.fixture.providers)
         self.config=json.loads(self.store.db.execute('SELECT config FROM runs WHERE id=?',(self.run['id'],)).fetchone()[0])
         self.config['contextProtocol']=1
@@ -24,7 +25,7 @@ class SessionContext(unittest.TestCase):
         root=self.store.directory/self.fixture.sid/'Codex'
         (root/'native').mkdir(parents=True);(root/'state').mkdir()
         (root/'native/metadata.jsonl').write_text(encode({'type':'session_meta','payload':{'id':'owned-thread','model_provider':'studio_openai_images'}})+'\n')
-        with sqlite3.connect(root/'state/state_5.sqlite') as db:
+        with closing(sqlite3.connect(root/'state/state_5.sqlite')) as db,db:
             db.execute('CREATE TABLE threads(id TEXT,rollout_path TEXT,model_provider TEXT)')
             db.execute('INSERT INTO threads VALUES (?,?,?)',('owned-thread','/codex/sessions/metadata.jsonl','studio_openai_images'))
         self.worker=SimpleNamespace(store=self.store,session_id=self.fixture.sid,run_id=self.run['id'],config=self.config,thread_id='owned-thread')

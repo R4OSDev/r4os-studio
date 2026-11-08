@@ -568,7 +568,7 @@ def operation(projects, r4os, provider_dir, request):
         if op == 'list': return store.list()
         if op == 'context_requests':
             from request_history import page
-            return page(store,request['sessionId'],request.get('before'),request.get('limit',20))
+            return page(store,request['sessionId'],request.get('before'),request.get('limit',20),request.get('kind','dispatched'))
         if op == 'context_request':
             from request_history import detail
             return detail(store,request['sessionId'],request['requestId'])

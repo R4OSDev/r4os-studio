@@ -3,6 +3,8 @@ import base64
 import json
 import unittest
 import uuid
+from types import SimpleNamespace
+from unittest.mock import patch,AsyncMock
 
 from request_breakdown import analyze
 from request_capture import transport
@@ -16,6 +18,83 @@ class RequestHistory(fixtures.CaptureFixture,unittest.TestCase):
     def sent(self,raw=None):
         rid,_=self.capture() if raw is None else self.capture(raw)
         transport(self.store,rid,'dispatch');return rid
+
+    def test_first_required_input_is_archived_without_model_call_or_false_measurement(self):
+        import asyncio
+        from input_count import PROFILE
+        from model_transport import ModelTransport,ModelFault
+        from studio_context import StudioContext
+        from session_context import saved
+        model=ModelTransport({'id':self.fixture.provider,'kind':'local','protocol':'responses','reasoning':'unsupported',
+            'contextWindow':1000000,'baseUrl':'http://127.0.0.1:1/v1','auth':'none'},'own-model')
+        model.context_policy={'schema':4,'counting':PROFILE.copy(),'enabled':True,'budgetTokens':1000}
+        config={'contextPolicy':model.context_policy,'effort':'none','providerId':self.fixture.provider}
+        context=StudioContext.__new__(StudioContext)
+        context.w=SimpleNamespace(config=config,store=self.store,session_id=self.sid,run_id=self.run['id'],
+            transport=lambda:model,prepared_transport=model,history_reader=SimpleNamespace(cacheable=True))
+        messages=[{'sequence':1,'role':'user','content':[{'type':'text','text':'Own first input'}]}]
+        context.history=lambda:(messages,messages,None)
+        context.report=lambda instructions,tools:(messages,messages,None,None,1000000,*context.estimate(messages,instructions,tools))
+        with self.assertRaises(ModelFault) as caught:asyncio.run(context.prepare('Required system '*2000,[]))
+        context.failed(caught.exception)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_model_calls').fetchone()[0],0)
+        self.assertEqual(page(self.store,self.sid)['requests'],[])
+        self.assertTrue(page(self.store,self.sid)['blockedAvailable'])
+        item=page(self.store,self.sid,kind='blocked')['requests'][0]
+        self.assertEqual(item['status'],'blocked-before-send')
+        value=detail(self.store,self.sid,item['id'])
+        self.assertIsNone(value['usage']['input']);self.assertIn('system',value['blockedReason'])
+        raw=base64.b64decode(chunk(self.store,self.sid,item['id'])['base64']).decode()
+        self.assertEqual(json.loads(raw)['instructions'],'Required system '*2000)
+        snapshot=saved(self.store,self.sid)
+        self.assertEqual(snapshot['state'],'blocked');self.assertEqual(snapshot['blockedRequestId'],item['id'])
+        self.assertNotIn('earlier context',snapshot['reason'])
+
+    def test_blocked_history_is_separate_exact_bounded_and_read_only(self):
+        from input_count import PROFILE
+        from request_capture import capture
+        from model_transport import ModelFault
+        op={'runId':self.run['id'],'sessionId':self.sid,'owner':{'type':self.store.owner_type,'id':self.store.owner_id},
+            'selection':{'providerId':self.fixture.provider},'purpose':'conversation'}
+        raw='{ "model":"own-model", "input":"'+('雪'*30000)+'", "n":18446744073709551615 }'
+        ids=[]
+        with patch('request_capture.MAX_REQUESTS',2):
+            for _ in range(3):
+                rid=str(uuid.uuid4());ids.append(rid)
+                capture(self.store,{**op,'requestId':rid},raw,{'model':'own-model','protocol':'responses','contextWindow':1000000},
+                    {'schema':4,'counting':PROFILE.copy(),'enabled':True,'budgetTokens':1000},blocked=ModelFault('context_input_limit',not_dispatched=True))
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_requests').fetchone()[0],2)
+        changes=self.store.db.total_changes
+        latest=page(self.store,self.sid,count=1,kind='blocked')
+        self.assertEqual(latest['requests'][0]['id'],ids[-1])
+        self.assertEqual(page(self.store,self.sid,latest['nextBefore'],1,'blocked')['requests'][0]['id'],ids[-2])
+        self.assertEqual(detail(self.store,self.sid,ids[-1])['older'],ids[-2])
+        blocks=[];offset=0
+        while True:
+            value=chunk(self.store,self.sid,ids[-1],offset);blocks.append(base64.b64decode(value['base64']))
+            if value['nextOffset'] is None:break
+            offset=value['nextOffset']
+        self.assertEqual(b''.join(blocks),raw.encode())
+        self.assertEqual(self.store.db.total_changes,changes)
+        sent=self.sent();self.assertEqual(page(self.store,self.sid)['requests'][0]['id'],sent)
+        self.assertIsNone(detail(self.store,self.sid,sent)['older'])
+        self.assertEqual(detail(self.store,self.sid,ids[-1])['total'],2)
+
+    def test_final_input_rejection_records_prepared_bytes_before_any_dns(self):
+        import asyncio
+        from input_count import PROFILE
+        from model_transport import ModelTransport,ModelFault
+        model=ModelTransport({'id':self.fixture.provider,'kind':'local','protocol':'responses','reasoning':'unsupported',
+            'contextWindow':1000000,'baseUrl':'http://127.0.0.1:1/v1','auth':'none'},'own-model')
+        model.context_policy={'schema':4,'counting':PROFILE.copy(),'enabled':True,'budgetTokens':1}
+        rid,_=self.operation();self.operations.observe(model,rid)
+        with patch('model_transport.resolve_binding',new=AsyncMock()) as dns:
+            with self.assertRaises(ModelFault) as caught:asyncio.run(model.response([{'role':'user','content':[{'type':'text','text':'Own final input'}]}],'Own system',[],'none'))
+            dns.assert_not_awaited()
+        self.operations.finish(rid,error=caught.exception,attempted=False)
+        self.assertFalse(model.attempted)
+        self.assertEqual(page(self.store,self.sid)['requests'],[])
+        self.assertEqual(detail(self.store,self.sid,rid)['status'],'blocked-before-send')
 
     def test_disjoint_original_spans_all_protocols_cache_and_media(self):
         for body in [

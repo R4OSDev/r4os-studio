@@ -56,7 +56,7 @@ export type AgentSessionSummary = Pick<AgentSession, 'id' | 'owner' | 'projectId
 };
 export interface SessionContext {
   schema: 1; revision: number; owner: SessionOwner; sessionId: string;
-  state: 'available' | 'pending' | 'stale' | 'unavailable'; reason: string;
+  state: 'available' | 'pending' | 'stale' | 'unavailable' | 'blocked'; reason: string;
   engine: 'codex' | 'claude-code' | 'studio'; engineVersion: string; engineSha256: string;
   providerId: string; requestedModel: string; model: string | null; modelProvider: string | null;
   threadId: string | null; runId: string | null; turnId: string | null;
@@ -67,6 +67,8 @@ export interface SessionContext {
   autoCompactThreshold: number | null; nominalModelCapacity: null;
   estimatedInputTokens?: number | null; estimateMethod?: string; estimateAt?: string; capacitySource?: string | null;
   inputLimit?: number | null;
+  inputCount?: import('./context-requests').InputCount|null;
+  blockedRequestId?:string|null;
   checkpoint?: { recordId: string; throughSequence: number } | null;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }

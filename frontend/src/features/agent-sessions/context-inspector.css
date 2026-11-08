@@ -9,6 +9,10 @@
 .context-inspector-header nav { display:flex; align-items:center; gap:9px; font-size:12px; font-variant-numeric:tabular-nums; }
 .context-inspector-header nav button { width:32px; height:32px; padding:0; font-size:23px; line-height:1; }
 .context-inspector-header .context-close { padding:0; width:30px; height:30px; background:transparent; border-color:transparent; font-size:24px; color:#baa2cb; }
+.context-source-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:10px 20px; border-bottom:1px solid #463052; }
+.context-source-controls label { display:flex; align-items:center; gap:8px; font-size:11px; min-width:0; }
+.context-source-controls select { max-width:100%; min-width:0; padding:6px; color:#e4d5ef; background:#33233e; border:1px solid #624575; border-radius:5px; font:inherit; }
+.context-source-controls small { color:#ac98bd; font-size:10px; }
 .context-inspector-scroll { min-height:100px; overflow:auto; padding:20px; }
 .context-request-heading { display:flex; flex-direction:column; gap:3px; margin-bottom:22px; overflow-wrap:anywhere; }
 .context-request-heading strong { font-size:15px; color:#f0defe; }

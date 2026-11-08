@@ -139,6 +139,9 @@ class ApiProviders:
             require(value)
         if value['kind']=='codex-subscription' and (value['protocol']!='responses' or value['auth']!='bearer' or value.get('server')!='custom'):
             raise ProjectFault('The native OpenAI model contract is unavailable.',503)
+        if 'inputTokenCounting' not in value and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='input_count_settings'").fetchone():
+            setting=db.execute('SELECT enabled FROM input_count_settings WHERE provider_id=?',(ident,)).fetchone()
+            if setting:value['inputTokenCounting']=bool(setting[0])
         return value
 
     def listing(self):
@@ -156,9 +159,15 @@ class ApiProviders:
 
     def save(self,db,value,retired=False):
         value['status']='configured' if value['enabled'] and (value['auth']=='none' or value['keyConfigured']) else 'disconnected'
+        # Older pinned workers validate the original provider JSON shape. Keep
+        # this additive preference outside that record so they can still read it.
+        stored={key:item for key,item in value.items() if key!='inputTokenCounting'}
         db.execute('INSERT INTO providers VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,retired=excluded.retired',
-            (value['id'],encode(value),int(retired)))
-        db.execute('INSERT INTO revisions VALUES (?,?,?)',(value['id'],value['revision'],encode(value)))
+            (value['id'],encode(stored),int(retired)))
+        db.execute('INSERT INTO revisions VALUES (?,?,?)',(value['id'],value['revision'],encode(stored)))
+        if 'inputTokenCounting' in value:
+            db.execute('CREATE TABLE IF NOT EXISTS input_count_settings(provider_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL CHECK(enabled IN (0,1)))')
+            db.execute('INSERT INTO input_count_settings VALUES (?,?) ON CONFLICT(provider_id) DO UPDATE SET enabled=excluded.enabled',(value['id'],int(value['inputTokenCounting'])))
 
     def cleanup(self,db,value):
         keep=value['credentialRevision'] if value['auth']=='bearer' and value['keyConfigured'] else -1

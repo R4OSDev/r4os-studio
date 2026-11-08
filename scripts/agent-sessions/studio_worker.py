@@ -452,7 +452,7 @@ class StudioWorker(Worker):
             self.error = str(error) if isinstance(error, ProjectFault) else 'The Studio worker could not confirm this run. Inspect its original receipts.'
             if isinstance(error, ModelFault):
                 event(self.store, self.session_id, self.run_id, 'notice', {'text': self.error, 'providerError': {'code': error.code, 'httpStatusCode': error.http_status,'category':error.category}})
-            self.context.invalidate('The latest model operation failed. This is retained earlier context.', 'stale')
+            self.context.failed(error)
         finally:
             try:
                 if self.model: await self.model.close()

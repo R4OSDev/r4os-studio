@@ -12,8 +12,8 @@ type Member=Params&{requestId:string};
 export function contextRequestRoutes(app:FastifyInstance,directory:string,security:ProjectSessions,providers:string|undefined,ownerType:'project'|'skill') {
   const owner=(id:string)=>ownerType==='skill'?{ownerType,ownerId:id}:{projectId:id};
   const route='/:id/sessions/:sessionId/context-requests';
-  app.get<{Params:Params;Querystring:{before?:number;limit?:number}}>(route,{
-    schema:{params,querystring:{type:'object',additionalProperties:false,properties:{before:integer,limit:{type:'integer',minimum:1,maximum:50}}}},
+  app.get<{Params:Params;Querystring:{before?:number;limit?:number;kind?:'dispatched'|'blocked'}}>(route,{
+    schema:{params,querystring:{type:'object',additionalProperties:false,properties:{before:integer,limit:{type:'integer',minimum:1,maximum:50},kind:{type:'string',enum:['dispatched','blocked']}}}},
   },async(request,reply)=>{
     security.session(request,reply);reply.header('Cache-Control','private, no-store');
     return sessionStore<ContextRequestPage>(directory,{operation:'context_requests',...owner(request.params.id),sessionId:request.params.sessionId,...request.query},providers);

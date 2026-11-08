@@ -36,6 +36,9 @@ class Providers(unittest.TestCase):
         self.assertFalse(value.get('inputTokenCounting',False))
         data={'requestId':request(),'revision':value['revision'],'inputTokenCounting':True}
         updated=self.store.mutate('update',value['id'],data)
+        with self.store.connect() as db:
+            raw=json.loads(db.execute('SELECT data FROM providers WHERE id=?',(value['id'],)).fetchone()[0])
+            self.assertNotIn('inputTokenCounting',raw)  # Original pinned reader contract.
         self.assertEqual(self.store.mutate('update',value['id'],data),updated)
         snapshot={'engine':{'kind':'studio'},'apiProvider':model_binding(updated['provider'])}
         projects=self.root/'Projects';projects.mkdir()

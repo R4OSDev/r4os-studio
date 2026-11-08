@@ -100,10 +100,49 @@ class StudioContext(Context):
         return active, records, checkpoint, measured, capacity, estimate, size
 
     async def prepare(self, instructions, tools):
-        for _ in range(16):
-            active, progress = await self.compact(instructions, tools)
-            if not progress: return active
-        raise ModelFault('context_compaction_bound', not_dispatched=True)
+        try:
+            for _ in range(16):
+                active, progress = await self.compact(instructions, tools)
+                if not progress: return active
+            raise ModelFault('context_compaction_bound', not_dispatched=True)
+        except ModelFault as error:
+            if error.category=='context' and error.not_dispatched and self.w.config.get('contextPolicy',{}).get('schema')==4:
+                self.record_blocked(instructions,tools,error)
+            raise
+
+    def record_blocked(self,instructions,tools,error):
+        """A prepared input is not a model call or a dispatched request."""
+        from request_capture import capture,MAX_BODY
+        from store import ProjectFault
+        w=self.w
+        try:
+            model=w.transport();active,_,_=self.history()
+            body,_=model.freeze(active,instructions,tools,w.config['effort'],retain=w.history_reader.cacheable)
+            raw=model.encoded(body)
+            if len(raw.encode())>MAX_BODY:return  # Byte cap is separate from a token estimate.
+            rid=str(uuid.uuid4())
+            operation={'requestId':rid,'runId':w.run_id,'sessionId':w.session_id,'purpose':getattr(w,'request_purpose','conversation'),
+                'owner':{'type':w.store.owner_type,'id':w.store.owner_id},'selection':{'providerId':w.config['providerId']}}
+            try:estimate=model.input_estimate(body)
+            except ModelFault:estimate=None
+            capture(w.store,operation,raw,model.binding,w.config['contextPolicy'],estimate,blocked=error)
+            model.blocked_request_id=rid
+        except ProjectFault:
+            # Keep the original context rejection if optional recording cannot
+            # complete. Never send or fabricate a dispatched request instead.
+            return
+
+    def failed(self,error):
+        from session_context import saved
+        if not self.active():return
+        w=self.w;value=saved(w.store,w.session_id) or empty(w.store,w.store.row(w.session_id))
+        measured=value.get('usedTokens') is not None
+        blocked=isinstance(error,ModelFault) and error.not_dispatched and error.category=='context'
+        model=getattr(w,'prepared_transport',None)
+        self.write({**value,'state':'stale' if measured else 'blocked' if blocked else 'unavailable',
+            'blockedRequestId':getattr(model,'blocked_request_id',None) if blocked else None,
+            'reason':str(error) if blocked else 'The latest model operation failed. '+(
+                'This is retained earlier measured context.' if measured else 'No provider input measurement is available.')})
 
     async def count_preview(self,active,instructions,tools):
         w=self.w

@@ -6,6 +6,7 @@ import {sessionPath,useSessionApi} from './api';
 
 const number=new Intl.NumberFormat('en-US');
 export function OriginalRequest({projectId,sessionId,record,close}:{projectId:string;sessionId:string;record:ContextRequestDetail;close:()=>void}) {
+  const prepared=record.status==='blocked-before-send';
   const dialog=useRef<HTMLDialogElement>(null),title=useId(),{request,base}=useSessionApi();
   const [offsets,setOffsets]=useState([0]),[page,setPage]=useState<{text:string;end:number;next:number|null}|null>(null);
   const [error,setError]=useState(''),[actionError,setActionError]=useState(''),[status,setStatus]=useState('');
@@ -67,14 +68,14 @@ export function OriginalRequest({projectId,sessionId,record,close}:{projectId:st
     setPending('download');setStatus('');setActionError('');
     try{
       const url=URL.createObjectURL(new Blob([await whole()],{type:'application/json;charset=utf-8'}));
-      const anchor=document.createElement('a');anchor.href=url;anchor.download='llm-request-'+record.id+'.json';anchor.click();
+      const anchor=document.createElement('a');anchor.href=url;anchor.download=(prepared?'prepared-request-':'llm-request-')+record.id+'.json';anchor.click();
       setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus('Full original request downloaded.');
     }catch(failure){if(!fullRead.current?.signal.aborted)setActionError(failure instanceof Error?failure.message:'The request could not be downloaded.');}
     finally{setPending(null);}
   }
   return createPortal(<dialog ref={dialog} className="context-inspector request-original-dialog" aria-labelledby={title} onKeyDown={trapDialogFocus}
     onCancel={event=>{event.preventDefault();event.stopPropagation();close();}}>
-    <header className="context-inspector-header"><h2 id={title}>Full request</h2><button type="button" onClick={close}>Back to context</button></header>
+    <header className="context-inspector-header"><h2 id={title}>{prepared?'Prepared request · not sent':'Full request'}</h2><button type="button" onClick={close}>Back to context</button></header>
     <div className="request-original-meta"><strong>{record.model}</strong><span>{record.id}</span>
       <small>{number.format(record.bytes)} original UTF-8 bytes · SHA-256 {record.sha256}</small></div>
     <div className="request-original-pager" aria-label="Original request pages">

@@ -32,11 +32,12 @@ def schema(db):
     db.execute('CREATE INDEX IF NOT EXISTS studio_requests_sent ON studio_requests(session_id,seq) WHERE dispatch_at IS NOT NULL')
     db.execute('CREATE INDEX IF NOT EXISTS studio_requests_dispatch ON studio_requests(session_id,dispatch_at,seq) WHERE dispatch_at IS NOT NULL')
     db.execute('CREATE INDEX IF NOT EXISTS studio_requests_body ON studio_requests(session_id,sha256,seq)')
+    db.execute("CREATE INDEX IF NOT EXISTS studio_requests_blocked ON studio_requests(session_id,seq) WHERE dispatch_at IS NULL AND json_extract(metadata,'$.blocked') IS NOT NULL")
     db.execute('''CREATE TABLE IF NOT EXISTS studio_request_retention(
         session_id TEXT PRIMARY KEY REFERENCES sessions(id),dropped INTEGER NOT NULL DEFAULT 0)''')
 
 
-def capture(store, operation, raw, binding, policy, estimate=None):
+def capture(store, operation, raw, binding, policy, estimate=None,blocked=None):
     data = raw.encode('utf-8')
     if not 0 < len(data) <= MAX_BODY:
         raise ProjectFault('The complete model request could not be recorded. No request was sent.', 503)
@@ -52,6 +53,7 @@ def capture(store, operation, raw, binding, policy, estimate=None):
         'owner':operation['owner'],'providerId':operation['selection']['providerId'],
         'model':binding['model'],'protocol':binding['protocol'],'bytes':len(data),
         'facts':facts,'contextPolicy':policy,'dispatchAt':None,'responseAt':None,'httpStatus':None}
+    if blocked is not None:metadata['blocked']={'code':blocked.code,'reason':str(blocked)}
     from request_breakdown import analyze
     metadata['context']=analyze(raw,facts,policy,estimate)
     packed = zlib.compress(data, 3)
@@ -86,8 +88,9 @@ def capture(store, operation, raw, binding, policy, estimate=None):
             cutoff = store.db.execute('SELECT seq FROM studio_requests WHERE session_id=? ORDER BY seq DESC LIMIT 1 OFFSET ?',
                                       (operation['sessionId'],MAX_REQUESTS-1)).fetchone()
             if cutoff:
-                removed = store.db.execute('''DELETE FROM studio_requests WHERE session_id=? AND seq<? AND request_id IN
-                        (SELECT request_id FROM studio_model_calls WHERE phase IN ('completed','failed','unknown'))''',
+                removed = store.db.execute('''DELETE FROM studio_requests WHERE session_id=? AND seq<? AND
+                        (request_id IN (SELECT request_id FROM studio_model_calls WHERE phase IN ('completed','failed','unknown'))
+                         OR dispatch_at IS NULL AND json_extract(metadata,'$.blocked') IS NOT NULL)''',
                                            (operation['sessionId'],cutoff['seq'])).rowcount
                 if removed:
                     store.db.execute('INSERT INTO studio_request_retention VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET dropped=dropped+excluded.dropped',

@@ -89,3 +89,7 @@ Count qualified model text locally with pinned offline tiktoken assets, bound ca
 ## 0.12.24
 
 Optionally count complete Responses inputs through qualified provider routes with frozen opt-in, bounded count-only HTTP and visible local fallback.
+
+## 0.12.25
+
+Show characters, count provenance and optional provider totals in the context inspector, with a separate bounded history of exact inputs blocked before send.

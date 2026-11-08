@@ -62,3 +62,30 @@ No model retry, tool effect, account switch or automatic continuation follows.
 
 The provider total is separate from local component estimates and later reported
 model usage. Official contract: https://developers.openai.com/api/docs/guides/token-counting .
+
+## Inspection and blocked inputs (0.12.25)
+
+The inspector shows Unicode characters, the local count source/version, reserves,
+any provider preflight count and later reported usage separately. Local component
+estimates and Free share one basis; a confirmed provider aggregate is not split
+into invented exact components. A model/window/settings change never relabels a
+historical request. The gauge also shows the latest known character amount.
+
+**Dispatched requests** remains the default history. **Blocked before send** is a
+separate retained preparation history; if there is no dispatched request, the
+latest blocked input opens automatically. These records do not imply provider
+receipt or create a model call. Their original prepared bytes use the existing
+full request paging, copy and download, visibly labelled **not sent**. Reads do
+not count tokens remotely or perform inference. Unsupported/expired originals
+remain unavailable; bodies above the 8 MiB retention cap are not fabricated.
+
+Blocked metadata shares the 10,000-record retention bound and compressed private
+body budget. Its query has a dedicated partial index. With no earlier measured
+input, a local failure is **blocked** and a failed/interrupted measurement is
+**unavailable**, rather than claiming retained earlier measured context.
+
+The optional provider count preference is stored separately from the original
+provider JSON so older pinned workers can still read their established shape.
+Existing accepted profiles and credential bindings remain intact. Legacy 0.12.24
+preference fields are readable and move into the side table on an explicit save;
+reading configuration performs no migration.

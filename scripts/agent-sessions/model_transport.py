@@ -152,6 +152,7 @@ class ModelTransport:
         self.closed_confirmed = True
         self.attempted = False
         self.capture_observer = None
+        self.blocked_observer = None
         self.request_observer = None
         self.process_observer = None
         self.event_observer = None
@@ -285,8 +286,14 @@ class ModelTransport:
         self.request_sha256=hashlib.sha256(raw_body.encode()).hexdigest()
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit',not_dispatched=True)
-        await self.count_input(body)
-        self.check_input(body)
+        try:
+            await self.count_input(body)
+            self.check_input(body)
+        except ModelFault as error:
+            if error.not_dispatched and error.category=='context' and self.blocked_observer:
+                self.blocked_observer(raw_body,self.binding,self.context_policy,
+                    self._input_estimate[1] if self._input_estimate is not None and self._input_estimate[0]==raw_body else None,error)
+            raise
         if self.capture_observer:self.capture_observer(raw_body,self.binding,self.context_policy,
             self._input_estimate[1] if self._input_estimate is not None and self._input_estimate[0]==raw_body else None)
         addresses = await resolve_binding(self.binding)
