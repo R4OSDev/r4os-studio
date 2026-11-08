@@ -143,7 +143,11 @@ class Builder:
             'ZIG_GLOBAL_CACHE_DIR': context.path('/cache/zig'), 'ZIG_LOCAL_CACHE_DIR': context.path('/cache/zig-local'),
             'CARGO_HOME': self.root / 'cargo', 'RUSTUP_AUTO_INSTALL': '0',
             'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT': '1', 'POWERSHELL_TELEMETRY_OPTOUT': '1'}
-        return context.command(context.arguments(command), environment=environment)
+        selected = context.arguments(command, path_indices=(0, 1) if command[0] == '/update-inspector' else (0,),
+            path_options=('--root', '--manifest', '--inspect', '-File', '-SdkRoot', '-ContractRoot', '-LibrariesRoot',
+                          '-ProjectRoot', '-ToolsRoot', '-ZigRoot', '-InstallRoot', '-CacheRoot', '-OutputRoot',
+                          '-AdditionalLibrariesFile', '-DevelopmentProfile'))
+        return context.command(selected, environment=environment)
 
     async def execute(self, command, collect=False):
         if self.stopping: raise DevelopmentFault('Build stopped.')

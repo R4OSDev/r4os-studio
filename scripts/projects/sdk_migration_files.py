@@ -102,8 +102,8 @@ def stage(context, workspace, parent, request_id, old_pins):
             raise ProjectFault('The SDK Rust tools are required to synchronize this Cargo project.', 409)
         cargo = '/install/' + str(context['rust']['compiler'].relative_to('Install').with_name('cargo'))
         native.append(run(context, target, parent / 'Native', [cargo, 'generate-lockfile', '--offline', '--manifest-path', '/workspace/Cargo.toml',
-            '--config', 'patch.crates-io.r4os-sdk.path="/sdk/Rust"',
-            '--config', 'patch.crates-io.r4os-contract.path="/contract/Generated/SDK/Rust"'], 'sync-cargo'))
+            '--config', 'patch.crates-io.r4os-sdk.path=' + json.dumps(str(context['paths']['sdk'] / 'Rust')),
+            '--config', 'patch.crates-io.r4os-contract.path=' + json.dumps(str(context['paths']['contract'] / 'Generated/SDK/Rust'))], 'sync-cargo'))
     changes = []
     for name in ('build.zig.zon', 'Cargo.lock'):
         old, new = source / name, target / name

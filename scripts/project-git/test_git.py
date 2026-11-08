@@ -14,6 +14,15 @@ from host import Coordinator
 
 
 class GitTests(unittest.TestCase):
+    def test_commit_message_keeps_absolute_looking_user_text(self):
+        action = Operations(self.config, self.job()); action.initialize()
+        action.git.run('add', '--all')
+        message = '/workspace/fix path labels\n\nkey=/workspace/literal $(touch /output/no-effect)'
+        action.git.run('-c', 'user.name=Own QA', '-c', 'user.email=qa@example.invalid',
+                       'commit', '--no-gpg-sign', '-m', message)
+        self.assertEqual(action.git.text('log', '-1', '--format=%B'), message)
+        self.assertFalse((self.source / 'no-effect').exists())
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='studio-git-test-')
         self.root = Path(self.temp.name); self.projects = self.root / 'Projects'; self.projects.mkdir()

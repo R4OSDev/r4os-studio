@@ -43,7 +43,7 @@ def command(stage,work,arguments,network=False,readonly=False,environment=None):
     for name, value in tuple(env.items()):
         if name != 'PATH': env[name] = replacements.get(str(value), value)
     env['PATH'] = ':'.join([*bins, env['PATH']])
-    selected = [replacements.get(value, value) for value in working.arguments(arguments)]
+    selected = [replacements.get(value, value) for value in working.arguments(arguments, path_indices=(0,))]
     return working.command(selected, environment=env)
 
 

@@ -45,7 +45,7 @@ class Packages(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.store.db.execute("SELECT id FROM jobs WHERE kind='package'").fetchone())
 
     async def test_structured_argv_keeps_payload_and_requirements_as_single_values(self):
-        job=self.admit();job['updatePlan']['metadata']['title']='Title; literal $(touch /output/side-effect)'
+        job=self.admit();job['updatePlan']['metadata']['title']='/output/Title; literal $(touch /output/side-effect)'
         job['updatePlan']['requirements']=[update_plans.requirement({'kind':'R4L','name':'LIB','target':'/R4OS/LIBS/LIB.R4L','minVersion':'1.2.3','state':'installed'})]
         packer=Packager(self.store,job);args=packer.arguments();value=args[args.index('--payload')+1]
         self.assertEqual(value.count('|'),2);self.assertIn(r'C:\R4OS\SOFTWARE\FIXTURE\FIXTURE.R4X',value)
@@ -53,6 +53,10 @@ class Packages(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args[args.index('--title')+1],job['updatePlan']['metadata']['title'])
         namespace=packer.command(args);self.assertEqual(namespace[:3], ['/usr/bin/env', '-i', '-C']);self.assertIn(str(packer.root/'packer'),namespace)
         self.assertNotIn('/bin/sh',namespace);self.assertNotIn('/codex',namespace)
+        self.assertEqual(namespace[namespace.index('--title')+1],job['updatePlan']['metadata']['title'])
+        physical=namespace[namespace.index('--payload')+1].split('|')
+        self.assertEqual(physical[0],str(packer.root/'inputs/0.payload'))
+        self.assertEqual(physical[1:],value.split('|')[1:])
 
     async def test_stopped_job_and_changed_source_do_not_start_a_process(self):
         job=self.admit();packer=Packager(self.store,job)

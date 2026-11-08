@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from workspace_context import Workspace
 import signal
 import socket
 import struct
@@ -55,7 +54,7 @@ class Git:
                     '-c', 'http.followRedirects=false', '-c', 'protocol.file.allow=never', '-c', 'protocol.ext.allow=never',
                     '-c', 'submodule.recurse=false', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false']
         if args[0] != 'init': command += ['--git-dir=' + str(self.root), '--work-tree=' + str(self.workspace)]
-        command += Workspace(self.workspace, {'/repo': self.root, '/workspace': self.workspace, '/empty': self.empty}).arguments(args)
+        command += list(map(str, args))
         return command
 
     def _run(self, args, auth, data, allow, timeout):
@@ -103,7 +102,7 @@ class Git:
 
     def init(self, branch_name='main'):
         if not (self.root / 'HEAD').exists():
-            self.run('init', '--bare', '--template=/empty', '--initial-branch=' + branch_name, '/repo')
+            self.run('init', '--bare', '--template=' + str(self.empty), '--initial-branch=' + branch_name, str(self.root))
         # Retain the local exclusion even when a remote .gitignore changes.
         info = self.root / 'info'; info.mkdir(mode=0o700, exist_ok=True); folder(info)
         exclude = info / 'exclude'

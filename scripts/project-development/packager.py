@@ -46,7 +46,12 @@ class Packager:
     def command(self, arguments):
         context = Workspace(self.root / 'output', {'/inputs': self.root / 'inputs',
             '/output': self.root / 'output', '/packer': self.root / 'packer'})
-        return context.command(context.arguments(['/packer', *arguments]), environment={'HOME': self.root})
+        selected = context.arguments(['/packer', *arguments], path_indices=(0,), path_options=('--output', '--description-file'))
+        for index, value in enumerate(selected[:-1]):
+            if value == '--payload':
+                source, target, kind = selected[index + 1].split('|')
+                selected[index + 1] = '|'.join((str(context.path(source)), target, kind))
+        return context.command(selected, environment={'HOME': self.root})
 
     def arguments(self):
         plan = self.job['updatePlan']; meta = plan['metadata']

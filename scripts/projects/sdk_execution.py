@@ -25,7 +25,8 @@ def run(context, workspace, directory, arguments, label):
     working = Workspace(workspace, context_paths)
     bins = [context['runner'].parent, context['paths']['zig']]
     if context.get('rust'): bins.append(context['rust']['prefix'] / context['rust']['compiler'].parent)
-    command = working.command(working.arguments(arguments), environment={'HOME': directory / 'home',
+    command = working.command(working.arguments(arguments, path_indices=(0,),
+        path_options=('-File', '-ProjectRoot', '-SdkRoot', '--manifest-path')), environment={'HOME': directory / 'home',
         'PATH': ':'.join(map(str, [*bins, '/usr/bin', '/bin'])), 'CARGO_HOME': directory / 'cargo',
         'RUSTUP_AUTO_INSTALL': '0', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT': '1', 'POWERSHELL_TELEMETRY_OPTOUT': '1'})
     stdout, stderr = directory / (label + '.stdout'), directory / (label + '.stderr')

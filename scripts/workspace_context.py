@@ -17,17 +17,13 @@ class Workspace:
         selected = Path(value)
         return selected if selected.is_absolute() else self.workspace / selected
 
-    def arguments(self, arguments):
-        # Only internal structured argv paths are translated. Shell source and
-        # user command text are never rewritten.
-        result = []
-        for argument in map(str, arguments):
-            if argument.startswith('/'):
-                argument = str(self.path(argument))
-            elif '=' in argument:
-                key, value = argument.split('=', 1)
-                if value.startswith('/'): argument = key + '=' + str(self.path(value))
-            result.append(argument)
+    def arguments(self, arguments, *, path_indices=(), path_options=()):
+        """Translate only path positions declared by the structured caller."""
+        result = list(map(str, arguments))
+        positions = set(path_indices)
+        positions.update(index + 1 for index, value in enumerate(result[:-1]) if value in path_options)
+        for index in positions:
+            result[index] = str(self.path(result[index]))
         return result
 
     def command(self, arguments, workdir='.', environment=None):
