@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { ProjectError } from '../projects/store.js';
 
@@ -7,7 +8,8 @@ export function skillStore<T>(directory: string, request: Record<string, unknown
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL('../../../../scripts/skills/store.py', import.meta.url)), directory, process.execPath],
       { detached: true, stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
-    let output = '', settled = false;
+    let output = '', outputBytes = 0, settled = false;
+    const decoder = new StringDecoder('utf8');
     const kill = () => { try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); } };
     const finish = (error?: Error, result?: T) => {
       if (settled) return; settled = true; clearTimeout(timer);
@@ -17,10 +19,13 @@ export function skillStore<T>(directory: string, request: Record<string, unknown
     child.on('error', () => finish(new ProjectError('Skill storage is unavailable.', 503)));
     child.stdin.on('error', () => {});
     child.stdout.on('data', (chunk) => {
-      output += chunk.toString();
-      if (output.length > 2 * 1024 * 1024) { kill(); finish(new ProjectError('Skill response exceeds its limit.', 503)); }
+      if (settled) return;
+      outputBytes += chunk.length;
+      if (outputBytes > 2 * 1024 * 1024) { kill(); finish(new ProjectError('Skill response exceeds its limit.', 503)); return; }
+      output += decoder.write(chunk);
     });
     child.on('close', () => {
+      output += decoder.end();
       try {
         const value = JSON.parse(output);
         if (typeof value.error === 'string') finish(new ProjectError(value.error, value.code));

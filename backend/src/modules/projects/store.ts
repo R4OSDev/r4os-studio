@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ProjectSummary } from '../../../../shared/projects.js';
@@ -22,7 +23,8 @@ export function projectStore<T>(directory: string, request: Record<string, unkno
   return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/python3', ['-B', fileURLToPath(new URL(`../../../../scripts/projects/${helper}.py`, import.meta.url)), directory, componentRoot()],
       { detached: true, stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' } });
-    let output = '', settled = false, cancelled = false;
+    let output = '', outputBytes = 0, settled = false, cancelled = false;
+    const decoder = new StringDecoder('utf8');
     const terminate = () => {
       try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); }
       catch { child.kill('SIGKILL'); }
@@ -39,12 +41,15 @@ export function projectStore<T>(directory: string, request: Record<string, unkno
     child.on('error', () => { if (!cancelled) finish(new ProjectError('Project storage is unavailable.')); });
     child.stdin.on('error', () => { /* Process exit is handled below. */ });
     child.stdout.on('data', (chunk) => {
-      output += chunk.toString();
-      if (output.length > 2 * 1024 * 1024) { terminate(); finish(new ProjectError('Project inventory is too large.')); }
+      if (settled) return;
+      outputBytes += chunk.length;
+      if (outputBytes > 2 * 1024 * 1024) { terminate(); finish(new ProjectError('Project inventory is too large.')); return; }
+      output += decoder.write(chunk);
     });
     child.on('close', () => {
       // A cancelled read keeps its process owner until this original close.
       if (cancelled) { finish(new ProjectError('Search cancelled.', 499)); return; }
+      output += decoder.end();
       try {
         const value = JSON.parse(output);
         if (value.error) finish(new ProjectError(value.error, value.code));
