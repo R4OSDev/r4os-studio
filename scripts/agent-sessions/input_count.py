@@ -50,7 +50,8 @@ def regions(raw):
 
 def estimate(raw,policy,binding):
     profile=policy.get('counting')
-    if profile!=PROFILE:
+    from input_tokenizer import PROFILE as TOKENIZER,select,count,scope
+    if profile not in (PROFILE,TOKENIZER):
         from model_transport import ModelFault
         raise ModelFault('context_input_unavailable',not_dispatched=True)
     groups={key:{'raw':[],'text':[],'media':0} for key in LABELS};message_count=0
@@ -62,16 +63,25 @@ def estimate(raw,policy,binding):
             # Provider serialization quotes these ASCII data strings verbatim.
             text=text.replace(json.dumps(original,ensure_ascii=False),json.dumps(replacement,ensure_ascii=False),1)
         group=groups[kind];group['raw'].append(part);group['text'].append(text);group['media']+=media
+    texts=[''.join(group['text']) for group in groups.values()]
+    name,reason=select(binding,profile) if profile==TOKENIZER else (None,'No qualified local tokenizer is selected for this accepted input.')
+    try:
+        amounts=[count(name,binding,text) for text in texts] if name else [math.ceil(len(text)/3) for text in texts]
+    except (ImportError,OSError,ValueError,KeyError,RuntimeError):
+        name=None;reason='The pinned tokenizer assets are unavailable for this worker; Unicode fallback used.'
+        amounts=[math.ceil(len(text)/3) for text in texts]
     categories=[];framing=1024+16*message_count;media=0;text_chars=0
-    for kind,label in LABELS.items():
-        group=groups[kind];original=''.join(group['raw']);text=''.join(group['text'])
+    for (kind,label),text,amount in zip(LABELS.items(),texts,amounts):
+        group=groups[kind];original=''.join(group['raw'])
         text_chars+=len(text);media+=group['media']
-        tokens=math.ceil(len(text)/3)+group['media']+(framing if kind=='other' else 0)
+        tokens=amount+group['media']+(framing if kind=='other' else 0)
         categories.append({'id':kind,'label':label,'tokens':tokens,'bytes':len(original.encode()),'characters':len(original)})
     return {'schema':1,'tokens':sum(item['tokens'] for item in categories),'bytes':len(raw.encode()),
         'characters':len(raw),'textCharacters':text_chars,'textBytes':sum(len(''.join(g['text']).encode()) for g in groups.values()),
-        'mediaTokens':media,'method':METHOD,'source':'character-estimate','methodVersion':'characters-v1',
-        'accuracy':'estimated','fallbackReason':'No qualified local tokenizer is selected for this accepted input.',
+        'mediaTokens':media,'method':('tiktoken 0.14.0 '+name+' over disjoint original JSON text, framing and raster reserves; local estimate, not provider usage') if name else METHOD,
+        'source':'local-tokenizer' if name else 'character-estimate','methodVersion':'local-tokenizer-v1' if name else 'characters-v1',
+        'tokenizer':{'library':'tiktoken','version':'0.14.0','encoding':name,'manifestSha256':TOKENIZER['manifestSha256']} if name else None,
+        'textTokens':sum(amounts),'accuracy':'estimated','fallbackReason':reason,
         'requestSha256':hashlib.sha256(raw.encode()).hexdigest(),
-        'modelBinding':{key:binding.get(key) for key in ('id','model','protocol')},
+        'modelBinding':{key:binding.get(key) for key in ('id','model','protocol','revision','credentialRevision')},'bindingSha256':scope(binding),
         'reserves':{'framing':framing,'media':media},'categories':categories}

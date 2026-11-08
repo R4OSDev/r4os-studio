@@ -81,3 +81,7 @@ Show the entire captured provider request from the context overlay with UTF-8-sa
 ## 0.12.22
 
 Use a frozen Unicode full-input estimate for new requests, preserve accepted counting contracts and diagnose irreducible required input before dispatch.
+
+## 0.12.23
+
+Count qualified model text locally with pinned offline tiktoken assets, bound caches and an explicit Unicode fallback for unsupported mappings.

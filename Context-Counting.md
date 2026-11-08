@@ -20,3 +20,18 @@ as an unresolved tool observation. Transport byte limits remain separate.
 Original request metadata keeps the request hash, Unicode characters, method,
 version, model binding, reserves and disjoint categories. Historical schema-3
 UTF-8-byte/raster estimates remain unchanged. Inspection does not execute inputs.
+
+From 0.12.23 the default frozen profile uses pinned OpenAI tiktoken 0.14.0 for
+exact upstream model mappings on the official OpenAI API or native Codex route.
+The package and o200k_base/cl100k_base data are shipped with Studio, SHA-256
+verified and loaded offline. The supplied binary targets CPython 3.13 on Linux
+x86_64/glibc >=2.28. Unknown models, other connections and unsupported platforms
+use the explicit character fallback. In particular gpt-6.1-sol has no entry in
+the pinned upstream mapping and is not silently assigned another model's codec.
+
+Text tokenization uses disjoint original JSON components; provider formatting,
+tools and media make the complete result an estimate. It is not measured usage.
+An encoding is loaded once per worker. The model/connection/credential revision
+and content bind the text cache, limited to 32 entries of at most 256 KiB each;
+larger texts bypass it. The final immutable request also reuses its full count.
+Accepted character-only profiles from 0.12.22 remain character-only.

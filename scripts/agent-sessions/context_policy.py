@@ -88,7 +88,7 @@ def preference(value=None):
 def resolve(value,session=None):
     chosen=preference((session or {}).get('contextLimit'))
     enabled=chosen['mode']=='on' or chosen['mode']=='global' and value['enabled']
-    from input_count import PROFILE
+    from input_tokenizer import PROFILE
     return {'schema':4,'counting':PROFILE.copy(),'revision':value['revision'],'enabled':enabled,
         'budgetTokens':chosen['budgetTokens'] if chosen['budgetTokens'] is not None else value['budgetTokens'],
         'globalEnabled':value['enabled'],'globalBudgetTokens':value['budgetTokens'],
