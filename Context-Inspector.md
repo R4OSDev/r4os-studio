@@ -47,3 +47,21 @@ metadata, a selected request with older/newer identities, and on-demand byte
 ranges or complete download. Prepared-only calls are excluded. Original
 0.12.18 bodies can be analyzed using their frozen facts and policy; current
 settings are never substituted. All reads preserve stored original records.
+
+## 0.12.20 — context overlay
+
+Click or tap the existing Context gauge, or activate it with Enter/Space, to open
+an accessible modal. Hover and focus no longer open a tooltip. The gauge stays
+available while model selection is disabled.
+
+The left stacked vertical bar and matching right-hand numbers use the local
+estimate; provider-reported input is shown separately. Free, Tools, Conversation,
+System prompt and protocol remainder share one basis. The recorded input limit,
+model window, reserve and unknown/overflow states remain explicit.
+
+Opening selects the latest captured dispatch attempt. Previous/Next browse
+original requests chronologically, including summaries and helper requests. A
+historical selection stays selected when a new context revision arrives. Latest
+request returns to the newest attempt. No full bodies are loaded for this view.
+The dialog supports Escape, focus return, touch and narrow layouts. Empty/native
+histories show the available aggregate snapshot without inventing originals.

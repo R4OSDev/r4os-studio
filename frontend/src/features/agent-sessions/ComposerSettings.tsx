@@ -14,7 +14,7 @@ export function ComposerSettings({ session, projectId, token, disabled, active=f
   saved: (session: AgentSession) => void; busyChanged: (value: boolean) => void; refreshAuth: () => Promise<void>;
   unconfirmedChanged?:(value:boolean)=>void;
 }) {
-  const { request: projectRequest } = useSessionApi();
+  const { request: projectRequest, scope } = useSessionApi();
   const { options, error: optionsError } = useSessionOptions(projectId);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<Choice | null>(null), inflight = useRef(false);
@@ -95,7 +95,7 @@ export function ComposerSettings({ session, projectId, token, disabled, active=f
         <select aria-label="Fast Mode" value={choice.fastMode ? 'on' : 'off'} disabled={controlsDisabled||!model} onChange={(event) => void change({ fastMode: event.target.value === 'on' })}>
           <option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option>
         </select>
-      </label>}<ContextIndicator context={session.context}/></div>
+      </label>}<ContextIndicator key={scope+projectId+session.id} projectId={projectId} sessionId={session.id} context={session.context}/></div>
     </fieldset>
     {session.pendingModel&&<div className="agent-pending-model" role="status">
       <p>{busyRun(session.latestRun?.state)?`Current run: ${session.latestRun?.selection?.model??session.model} · `:''}Next run: {session.pendingModel.choice.model} · {session.pendingModel.state==='blocked'?'Blocked':'Pending'}</p>

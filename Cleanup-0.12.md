@@ -69,3 +69,7 @@ Retain exact final provider request bodies with private compressed bounded stora
 ## 0.12.19
 
 Expose per-request context estimates, frozen effective limits, measured usage and an indexed private request history with exact body reads.
+
+## 0.12.20
+
+Replace the context tooltip with an accessible Studio overlay, stacked vertical breakdown and historical request navigation.
