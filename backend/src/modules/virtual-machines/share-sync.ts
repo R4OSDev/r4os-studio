@@ -51,7 +51,8 @@ const same = (a: Manifest, b: Manifest) => Object.keys(a).length === Object.keys
 async function extract(directory: string, target: string, deadline = Date.now() + exchangeLimits.seconds * 1000) {
   const info = await lstat(imagePath(directory));
   if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || !supportedExchangeImage(info.size)) throw new VmError('Invalid Exchange image.');
-  const entries: ShareEntry[] = [], names = new Set<string>();
+  const names = new Set<string>();
+  let files = 0, directories = 0, bytes = 0;
   // Long names for every allowed entry, plus mtools' dot entries. Do not cap a
   // valid 4096-file listing at the old 64 KiB diagnostic buffer.
   const listingBytes = (exchangeLimits.files + exchangeLimits.directories + 2) * (exchangeLimits.depth * 101 + 8);
@@ -71,17 +72,21 @@ async function extract(directory: string, target: string, deadline = Date.now() 
         throw new VmError('Unsupported guest Exchange path. Preserve exchange.img and recover the files before restarting.');
       if (names.has(name.toLowerCase())) throw new VmError('Guest Exchange paths conflict ignoring case.');
       names.add(name.toLowerCase());
-      const entry: ShareEntry = { name, size: 0, kind: isDir ? 'directory' : 'file' }; entries.push(entry);
-      if (entries.length > exchangeLimits.files + exchangeLimits.directories) throw new VmError('Too many guest Exchange entries.');
-      if (isDir) { boundShare(entries); await mkdir(join(target, name), { mode: 0o700 }); await scan(name); }
+      if (isDir) {
+        if (++directories > exchangeLimits.directories) throw new VmError('Too many guest Exchange folders.');
+        await mkdir(join(target, name), { mode: 0o700 }); await scan(name);
+      }
       else {
-        const remaining = exchangeLimits.bytes - entries.reduce((sum, e) => sum + e.size, 0);
+        if (++files > exchangeLimits.files) throw new VmError('Too many guest Exchange files.');
+        const remaining = exchangeLimits.bytes - bytes;
         await run('/usr/bin/python3', [fileURLToPath(new URL('../../../../scripts/exchange-copy.py', import.meta.url)),
           String(remaining), imagePath(directory) + '@@1048576', '::/' + name, join(target, name)]);
-        entry.size = (await lstat(join(target, name))).size; boundShare(entries);
+        bytes += (await lstat(join(target, name))).size;
+        if (bytes > exchangeLimits.bytes) throw new VmError('Guest Exchange exceeds its byte limit.');
       }
     }
   }
+  // The completed tree receives its full graph and hash check once in manifest.
   await scan(); return manifest(target, deadline);
 }
 async function copyTree(target: string, entries: Manifest, source: (key: string) => string, deadline: number) {

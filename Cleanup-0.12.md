@@ -37,3 +37,7 @@ Context reporting returns the estimate and encoded size from the same prepared r
 ## 0.12.11
 
 Streaming text budgets count only new JSON string content and evict pending tail fragments incrementally. Public deltas retain bounded immutable snapshots and serialize complete projections at flush; original model history stays separate.
+
+## 0.12.12
+
+Exchange export tracks file, folder and byte quotas while scanning. It validates and hashes the completed tree once through the existing manifest path, avoiding repeated prefix graph scans and size reductions.
