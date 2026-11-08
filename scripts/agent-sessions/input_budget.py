@@ -13,7 +13,7 @@ METHOD='Full request UTF-8 bytes (one per token), framing headroom and raster re
 
 
 def strict(policy):
-    return isinstance(policy,dict) and policy.get('schema')==3
+    return isinstance(policy,dict) and policy.get('schema') in (3,4)
 
 
 def model_limit(binding):
@@ -51,9 +51,10 @@ def raster(data,mime):
         raise ModelFault('context_input_unavailable',not_dispatched=True) from None
 
 
-def estimate(raw):
+def scan(body):
+    """Charge raster inputs once; expose exact strings whose base64 is not text."""
     from model_transport import ModelFault
-    body=json.loads(raw); pending=[body];nodes=0;media=0;encoded_media=0
+    pending=[body];nodes=0;media=0;encoded_media=0;replacements=[]
     while pending:
         value=pending.pop();nodes+=1
         if isinstance(value,dict):
@@ -71,8 +72,18 @@ def estimate(raw):
                 data=source['data'];mime=source.get('media_type')
             if data is not None:
                 media+=raster(data,mime);encoded_media+=len(data.encode())
+                if kind=='image':replacements.append((data,''))
+                else:replacements.append((url,url[:-len(data)] if data else url))
             pending.extend(value.values())
         elif isinstance(value,list):pending.extend(value)
+    return nodes,media,encoded_media,replacements
+
+
+def estimate(raw,policy=None,binding=None):
+    if isinstance(policy,dict) and policy.get('schema')==4:
+        from input_count import estimate as count
+        return count(raw,policy,binding or {})
+    nodes,media,encoded_media,_=scan(json.loads(raw))
     size=len(raw.encode())
     # Base64 pixels are not text tokens. All surrounding JSON, text, schemas,
     # names, signatures, cache markers and provider prefixes remain charged.

@@ -49,6 +49,12 @@ class ModelFault(ProjectFault):
             self.category='context'
             self.args=(('The complete provider input exceeds the effective input limit. Reduce the current input or review the session limit. Original history was preserved; no model request was sent.' if code=='context_input_limit' else
                 'The complete provider input could not be checked against its limit. Original history was preserved; no model request was sent.'),)
+        if code=='context_required_input_limit':
+            self.category='context'
+            values=details or {}
+            self.args=(f"Required input exceeds the effective limit ({values.get('inputEstimate','unknown')} / {values.get('inputLimit','unknown')}; "
+                f"system {values.get('system','unknown')}, tools {values.get('tools','unknown')}, conversation {values.get('conversation','unknown')}). "
+                'There is no consumed history to summarize. Review the required input or session limit. No model request was sent.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -195,9 +201,11 @@ class ModelTransport:
 
     def input_estimate(self,body):
         raw=self.encoded(body)
-        if self._input_estimate is None or self._input_estimate[0]!=raw:
+        scope=dumps([self.context_policy,self.binding])
+        if self._input_estimate is None or self._input_estimate[0]!=raw or getattr(self,'_estimate_scope',None)!=scope:
             from input_budget import estimate
-            self._input_estimate=(raw,estimate(raw))
+            self._input_estimate=(raw,estimate(raw,self.context_policy,self.binding))
+            self._estimate_scope=scope
         return self._input_estimate[1]
 
     def check_input(self,body):

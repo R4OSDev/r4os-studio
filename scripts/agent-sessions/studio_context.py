@@ -57,6 +57,7 @@ class StudioContext(Context):
         body, _ = model.freeze(active, instructions, tools, self.w.config['effort'], retain=self.w.history_reader.cacheable)
         if strict(self.w.config.get('contextPolicy')):
             value=model.input_estimate(body)
+            self.input_count=value
             return value['tokens'],value['bytes']
         size = len(model.encoded(body).encode())
         has_media=any(p['type']=='image' for m in active for p in m['content'])
@@ -89,7 +90,8 @@ class StudioContext(Context):
             overflowTokens=max(0,measured-capacity) if capacity is not None and measured is not None else None,
             usedRatio=measured/capacity if capacity is not None and measured is not None else None,
             last={'inputTokens':measured} if measured is not None else None,
-            estimatedInputTokens=estimate, estimateMethod=METHOD if strict(w.config.get('contextPolicy')) else ('UTF-8 JSON bytes including encoded media (conservative planning proxy, not a token count)' if any(p['type']=='image' for m in active for p in m['content']) else 'UTF-8 JSON bytes / 4, rounded up; planning estimate, not a token count'), estimateAt=now(),
+            estimatedInputTokens=estimate, inputCount=getattr(self,'input_count',None) if estimate is not None else None,
+            estimateMethod=getattr(self,'input_count',{}).get('method',METHOD) if strict(w.config.get('contextPolicy')) else ('UTF-8 JSON bytes including encoded media (conservative planning proxy, not a token count)' if any(p['type']=='image' for m in active for p in m['content']) else 'UTF-8 JSON bytes / 4, rounded up; planning estimate, not a token count'), estimateAt=now(),
             capacitySource='accepted model configuration' if capacity is not None else None,
             autoCompactThreshold=threshold(w.config,capacity), contextPolicy=w.config.get('contextPolicy'),
             inputLimit=threshold(w.config,capacity) if strict(w.config.get('contextPolicy')) else None,
@@ -123,6 +125,11 @@ class StudioContext(Context):
             and len(dumps(planned[1]).encode()) < min(65536, max(16384, (limit or 250000)//2)))
         if planned is None or little_new_data and not unsafe:
             if unsafe:
+                if w.config.get('contextPolicy',{}).get('schema')==4 and not latest:
+                    counts=getattr(self,'input_count',{})
+                    raise ModelFault('context_required_input_limit',not_dispatched=True,
+                        details={'inputEstimate':estimate,'inputLimit':limit,'method':counts.get('method'),
+                            **{row['id']:row['tokens'] for row in counts.get('categories',[])}})
                 raise ModelFault('context_retained_limit', not_dispatched=True)
             self.report(instructions, tools, reason='The context target cannot be reduced further while keeping current or unresolved original observations intact. No tool was repeated.')
             return active, False

@@ -77,3 +77,7 @@ Replace the context tooltip with an accessible Studio overlay, stacked vertical 
 ## 0.12.21
 
 Show the entire captured provider request from the context overlay with UTF-8-safe paging, full copy and byte-exact JSON download.
+
+## 0.12.22
+
+Use a frozen Unicode full-input estimate for new requests, preserve accepted counting contracts and diagnose irreducible required input before dispatch.

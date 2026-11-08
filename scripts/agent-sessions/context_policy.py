@@ -1,5 +1,6 @@
 """Global context budget, frozen only for newly accepted Studio runs."""
 from contextlib import closing
+from copy import deepcopy
 import hashlib
 import json
 import os
@@ -87,14 +88,15 @@ def preference(value=None):
 def resolve(value,session=None):
     chosen=preference((session or {}).get('contextLimit'))
     enabled=chosen['mode']=='on' or chosen['mode']=='global' and value['enabled']
-    return {'schema':3,'revision':value['revision'],'enabled':enabled,
+    from input_count import PROFILE
+    return {'schema':4,'counting':PROFILE.copy(),'revision':value['revision'],'enabled':enabled,
         'budgetTokens':chosen['budgetTokens'] if chosen['budgetTokens'] is not None else value['budgetTokens'],
         'globalEnabled':value['enabled'],'globalBudgetTokens':value['budgetTokens'],
         'sessionMode':chosen['mode'],'sessionBudgetTokens':chosen['budgetTokens']}
 
 def freeze(snapshot,projects,original,session=None):
     if original is not None:
-        if 'contextPolicy' in original:snapshot['contextPolicy']=original['contextPolicy'].copy()
+        if 'contextPolicy' in original:snapshot['contextPolicy']=deepcopy(original['contextPolicy'])
         return
     snapshot['contextPolicy']=resolve(read(projects),session)
     if snapshot['engine'].get('kind')!='studio' and snapshot['contextPolicy']['enabled']:

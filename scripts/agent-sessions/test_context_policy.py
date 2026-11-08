@@ -1,5 +1,6 @@
 """Context settings preserve saved values, original receipts and run snapshots."""
 from pathlib import Path
+from contextlib import closing
 import sqlite3
 import tempfile
 import unittest
@@ -23,7 +24,7 @@ class ContextPolicy(unittest.TestCase):
 
     def test_legacy_read_migration_and_original_receipt(self):
         path = location(self.projects, create=True)
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db,db:
             db.executescript('PRAGMA user_version=1; CREATE TABLE system_prompt(id INTEGER PRIMARY KEY,prompt TEXT,revision INTEGER);'
                 'CREATE TABLE global_context(id INTEGER PRIMARY KEY,revision INTEGER,budget_tokens INTEGER);'
                 'INSERT INTO global_context VALUES(1,7,345678);')
