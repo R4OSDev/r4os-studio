@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 import uuid
 import test_runs as fixtures
-from profile import PROFILE, NOTES_SKILL_PROFILE, permission_tools
+from profile import PROFILE, NOTES_SKILL_PROFILE
 from session_store import SessionStore, encode, operation
 from run_store import admit, get_run, transition
 from tool_defaults import permissions, repository_binding
@@ -34,12 +34,12 @@ class Defaults(unittest.TestCase):
             (portable / 'project.json').write_text(encode({'permissions': {'studio.push_project': True}, 'repository': 'untrusted'}))
             local = self.create(store)
             self.assertFalse(local['permissions']['studio.push_project'])
-            self.assertTrue(all(v for k, v in local['permissions'].items() if k not in ('studio.push_project','studio.skill_network')))
+            self.assertTrue(all(v for k, v in local['permissions'].items() if k != 'studio.push_project'))
             root, _ = self.binding()
             request = {'name': 'Bound', 'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'requestId': str(uuid.uuid4())}
             connected = self.create(store, request)
-            self.assertFalse(connected['permissions']['studio.skill_network'])
-            self.assertTrue(all(v for k,v in connected['permissions'].items() if k!='studio.skill_network'))
+            self.assertNotIn('studio.skill_network',connected['permissions'])
+            self.assertTrue(all(connected['permissions'].values()))
             for key in ('environmentNotesEnabled', 'roadmapEnabled', 'webSearchEnabled', 'imageGenerationEnabled'): self.assertTrue(connected[key])
             root.joinpath('binding.json').unlink()
             self.assertEqual(self.create(store, request)['permissions'], connected['permissions'])
@@ -54,16 +54,7 @@ class Defaults(unittest.TestCase):
             self.assertEqual(store.get(connected['id'])['permissions'], disabled['permissions'])
             self.assertEqual(tuple(store.row(self.sid)), original)
         result = operation(self.projects, self.r4os, self.providers, {'operation': 'options', 'projectId': self.pid})
-        self.assertTrue(all(t['defaultEnabled']==(t['id']!='studio.skill_network') for t in result['tools']))
-
-    def test_web_permission_is_explicit_without_a_phantom_model_tool(self):
-        from tool_catalog import tools_for
-        from tool_defaults import effective
-        with self.open() as store:
-            self.assertIn('skill_network',permission_tools(PROFILE))
-            self.assertNotIn('skill_network',tools_for(PROFILE))
-            self.assertFalse(permissions(store)['studio.skill_network'])
-            self.assertTrue(effective(store,{'studio.skill_network':True})['studio.skill_network'])
+        self.assertTrue(all(t['defaultEnabled'] for t in result['tools']))
 
     def test_uncertain_creation_malformed_and_linked_private_binding_do_not_enable_push(self):
         with self.open() as store:
@@ -89,9 +80,8 @@ class Defaults(unittest.TestCase):
         try:
             with closing(SessionStore(fixture.projects, fixture.r4os, fixture.ids[0], 'skill')) as store, patch('session_store.engine', return_value={'profile': NOTES_SKILL_PROFILE, 'available': True}):
                 value = store.create(fixture.settings(), fixture.providers)
-                self.assertEqual(set(value['permissions']), {'studio.' + t for t in permission_tools(NOTES_SKILL_PROFILE)})
-                self.assertFalse(value['permissions']['studio.skill_network'])
-                self.assertTrue(all(v for k,v in value['permissions'].items() if k!='studio.skill_network'))
+                self.assertNotIn('studio.skill_network',value['permissions'])
+                self.assertTrue(all(value['permissions'].values()))
                 self.assertNotIn('roadmapEnabled', value)
                 self.assertNotIn('studio.push_project', value['permissions'])
                 self.assertNotIn('studio.read_environment_notes', value['permissions'])

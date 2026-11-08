@@ -1,3 +1,12 @@
+## Codebereinigung 0.12.3–0.12.14
+
+Terminal-Kindprozesse, native Argumente, UTF-8-Antworten und MCP-Controllerenden
+sind korrigiert. Workspace-Dateizugriffe lösen das SDK erst bei Bedarf auf;
+Skillkatalog, Kontextschätzung, Streaming, Exchange und Sessionseiten vermeiden
+unnötige wiederholte Arbeit. Die Updateansicht liest Status geordnet und
+pausiert im ausgeblendeten Tab. Überholte Adapter-/Netz-/Wortlauttests sind
+entfernt; gezielte Verhaltensprüfungen bleiben erhalten. Details: [Cleanup-0.12.md](Cleanup-0.12.md).
+
 ## 0.12.2: Direkter Rootbetrieb mit Workspaceführung
 
 Studio setzt eine vertrauenswürdige Hostumgebung voraus. Alle Studio-Dienste

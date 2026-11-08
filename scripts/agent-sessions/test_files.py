@@ -28,6 +28,13 @@ class Files(unittest.TestCase):
                     self.assertIn('needle ä🦀',(await tools.file('read_file',{'path':'own.txt'}))['output'])
                     self.assertIn('own.txt',(await tools.file('list_directory',{'path':'.'}))['output'])
                     self.assertIn('own.txt',(await tools.file('search',{'path':'.','query':'needle'}))['output'])
+                    from image_instructions import ALIAS
+                    recipe=await tools.file('read_file',{'root':'sdk','path':ALIAS+'/images.zig','maxLines':10})
+                    original=Path(__file__).resolve().parents[2]/'shared/r4os/image-recipes/images.zig'
+                    self.assertTrue(recipe['success'])
+                    self.assertEqual(recipe['sha256'],hashlib.sha256(original.read_bytes()).hexdigest())
+                    self.assertIn('README.txt',(await tools.file('list_directory',{'root':'sdk','path':ALIAS}))['output'])
+                    self.assertTrue((await tools.file('search',{'root':'sdk','path':ALIAS,'query':'moduleResourceRead'}))['success'])
                     profile.assert_not_called()
                     with self.assertRaisesRegex(ValueError,'unavailable SDK'):await tools.file('read_file',{'root':'sdk','path':'README.md'})
                     self.assertEqual(profile.call_count,1)
