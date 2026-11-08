@@ -12,17 +12,30 @@ export function UpdatesPanel() {
   const [sending, setSending] = useState(false);
   const token = useRef('');
   const installedFromThisTab = useRef(false);
+  const poll = useRef<{ refresh: () => void; pause: () => void; resume: () => void } | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    let active = true, pending = false, paused = false, wake = false, generation = 0;
+    let timer: number | undefined;
+    let phase = '', failed = false;
     const controller = new AbortController();
+    function schedule(delay: number) {
+      window.clearTimeout(timer);
+      if (active && !paused && !document.hidden) timer = window.setTimeout(() => void refresh(), delay);
+    }
     async function refresh() {
+      if (!active || paused || document.hidden) return;
+      if (pending) { wake = true; return; }
+      window.clearTimeout(timer);
+      pending = true; wake = false;
+      const original = generation;
       try {
         const response = await fetch('/api/updates', { cache: 'no-store', signal: controller.signal });
         if (!response.ok) throw new Error('The update status could not be loaded.');
         const next = await response.json() as UpdateStatus;
-        if (!active) return;
+        if (!active || original !== generation) return;
+        phase = next.phase; failed = false;
         token.current = next.csrfToken ?? '';
         setStatus(next); setError(null); setReconnecting(false);
         // A new application build must reload its own assets after a successful switch.
@@ -32,31 +45,48 @@ export function UpdatesPanel() {
         }
         if (['failed', 'rolled_back'].includes(next.phase)) installedFromThisTab.current = false;
       } catch (reason) {
-        if (!active) return;
+        if (!active || original !== generation) return;
+        failed = true;
         if (installedFromThisTab.current) setReconnecting(true);
         else setError(reason instanceof Error ? reason.message : 'The update status could not be loaded.');
+      } finally {
+        pending = false;
+        schedule(wake ? 0 : busyPhases.includes(phase) || installedFromThisTab.current ? 1000 : failed ? 3000 : 30000);
       }
     }
+    const control = {
+      refresh: () => { void refresh(); },
+      pause: () => { generation++; paused = true; window.clearTimeout(timer); },
+      resume: () => { paused = false; void refresh(); },
+    };
+    poll.current = control;
     void refresh();
-    const interval = window.setInterval(() => { if (!document.hidden) void refresh(); }, 3000);
-    const visible = () => { if (!document.hidden) void refresh(); };
+    const visible = () => { window.clearTimeout(timer); if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', visible);
-    return () => { active = false; controller.abort(); window.clearInterval(interval); document.removeEventListener('visibilitychange', visible); };
+    return () => {
+      active = false; generation++; controller.abort(); window.clearTimeout(timer);
+      if (poll.current === control) poll.current = null;
+      document.removeEventListener('visibilitychange', visible);
+    };
   }, []);
 
   async function action(kind: 'check' | 'install') {
     if (!status || sending) return;
+    const current = poll.current;
+    if (!current) return;
+    current.pause();
     setSending(true); setError(null);
     try {
       const response = await fetch(`/api/updates/${kind}`, { method: 'POST', cache: 'no-store', headers: {
         'Content-Type': 'application/json', 'X-CSRF-Token': token.current,
       }, body: JSON.stringify(kind === 'install' && status.latest ? { tag: status.latest.tag, commit: status.latest.commit } : {}) });
       const result = await response.json() as UpdateStatus & { message?: string };
+      if (poll.current !== current) return;
       if (!response.ok) throw new Error(result.message ?? 'The update request failed.');
       if (kind === 'install') installedFromThisTab.current = true;
       setStatus(result);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'The update request failed.'); }
-    finally { setSending(false); }
+    } catch (reason) { if (poll.current === current) setError(reason instanceof Error ? reason.message : 'The update request failed.'); }
+    finally { if (poll.current === current) { setSending(false); current.resume(); } }
   }
 
   const busy = sending || Boolean(status && busyPhases.includes(status.phase));
@@ -81,6 +111,7 @@ export function UpdatesPanel() {
         </dl>
         <div className="updates-actions">
           <button type="button" disabled={!status.enabled || busy} onClick={() => void action('check')}>Check for updates</button>
+          <button type="button" disabled={sending} onClick={() => poll.current?.refresh()}>Refresh status</button>
           <button type="button" className="updates-primary" disabled={!status.enabled || busy || !status.available} onClick={() => void action('install')}>
             {busy && status.phase !== 'checking' ? 'Updating…' : status.available && status.latest ? `Install update ${status.latest.version}` : 'Install update'}
           </button>

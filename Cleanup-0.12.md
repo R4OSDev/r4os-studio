@@ -21,3 +21,7 @@ Owner retirement stops the current MCP controller even when an older end receipt
 ## 0.12.7
 
 Ordinary workspace file tools prepare only file paths, run caches and the standalone patch utility. SDK roots and terminal compiler environments resolve the pinned SDK lazily, once per run.
+
+## 0.12.8
+
+Update status uses one completion-driven read at a time. Mutation generations reject older reads, idle polling slows to 30 seconds, hidden tabs stop polling, and progress, reconnect and manual refresh stay responsive.
