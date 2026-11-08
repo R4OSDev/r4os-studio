@@ -361,13 +361,17 @@ def events(store, session_id, after=0, *, details=True, through=None):
     try:
         watermark = store.db.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE session_id=?', (session_id,)).fetchone()[0]
         if through is not None: watermark = min(watermark, through)
-        rows = store.db.execute('SELECT * FROM events WHERE session_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT 101', (session_id, after, watermark)).fetchall()
-        batch = []; size = 0
-        for r in rows[:100]:
-            size += len(r['payload'].encode())
-            if batch and size > 524288: break
-            batch.append({'seq': r['seq'], 'runId': r['run_id'], 'kind': r['kind'], 'payload': json.loads(r['payload'])})
-        result = {'events': batch, 'watermark': watermark, 'hasMore': len(rows) > len(batch)}
+        cursor = store.db.execute('SELECT * FROM events WHERE session_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT 101', (session_id, after, watermark))
+        batch = []; size = 0; more = False
+        try:
+            for r in cursor:
+                next_size = len(r['payload'].encode())
+                if len(batch) == 100 or batch and size + next_size > 524288:
+                    more = True; break
+                batch.append({'seq': r['seq'], 'runId': r['run_id'], 'kind': r['kind'], 'payload': json.loads(r['payload'])})
+                size += next_size
+        finally: cursor.close()
+        result = {'events': batch, 'watermark': watermark, 'hasMore': more}
         if details: result['session'] = store.get(session_id)
         return result
     finally:

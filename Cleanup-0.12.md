@@ -41,3 +41,7 @@ Streaming text budgets count only new JSON string content and evict pending tail
 ## 0.12.12
 
 Exchange export tracks file, folder and byte quotas while scanning. It validates and hashes the completed tree once through the existing manifest path, avoiding repeated prefix graph scans and size reductions.
+
+## 0.12.13
+
+Session history and event pages read payload rows only until their byte or count budget, with one lookahead. Cursor, watermark and caller transaction boundaries remain consistent through concurrent appends.
