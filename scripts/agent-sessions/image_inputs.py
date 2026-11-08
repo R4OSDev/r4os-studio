@@ -44,8 +44,7 @@ def file_path(store,sid,meta):
         fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
         with os.fdopen(fd,'rb') as stream:
             status=os.fstat(stream.fileno())
-            if (not stat.S_ISREG(status.st_mode) or status.st_nlink!=1 or status.st_uid!=os.getuid()
-                    or status.st_size!=meta['size'] or hashlib.file_digest(stream,'sha256').hexdigest()!=meta['sha256']):raise ValueError()
+            if (not stat.S_ISREG(status.st_mode) or status.st_nlink != 1 or status.st_size != meta['size'] or (hashlib.file_digest(stream, 'sha256').hexdigest() != meta['sha256'])):raise ValueError()
         return path
     except (OSError,ValueError,KeyError,TypeError):
         raise ProjectFault('An original attachment is missing or changed. Its draft, history and receipt were preserved.',409) from None

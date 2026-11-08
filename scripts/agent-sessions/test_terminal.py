@@ -30,7 +30,6 @@ class TextBounds(unittest.TestCase):
         self.assertEqual(bounded_text('small', 60000), ('small', False))
 
 
-@unittest.skipIf(os.getuid() == 0, 'Run this namespace test as an unprivileged user.')
 class Terminal(unittest.TestCase):
     def test_completed_commands_reuse_slots_and_old_handles_retain_final_status(self):
         fixture = runs_tests.Runs(); fixture.setUp()

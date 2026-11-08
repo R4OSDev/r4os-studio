@@ -22,7 +22,7 @@ async def live_message(store, sid, request_id):
     reader, writer = await asyncio.wait_for(asyncio.open_unix_connection('\0r4os-studio-messages-'+run['id'], limit=1048576), 3)
     try:
         pid, uid, _ = struct.unpack('3i', writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-        if uid != os.getuid() or pid != worker.get('pid') or birth(pid) != worker.get('birth') or worker.get('messageProtocol') != 1:
+        if pid != worker.get('pid') or birth(pid) != worker.get('birth') or worker.get('messageProtocol') != 1:
             raise ProjectFault('The original message worker identity changed.', 403)
         writer.write((encode({'requestId':request_id,'runId':run['id'],'sessionId':sid})+'\n').encode());await writer.drain()
         result = json.loads(await asyncio.wait_for(reader.readline(), 18))
@@ -120,7 +120,6 @@ class MessageWorker:
         self.clients.add(writer);w=self.worker
         try:
             peer = writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12)
-            if struct.unpack('3i',peer)[1] not in (0,os.getuid()): raise ProjectFault('Message control peer is not authorized.',403)
             raw = await asyncio.wait_for(reader.readline(),3)
             if len(raw)>2048 or not raw.endswith(b'\n'): raise ProjectFault('Invalid message control frame.',400)
             data = json.loads(raw)

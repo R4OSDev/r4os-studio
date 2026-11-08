@@ -110,7 +110,7 @@ async def preview(host,ident):
             if pid:
                 from attachment_store import birth
                 try:
-                    if birth(pid)==worker.get('birth') and (Path('/proc')/str(pid)).stat().st_uid==host.config['uid']:reason='The original worker may still be alive.'
+                    if birth(pid) == worker.get('birth'):reason='The original worker may still be alive.'
                 except OSError:pass
             if not reason and value['state'] in ('unknown','stopping') and await host.active_unit(value['runId']):reason='The original worker unit has not confirmed its end.'
         if reason:blocked.append({k:v for k,v in value.items() if k in ('ownerType','ownerId','sessionId','runId')}|{'reason':reason})

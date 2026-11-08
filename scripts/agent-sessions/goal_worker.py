@@ -232,7 +232,6 @@ class GoalWorker:
         handler=asyncio.current_task();self.handlers.add(handler)
         try:
             peer=writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12)
-            if struct.unpack('3i',peer)[1] not in (0,os.getuid()): raise ProjectFault('Goal control peer is not authorized.',403)
             raw=await asyncio.wait_for(reader.readline(),3)
             if len(raw)>2048 or not raw.endswith(b'\n'): raise ProjectFault('Invalid Goal worker request.',400)
             data=json.loads(raw)

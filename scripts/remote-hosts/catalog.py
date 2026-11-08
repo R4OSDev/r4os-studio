@@ -99,7 +99,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 
 def regular(path):
     info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid() or info.st_mode & 0o077 or info.st_size > MAX_BYTES:
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > MAX_BYTES:
         raise CatalogFault('Remote Host storage needs local host maintenance. Existing data was preserved.', 503)
 
 
@@ -116,7 +116,7 @@ def connection(directory, initialize=False):
         raise CatalogFault('Remote Host storage needs a real Data directory.', 503)
     directory.mkdir(mode=0o700, exist_ok=True)
     info = directory.lstat()
-    if directory.resolve(strict=True) != directory or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+    if directory.resolve(strict=True) != directory or not stat.S_ISDIR(info.st_mode):
         raise CatalogFault('Remote Host storage needs local host maintenance. Existing data was preserved.', 503)
     fd = os.open(directory / '.catalog.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     db = None

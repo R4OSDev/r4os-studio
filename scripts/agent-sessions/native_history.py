@@ -86,7 +86,7 @@ class NativeHistory:
 
     def archive(self, path):
         path = regular(path)
-        if path.stat().st_uid != os.getuid() or path.stat().st_nlink != 1:
+        if path.stat().st_nlink != 1:
             fail('An original native archive has a foreign file identity.')
         with path.open('rb') as stream: digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         self.archives.append({'path': str(path.relative_to(self.store.directory / self.sid)),

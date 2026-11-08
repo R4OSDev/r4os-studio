@@ -14,19 +14,15 @@ from urllib.parse import urlparse
 from host import BASE, CACHE, STATE, Updater, atomic_json, copy_release, run, switch
 
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from service_runtime import root_service
+
 def quoted(value):
     if any(char in str(value) for char in '\n\r\0'):
         raise ValueError('Unsupported path.')
     return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
 
-
-def account(name):
-    try:
-        return pwd.getpwnam(name)
-    except KeyError:
-        subprocess.run(['/usr/sbin/useradd', '--system', '--user-group', '--no-create-home',
-                        '--home-dir', '/nonexistent', '--shell', '/usr/sbin/nologin', name], check=True)
-        return pwd.getpwnam(name)
 
 
 def main():
@@ -55,8 +51,8 @@ def main():
     corepack = shutil.which('corepack')
     if not node or not corepack or not shutil.which('git'):
         raise SystemExit('Node, Corepack and Git must be installed first.')
-    studio = account('r4os-studio')
-    builder = account('r4os-studio-updater')
+    studio = pwd.getpwnam('root')
+    builder = pwd.getpwnam('root')
     for path in [BASE / 'releases', BASE / 'bin', STATE, CACHE, Path('/etc/r4os-studio-updates')]:
         path.mkdir(parents=True, exist_ok=True)
         path.chmod(0o755)

@@ -64,7 +64,6 @@ class ClaudeGoalControl:
         task=asyncio.current_task();self.handlers.add(task)
         try:
             _,uid,_=struct.unpack('3i',writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
-            if uid!=os.getuid():raise ProjectFault('The original Goal caller is unavailable.',403)
             raw=await asyncio.wait_for(reader.readline(),3)
             if len(raw)>2048 or not raw.endswith(b'\n'):raise ProjectFault('Invalid original Goal control.',400)
             value=json.loads(raw)

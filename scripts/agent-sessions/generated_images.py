@@ -55,7 +55,7 @@ class GeneratedImages:
         return public(json.loads(row['metadata']),self.sid)
     def path(self,ident):
         meta=self.get(ident);path=regular(self.root()/(ident+'.image'));st=path.stat()
-        if st.st_nlink!=1 or st.st_uid!=os.getuid() or st.st_size!=meta['size'] or not 0<st.st_size<=MAX_IMAGE or hashlib.sha256(path.read_bytes()).hexdigest()!=meta['sha256']:
+        if st.st_nlink != 1 or st.st_size != meta['size'] or (not 0 < st.st_size <= MAX_IMAGE) or (hashlib.sha256(path.read_bytes()).hexdigest() != meta['sha256']):
             raise ProjectFault('The original generated image is missing or changed. It was preserved and was not regenerated.',409)
         return path
     def owner_disk_usage(self):
@@ -74,7 +74,7 @@ class GeneratedImages:
                     if (Path(parent)/name).is_symlink():raise ProjectFault('Unexpected private image storage link.',409)
                 for name in names:
                     path=regular(Path(parent)/name);info=path.stat();files+=1;total+=info.st_size
-                    if info.st_uid!=os.getuid() or info.st_nlink!=1 or files>8192 or total>MAX_OWNER:raise ProjectFault('The owner private image storage limit was reached. Original files were retained.',413)
+                    if info.st_nlink != 1 or files > 8192 or total > MAX_OWNER:raise ProjectFault('The owner private image storage limit was reached. Original files were retained.',413)
         return total
 
     def check_capacity(self,run_id=None):
@@ -86,7 +86,7 @@ class GeneratedImages:
                 continue
             if path.suffix not in ('.image','.pending'):raise ProjectFault('Unexpected private image storage entry.',409)
             path=regular(path);st=path.stat();own+=st.st_size
-            if st.st_nlink!=1 or st.st_uid!=os.getuid() or not 0<st.st_size<=MAX_IMAGE:raise ProjectFault('An original image requires storage review.',409)
+            if st.st_nlink != 1 or not 0 < st.st_size <= MAX_IMAGE:raise ProjectFault('An original image requires storage review.',409)
         if len(rows)>=MAX_IMAGES or own>=MAX_SESSION:raise ProjectFault('Generated-image session storage is full. No new image was requested.',413)
         if run_id and sum(row['run_id']==run_id for row in rows)>=MAX_RUN_IMAGES:raise ProjectFault('This run reached its eight-image limit. Reuse confirmed outputs; no automatic retry.',413)
         # Native save files are separate from validated originals, including unknown outcomes.
@@ -98,7 +98,7 @@ class GeneratedImages:
                 if (Path(parent)/name).is_symlink():raise ProjectFault('Unexpected native image storage link.',409)
             for name in files:
                 path=regular(Path(parent)/name);st=path.stat();count+=1;total+=st.st_size
-                if st.st_nlink!=1 or st.st_uid!=os.getuid() or st.st_size>MAX_IMAGE or count>MAX_IMAGES or total>MAX_SESSION:
+                if st.st_nlink != 1 or st.st_size > MAX_IMAGE or count > MAX_IMAGES or (total > MAX_SESSION):
                     raise ProjectFault('Native image storage reached its limit. Original files were retained; generation is disabled until review.',413)
         all_rows=self.store.db.execute('SELECT metadata FROM generated_images').fetchall() if self.exists() else []
         if sum(json.loads(row[0])['size'] for row in all_rows)>=MAX_OWNER:raise ProjectFault('Owner image storage is full.',413)

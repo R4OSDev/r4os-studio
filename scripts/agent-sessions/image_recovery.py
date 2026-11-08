@@ -46,7 +46,7 @@ def reconcile(store,sid,run_id=None,finalizing=False):
                     count+=1
                     if count>128:raise ProjectFault('Native image history exceeds its file bound.',413)
                     path=regular(Path(parent)/filename);info=path.stat();total+=info.st_size
-                    if info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size>64*1024*1024 or total>128*1024*1024:raise ProjectFault('Native image history exceeds the bounded readback limit.',413)
+                    if info.st_nlink != 1 or info.st_size > 64 * 1024 * 1024 or total > 128 * 1024 * 1024:raise ProjectFault('Native image history exceeds the bounded readback limit.',413)
                     with path.open('rb') as stream:
                         first_line=stream.readline(RPC_IMAGE_LIMIT+1)
                         if len(first_line)>RPC_IMAGE_LIMIT:raise ProjectFault('Native session metadata exceeds its readback bound.',413)

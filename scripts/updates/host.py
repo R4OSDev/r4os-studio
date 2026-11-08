@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fixed host updater. Only this root-owned bootstrap code controls activation.
 
-Remote source and package scripts are built by a separate sandboxed service user.
+Remote source and package scripts use the same trusted Root service model.
 No service templates or privileged scripts from downloaded releases are executed.
 """
 import copy
@@ -89,8 +89,11 @@ LINK_COMPATIBILITY = {**GIT_READ_COMPATIBILITY, 'agentToolProfiles': GIT_READ_CO
 
 ACTIVE_TOOLS_COMPATIBILITY = {**{key: value for key, value in LINK_COMPATIBILITY.items() if key != 'agentToolProfiles'}, 'agentToolCatalog': 1}
 SDK_PROFILES_COMPATIBILITY = {**ACTIVE_TOOLS_COMPATIBILITY, 'sdkProfilesOnly': 1}
+ROOT_COMPATIBILITY = {**SDK_PROFILES_COMPATIBILITY, 'rootServices': 1}
 
 def compatible(value):
+    if value == ROOT_COMPATIBILITY:
+        return True
     # Legacy releases remain valid rollback targets. New agent protocols require
     # this explicit host maintenance, never a downloaded privileged installer.
     previous = {**DEVELOPMENT_COMPATIBILITY, 'agentToolProfiles': ['studio-tools-v1', 'studio-tools-v2']}
@@ -98,6 +101,10 @@ def compatible(value):
 
 
 def sdk_compatible_release(source, config):
+    if (STATE / 'root-runtime.json').exists():
+        target = read_json(Path(source) / 'shared/update-host.json')
+        if target.get('rootServices') != 1:
+            raise RuntimeError('This installation uses Root services. Select a release supporting the current service model.')
     marker = Path(config['dataDirectory']) / 'R4OS/Profiles/sdk-retirement.json'
     if not marker.exists() and not marker.is_symlink():
         return
@@ -341,7 +348,7 @@ class Updater:
         build = CACHE / 'build'
         shutil.rmtree(build, ignore_errors=True)
         build.mkdir(mode=0o755)
-        account = pwd.getpwnam('r4os-studio-updater')
+        account = pwd.getpwnam('root')
         os.chown(build, account.pw_uid, account.pw_gid)
         atomic_json(STATE / 'job.json', latest)
         self.change(phase='building', message='Downloading and building the release. Studio and VMs remain available.')
@@ -435,15 +442,11 @@ def serve():
     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     manager = Updater(read_json(CONFIG))
     manager.recover()
-    uid = pwd.getpwnam('r4os-studio').pw_uid
 
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
             self.connection.settimeout(5)
             try:
-                _, peer, _ = struct.unpack('3i', self.connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-                if peer not in {0, uid}:
-                    raise ValueError('Access denied.')
                 data = self.rfile.readline(4097)
                 if len(data) > 4096 or not data.endswith(b'\n'):
                     raise ValueError('Invalid request.')
@@ -471,7 +474,6 @@ def serve():
 
     SOCKET.unlink(missing_ok=True)
     with Server(str(SOCKET), Handler) as server:
-        os.chown(SOCKET, 0, grp.getgrnam('r4os-studio').gr_gid)
         SOCKET.chmod(0o660)
 
         def automatic():

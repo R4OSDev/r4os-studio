@@ -15,7 +15,7 @@ MAX_PREVIEW=393216
 
 def descriptor(path,meta):
     path=regular(path);info=path.stat()
-    if info.st_uid!=os.getuid() or info.st_nlink!=1 or not 0<info.st_size<=MAX_PREVIEW:raise ValueError()
+    if info.st_nlink != 1 or not 0 < info.st_size <= MAX_PREVIEW:raise ValueError()
     raw=path.read_bytes()
     if len(raw)!=meta['size'] or hashlib.sha256(raw).hexdigest()!=meta['sha256']:raise ValueError()
     if raw[:8]!=b'\x89PNG\r\n\x1a\n' or raw[12:16]!=b'IHDR' or len(raw)<33:raise ValueError()
@@ -53,7 +53,7 @@ def preview(images,ident,create=False):
         if path.exists() and metadata.exists():
             try:
                 entry=regular(metadata);info=entry.stat()
-                if info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size>4096:raise ValueError()
+                if info.st_nlink != 1 or info.st_size > 4096:raise ValueError()
                 meta=json.loads(entry.read_text())
                 if meta['schema']!=1 or meta['sourceSha256']!=image['sha256'] or meta['imageId']!=image['id'] or meta['sessionId']!=images.sid:raise ValueError()
                 return {'path':descriptor(path,meta),'image':image,'preview':meta}

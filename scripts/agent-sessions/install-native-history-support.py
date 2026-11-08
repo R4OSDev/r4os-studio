@@ -5,6 +5,10 @@ from pathlib import Path
 import subprocess
 
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from service_runtime import root_service
+
 def main():
     if os.geteuid() != 0: raise SystemExit('Run agent-history host maintenance as root.')
     unit = 'r4os-studio-agent@.service'
@@ -12,7 +16,7 @@ def main():
     text = installed.read_text()
     expected = ('ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py %i',
                 'ExecStopPost=/usr/bin/python3 -B /opt/r4os-studio/bin/agent-launch.py %i --finalize',
-                'User=r4os-studio')
+                'User=root')
     if installed.is_symlink() or any(line not in text.splitlines() for line in expected):
         raise SystemExit('Review the existing agent unit before native-history maintenance.')
     path = installed.with_name(unit + '.d') / '73-native-history.conf'

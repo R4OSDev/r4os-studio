@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded SQLite operations for the unprivileged Studio process. JSON on stdin/stdout."""
+"""Bounded SQLite operations for the Root Studio process. JSON on stdin/stdout."""
 import json
 import os
 from pathlib import Path

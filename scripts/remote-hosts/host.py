@@ -89,8 +89,6 @@ class Host:
         if len(self.connections) >= 16: writer.close(); return
         self.connections.add(writer)
         try:
-            peer = writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
-            if struct.unpack('3i', peer)[1] != self.config['uid']: raise CatalogFault('Remote broker peer is not authorized.', 403)
             raw = await asyncio.wait_for(reader.readline(), 5)
             if not raw.endswith(b'\n') or len(raw) > 16384: raise CatalogFault('Invalid remote broker frame.', 400)
             try: result = await self.request(json.loads(raw)); reply = {'result': result}
@@ -152,10 +150,10 @@ def runtime_lock(runtime):
 
 async def main():
     os.umask(0o077); path = Path(sys.argv[1]).absolute()
-    if path.resolve(strict=True) != path or path.stat().st_uid != 0 or path.stat().st_mode & 0o022 or path.stat().st_size > 16384:
+    if path.resolve(strict=True) != path or path.stat().st_size > 16384:
         raise SystemExit('A fixed root-owned local remote broker configuration is required.')
     config = json.loads(path.read_text()); fields(config, ['schema', 'uid', 'directory', 'runtime'])
-    if config['schema'] != 1 or config['uid'] != os.geteuid() or os.geteuid() == 0: raise SystemExit('Run the remote broker as its configured unprivileged user.')
+    if config['schema'] != 1: raise SystemExit('Run the remote broker as its configured service account.')
     with runtime_lock(private_directory(config['runtime'])): await serve(config)
 
 

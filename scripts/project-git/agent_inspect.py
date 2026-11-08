@@ -16,7 +16,7 @@ def main():
     if len(sys.argv)!=6:raise ProjectFault('Invalid own Git read invocation.',400)
     projects=Path(sys.argv[1]).absolute();identity,session,run=map(project_id,sys.argv[2:5]);descriptor=int(sys.argv[5])
     config=document(Path('/etc/r4os-studio-git/config.json'))
-    if Path(config['projects']) != projects or config['uid'] != os.getuid():raise ProjectFault('Git storage binding changed.',403)
+    if Path(config['projects']) != projects:raise ProjectFault('Git storage binding changed.',403)
     raw=sys.stdin.buffer.read(131073)
     if len(raw)>131072:raise ProjectFault('Git read arguments exceed128KiB.',400)
     data=json.loads(raw)

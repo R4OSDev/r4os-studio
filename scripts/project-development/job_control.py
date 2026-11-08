@@ -69,7 +69,6 @@ class Mailbox:
         try:
             if self.closing: raise DevelopmentFault('The execution ended before admitting this action.')
             _, uid, _ = struct.unpack('3i', writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            if uid not in (0, os.getuid()): raise DevelopmentFault('Execution control denied.', 403)
             raw = await asyncio.wait_for(reader.readline(), 5)
             if not raw or len(raw) > 16384: raise DevelopmentFault('Execution action exceeds its limit.', 400)
             message = json.loads(raw)

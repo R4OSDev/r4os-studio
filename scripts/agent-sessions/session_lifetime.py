@@ -16,7 +16,7 @@ def acquire(projects, kind, owner, sid, exclusive=False):
     stream = os.fdopen(fd, 'a+b')
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise ProjectFault('Session lifetime storage needs maintenance.', 503)
         try: fcntl.flock(fd, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
         except BlockingIOError: raise ProjectFault('This session is in use. Wait for its current operation to finish.', 423) from None

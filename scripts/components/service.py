@@ -338,9 +338,6 @@ class Manager:
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
-        uid = struct.unpack('3i', self.request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
-        if uid not in (self.server.allowed_uid, 0):
-            return
         self.request.settimeout(5)
         try:
             line = self.rfile.readline(4097)
@@ -419,7 +416,6 @@ def main():
         daemon_threads = True
     with Server(str(path), Handler) as server:
         server.manager = manager
-        server.allowed_uid = config['uid']
         path.chmod(0o600)
         server.serve_forever()
 

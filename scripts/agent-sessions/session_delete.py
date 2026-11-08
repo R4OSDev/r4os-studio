@@ -129,7 +129,7 @@ def external(store, sid):
 async def inspect(host, store, sid):
     sid = identity(sid)
     database = store.directory/'Sessions.sqlite'
-    if database.stat().st_nlink != 1 or database.stat().st_uid != os.geteuid():
+    if database.stat().st_nlink != 1:
         raise ProjectFault('Session catalog identity needs maintenance before deletion.',503)
     row = store.db.execute('SELECT * FROM sessions WHERE id=? AND project_id=?', (sid, store.owner_id)).fetchone()
     if not row: raise ProjectFault('Session not found.', 404)
@@ -149,7 +149,7 @@ async def inspect(host, store, sid):
         if worker.get('pid'):
             from attachment_store import birth
             try:
-                if birth(worker['pid']) == worker.get('birth') and (Path('/proc')/str(worker['pid'])).stat().st_uid == host.config['uid']:
+                if birth(worker['pid']) == worker.get('birth'):
                     blockers.append('The original session worker is still alive.')
             except (OSError, ValueError): pass
     for file in host.root.glob('*/worker.json'):

@@ -65,8 +65,7 @@ def original(projects,launch,run_id,peer,uid,effects=True):
         if row is None or session is None or effects and retired(db,launch['sessionId']):
             raise McpFault('The original analysis session or run is unavailable.')
         worker=json.loads(row['worker'] or '{}');config=json.loads(row['config'])
-        if (peer[1]!=uid or worker.get('pid')!=peer[0] or birth(peer[0])!=worker.get('birth')
-                or (Path('/proc')/str(peer[0])).stat().st_uid!=uid):
+        if (peer[1] != uid or worker.get('pid') != peer[0] or birth(peer[0]) != worker.get('birth')):
             raise McpFault('This analysis request does not come from its original live Studio worker.')
         if effects and (not row['busy'] or row['state']=='stopping'):
             raise McpFault('The original run no longer admits analysis effects.')

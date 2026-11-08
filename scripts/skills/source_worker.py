@@ -83,8 +83,6 @@ def verify(path, repository, commit):
 
 def run(root, ident, rid):
     root = api.folder(root)
-    if root.stat().st_uid != os.getuid():
-        raise api.SkillFault('Run source jobs as the private skill owner.', 403)
     api.identity(ident)
     api.identity(rid)
     locks = api.folder(root / '.locks', True)

@@ -116,10 +116,7 @@ async def snapshot(host, read_units=units):
             try:
                 unit = current.get(UNIT.format(run), {})
                 pid = worker['pid']
-                if (unit.get('ActiveState') in ('active', 'activating', 'deactivating', 'reloading')
-                        and int(unit.get('MainPID', '0')) == pid
-                        and (Path('/proc') / str(pid)).stat().st_uid == host.config['uid']
-                        and birth(pid) == worker['birth']): active.add(project)
+                if (unit.get('ActiveState') in ('active', 'activating', 'deactivating', 'reloading') and int(unit.get('MainPID', '0')) == pid and (birth(pid) == worker['birth'])): active.add(project)
             except (OSError, ValueError, KeyError, TypeError): continue
         return {'schema': 1, 'activeProjectIds': sorted(active), 'checkedAt': now(), 'validForMs': 10000}
     except (OSError, ValueError, sqlite3.Error, asyncio.TimeoutError):

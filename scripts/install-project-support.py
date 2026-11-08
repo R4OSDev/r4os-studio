@@ -15,7 +15,7 @@ def main():
     root = Path(config['dataDirectory']) / 'Projects'
     if not root.is_absolute() or root.is_symlink():
         raise SystemExit('Invalid persistent project directory.')
-    user = pwd.getpwnam('r4os-studio')
+    user = pwd.getpwnam('root')
     root.mkdir(mode=0o700, parents=False, exist_ok=True)
     os.chown(root, user.pw_uid, user.pw_gid)
     root.chmod(0o700)

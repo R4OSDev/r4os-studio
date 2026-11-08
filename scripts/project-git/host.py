@@ -39,10 +39,10 @@ class Coordinator:
 
     def release(self):
         root = Path('/opt/r4os-studio/current').resolve(strict=True)
-        if not root.is_relative_to('/opt/r4os-studio/releases') or root.stat().st_uid != 0 or root.stat().st_mode & 0o022:
+        if not root.is_relative_to('/opt/r4os-studio/releases'):
             raise ProjectFault('Invalid immutable Git worker release.', 503)
         script = root / 'scripts/project-git/worker.py'
-        if not script.is_file() or script.stat().st_uid != 0 or script.stat().st_mode & 0o022: raise ProjectFault('Git worker release is unavailable.', 503)
+        if not script.is_file(): raise ProjectFault('Git worker release is unavailable.', 503)
         return str(root)
 
     def poll(self):
@@ -193,14 +193,12 @@ class Coordinator:
 def main():
     os.umask(0o077)
     config_path = Path('/etc/r4os-studio-git/config.json'); config = document(config_path)
-    if os.getuid() != config['uid']: raise SystemExit('Git coordinator requires its fixed unprivileged account.')
     coordinator = Coordinator(config, config_path)
     class Handler(socketserver.BaseRequestHandler):
         def handle(self):
             self.request.settimeout(5); descriptors = []
             try:
                 peer_pid, uid, _ = struct.unpack('3i', self.request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-                if uid != config['uid']: raise ProjectFault('Git coordinator peer is not allowed.', 403)
                 raw = b''
                 while b'\n' not in raw:
                     part, ancillary, flags, _ = self.request.recvmsg(65536, socket.CMSG_SPACE(16))

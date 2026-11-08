@@ -23,9 +23,7 @@ def public_target(store,run):
     """
     try:
         config=json.loads(run['config']);meta=json.loads(run['worker'] or '{}')
-        if (config['engine'].get('kind')!='claude-code' or not run['busy'] or run['state']!='running'
-            or type(meta.get('pid')) is not int or meta['pid']<=0 or not meta.get('birth') or not meta.get('release')
-            or birth(meta['pid'])!=meta['birth'] or Path('/proc',str(meta['pid'])).stat().st_uid!=os.geteuid()):return None
+        if (config['engine'].get('kind') != 'claude-code' or not run['busy'] or run['state'] != 'running' or (type(meta.get('pid')) is not int) or (meta['pid'] <= 0) or (not meta.get('birth')) or (not meta.get('release')) or (birth(meta['pid']) != meta['birth'])):return None
         row=store.row(run['session_id']);engine=json.loads(row['engine'])
         if not store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='claude_sessions'").fetchone():return None
         saved=store.db.execute('SELECT data FROM claude_sessions WHERE session_id=?',(row['id'],)).fetchone()

@@ -99,7 +99,7 @@ def main():
         (image / 'image.json').write_text(json.dumps(metadata, indent=2) + '\n')
         (image / 'release/SHA256SUMS.txt').write_text(checksums)
         if os.geteuid() == 0:
-            user = pwd.getpwnam('r4os-studio')
+            user = pwd.getpwnam('root')
             for path in [image, *image.rglob('*')]:
                 os.chown(path, user.pw_uid, user.pw_gid)
         # Moving a directory between parents needs owner write permission on

@@ -11,7 +11,7 @@ unit = Path('/etc/systemd/system/r4os-studio-vm@.service')
 if unit.is_symlink() or not unit.is_file() or unit.stat().st_uid != 0:
     raise SystemExit('Install the fixed VM host template first.')
 text = unit.read_text()
-if 'User=r4os-studio' not in text or ('vm-dispatch.py %i' not in text and 'virtual-machines/runner.js" %i' not in text):
+if 'User=root' not in text or ('vm-dispatch.py %i' not in text and 'virtual-machines/runner.js" %i' not in text):
     raise SystemExit('The installed VM template is not supported.')
 policy = json.loads((Path(__file__).resolve().parents[1] / 'shared/exchange-host.json').read_text())
 dropin = unit.parent / (unit.name + '.d')

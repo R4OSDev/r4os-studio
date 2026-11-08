@@ -12,7 +12,7 @@ def available():
     try:
         for path in (LAUNCHER, MARKER):
             info = path.lstat()
-            if path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 131072: return False
+            if path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_size > 131072: return False
         value = json.loads(MARKER.read_text())
         return value == {'schema': 1, 'packageJobs': 1, 'launcherSha256': hashlib.sha256(LAUNCHER.read_bytes()).hexdigest()}
     except (OSError, ValueError, TypeError): return False

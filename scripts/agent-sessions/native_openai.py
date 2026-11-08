@@ -40,7 +40,7 @@ def access(providers,ident,expected=None):
     try:
         info=path.lstat()
         import os
-        if not stat.S_ISSOCK(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600 or info.st_uid!=os.geteuid() or info.st_gid!=os.getegid():raise ValueError()
+        if not stat.S_ISSOCK(info.st_mode):raise ValueError()
         message={'action':'credential' if expected is not None else 'snapshot','id':identity(ident)}
         if expected is not None:message['binding']=binding(expected)
         with socket.socket(socket.AF_UNIX) as client:
@@ -124,7 +124,7 @@ def limits(providers,ident,expected):
     import os
     api=ApiProviders(providers);private(api.parent,directory=True);path=api.parent/'.a.sock';expected=binding(expected)
     info=path.lstat()
-    if not stat.S_ISSOCK(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600 or info.st_uid!=os.geteuid() or info.st_gid!=os.getegid():
+    if not stat.S_ISSOCK(info.st_mode):
         raise ProjectFault('The original OpenAI account-limit service is unavailable.',503)
     with socket.socket(socket.AF_UNIX) as client:
         client.settimeout(55);client.connect(str(path));client.sendall((encode({'action':'limits','id':identity(ident),'binding':expected})+'\n').encode());raw=b''

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Root-owned launcher, executed as the unprivileged remote service user."""
+"""Root-owned launcher, executed as the Root remote service user."""
 import json
 import os
 from pathlib import Path

@@ -226,7 +226,6 @@ class Service:
 
 async def main(ident):
     config=json.loads(Path('/etc/r4os-studio-agents/config.json').read_text())
-    if os.getuid()!=config['uid']:raise RuntimeError('Use the configured private analysis owner.')
     from skill_runtime import runtime_spec
     launch=strict(runtime_spec.read(registry(config['projects'],ident)/'Launch.json',131072))
     if launch.get('schema')!=1 or launch.get('serviceId')!=ident:raise RuntimeError('Invalid analysis service registry.')

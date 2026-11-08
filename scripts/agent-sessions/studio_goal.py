@@ -243,7 +243,6 @@ class StudioGoal:
         task=asyncio.current_task();self.handlers.add(task);w=self.w
         try:
             uid=struct.unpack('3i',writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))[1]
-            if uid not in (0,os.getuid()):raise ProjectFault('Goal control peer is not authorized.',403)
             line=await asyncio.wait_for(reader.readline(),3)
             if len(line)>2048 or not line.endswith(b'\n'):raise ProjectFault('Invalid Goal worker request.',400)
             request=json.loads(line)

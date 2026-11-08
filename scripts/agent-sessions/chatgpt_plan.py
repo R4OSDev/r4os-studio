@@ -171,7 +171,7 @@ class Plan:
                     child=attempt.get('child') or state.get('child')
                     if state['state']=='starting' and not child:child=attempt.get('controller')
                     from attachment_store import birth
-                    try:alive=bool(child) and (Path('/proc')/str(child['pid'])).stat().st_uid==os.getuid() and birth(child['pid'])==child['birth']
+                    try:alive=bool(child) and birth(child['pid']) == child['birth']
                     except (OSError,ValueError):alive=False
                     if not alive:state={'state':'unknown','error':'The original sign-in process ended without a confirmed registration.'}
                 attempts.append({'requestId':attempt['requestId'],'name':attempt['name'],'state':state['state'],'registrationIssued':bool(state.get('issuedClientId')),'canFinish':state.get('planPermission') is True and not attempt.get('cancelRequested',False),

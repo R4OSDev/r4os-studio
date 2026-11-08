@@ -157,7 +157,7 @@ def synchronize(store, sid, run_id, config):
     if record['payload'].get('dynamic_tools') == desired and current['provider'] == desired_provider:
         return {'changed': False, 'threadId': current['threadId']}
     original = path.stat()
-    if not stat.S_ISREG(original.st_mode) or original.st_nlink != 1 or original.st_uid != os.getuid():
+    if not stat.S_ISREG(original.st_mode) or original.st_nlink != 1:
         raise ValueError('The original native history is not owned by this worker account.')
     record['payload']['dynamic_tools'] = desired
     if desired_provider != current['provider']:

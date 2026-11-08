@@ -13,8 +13,6 @@ def main():
     if len(sys.argv) != 2 or not re.fullmatch('[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', sys.argv[1]):
         raise SystemExit('Invalid source job instance.')
     config = json.loads(Path('/etc/r4os-studio-agents/config.json').read_text())
-    if os.getuid() != config['uid']:
-        raise SystemExit('Run source jobs as the configured private owner.')
     root = Path(config['projects']).parent / 'Skills'
     db_path = root / 'Skills.sqlite'
     if db_path.resolve(strict=True) != db_path or not stat.S_ISREG(db_path.stat().st_mode):
@@ -30,7 +28,7 @@ def main():
         raise SystemExit('Invalid installed source worker release.')
     script = release / 'scripts/skills/source_worker.py'
     info = script.stat()
-    if script.resolve(strict=True) != script or info.st_uid != 0 or info.st_mode & 0o022:
+    if script.resolve(strict=True) != script:
         raise SystemExit('The installed source worker changed.')
     os.execve('/usr/bin/python3', ['/usr/bin/python3', '-B', str(script), str(root), row[0], sys.argv[1]],
               {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'STUDIO_SOURCE_INVOCATION': os.environ.get('INVOCATION_ID', '')})

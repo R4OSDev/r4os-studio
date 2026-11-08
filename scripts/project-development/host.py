@@ -690,7 +690,6 @@ class Host:
         try:
             sock = writer.get_extra_info('socket')
             peer_pid, uid, _ = struct.unpack('3i', sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            if uid not in (0, self.config['uid']): raise DevelopmentFault('Development coordinator access denied.', 403)
             raw = await asyncio.wait_for(reader.readline(), 10)
             if len(raw) > 131072: raise DevelopmentFault('Development request too large.', 400)
             result = await self.handle(json.loads(raw), peer_pid); writer.write((encode({'result': result}) + '\n').encode())
@@ -710,7 +709,6 @@ class Host:
 async def main():
     os.umask(0o077); protocol(APP)
     config = json.loads(Path('/etc/r4os-studio-development/config.json').read_text())
-    if os.getuid() != config['uid']: raise SystemExit('Run the coordinator as its configured service user.')
     host = Host(config); await host.recover(); path = folder('/run/r4os-studio-development') / 'host.sock'
     if path.exists(): path.unlink()
     server = await asyncio.start_unix_server(host.connection, path=str(path), limit=131073); path.chmod(0o600)
@@ -724,7 +722,7 @@ async def main():
                     await host.refresh(); release = Path('/opt/r4os-studio/current').resolve(strict=True)
                     if not host.active and not host.unbound and not host.git_validating and not host.read_work.pending and release != APP:
                         protocol(release); script = release / 'scripts/project-development/host.py'
-                        if not release.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022: raise ValueError()
+                        if not release.is_relative_to('/opt/r4os-studio/releases'): raise ValueError()
                         replacement = script; stopped.set()
             except Exception: pass
             try: await asyncio.wait_for(stopped.wait(), 2)

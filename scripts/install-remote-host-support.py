@@ -16,7 +16,7 @@ def main():
     if directory.is_symlink(): raise SystemExit('Refusing linked Remote Host storage.')
     directory.mkdir(mode=0o700, exist_ok=True)
     if not directory.is_dir(): raise SystemExit('Remote Host storage is not a directory.')
-    user = pwd.getpwnam('r4os-studio'); os.chown(directory, user.pw_uid, user.pw_gid); directory.chmod(0o700)
+    user = pwd.getpwnam('root'); os.chown(directory, user.pw_uid, user.pw_gid); directory.chmod(0o700)
     dropin = Path('/etc/systemd/system/r4os-studio.service.d/63-remote-hosts.conf'); dropin.parent.mkdir(exist_ok=True)
     quoted = str(directory).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
     dropin.write_text('[Service]\nReadWritePaths="' + quoted + '"\n')

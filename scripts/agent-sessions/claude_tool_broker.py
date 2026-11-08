@@ -88,7 +88,6 @@ class ClaudeToolBroker:
         task=asyncio.current_task();self.connections.add(task)
         try:
             sock=writer.get_extra_info('socket');_,uid,_=struct.unpack('3i',sock.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
-            if uid!=os.geteuid():raise ValueError()
             raw=await asyncio.wait_for(reader.readline(),10)
             if len(raw)>MAX_REQUEST or not raw.endswith(b'\n'):raise ValueError()
             result=await self.handle(json.loads(raw));output=encode({'result':result}).encode()+b'\n'

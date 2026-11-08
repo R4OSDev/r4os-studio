@@ -14,6 +14,10 @@ DISPATCH = Path('/opt/r4os-studio/bin/remote-host.py')
 UNIT = Path('/etc/systemd/system/r4os-studio-remote.service')
 
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from service_runtime import root_service
+
 def install_file(path, content, mode):
     encoded = content.encode()
     if path.exists() or path.is_symlink():
@@ -32,7 +36,7 @@ def control(*args): subprocess.run(['/usr/bin/systemctl', *args], check=True)
 
 
 def setup():
-    user = pwd.getpwnam('r4os-studio')
+    user = pwd.getpwnam('root')
     old = json.loads(Path('/etc/r4os-studio-updates/config.json').read_text()); base = Path(old['dataDirectory'])
     if base.resolve(strict=True) != base: raise SystemExit('The configured Data directory must be real.')
     directory = base / 'RemoteHosts'
@@ -50,8 +54,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=r4os-studio
-Group=r4os-studio
+User=root
+Group=root
 ExecStart=/opt/r4os-studio/bin/remote-host.py
 RuntimeDirectory=r4os-studio-remote
 RuntimeDirectoryMode=0700
@@ -80,10 +84,10 @@ ReadWritePaths="''' + quoted + '''" /run/r4os-studio-remote
 [Install]
 WantedBy=multi-user.target
 '''
-    install_file(UNIT, service, 0o644); control('daemon-reload')
+    install_file(UNIT, root_service(service), 0o644); control('daemon-reload')
     spec = importlib.util.spec_from_file_location('remote_project_job_setup', Path(__file__).with_name('install-job-support.py'))
     job_setup = importlib.util.module_from_spec(spec); spec.loader.exec_module(job_setup); job_setup.main()
-    print('Private unprivileged remote broker prepared. Install the compatible immutable release, then use --adopt.')
+    print('Private Root remote broker prepared. Install the compatible immutable release, then use --adopt.')
 
 
 def adopt():
@@ -91,20 +95,20 @@ def adopt():
     if not release.is_relative_to('/opt/r4os-studio/releases'): raise SystemExit('Invalid installed release.')
     protocol = json.loads((release / 'shared/remote-host.json').read_text())
     if protocol.get('hostProtocol') != 1 or protocol.get('catalogSchema') != 1: raise SystemExit('Install the compatible stable release first.')
-    user = pwd.getpwnam('r4os-studio'); config = json.loads(CONFIG.read_text())
+    user = pwd.getpwnam('root'); config = json.loads(CONFIG.read_text())
     if config['uid'] != user.pw_uid: raise SystemExit('Remote broker user changed; preserve its configuration.')
     control('enable', UNIT.name)
     state = subprocess.check_output(['/usr/bin/systemctl', 'show', UNIT.name, '--property=ActiveState', '--value'], text=True).strip()
     if state == 'active':
         # The original broker closes admissions before the fixed-unit restart.
         script = "import json,socket; s=socket.socket(socket.AF_UNIX); s.settimeout(5); s.connect('/run/r4os-studio-remote/host.sock'); s.sendall(b'{\"protocol\":1,\"operation\":\"prepare_adoption\"}\\n'); print(s.makefile().readline())"
-        raw = subprocess.check_output(['/usr/sbin/runuser', '-u', 'r4os-studio', '--', '/usr/bin/python3', '-B', '-c', script], text=True, timeout=8)
+        raw = subprocess.check_output(['/usr/bin/python3', '-B', '-c', script], text=True, timeout=8)
         result = json.loads(raw)
         if not result.get('result', {}).get('ready'): raise SystemExit('The original remote broker is busy. Its work was preserved; adopt when idle.')
         control('restart', UNIT.name)
     elif state in ('inactive', 'failed'): control('start', UNIT.name)
     else: raise SystemExit('Wait for the original remote broker state to settle.')
-    print('The compatible unprivileged remote broker started. Existing VM, agent and build services were not stopped.')
+    print('The compatible Root remote broker started. Existing VM, agent and build services were not stopped.')
 
 
 if __name__ == '__main__':

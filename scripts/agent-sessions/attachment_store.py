@@ -280,7 +280,7 @@ class Attachments:
             entries=list(parent.iterdir())
             for path in entries:
                 status=path.lstat()
-                if (path.name not in allowed or not stat.S_ISREG(status.st_mode) or status.st_nlink!=1 or status.st_uid!=os.getuid()):raise ValueError()
+                if (path.name not in allowed or not stat.S_ISREG(status.st_mode) or status.st_nlink != 1):raise ValueError()
             for path in entries:path.unlink()
             sync(parent);parent.rmdir();sync(parent.parent)
         except (OSError,ValueError):

@@ -31,8 +31,7 @@ def private(path, directory=False, create=False):
             except FileExistsError: pass
     mode = 0o700 if directory else 0o600
     value=path.lstat()
-    if (path.resolve(strict=True)!=path or value.st_uid!=os.geteuid() or value.st_gid!=os.getegid() or stat.S_IMODE(value.st_mode)!=mode
-            or not (stat.S_ISDIR(value.st_mode) if directory else stat.S_ISREG(value.st_mode) and value.st_nlink==1)):
+    if (path.resolve(strict=True) != path or not (stat.S_ISDIR(value.st_mode) if directory else stat.S_ISREG(value.st_mode) and value.st_nlink == 1)):
         raise ProjectFault('The private API provider storage is unavailable. Existing data was preserved.',503)
 
 

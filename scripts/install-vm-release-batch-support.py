@@ -36,7 +36,7 @@ def main():
     if DROPIN.exists() and (not DROPIN.is_file() or DROPIN.stat().st_uid != 0
                             or DROPIN.stat().st_mode & 0o022 or DROPIN.read_text() != value):
         raise SystemExit('An existing VM release-batch override differs. Preserve and review it.')
-    owner = pwd.getpwnam('r4os-studio')
+    owner = pwd.getpwnam('root')
     directory.mkdir(mode=0o700, exist_ok=True)
     if directory.resolve(strict=True) != directory:
         raise SystemExit('Refusing indirect VM release-batch storage.')

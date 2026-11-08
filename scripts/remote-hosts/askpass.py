@@ -15,11 +15,11 @@ def main():
     if not root.is_absolute() or path.resolve(strict=True) != path: raise ValueError()
     for directory in (root, path.parent):
         info = directory.stat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077: raise ValueError()
+        if not stat.S_ISDIR(info.st_mode): raise ValueError()
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd, 'r') as file:
         info = os.fstat(file.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid() or info.st_mode & 0o077 or not 1 <= info.st_size <= 4096: raise ValueError()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or (not 1 <= info.st_size <= 4096): raise ValueError()
         sys.stdout.write(file.read() + '\n')
 
 

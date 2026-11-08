@@ -33,7 +33,6 @@ class AgentSnapshots:
         task = asyncio.current_task(); self.connections.add(task)
         try:
             _, uid, _ = struct.unpack('3i', writer.get_extra_info('socket').getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            if uid != os.getuid(): raise DevelopmentFault('Snapshot access denied.', 403)
             value = json.loads(await asyncio.wait_for(reader.readline(), 5))
             if set(value) != {'jobId'}: raise DevelopmentFault('Invalid snapshot request.', 400)
             store = Jobs(worker.manifest['projects'], worker.manifest['r4os'], worker.manifest['projectId'])

@@ -22,7 +22,7 @@ def private_directory(path):
     if path.parent.resolve(strict=True) != path.parent: raise CatalogFault('Invalid private remote runtime.', 503)
     path.mkdir(mode=0o700, exist_ok=True)
     info = path.stat()
-    if path.resolve(strict=True) != path or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+    if path.resolve(strict=True) != path or not stat.S_ISDIR(info.st_mode):
         raise CatalogFault('Invalid private remote runtime.', 503)
     return path
 

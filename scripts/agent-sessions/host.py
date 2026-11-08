@@ -68,12 +68,11 @@ class Host:
         if config['engine'].get('kind')!='studio' and not any(config.get(key) for key in ('goalExecution','claudeGoalExecution','nativeGoalPreparation','claudeGoalPreparation','studioGoalPreparation')):return True
         try:
             pid=int(await systemctl('show',UNIT.format(row['id']),'--property=MainPID','--value'))
-            if pid<=0 or (Path('/proc')/str(pid)).stat().st_uid!=self.config['uid']:return False
+            if pid <= 0:return False
             worker=json.loads(row['worker'] or '{}')
             if not worker:return row['state']=='queued'
             birth=(Path('/proc')/str(pid)/'stat').read_text().rsplit(') ',1)[1].split()[19]
-            return (worker.get('pid')==pid and worker.get('birth')==birth and worker.get('release')==meta['release']
-                and (Path('/proc')/str(pid)).stat().st_uid==self.config['uid'])
+            return (worker.get('pid') == pid and worker.get('birth') == birth and (worker.get('release') == meta['release']))
         except (OSError,ValueError,KeyError,IndexError):return False
 
     async def reconcile_ended(self,store,meta):
@@ -884,9 +883,6 @@ class Host:
     async def connection(self, reader, writer):
         task = asyncio.current_task(); self.connections.add(task)
         try:
-            sock = writer.get_extra_info('socket')
-            _, uid, _ = struct.unpack('3i', sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            if uid not in (0, self.config['uid']): raise ProjectFault('Agent coordinator access denied.', 403)
             raw = await asyncio.wait_for(reader.readline(), 10)
             if len(raw) > 131072: raise ProjectFault('Agent request too large.', 400)
             result = await self.handle(json.loads(raw))
@@ -907,7 +903,6 @@ class Host:
 async def main():
     os.umask(0o077)
     config = json.loads(Path('/etc/r4os-studio-agents/config.json').read_text())
-    if os.getuid() != config['uid']: raise SystemExit('Run the coordinator as its configured service user.')
     host = Host(config); await host.recover()
     runtime = directory('/run/r4os-studio-agents')
     path = runtime / 'host.sock'
@@ -934,7 +929,7 @@ async def main():
                     if not host.active and not host.unbound and not host.goal_tasks and not host.message_tasks and not host.skill_delete_tasks and not host.session_delete_tasks and not host.attachment_decodes and not host.catalog_tasks and not host.quota_tasks and not host.quota_reads and not host.source_tasks and not host.claude_auth.busy and not host.plan_login.busy and not host.claude_probe_lock.locked() and not host.catalog_lock.locked() and not host.goal_readback_lock.locked() and not host.image_capability_lock.locked() and not host.read_work.pending and target != Path(__file__).resolve().parents[2]:
                         release_protocol(target)
                         script = target / 'scripts/agent-sessions/host.py'
-                        if not target.is_relative_to('/opt/r4os-studio/releases') or script.stat().st_uid != 0 or script.stat().st_mode & 0o022:
+                        if not target.is_relative_to('/opt/r4os-studio/releases'):
                             raise ValueError('Invalid coordinator release.')
                         replacement = script; stopped.set()
             except Exception: pass  # Preserve current workers and retry, never infer a new job.

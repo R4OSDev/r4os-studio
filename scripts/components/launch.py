@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Installed root-owned launcher; execute the selected manager as an unprivileged service."""
+"""Installed root-owned launcher; execute the selected manager as an Root service."""
 import os
 from pathlib import Path
 

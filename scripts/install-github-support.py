@@ -15,7 +15,7 @@ def main():
     if directory.is_symlink():
         raise SystemExit('Refusing a symbolic GitHub storage directory.')
     directory.mkdir(mode=0o700, exist_ok=True)
-    user = pwd.getpwnam('r4os-studio')
+    user = pwd.getpwnam('root')
     os.chown(directory, user.pw_uid, user.pw_gid)
     directory.chmod(0o700)
     dropin = Path('/etc/systemd/system/r4os-studio.service.d/61-github.conf')

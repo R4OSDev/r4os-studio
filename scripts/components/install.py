@@ -10,6 +10,10 @@ import shutil
 import subprocess
 
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from service_runtime import root_service
+
 def main():
     if os.geteuid() != 0:
         raise SystemExit('Run the component host installer as root.')
@@ -18,7 +22,7 @@ def main():
         raise SystemExit('Set up managed Studio updates first.')
     config = json.loads(config_file.read_text())
     root = Path(config['dataDirectory']) / 'R4OS'
-    user = pwd.getpwnam('r4os-studio')
+    user = pwd.getpwnam('root')
     for suffix in ('Profiles', 'Packages', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains/PowerShell', 'Toolchains/Zig', 'Toolchains/Rust', 'Toolchains/QEMU', 'Toolchains/Codex', 'Toolchains/R4UPack'):
         path = root / suffix
         path.mkdir(parents=True, exist_ok=True)
@@ -50,16 +54,16 @@ def main():
     scripts = Path(__file__).resolve().parent
     shutil.copyfile(scripts / 'launch.py', '/opt/r4os-studio/bin/components-launch.py')
     Path('/opt/r4os-studio/bin/components-launch.py').chmod(0o755)
-    # The code follows the current release on the next service start, never as root.
+    # The code follows the current release on the next service start, as Root.
     escaped = lambda value: '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
-    unit = '[Unit]\nDescription=R4OS Studio component downloads\nAfter=network-online.target\n\n[Service]\nUser=r4os-studio\nGroup=r4os-studio\nExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/components-launch.py\nRuntimeDirectory=r4os-studio-components\nRuntimeDirectoryMode=0700\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nRestrictSUIDSGID=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\nCapabilityBoundingSet=\nUMask=0077\nRestart=on-failure\nTimeoutStopSec=15\n'
+    unit = '[Unit]\nDescription=R4OS Studio component downloads\nAfter=network-online.target\n\n[Service]\nUser=root\nGroup=root\nExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/components-launch.py\nRuntimeDirectory=r4os-studio-components\nRuntimeDirectoryMode=0700\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nRestrictSUIDSGID=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\nCapabilityBoundingSet=\nUMask=0077\nRestart=on-failure\nTimeoutStopSec=15\n'
     unit += 'CPUQuota=800%\nMemoryMax=8G\nTasksMax=512\n'
     for suffix in ('Profiles', 'Packages', 'SDK', 'Contract', 'Libraries', 'Images', 'Toolchains'):
         unit += 'ReadWritePaths=' + escaped(root / suffix) + '\n'
     for suffix in ('LLMProvider', 'Projects', 'R4OS/Instances'):
         unit += 'InaccessiblePaths=-' + escaped(Path(config['dataDirectory']) / suffix) + '\n'
     unit += '\n[Install]\nWantedBy=multi-user.target\n'
-    Path('/etc/systemd/system/r4os-studio-components.service').write_text(unit)
+    Path('/etc/systemd/system/r4os-studio-components.service').write_text(root_service(unit))
     dropin = Path('/etc/systemd/system/r4os-studio.service.d/30-components.conf')
     dropin.write_text('[Service]\nReadWritePaths=-/run/r4os-studio-components\n')
     subprocess.run(['systemctl', 'daemon-reload'], check=True)

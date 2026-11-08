@@ -7,6 +7,10 @@ import subprocess
 import uuid
 
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from service_runtime import root_service
+
 def install():
     if os.geteuid()!=0:raise SystemExit('Install explicit session MCP host support as root.')
     config=json.loads(Path('/etc/r4os-studio-agents/config.json').read_bytes())
@@ -20,8 +24,8 @@ After=network.target
 
 [Service]
 Type=exec
-User=r4os-studio
-Group=r4os-studio
+User=root
+Group=root
 UMask=0077
 ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/skill-mcp-launch.py %i
 RuntimeDirectory=r4os-studio-skill-mcp/%i
@@ -42,30 +46,7 @@ ReadWritePaths='''+' '.join(quote(path) for path in roots)+'''
 MemoryMax=6G
 TasksMax=512
 '''
-    rule='''// R4OS Studio: validated private per-session analysis instances only.
-polkit.addRule(function(action, subject) {
-  if (subject.user !== "r4os-studio" || action.id !== "org.freedesktop.systemd1.manage-units") return;
-  var unit = action.lookup("unit");
-  var verb = action.lookup("verb");
-  if (unit && /^r4os-studio-skill-mcp@[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}[.]service$/.test(unit)
-      && (verb === "start" || verb === "stop" || verb === "freeze" || verb === "thaw" || verb === "ref" || verb === "unref")) return polkit.Result.YES;
-});
-'''
-    # Debian's system bus policy omits Manager.FreezeUnit/ThawUnit. Authorisation still
-    # passes through systemd's per-unit start/stop polkit checks above.
-    bus_policy='''<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig>
-  <policy user="r4os-studio">
-    <allow send_destination="org.freedesktop.systemd1" send_interface="org.freedesktop.systemd1.Manager" send_member="FreezeUnit"/>
-    <allow send_destination="org.freedesktop.systemd1" send_interface="org.freedesktop.systemd1.Manager" send_member="ThawUnit"/>
-  </policy>
-</busconfig>
-'''
-    targets={Path('/etc/dbus-1/system.d/r4os-studio-skill-mcp.conf'):bus_policy.encode(),
-        Path('/etc/systemd/system/r4os-studio-skill-mcp@.service'):unit.encode(),
-        Path('/etc/polkit-1/rules.d/67-r4os-studio-skill-mcp.rules'):rule.encode(),
-        Path('/opt/r4os-studio/bin/skill-mcp-launch.py'):Path(__file__).with_name('mcp_launch.py').read_bytes()}
+    targets={Path('/etc/systemd/system/r4os-studio-skill-mcp@.service'): root_service(unit).encode(), Path('/opt/r4os-studio/bin/skill-mcp-launch.py'): Path(__file__).with_name('mcp_launch.py').read_bytes()}
     previous={}
     for path,value in targets.items():
         if path.is_symlink() or path.exists() and not path.is_file():raise SystemExit('Refusing linked analysis host support.')

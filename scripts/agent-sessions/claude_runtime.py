@@ -65,7 +65,7 @@ def verify(path,expected=None):
                 # private() enforces owner/type/link invariants for data files;
                 # executable bytes intentionally use the separate0700 mode.
                 if mode==0o600:private(item)
-                elif info.st_uid!=path.stat().st_uid or info.st_gid!=path.stat().st_gid or not item.is_file():raise ValueError()
+                elif not item.is_file():raise ValueError()
                 with item.open('rb') as stream:
                     if hashlib.file_digest(stream,'sha256').hexdigest()!=pin['sha256']:raise ValueError()
         return {'id':expected['id'],'sdk':str(path/'sdk/sdk.mjs'),'native':str(path/'native/claude'),

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One bounded development job in an independent unprivileged service."""
+"""One bounded development job in an independent Root service."""
 import asyncio
 import fcntl
 import json

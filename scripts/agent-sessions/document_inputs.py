@@ -23,7 +23,7 @@ def source_text(store,sid,meta):
         if meta['mode']=='text':text=path.read_bytes().decode('utf-8-sig')
         elif meta['mode']=='pdfText':
             extracted=regular(path.with_name('extracted.txt'));status=extracted.stat()
-            if status.st_nlink!=1 or status.st_uid!=os.getuid() or not 0<=status.st_size<=2*1024*1024:raise ValueError()
+            if status.st_nlink != 1 or not 0 <= status.st_size <= 2 * 1024 * 1024:raise ValueError()
             raw=extracted.read_bytes()
             if len(raw)!=meta['extractedBytes'] or hashlib.sha256(raw).hexdigest()!=meta['extractedSha256']:raise ValueError()
             text=raw.decode('utf-8')

@@ -134,8 +134,7 @@ def inspect_stream(handle,relative_path,scope):
     max_tail=STREAM_V2_MAX_TAIL if scope.stream_protocol==2 else MAX_TAIL
     max_records=STREAM_V2_MAX_RECORDS if scope.stream_protocol==2 else MAX_RECORDS
     before=os.fstat(handle.fileno())
-    if (not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid()
-        or before.st_nlink!=1 or before.st_mode & 0o022):
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1):
         raise UnqualifiedEvidence('The original native file ownership or type changed.')
     end=before.st_size
     header=handle.readline(max_line+1);meta=decode(header,max_line)
@@ -265,7 +264,7 @@ def inspect_original(native_root,scope):
     result=None;directories=0;files=0
     try:
         info=os.fstat(rootfd)
-        if info.st_uid!=os.getuid() or not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022:
+        if not stat.S_ISDIR(info.st_mode):
             raise UnqualifiedEvidence('The original native directory owner changed.')
         for parent,dirs,names,parentfd in os.fwalk('.',topdown=True,follow_symlinks=False,dir_fd=rootfd):
             directories+=1;files+=len(names)

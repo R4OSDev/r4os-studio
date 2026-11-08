@@ -9,5 +9,6 @@
   "developmentWorkerProtocol": 1,
   "developmentDataSchema": 1,
   "agentToolCatalog": 1,
-  "sdkProfilesOnly": 1
+  "sdkProfilesOnly": 1,
+  "rootServices": 1
 }

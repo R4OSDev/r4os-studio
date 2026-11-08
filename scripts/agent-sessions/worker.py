@@ -539,6 +539,7 @@ class Worker:
             if self.goal_worker: await self.goal_worker.before_resume()
             # Explicit default clears a Fast tier saved by an earlier native turn.
             service_tier = 'priority' if self.config.get('fastMode', False) else 'default'
+            web_search_mode = 'live' if self.config.get('webSearchEnabled', False) else 'disabled'
             from image_provider import selection as image_provider_selection
             native_provider=image_provider_selection(self.config.get('nativeModelProvider'))
             if self.api_runtime:native_provider=self.api_runtime.selection()
@@ -697,7 +698,6 @@ def finalize(manifest):
 
 
 if __name__ == '__main__':
-    if os.getuid() == 0: raise SystemExit('Agent workers must run as the unprivileged Studio service user.')
     os.umask(0o077)
     path = Path(sys.argv[1]).absolute()
     if path.resolve(strict=True) != path: raise SystemExit('Invalid worker manifest.')

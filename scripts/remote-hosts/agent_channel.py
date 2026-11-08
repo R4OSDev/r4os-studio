@@ -17,7 +17,6 @@ def start(host, path, loop):
             descriptors = []; self.request.settimeout(5)
             try:
                 peer_pid, uid, _ = struct.unpack('3i', self.request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-                if uid != host.config['uid']: raise CatalogFault('This remote peer is not authorized.', 403)
                 raw = b''
                 while b'\n' not in raw:
                     part, controls, flags, _ = self.request.recvmsg(32768, socket.CMSG_SPACE(16))

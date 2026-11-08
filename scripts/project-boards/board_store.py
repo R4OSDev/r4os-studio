@@ -20,8 +20,7 @@ SUPPORTED_FEATURE_LEVEL=4
 
 def regular(path):
     info=path.lstat()
-    if (path.resolve(strict=True)!=path or not stat.S_ISREG(info.st_mode) or info.st_nlink!=1
-            or info.st_uid!=os.getuid() or info.st_size>MAX_DATABASE_BYTES):
+    if (path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or (info.st_size > MAX_DATABASE_BYTES)):
         raise ProjectFault('Invalid Board storage. Existing data was preserved.',503)
 
 def folder(path):

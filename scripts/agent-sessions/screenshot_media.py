@@ -41,8 +41,7 @@ def read(store, sid, value, expected=None):
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, 'rb') as stream:
             info = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid()
-                    or info.st_size != meta['bytes'] or not 0 < info.st_size <= BOUNDS['screenshotBytes']):
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != meta['bytes'] or (not 0 < info.st_size <= BOUNDS['screenshotBytes'])):
                 raise ProjectFault('The original screenshot file is missing or changed.', 409)
             raw = stream.read(meta['bytes']+1)
         from vision_analysis import png

@@ -146,9 +146,7 @@ def snapshot(store, sid, monotonic=time.monotonic_ns):
             key,clock,run=running[0]
             try:
                 worker=json.loads(run['worker'] or '{}');age=(monotonic()-clock['last_ns'])//1_000_000
-                if (not run['busy'] or worker.get('pid')!=clock['pid'] or worker.get('birth')!=clock['birth']
-                        or clock['boot_id']!=boot() or clock['birth']!=birth(clock['pid'])
-                        or (Path('/proc')/str(clock['pid'])).stat().st_uid!=os.geteuid() or not 0<=age<=FRESH_MS): raise ValueError()
+                if (not run['busy'] or worker.get('pid') != clock['pid'] or worker.get('birth') != clock['birth'] or (clock['boot_id'] != boot()) or (clock['birth'] != birth(clock['pid'])) or (not 0 <= age <= FRESH_MS)): raise ValueError()
                 live={'executionId':clock['execution_id'],'ageMs':age,'staleAfterMs':FRESH_MS}
             except (OSError,ValueError,TypeError,KeyError):reasons.add('live_clock_unconfirmed')
         if cycle_live:

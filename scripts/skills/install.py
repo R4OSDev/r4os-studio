@@ -13,7 +13,7 @@ def main():
     root = Path(config['dataDirectory']) / 'Skills'
     if root.is_symlink(): raise SystemExit('Refusing linked Skills storage.')
     root.mkdir(mode=0o700, exist_ok=True)
-    user = pwd.getpwnam('r4os-studio'); os.chown(root, user.pw_uid, user.pw_gid); root.chmod(0o700)
+    user = pwd.getpwnam('root'); os.chown(root, user.pw_uid, user.pw_gid); root.chmod(0o700)
     quoted = str(root).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
     target = Path('/etc/systemd/system/r4os-studio.service.d/62-skills.conf')
     target.parent.mkdir(exist_ok=True)

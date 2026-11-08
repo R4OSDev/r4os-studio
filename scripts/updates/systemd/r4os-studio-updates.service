@@ -5,22 +5,14 @@ After=network-online.target
 Before=r4os-studio.service
 
 [Service]
+User=root
+Group=root
 Type=exec
 ExecStart=/usr/bin/python3 /opt/r4os-studio/bin/update-host.py serve
 Restart=on-failure
 RestartSec=5
 RuntimeDirectory=r4os-studio-updates
 RuntimeDirectoryMode=0755
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-NoNewPrivileges=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictSUIDSGID=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths=/opt/r4os-studio /var/lib/r4os-studio-updates /var/cache/r4os-studio-updates
 UMask=0022
 TasksMax=64
 MemoryMax=512M

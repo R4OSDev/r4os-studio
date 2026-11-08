@@ -39,7 +39,6 @@ def publish(stage,target):
 
 
 def install(providers,archives=None):
-    if os.geteuid()==0:raise RuntimeError('Run this installer as the unprivileged r4os-studio service user or your development user.')
     if platform.system()!='Linux' or platform.machine()!='x86_64' or platform.libc_ver()[0]!='glibc':
         raise RuntimeError('This pinned runtime requires Linux x86_64 with glibc.')
     os.umask(0o077);providers=Path(providers).absolute();private(providers,directory=True)

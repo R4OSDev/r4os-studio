@@ -54,7 +54,7 @@ def main():
         status = json.loads(raw.split(b'\n')[0])['status']
         if (status.get('job') or {}).get('phase') == 'working':
             raise SystemExit('Wait for the original component operation to finish.')
-        account = pwd.getpwnam('r4os-studio')
+        account = pwd.getpwnam('root')
         for suffix in ('Packages', 'Toolchains/PowerShell'):
             path = root / suffix
             if path.is_symlink() or path.resolve() != path:

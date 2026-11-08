@@ -138,9 +138,7 @@ class Catalogs:
         with self.api.connect() as original_db:
             operation=self.request(original_db,ident,rid)['operation']
         helper='zai-quota.mjs' if operation=='quota_refresh' else 'api-models.mjs'
-        if (set(child)!={'pid','birth','script'} or type(child['pid']) is not int or child['pid']<=0
-                or birth(child['pid'])!=child['birth'] or (Path('/proc')/str(child['pid'])).stat().st_uid!=os.geteuid()
-                or child['script']!=str(Path(__file__).with_name(helper).resolve(strict=True))):
+        if (set(child) != {'pid', 'birth', 'script'} or type(child['pid']) is not int or child['pid'] <= 0 or (birth(child['pid']) != child['birth']) or (child['script'] != str(Path(__file__).with_name(helper).resolve(strict=True)))):
             raise ProjectFault('The original metadata helper identity is unavailable.',503)
         with self.api.connect(write=True) as db:
             row=self.request(db,ident,rid);binding=json.loads(row['binding']);provider=self.api.current(db,ident)
@@ -214,7 +212,6 @@ class Catalogs:
     def alive(self,child):
         from attachment_store import birth
         try:
-            if (Path('/proc')/str(child['pid'])).stat().st_uid!=os.geteuid():return False
             return birth(child['pid'])==child['birth']
         except (OSError,ValueError,KeyError):return False
 
@@ -233,9 +230,7 @@ class Catalogs:
             if not self.alive(child):return
             args=(Path('/proc')/str(child['pid'])/'cmdline').read_bytes().split(b'\0')
             script=Path(child['script'])
-            if (script.name not in ('api-models.mjs','zai-quota.mjs') or script.resolve(strict=True)!=script
-                    or script.stat().st_uid!=0 or script.stat().st_mode&0o022
-                    or args[:2]!=[b'/usr/bin/node',str(script).encode()]):
+            if (script.name not in ('api-models.mjs', 'zai-quota.mjs') or script.resolve(strict=True) != script or args[:2] != [b'/usr/bin/node', str(script).encode()]):
                 raise ProjectFault('The original metadata process binding is unconfirmed.',503)
             try:signal.pidfd_send_signal(descriptor,signal.SIGTERM)
             except ProcessLookupError:pass

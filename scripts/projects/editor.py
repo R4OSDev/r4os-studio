@@ -1,4 +1,4 @@
-"""Fixed project editor operations for the existing unprivileged web service."""
+"""Fixed project editor operations for the existing Root web service."""
 import json
 import os
 from pathlib import Path

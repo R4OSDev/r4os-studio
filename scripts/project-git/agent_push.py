@@ -35,7 +35,7 @@ def main():
     if len(sys.argv) != 6: raise ProjectFault('Invalid project Git broker invocation.', 400)
     projects, identity, session, run, descriptor = Path(sys.argv[1]).absolute(), project_id(sys.argv[2]), project_id(sys.argv[3]), project_id(sys.argv[4]), int(sys.argv[5])
     config = document(Path('/etc/r4os-studio-git/config.json'))
-    if Path(config['projects']) != projects or config['uid'] != os.getuid(): raise ProjectFault('Project Git storage binding changed.', 403)
+    if Path(config['projects']) != projects: raise ProjectFault('Project Git storage binding changed.', 403)
     raw = sys.stdin.buffer.read(131073)
     if len(raw) > 131072: raise ProjectFault('Project push arguments exceeded their limit.', 400)
     data = json.loads(raw)

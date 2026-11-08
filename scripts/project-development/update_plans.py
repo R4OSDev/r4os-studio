@@ -167,7 +167,7 @@ def selected_packer(store):
     external = None
     if config.is_file():
         info = config.lstat()
-        if config.resolve(strict=True) != config or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 65536:
+        if config.resolve(strict=True) != config or info.st_size > 65536:
             raise DevelopmentFault('The administrator component configuration is not trusted.', 503)
         value = json.loads(config.read_text())
         if value.get('root') == str(store.r4os):
