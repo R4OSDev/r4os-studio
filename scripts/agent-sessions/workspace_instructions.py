@@ -16,8 +16,9 @@ def snapshot(store, config):
                 if 'install' in paths: paths['zig'] = str(Path(paths['install']) / 'Toolchains/Zig')
     access = config.get('skillAccess') or {}
     if access.get('entries'):
-        from skill_application import revision
-        paths['skills'] = {entry['id']: str(revision(store.projects, entry, verify_files=False)[0]) for entry in access['entries']}
+        from skill_application import Snapshot
+        revisions = Snapshot(store.projects)
+        paths['skills'] = {entry['id']: str(revisions.revision(entry)[0]) for entry in access['entries']}
     return paths
 
 

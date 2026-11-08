@@ -33,7 +33,11 @@ class WorkspaceTools:
                 binary = runtime_binary(self.worker.manifest['r4os'], self.worker.config['engine'])
             self.binary = binary
             from skill_scripts import bindings
-            self.script_roots = await asyncio.to_thread(bindings, self.worker)
+            from skill_application import Snapshot
+            snapshot = (await asyncio.to_thread(Snapshot, self.worker.store.projects)
+                if self.worker.config.get('skillAccess',{}).get('entries') else None)
+            self.script_roots = await asyncio.to_thread(bindings, self.worker, snapshot)
+            if snapshot is not None: await asyncio.to_thread(self.worker.skill_resources.paths, snapshot)
             self.cache = directory(self.worker.store.directory / self.worker.session_id / 'Tools' / self.worker.run_id)
             for name in ('home', 'zig', 'cargo'): directory(self.cache / name)
             self.context = context

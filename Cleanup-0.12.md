@@ -25,3 +25,7 @@ Ordinary workspace file tools prepare only file paths, run caches and the standa
 ## 0.12.8
 
 Update status uses one completion-driven read at a time. Mutation generations reject older reads, idle polling slows to 30 seconds, hidden tabs stop polling, and progress, reconnect and manual refresh stay responsive.
+
+## 0.12.9
+
+Skill options, freezing and workspace metadata use one catalog snapshot per operation. Script bindings and resource views share verified revision metadata during preparation; later admissions and tombstones are checked afresh.

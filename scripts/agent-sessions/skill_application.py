@@ -48,11 +48,31 @@ def catalog(projects):
         raise ProjectFault('The global skill catalog is unavailable. Existing data was preserved.', 503) from None
 
 
-def revision(projects, entry, verify_files=False):
+class Snapshot:
+    """One operation's catalogue and verified metadata; never a process-wide cache."""
+    def __init__(self, projects):
+        self.projects = projects; self.entries = catalog(projects)
+        self.members = {entry['id'] for entry in self.entries}; self.revisions = {}
+
+    def revision(self, entry, verify_files=False):
+        key = packages.encode([entry.get(name) for name in ('id','activeHash','formatName','description','manifestHash')])
+        previous = self.revisions.get(key)
+        if previous and (previous[1] or not verify_files):
+            from skill_lifecycle import api
+            if api.deleted(skills_root(self.projects),entry['id']):
+                raise ProjectFault('The published skill was retired during preparation.',409)
+            return previous[0]
+        result = revision(self.projects, entry, verify_files, _members=self.members)
+        self.revisions[key] = result, verify_files
+        return result
+
+
+def revision(projects, entry, verify_files=False, *, _members=None):
     try:
         ident = packages.identity(entry['id'])
         from skill_lifecycle import api
-        if api.deleted(skills_root(projects),ident) or ident not in {v['id'] for v in catalog(projects)}:raise ValueError()
+        members = _members if _members is not None else {v['id'] for v in catalog(projects)}
+        if api.deleted(skills_root(projects),ident) or ident not in members:raise ValueError()
         tree_hash = entry['activeHash']
         if not isinstance(tree_hash, str) or not re.fullmatch('[a-f0-9]{64}', tree_hash): raise ValueError()
         root = skills_root(projects) / ident / 'Revisions' / tree_hash
@@ -89,11 +109,12 @@ def revision(projects, entry, verify_files=False):
 
 
 def options(projects):
+    snapshot = Snapshot(projects)
     result = []
-    for entry in catalog(projects):
+    for entry in snapshot.entries:
         available, reason = entry['activeRevision'] > 0, 'No published revision. Save a valid skill to make it available.'
         if available:
-            try: revision(projects, entry)
+            try: snapshot.revision(entry)
             except ProjectFault: available = False; reason = 'The published revision is unavailable. Review it in Skill Manager.'
         result.append({'id': entry['id'], 'name': entry['name'], 'description': entry['description'],
                        'available': available, **({} if available else {'reason': reason})})
@@ -101,13 +122,14 @@ def options(projects):
 
 
 def freeze(store, choices, terminal=False, mcp=False):
-    enabled = [entry for entry in catalog(store.projects) if choices.get(entry['id'], True)]
+    snapshot = Snapshot(store.projects)
+    enabled = [entry for entry in snapshot.entries if choices.get(entry['id'], True)]
     entries, unavailable = [], []; total = 0
     for entry in enabled:
         if not entry['activeRevision']:
             unavailable.append({'id': entry['id'], 'name': entry['name'], 'reason': 'No published revision.'}); continue
         if len(entries) >= MAX_ACTIVE: raise ProjectFault('More than 64 global skills are enabled. Disable some in Session settings before sending.', 409)
-        workspace, files, manifest_hash, size = revision(store.projects, entry, verify_files=True)
+        workspace, files, manifest_hash, size = snapshot.revision(entry, verify_files=True)
         total += size
         if total > MAX_RESOURCES: raise ProjectFault('Enabled global skills exceed 128 MiB of resources. Disable some in Session settings.', 409)
         frozen = {key: entry[key] for key in ('id', 'name', 'revision', 'formatName', 'description', 'activeRevision', 'activeHash')}

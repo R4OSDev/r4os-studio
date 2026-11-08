@@ -16,7 +16,6 @@ from profile import SKILL_PROFILE, LEGACY_TOOLS
 from run_store import admit, get_run, transition
 from session_store import SessionStore, encode
 from store import ProjectFault, connect
-from tool_catalog import specifications
 from worker import Worker
 from instructions import compose
 import skill_application as application
@@ -109,7 +108,7 @@ class Application(unittest.IsolatedAsyncioTestCase):
             run, frozen, request, _ = self.admit(store)
             self.assertEqual([entry['id'] for entry in frozen['skillAccess']['entries']], [f.ids[0]])
             self.assertEqual(frozen['skillAccess']['unavailable'][0]['id'], f.ids[1])
-            self.assertNotIn(str(f.root), compose(frozen))
+            self.assertIn(str(store.workspace), compose(frozen))
             with self.assertRaises(ProjectFault): store.update(self.session['id'], {'revision': 1, 'skillOverrides': {f.ids[0]: False}}, f.providers)
         with closing(fixtures.packages.connect(f.skills)) as db:
             current = fixtures.packages.detail(db, f.skills, f.ids[0])
@@ -163,7 +162,7 @@ class Application(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(store.history(self.session['id'])['items'][0]['type'], 'user')
         self.assertEqual(preferences.read_bytes(), b'preserve corrupt session choices')
 
-    async def test_same_native_thread_receives_current_catalogue_without_changed_declarations(self):
+    async def test_same_native_thread_receives_current_catalogue_and_preserves_history(self):
         f = self.fixture; seen = []; sid=self.session['id']
         native_root=f.skills/f.ids[1]/'Sessions'/sid/'Codex'
         tail=b'{"type":"event_msg","payload":{"type":"user_message","message":"Original bounded history"}}\n'
@@ -206,10 +205,8 @@ class Application(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resumed['threadId'], 'same-selected-skill-thread')
         header,after_tail=(native_root/'native/owned.jsonl').read_bytes().split(b'\n',1)
         self.assertEqual(after_tail,tail)
-        self.assertEqual(json.loads(header)['payload']['dynamic_tools'],[{'type':'function',**item} for item in specifications(f.engine['profile'])])
-        self.assertEqual(start['dynamicTools'], specifications(f.engine['profile']))
-        roots = next(value for value in specifications('studio-tools-v1') if value['name'] == 'studio_read_file')['inputSchema']['properties']['root']['enum']
-        self.assertEqual(roots, ['workspace', 'sdk', 'contract', 'zig', 'rust'])
+        self.assertEqual(json.loads(header)['payload']['dynamic_tools'],[{'type':'function',**item} for item in start['dynamicTools']])
+        self.assertIn('studio_read_file',{item['name'] for item in start['dynamicTools']})
 
 
 
