@@ -30,8 +30,15 @@ def page(store,sid,before=None,count=20):
     if type(count) is not int or not 1<=count<=50:raise ProjectFault('Invalid request page size.',400)
     rows=[];dropped=0
     if exists(store.db):
+        stamp='9999'
+        sequence=9223372036854775807
+        if before is not None:
+            cursor=store.db.execute('SELECT dispatch_at,seq FROM studio_requests WHERE session_id=? AND seq=? AND dispatch_at IS NOT NULL',(sid,before)).fetchone()
+            if not cursor:raise ProjectFault('The original request cursor is no longer retained.',410)
+            stamp,sequence=cursor['dispatch_at'],cursor['seq']
         rows=store.db.execute(SELECT+'''WHERE r.session_id=? AND r.dispatch_at IS NOT NULL
-            AND r.seq<? ORDER BY r.seq DESC LIMIT ?''',(sid,before if before is not None else 9223372036854775807,count+1)).fetchall()
+            AND (r.dispatch_at,r.seq)<(?,?) ORDER BY r.dispatch_at DESC,r.seq DESC LIMIT ?''',
+            (sid,stamp,sequence,count+1)).fetchall()
         saved=store.db.execute('SELECT dropped FROM studio_request_retention WHERE session_id=?',(sid,)).fetchone()
         dropped=saved['dropped'] if saved else 0
     engine=json.loads(session['engine']).get('kind')
@@ -63,9 +70,9 @@ def detail(store,sid,rid):
         'source':usage_source if counts['input'] is not None else 'unavailable'}
     result['policy']=meta['contextPolicy']
     for key,comparison,order in (('older','<','DESC'),('newer','>','ASC')):
-        adjacent=store.db.execute('SELECT request_id FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL AND seq'+comparison+'? ORDER BY seq '+order+' LIMIT 1',(sid,row['seq'])).fetchone()
+        adjacent=store.db.execute('SELECT request_id FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL AND (dispatch_at,seq)'+comparison+'(?,?) ORDER BY dispatch_at '+order+',seq '+order+' LIMIT 1',(sid,row['dispatch_at'],row['seq'])).fetchone()
         result[key]=adjacent['request_id'] if adjacent else None
-    result['position']=store.db.execute('SELECT COUNT(*) FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL AND seq<=?',(sid,row['seq'])).fetchone()[0]
+    result['position']=store.db.execute('SELECT COUNT(*) FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL AND (dispatch_at,seq)<=(?,?)',(sid,row['dispatch_at'],row['seq'])).fetchone()[0]
     result['total']=store.db.execute('SELECT COUNT(*) FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL',(sid,)).fetchone()[0]
     return result
 

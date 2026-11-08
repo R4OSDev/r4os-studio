@@ -1,9 +1,11 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
+import {trapDialogFocus} from './dialogFocus';
 import type {SessionContext} from '../../../../shared/agent-sessions';
 import type {ContextRequestDetail,ContextRequestPage} from '../../../../shared/context-requests';
 import {sessionPath,useSessionApi} from './api';
 import './context-inspector.css';
+import {OriginalRequest} from './OriginalRequest';
 
 const number=new Intl.NumberFormat('en-US');
 const percentage=new Intl.NumberFormat('en-US',{style:'percent',maximumFractionDigits:1});
@@ -17,6 +19,7 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
   const {request,scope}=useSessionApi();
   const [selected,setSelected]=useState<string|null>(null),[refresh,setRefresh]=useState(0);
   const [view,setView]=useState<{record:ContextRequestDetail|null;page:ContextRequestPage}|null>(null);
+  const [original,setOriginal]=useState<ContextRequestDetail|null>(null);
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
   const path=sessionPath(projectId,sessionId)+'/context-requests';
   useEffect(()=>{
@@ -43,7 +46,7 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
     {id:'free',label:'Free',tokens:breakdown.free},
     ...['tools','conversation','system','other'].flatMap(id=>breakdown.categories.filter(row=>row.id===id)),
   ]:[];
-  return createPortal(<dialog ref={dialog} className="context-inspector" aria-labelledby={title} onCancel={event=>{event.preventDefault();close();}}>
+  return createPortal(<dialog ref={dialog} className="context-inspector" aria-labelledby={title} onKeyDown={trapDialogFocus} onCancel={event=>{event.preventDefault();close();}}>
     <header className="context-inspector-header"><h2 id={title}>Context</h2>
       <nav aria-label="Request history"><button type="button" aria-label="Previous request" disabled={loading||!record?.older} onClick={()=>choose(record!.older)}>‹</button>
         <span>{record?`${record.position} of ${record.total}`:'No request'}</span>
@@ -99,7 +102,10 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
     </div>
     <footer className="context-inspector-footer"><div><small>Only captured dispatch attempts are shown.</small>
       {!!view?.page.retention.droppedRequests&&<small>{amount(view.page.retention.droppedRequests)} older records expired.</small>}</div>
-      <button type="button" onClick={()=>choose(null)} disabled={loading}>Latest request</button>
+      <div className="context-footer-actions"><button type="button" onClick={()=>choose(null)} disabled={loading}>Latest request</button>
+        <button type="button" className="context-view-original" disabled={loading||!!error||!record?.bodyAvailable}
+          onClick={()=>{if(record){setSelected(record.id);setOriginal(record);}}}>View full request</button></div>
     </footer>
+    {original&&<OriginalRequest key={original.id} projectId={projectId} sessionId={sessionId} record={original} close={()=>setOriginal(null)}/>}
   </dialog>,document.body);
 }

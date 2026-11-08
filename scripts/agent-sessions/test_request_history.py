@@ -12,13 +12,9 @@ from store import ProjectFault
 import test_request_capture as fixtures
 
 
-class RequestHistory(unittest.TestCase):
-    def setUp(self):
-        self.fixture=fixtures.RequestCapture();self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
-        self.store=self.fixture.store;self.sid=self.fixture.sid
-
+class RequestHistory(fixtures.CaptureFixture,unittest.TestCase):
     def sent(self,raw=None):
-        rid,_=self.fixture.capture() if raw is None else self.fixture.capture(raw)
+        rid,_=self.capture() if raw is None else self.capture(raw)
         transport(self.store,rid,'dispatch');return rid
 
     def test_disjoint_original_spans_all_protocols_cache_and_media(self):
@@ -38,7 +34,7 @@ class RequestHistory(unittest.TestCase):
 
     def test_immutable_policy_limits_usage_and_no_cache_double_count(self):
         rid=self.sent();transport(self.store,rid,'response',200)
-        operation=self.fixture.operations.row(rid)[1]
+        operation=self.operations.row(rid)[1]
         operation['usage']={'input_tokens':10,'cache_read_input_tokens':20,'cache_creation_input_tokens':30,'output_tokens':900}
         with self.store.db:
             self.store.db.execute("UPDATE studio_model_calls SET phase='completed',data=? WHERE request_id=?",(encode(operation),rid))
@@ -56,15 +52,26 @@ class RequestHistory(unittest.TestCase):
         self.assertEqual(overflow['capacity'],1000);self.assertEqual(overflow['free'],0);self.assertGreater(overflow['overflow'],0)
 
     def test_cursor_neighbors_live_addition_and_prepared_exclusion(self):
-        self.fixture.capture();ids=[self.sent() for _ in range(4)]
+        self.capture();ids=[self.sent() for _ in range(4)]
         first=page(self.store,self.sid,count=2);self.assertEqual([v['id'] for v in first['requests']],list(reversed(ids[2:])))
         second=page(self.store,self.sid,first['nextBefore'],2);self.assertEqual([v['id'] for v in second['requests']],list(reversed(ids[:2])))
         self.assertIsNone(second['nextBefore'])
         selected=detail(self.store,self.sid,ids[1]);self.assertEqual(selected['older'],ids[0]);self.assertEqual(selected['newer'],ids[2])
         self.sent();again=detail(self.store,self.sid,ids[1]);self.assertEqual(again['id'],selected['id']);self.assertEqual(again['position'],2)
         self.assertEqual(again['total'],5)
-        query=self.store.db.execute('EXPLAIN QUERY PLAN SELECT request_id FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL AND seq<? ORDER BY seq DESC LIMIT 20',(self.sid,9999)).fetchall()
-        self.assertTrue(any('studio_requests_sent' in str(tuple(r)) for r in query))
+        query=self.store.db.execute('EXPLAIN QUERY PLAN SELECT request_id FROM studio_requests WHERE session_id=? AND dispatch_at IS NOT NULL AND (dispatch_at,seq)<(?,?) ORDER BY dispatch_at DESC,seq DESC LIMIT 20',(self.sid,'9999',9999)).fetchall()
+        self.assertTrue(any('studio_requests_dispatch' in str(tuple(r)) for r in query))
+
+    def test_history_orders_by_observed_dispatch_not_prepare_order(self):
+        first,_=self.capture();second,_=self.capture()
+        transport(self.store,second,'dispatch');transport(self.store,first,'dispatch')
+        newest=page(self.store,self.sid,count=1)
+        self.assertEqual(newest['requests'][0]['id'],first)
+        earlier=page(self.store,self.sid,before=newest['nextBefore'],count=1)
+        self.assertEqual(earlier['requests'][0]['id'],second)
+        self.assertEqual(detail(self.store,self.sid,first)['older'],second)
+        self.assertEqual(detail(self.store,self.sid,second)['newer'],first)
+        self.assertEqual(detail(self.store,self.sid,first)['position'],2)
 
     def test_body_chunk_exact_unicode_uint64_scope_and_no_original_writes(self):
         raw='{ "model":"own-model", "input":"'+('雪\\n"quoted"'.replace('"','\\"')*10000)+'", "n":18446744073709551615 }'

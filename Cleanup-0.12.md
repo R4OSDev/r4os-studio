@@ -73,3 +73,7 @@ Expose per-request context estimates, frozen effective limits, measured usage an
 ## 0.12.20
 
 Replace the context tooltip with an accessible Studio overlay, stacked vertical breakdown and historical request navigation.
+
+## 0.12.21
+
+Show the entire captured provider request from the context overlay with UTF-8-safe paging, full copy and byte-exact JSON download.

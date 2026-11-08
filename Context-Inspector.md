@@ -65,3 +65,27 @@ historical selection stays selected when a new context revision arrives. Latest
 request returns to the newest attempt. No full bodies are loaded for this view.
 The dialog supports Escape, focus return, touch and narrow layouts. Empty/native
 histories show the available aggregate snapshot without inventing originals.
+
+## 0.12.21 — full original request
+
+View full request at the bottom right opens the selected original in a second
+modal. Opening freezes that selection even if new requests arrive. Escape/Back
+returns to the same context request and restores focus.
+
+The viewer reads at most 64 KiB per page, continuing at a complete UTF-8 code
+point. No JSON parse or reserialization changes large integers, escaping,
+signatures or inline media. The visible byte range is explicit; Copy full request
+and Download JSON fetch the entire original on demand, independently of the
+current page. Copy supports secure clipboard access and a focused selection
+fallback for HTTP LAN origins. Missing/expired bodies and read errors are shown
+as errors rather than downloaded as successful original payloads.
+
+Body integrity is verified in the private store. Prompt text is rendered as
+plain preformatted text; it is never HTML or executable content. Viewing,
+paging, copying and downloading trigger no model request, tool or conversion.
+
+Concurrent preparations do not determine request chronology: history orders the
+recorded dispatch time, with the request sequence as a stable tie breaker. Body
+retention protects every reference still preparing or dispatching. The latest
+10,000 metadata records are kept, with in-flight originals protected until they
+finish. Tab and Shift+Tab explicitly cycle within the active modal.

@@ -30,6 +30,7 @@ def schema(db):
         sha256 TEXT NOT NULL,metadata TEXT NOT NULL,dispatch_at TEXT)''')
     db.execute('CREATE INDEX IF NOT EXISTS studio_requests_session ON studio_requests(session_id,seq)')
     db.execute('CREATE INDEX IF NOT EXISTS studio_requests_sent ON studio_requests(session_id,seq) WHERE dispatch_at IS NOT NULL')
+    db.execute('CREATE INDEX IF NOT EXISTS studio_requests_dispatch ON studio_requests(session_id,dispatch_at,seq) WHERE dispatch_at IS NOT NULL')
     db.execute('CREATE INDEX IF NOT EXISTS studio_requests_body ON studio_requests(session_id,sha256,seq)')
     db.execute('''CREATE TABLE IF NOT EXISTS studio_request_retention(
         session_id TEXT PRIMARY KEY REFERENCES sessions(id),dropped INTEGER NOT NULL DEFAULT 0)''')
@@ -68,7 +69,11 @@ def capture(store, operation, raw, binding, policy, estimate=None):
                     oldest = store.db.execute('''SELECT b.sha256,length(b.compressed) AS size
                         FROM studio_requests r JOIN studio_request_bodies b
                         ON b.session_id=r.session_id AND b.sha256=r.sha256
-                        WHERE r.session_id=? ORDER BY r.seq LIMIT 1''', (operation['sessionId'],)).fetchone()
+                        WHERE r.session_id=? AND NOT EXISTS
+                        (SELECT 1 FROM studio_requests pending JOIN studio_model_calls c ON c.request_id=pending.request_id
+                         WHERE pending.session_id=b.session_id AND pending.sha256=b.sha256
+                         AND c.phase NOT IN ('completed','failed','unknown'))
+                        ORDER BY r.seq LIMIT 1''', (operation['sessionId'],)).fetchone()
                     if oldest is None: raise ProjectFault('The model request archive is full. No request was sent.',503)
                     store.db.execute('DELETE FROM studio_request_bodies WHERE session_id=? AND sha256=?',
                                      (operation['sessionId'],oldest['sha256']))
@@ -81,7 +86,8 @@ def capture(store, operation, raw, binding, policy, estimate=None):
             cutoff = store.db.execute('SELECT seq FROM studio_requests WHERE session_id=? ORDER BY seq DESC LIMIT 1 OFFSET ?',
                                       (operation['sessionId'],MAX_REQUESTS-1)).fetchone()
             if cutoff:
-                removed = store.db.execute('DELETE FROM studio_requests WHERE session_id=? AND seq<?',
+                removed = store.db.execute('''DELETE FROM studio_requests WHERE session_id=? AND seq<? AND request_id IN
+                        (SELECT request_id FROM studio_model_calls WHERE phase IN ('completed','failed','unknown'))''',
                                            (operation['sessionId'],cutoff['seq'])).rowcount
                 if removed:
                     store.db.execute('INSERT INTO studio_request_retention VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET dropped=dropped+excluded.dropped',

@@ -20,7 +20,7 @@ from store import ProjectFault
 import test_runs as fixtures
 
 
-class RequestCapture(unittest.IsolatedAsyncioTestCase):
+class CaptureFixture:
     def setUp(self):
         self.fixture=fixtures.Runs();self.fixture.setUp();self.addCleanup(self.fixture.tearDown);self.addCleanup(self.fixture.doCleanups)
         self.store=self.enterContext(self.fixture.open());self.sid=self.fixture.sid
@@ -40,6 +40,7 @@ class RequestCapture(unittest.IsolatedAsyncioTestCase):
                 {'schema':3,'enabled':True,'budgetTokens':250000,'globalRevision':7})
         return rid,raw.encode()
 
+class RequestCapture(CaptureFixture,unittest.IsolatedAsyncioTestCase):
     async def test_wire_three_protocols_actual_node_and_exact_original(self):
         received=[]
         async def handle(reader,writer):
@@ -87,6 +88,7 @@ class RequestCapture(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_request_bodies').fetchone()[0],1)
         with self.store.db:used=total(self.store.db,self.sid,'requests')
         self.assertEqual(used,self.store.db.execute('SELECT SUM(length(compressed)) FROM studio_request_bodies').fetchone()[0])
+        with self.store.db:self.store.db.execute("UPDATE studio_model_calls SET phase='completed'")
         replacement='{"model":"own-model","input":"Different request with enough content"}'
         ceiling=max(used,len(zlib.compress(replacement.encode(),3)))+1
         with patch('request_capture.BODY_BUDGET',ceiling):third,_=self.capture(replacement)
@@ -121,12 +123,22 @@ class RequestCapture(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.store.db.execute('PRAGMA foreign_key_check').fetchall())
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_request_bodies').fetchone()[0],0)
 
+    async def test_pending_original_is_not_expired_by_another_capture(self):
+        rid,raw=self.capture()
+        with self.store.db:used=total(self.store.db,self.sid,'requests')
+        with patch('request_capture.BODY_BUDGET',used+5):
+            with self.assertRaises(ProjectFault):self.capture('{"model":"own-model","input":"Different original"}')
+        self.assertEqual(body(self.store,self.sid,rid),raw)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_requests').fetchone()[0],1)
+
     async def test_metadata_retention_and_read_no_initialization(self):
         self.assertFalse(exists(self.store.db))
         with self.assertRaises(ProjectFault):body(self.store,self.sid,str(uuid.uuid4()))
         self.assertFalse(exists(self.store.db))
         with patch('request_capture.MAX_REQUESTS',2):
-            for i in range(4):self.capture(json.dumps({'model':'own-model','input':str(i)}))
+            for i in range(4):
+                rid,_=self.capture(json.dumps({'model':'own-model','input':str(i)}))
+                with self.store.db:self.store.db.execute("UPDATE studio_model_calls SET phase='completed' WHERE request_id=?",(rid,))
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_requests').fetchone()[0],2)
         self.assertEqual(self.store.db.execute('SELECT dropped FROM studio_request_retention').fetchone()[0],2)
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM studio_request_bodies').fetchone()[0],2)
