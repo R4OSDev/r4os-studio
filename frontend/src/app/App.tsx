@@ -78,7 +78,7 @@ export function App() {
     if ((value.section === 'Statistics' || /^#projects\/[a-f0-9-]{36}\/statistics$/.test(window.location.hash) || value.section === 'Roadmap' || value.section === 'Boards' || parseRoadmapRoute(window.location.hash) || parseBoardRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
   }, []);
   const [selected, setSelected] = useState<Selection>({
-    group: window.location.hash === '#system/tools' ? 5 : window.location.hash === '#statistics' ? 4 : remoteHostRoute ? 2 : window.location.hash === '#updates' ? 3 : 0, item: window.location.hash === '#system/settings/fallback' ? 4 : window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: remoteHostRoute?.view === 'Settings' ? 1 : 0,
+    group: window.location.hash === '#system/tools' ? 5 : window.location.hash === '#statistics' ? 4 : remoteHostRoute ? 2 : window.location.hash === '#updates' ? 3 : 0, item: window.location.hash.startsWith('#system/settings/context') ? 5 : window.location.hash === '#system/settings/fallback' ? 4 : window.location.hash === '#system-prompt' ? 1 : window.location.hash === '#skill-manager-prompt' ? 3 : 0, view: remoteHostRoute?.view === 'Settings' ? 1 : 0,
   });
   useEffect(() => {
     const restore = () => {
@@ -91,7 +91,7 @@ export function App() {
       const board = parseBoardRoute(hash);
       const remoteHost = parseRemoteHostRoute(hash);
       const skill = /^#tools\/skills\/([a-f0-9-]{36})(?:\/sessions\/([a-f0-9-]{36}))?$/.exec(hash);
-      if (!project && !projectEntry && !projectStatistics && !roadmap && !board && !remoteHost && !skill && !['', '#status', '#status/ai-limits', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates', '#statistics', '#system/tools', '#system/settings/fallback'].includes(hash)) return;
+      if (!project && !projectEntry && !projectStatistics && !roadmap && !board && !remoteHost && !skill && !['', '#status', '#status/ai-limits', '#system', '#tools', '#projects', '#system-prompt', '#skill-manager-prompt', '#updates', '#statistics', '#system/tools', '#system/settings/fallback', '#system/settings/context', '#system/settings/context/limit'].includes(hash)) return;
       if (!settingsLeaveGuard.current() || !projectLeaveGuard.current() || !toolsLeaveGuard.current()) {
         window.history.replaceState(null, '', acceptedHash.current || window.location.pathname); return;
       }
@@ -110,7 +110,7 @@ export function App() {
       else if (skill) { setSkillId(skill[1]); navigateSkill(skill[1], skill[2]); setTab('Tools'); }
       else if (hash === '#tools') { setSkillId(null); setTab('Tools'); }
       else if (hash === '#projects') setTab('Projects');
-      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 3, item: 0, view: 0 }); else if (hash === '#statistics') setSelected({ group: 4, item: 0, view: 0 }); else if (hash === '#system/tools') setSelected({ group: 5, item: 0, view: 0 }); else if (hash === '#system/settings/fallback') setSelected({group:0,item:4,view:0}); }
+      else { setTab('System'); if (hash === '#system-prompt' || hash === '#skill-manager-prompt') setSelected({ group: 0, item: hash === '#system-prompt' ? 1 : 3, view: 0 }); else if (hash === '#updates') setSelected({ group: 3, item: 0, view: 0 }); else if (hash === '#statistics') setSelected({ group: 4, item: 0, view: 0 }); else if (hash === '#system/tools') setSelected({ group: 5, item: 0, view: 0 }); else if (hash === '#system/settings/fallback') setSelected({group:0,item:4,view:0}); else if (hash === '#system/settings/context' || hash === '#system/settings/context/limit') setSelected({group:0,item:5,view:0}); }
     };
     window.addEventListener('hashchange', restore);
     window.addEventListener('popstate', restore);
@@ -144,7 +144,7 @@ export function App() {
   const activeConnection = github.connections.find((connection) => connection.id === connectionView);
   const providers = useProviders(providerPage || tab === 'Status');
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
-  const availableViews = remotePage ? (remoteHostId ? ['Overview', 'Settings'] : []) : githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex', 'R4UPack'] : []) : [];
+  const availableViews = contextPage ? ['Limit'] : remotePage ? (remoteHostId ? ['Overview', 'Settings'] : []) : githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex', 'R4UPack'] : []) : [];
   const selectedView = githubPage ? (activeConnection ? github.connections.indexOf(activeConnection) + 1 : 0) : providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : updatePage && item === 'Components' ? 0 : selected.view;
   const view = availableViews[selectedView];
   const componentKind: ComponentKind | 'c' | undefined = updatePage && item !== 'R4OS Studio'
@@ -162,15 +162,16 @@ export function App() {
     if (next.group === 2) { navigateRemoteHost(remoteHostId, next.view === 1 ? 'Settings' : 'Overview'); return; }
     const setHash = (hash: string) => {
       if (window.location.hash === hash) return;
-      const method = next.group === 5 || ['#system/tools', '#system/settings/fallback'].includes(window.location.hash) || next.group === 0 && next.item === 4 ? 'pushState' : 'replaceState';
+      const method = next.group === 5 || ['#system/tools', '#system/settings/fallback', '#system/settings/context', '#system/settings/context/limit'].includes(window.location.hash) || next.group === 0 && [4,5].includes(next.item) ? 'pushState' : 'replaceState';
       window.history[method](null, '', hash);
     };
     if (next.group === 5) setHash('#system/tools');
     else if (next.group === 4) setHash('#statistics');
     else if (next.group === 0 && next.item === 1) setHash('#system-prompt');
     else if (next.group === 0 && next.item === 3) setHash('#skill-manager-prompt');
+    else if (next.group === 0 && next.item === 5) setHash('#system/settings/context/limit');
     else if (next.group === 0 && next.item === 4) setHash('#system/settings/fallback');
-    else if (['#system-prompt', '#skill-manager-prompt', '#statistics', '#system/tools', '#system/settings/fallback'].includes(window.location.hash) || parseRemoteHostRoute(window.location.hash)) setHash(window.location.pathname);
+    else if (['#system-prompt', '#skill-manager-prompt', '#statistics', '#system/tools', '#system/settings/fallback', '#system/settings/context', '#system/settings/context/limit'].includes(window.location.hash) || parseRemoteHostRoute(window.location.hash)) setHash(window.location.pathname);
     setSelected((previous) => ({ ...previous, ...patch }));
   }
 
@@ -196,7 +197,7 @@ export function App() {
     const projectStats = projectId && projectNavigation[projectId]?.section === 'Statistics' ? `#projects/${projectId}/statistics` : null;
     const board = projectId && projectNavigation[projectId]?.section === 'Boards' ? boardHash(projectId, projectNavigation[projectId].boardId) : null;
     const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId) : null;
-    window.history.pushState(null, '', value === 'Status' ? '#status/ai-limits' : value === 'Projects' ? (projectStats ?? board ?? roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 4 ? '#system/settings/fallback' : selected.group === 5 ? '#system/tools' : selected.group === 4 ? '#statistics' : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
+    window.history.pushState(null, '', value === 'Status' ? '#status/ai-limits' : value === 'Projects' ? (projectStats ?? board ?? roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === 5 ? '#system/settings/context/limit' : selected.group === 0 && selected.item === 4 ? '#system/settings/fallback' : selected.group === 5 ? '#system/tools' : selected.group === 4 ? '#statistics' : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }
 
@@ -278,7 +279,7 @@ export function App() {
                         ? `${held ? 'Access held. ' : ''}Remaining usage is not available.` : `${held ? 'Access held. ' : ''}${state === 'stale' ? 'Out of date. ' : ''}${limits?.openrouter ? 'Remaining share of the currently limiting USD spending budget.' : 'Lowest reported remaining usage across quota windows.'}${limits?.checkedAt ? ' Observed '+new Date(limits.checkedAt).toLocaleString()+'.' : ''}`}>
                         {remaining == null ? '—' : percent(remaining)}{state === 'stale' && remaining != null && ' *'}{held && ' !'}
                       </span>}
-                  </> : githubPage || vmPage || remotePage || updatePage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
+                  </> : githubPage || vmPage || remotePage || updatePage || contextPage ? <span className="provider-view-name">{name}</span> : <><span className="view-number">{(index + 1).toString().padStart(2, '0')}</span><span>{name}</span></>}
                 </button>;
               })}
             </div>

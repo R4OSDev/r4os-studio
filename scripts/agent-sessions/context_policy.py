@@ -17,16 +17,18 @@ def budget(value):
     return value
 
 def current(db):
-    empty={'revision':0,'budgetTokens':DEFAULT,'defaultBudgetTokens':DEFAULT,'maxBudgetTokens':MAXIMUM}
+    empty={'revision':0,'enabled':True,'budgetTokens':DEFAULT,'defaultEnabled':True,'defaultBudgetTokens':DEFAULT,'maxBudgetTokens':MAXIMUM}
     if db is None:return empty
     version=db.execute('PRAGMA user_version').fetchone()[0]
     if version==0 and not db.execute("SELECT 1 FROM sqlite_master WHERE type='table'").fetchone():return empty
     if version!=1:raise ProjectFault('Context settings storage is unavailable.',503)
     if not db.execute("SELECT 1 FROM sqlite_master WHERE name='global_context' AND type='table'").fetchone():return empty
-    row=db.execute('SELECT revision,budget_tokens FROM global_context WHERE id=1').fetchone()
+    columns={v[1] for v in db.execute('PRAGMA table_info(global_context)')}
+    row=db.execute('SELECT revision,budget_tokens'+(',enabled' if 'enabled' in columns else ',1')+' FROM global_context WHERE id=1').fetchone()
     if row is None:return empty
     if type(row[0]) is not int or not 1<=row[0]<2**53:raise ProjectFault('Context settings revision is unavailable.',503)
-    return {**empty,'revision':row[0],'budgetTokens':budget(row[1])}
+    if type(row[2]) is not int or row[2] not in (0,1):raise ProjectFault('Context limit activation is unavailable.',503)
+    return {**empty,'revision':row[0],'budgetTokens':budget(row[1]),'enabled':bool(row[2])}
 
 def read(projects):
     path=location(projects)
@@ -44,7 +46,8 @@ def receipt(projects,rid):
 
 def update(projects,data):
     if (not isinstance(data,dict) or data.get('action') not in ('save','reset')
-        or set(data)!=({'requestId','revision','action','budgetTokens'} if data.get('action')=='save' else {'requestId','revision','action'})
+        or set(data)-{'enabled'}!=({'requestId','revision','action','budgetTokens'} if data.get('action')=='save' else {'requestId','revision','action'})
+        or 'enabled' in data and (data.get('action')!='save' or type(data['enabled']) is not bool)
         or type(data['revision']) is not int or not 0<=data['revision']<2**53-1):
         raise ProjectFault('Context settings require requestId, revision, action and budgetTokens for save.',400)
     rid=identity(data['requestId']);chosen=budget(data['budgetTokens']) if data['action']=='save' else DEFAULT
@@ -66,9 +69,12 @@ def update(projects,data):
             return json.loads(old[1])
         value=current(db)
         if data['revision']!=value['revision']:raise ProjectFault('Context settings changed. Your draft was retained; reload before saving.',409)
-        revision=value['revision']+int(chosen!=value['budgetTokens'] or value['revision']==0)
-        result={**value,'revision':revision,'budgetTokens':chosen,'requestId':rid}
-        db.execute('INSERT INTO global_context VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,budget_tokens=excluded.budget_tokens',(revision,chosen))
+        enabled=data.get('enabled',value['enabled']) if data['action']=='save' else True
+        if 'enabled' not in {v[1] for v in db.execute('PRAGMA table_info(global_context)')}:
+            db.execute('ALTER TABLE global_context ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1))')
+        revision=value['revision']+int(chosen!=value['budgetTokens'] or enabled!=value['enabled'] or value['revision']==0)
+        result={**value,'revision':revision,'budgetTokens':chosen,'enabled':enabled,'requestId':rid}
+        db.execute('INSERT INTO global_context(id,revision,budget_tokens,enabled) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,budget_tokens=excluded.budget_tokens,enabled=excluded.enabled',(revision,chosen,int(enabled)))
         db.execute('INSERT INTO context_requests VALUES(?,?,?)',(rid,fingerprint,encode(result)));db.commit();return result
 
 def freeze(snapshot,projects,original):
@@ -76,11 +82,12 @@ def freeze(snapshot,projects,original):
     if original is not None:
         if 'contextPolicy' in original:snapshot['contextPolicy']=original['contextPolicy'].copy()
         return
-    value=read(projects);snapshot['contextPolicy']={key:value[key] for key in ('revision','budgetTokens')}
+    value=read(projects);snapshot['contextPolicy']={key:value[key] for key in ('revision','budgetTokens','enabled')}
 
 def threshold(config,capacity):
     model_limit=int(capacity*0.8) if capacity is not None else None
     value=config.get('contextPolicy')
     if value is None:return model_limit  # Older accepted configs retain their policy.
+    if value.get('enabled',True) is False:return model_limit
     limit=budget(value.get('budgetTokens'))
     return min(limit,model_limit) if model_limit is not None else limit

@@ -49,3 +49,7 @@ Session history and event pages read payload rows only until their byte or count
 ## 0.12.14
 
 Obsolete image adapter, read-only companion, removed network switch and prompt-wording tests are removed. Existing file tests cover the shipped recipe paths; meaningful defaults, import, hash and model/process checks remain.
+
+## 0.12.15
+
+Context limit settings have a dedicated Limit view and a saved global on/off switch; lower model limits always apply
