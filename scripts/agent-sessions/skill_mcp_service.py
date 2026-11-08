@@ -44,6 +44,7 @@ class Service:
         self.client=None;self.grant=None;self.lock=asyncio.Lock();self.stopped=asyncio.Event()
         self.connections=set();self.finished=None;self.finish_task=None;self.namespace_permissions=None;self.observation_busy=False
         self.state=paths(config['projects'],launch,create=True)[3]
+        self.controller=dict(pid=os.getpid(),birth=birth(os.getpid()),invocationId=os.environ.get('STUDIO_MCP_INVOCATION',''))
 
     def snapshot(self):
         return dict(serviceId=self.launch['serviceId'],capabilities=self.client.capabilities if self.client else {},
@@ -78,7 +79,9 @@ class Service:
             async def once():
                 self.stopped.set();self.grant=None
                 self.finished=await self.client.close() if self.client else dict(processEndConfirmed=True,neverStarted=True)
-                atomic(self.state/'ServiceEnd.json',encoded(dict(self.launch,reason=reason,**self.finished)))
+                from skill_mcp_lifecycle import archive_end
+                archive_end(self.state)
+                atomic(self.state/'ServiceEnd.json',encoded(dict(self.launch,reason=reason,controller=self.controller,**self.finished)))
                 return self.finished
             self.finish_task=asyncio.create_task(once())
         return await asyncio.shield(self.finish_task)
@@ -221,8 +224,10 @@ async def main(ident):
     launch=strict(runtime_spec.read(registry(config['projects'],ident)/'Launch.json',131072))
     if launch.get('schema')!=1 or launch.get('serviceId')!=ident:raise RuntimeError('Invalid analysis service registry.')
     service=Service(config,launch);loop=asyncio.get_running_loop()
-    atomic(service.state/'ServiceProcess.json',encoded(dict(launch,pid=os.getpid(),birth=birth(os.getpid()),
-        release=str(Path(__file__).resolve().parents[2]),invocationId=os.environ.get('STUDIO_MCP_INVOCATION',''))))
+    from skill_mcp_lifecycle import archive_end
+    archive_end(service.state)
+    atomic(service.state/'ServiceProcess.json',encoded(dict(launch,**service.controller,
+        release=str(Path(__file__).resolve().parents[2]))))
     for sig in (signal.SIGTERM,signal.SIGINT):loop.add_signal_handler(sig,lambda:asyncio.create_task(service.finish()))
     socket_path=directory(Path('/run/r4os-studio-skill-mcp')/ident)/'host.sock'
     if socket_path.exists():raise RuntimeError('The original analysis socket still exists; reconcile its original service.')

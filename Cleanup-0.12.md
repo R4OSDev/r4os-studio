@@ -13,3 +13,7 @@ Native arguments translate only declared path positions. Git messages, package t
 ## 0.12.5
 
 Project and skill helpers decode UTF-8 incrementally across stdout chunks and enforce their response budget in received bytes. Fragmented non-ASCII names and text survive unchanged.
+
+## 0.12.6
+
+Owner retirement stops the current MCP controller even when an older end receipt exists. Controller PID, birth and invocation bind new receipts; previous end bytes remain archived and unresolved effects remain blocked.

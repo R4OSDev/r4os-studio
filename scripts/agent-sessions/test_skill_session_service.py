@@ -140,6 +140,27 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['unresolved'],[unknown]);self.assertEqual(file.read_bytes(),before)
         self.assertIsNotNone(pending(self.service.state))
 
+    async def test_old_end_cannot_skip_a_frozen_current_controller(self):
+        from skill_mcp_lifecycle import stop_controller
+        from skill_mcp_client import atomic,encoded
+        service=self.service;service.controller['invocationId']='own-current-invocation'
+        old=encoded(dict(service.launch,processEndConfirmed=True,controller=dict(pid=99999999,birth='old',invocationId='old')))
+        atomic(service.state/'ServiceEnd.json',old)
+        atomic(service.state/'ServiceProcess.json',encoded(dict(service.launch,**service.controller)))
+        actions=[];stopped=False
+        async def ctl(*args):
+            nonlocal stopped
+            actions.append(args)
+            if 'FreezerState' in ' '.join(args):return 'frozen\n'
+            if args[0]=='stop':await service.finish();stopped=True
+            return ('MainPID=0\nActiveState=inactive\n' if stopped else
+                f"MainPID={os.getpid()}\nActiveState=active\nInvocationID=own-current-invocation\n")
+        with patch('skill_session_client.systemctl',side_effect=ctl):await stop_controller(self.projects,service.launch)
+        self.assertIn('thaw',[a[0] for a in actions]);self.assertIn('stop',[a[0] for a in actions])
+        self.assertTrue(service.finished['processEndConfirmed'])
+        self.assertEqual([p.read_bytes() for p in (service.state/'ControllerEnds').iterdir()],[old])
+        self.assertEqual(json.loads((service.state/'ServiceEnd.json').read_bytes())['controller'],service.controller)
+
     async def test_transient_database_lock_keeps_original_native_state(self):
         from skill_session_state import original
         attempts=[]

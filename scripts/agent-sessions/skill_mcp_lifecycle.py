@@ -1,9 +1,10 @@
 """Exact original analysis instances participate in confirmed owner deletion."""
 from pathlib import Path
+import hashlib
 import shutil
 
 from owner import skills_root
-from skill_mcp_client import strict,atomic,encoded
+from skill_mcp_client import strict,atomic,encoded,directory
 from skill_session_state import identity, paths,birth
 from store import ProjectFault
 
@@ -62,11 +63,32 @@ def blockers(projects,**scope):
     return result
 
 
+def archive_end(state):
+    """Keep original end bytes before a later controller writes its own end."""
+    end=state/'ServiceEnd.json'
+    if not end.exists():return
+    raw=end.read_bytes()
+    target=directory(state/'ControllerEnds')/(hashlib.sha256(raw).hexdigest()+'.json')
+    if target.exists():
+        if target.read_bytes()!=raw:raise ProjectFault('An original controller end archive changed.',503)
+    else:atomic(target,raw)
+
+
+def end_matches(state):
+    end=state/'ServiceEnd.json';process=state/'ServiceProcess.json'
+    if not end.exists():return False
+    if not process.exists():return True  # Legacy receipt, accepted only after unit end below.
+    receipt=strict(end.read_bytes());original=strict(process.read_bytes())
+    controller=receipt.get('controller',{})
+    return all(controller.get(key)==original.get(key) for key in ('pid','birth','invocationId')) and bool(controller)
+
+
 async def reconcile_end(projects,launch):
     """Confirm the ended original unit, never invent a missing analysis reply."""
     from skill_session_client import systemctl
     state=paths(projects,launch)[3];end=state/'ServiceEnd.json'
-    if end.exists():return strict(end.read_bytes())
+    if end.exists() and pending(state):return strict(end.read_bytes())
+    if end_matches(state):return strict(end.read_bytes())
     unit='r4os-studio-skill-mcp@'+identity(launch['serviceId'])+'.service'
     raw=await systemctl('show',unit,'--property=ActiveState','--property=MainPID',
         '--property=InvocationID','--property=ExecMainCode','--property=ExecMainStatus')
@@ -86,26 +108,45 @@ async def reconcile_end(projects,launch):
         receipt=strict(file.read_bytes())
         if receipt['phase'] not in ('complete','late_result'):unresolved.append(receipt['requestId'])
     result=dict(launch,processEndConfirmed=True,outcome='unknown',reason='original_unit_ended_without_controller_receipt',
-        reconciled=True,replayed=False,nativeReplyReconstructed=False,unresolved=unresolved,unitState=observed)
+        reconciled=True,replayed=False,nativeReplyReconstructed=False,unresolved=unresolved,unitState=observed,
+        controller={key:original.get(key) for key in ('pid','birth','invocationId')})
+    archive_end(state)
     atomic(end,encoded(result));return result
 
 
-async def stop_owned(projects,**scope):
+async def stop_controller(projects,launch):
     from skill_session_client import systemctl,stop_unit
+    state=paths(projects,launch)[3]
+    reason=pending(state)
+    if reason:raise ProjectFault(reason,409)
+    unit='r4os-studio-skill-mcp@'+identity(launch['serviceId'])+'.service'
+    async def observe():
+        raw=await systemctl('show',unit,'--property=MainPID','--property=ActiveState','--property=InvocationID')
+        return dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+    observed=await observe()
+    if observed.get('MainPID')!='0':
+        file=state/'ServiceProcess.json'
+        original=strict(file.read_bytes()) if file.exists() else {}
+        if (str(original.get('pid'))!=observed.get('MainPID') or original.get('serviceId')!=launch['serviceId']
+                or not original.get('birth') or birth(original['pid'])!=original['birth']
+                or not original.get('invocationId') or original['invocationId']!=observed.get('InvocationID')):
+            raise ProjectFault('The active analysis controller identity is unconfirmed. Its data was preserved.',409)
+    archive_end(state)
+    # An earlier end receipt never substitutes for stopping the current unit.
+    await stop_unit(unit)
+    observed=await observe()
+    if observed.get('MainPID')!='0' or observed.get('ActiveState') not in ('inactive','failed'):
+        raise ProjectFault('The original analysis process end is unconfirmed. Its data was preserved.',409)
+    if not end_matches(state):await reconcile_end(projects,launch)
+    if not end_matches(state):raise ProjectFault('The current controller has no bound original end receipt.',409)
+    reason=pending(state)
+    if reason:raise ProjectFault(reason,409)
+
+
+async def stop_owned(projects,**scope):
     selected=instances(projects,**scope)
     for _,launch in selected:
-        state=paths(projects,launch)[3]
-        reason=pending(state)
-        if reason:raise ProjectFault(reason,409)
-        unit='r4os-studio-skill-mcp@'+launch['serviceId']+'.service'
-        end=state/'ServiceEnd.json'
-        if not end.exists():await stop_unit(unit)
-        if not end.exists():await reconcile_end(projects,launch)
-        observed=await systemctl('show',unit,'--property=MainPID','--property=ActiveState')
-        if 'MainPID=0' not in observed or not end.exists():
-            raise ProjectFault('The original analysis process end is unconfirmed. Its data was preserved.',409)
-        reason=pending(state)
-        if reason:raise ProjectFault(reason,409)
+        await stop_controller(projects,launch)
     return selected
 
 

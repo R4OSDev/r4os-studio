@@ -131,17 +131,10 @@ async def retire_changed(worker,entry):
             raise McpFault('An original analysis registry entry changed; preserve it for reconciliation.')
         if any(launch.get(k)!=wanted[k] for k in ('ownerType','ownerId','sessionId','skillId')):continue
         if launch['namespaceHash']==wanted['namespaceHash']:continue
-        state=paths(worker.store.projects,launch)[3];end=state/'ServiceEnd.json'
-        if not end.exists():
-            await stop_unit('r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
-            from skill_mcp_lifecycle import reconcile_end
-            await reconcile_end(worker.store.projects,launch)
-        observed=await systemctl('show','r4os-studio-skill-mcp@'+launch['serviceId']+'.service','--property=MainPID','--property=ActiveState')
-        if 'MainPID=0' not in observed or not end.exists():
-            raise McpFault('The previous analysis namespace has no confirmed original end. No broader or replacement namespace was admitted.')
-        value=strict(end.read_bytes())
-        if not value.get('processEndConfirmed') or value.get('unresolved'):
-            raise McpFault('The previous analysis namespace retains an unconfirmed original effect. No replacement was started.')
+        from skill_mcp_lifecycle import stop_controller
+        from store import ProjectFault
+        try:await stop_controller(worker.store.projects,launch)
+        except ProjectFault as error:raise McpFault(str(error)) from None
 
 
 async def start(worker,entry):
