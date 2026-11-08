@@ -99,6 +99,9 @@ def freeze(snapshot,projects,original,session=None):
         if 'contextPolicy' in original:snapshot['contextPolicy']=deepcopy(original['contextPolicy'])
         return
     snapshot['contextPolicy']=resolve(read(projects),session)
+    from provider_count import supported,CONTRACT
+    provider=snapshot.get('apiProvider',{})
+    snapshot['contextPolicy']['providerCount']={'version':1,'enabled':provider.get('inputTokenCounting') is True and supported(provider),'contract':CONTRACT}
     if snapshot['engine'].get('kind')!='studio' and snapshot['contextPolicy']['enabled']:
         raise ProjectFault('This native connection cannot check the complete provider input against a Studio limit. Review an explicit conversation conversion, or switch the session limit Off. Original history was preserved; no model request was started.',409)
 

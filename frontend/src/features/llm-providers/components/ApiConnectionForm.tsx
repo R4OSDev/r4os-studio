@@ -22,6 +22,9 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   const [keyAction, setKeyAction] = useState<'keep' | 'replace' | 'clear'>(initial ? 'keep' : 'replace');
   const [routing, setRouting] = useState(() => routerDraft(initial?.openrouter));
   const [server, setServer] = useState<ApiServer>(initial?.server ?? 'custom');
+  const [inputTokenCounting,setInputTokenCounting]=useState(initial?.inputTokenCounting??false);
+  const countSupported=kind==='openai-compatible'&&baseUrl.trim().replace(/\/$/,'')==='https://api.openai.com/v1'
+    &&protocol==='responses'&&auth==='bearer'&&server==='custom';
   const mutation = useApiMutation(api, initial?.id ?? null), field = useRef<HTMLInputElement>(null);
   const retryConfig = mutation.notFound && !!mutation.pending && ['create', 'update'].includes(mutation.pending.operation);
   const subscription = kind === 'zai-coding-plan';
@@ -29,7 +32,8 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
     || protocol !== (initial?.protocol ?? 'chat-completions') || auth !== (initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'))
     || enabled !== (initial?.enabled ?? true) || !!secret || !!initial && keyAction !== 'keep'
     || kind === 'openrouter' && JSON.stringify(routing) !== JSON.stringify(routerDraft(initial?.openrouter));
-  const changed = dirty || kind !== 'openrouter' && server !== (initial?.server ?? 'custom');
+  const changed = dirty || kind !== 'openrouter' && server !== (initial?.server ?? 'custom')
+    || inputTokenCounting!==(initial?.inputTokenCounting??false);
   useEffect(() => {
     setLeaveGuard?.(() => !mutation.busy && (!changed && !mutation.pending || window.confirm('Leave these API settings? Unsaved keys will be discarded. An original pending request remains available on return.')));
     const warn = (event: BeforeUnloadEvent) => { if (changed || mutation.pending) event.preventDefault(); };
@@ -43,6 +47,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const data = { name: name.trim(), baseUrl: baseUrl.trim(), protocol, auth,
+      inputTokenCounting:countSupported&&inputTokenCounting,
       ...(kind === 'openrouter' ? { openrouter: routerSettings(routing) } : { server }),
       ...(initial ? { revision: initial.revision, enabled: auth === 'bearer' && (keyAction === 'clear' || !initial.keyConfigured && !secret) ? false : enabled } : { kind }),
       ...(auth === 'bearer' && keyAction === 'replace' && secret ? { key: secret } : initial && (keyAction === 'clear' || auth === 'none') ? { key: null } : {}) };
@@ -53,6 +58,7 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
     setProtocol(initial?.protocol ?? 'chat-completions'); setAuth(initial?.auth ?? (kind === 'local' ? 'none' : 'bearer'));
     setEnabled(initial?.enabled ?? true); setKeyAction(initial ? 'keep' : 'replace'); setRouting(routerDraft(initial?.openrouter));
     setServer(initial?.server ?? 'custom');
+    setInputTokenCounting(initial?.inputTokenCounting??false);
   }
   return <form className="provider-form api-connection-form" onSubmit={event => void submit(event)} aria-label="API connection">
     <fieldset disabled={mutation.busy || !!mutation.pending && !retryConfig}>
@@ -79,6 +85,9 @@ export function ApiConnectionForm({ api, initial, kind, saved, setLeaveGuard }: 
       </div>}
       {initial && <label className="api-enabled"><input type="checkbox" checked={enabled} disabled={auth === 'bearer' && (keyAction === 'clear' || !initial.keyConfigured && !secret)} onChange={event => setEnabled(event.target.checked)} />Enabled for new runs</label>}
       {kind === 'openrouter' && <OpenRouterFields draft={routing} change={setRouting} />}
+      <label className="api-enabled"><input type="checkbox" checked={countSupported&&inputTokenCounting} disabled={!countSupported}
+        onChange={event=>setInputTokenCounting(event.target.checked)}/>Use provider input token counting when needed</label>
+      <p className="field-help">{countSupported?'Optional additional requests for inputs near the limit or difficult to count locally. Local counting remains the default; saving does not contact the provider.':'No verified count endpoint for this connection. Studio uses local counting.'}</p>
     </fieldset>
     <p className="field-help">Saving stores configuration only. It does not check metadata or send a model request.</p>
     {mutation.error && <p className="provider-alert" role="alert">{mutation.error}</p>}

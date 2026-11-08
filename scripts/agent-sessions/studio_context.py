@@ -58,7 +58,7 @@ class StudioContext(Context):
         if strict(self.w.config.get('contextPolicy')):
             value=model.input_estimate(body)
             self.input_count=value
-            return value['tokens'],value['bytes']
+            return value.get('admissionTokens',value['tokens']),value['bytes']
         size = len(model.encoded(body).encode())
         has_media=any(p['type']=='image' for m in active for p in m['content'])
         return (size if has_media else math.ceil(size / 4)), size
@@ -90,7 +90,7 @@ class StudioContext(Context):
             overflowTokens=max(0,measured-capacity) if capacity is not None and measured is not None else None,
             usedRatio=measured/capacity if capacity is not None and measured is not None else None,
             last={'inputTokens':measured} if measured is not None else None,
-            estimatedInputTokens=estimate, inputCount=getattr(self,'input_count',None) if estimate is not None else None,
+            estimatedInputTokens=getattr(self,'input_count',{}).get('tokens',estimate), inputCount=getattr(self,'input_count',None) if estimate is not None else None,
             estimateMethod=getattr(self,'input_count',{}).get('method',METHOD) if strict(w.config.get('contextPolicy')) else ('UTF-8 JSON bytes including encoded media (conservative planning proxy, not a token count)' if any(p['type']=='image' for m in active for p in m['content']) else 'UTF-8 JSON bytes / 4, rounded up; planning estimate, not a token count'), estimateAt=now(),
             capacitySource='accepted model configuration' if capacity is not None else None,
             autoCompactThreshold=threshold(w.config,capacity), contextPolicy=w.config.get('contextPolicy'),
@@ -105,8 +105,18 @@ class StudioContext(Context):
             if not progress: return active
         raise ModelFault('context_compaction_bound', not_dispatched=True)
 
+    async def count_preview(self,active,instructions,tools):
+        w=self.w
+        if w.config.get('contextPolicy',{}).get('providerCount',{}).get('enabled') and not open_calls(active):
+            model=w.transport()
+            body,_=model.freeze(active,instructions,tools,w.config['effort'],retain=w.history_reader.cacheable)
+            await model.count_input(body)
+
     async def compact(self, instructions, tools):
         w = self.w
+        if w.config.get('contextPolicy',{}).get('providerCount',{}).get('enabled'):
+            active,_,_=self.history()
+            await self.count_preview(active,instructions,tools)
         active, records, checkpoint, measured, capacity, estimate, size = self.report(instructions, tools)
         if open_calls(active): raise ModelFault('context_has_open_tool_pairs')
         latest = self.latest(records)
@@ -154,10 +164,12 @@ class StudioContext(Context):
                 keep=exact|{r['sequence'] for r in retained}
                 floor=[r for r in active if r.get('sequence',0)>end or r.get('sequence',0) in keep
                     or human and r.get('sequence')==human]
+                await self.count_preview(floor,instructions,tools)
                 floor_estimate,_=self.estimate(floor,instructions,tools)
                 if limit is not None and floor_estimate>limit:
                     raise ModelFault('context_retained_limit',not_dispatched=True)
                 summary=summary_input(prefix)
+                await self.count_preview(summary,summary_instructions,[])
                 summary_estimate,summary_size=self.estimate(summary,summary_instructions,[])
                 if (limit is None or summary_estimate<=limit) and summary_size<6*1024*1024:break
                 byte_limit//=2

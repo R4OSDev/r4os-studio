@@ -104,7 +104,8 @@ class ApiProviders:
         if row is None: raise ProjectFault('API provider not found.',404)
         if row['retired'] and not retired: raise ProjectFault('This API provider was deleted.',410)
         value=json.loads(row['data'])
-        if (not isinstance(value,dict) or set(value)-{'openrouter','server'}!=set(FIELDS) or value['id']!=ident or value['type']!='api'
+        if (not isinstance(value,dict) or set(value)-{'openrouter','server','inputTokenCounting'}!=set(FIELDS) or value['id']!=ident or value['type']!='api'
+                or 'inputTokenCounting' in value and type(value['inputTokenCounting']) is not bool
                 or value['kind'] not in KINDS or value['protocol'] not in PROTOCOLS or value['auth'] not in ('none','bearer')
                 or type(value['revision']) is not int or value['revision']<1
                 or type(value['credentialRevision']) is not int or value['credentialRevision']<0
@@ -172,8 +173,8 @@ class ApiProviders:
         if operation=='create' and data.get('kind') in ('chatgpt-plan','claude-plan') and not plan:raise ProjectFault('Use the Studio browser sign-in flow.',400)
         if operation=='create' and data.get('kind')=='codex-subscription':raise ProjectFault('Use the native OpenAI browser sign-in.',400)
         rid=identity(data.get('requestId'));ident=identity(ident) if ident else None
-        if operation=='create':allowed={'requestId','name','kind','baseUrl','protocol','auth','key','openrouter','server'}
-        elif operation=='update':allowed={'requestId','revision','name','baseUrl','protocol','auth','key','enabled','openrouter','server'}
+        if operation=='create':allowed={'requestId','name','kind','baseUrl','protocol','auth','key','openrouter','server','inputTokenCounting'}
+        elif operation=='update':allowed={'requestId','revision','name','baseUrl','protocol','auth','key','enabled','openrouter','server','inputTokenCounting'}
         elif operation in ('disconnect','delete'):allowed={'requestId','revision'}
         else:raise ProjectFault('Invalid API provider operation.',400)
         if set(data)-allowed:raise ProjectFault('Unexpected API provider fields.',400)
@@ -248,6 +249,12 @@ class ApiProviders:
                 if 'enabled' in data:
                     if type(data['enabled']) is not bool:raise ProjectFault('Invalid API enabled state.',400)
                     value['enabled']=data['enabled']
+                if 'inputTokenCounting' in data:
+                    if type(data['inputTokenCounting']) is not bool:raise ProjectFault('Invalid provider input-count setting.',400)
+                    value['inputTokenCounting']=data['inputTokenCounting']
+                if value.get('inputTokenCounting'):
+                    from provider_count import supported
+                    if not supported(value):raise ProjectFault('Input token counting is only qualified for the official OpenAI Responses API with bearer authentication. This connection uses local counting.',400)
                 if value['auth']=='bearer' and not value['keyConfigured']:
                     if data.get('enabled') is True:raise ProjectFault('Configure a bearer key before enabling this provider.',400)
                     value['enabled']=False

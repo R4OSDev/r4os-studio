@@ -47,6 +47,10 @@ await test('API connection CRUD is protected, bounded and masks credentials inde
     const patch = {requestId,revision:1,key:null};
     assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:patch})).statusCode,200);
     assert.deepEqual(calls.at(-1),{operation:'api_provider',action:'update',id,input:patch});
+    const counting={requestId,revision:1,inputTokenCounting:true};
+    assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:counting})).statusCode,200);
+    assert.deepEqual(calls.at(-1)?.input,counting);
+    assert.equal((await app.inject({method:'PATCH',url:base+'/'+id,headers,payload:{...counting,inputTokenCounting:'yes'}})).statusCode,400);
     for(const [method,url,action] of [['POST',base+'/'+id+'/disconnect','disconnect'],['DELETE',base+'/'+id,'delete']]) {
       assert.equal((await app.inject({method:method as 'POST'|'DELETE',url,headers,payload:{requestId,revision:1}})).statusCode,200);
       assert.equal(calls.at(-1)?.action,action);

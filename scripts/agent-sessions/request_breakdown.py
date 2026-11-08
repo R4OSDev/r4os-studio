@@ -39,10 +39,11 @@ def analyze(raw,facts,policy,full=None):
     try:
         full=full or estimate(raw,policy,facts)
         if full.get('schema')==1:
-            result.update(state='estimated',method=full['method'],estimatedInput=full['tokens'],
+            known=type(full['tokens']) is int
+            result.update(state='estimated' if known else 'unavailable',method=full['method'],estimatedInput=full['tokens'],
                 categories=full['categories'],counting={key:value for key,value in full.items() if key!='categories'},
-                free=max(0,capacity-full['tokens']) if capacity is not None else None,
-                overflow=max(0,full['tokens']-capacity) if capacity is not None else None)
+                free=max(0,capacity-full['tokens']) if capacity is not None and known else None,
+                overflow=max(0,full['tokens']-capacity) if capacity is not None and known else None)
             return result
         amounts={key:0 for key in LABELS};sizes={key:0 for key in LABELS}
         def add(kind,span):

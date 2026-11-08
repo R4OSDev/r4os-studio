@@ -35,3 +35,30 @@ An encoding is loaded once per worker. The model/connection/credential revision
 and content bind the text cache, limited to 32 entries of at most 256 KiB each;
 larger texts bypass it. The final immutable request also reuses its full count.
 Accepted character-only profiles from 0.12.22 remain character-only.
+
+## Optional provider input counting (0.12.24)
+
+The connection form offers **Use provider input token counting when needed**,
+off by default. Only the documented official OpenAI Responses endpoint at
+`https://api.openai.com/v1` with bearer authentication is qualified. Other
+connections, including the native Codex subscription route, keep local counting
+without discovery probes or another account. Saving only changes configuration
+for future inputs; accepted runs retain their frozen choice.
+
+When enabled, near-limit requests, unknown local mappings and media can use
+`POST /responses/input_tokens`. The count projection preserves all supported
+input-bearing fields while excluding stream/storage/output controls. An unknown
+field is not silently dropped. A result is bound to the exact original body
+hash, model, route, credential revision and policy. It can resolve a conservative
+local rejection before compaction or dispatch. The lower limit still applies.
+
+Count operations have their own `input-count` receipts and confirmed child ends;
+they are not model turns, inference usage or dispatched LLM history. Replies are
+limited to 64 KiB and the operation to eight seconds plus original-child cleanup.
+Concurrent identical checks share one operation; up to eight results are reused
+for 60 seconds. Failures back off for 30 seconds under the same binding and fall
+back to the disclosed local method. Cancellation closes the original child.
+No model retry, tool effect, account switch or automatic continuation follows.
+
+The provider total is separate from local component estimates and later reported
+model usage. Official contract: https://developers.openai.com/api/docs/guides/token-counting .

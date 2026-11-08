@@ -164,6 +164,7 @@ class ModelTransport:
         self._frozen = None
         self.context_policy = None
         self._input_estimate = None
+        self.count_observer = None
 
     def parser(self, tools):
         protocol = self.binding['protocol']
@@ -206,7 +207,14 @@ class ModelTransport:
             from input_budget import estimate
             self._input_estimate=(raw,estimate(raw,self.context_policy,self.binding))
             self._estimate_scope=scope
+        value=self._input_estimate[1]
+        if 'admissionTokens' in value and getattr(self,'_provider_count_scope',None)!=self.freeze_scope():
+            value.pop('admissionTokens',None)
         return self._input_estimate[1]
+
+    async def count_input(self,body):
+        from provider_count import count
+        await count(self,body)
 
     def check_input(self,body):
         from input_budget import strict,limit
@@ -215,9 +223,11 @@ class ModelTransport:
         for key in ('max_output_tokens','max_completion_tokens','max_tokens'):
             if type(body.get(key)) is int and body[key]>0:binding['maxOutputTokens']=body[key];break
         value=self.input_estimate(body);maximum=limit(self.context_policy,binding)
-        if maximum is not None and value['tokens']>maximum:
+        admitted=value.get('admissionTokens',value['tokens'])
+        if admitted is None:raise ModelFault('context_input_unavailable',not_dispatched=True)
+        if maximum is not None and admitted>maximum:
             raise ModelFault('context_input_limit',not_dispatched=True,
-                details={'inputEstimate':value['tokens'],'inputLimit':maximum,'method':value['method']})
+                details={'inputEstimate':admitted,'inputLimit':maximum,'method':value['method']})
 
     def prepare(self, messages, instructions, tools, effort=''):
         recoveries = self.history_resolver(messages) if self.history_resolver else {}
@@ -275,6 +285,7 @@ class ModelTransport:
         self.request_sha256=hashlib.sha256(raw_body.encode()).hexdigest()
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit',not_dispatched=True)
+        await self.count_input(body)
         self.check_input(body)
         if self.capture_observer:self.capture_observer(raw_body,self.binding,self.context_policy,
             self._input_estimate[1] if self._input_estimate is not None and self._input_estimate[0]==raw_body else None)
@@ -342,6 +353,11 @@ class ModelTransport:
                 if self.flush_observer:self.flush_observer()
 
     async def close(self):
+        pending=getattr(self,'_count_task',None)
+        if pending is not None and pending is not asyncio.current_task() and not pending.done():
+            pending.cancel()
+            try:await pending
+            except asyncio.CancelledError:pass
         child = self.child
         if child is None:
             return

@@ -17,14 +17,15 @@ export interface ApiProvider {
   runtime: 'not-qualified';
   openrouter?: OpenRouterSettings;
   server?: ApiServer;
+  inputTokenCounting?: boolean;
 }
 export interface ApiProviderCreate {
   requestId: string; name: string; kind: ApiProviderKind; baseUrl: string;
-  protocol: ApiProtocol; auth: ApiAuth; key?: string; openrouter?: OpenRouterSettings; server?: ApiServer;
+  protocol: ApiProtocol; auth: ApiAuth; key?: string; openrouter?: OpenRouterSettings; server?: ApiServer; inputTokenCounting?: boolean;
 }
 export interface ApiProviderUpdate {
   requestId: string; revision: number; name?: string; baseUrl?: string;
-  protocol?: ApiProtocol; auth?: ApiAuth; key?: string | null; enabled?: boolean; openrouter?: OpenRouterSettings; server?: ApiServer;
+  protocol?: ApiProtocol; auth?: ApiAuth; key?: string | null; enabled?: boolean; openrouter?: OpenRouterSettings; server?: ApiServer; inputTokenCounting?: boolean;
 }
 export interface ApiProviderMutation {
   requestId: string; state: 'pending' | 'complete'; provider: ApiProvider;

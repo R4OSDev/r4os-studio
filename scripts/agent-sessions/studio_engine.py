@@ -17,6 +17,7 @@ def model_binding(provider):
         value['openrouter'] = copy.deepcopy(provider['openrouter'])
     else:
         value['server'] = provider.get('server', 'custom')
+    if provider.get('inputTokenCounting') is True:value['inputTokenCounting']=True
     return value
 
 

@@ -31,10 +31,12 @@ if (configuration && !finished) {
     const { binding, addresses, key, body, extraHeaders = {} } = configuration;
     const target = new URL(binding.baseUrl), originalHost = target.hostname.replace(/^\[|\]$/g, '');
     const image = Object.hasOwn(binding, 'imageAction');
+    const count = binding.countInput === true;
+    if (count && (image || binding.protocol !== 'responses')) throw Error('Count binding');
     const imageContract = image ? JSON.parse(await readFile(new URL('../../shared/image-generation-contract.json', import.meta.url), 'utf8')) : null;
     if (image && (binding.kind !== 'codex-subscription' || !['generate', 'edit'].includes(binding.imageAction)
       || binding.protocol !== 'responses' || binding.model !== imageContract.modelId)) throw Error('Image binding');
-    const responseLimit = image ? 24 * 1024 * 1024 : MAX_RESPONSE;
+    const responseLimit = count ? 65536 : image ? 24 * 1024 * 1024 : MAX_RESPONSE;
     if (!['http:', 'https:'].includes(target.protocol) || binding.kind !== 'local' && target.protocol !== 'https:'
       || target.username || target.password || target.search || target.hash || !Object.hasOwn(paths, binding.protocol)
       || !Array.isArray(addresses) || !addresses.length || addresses.some(address => !net.isIP(address))
@@ -44,7 +46,7 @@ if (configuration && !finished) {
     if (net.isIP(originalHost) && !addresses.includes(originalHost)) throw Error('Address');
     if (binding.kind === 'codex-subscription' && (binding.baseUrl !== 'https://chatgpt.com/backend-api/codex'
       || binding.protocol !== 'responses' || binding.auth !== 'bearer' || !extraHeaders['ChatGPT-Account-Id'])) throw Error('Native account binding');
-    const headers = { 'Content-Type': 'application/json', Accept: image ? 'application/json' : 'text/event-stream',
+    const headers = { 'Content-Type': 'application/json', Accept: image || count ? 'application/json' : 'text/event-stream',
       'Accept-Encoding': 'identity', 'Content-Length': Buffer.byteLength(body) };
     // Only trusted connector code supplies these headers. Keep routing,
     // framing and authentication owned here, without a per-vendor registry.
@@ -58,7 +60,7 @@ if (configuration && !finished) {
     if (binding.auth === 'bearer') headers.Authorization = 'Bearer ' + key;
     const address = addresses[0], transport = target.protocol === 'https:' ? https : http;
     request = transport.request({ protocol: target.protocol, hostname: originalHost, port: target.port || undefined,
-      path: target.pathname.replace(/\/$/, '') + (image ? '/' + (binding.imageAction === 'edit' ? imageContract.editPath : imageContract.generatePath) : paths[binding.protocol]) + (binding.kind === 'claude-plan' ? '?beta=true' : ''), method: 'POST', headers,
+      path: target.pathname.replace(/\/$/, '') + (count ? '/responses/input_tokens' : image ? '/' + (binding.imageAction === 'edit' ? imageContract.editPath : imageContract.generatePath) : paths[binding.protocol]) + (binding.kind === 'claude-plan' ? '?beta=true' : ''), method: 'POST', headers,
       agent: false, maxHeaderSize: 16384, autoSelectFamily: false, family: net.isIP(address),
       lookup: (host, options, callback) => {
         if (host !== originalHost) { callback(Error('Target changed')); return; }
@@ -91,7 +93,7 @@ if (configuration && !finished) {
         return;
       }
       const contentType = incoming.headers['content-type'];
-      if (contentType && !String(contentType).toLowerCase().startsWith(image ? 'application/json' : 'text/event-stream')
+      if (contentType && !String(contentType).toLowerCase().startsWith(image || count ? 'application/json' : 'text/event-stream')
         || incoming.headers['content-encoding'] || Number(incoming.headers['content-length'] ?? 0) > responseLimit) {
         incoming.destroy(); fail('model_stream_invalid', status, { contentType: typeof contentType==='string' ? contentType.slice(0,200) : null, contentEncoding: String(incoming.headers['content-encoding']??'').slice(0,80) }); return;
       }

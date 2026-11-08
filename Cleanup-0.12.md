@@ -85,3 +85,7 @@ Use a frozen Unicode full-input estimate for new requests, preserve accepted cou
 ## 0.12.23
 
 Count qualified model text locally with pinned offline tiktoken assets, bound caches and an explicit Unicode fallback for unsupported mappings.
+
+## 0.12.24
+
+Optionally count complete Responses inputs through qualified provider routes with frozen opt-in, bounded count-only HTTP and visible local fallback.

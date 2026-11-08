@@ -19,6 +19,7 @@ const fields = {
   protocol: { type: 'string', enum: ['responses', 'chat-completions', 'messages'] },
   auth: { type: 'string', enum: ['none', 'bearer'] },
   server: { type: 'string', enum: ['custom', 'ollama', 'lm-studio'] },
+  inputTokenCounting: { type: 'boolean' },
   openrouter,
 };
 const params = { type: 'object', required: ['id'], additionalProperties: false, properties: { id: uuid } };
@@ -71,7 +72,7 @@ function input(value: unknown, allowed: string[]) {
   for (const [field, item] of Object.entries(value)) {
     if (field === 'openrouter' && allowed.includes(field)) { routingInput(item); continue; }
     if (!allowed.includes(field) || (field === 'revision' ? typeof item !== 'number' || !Number.isSafeInteger(item)
-      : field === 'enabled' ? typeof item !== 'boolean' : field === 'key' && item === null ? false : typeof item !== 'string')) {
+      : field === 'enabled' || field === 'inputTokenCounting' ? typeof item !== 'boolean' : field === 'key' && item === null ? false : typeof item !== 'string')) {
       throw new ProviderError('Invalid API provider fields.');
     }
   }

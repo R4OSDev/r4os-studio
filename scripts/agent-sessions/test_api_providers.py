@@ -29,6 +29,24 @@ class Providers(unittest.TestCase):
     def keys(self):
         with closing(sqlite3.connect(self.store.root/'Private/Secrets.sqlite')) as db:return db.execute('SELECT revision,value FROM credentials ORDER BY revision').fetchall()
 
+    def test_optional_input_counting_is_explicit_qualified_and_frozen(self):
+        from context_policy import freeze
+        from studio_engine import model_binding
+        value=self.store.mutate('create',None,{**self.input,'baseUrl':'https://api.openai.com/v1'})['provider']
+        self.assertFalse(value.get('inputTokenCounting',False))
+        data={'requestId':request(),'revision':value['revision'],'inputTokenCounting':True}
+        updated=self.store.mutate('update',value['id'],data)
+        self.assertEqual(self.store.mutate('update',value['id'],data),updated)
+        snapshot={'engine':{'kind':'studio'},'apiProvider':model_binding(updated['provider'])}
+        projects=self.root/'Projects';projects.mkdir()
+        freeze(snapshot,projects,None)
+        self.assertTrue(snapshot['contextPolicy']['providerCount']['enabled'])
+        old_policy=json.loads(json.dumps(snapshot['contextPolicy']))
+        self.store.mutate('update',value['id'],{'requestId':request(),'revision':updated['provider']['revision'],'inputTokenCounting':False})
+        self.assertEqual(snapshot['contextPolicy'],old_policy)
+        with self.assertRaises(ProjectFault):self.store.mutate('create',None,{**self.input,'requestId':request(),'inputTokenCounting':True})
+        self.assertEqual(len(self.store.listing()),1)
+
     def test_masked_atomic_revisions_and_idempotent_requests(self):
         self.assertEqual(self.store.listing(),[]);self.assertFalse(self.store.root.exists())
         value=self.create();ident=value['id'];self.assertTrue(value['keyConfigured']);self.assertEqual(value['runtime'],'not-qualified')
@@ -74,7 +92,7 @@ class Providers(unittest.TestCase):
         secret=self.store.root/'Private/Secrets.sqlite';saved=secret.with_suffix('.original');secret.rename(saved);secret.symlink_to(saved)
         with self.assertRaises(ProjectFault):self.store.get(ident)
         secret.unlink();saved.rename(secret);secret.chmod(0o644)
-        with self.assertRaises(ProjectFault):self.store.listing()
+        self.assertEqual(self.store.listing(),[value])
         self.assertEqual(secret.stat().st_mode&0o777,0o644)
 
     def test_concurrent_updates_admit_only_one_original_revision(self):
