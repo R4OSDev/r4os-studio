@@ -29,3 +29,7 @@ Update status uses one completion-driven read at a time. Mutation generations re
 ## 0.12.9
 
 Skill options, freezing and workspace metadata use one catalog snapshot per operation. Script bindings and resource views share verified revision metadata during preparation; later admissions and tombstones are checked afresh.
+
+## 0.12.10
+
+Context reporting returns the estimate and encoded size from the same prepared request. Compaction decisions reuse that pair within the operation and recompute after input or checkpoint changes.

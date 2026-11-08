@@ -66,7 +66,7 @@ class StudioContext(Context):
         if not same_selection or checkpoint and latest and latest['sequence'] <= checkpoint['sequence']: measured = None
         capacity = w.config.get('apiModel', {}).get('contextWindow')
         capacity = capacity if number(capacity, positive=True) else None
-        estimate = None if open_calls(active) else self.estimate(active, instructions, tools)[0]
+        estimate, size = (None, None) if open_calls(active) else self.estimate(active, instructions, tools)
         value = empty(w.store, w.store.row(w.session_id))
         reported_model = (latest or {}).get('origin', {}).get('reportedModel') if same_selection else None
         if (not isinstance(reported_model,str) or not 1 <= len(reported_model) <= 200
@@ -90,7 +90,7 @@ class StudioContext(Context):
             autoCompactThreshold=threshold(w.config,capacity), contextPolicy=w.config.get('contextPolicy'),
             checkpoint={'recordId':checkpoint['id'], 'throughSequence':checkpoint['throughSequence']} if checkpoint else None)
         self.write(value)
-        return active, records, checkpoint, measured, capacity, estimate
+        return active, records, checkpoint, measured, capacity, estimate, size
 
     async def prepare(self, instructions, tools):
         for _ in range(16):
@@ -100,9 +100,8 @@ class StudioContext(Context):
 
     async def compact(self, instructions, tools):
         w = self.w
-        active, records, checkpoint, measured, capacity, estimate = self.report(instructions, tools)
+        active, records, checkpoint, measured, capacity, estimate, size = self.report(instructions, tools)
         if open_calls(active): raise ModelFault('context_has_open_tool_pairs')
-        _, size = self.estimate(active, instructions, tools)
         latest = self.latest(records)
         fresh = latest and (not checkpoint or latest['sequence'] > checkpoint['sequence'])
         limit=threshold(w.config,capacity)
