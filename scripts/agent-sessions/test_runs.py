@@ -38,6 +38,9 @@ class Runs(unittest.TestCase):
         (self.providers / 'providers.json').write_text(encode([{'id': self.provider, 'name': 'Fixture', 'type': 'openai', 'connected': True}]))
         (self.providers / self.provider / 'models_cache.json').write_text(encode({'models': [{'slug': 'fixture', 'visibility': 'list', 'supported_reasoning_levels': [{'effort': 'low'}]}]}))
         self.settings = {'providerId': self.provider, 'model': 'fixture', 'effort': 'low', 'permissions': {'studio.' + t: True for t in tools_for(LEGACY_PROFILE)}}
+        # This fixture exercises the native adapter, which owns its request.
+        # Full Studio input-limit admission is covered by test_context_policy.
+        self.settings['contextLimit']={'mode':'off','budgetTokens':None}
         with self.open() as s:
             s.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')", (self.sid, self.pid, 'Fixture', encode(self.settings), encode({'profile': LEGACY_PROFILE}))); s.db.commit()
         self.data = {'requestId': str(uuid.uuid4()), 'revision': 1, 'text': 'Concurrent input'}

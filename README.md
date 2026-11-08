@@ -1,3 +1,7 @@
+## Context input limits 0.12.15–17
+
+Global and session settings, complete input checks and native connection limits: [Context input limits](Context-Limits.md).
+
 ## Codebereinigung 0.12.3–0.12.14
 
 Terminal-Kindprozesse, native Argumente, UTF-8-Antworten und MCP-Controllerenden

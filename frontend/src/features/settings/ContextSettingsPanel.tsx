@@ -51,7 +51,7 @@ export function ContextSettingsPanel({setLeaveGuard}:{setLeaveGuard:(guard:()=>b
    <label htmlFor="context-budget">Global input limit (tokens)</label>
    <input id="context-budget" type="text" inputMode="numeric" value={text} disabled={busy||!!pending} aria-describedby="context-budget-help" onChange={e=>change(e.target.value)}/>
    <p id="context-budget-help">Whole number from 1 to {saved.maxBudgetTokens.toLocaleString('en-US')}. Default: {saved.defaultBudgetTokens.toLocaleString('en-US')}.</p>
-   <p>Global limit: {saved.enabled?'On':'Off'} · {saved.budgetTokens.toLocaleString('en-US')} tokens. Switching it off keeps this value and leaves model limits in effect. The input includes instructions, tools, conversation, summaries and media; cached input counts in full. Input estimates are separate from measured provider usage.</p>
+   <p>Global limit: {saved.enabled?'On':'Off'} · {saved.budgetTokens.toLocaleString('en-US')} tokens. Switching it off keeps this value and leaves model limits in effect. The input includes instructions, tools, conversation, summaries and media; cached input counts in full. Studio checks a conservative full-input estimate before sending; it can stop earlier than the provider’s token count. Original context is kept if it cannot be reduced safely.</p>
    {conflict&&<p role="alert">The saved revision changed. Your draft was retained. Cancel the draft to load current settings.</p>}
   </>}
   {error&&<p role="alert" className="system-prompt-error">{error}</p>}

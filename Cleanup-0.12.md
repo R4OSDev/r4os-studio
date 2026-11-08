@@ -57,3 +57,7 @@ Context limit settings have a dedicated Limit view and a saved global on/off swi
 ## 0.12.16
 
 Project and skill sessions inherit the global context limit and can switch it off or on with an optional session value
+
+## 0.12.17
+
+Every direct provider request checks the effective full-input limit before dispatch, including summaries and media helpers; irreducible context is preserved and stopped

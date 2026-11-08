@@ -45,6 +45,10 @@ class ModelFault(ProjectFault):
         if code in ('context_retained_limit','context_compaction_bound'):
             self.category='context'
             self.args=('The context could not be reduced safely within its limits. Current and unresolved tool observations were preserved. No further model request was sent.',)
+        if code in ('context_input_limit','context_input_unavailable'):
+            self.category='context'
+            self.args=(('The complete provider input exceeds the effective input limit. Reduce the current input or review the session limit. Original history was preserved; no model request was sent.' if code=='context_input_limit' else
+                'The complete provider input could not be checked against its limit. Original history was preserved; no model request was sent.'),)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -150,6 +154,8 @@ class ModelTransport:
         self.history_resolver = None
         self.history_scope = ()
         self._frozen = None
+        self.context_policy = None
+        self._input_estimate = None
 
     def parser(self, tools):
         protocol = self.binding['protocol']
@@ -168,7 +174,7 @@ class ModelTransport:
         return SSE()
 
     def freeze_scope(self):
-        return (dumps([self.binding,self.chat_policy,self.client,self.headers]), self.credential,
+        return (dumps([self.binding,self.chat_policy,self.client,self.headers,self.context_policy]), self.credential,
                 self.history_resolver, self.history_scope)
 
     def freeze(self, messages, instructions, tools, effort='', *, retain=True):
@@ -184,6 +190,24 @@ class ModelTransport:
 
     def encoded(self, body):
         return self._frozen['raw'] if self._frozen is not None and self._frozen['body'] is body else dumps(body)
+
+    def input_estimate(self,body):
+        raw=self.encoded(body)
+        if self._input_estimate is None or self._input_estimate[0]!=raw:
+            from input_budget import estimate
+            self._input_estimate=(raw,estimate(raw))
+        return self._input_estimate[1]
+
+    def check_input(self,body):
+        from input_budget import strict,limit
+        if not strict(self.context_policy):return
+        binding=self.binding.copy()
+        for key in ('max_output_tokens','max_completion_tokens','max_tokens'):
+            if type(body.get(key)) is int and body[key]>0:binding['maxOutputTokens']=body[key];break
+        value=self.input_estimate(body);maximum=limit(self.context_policy,binding)
+        if maximum is not None and value['tokens']>maximum:
+            raise ModelFault('context_input_limit',not_dispatched=True,
+                details={'inputEstimate':value['tokens'],'inputLimit':maximum,'method':value['method']})
 
     def prepare(self, messages, instructions, tools, effort=''):
         recoveries = self.history_resolver(messages) if self.history_resolver else {}
@@ -240,7 +264,8 @@ class ModelTransport:
         raw_body = self.encoded(body)
         self.request_sha256=hashlib.sha256(raw_body.encode()).hexdigest()
         if len(raw_body.encode()) > 8 * 1024 * 1024:
-            raise ModelFault('model_input_limit')
+            raise ModelFault('model_input_limit',not_dispatched=True)
+        self.check_input(body)
         addresses = await resolve_binding(self.binding)
         bootstrap = dumps({'binding': self.binding, 'addresses': addresses, 'key': self.credential,
                            'body': raw_body, 'extraHeaders': self.headers}).encode()

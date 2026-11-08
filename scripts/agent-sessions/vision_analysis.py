@@ -112,6 +112,7 @@ def snapshot(w,operation,setting):
              'apiRunId':operation,'visionModelFacts':{'catalogRevision':target['catalogRevision'],'model':model},
              'visionChild':{'purpose':'vision','parentRunId':w.run_id,'operationId':operation,'settingsRevision':setting['revision']}}
     value.update(studio_model_facts(provider,model,effort,function_tools=False))
+    if 'contextPolicy' in w.config:value['contextPolicy']=w.config['contextPolicy'].copy()
     value['apiModel']['maxOutputTokens'] = output_budget(model)
     value['visionChild']['bounds'] = {'maxTextBytes':MAX_TEXT,'deadlineSeconds':TIMEOUT,
         'reservedOutputTokens':output_budget(model),
@@ -222,6 +223,7 @@ class Vision:
             model = self.model = VisionTransport({**provider,**frozen['apiModel'],**frozen['apiModel'].get('messages',{})},frozen['model'],credential,
                 headers=headers,chat_policy=frozen.get('apiChat'),client=frozen.get('apiZaiClient'))
             model.media_resolver = lambda reference: {'type':'image','mediaType':'image/png','data':base64.b64encode(raw).decode()} if reference == image_ref else None
+            model.context_policy = frozen.get('contextPolicy')
             model.process_observer = lambda stage,child: operations.process(op,stage,child,model.request_sha256)
             model.event_observer = lambda value: operations.wire(op,value)
             model.flush_observer = lambda: operations.flush(op)

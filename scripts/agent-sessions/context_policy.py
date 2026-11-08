@@ -87,22 +87,25 @@ def preference(value=None):
 def resolve(value,session=None):
     chosen=preference((session or {}).get('contextLimit'))
     enabled=chosen['mode']=='on' or chosen['mode']=='global' and value['enabled']
-    return {'schema':2,'revision':value['revision'],'enabled':enabled,
+    return {'schema':3,'revision':value['revision'],'enabled':enabled,
         'budgetTokens':chosen['budgetTokens'] if chosen['budgetTokens'] is not None else value['budgetTokens'],
         'globalEnabled':value['enabled'],'globalBudgetTokens':value['budgetTokens'],
         'sessionMode':chosen['mode'],'sessionBudgetTokens':chosen['budgetTokens']}
 
 def freeze(snapshot,projects,original,session=None):
-    if snapshot['engine'].get('kind')!='studio':return
     if original is not None:
         if 'contextPolicy' in original:snapshot['contextPolicy']=original['contextPolicy'].copy()
         return
     snapshot['contextPolicy']=resolve(read(projects),session)
+    if snapshot['engine'].get('kind')!='studio' and snapshot['contextPolicy']['enabled']:
+        raise ProjectFault('This native connection cannot check the complete provider input against a Studio limit. Review an explicit conversation conversion, or switch the session limit Off. Original history was preserved; no model request was started.',409)
 
 def threshold(config,capacity):
     model_limit=int(capacity*0.8) if capacity is not None else None
     value=config.get('contextPolicy')
     if value is None:return model_limit  # Older accepted configs retain their policy.
+    from input_budget import strict,limit
+    if strict(value):return limit(value,{**config.get('apiProvider',{}),**config.get('apiModel',{}),'contextWindow':capacity})
     if value.get('enabled',True) is False:return model_limit
     limit=budget(value.get('budgetTokens'))
     return min(limit,model_limit) if model_limit is not None else limit

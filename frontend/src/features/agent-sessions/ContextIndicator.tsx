@@ -63,6 +63,7 @@ export function ContextIndicator({context}:{context?:SessionContext}) {
         <dt>Last reported</dt><dd>{date&&!Number.isNaN(date.valueOf())?<time dateTime={context!.reportedAt!}>{date.toLocaleString()}</time>:'Unknown'}</dd>
         <dt>Source</dt><dd>{context?.source?(context.engine==='studio'?'Studio model usage · '+context.capacitySource:'Native '+(context.engine==='codex'?'Codex ':'Claude ')+context.engineVersion+' · last context'):'Unavailable'}</dd>
         {context?.engine==='studio'&&<><dt>Automatic summary threshold</dt><dd>{tokens(context.autoCompactThreshold)}</dd><dt>Estimated next input</dt><dd>{tokens(context.estimatedInputTokens)}</dd>
+          {context.inputLimit!=null&&<><dt>Effective input limit</dt><dd>{tokens(context.inputLimit)}</dd></>}
           <dt>Estimate method</dt><dd>{context.estimateMethod??'Unknown'}</dd></>}
         </dl>
       <p>{context?.engine==='studio'?'The planning estimate uses serialized bytes. It is separate from provider usage and subscription limits.':'Full reported context. No estimate from cumulative usage or subscription limits.'}</p>

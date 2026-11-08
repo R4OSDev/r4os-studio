@@ -85,5 +85,16 @@ class ContextPolicy(unittest.TestCase):
         freeze(copy,self.projects,original,{'contextLimit':{'mode':'on','budgetTokens':10}})
         self.assertEqual(copy,original)
 
+    def test_native_connection_cannot_claim_a_studio_limit(self):
+        for engine in ({},{'kind':'claude-code'}):
+            with self.subTest(engine=engine), self.assertRaisesRegex(ProjectFault,'complete provider input'):
+                freeze({'engine':engine},self.projects,None)
+            config={'engine':engine}
+            freeze(config,self.projects,None,{'contextLimit':{'mode':'off','budgetTokens':1234}})
+            self.assertFalse(config['contextPolicy']['enabled'])
+            original={'engine':engine};restored={'engine':engine}
+            freeze(restored,self.projects,original)
+            self.assertEqual(restored,original)
+
 
 if __name__ == '__main__': unittest.main()

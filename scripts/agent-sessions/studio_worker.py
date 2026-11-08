@@ -191,6 +191,7 @@ class StudioWorker(Worker):
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
             headers=getattr(self,'model_headers',None), chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
         model.media_resolver=self.media.resolve
+        model.context_policy=self.config.get('contextPolicy')
         from studio_history import recoveries
         model.history_resolver=lambda messages:recoveries(self.store,self.session_id,messages)
         self.transport_scope=scope;self.prepared_transport=model

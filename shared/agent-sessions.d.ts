@@ -66,6 +66,7 @@ export interface SessionContext {
   last: Record<string, number | null> | null;
   autoCompactThreshold: number | null; nominalModelCapacity: null;
   estimatedInputTokens?: number | null; estimateMethod?: string; estimateAt?: string; capacitySource?: string | null;
+  inputLimit?: number | null;
   checkpoint?: { recordId: string; throughSequence: number } | null;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }

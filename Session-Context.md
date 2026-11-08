@@ -1,5 +1,9 @@
 # Session context measurements (0.8.24)
 
+The current input-budget contract and settings inheritance are documented in
+[Context input limits](Context-Limits.md). Provider usage remains a separate
+measurement; the input-budget check is a conservative admission estimate.
+
 Session reads and the existing authenticated event stream expose a small
 `context` snapshot, shared by project and skill sessions. Reading it makes no
 model request, scans no transcript and changes no user data. Old workers and

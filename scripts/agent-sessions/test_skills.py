@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import closing
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,14 @@ class Skills(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         self.projects = self.root / 'Projects'; self.skills = self.root / 'Skills'; self.r4os = self.root / 'R4OS'
+        runtime=self.r4os/'Toolchains/Codex/0.163.0/codex';runtime.parent.mkdir(parents=True)
+        runtime.write_bytes(b'isolated-runtime-fixture-not-executed')
+        metadata={'id':'0.163.0','version':'0.163.0','binarySha256':hashlib.sha256(runtime.read_bytes()).hexdigest()}
+        runtime.with_name('.studio-component.json').write_text(json.dumps(metadata))
+        (self.r4os/'Profiles').mkdir()
+        (self.r4os/'Profiles/versions.json').write_text(json.dumps({'defaults':{'codex':{**metadata,'binary':str(runtime)}}}))
+        features=patch('codex_runtime.feature_names',return_value=('goals','image_generation'))
+        features.start();self.addCleanup(features.stop)
         self.providers = self.root / 'LLMProvider'; self.provider = str(uuid.uuid4())
         self.ids = [str(uuid.uuid4()) for _ in range(2)]
         with closing(packages.connect(self.skills)) as db:
@@ -36,6 +45,12 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         self.engine = {'profile': AUTHOR_PROFILE, 'version': CODEX_VERSION, 'sha256': CODEX_SHA256, 'available': True}
         with self.open() as store, patch('session_store.engine', return_value=self.engine):
             self.session = store.create(self.settings(), self.providers)
+            # Native lifecycle fixture: use its model limits. Common Studio
+            # sessions exercise Global default and overrides separately.
+            row=store.row(self.session['id']);settings=json.loads(row['settings'])
+            settings['contextLimit']={'mode':'off','budgetTokens':None}
+            with store.db:store.db.execute('UPDATE sessions SET settings=? WHERE id=?',(encode(settings),self.session['id']))
+            self.session=store.get(self.session['id'])
         self.config = {'projects': str(self.projects), 'providers': str(self.providers), 'r4os': str(self.r4os), 'uid': os.getuid(), 'maxActiveRuns': 2}
 
     def tearDown(self): self.temp.cleanup()
@@ -91,7 +106,8 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         with patch('host.systemctl', control):
             with self.assertRaises(ProjectFault): await host.stop(self.ids[1], self.session['id'], run['id'], 'skill')
             await host.stop(self.ids[0], self.session['id'], run['id'], 'skill')
-        self.assertEqual([c.args[0] for c in control.call_args_list], ['stop'])
+        # Stop confirmation may read the unit; only one mutating action occurs.
+        self.assertEqual([c.args[0] for c in control.call_args_list if c.args[0]!='show'], ['stop'])
         queued = self.admit(); recovered = Host(self.config)
         with patch('host.systemctl', AsyncMock(return_value='')) as control:
             await recovered.recover()

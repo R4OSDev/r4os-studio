@@ -83,6 +83,7 @@ class ImageGeneration:
         target=selected['target'];provider=target['provider'];op=str(uuid.uuid5(uuid.UUID(w.run_id),encode(['image-generation',call_id])))
         frozen={'engine':{'kind':'studio'},'providerId':provider['id'],'apiProvider':provider,'model':target['modelId'],'effort':'none','apiRunId':op,
             'apiNativeAccount':target['account'],'imageChild':{'purpose':'image-generation','parentRunId':w.run_id,'operationId':op}}
+        if 'contextPolicy' in w.config:frozen['contextPolicy']=w.config['contextPolicy'].copy()
         child={'purpose':'image-generation','parentRunId':w.run_id,'parentToolCallId':call_id,'settingsRevision':selected.get('settingsRevision'),
             'source':selected['source'],'snapshot':frozen,'worker':worker,'inputSha256':key,'imageInputSha256':hashes}
         images=GeneratedImages(w.store,w.session_id);images.check_capacity(w.run_id)
@@ -98,6 +99,7 @@ class ImageGeneration:
             if current_inputs:payload['images']=current_inputs
             self.model=ImageTransport({**provider,'imageAction':'edit' if inputs else 'generate'},target['modelId'],account['key'],
                 headers={**account['extraHeaders'],'x-codex-image-turn-id':w.run_id})
+            self.model.context_policy=frozen.get('contextPolicy')
             self.model.process_observer=lambda stage,proc:operations.process(op,stage,proc,self.model.request_sha256)
             self.model.event_observer=lambda raw:operations.wire(op,raw)
             self.model.flush_observer=lambda:operations.flush(op);self.model.flush_delay=lambda:operations.flush_delay(op)
