@@ -100,9 +100,7 @@ class ImageGeneration:
             self.model=ImageTransport({**provider,'imageAction':'edit' if inputs else 'generate'},target['modelId'],account['key'],
                 headers={**account['extraHeaders'],'x-codex-image-turn-id':w.run_id})
             self.model.context_policy=frozen.get('contextPolicy')
-            self.model.process_observer=lambda stage,proc:operations.process(op,stage,proc,self.model.request_sha256)
-            self.model.event_observer=lambda raw:operations.wire(op,raw)
-            self.model.flush_observer=lambda:operations.flush(op);self.model.flush_delay=lambda:operations.flush_delay(op)
+            operations.observe(self.model,op)
             task=asyncio.create_task(self.model.response(payload,'',[]))
             async def watch():
                 while not task.done():

@@ -224,10 +224,7 @@ class Vision:
                 headers=headers,chat_policy=frozen.get('apiChat'),client=frozen.get('apiZaiClient'))
             model.media_resolver = lambda reference: {'type':'image','mediaType':'image/png','data':base64.b64encode(raw).decode()} if reference == image_ref else None
             model.context_policy = frozen.get('contextPolicy')
-            model.process_observer = lambda stage,child: operations.process(op,stage,child,model.request_sha256)
-            model.event_observer = lambda value: operations.wire(op,value)
-            model.flush_observer = lambda: operations.flush(op)
-            model.flush_delay = lambda: operations.flush_delay(op)
+            operations.observe(model,op)
             length = 0
             async def bounded(fragment):
                 nonlocal length

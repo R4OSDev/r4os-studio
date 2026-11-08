@@ -9,6 +9,7 @@ from store import ProjectFault
 
 
 SOURCES = {
+    'requests': ('studio_request_bodies', 'length({row}.compressed)', '{row}.session_id'),
     'events': ('events', 'length({row}.payload)', '{row}.session_id'),
     'conversation': ('conversation_records',
                      'length(CAST({row}.content AS BLOB))+length(CAST({row}.origin AS BLOB))', '{row}.session_id'),

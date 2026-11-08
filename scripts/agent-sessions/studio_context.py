@@ -166,7 +166,10 @@ class StudioContext(Context):
         # Historical calls are data for the summarizer, without active tools.
         # Opaque provider blocks stay in their original conversation archive.
         summary = summary_input(prefix)
-        result = await w.infer(summary, summary_instructions, [])
+        previous_purpose=getattr(w,'request_purpose','conversation')
+        w.request_purpose='summary'
+        try:result = await w.infer(summary, summary_instructions, [])
+        finally:w.request_purpose=previous_purpose
         text = '\n'.join(p['text'] for p in result['content'] if p['type'] == 'text').strip()
         if not text or any(p['type'] == 'tool_call' for p in result['content']): raise ModelFault('context_summary_incomplete')
         checkpoint_id='checkpoint-'+w.run_id+'-'+str(through)

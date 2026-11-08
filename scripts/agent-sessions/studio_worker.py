@@ -237,11 +237,8 @@ class StudioWorker(Worker):
             raise GoalHalted()
         self.model = self.transport(); self.turn_requested = True
         request_id = str(uuid.uuid4())
-        self.operations.begin(self.run_id,request_id)
-        self.model.process_observer=lambda stage,child:self.operations.process(request_id,stage,child,request_sha256=self.model.request_sha256)
-        self.model.event_observer=lambda raw:self.operations.wire(request_id,raw)
-        self.model.flush_observer=lambda:self.operations.flush(request_id)
-        self.model.flush_delay=lambda:self.operations.flush_delay(request_id)
+        self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'))
+        self.operations.observe(self.model,request_id)
         execution = self.goal_worker.execution if self.goal_worker.active else None
         self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],on_text=on_text))
         try:result = await self.operation
@@ -268,7 +265,7 @@ class StudioWorker(Worker):
         proof=snapshot_evidence(self.config,error,self.manifest['providers'])
         if not proof:return False
         request_id=str(uuid.uuid4());error.quota_evidence=proof
-        self.operations.begin(self.run_id,request_id);self.operations.finish(request_id,error=error,attempted=False)
+        self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'));self.operations.finish(request_id,error=error,attempted=False)
         return bool(register(self,request_id,proof))
 
     def observe_limit(self,error):

@@ -84,15 +84,26 @@ class Operations:
     def put(self,rid,phase,value):
         with self.store.db:self.store.db.execute('UPDATE studio_model_calls SET phase=?,data=? WHERE request_id=?',(phase,encode(value),rid))
 
-    def begin(self,run_id,rid,child=None):
+    def begin(self,run_id,rid,child=None,purpose='conversation'):
         row=get_run(self.store,run_id);config=json.loads(row['config'])
         if child is not None:
             if child.get('purpose') not in ('vision','image-generation') or child.get('parentRunId') != run_id or child['snapshot']['apiRunId'] != rid: raise ProjectFault('Invalid image operation binding.',409)
             config = child['snapshot']
         data={'runId':run_id,'requestId':rid,'sessionId':row['session_id'],'owner':{'type':self.store.owner_type,'id':self.store.owner_id},
+            'purpose':child['purpose'] if child else purpose,
             'selection':{key:config[key] for key in ('providerId','model','effort','apiProvider')},'createdAt':now()}
         if child is not None: data['vision' if child['purpose']=='vision' else 'imageGeneration'] = child
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
+
+    def observe(self,model,rid):
+        """One observer contract for main, summary, vision and image requests."""
+        from request_capture import capture,transport
+        model.capture_observer=lambda raw,binding,policy:capture(self.store,self.row(rid)[1],raw,binding,policy)
+        model.request_observer=lambda stage,status=None:transport(self.store,rid,stage,status)
+        model.process_observer=lambda stage,child:self.process(rid,stage,child,model.request_sha256)
+        model.event_observer=lambda raw:self.wire(rid,raw)
+        model.flush_observer=lambda:self.flush(rid)
+        model.flush_delay=lambda:self.flush_delay(rid)
 
     def process(self,rid,stage,child,request_sha256=None):
         row,data=self.row(rid)

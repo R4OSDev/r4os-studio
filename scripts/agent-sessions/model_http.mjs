@@ -67,6 +67,7 @@ if (configuration && !finished) {
       }, rejectUnauthorized: true, servername: net.isIP(originalHost) ? undefined : originalHost,
     }, incoming => {
       const status = incoming.statusCode ?? 502;
+      emit({ type: 'response', httpStatus: status });
       if (status < 200 || status >= 300) {
         const errors = []; let size = 0;
         incoming.on('data', chunk => {
@@ -116,6 +117,7 @@ if (configuration && !finished) {
     request.once('close', () => { clearTimeout(connect); clearTimeout(deadline); });
     // Forward the exact Python-serialized body. Re-encoding parsed JavaScript
     // objects would round valid uint64 tool arguments and history values.
+    emit({ type: 'dispatch' });
     request.end(body);
   } catch { fail('model_bootstrap_invalid'); }
 }

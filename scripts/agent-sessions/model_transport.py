@@ -145,6 +145,8 @@ class ModelTransport:
         self.child = None
         self.closed_confirmed = True
         self.attempted = False
+        self.capture_observer = None
+        self.request_observer = None
         self.process_observer = None
         self.event_observer = None
         self.flush_observer = None
@@ -266,6 +268,7 @@ class ModelTransport:
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit',not_dispatched=True)
         self.check_input(body)
+        if self.capture_observer:self.capture_observer(raw_body,self.binding,self.context_policy)
         addresses = await resolve_binding(self.binding)
         bootstrap = dumps({'binding': self.binding, 'addresses': addresses, 'key': self.credential,
                            'body': raw_body, 'extraHeaders': self.headers}).encode()
@@ -290,6 +293,9 @@ class ModelTransport:
                 if not raw:break
                 frame = loads(raw)
                 if not isinstance(frame, dict): raise ModelFault()
+                if frame.get('type') in ('dispatch','response'):
+                    if self.request_observer:self.request_observer(frame['type'],frame.get('httpStatus'))
+                    continue
                 if frame.get('type') == 'error':
                     code = frame.get('code', 'model_transport_error')
                     if self.binding.get('kind') == 'claude-plan':
