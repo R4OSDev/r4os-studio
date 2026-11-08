@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AgentSession, NativeImageCapability } from '../../../../shared/agent-sessions';
 import { WebServiceSettings } from './WebServiceSettings';
+import { ContextLimitSettings } from './ContextLimitSettings';
 import { SessionMigration } from './SessionMigration';
 import { SessionOpenAILimits } from './SessionOpenAILimits';
 import { ProjectField } from '../projects/ProjectField';
 import { useSessionApi, sessionPath, busyRun, toolLabels, permissionToolIds, updateToolIds, remoteToolIds, imageToolIds } from './api';
 
 const tools = permissionToolIds;
-const sections = ['General', 'Tools', 'Skills', 'Conversation'] as const;
-const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
+const sections = ['General', 'Context', 'Tools', 'Skills', 'Conversation'] as const;
+const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.contextLimit?.mode??'global', s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
 export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged, deleteSession }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
@@ -20,13 +21,14 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
 }) {
   const { request: projectRequest, scope } = useSessionApi();
   const [draft, setDraft] = useState(session);
+  const [contextText,setContextText]=useState(String(session.contextLimit?.budgetTokens??''));
   const { options, error: optionsError } = useSessionOptions(projectId);
   const [imageCapability, setImageCapability] = useState<{ key: string; value?: NativeImageCapability; error?: string } | null>(null);
   const [baseline, setBaseline] = useState(session);
   const [error, setError] = useState(''), [saving, setSaving] = useState(false), [reloading, setReloading] = useState(false);
   const [runtimeBusy,setRuntimeBusy]=useState(false);
   const dialog = useRef<HTMLDialogElement>(null), [tab, setTab] = useState<typeof sections[number]>('General');
-  const dirty = editable(draft) !== editable(baseline);
+  const dirty = editable(draft) !== editable(baseline)||contextText!==String(baseline.contextLimit?.budgetTokens??'');
   const developmentTools = scope === 'project';
   const provider = options?.providers.find((p) => p.id === draft.providerId), model = provider?.models.find((m) => m.id === draft.model);
   useEffect(() => { dirtyChanged(dirty); return () => dirtyChanged(false); }, [dirty, dirtyChanged]);
@@ -57,10 +59,12 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   const patch = (values: Partial<AgentSession>) => setDraft((old) => ({ ...old, ...values }));
   async function submit(e: FormEvent) {
     e.preventDefault(); if (saving || reloading || runtimeBusy) return;
+    const amount=contextText===''?null:Number(contextText);
+    if (amount!==null&&(!/^\d+$/.test(contextText)||!Number.isSafeInteger(amount)||amount<1||amount>10000000)) {setError('Session input limit must be empty or a whole number from 1 to 10000000.');return;}
     setSaving(true); setError('');
     try {
       const { revision, name, permissions, providerId, model, effort, fastMode } = draft;
-      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision,selectionRevision:draft.selectionRevision??0, name: name.trim(), permissions, providerId, model, effort, fastMode, webSearchEnabled: draft.webSearchEnabled ?? true, imageGenerationEnabled: draft.imageGenerationEnabled ?? true, environmentNotesEnabled: draft.environmentNotesEnabled ?? true, ...(scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true } : {}), skillOverrides: draft.skillOverrides ?? {} });
+      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision,selectionRevision:draft.selectionRevision??0, name: name.trim(), permissions, providerId, model, effort, fastMode, contextLimit:{mode:draft.contextLimit?.mode??'global',budgetTokens:amount}, webSearchEnabled: draft.webSearchEnabled ?? true, imageGenerationEnabled: draft.imageGenerationEnabled ?? true, environmentNotesEnabled: draft.environmentNotesEnabled ?? true, ...(scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true } : {}), skillOverrides: draft.skillOverrides ?? {} });
       saved(result.session);
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -68,7 +72,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
   async function reload() {
     if (!window.confirm('Reload saved settings and discard these changes?')) return;
     setReloading(true);
-    try { const r = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id)); setDraft(r.session); setBaseline(r.session); reloaded?.(r.session); setError(''); }
+    try { const r = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id)); setDraft(r.session); setContextText(String(r.session.contextLimit?.budgetTokens??'')); setBaseline(r.session); reloaded?.(r.session); setError(''); }
     catch (e) { setError((e as Error).message); }
     finally { setReloading(false); }
   }
@@ -97,7 +101,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           }}>{!model && <option value={draft.model}>{draft.model}</option>}{provider?.models.map((m) => <option key={m.id} value={m.id} disabled={m.available === false}>{m.name}{m.available === false ? ' · unavailable' : ''}</option>)}</select></ProjectField>
           <ProjectField id="settings-session-effort" label="Reasoning"><select id="settings-session-effort" value={draft.effort} onChange={(e) => patch({ effort: e.target.value })}>{!model?.efforts.includes(draft.effort) && <option value={draft.effort}>{effortLabel(draft.effort, provider)}</option>}{model?.efforts.map((effort) => <option key={effort} value={effort}>{effortLabel(effort, provider)}</option>)}</select></ProjectField>
           {(model?.fastModeAvailable || draft.fastMode) && <ProjectField id="settings-session-fast" label="Fast Mode"><select id="settings-session-fast" value={draft.fastMode ? 'on' : 'off'} onChange={(e) => patch({ fastMode: e.target.value === 'on' })}><option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option></select></ProjectField>}
-        </> : tab === 'Skills' ? <div className="agent-skill-choices">
+        </> : tab === 'Context' ? <ContextLimitSettings mode={draft.contextLimit?.mode??'global'} text={contextText} defaults={options?.contextLimitDefaults} modelWindow={model?.contextWindow} changeText={setContextText} changeMode={mode=>patch({contextLimit:{mode,budgetTokens:draft.contextLimit?.budgetTokens??null}})}/> : tab === 'Skills' ? <div className="agent-skill-choices">
           <p>Global skills are enabled by default. Saved choices apply from the next run.</p>
           <p>Disabling a skill removes its next-run catalog and resource access. Earlier conversation content stays in its original history.</p>
           {!options && <p role="status">Loading global skills…</p>}

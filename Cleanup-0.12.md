@@ -53,3 +53,7 @@ Obsolete image adapter, read-only companion, removed network switch and prompt-w
 ## 0.12.15
 
 Context limit settings have a dedicated Limit view and a saved global on/off switch; lower model limits always apply
+
+## 0.12.16
+
+Project and skill sessions inherit the global context limit and can switch it off or on with an optional session value

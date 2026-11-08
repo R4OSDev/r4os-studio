@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import uuid
 
-from context_policy import DEFAULT, freeze, read, receipt, threshold, update
+from context_policy import DEFAULT, freeze, preference, read, receipt, resolve, threshold, update
 from store import ProjectFault
 from system_prompt import location
 
@@ -63,6 +63,27 @@ class ContextPolicy(unittest.TestCase):
         self.assertTrue(reset['enabled']); self.assertEqual(reset['budgetTokens'], DEFAULT)
         for changes in ({'enabled':1}, {'budgetTokens':True}, {'budgetTokens':0}, {'budgetTokens':10000001}):
             with self.subTest(changes=changes), self.assertRaises(ProjectFault): self.save(**changes)
+
+    def test_global_session_inheritance_and_lower_models(self):
+        for global_enabled in (False,True):
+            value={**read(self.projects),'enabled':global_enabled,'budgetTokens':20000}
+            for mode in ('off','global','on'):
+                for own in (None,5000,40000):
+                    with self.subTest(global_enabled=global_enabled,mode=mode,own=own):
+                        config={'contextPolicy':resolve(value,{'contextLimit':{'mode':mode,'budgetTokens':own}})}
+                        enabled=mode=='on' or mode=='global' and global_enabled
+                        self.assertEqual(config['contextPolicy']['enabled'],enabled)
+                        self.assertEqual(threshold(config,10000),min(own or 20000,8000) if enabled else 8000)
+                        self.assertEqual(threshold(config,None),own or 20000 if enabled else None)
+            self.assertEqual(resolve(value)['sessionMode'],'global')
+        for invalid in ({}, {'mode':'invalid','budgetTokens':None}, {'mode':'on','budgetTokens':True}, {'mode':'off','budgetTokens':0}):
+            with self.subTest(invalid=invalid), self.assertRaises(ProjectFault): preference(invalid)
+
+    def test_original_without_policy_is_not_reinterpreted(self):
+        original={'engine':{'kind':'studio'}}
+        copy={'engine':{'kind':'studio'}}
+        freeze(copy,self.projects,original,{'contextLimit':{'mode':'on','budgetTokens':10}})
+        self.assertEqual(copy,original)
 
 
 if __name__ == '__main__': unittest.main()

@@ -17,6 +17,8 @@ export type RunState = 'queued' | 'starting' | 'running' | 'stopping' | 'complet
 export interface ProviderRetry { state: 'waiting' | 'submitting' | 'continuing' | 'completed' | 'cancelled' | 'exhausted' | 'unknown'; sequence: number; attempt: number; maxAttempts: number; nextAttempt: number; remainingMs: number; error: string; httpStatusCode: number | null; sampledAt: string }
 export interface AgentRun { engine?: { version?: string; sha256?: string }; selection?: ModelChoice & {providerId:string}; id: string; sessionId: string; owner?: SessionOwner; mode?: 'goal'; state: RunState; error: string | null; createdAt: string; completedAt: string | null; threadId?: string | null; turnId?: string | null; messageSupport?: boolean; messageWaitTarget?: import('./agent-messages.js').AfterResponseTarget; goalControlSupport?: boolean; goalActivation?: { requestId: string; state: 'pending' | 'confirmed' | 'failed' | 'unknown' }; providerRetry?: ProviderRetry }
 export interface ModelChoice { model:string; effort:string; fastMode:boolean }
+export interface ContextLimitPreference { mode: 'off' | 'global' | 'on'; budgetTokens: number | null }
+export interface ContextLimitDefaults { revision: number; enabled: boolean; budgetTokens: number; defaultEnabled: boolean; defaultBudgetTokens: number; maxBudgetTokens: number }
 export interface ModelChoiceInput extends ModelChoice { requestId:string; revision:number; selectionRevision:number; afterRunId:string }
 export interface PendingModelChoice { revision:number; requestId:string; afterRunId:string; state:'pending'|'blocked'; choice:ModelChoice; reason:string|null; updatedAt:string }
 export interface ModelChoiceReceipt { requestId:string; sessionId:string; selectionRevision:number; afterRunId:string; state:'pending'|'cancelled'; choice:ModelChoice; acceptedAt:string }
@@ -30,6 +32,7 @@ export interface SessionQuotaWait {
   observation?: { state: string; checkedAt?: string | null; nextCheckAt?: string | null; reason?: string | null; windows?: { id: string; label: string; remaining: number | null; resetAt: string | null }[] };
 }
 export interface AgentSession {
+  contextLimit?: ContextLimitPreference;
   quotaWait?: SessionQuotaWait;
   context?: SessionContext;
   id: string; owner: SessionOwner; projectId?: string; skillId?: string; name: string; providerId: string; model: string; effort: string; fastMode: boolean;
@@ -67,6 +70,7 @@ export interface SessionContext {
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {
+  contextLimit?: ContextLimitPreference;
   selectionRevision?:number;
   revision: number; name?: string; providerId?: string; model?: string; effort?: string; fastMode?: boolean; permissions?: ToolPermissions;
   webSearchEnabled?: boolean;
@@ -76,6 +80,7 @@ export interface SessionUpdate {
   skillOverrides?: Record<string, boolean>;
 }
 export interface SessionOptions {
+  contextLimitDefaults?: ContextLimitDefaults;
   skills?: { id: string; name: string; description: string; available: boolean; reason?: string }[];
   development?: import('./project-development.js').DevelopmentOptions;
   providers: { id: string; name: string; type?: 'openai' | 'api' | 'claude-subscription'; kind?: import('./api-providers.js').ApiProviderKind; unavailableReason?: string; engine?: { toolScope?: 'project' | 'skill'; profile?: string; version?: string; sha256?: string; available: boolean; reason?: string }; models: { id: string; name: string; efforts: string[]; defaultEffort: string; fastModeAvailable: boolean; imageInputs?: 'supported' | 'unsupported' | 'unknown'; inputModalities?: ('text' | 'image' | 'audio')[] | null; available?: boolean; unavailableReasons?: string[]; contextWindow?: number | null; source?: { kind: 'manual' | 'metadata'; recordedAt: string; url?: string } | null }[] }[];

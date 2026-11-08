@@ -1,0 +1,9 @@
+.session-context-limit { min-width:0; overflow-wrap:anywhere; }
+.session-context-limit p { line-height:1.6; color:var(--muted); font-size:13px; }
+.session-context-limit .context-limit-modes { display:flex; flex-wrap:wrap; gap:8px; padding:12px 0; border:0; margin:0; }
+.context-limit-modes label { display:flex; flex:1 1 90px; align-items:center; gap:8px; padding:10px; border:1px solid #4b3b5d; border-radius:7px; cursor:pointer; }
+.context-limit-modes label:has(input:checked) { border-color:var(--accent); background:#30213e; }
+.context-limit-modes input { width:18px; height:18px; min-width:18px; accent-color:var(--accent); }
+.context-limit-modes small { display:block; color:var(--muted); }
+.session-context-limit input[type=text] { width:100%; min-width:0; padding:10px; border:1px solid #4b3b5d; border-radius:7px; background:#17111f; color:#f0e7fa; font:inherit; }
+.session-context-limit input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }

@@ -295,6 +295,8 @@ PRAGMA user_version=1;
         settings.setdefault('webSearchEnabled', True)
         settings.setdefault('imageGenerationEnabled',True)
         settings.setdefault('environmentNotesEnabled',True)
+        from context_policy import preference
+        settings['contextLimit']=preference(settings.get('contextLimit'))
         if self.owner_type == 'project':
             settings.setdefault('roadmapEnabled', True)
         else:
@@ -418,7 +420,7 @@ PRAGMA user_version=1;
 
     @guarded
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'selectionRevision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'selectionRevision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled', 'contextLimit'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
         if 'selectionRevision' in data and (type(data['selectionRevision']) is not int or data['selectionRevision']<0):
             raise ProjectFault('Invalid model-choice revision.',400)
@@ -430,6 +432,10 @@ PRAGMA user_version=1;
         if 'imageGenerationEnabled' in data and type(data['imageGenerationEnabled']) is not bool:raise ProjectFault('Invalid Image generation setting.',400)
         if 'webSearchEnabled' in data and type(data['webSearchEnabled']) is not bool:
             raise ProjectFault('Invalid Web search setting.', 400)
+        if 'contextLimit' in data:
+            from context_policy import preference
+            if data['contextLimit'] is None:raise ProjectFault('Context limit settings must be an object.',400)
+            preference(data['contextLimit'])
         self.db.execute('BEGIN IMMEDIATE')
         try:
             previous = self.get(session_id)
@@ -449,6 +455,7 @@ PRAGMA user_version=1;
             if pending(self): raise ProjectFault('Wait for the original Goal control before changing session settings.', 409)
             value = {**previous, **data}
             settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled')}
+            settings['contextLimit']=value['contextLimit']
             if self.owner_type == 'project': settings['roadmapEnabled'] = value['roadmapEnabled']
             choices = skill_preferences.normalize(value['skillOverrides'])
             skill_change = choices != previous['skillOverrides']
@@ -551,6 +558,8 @@ def operation(projects, r4os, provider_dir, request):
                                for tool, enabled in defaults.items()]
             from skill_application import options as skill_options
             result['skills'] = skill_options(projects)
+            from context_policy import read as context_defaults
+            result['contextLimitDefaults']=context_defaults(projects)
             return result
         finally: store.close()
     store = SessionStore(projects, r4os, ident, kind, read_only=request.get('operation') not in ('create','update'))

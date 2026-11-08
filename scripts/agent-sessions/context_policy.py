@@ -77,12 +77,27 @@ def update(projects,data):
         db.execute('INSERT INTO global_context(id,revision,budget_tokens,enabled) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,budget_tokens=excluded.budget_tokens,enabled=excluded.enabled',(revision,chosen,int(enabled)))
         db.execute('INSERT INTO context_requests VALUES(?,?,?)',(rid,fingerprint,encode(result)));db.commit();return result
 
-def freeze(snapshot,projects,original):
+def preference(value=None):
+    if value is None:return {'mode':'global','budgetTokens':None}
+    if (not isinstance(value,dict) or set(value)!={'mode','budgetTokens'}
+            or value['mode'] not in ('off','global','on')):
+        raise ProjectFault('Context limit requires mode off, global or on and an optional budgetTokens value.',400)
+    return {'mode':value['mode'],'budgetTokens':None if value['budgetTokens'] is None else budget(value['budgetTokens'])}
+
+def resolve(value,session=None):
+    chosen=preference((session or {}).get('contextLimit'))
+    enabled=chosen['mode']=='on' or chosen['mode']=='global' and value['enabled']
+    return {'schema':2,'revision':value['revision'],'enabled':enabled,
+        'budgetTokens':chosen['budgetTokens'] if chosen['budgetTokens'] is not None else value['budgetTokens'],
+        'globalEnabled':value['enabled'],'globalBudgetTokens':value['budgetTokens'],
+        'sessionMode':chosen['mode'],'sessionBudgetTokens':chosen['budgetTokens']}
+
+def freeze(snapshot,projects,original,session=None):
     if snapshot['engine'].get('kind')!='studio':return
     if original is not None:
         if 'contextPolicy' in original:snapshot['contextPolicy']=original['contextPolicy'].copy()
         return
-    value=read(projects);snapshot['contextPolicy']={key:value[key] for key in ('revision','budgetTokens','enabled')}
+    snapshot['contextPolicy']=resolve(read(projects),session)
 
 def threshold(config,capacity):
     model_limit=int(capacity*0.8) if capacity is not None else None

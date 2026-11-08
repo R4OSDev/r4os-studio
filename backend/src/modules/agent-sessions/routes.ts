@@ -130,6 +130,11 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   }
   app.patch<{ Params: SessionParams; Body: SessionUpdate }>(route + '/:sessionId/settings', { bodyLimit: 16 * 1024,
     preValidation: async (request) => {
+      if (request.body && Object.hasOwn(request.body,'contextLimit')) {
+        const value=request.body.contextLimit;
+        if (!value || typeof value!=='object' || Array.isArray(value) || !['off','global','on'].includes(value.mode)
+          || value.budgetTokens!==null && (!Number.isSafeInteger(value.budgetTokens) || value.budgetTokens<1 || value.budgetTokens>10000000)) throw new ProjectError('Invalid context limit settings.',400);
+      }
       if(request.body&&Object.hasOwn(request.body,'selectionRevision')&&!Number.isSafeInteger(request.body.selectionRevision))throw new ProjectError('Invalid model-choice revision.',400);
       if (request.body && Object.hasOwn(request.body, 'environmentNotesEnabled') && typeof request.body.environmentNotesEnabled !== 'boolean') throw new ProjectError('Environment notes must be a boolean setting.',400);
       if (request.body && Object.hasOwn(request.body, 'imageGenerationEnabled') && typeof request.body.imageGenerationEnabled !== 'boolean') throw new ProjectError('Image generation must be a boolean setting.',400);
@@ -141,6 +146,8 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
       ...fields, revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
       selectionRevision:{type:'integer',minimum:0,maximum:Number.MAX_SAFE_INTEGER},
+      contextLimit: { type:'object', additionalProperties:false, required:['mode','budgetTokens'], properties: {
+        mode:{type:'string',enum:['off','global','on']}, budgetTokens:{anyOf:[{type:'null'},{type:'integer',minimum:1,maximum:10000000}]} } },
       webSearchEnabled: { type: 'boolean' }, environmentNotesEnabled: { type: 'boolean' }, imageGenerationEnabled: { type: 'boolean' },
       ...(ownerType === 'project' ? { roadmapEnabled: { type: 'boolean' } } : {}),
       permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9 },
