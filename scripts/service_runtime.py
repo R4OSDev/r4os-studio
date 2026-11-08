@@ -27,7 +27,3 @@ def root_service(text, identity=True):
         if identity and line.strip() == '[Service]':
             result.extend(('User=root', 'Group=root'))
     return '\n'.join(result) + '\n'
-
-
-def service_units(directory):
-    return sorted(path for path in directory.glob('r4os-studio*.service') if path.is_file())

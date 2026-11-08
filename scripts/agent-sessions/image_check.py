@@ -1,4 +1,4 @@
-"""Fixed raster decoder. Runs only in a private, networkless mount namespace."""
+"""Fixed raster decoder. Runs in a bounded subprocess with an explicit input file."""
 import json
 import resource
 import sys
@@ -14,13 +14,13 @@ def main():
     if __version__!='11.1.0':raise ValueError('The raster decoder needs qualification.')
     Image.MAX_IMAGE_PIXELS=40_000_000;ImageFile.LOAD_TRUNCATED_IMAGES=False
     warnings.simplefilter('error',Image.DecompressionBombWarning)
-    with Image.open('/input',formats=['PNG','JPEG','WEBP']) as image:
+    with Image.open(sys.argv[1],formats=['PNG','JPEG','WEBP']) as image:
         width,height=image.size;kind=image.format
         if not 0<width<=16384 or not 0<height<=16384 or width*height>40_000_000:
             raise InputFault('Image dimensions exceed16384 per axis or40 million pixels.')
         if getattr(image,'n_frames',1)!=1:raise InputFault('Animated images are not supported. Attach one still frame.')
         image.verify()
-    with Image.open('/input',formats=['PNG','JPEG','WEBP']) as image:
+    with Image.open(sys.argv[1],formats=['PNG','JPEG','WEBP']) as image:
         image.load();transparent=image.convert('RGBA').getchannel('A').getextrema()[0]<255
     print(json.dumps({'mediaType':{'PNG':'image/png','JPEG':'image/jpeg','WEBP':'image/webp'}[kind],
         'width':width,'height':height,'transparent':bool(transparent),'mode':'localImage','decoder':'Pillow '+__version__}))

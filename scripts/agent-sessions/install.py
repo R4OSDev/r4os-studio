@@ -15,7 +15,7 @@ from service_runtime import root_service
 
 def main():
     if os.geteuid() != 0: raise SystemExit('Run the agent host installer as root.')
-    for path in ('/usr/bin/bwrap', '/usr/bin/python3', '/usr/bin/systemctl'):
+    for path in ('/usr/bin/python3', '/usr/bin/systemctl'):
         if not Path(path).is_file(): raise SystemExit('Missing required agent host tool: ' + path)
     update = json.loads(Path('/etc/r4os-studio-updates/config.json').read_text())
     user = pwd.getpwnam('root'); data = Path(update['dataDirectory']).resolve(strict=True)

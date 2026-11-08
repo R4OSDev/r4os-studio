@@ -45,7 +45,7 @@ class AgentSnapshots:
                 # Terminal admission and file tools use these same locks. Existing
                 # live terminals can mutate files, so they must finish first.
                 async with worker.terminals.lock:
-                    async with worker.sandbox.lock:
+                    async with worker.workspace_tools.lock:
                         if any(not p.finished.is_set() for p in worker.terminals.processes.values()):
                             raise DevelopmentFault('Finish or stop active terminal processes before building.')
                         run = worker.store.db.execute('SELECT busy,state FROM runs WHERE id=?', (worker.run_id,)).fetchone()

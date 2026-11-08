@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import os
 """Credential answer for this worker's exact GitHub HTTPS transport only."""
 import socket
 import sys
@@ -9,7 +10,7 @@ prompt = sys.argv[1]
 if 'https://github.com' not in prompt and 'https://x-access-token@github.com' not in prompt:
     raise SystemExit(1)
 with socket.socket(socket.AF_UNIX) as client:
-    client.settimeout(3); client.connect('/credential.sock')
+    client.settimeout(3); client.connect(os.environ['STUDIO_GIT_AUTH_SOCKET'])
     client.sendall(('username' if prompt.startswith('Username') else 'password').encode())
     raw = client.recv(8192)
     if not raw or b'\n' in raw or b'\r' in raw: raise SystemExit(1)

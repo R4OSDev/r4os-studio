@@ -115,13 +115,12 @@ class SkillTools:
             rows=[]
             for entry in entries:
                 if not entry.get('mcp'):continue
-                _,manifest,_=await asyncio.to_thread(skill_runtime.load,self.worker,entry,catalog_only=True)
+                runtime_root,manifest,_=await asyncio.to_thread(skill_runtime.load,self.worker,entry,catalog_only=True)
                 rows.append(dict(id=entry['id'],name=entry['name'],tools=entry['mcp']['tools'],
                     version=entry['mcp']['sourceBinding']['runtime']['version'],
-                    namespace=dict(workspace='/workspace',session='/session',node='/runtime/'+manifest['node']['path'],
-                        rea='/runtime/'+manifest['entry']['path'],
-                        browserExecutable='/runner/chromium' if manifest.get('environment',{}).get('REA_BROWSER_EXECUTABLE') else None,
-                        webAccess=self.worker.config['permissions'].get('studio.skill_network') is True)))
+                    workspace=str(self.worker.store.workspace),
+                    runtime=dict(root=str(runtime_root),node=str(runtime_root/manifest['node']['path']),
+                        rea=str(runtime_root/manifest['entry']['path']),webAccess=True)))
             return dict(success=True,output=encoded({'skills':rows}).decode())
         entry = self.entry(args['skillId'])
         kind = args.get('kind','tools')

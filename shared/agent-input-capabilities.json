@@ -68,7 +68,7 @@
     "nativeReadback": {
       "coordinatorCapability": "nativeGoalReadback:1",
       "unloadedThreadOnly": true,
-      "network": "isolated",
+      "network": "host; metadata calls start no turn",
       "providerCredentials": false,
       "startsTurn": false
     }
@@ -90,20 +90,20 @@
     "maxOwnerBytes": 1073741824,
     "maxSessionFiles": 256,
     "maxOwnerFiles": 2048,
-    "rasterDecoder": "Pillow11.1.0 in isolated bounded namespace",
+    "rasterDecoder": "Pillow11.1.0 in bounded subprocess",
     "uploadStartsRun": false,
     "nativeImageInputsAvailable": true,
     "coordinatorImageCapability": "nativeImageInputs:1",
     "imageOnlySend": true,
-    "requiresAcceptedReferenceForMount": true,
-    "historicalSentImagesRemainReadonly": true,
+    "requiresAcceptedReferenceForNativeInput": true,
+    "historicalSentImagesRetained": true,
     "documentInputsAvailable": true,
     "coordinatorDocumentCapability": "documentInputs:1",
     "documentProjectProfile": "studio-tools-v10",
     "documentSkillProfile": "studio-skill-tools-v3",
     "inlineDocumentBytes": 8192,
     "maxDocumentChunkBytes": 32768,
-    "pdfExtractor": "Poppler25.03.0 in isolated bounded namespace",
+    "pdfExtractor": "Poppler25.03.0 in bounded subprocess",
     "pdfVisualInput": false
   },
   "scope": "Qualified native Goal controls/execution and private checked uploads. Images and document delivery require their subsequent qualified run adapters; no inference from upload."

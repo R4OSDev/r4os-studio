@@ -60,21 +60,11 @@ def install():
     projects = Path(config['projects']); skills = projects.parent / 'Skills'
     if skills.resolve(strict=True) != skills or not skills.is_dir() or skills.stat().st_uid != config['uid']:
         raise SystemExit('Prepare the existing private Skills storage first.')
-    quoted = str(skills).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
-    wanted = '[Service]\nReadWritePaths="' + quoted + '"\n'
-    dropins = [Path('/etc/systemd/system') / (unit + '.d') / '64-skills.conf'
-               for unit in ('r4os-studio-agents.service', 'r4os-studio-agent@.service')]
-    for path in dropins:
-        if path.is_symlink() or (path.exists() and path.read_text() != wanted):
-            raise SystemExit('Review existing skill session service support before maintenance.')
     idle_updater()
     control('stop', 'r4os-studio-updates.service')
     try:
         idle_updater()
         replace(updater, new_updater, old_updater); replace(launcher, new_launcher, old_launcher)
-        for path in dropins:
-            path.parent.mkdir(exist_ok=True)
-            path.write_text(wanted)
         control('daemon-reload')
     finally: control('start', 'r4os-studio-updates.service')
     print('Skill session compatibility installed. Existing configuration, live workers and VMs were preserved.')

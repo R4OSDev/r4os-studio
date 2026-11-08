@@ -14,10 +14,8 @@ class Box:
     async def prepare(self): pass
     async def file(self, *args): return {'success': True}
     def command(self, command, workdir):
-        args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net']
-        for path in ('/usr', '/lib', '/lib64'):
-            if Path(path).exists(): args += ['--ro-bind', path, path]
-        return args + ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--chdir', '/tmp', '--clearenv', '--setenv', 'PATH', '/usr/bin', *command]
+        from workspace_context import Workspace
+        return Workspace('/tmp').command(command, workdir)
 
 
 class TextBounds(unittest.TestCase):
@@ -36,7 +34,7 @@ class Terminal(unittest.TestCase):
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
-            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], workspace_tools=Box())
             manager = Terminals(worker)
             async def scenario():
                 first = None
@@ -65,7 +63,7 @@ class Terminal(unittest.TestCase):
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
-            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], workspace_tools=Box())
             manager = Terminals(worker)
             async def scenario():
                 try:
@@ -82,7 +80,7 @@ class Terminal(unittest.TestCase):
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
-            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], workspace_tools=Box())
             manager = Terminals(worker)
             async def scenario():
                 for _ in range(32):
@@ -100,7 +98,7 @@ class Terminal(unittest.TestCase):
         store = fixture.open().__enter__()
         try:
             run, _ = admit(store, fixture.sid, fixture.data, fixture.providers)
-            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], sandbox=Box())
+            worker = SimpleNamespace(store=store, session_id=fixture.sid, run_id=run['id'], workspace_tools=Box())
             manager = Terminals(worker)
             async def poll(p):
                 output = p['output']

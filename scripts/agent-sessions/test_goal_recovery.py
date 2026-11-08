@@ -34,7 +34,7 @@ class GoalRecovery(unittest.IsolatedAsyncioTestCase):
             state=store.directory/self.sid/'Codex';state.mkdir(parents=True);(state/'models.json').write_text('{}')
             native.goal.update(tokensUsed=39,timeUsedSeconds=12)
             native.calls.clear()
-            with patch('goal_readback.prepare',return_value=(['bwrap','owned'],{})) as prepare:
+            with patch('goal_readback.prepare',return_value=(['owned-runtime'],{})) as prepare:
                 result=await readback(store,self.sid,native.factory)
             self.assertEqual(result['goal']['goal']['tokensUsed'],39)
             self.assertEqual(native.calls,[('thread/goal/get',{'threadId':native.thread})])
@@ -63,11 +63,11 @@ class GoalRecovery(unittest.IsolatedAsyncioTestCase):
         with self.open() as store:
             await self.command(store,native);(store.directory/self.sid/'Codex').mkdir(parents=True,exist_ok=True);(store.directory/self.sid/'Codex/models.json').write_text('{}')
             native.goal['status']='active'
-            with patch('goal_readback.prepare',return_value=(['bwrap'],{})):
+            with patch('goal_readback.prepare',return_value=(['owned-runtime'],{})):
                 result=await readback(store,self.sid,native.factory)
             self.assertEqual(result['goal']['phase'],'unknown')
             native.goal['status']='paused'
-            with patch('goal_readback.prepare',return_value=(['bwrap'],{})):
+            with patch('goal_readback.prepare',return_value=(['owned-runtime'],{})):
                 result=await readback(store,self.sid,native.factory)
             self.assertEqual(result['goal']['phase'],'unknown')
             self.assertFalse(store.db.execute('SELECT 1 FROM runs').fetchone())

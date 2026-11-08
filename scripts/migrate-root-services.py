@@ -123,6 +123,7 @@ def migrate():
                 raise
         for unit in state['active']:
             if unit in ('r4os-studio-updates.service', 'r4os-studio.service'): continue
+            run('systemctl', 'thaw', unit)
             run('systemctl', 'stop', unit, timeout=1200)
         run('systemctl', 'stop', 'r4os-studio-updates.service')
         state['phase'] = 'stopped'; save(state)

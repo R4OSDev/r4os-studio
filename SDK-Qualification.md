@@ -1,3 +1,10 @@
+Current execution model (0.12.2): SDK commands run directly as host Root with
+actual per-job source/output/cache paths. The host network is available.
+Namespace mounts and virtual roots described in the original qualification
+below are historical; SDK pins, compiler policy and artifact checks retain
+their purpose. The 0.12.2 own-data check exercised actual pinned Zig compilation,
+PowerShell and SDK source maintenance through the direct command builders.
+
 # SDK migration and qualification
 
 Native Linux host evidence, 3 November 2026. The development path was qualified

@@ -217,49 +217,7 @@ class NativeSessionServices(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(McpFault):await self.remote.acquire()
         self.assertEqual(sum(r['method']=='tools/call' for r in self.service.client.receipts.values()),1)
 
-    async def test_os_file_network_and_capability_boundaries(self):
-        foreign=self.base/'private-provider-canary.txt';foreign.write_text('own-secret-canary')
-        (self.worker.store.workspace/'escape').symlink_to(foreign)
-        result=await self.remote.call('echo',{'probe':{'read':[str(foreign),'/workspace/escape'],
-            'write':['/runtime/catalog.json','/workspace/allowed-output.txt','/session/allowed-evidence.txt']}},request_id=str(uuid.uuid4()))
-        probe=result['structuredContent']['probe']
-        self.assertIn('error',probe[str(foreign)]);self.assertIn('error',probe['/workspace/escape'])
-        self.assertEqual(probe['/runtime/catalog.json']['error'],'EROFS')
-        self.assertTrue(probe['/workspace/allowed-output.txt']['written']);self.assertTrue(probe['/session/allowed-evidence.txt']['written'])
-        self.assertNotEqual(probe['hostConnection'],'connected');self.assertEqual(probe['loopback'],'private-loopback')
-        for value in probe['capabilities']:
-            if value.startswith('Cap'):self.assertEqual(int(value.split(':')[1],16),0)
-        self.assertIn('NoNewPrivs:\t1',probe['capabilities'])
-        await self.remote.release(True)
-        worker=types.SimpleNamespace(**vars(self.worker));worker.run_id=str(uuid.uuid4())
-        worker.config=dict(worker.config,permissions=dict(worker.config['permissions'],**{'studio.write_file':False}));self.run_row(worker)
-        readonly,_=await self.server(worker)
-        denied=await readonly.call('echo',{'probe':{'write':['/workspace/forbidden-output.txt','/session/own-cache.txt']}},request_id=str(uuid.uuid4()))
-        self.assertEqual(denied['structuredContent']['probe']['/workspace/forbidden-output.txt']['error'],'EROFS')
-        self.assertTrue(denied['structuredContent']['probe']['/session/own-cache.txt']['written'])
 
-    async def test_scoped_web_bridge_and_permanent_original_run_release(self):
-        from skill_egress import Proxy
-        async def page(reader,writer):
-            await reader.readuntil(b'\r\n\r\n')
-            writer.write(b'HTTP/1.1 200 OK\r\nContent-Length: 19\r\nConnection: close\r\n\r\nowned-namespace-web');await writer.drain();writer.close();await writer.wait_closed()
-        target=await asyncio.start_server(page,'127.0.0.1',0);port=target.sockets[0].getsockname()[1]
-        class OwnedPublic(Proxy):
-            async def destination(proxy,host,requested_port):
-                if host=='own-public.example' and requested_port==80:return await asyncio.open_connection('127.0.0.1',port)
-                return await super().destination(host,requested_port)
-        worker=types.SimpleNamespace(**vars(self.worker));worker.run_id=str(uuid.uuid4())
-        worker.config=dict(worker.config,permissions=dict(worker.config['permissions'],**{'studio.skill_network':True}));self.run_row(worker)
-        try:
-            with patch('skill_egress.Proxy',OwnedPublic):remote,service=await self.server(worker)
-            value=await remote.call('echo',{'probe':{'proxy_url':'http://own-public.example/'}},request_id=str(uuid.uuid4()))
-            self.assertIn('owned-namespace-web',value['structuredContent']['probe']['webResponse'])
-            denied=await remote.call('echo',{'probe':{'proxy_url':'http://127.0.0.1/'}},request_id=str(uuid.uuid4()))
-            self.assertIn('403',denied['structuredContent']['probe']['webResponse'])
-            await remote.release(True)
-            with self.assertRaises(McpFault):await remote.acquire()
-            self.assertEqual(len(service.proxy.active),0)
-        finally:target.close();await target.wait_closed()
 
 
 if __name__=='__main__':unittest.main()

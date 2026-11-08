@@ -76,7 +76,7 @@ def stage(context, workspace, parent, request_id, old_pins):
     for path in target.rglob('*'):
         if path.is_file():
             path.chmod(0o700 if str(path.relative_to(target)) in executable else 0o600)
-    from sdk_namespace import run
+    from sdk_execution import run
     native = []
     zon = target / 'build.zig.zon'
     if zon.exists():

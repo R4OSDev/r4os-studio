@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stable unprivileged entry point for one registered session MCP instance."""
+"""Stable Root entry point for one registered session MCP instance."""
 import json
 import os
 from pathlib import Path

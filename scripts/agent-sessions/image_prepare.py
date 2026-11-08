@@ -1,4 +1,4 @@
-"""Fixed, networkless image preparation. No project or credential filesystem."""
+"""Fixed image preparation with explicit input/output paths."""
 import hashlib
 import json
 from pathlib import Path
@@ -14,7 +14,7 @@ def main():
     if __version__!='11.1.0':raise ValueError('Unqualified image decoder.')
     Image.MAX_IMAGE_PIXELS=40_000_000;ImageFile.LOAD_TRUNCATED_IMAGES=False;warnings.simplefilter('error',Image.DecompressionBombWarning)
     args=json.loads(sys.stdin.buffer.read(4097));fmt=args['format'];options=args.get('options',{})
-    with Image.open('/input',formats=['PNG']) as original:
+    with Image.open(sys.argv[1],formats=['PNG']) as original:
         if original.width*original.height>40_000_000 or getattr(original,'n_frames',1)!=1:raise ValueError('Image limit exceeded.')
         original.load();image=original.convert('RGBA');source_size=list(image.size)
     background=options.get('background','#00000000');rgba=tuple(bytes.fromhex(background[1:]))
@@ -26,7 +26,7 @@ def main():
     if fmt=='ico' and (width>256 or height>256):raise ValueError('Bitmap ICO dimensions must be1–256.')
     if fmt=='original':
         if options:raise ValueError('Original copies do not accept transformations.')
-        output=Path('/input').read_bytes()
+        output=Path(sys.argv[1]).read_bytes()
     else:
         fit=options.get('fit','contain')
         resized=ImageOps.fit(image,(width,height),method=Image.Resampling.LANCZOS) if fit=='cover' else ImageOps.contain(image,(width,height),method=Image.Resampling.LANCZOS)
@@ -53,7 +53,7 @@ def main():
             output=struct.pack('<HHH',0,1,len(images))+b''.join(entries)+b''.join(blobs)
         else:raise ValueError('Unsupported prepared format.')
     if not 0<len(output)<=64*1024*1024:raise ValueError('Prepared image size limit exceeded.')
-    path=Path('/out/prepared');path.write_bytes(output);path.chmod(0o600)
+    path=(Path(sys.argv[2])/'prepared');path.write_bytes(output);path.chmod(0o600)
     print(json.dumps({'size':len(output),'sha256':hashlib.sha256(output).hexdigest(),'format':fmt,'width':image.width,'height':image.height,'transparent':image.getchannel('A').getextrema()[0]<255,
         'transform':{'adapter':'studio-image-v2/Pillow11.1.0','sourceSize':source_size,'fit':options.get('fit','contain'),'background':background,'outputSize':list(image.size)},
         **({'pixelOrder':'RGBA','stride':image.width*4,'rowOrder':'top-down','alpha':'straight','headerBytes':0,'resourceFormat':'project-specific raw RGBA32; not an R4OS file standard'} if fmt=='rgba32' else {}),

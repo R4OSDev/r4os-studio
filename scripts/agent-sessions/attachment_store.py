@@ -35,16 +35,11 @@ def sync(path):
 
 def decode_image(path):
     script=Path(__file__).with_name('image_check.py').absolute()
-    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all','--cap-drop','ALL']
-    for root in ('/usr','/lib','/lib64'):
-        if Path(root).exists():args+=['--ro-bind',root,root]
-    args+=['--dev','/dev','--proc','/proc','--tmpfs','/tmp','--ro-bind',str(regular(path)),'/input',
-        '--ro-bind',str(script),'/check.py','--clearenv','--setenv','LANG','C.UTF-8',
-        '/usr/bin/python3','-I','-B','/check.py']
+    args=['/usr/bin/python3','-I','-B',str(script),str(regular(path))]
     try:
         result=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,check=False)
         if not result.stdout:
-            raise ProjectFault('Studio could not start the isolated image validator. The image was not decoded; restore attachment validation support.',503)
+            raise ProjectFault('Studio could not start the image validator. The image was not decoded; restore attachment validation support.',503)
         if len(result.stdout)>4096:raise ValueError()
         value=json.loads(result.stdout)
         if result.returncode or 'error' in value:
@@ -60,16 +55,11 @@ def decode_image(path):
 
 def decode_pdf(path):
     script=Path(__file__).with_name('pdf_check.py').absolute()
-    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all','--cap-drop','ALL']
-    for root in ('/usr','/lib','/lib64'):
-        if Path(root).exists():args+=['--ro-bind',root,root]
-    args+=['--dev','/dev','--proc','/proc','--tmpfs','/tmp','--ro-bind',str(regular(path)),'/input',
-        '--ro-bind',str(script),'/check.py','--clearenv','--setenv','LANG','C.UTF-8',
-        '/usr/bin/python3','-I','-B','/check.py']
+    args=['/usr/bin/python3','-I','-B',str(script),str(regular(path))]
     try:
         result=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=False)
         if not result.stdout:
-            raise ProjectFault('Studio could not start the isolated PDF validator. The document was not decoded; restore attachment validation support.',503)
+            raise ProjectFault('Studio could not start the PDF validator. The document was not decoded; restore attachment validation support.',503)
         if result.returncode or len(result.stdout)>8*1024*1024:raise ValueError()
         value=json.loads(result.stdout)
         if (value.get('mode')!='pdfText' or value.get('mediaType')!='application/pdf' or type(value.get('readable')) is not bool

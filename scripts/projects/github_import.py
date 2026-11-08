@@ -5,9 +5,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import re
 import subprocess
-import sys
 from store import connect, public, ProjectFault, check_vm
 from project_use import acquire, project_id
 from create import publish, finish, sync_tree
@@ -48,20 +50,16 @@ def checked_profile(root, projects, metadata, fallback):
 
 def manifest(context, source, language, template, expected_name):
     tool = context['rust']['catalog'] if language == 'Rust' else context['tool']
-    command = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-all',
-               '--ro-bind', '/usr', '/usr', '--dev', '/dev', '--dir', '/proc', '--tmpfs', '/tmp',
-               '--ro-bind', str(source), '/workspace', '--ro-bind', str(tool), '/catalog']
-    for path in ('/lib', '/lib64'):
-        if Path(path).exists(): command += ['--ro-bind', path, path]
-    command += ['--chdir', '/tmp', '--clearenv', '--setenv', 'HOME', '/tmp', '--setenv', 'LANG', 'C.UTF-8', '--', '/catalog']
+    working = Workspace(source)
+    command = working.command([str(tool)], environment={'HOME': source})
     def run(*args):
         result = subprocess.run(command + list(args), capture_output=True, timeout=30)
         if result.returncode or len(result.stdout) > 2 * 1024**2:
             raise ProjectFault('The pinned SDK rejected this repository manifest or its source paths.', 409)
         return result.stdout
-    run('validate', '--manifest', '/workspace/module.R4MF')
-    declared = json.loads(run('catalog', '--root', '/workspace'))
-    entries = [item for item in declared.get('entries', []) if item.get('path') == '/workspace/module.R4MF']
+    run('validate', '--manifest', str(source / 'module.R4MF'))
+    declared = json.loads(run('catalog', '--root', str(source)))
+    entries = [item for item in declared.get('entries', []) if item.get('path') == str(source / 'module.R4MF')]
     if len(entries) != 1: raise ProjectFault('Import requires one R4OS project manifest at the repository root.', 409)
     entry = entries[0]; module = entry.get('name')
     if not isinstance(module, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,95}', module): raise ProjectFault('Unsupported imported module identity.', 409)
@@ -69,10 +67,10 @@ def manifest(context, source, language, template, expected_name):
     if entry.get('language') != language or entry.get('kind') != expected_kind or (expected_name is not None and module != expected_name):
         raise ProjectFault('The manifest differs from the selected project metadata.', 409)
     if expected_kind == 'R4X':
-        plan = json.loads(run('plan', '--manifest', '/workspace/module.R4MF')).get('plan', {})
+        plan = json.loads(run('plan', '--manifest', str(source / 'module.R4MF'))).get('plan', {})
         if plan.get('app_class') != {'terminal': 'console', 'desktop': 'gui', 'service': 'service', 'subsystem': 'gui'}[template] or (template == 'subsystem') != (plan.get('module_role') == 'subsystem'):
             raise ProjectFault('The manifest application class differs from the selected module type.', 409)
-        run('contract-plan', '--manifest', '/workspace/module.R4MF')
+        run('contract-plan', '--manifest', str(source / 'module.R4MF'))
     return module
 
 

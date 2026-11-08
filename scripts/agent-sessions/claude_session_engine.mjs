@@ -110,7 +110,9 @@ class Inputs {
 }
 
 export function sessionEnvironment(options) {
-  return { PATH: '/usr/bin', USER: 'r4os-studio', HOME: options.home, CLAUDE_CONFIG_DIR: options.config,
+  return { PATH: '/usr/bin', USER: 'root', HOME: options.home, CLAUDE_CONFIG_DIR: options.config,
+    CLAUDE_CODE_PROJECT_DIR_NAME: process.env.CLAUDE_CODE_PROJECT_DIR_NAME,
+    STUDIO_CLAUDE_BRIDGE: process.env.STUDIO_CLAUDE_BRIDGE, STUDIO_CLAUDE_SOCKET: process.env.STUDIO_CLAUDE_SOCKET,
     DISABLE_AUTOUPDATER: '1', DISABLE_UPDATES: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false', ENABLE_TOOL_SEARCH: 'false', MCP_DISCOVERY_CACHE: '0',
     MAX_MCP_OUTPUT_TOKENS: '262144',
     DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1',
@@ -190,7 +192,7 @@ export class ClaudeSessionEngine {
       tools: [], disallowedTools: [...sdk.BUILTIN_TOOL_NAMES], settingSources: [], skills: [], plugins: [], agents: {},
       settings: { precomputeCompactionEnabled: false, fallbackModel: [], availableModels: [this.binding.model] },
       strictMcpConfig: true, permissionMode: 'default', enableFileCheckpointing: false, includePartialMessages: true,
-      mcpServers: { studio: { type: 'stdio', command: '/usr/bin/python3', args: ['/bridge/mcp.py'], alwaysLoad: true, timeout: 1200000 } },
+      mcpServers: { studio: { type: 'stdio', command: '/usr/bin/python3', args: [options.mcp ?? process.env.STUDIO_CLAUDE_MCP], env: { STUDIO_CLAUDE_BRIDGE: process.env.STUDIO_CLAUDE_BRIDGE, STUDIO_CLAUDE_SOCKET: process.env.STUDIO_CLAUDE_SOCKET }, alwaysLoad: true, timeout: 1200000 } },
       hooks: { PreToolUse: [{ hooks: [input => this.beforeTool(input)] }] },
       canUseTool: async (name, input, details) => {
         const grant = this.grants.get(details.toolUseID), tool = mcpTool(name);

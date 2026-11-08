@@ -75,16 +75,11 @@ def selected(r4os, scope, include_features=True):
 @lru_cache(maxsize=16)
 def feature_names(path, checksum):
     """Ask this binary, without a credential home, network, thread or model call."""
-    args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-all']
-    for directory in ('/usr', '/lib', '/lib64'):
-        if Path(directory).exists(): args += ['--ro-bind', directory, directory]
-    args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--dir', '/codex',
-             '--dir', '/bin', '--ro-bind', path, '/bin/codex', '--chdir', '/tmp', '--clearenv',
-             '--setenv', 'HOME', '/tmp', '--setenv', 'CODEX_HOME', '/codex',
-             '--setenv', 'PATH', '/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8',
-             '/bin/codex', 'features', 'list']
-    result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, timeout=10, check=False)
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix='studio-codex-features-') as temporary:
+        result = subprocess.run([path, 'features', 'list'], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, check=False, cwd=temporary,
+            env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': temporary, 'CODEX_HOME': temporary})
     if result.returncode or len(result.stdout) > 65536:
         raise ValueError('The selected Codex runtime could not report its feature settings.')
     lines = result.stdout.decode('utf-8').splitlines()

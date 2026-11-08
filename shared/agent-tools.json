@@ -2,7 +2,7 @@
   "project": [
     {
       "name": "studio_exec_command",
-      "description": "Run a command in the separate Studio project sandbox. cwd defaults to /workspace. Network is unavailable. Native Codex shell tools are unavailable. Return output and a process handle if still running.",
+      "description": "Run a command directly on the host as Root. cwd defaults to the selected project workspace. The host network is available. Native Codex shell tools are unavailable. Return output and a process handle if still running.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -13,7 +13,7 @@
           "workdir": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "tty": {
             "type": "boolean"
@@ -81,14 +81,14 @@
     },
     {
       "name": "studio_list_directory",
-      "description": "List a project directory or pinned read-only component directory. Results are bounded and paginated.",
+      "description": "List a project directory or pinned component directory. Results are bounded and paginated.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "root": {
             "type": "string",
@@ -99,7 +99,7 @@
               "zig",
               "rust"
             ],
-            "description": "workspace is writable; pinned component roots are read-only."
+            "description": "Base directory for relative paths; defaults to the selected workspace."
           },
           "offset": {
             "type": "integer",
@@ -121,7 +121,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "root": {
             "type": "string",
@@ -132,7 +132,7 @@
               "zig",
               "rust"
             ],
-            "description": "workspace is writable; pinned component roots are read-only."
+            "description": "Base directory for relative paths; defaults to the selected workspace."
           },
           "startLine": {
             "type": "integer",
@@ -159,7 +159,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "root": {
             "type": "string",
@@ -170,7 +170,7 @@
               "zig",
               "rust"
             ],
-            "description": "workspace is writable; pinned component roots are read-only."
+            "description": "Base directory for relative paths; defaults to the selected workspace."
           },
           "query": {
             "type": "string",
@@ -195,7 +195,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "content": {
             "type": "string",
@@ -253,7 +253,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           }
         },
         "required": [
@@ -4823,7 +4823,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "format": {
             "type": "string",
@@ -5080,7 +5080,7 @@
               "path": {
                 "type": "string",
                 "maxLength": 1024,
-                "description": "Relative path within the chosen root; use . for its directory."
+                "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
               },
               "offset": {
                 "type": "integer",
@@ -5116,7 +5116,7 @@
                 "items": {
                   "type": "string",
                   "maxLength": 1024,
-                  "description": "Relative path within the chosen root; use . for its directory."
+                  "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
                 }
               }
             },
@@ -5672,7 +5672,7 @@
   "skill": [
     {
       "name": "studio_exec_command",
-      "description": "Run a command in the separate Studio selected skill sandbox. cwd defaults to /workspace. Network is unavailable. Native Codex shell tools are unavailable. Return output and a process handle if still running.",
+      "description": "Run a command directly on the host as Root. cwd defaults to the selected skill workspace. The host network is available. Native Codex shell tools are unavailable. Return output and a process handle if still running.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5683,7 +5683,7 @@
           "workdir": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "tty": {
             "type": "boolean"
@@ -5751,21 +5751,21 @@
     },
     {
       "name": "studio_list_directory",
-      "description": "List a selected skill directory or pinned read-only component directory. Results are bounded and paginated.",
+      "description": "List a selected skill directory or pinned component directory. Results are bounded and paginated.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "root": {
             "type": "string",
             "enum": [
               "workspace"
             ],
-            "description": "Only the selected skill draft is available."
+            "description": "Relative paths use the selected skill draft as their base. Absolute host paths are supported."
           },
           "offset": {
             "type": "integer",
@@ -5787,14 +5787,14 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "root": {
             "type": "string",
             "enum": [
               "workspace"
             ],
-            "description": "Only the selected skill draft is available."
+            "description": "Relative paths use the selected skill draft as their base. Absolute host paths are supported."
           },
           "startLine": {
             "type": "integer",
@@ -5821,14 +5821,14 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "root": {
             "type": "string",
             "enum": [
               "workspace"
             ],
-            "description": "Only the selected skill draft is available."
+            "description": "Relative paths use the selected skill draft as their base. Absolute host paths are supported."
           },
           "query": {
             "type": "string",
@@ -5853,7 +5853,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           },
           "content": {
             "type": "string",
@@ -5911,7 +5911,7 @@
           "path": {
             "type": "string",
             "maxLength": 1024,
-            "description": "Relative path within the chosen root; use . for its directory."
+            "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
           }
         },
         "required": [

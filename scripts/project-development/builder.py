@@ -1,11 +1,13 @@
-"""Official pinned SDK build paths inside a credential-free execution namespace."""
+"""Official pinned SDK builds using direct host paths and per-job caches."""
 import asyncio
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import re
 import shutil
-import sys
 import uuid
 
 from contracts import DevelopmentFault, LIMITS, digest, hash_value, relative
@@ -25,8 +27,6 @@ class Builder:
         self.capture_truncated = job.get('captureTruncated') if self.log.exists() else False
 
     def append(self, data):
-        # All subprocess paths are virtual. Preparation errors never disclose
-        # host paths or component metadata to the model/browser.
         if len(data)>max(0,LIMITS['outputBytes']-self.written) and self.capture_truncated is not True:
             self.capture_truncated=True;self.store.observe(self.job['id'],captureTruncated=True)
         data = data[:max(0, LIMITS['outputBytes'] - self.written)]
@@ -52,8 +52,8 @@ class Builder:
         self.inputs = read(self.root / 'source')
         if self.inputs != self.job.get('sdkInputs'):
             raise DevelopmentFault('The captured SDK input selection differs from the original build request.')
-        self.sdk_paths, self.sdk_arguments, self.dependencies = arguments(self.inputs, self.root)
-        self.catalog_root = '/workspace'
+        self.sdk_paths, self.sdk_arguments, self.dependencies = arguments(self.inputs, self.root, self.context['paths'])
+        self.catalog_root = str(self.root / 'source')
         if self.inputs['development']:
             # Development SDKs contain their own template/module catalog. They
             # are source inputs, not additional project entrypoints.
@@ -61,11 +61,10 @@ class Builder:
             def ignore(base, names):
                 return [name for name in names if name == '.git' or str((Path(base) / name).relative_to(self.root / 'source')) in excluded]
             shutil.copytree(self.root / 'source', self.root / 'catalog-source', ignore=ignore)
-            self.catalog_root = '/catalog-workspace'
+            self.catalog_root = str(self.root / 'catalog-source')
         for name in ('home', 'zig', 'zig-local', 'output', 'tools', 'cargo', 'rust-build'): folder(self.root / name)
-        self.cache = BuildCache(self.store, self.job)
-        # Only this job's exact tool copy is writable. Shared SDK sources and
-        # SDK-selected vendor tools remain readonly in the build namespace.
+        self.cache = BuildCache(self.store, self.job, self.context['cache'] / 'global/p')
+        # SDK scripts update their tool catalogue; keep those edits local to this build.
         shutil.copytree(self.context['sdkTools']['tools'], self.root / 'tools', dirs_exist_ok=True)
         native = self.context['sdkTools']['profile']['hosts']['Linux']
         self.inspector = self.context['sdkTools']['tools'] / relative(native['packager'])
@@ -111,7 +110,7 @@ class Builder:
                         '-femit-bin=' + str(inspector)], self.context['env'])
                     save(marker, {'sha256': digest(inspector), 'adapterSha256': digest(source),
                                    'sdkProfile': host_id, 'profileHashes': resolved['hashes']})
-            # Existing non-networked build namespace, separate readonly inspector bind.
+            # The cached inspector is selected by the same pinned SDK receipt.
             self.update_inspector = inspector
             value = json.loads(await self.execute(['/update-inspector', '/output/' + str(binary.relative_to(self.root / 'output')), target, kind], 'both'))
             if (value.get('schema') != 1 or value.get('kind') != manifest.get('kind')
@@ -126,34 +125,25 @@ class Builder:
             self.append(b'Native update identity unavailable; ordinary build result is preserved.\n')
             return {'available': False, 'reason': 'This artifact has no qualified native update identity. Use a compatible SDK build.'}
 
+    def workspace(self):
+        paths = {'/' + name: path for name, path in self.context['paths'].items()}
+        paths.update({'/output': self.root / 'output', '/cache': self.root,
+            '/packages': self.context['cache'] / 'global/p', '/catalog': self.context['tool'],
+            '/inspector': self.inspector, '/powershell': self.context['runner'].parent,
+            '/tools': self.root / 'tools', '/catalog-workspace': self.root / 'catalog-source'})
+        if self.cache:
+            for name in ('zig', 'zig-local', 'rust-build'): paths['/cache/' + name] = self.cache.root / name
+        if getattr(self, 'update_inspector', None): paths['/update-inspector'] = self.update_inspector
+        return Workspace(self.root / 'source', paths)
+
     def command(self, command):
-        context = self.context
-        args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
-        for path in ('/usr', '/lib', '/lib64'):
-            if Path(path).exists(): args += ['--ro-bind', path, path]
-        args += ['--symlink', '/usr/bin', '/bin', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
-                 '--dir', '/etc', '--dir', '/home', '--bind', str(self.root / 'source'), '/workspace',
-                 '--bind', str(self.root / 'output'), '/output', '--bind', str(self.root), '/cache',
-                 '--ro-bind', str(context['cache'] / 'global/p'), '/packages',
-                 '--ro-bind', str(context['tool']), '/catalog', '--ro-bind', str(self.inspector), '/inspector']
-        # Only compiler artifacts persist. Sources, outputs, HOME, Cargo config,
-        # the cache identity and its host lock stay outside these shared mounts.
-        for name in ('zig', 'zig-local', 'rust-build'):
-            args += ['--bind', str(self.cache.root / name), '/cache/' + name]
-        for path in ('/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/os-release'):
-            if Path(path).exists(): args += ['--ro-bind', path, path]
-        if getattr(self, 'update_inspector', None): args += ['--ro-bind', str(self.update_inspector), '/update-inspector']
-        if self.catalog_root != '/workspace': args += ['--ro-bind', str(self.root / 'catalog-source'), self.catalog_root]
-        for name, path in context['paths'].items(): args += ['--ro-bind', str(path), '/' + name]
-        args += ['--ro-bind', str(self.context['runner'].parent), '/powershell',
-                 '--bind', str(self.root / 'tools'), '/tools']
-        args += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/cache/home',
-            '--setenv', 'PATH', '/powershell:/zig:/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8',
-            '--setenv', 'ZIG_GLOBAL_CACHE_DIR', '/cache/zig', '--setenv', 'ZIG_LOCAL_CACHE_DIR', '/cache/zig-local',
-            '--setenv', 'CARGO_HOME', '/cache/cargo',
-            '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_AUTO_INSTALL', '0',
-            '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1', '--setenv', 'POWERSHELL_TELEMETRY_OPTOUT', '1']
-        return args + command
+        context = self.workspace()
+        environment = {'HOME': self.root / 'home',
+            'PATH': ':'.join(map(str, [self.context['runner'].parent, self.context['paths']['zig'], '/usr/bin', '/bin'])),
+            'ZIG_GLOBAL_CACHE_DIR': context.path('/cache/zig'), 'ZIG_LOCAL_CACHE_DIR': context.path('/cache/zig-local'),
+            'CARGO_HOME': self.root / 'cargo', 'RUSTUP_AUTO_INSTALL': '0',
+            'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT': '1', 'POWERSHELL_TELEMETRY_OPTOUT': '1'}
+        return context.command(context.arguments(command), environment=environment)
 
     async def execute(self, command, collect=False):
         if self.stopping: raise DevelopmentFault('Build stopped.')

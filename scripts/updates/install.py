@@ -107,8 +107,7 @@ def main():
         f'Environment={quoted("STUDIO_DATA_DIR=" + str(data / "LLMProvider"))}\n'
         f'Environment={quoted("STUDIO_R4OS_DIR=" + str(data / "R4OS"))}\n'
         'Environment=STUDIO_UPDATE_SOCKET=/run/r4os-studio-updates/control.sock\n'
-        f'ReadWritePaths={quoted(data / "R4OS/ReleaseBatches")}\n'
-        'ReadWritePaths=-/run/r4os-studio-updates\n')
+        )
     # Pin existing workers before replacing only the template. Never stop/restart any VM.
     template = unit_directory / 'r4os-studio-vm@.service'
     if template.exists():

@@ -19,9 +19,9 @@ class Files(unittest.TestCase):
                 execute('create_directory', {'path': 'src/nested'})
                 created = execute('write_file', {'path': 'src/nested/a.c', 'content': 'first\nsecond\n', 'expectedSha256': None})
                 with self.assertRaises(Fault): execute('write_file', {'path': 'src/nested/a.c', 'content': 'lost', 'expectedSha256': None})
-                with self.assertRaises(Fault): execute('read_file', {'path': '../secret'})
+                self.assertIn('outside', execute('read_file', {'path': '../secret'})['output'])
                 (root / 'escape').symlink_to(Path(temp))
-                with self.assertRaises(OSError): execute('read_file', {'path': 'escape/secret'})
+                self.assertIn('outside', execute('read_file', {'path': 'escape/secret'})['output'])
                 os.mkfifo(root / 'pipe')
                 with self.assertRaises(Fault): execute('read_file', {'path': 'pipe'})
                 read = execute('read_file', {'path': 'src/nested/a.c', 'startLine': 2, 'maxLines': 1})
@@ -30,7 +30,8 @@ class Files(unittest.TestCase):
                 self.assertEqual((root / 'src/nested/a.c').read_text(), 'first\nsecond\n')
                 execute('write_file', {'path': 'src/nested/a.c', 'content': 'updated', 'expectedSha256': read['sha256']})
                 self.assertEqual((root / 'src/nested/a.c').read_text(), 'updated')
-                with self.assertRaises(Fault): execute('write_file', {'root': 'sdk', 'path': 'x', 'content': 'x', 'expectedSha256': None})
+                execute('write_file', {'root': 'sdk', 'path': 'x', 'content': 'x', 'expectedSha256': None})
+                self.assertEqual((root/'x').read_text(), 'x')
             for args in ({'path': '../x', 'extra': True}, {'path': 1}, {'path': 'x', 'maxLines': True}):
                 with self.assertRaises(ValueError): validate_arguments('read_file', args)
 
@@ -75,21 +76,16 @@ class Files(unittest.TestCase):
                 self.assertEqual(execute('read_file', {'path': 'long-line.txt', 'startLine': 2})['output'], '2: end')
 
 
-@unittest.skipIf(os.getuid()==0, 'Run real patch namespace checks as the unprivileged service user.')
-class PatchNamespace(unittest.TestCase):
+class PatchHost(unittest.TestCase):
     def test_official_patch_moves_deletes_and_reports_failure_files(self):
         binary = Path(__file__).resolve().parents[2]/'Data/R4OS/Toolchains/Codex/0.163.0/codex'
         if not binary.exists(): self.skipTest('Qualified Codex is not installed.')
         with binary.open('rb') as stream: self.assertEqual(hashlib.file_digest(stream,'sha256').hexdigest(), '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215')
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); (root/'a.c').write_text('old\n'); (root/'b.c').write_text('other\n')
-            args=['/usr/bin/bwrap','--die-with-parent','--unshare-pid','--unshare-net']
-            for path in ('/usr','/lib','/lib64'):
-                if Path(path).exists(): args+=['--ro-bind',path,path]
-            args+=['--symlink','/usr/bin','/bin','--dev','/dev','--proc','/proc','--tmpfs','/tmp','--dir','/home/studio',
-                   '--bind',str(root),'/workspace','--ro-bind',str(binary),'/runner/codex',
-                   '--ro-bind',str(Path(__file__).with_name('file_worker.py')),'/runner/file_worker.py','--chdir','/workspace',
-                   '--clearenv','--setenv','HOME','/home/studio','/usr/bin/python3','-I','-B','/runner/file_worker.py']
+            from workspace_context import Workspace
+            args=Workspace(root).command(['/usr/bin/python3','-I','-B',str(Path(__file__).with_name('file_worker.py'))],
+                environment={'HOME': root, 'STUDIO_PATCH_BINARY': binary})
             def call(text,hashes):
                 result=subprocess.run(args,input=json.dumps({'tool':'apply_patch','arguments':{'patch':text,'expectedHashes':hashes}}),text=True,capture_output=True,timeout=20)
                 self.assertEqual(result.returncode,0,result.stderr);return json.loads(result.stdout)

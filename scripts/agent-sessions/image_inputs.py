@@ -125,7 +125,7 @@ def native_input(store,run_id,config):
     text=request_text(store,run_id);values=[]
     if text:values.append({'type':'text','text':text})
     for meta in config.get('attachments',[]):
-        if meta['mode']=='localImage':values.append({'type':'localImage','path':namespace(meta)})
+        if meta['mode']=='localImage':values.append({'type':'localImage','path':str(file_path(store,meta['sessionId'],meta))})
         else:
             from document_inputs import native_text
             values.append({'type':'text','text':native_text(store,meta['sessionId'],meta)})

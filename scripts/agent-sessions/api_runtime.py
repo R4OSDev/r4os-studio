@@ -126,12 +126,11 @@ class ApiRuntime:
     def arguments(self,original):
         if self.port is None or self.child is None or self.child.returncode is not None:
             raise ProjectFault('The original model transport is not available.',503)
-        args=list(original);position=args.index('--chdir')
-        args[position:position]=['--dir','/api','--ro-bind',str(self.key_file),'/api/relay.key',
-            '--ro-bind',str(Path(__file__).with_name('api-model-launcher.py')),'/api/launcher.py']
+        args=list(original)
         execute=args.index('/usr/bin/prlimit')+3
-        if args[execute]!='/bin/codex':raise ProjectFault('The native model launch binding changed.',503)
-        args[execute:execute+1]=['/usr/bin/python3','-I','-B','/api/launcher.py']
+        binary=args[execute]
+        args[execute:execute+1]=['/usr/bin/python3','-I','-B',str(Path(__file__).with_name('api-model-launcher.py')),
+            str(self.key_file),binary]
         settings={'name':'Studio API','base_url':f'http://127.0.0.1:{self.port}/v1','wire_api':'responses',
             'requires_openai_auth':False,'supports_websockets':False,'supports_standalone_web_search':False,
             'request_max_retries':0,'stream_max_retries':0,'env_key':'STUDIO_API_RELAY_TOKEN'}

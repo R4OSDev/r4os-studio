@@ -46,7 +46,7 @@ export class ClaudeControl {
     this.query = sdk.query({ prompt: idleInput(), options: {
       cwd: options.cwd, pathToClaudeCodeExecutable: options.executable,
       env: { PATH: '/usr/bin', HOME: options.home, CLAUDE_CONFIG_DIR: options.config,
-        USER: 'r4os-studio', DISABLE_AUTOUPDATER: '1', DISABLE_UPDATES: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+        USER: 'root', DISABLE_AUTOUPDATER: '1', DISABLE_UPDATES: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
         CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', CLAUDE_CODE_DISABLE_CLAUDE_MDS: '1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
         CLAUDE_CODE_DISABLE_CRON: '1', CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1', CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1',
         // The pinned native usage control is a first-party Data API request;

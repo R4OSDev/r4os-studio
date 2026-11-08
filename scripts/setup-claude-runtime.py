@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit unprivileged fixed-profile installation; no login, npm or model run."""
+"""Explicit fixed-profile installation; no login, npm or model run."""
 import base64
 import argparse
 import ctypes

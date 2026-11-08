@@ -8,7 +8,7 @@ export function sessionPath(projectId: string, sessionId?: string) {
 export { projectRequest, projectRequestId, ProjectRequestError } from '../projects/api';
 export const busyRun = (state?: string) => ['queued', 'starting', 'running', 'stopping'].includes(state ?? '');
 export const permissionToolLabels: Record<AgentToolId, string> = {
-  'studio.skill_network':'Skill web access', 'studio.skill_discover':'Discover skill tools', 'studio.skill_call':'Call skill tool', 'studio.read_skill_result':'Read skill result',
+  'studio.skill_discover':'Discover skill tools', 'studio.skill_call':'Call skill tool', 'studio.read_skill_result':'Read skill result',
   'studio.exec_command': 'Run command', 'studio.write_stdin': 'Process input', 'studio.terminate_process': 'Terminate process',
   'studio.list_directory': 'List directory', 'studio.read_file': 'Read file', 'studio.search': 'Search',
   'studio.read_attachment': 'Read attachment', 'studio.read_context_result':'Read original context result',

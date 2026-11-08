@@ -22,12 +22,12 @@ class CleanupToolsTest(unittest.IsolatedAsyncioTestCase):
 
     def files(self, worker):
         # Only the SDK context is an empty fixture. File operations themselves
-        # run through the real fixed file worker and networkless bwrap namespace.
+        # run through the real fixed file worker and direct workspace process.
         cache = self.root / 'OwnFileCache'; (cache / 'global/p').mkdir(parents=True)
-        worker.sandbox.context = {'paths': {}, 'cache': cache}
-        worker.sandbox.cache = cache / 'Run'; (worker.sandbox.cache / 'home').mkdir(parents=True)
-        worker.sandbox.binary = Path(__file__).resolve().parents[2] / 'Data/R4OS/Toolchains/Codex/0.163.0/codex'
-        self.assertEqual(hashlib.sha256(worker.sandbox.binary.read_bytes()).hexdigest(), CODEX_SHA256)
+        worker.workspace_tools.context = {'paths': {}, 'cache': cache}
+        worker.workspace_tools.cache = cache / 'Run'; (worker.workspace_tools.cache / 'home').mkdir(parents=True)
+        worker.workspace_tools.binary = Path(__file__).resolve().parents[2] / 'Data/R4OS/Toolchains/Codex/0.163.0/codex'
+        self.assertEqual(hashlib.sha256(worker.workspace_tools.binary.read_bytes()).hexdigest(), CODEX_SHA256)
 
     async def initialize(self, worker):
         return await self.good(worker, 'update_roadmap', {'operation': 'initialize', 'requestId': str(uuid.uuid4())})

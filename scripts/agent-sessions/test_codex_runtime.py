@@ -100,7 +100,7 @@ class CodexRuntimeTests(unittest.TestCase):
             flags=feature_names.__wrapped__(self.second['binary'],self.second['sha256'])
         self.assertEqual(flags,('goals','image_generation'))
         args=probe.call_args.args[0]
-        self.assertIn('--unshare-all',args);self.assertIn('--clearenv',args)
+        self.assertEqual(args[-2:], ['features', 'list']);self.assertEqual(probe.call_args.kwargs['env']['CODEX_HOME'], probe.call_args.kwargs['cwd'])
 
     def test_queue_revalidation_keeps_original_capture_after_default_change(self):
         import test_runs as fixtures

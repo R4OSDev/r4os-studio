@@ -18,12 +18,7 @@ def main():
     user = pwd.getpwnam('root')
     os.chown(directory, user.pw_uid, user.pw_gid)
     directory.chmod(0o700)
-    dropin = Path('/etc/systemd/system/r4os-studio.service.d/61-github.conf')
-    dropin.parent.mkdir(exist_ok=True)
-    quoted = str(directory).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
-    dropin.write_text('[Service]\nReadWritePaths="' + quoted + '"\n')
-    subprocess.run(['systemctl', 'daemon-reload'], check=True)
-    print('GitHub storage prepared. The next regular Studio update applies the service write path.')
+    print('GitHub storage prepared. Root services use this existing data directory.')
 
 
 if __name__ == '__main__':

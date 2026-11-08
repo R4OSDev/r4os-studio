@@ -4,6 +4,7 @@ import os
 from pathlib import Path, PurePosixPath
 import platform
 import shutil
+import shlex
 import stat
 import tarfile
 import zipfile
@@ -59,8 +60,15 @@ def unpack(archive, destination, kind, strip=True):
 
 
 def wrapper(bin_dir,name,text):
-    target=bin_dir/name
-    target.write_text('#!/bin/sh\nset -eu\n'+text+'\n');target.chmod(0o755)
+    words = shlex.split(text)
+    if words[0] != 'exec' or words[-1] != '$@': raise ValueError('Unsupported managed program wrapper.')
+    arguments = words[1:-1]
+    source = ('#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\n'
+        'root=Path(__file__).resolve().parents[2]\n'
+        'arguments=' + repr(arguments) + '\n'
+        'command=[str(root/value.removeprefix("/runtime/")) if value.startswith("/runtime/") else value for value in arguments]\n'
+        'os.execv(command[0],[*command,*sys.argv[1:]])\n')
+    target=bin_dir/name;target.write_text(source);target.chmod(0o755)
 
 
 def private_apt(api,stage,work,run,packages):
@@ -162,7 +170,7 @@ def prepare(api,skills,stage,work,run,progress):
     if len(bindings)!=1:raise api.SkillFault('The official native Frida artifact has an unexpected layout.',409)
     shutil.copyfile(bindings[0],stage/'Repository/node_modules/frida/build/frida_binding.node')
     run(api,stage,work,'program-frida-native',['/runtime/Node/bin/node','--input-type=module','-e',
-        "const f=await import('/runtime/Repository/node_modules/frida/build/src/frida.js');if(typeof f.getLocalDevice!=='function')throw Error('Missing native Frida API');console.log(JSON.stringify({frida:f.version,napi:process.versions.napi,nativeBindingLoaded:true}));"],timeout=60)
+        "const f=await import(process.env.STUDIO_SKILL_RUNTIME+'/Repository/node_modules/frida/build/src/frida.js');if(typeof f.getLocalDevice!=='function')throw Error('Missing native Frida API');console.log(JSON.stringify({frida:f.version,napi:process.versions.napi,nativeBindingLoaded:true}));"],timeout=60)
     progress(phase='installing_linux_programs')
     debian=private_apt(api,stage,work,run,plan['osPackages'])
     # Build the pinned, unmodified Binwalk source offline after locked cargo fetch.

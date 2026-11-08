@@ -103,26 +103,4 @@ class Boards(unittest.TestCase):
         with self.assertRaises(ProjectFault):self.call(pid=self.other)
         self.assertFalse((self.projects/self.other/'Boards').exists())
 
-    def test_actual_terminal_and_native_namespaces_cannot_read_private_boards(self):
-        self.create();private=self.projects/self.pid/'Boards/Boards.sqlite'
-        sys.path.insert(1,str(Path(__file__).resolve().parents[1]/'agent-sessions'))
-        from sandbox import Sandbox
-        from profile import prepare,CODEX_SHA256
-        work=self.projects/self.pid/'Workspace';cache=self.root/'own-cache';(cache/'global/p').mkdir(parents=True)
-        run_cache=cache/'run';(run_cache/'home').mkdir(parents=True)
-        worker=SimpleNamespace(store=SimpleNamespace(owner_type='project',workspace=work),config={'engine':{'profile':'studio-tools-v10'}})
-        sandbox=Sandbox(worker);sandbox.context={'paths':{},'cache':cache};sandbox.cache=run_cache
-        sandbox.binary=Path(__file__).resolve().parents[2]/'Data/R4OS/Toolchains/Codex/0.163.0/codex'
-        code="import os,json;assert not os.path.exists(%r);assert not os.path.exists('/workspace/../Boards');assert not any('cookie' in k.lower() or 'csrf' in k.lower() for k in os.environ);print(json.dumps({'privateBoardsHidden':True}))"%str(private)
-        result=subprocess.run(sandbox.command(['/usr/bin/python3','-I','-c',code]),capture_output=True,timeout=10)
-        self.assertEqual(result.returncode,0,result.stderr.decode());self.assertTrue(json.loads(result.stdout)['privateBoardsHidden'])
-        home=self.root/'own-provider';home.mkdir();(home/'models_cache.json').write_text('{"models":[{"slug":"fixture"}]}')
-        dummy=self.root/'own-not-executed-binary';dummy.write_text('qualified namespace fixture only')
-        features=json.loads((Path(__file__).resolve().parents[1]/'agent-sessions/features.json').read_text())
-        with patch('profile.digest',return_value=CODEX_SHA256):args,_=prepare(dummy,home,self.root/'own-native-state',features)
-        args.insert(1,'--unshare-net');index=args.index('/bin/codex',args.index('--clearenv'))
-        result=subprocess.run(args[:index]+['/usr/bin/python3','-I','-c',code],capture_output=True,timeout=10)
-        self.assertEqual(result.returncode,0,result.stderr.decode());self.assertTrue(json.loads(result.stdout)['privateBoardsHidden'])
-        self.assertTrue(private.exists())
-
 if __name__=='__main__':unittest.main()

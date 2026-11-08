@@ -27,7 +27,6 @@ import test_runs as fixtures
 from worker import Worker
 
 
-@unittest.skipIf(os.getuid() == 0, 'Qualify actual namespaces as an unprivileged user.')
 class AttachmentFiles(unittest.IsolatedAsyncioTestCase):
     setUp = fixtures.Runs.setUp
     tearDown = fixtures.Runs.tearDown
@@ -68,53 +67,6 @@ class AttachmentFiles(unittest.IsolatedAsyncioTestCase):
             if worker.lease is not None and not worker.lease.closed:worker.lease.close()
             worker.store.close()
 
-    async def test_actual_originals_are_readonly_copy_byte_exact_and_exclude_unsent_in_both_scopes(self):
-        skill=str(uuid.uuid4());skill_sid=str(uuid.uuid4())
-        with closing(packages.connect(self.root/'Skills')) as db:
-            packages.create(db,self.root/'Skills',{'id':skill,'name':'Own attachment files'})
-        with closing(SessionStore(self.projects,self.r4os,skill,'skill')) as store,store.db:
-            store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')",
-                (skill_sid,skill,'Own session',encode(self.settings),encode({'profile':NOTES_SKILL_PROFILE})))
-        for kind,owner,sid,profile in [('project',self.pid,self.sid,PROFILE),('skill',skill,skill_sid,NOTES_SKILL_PROFILE)]:
-            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
-                self.configure(store,sid,profile)
-                records=[self.upload(store,sid,raw,name) for raw,name in
-                    [(self.png(),'Texture.png'),(b'original text\n','source.txt'),(pdf('Original PDF'),'source.pdf')]]
-                unsent=self.upload(store,sid,self.png(),'Not sent.png')
-                run,_=admit(store,sid,self.message([meta['id'] for meta in records]),self.providers)
-            worker=self.worker(run,owner,kind)
-            cache=self.root/('sdk-fixture-'+kind);(cache/'global/p').mkdir(parents=True)
-            try:
-                # No app build: keep the real Sandbox/patch binary and use only
-                # an empty owned SDK package cache for this filesystem proof.
-                with patch('sdk.profile',return_value={'paths':{},'cache':cache}):
-                    source={namespace(meta):meta['sha256'] for meta in records}
-                    script='''from pathlib import Path
-import hashlib,json,shutil
-sources=json.loads(SOURCES)
-target=Path('/workspace/assets');target.mkdir(exist_ok=True)
-assert not Path('/Data').exists() and not Path('/session').exists()
-assert not Path(UNSENT).exists()
-for name,sha in sources.items():
- original=Path(name);assert hashlib.sha256(original.read_bytes()).hexdigest()==sha
- try:original.write_bytes(b'change')
- except OSError:pass
- else:raise AssertionError('Original attachment was writable')
- copy=target/original.name;shutil.copyfile(original,copy)
- assert hashlib.sha256(copy.read_bytes()).hexdigest()==sha
-assert len(list(Path('/attachments').iterdir()))==len(sources)
-print('READONLY_BYTE_EXACT')
-'''.replace('SOURCES',repr(json.dumps(source))).replace('UNSENT',repr(namespace(unsent)))
-                    result=await worker.terminals.call('exec_command',{'cmd':'/usr/bin/python3 -c '+shlex.quote(script),'yield_time_ms':1000})
-                    output=result['output']
-                    for _ in range(20):
-                        if result['state']=='exited':break
-                        result=await worker.terminals.call('write_stdin',{'processId':result['processId'],'yield_time_ms':100});output+=result['output']
-                    self.assertEqual(result['exitCode'],0,output);self.assertIn('READONLY_BYTE_EXACT',output)
-                for meta in records:
-                    self.assertEqual(hashlib.sha256((worker.store.workspace/'assets'/Path(namespace(meta)).name).read_bytes()).hexdigest(),meta['sha256'])
-                self.assertIn('/attachments/',instructions(worker.config))
-            finally:await self.finish(worker)
 
     async def test_changed_foreign_unaccepted_and_revoked_files_fail_before_any_command(self):
         with self.open() as store:

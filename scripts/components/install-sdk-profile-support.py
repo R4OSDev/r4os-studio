@@ -61,11 +61,6 @@ def main():
                 raise SystemExit('Invalid SDK host storage.')
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chown(path, account.pw_uid, account.pw_gid)
-        directory = Path('/etc/systemd/system/r4os-studio-components.service.d')
-        directory.mkdir(exist_ok=True)
-        target = str(root / 'Packages').replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
-        (directory / '75-sdk-profiles.conf').write_text('[Service]\nReadWritePaths="' + target + '"\n')
-        subprocess.run(['systemctl', 'daemon-reload'], check=True)
         subprocess.run(['systemctl', 'restart', 'r4os-studio-components.service'], check=True)
         print('SDK package storage enabled; only the idle component coordinator was restarted.')
     finally:

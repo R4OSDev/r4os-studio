@@ -1,4 +1,4 @@
-"""Private agent admission; the sandbox never receives this socket or identity."""
+"""Original agent admission with session, run and process identity."""
 import json
 from pathlib import Path
 import sqlite3

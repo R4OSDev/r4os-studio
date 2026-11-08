@@ -11,7 +11,7 @@ class SkillTools:
     async def call(self, name, arguments, call_id):
         worker = self.worker
         async with worker.terminals.lock:
-            async with worker.sandbox.lock:
+            async with worker.workspace_tools.lock:
                 if any(not process.finished.is_set() for process in worker.terminals.processes.values()):
                     return {'success': False, 'error': 'busy', 'output': 'Wait for this run\'s terminal processes to finish before validating or saving the skill.'}
                 if worker.lease is None or worker.lease.closed: raise ValueError('The author workspace lease is unavailable.')

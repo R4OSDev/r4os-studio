@@ -355,7 +355,7 @@ class ClaudeWorker(Worker):
             self.broker=ClaudeToolBroker(self.socket_root,binding,tool_names,self.current,self.effect,
                 admit=self.admit_native,retry=self.claude_retry)
             await self.broker.start()
-            from claude_namespace import prepare
+            from claude_launch_config import prepare
             args=prepare(self,history,prepared,self.broker)
             self.native=await asyncio.create_subprocess_exec(*args,stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,env={'PATH':'/usr/bin'},start_new_session=True,limit=524289,umask=0o077)

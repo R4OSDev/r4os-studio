@@ -1,8 +1,11 @@
-"""Fixed native SDK namespace; project tools never inherit this credential home."""
+"""Direct native SDK launch with explicit credential and original history paths."""
 from tool_catalog import tool_scope
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 
 from api_provider_store import private
 from claude_auth import auth_home
@@ -31,8 +34,7 @@ def prepare(worker,history,prepared,broker):
     root=prepared['paths']['runtime']/identity(worker.run_id);private(root,directory=True,create=True)
     provider=AuthStore(worker.manifest['providers']).get(config['providerId'])
     home=auth_home(AuthStore(worker.manifest['providers']),provider['id'])
-    # Native auth operations never mount this session's Projects directory.
-    # Logout/refresh remains native and cannot remove another session's history.
+    # Native authentication keeps its existing physical configuration directory.
     private(home/'Config/projects',directory=True,create=True)
     binding={'providerId':provider['id'],'studioSessionId':worker.session_id,'nativeSessionId':frozen['nativeSessionId'],
         'runId':worker.run_id,'requestId':worker.row['request_id'],'ownerType':worker.store.owner_type,
@@ -73,19 +75,19 @@ def prepare(worker,history,prepared,broker):
         'tools':[t['name'] for t in tools],'envelopedTools':[t['name'] for t in tools if t['inputSchema'].get('oneOf') or t['inputSchema'].get('anyOf')],
         'systemPrompt':prompt,'capability':broker.capability})
     source=Path(__file__).resolve().parent
-    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all','--share-net','--clearenv',
-        '--ro-bind','/usr','/usr','--ro-bind','/lib','/lib','--ro-bind','/lib64','/lib64','--symlink','usr/bin','/bin',
-        '--proc','/proc','--dev','/dev','--tmpfs','/tmp','--tmpfs','/run','--dir','/inference','--chdir','/inference',
-        '--dir','/home','--bind',str(home/'Home'),'/home/studio','--bind',str(home/'Config'),'/config',
-        '--bind',str(prepared['paths']['history']),'/config/projects',
-        '--ro-bind',str(Path(runtime['sdk']).parent),'/runtime/sdk','--ro-bind',str(Path(runtime['native']).parent),'/runtime/native',
-        '--ro-bind',str(root/'tools.json'),'/bridge/tools.json','--ro-bind',str(root/'runtime.json'),'/bridge/runtime.json',
-        '--ro-bind',str(broker.path),'/bridge/host.sock','--ro-bind',str(source/'claude_mcp.py'),'/bridge/mcp.py',
-        '--setenv','HOME','/home/studio','--setenv','USER','r4os-studio','--setenv','CLAUDE_CONFIG_DIR','/config','--setenv','PATH','/usr/bin']
-    for path in ('/etc/resolv.conf','/etc/hosts','/etc/nsswitch.conf','/etc/ssl/certs'):
-        if Path(path).exists():args+=['--ro-bind',path,path]
-    if native_input:args+=['--ro-bind',str(root/'input.json'),'/bridge/input.json']
-    for name in ('claude_engine.mjs','claude_session_engine.mjs','claude_session_io.mjs','claude_content.mjs'):
-        args+=['--ro-bind',str(source/name),'/runtime/'+name]
-    return ['/usr/bin/python3','-B',str(source/'claude_launch.py'),*args[1:],
-        '--','/usr/bin/node','/runtime/claude_session_io.mjs']
+    from claude_auth import auth_environment
+    environment=auth_environment(runtime, home)
+    projects=home/'Config/projects';private(projects,directory=True,create=True)
+    original=prepared['paths']['history']/'-inference'
+    private(original,directory=True,create=True)
+    native_project=projects/worker.session_id
+    if native_project.is_symlink() and native_project.resolve()==original:
+        pass
+    elif native_project.exists() or native_project.is_symlink():
+        raise ProjectFault('The native Claude project directory has a different original target.',409)
+    else: native_project.symlink_to(original,target_is_directory=True)
+    environment.update(CLAUDE_CODE_PROJECT_DIR_NAME=worker.session_id,
+        STUDIO_CLAUDE_BRIDGE=str(root), STUDIO_CLAUDE_SOCKET=str(broker.path),
+        STUDIO_CLAUDE_MCP=str(source/'claude_mcp.py'))
+    return Workspace(worker.store.workspace).command(['/usr/bin/python3','-B',str(source/'claude_launch.py'),
+        '/usr/bin/node',str(source/'claude_session_io.mjs')], environment=environment)

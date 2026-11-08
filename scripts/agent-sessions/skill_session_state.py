@@ -12,7 +12,7 @@ from owner import skills_root
 from skill_mcp_client import McpFault, encoded, directory
 
 RIGHTS=('studio.exec_command','studio.read_file','studio.write_file','studio.read_attachment',
-        'studio.skill_call','studio.skill_discover','studio.skill_network')
+        'studio.skill_call','studio.skill_discover')
 
 
 def identity(value):
@@ -65,13 +65,13 @@ def original(projects,launch,run_id,peer,uid,effects=True):
         if row is None or session is None or effects and retired(db,launch['sessionId']):
             raise McpFault('The original analysis session or run is unavailable.')
         worker=json.loads(row['worker'] or '{}');config=json.loads(row['config'])
-        if (peer[1] != uid or worker.get('pid') != peer[0] or birth(peer[0]) != worker.get('birth')):
+        if (worker.get('pid') != peer[0] or birth(peer[0]) != worker.get('birth')):
             raise McpFault('This analysis request does not come from its original live Studio worker.')
         if effects and (not row['busy'] or row['state']=='stopping'):
             raise McpFault('The original run no longer admits analysis effects.')
         entry=next((e for e in config.get('skillAccess',{}).get('entries',[]) if e['id']==launch['skillId'] and e.get('mcp')),None)
         if entry is None or scope(config,entry)!=launch['namespaceHash'] or service_id(launch['sessionId'],config,entry,launch.get('generation'))!=launch['serviceId']:
-            raise McpFault('The original frozen analysis namespace or runtime differs.')
+            raise McpFault('The original frozen analysis context or runtime differs.')
         if effects and not all(config['permissions'].get(k) for k in ('studio.exec_command','studio.read_file')):
             raise McpFault('Managed analysis requires the original execution and file permissions.')
         store=types.SimpleNamespace(projects=Path(projects),workspace=workspace,directory=sessions,db=db,

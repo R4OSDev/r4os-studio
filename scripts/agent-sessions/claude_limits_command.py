@@ -9,15 +9,8 @@ from session_store import identity
 def limits_command(runtime,root,request_id,catalog=False):
     if type(catalog) is not bool:raise ValueError('Invalid fixed metadata mode.')
     private(root/'Config/projects',directory=True,create=True)
-    args=command(runtime,root,'status');args=args[:args.index('--')]
-    blocked=args.index('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
-    assert args[blocked-1]=='--setenv'
-    del args[blocked-1:blocked+2]
+    from claude_auth import auth_environment
+    from workspace_context import Workspace
     source=Path(__file__).resolve().parent
-    # Auth may update its own native files; original conversation directories
-    # are neither exposed nor scanned. No model input is supplied.
-    args+=['--tmpfs','/config/projects','--ro-bind',str(Path(runtime['sdk']).parent),'/runtime/sdk',
-        '--ro-bind',str(source/'claude_engine.mjs'),'/runtime/claude_engine.mjs',
-        '--ro-bind',str(source/'claude_limits_probe.mjs'),'/runtime/claude_limits_probe.mjs',
-        '--','/usr/bin/node','/runtime/claude_limits_probe.mjs',identity(request_id)]
-    return args+(['catalog'] if catalog else [])
+    return Workspace(root).command(['/usr/bin/node', str(source / 'claude_limits_probe.mjs'), identity(request_id),
+        *(['catalog'] if catalog else [])], environment=auth_environment(runtime, root))

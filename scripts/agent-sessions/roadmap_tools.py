@@ -12,7 +12,7 @@ class RoadmapTools:
     async def call(self, name, arguments, call_id):
         if name == 'cleanup_roadmap' and arguments.get('action') != 'status':
             async with self.worker.terminals.lock:
-                async with self.worker.sandbox.lock:
+                async with self.worker.workspace_tools.lock:
                     if any(not process.finished.is_set() for process in self.worker.terminals.processes.values()):
                         return {'success': False, 'error': 'busy', 'output': 'Finish this run’s terminal processes before preparing cleanup.'}
                     return await self.invoke(name, arguments, call_id)

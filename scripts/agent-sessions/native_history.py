@@ -89,7 +89,7 @@ class NativeHistory:
         if path.stat().st_nlink != 1:
             fail('An original native archive has a foreign file identity.')
         with path.open('rb') as stream: digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-        self.archives.append({'path': str(path.relative_to(self.store.directory / self.sid)),
+        self.archives.append({'path': str(path.relative_to(self.store.directory / self.sid)) if path.is_relative_to(self.store.directory / self.sid) else str(path),
                               'sha256': digest, 'bytes': path.stat().st_size})
 
     def call(self, ident, name, arguments):

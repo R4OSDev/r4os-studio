@@ -3,6 +3,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import resource
 import stat
 
@@ -45,7 +48,7 @@ NOTES_SKILL_PROFILE = 'skill'
 SKILL_PROFILES = (SKILL_PROFILE, AUTHOR_PROFILE,DOCUMENT_SKILL_PROFILE,IMAGE_SKILL_PROFILE,NOTES_SKILL_PROFILE)
 NOTE_TOOLS = ('read_environment_notes','record_environment_note')
 AUTHOR_TOOLS = ('validate_skill', 'save_skill')
-SANDBOX_MODE = 'workspace-write'
+SANDBOX_MODE = 'danger-full-access'
 LEGACY_TOOLS = ('exec_command', 'write_stdin', 'terminate_process', 'list_directory', 'read_file',
          'search', 'write_file', 'apply_patch', 'create_directory')
 PREVIOUS_DEVELOPMENT_TOOLS = ('build_project', 'deploy_project', 'run_project', 'read_development_job',
@@ -57,7 +60,7 @@ UPDATE_TOOLS = ('read_update_package', 'plan_update_package', 'build_update_pack
     'abort_update', 'rollback_update', 'cleanup_update_transport')
 DEVELOPMENT_TOOLS = COMPLETION_TOOLS + UPDATE_TOOLS + ('run_vm_command','stop_project_vm','restart_project_vm')
 GIT_TOOLS = ('push_project',)
-def default_enabled(tool): return tool not in ('push_project','skill_network')
+def default_enabled(tool): return tool != 'push_project'
 ROADMAP_TOOLS = ('read_roadmap', 'update_roadmap', 'cleanup_roadmap')
 PRE_ROADMAP_TOOLS = LEGACY_TOOLS + DEVELOPMENT_TOOLS + GIT_TOOLS
 PRE_REMOTE_TOOLS = PRE_ROADMAP_TOOLS + ROADMAP_TOOLS
@@ -104,7 +107,7 @@ def write_json(path, value):
     finally: os.close(fd)
 
 
-def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None,catalog_data=None,expected_engine=None):
+def prepare(binary, provider_home, state, features, model=None, catalog_source=None, selected_profile=PROFILE, fast_mode=False, web_search_enabled=False, goals_enabled=False, attachment_mounts=(),image_modalities=None,image_generation_enabled=False,generated_root=None,catalog_data=None,expected_engine=None,workspace=None):
     if type(web_search_enabled) is not bool: raise ValueError('Invalid Web search setting.')
     if type(goals_enabled) is not bool: raise ValueError('Invalid native Goal capability.')
     if type(image_generation_enabled) is not bool:raise ValueError('Invalid native image generation capability.')
@@ -122,8 +125,7 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
         raise ValueError('This Codex runtime does not expose Fast Mode.')
     provider_home = directory(provider_home)
     state = directory(state)
-    # These are empty mount targets in the existing provider home. All native
-    # conversation writes are redirected into the project's own state directory.
+    # Native credentials and future rollout files use the original provider home.
     for name in ('sessions', 'archived_sessions'):
         directory(provider_home / name)
     mount_config = provider_home / 'config.toml'
@@ -166,15 +168,14 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     # The feature-name set is a versioned part of the qualified profile. Only
     # booleans and FeatureToml switches are included; bare config structs are not.
     settings = {
-        'cli_auth_credentials_store': 'file', 'model_catalog_json': '/session/models.json',
-        'sqlite_home': '/session/state', 'log_dir': '/session/logs', 'project_doc_max_bytes': 0,
+        'cli_auth_credentials_store': 'file', 'model_catalog_json': str(catalog),
+        'sqlite_home': str(state / 'state'), 'log_dir': str(state / 'logs'), 'project_doc_max_bytes': 0,
         'project_root_markers': [], 'web_search': 'live' if web_search_enabled else 'disabled',
         'agents.enabled': False, 'tools.update_plan.enabled': False,
         'tools.experimental_request_user_input.enabled': False,
         'skills.include_instructions': False, 'skills.bundled.enabled': False,
         'cloud.skills.enabled': False, 'plugins._default.enabled': False,
-        # Reflect the writable workspace exposed by Studio's dynamic tools.
-        # Native tools stay disabled; their virtual cwd contains no project data.
+        # Studio tools provide the file/terminal interface; no native OS sandbox.
         'history.persistence': 'none', 'approval_policy': 'never', 'sandbox_mode': SANDBOX_MODE,
     }
     settings.update({'features.' + name: False for name in features})
@@ -188,45 +189,18 @@ def prepare(binary, provider_home, state, features, model=None, catalog_source=N
     if image_generation_enabled:
         settings['features.image_generation']=True
         if 'imagegenext' in features:settings['features.imagegenext']=True
-    # Hide user config in the runtime mount namespace; the original file is
-    # never rewritten. The virtual cwd is empty and contains no project config.
-    (state / 'config.toml').write_text('')
-    args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid']
-    for path in ('/usr', '/lib', '/lib64'):
-        if Path(path).exists(): args += ['--ro-bind', path, path]
-    args += ['--dir', '/etc']
-    for path in ('/etc/ssl', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd'):
-        if Path(path).exists(): args += ['--ro-bind', path, path]
-    if attachment_mounts:
-        if len(attachment_mounts)>256:raise ValueError('Too many native attachment mounts.')
-        args+=['--dir','/attachments']
-        import re
-        seen=set()
-        for source,target in attachment_mounts:
-            if not re.fullmatch(r'/attachments/[a-f0-9-]{36}\.(png|jpg|webp)',target) or target in seen:raise ValueError('Invalid native image target.')
-            seen.add(target);args+=['--ro-bind',str(regular(source)),target]
-    if image_generation_enabled:
-        if generated_root is None:raise ValueError('Native image generation requires its qualified session output mount.')
-        generated_root=directory(generated_root)
-        directory(provider_home/'generated_images')
-    # A native conversation grows across many turns and includes image inputs.
-    # Exempt only Codex from the worker's soft per-file limit. Older hosts keep
-    # their inherited hard bound until explicit history-support maintenance.
+    # Credentials keep their original physical home and lock. Native state is
+    # selected explicitly, and existing rollouts resume by their physical path.
+    working = Workspace(workspace or state / 'home')
+    if image_generation_enabled and generated_root is None:
+        raise ValueError('Native image generation requires its session output directory.')
+    if generated_root is not None:
+        if not image_generation_enabled: raise ValueError('An output directory requires enabled native image generation.')
+        directory(generated_root)
     hard_limit = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
     native_limit = 'unlimited' if hard_limit == resource.RLIM_INFINITY else str(hard_limit)
-    args += ['--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
-             '--bind', str(provider_home), '/codex', '--bind', str(state), '/session',
-             '--bind', str(state / 'native'), '/codex/sessions',
-             '--bind', str(state / 'archived'), '/codex/archived_sessions',
-             '--ro-bind', str(state / 'config.toml'), '/codex/config.toml',
-             '--dir', '/workspace', '--dir', '/bin', '--ro-bind', str(binary), '/bin/codex',
-             '--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/session/home',
-             '--setenv', 'CODEX_HOME', '/codex', '--setenv', 'PATH', '/usr/bin:/bin',
-             '--setenv', 'LANG', 'C.UTF-8', '/usr/bin/prlimit',
-             '--fsize=' + native_limit + ':' + native_limit, '--', '/bin/codex', 'app-server', '--listen', 'stdio://']
-    if generated_root is not None:
-        if not image_generation_enabled:raise ValueError('An output mount requires enabled native image generation.')
-        position=args.index('--chdir');args[position:position]=['--bind',str(generated_root),'/codex/generated_images']
+    args = working.command(['/usr/bin/prlimit', '--fsize=' + native_limit + ':' + native_limit, '--',
+        str(binary), 'app-server', '--listen', 'stdio://'], environment={'HOME': state / 'home', 'CODEX_HOME': provider_home})
     for key, value in settings.items():
         args += ['-c', key + '=' + json.dumps(value, ensure_ascii=False, separators=(',', ':'))]
     from image_provider import configuration

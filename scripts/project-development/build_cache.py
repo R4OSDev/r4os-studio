@@ -13,7 +13,7 @@ from layout import save
 
 
 class BuildCache:
-    def __init__(self, store, job):
+    def __init__(self, store, job, packages_root):
         self.lock = None
         identity = {'schema': 1, 'projectId': store.id, 'pins': job['pins'],
                     'sourceSha256': (store.get(job['id']).get('source') or {}).get('sha256'),
@@ -40,11 +40,10 @@ class BuildCache:
                 save(marker, identity)
             for name in ('zig', 'zig-local', 'rust-build'): folder(self.root / name)
             packages = self.root / 'zig/p'
-            if packages.exists() or packages.is_symlink():
-                if not packages.is_symlink() or os.readlink(packages) != '/packages':
-                    raise DevelopmentFault('The compiler cache package binding changed. Cached data was preserved.')
-            else:
-                packages.symlink_to('/packages')
+            if packages.is_symlink() and os.readlink(packages) == '/packages': packages.unlink()
+            if not packages.exists() and not packages.is_symlink(): packages.symlink_to(packages_root)
+            if packages.resolve() != Path(packages_root).resolve():
+                raise DevelopmentFault('The compiler package cache points at a different SDK package.')
         except BaseException:
             self.close()
             raise

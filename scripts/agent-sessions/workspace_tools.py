@@ -1,0 +1,103 @@
+"""Direct tools in the selected workspace with per-run paths and caches."""
+import asyncio
+import os
+from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
+from profile import regular, digest, directory, CODEX_SHA256,CODEX_VERSION
+
+
+class WorkspaceTools:
+    def __init__(self, worker):
+        self.worker = worker; self.context = None
+        self.script_roots = []
+        self.lock = asyncio.Lock(); self.initializing = asyncio.Lock()
+
+    async def prepare(self):
+        async with self.initializing:
+            if self.context is not None: return
+            if self.worker.store.owner_type == 'skill':
+                context = {'paths': {}}
+            else:
+                from sdk import profile
+                context = await asyncio.to_thread(profile, Path(self.worker.manifest['r4os']),
+                                  self.worker.store.projects, self.worker.config['projectPins'])
+            # The official patch parser is a separate pinned tool, independent
+            # of the Claude model engine and its native2.x version.
+            patch_version=CODEX_VERSION if self.worker.config['engine'].get('kind') in ('claude-code', 'studio') else self.worker.config['engine']['version']
+            binary = Path(self.worker.manifest['r4os']) / 'Toolchains/Codex' / patch_version / 'codex'
+            if self.worker.config['engine'].get('kind') == 'studio':
+                pass  # Ordinary file/terminal tools do not need a model-agent binary.
+            elif self.worker.config['engine'].get('kind') == 'claude-code':
+                if digest(regular(binary)) != CODEX_SHA256: raise ValueError('The private file patch utility changed.')
+            else:
+                from codex_runtime import binary as runtime_binary
+                binary = runtime_binary(self.worker.manifest['r4os'], self.worker.config['engine'])
+            self.binary = binary
+            from skill_scripts import bindings
+            self.script_roots = await asyncio.to_thread(bindings, self.worker)
+            self.cache = directory(self.worker.store.directory / self.worker.session_id / 'Tools' / self.worker.run_id)
+            for name in ('home', 'zig', 'cargo'): directory(self.cache / name)
+            if self.worker.store.owner_type == 'project':
+                package_link = self.cache / 'zig/p'
+                packages = context['cache'] / 'global/p'
+                if package_link.is_symlink() and os.readlink(package_link) == '/packages': package_link.unlink()
+                if not package_link.exists() and not package_link.is_symlink(): package_link.symlink_to(packages)
+            self.context = context
+
+    def paths(self):
+        paths = {'/' + name: path for name, path in self.context['paths'].items()}
+        paths.update({'/cache': self.cache, '/runner': Path(__file__).parent,
+                      '/runner/codex': self.binary})
+        for ident, path in self.script_roots: paths['/skills/' + ident] = path
+        from attachment_files import mounts
+        for source, target in mounts(self.worker): paths[target] = source
+        if self.context.get('rust'): paths['/rust'] = self.context['rust']['prefix']
+        exports = self.context.get('sdkTools') or self.context.get('rust')
+        if exports: paths['/tools'] = exports['tools']
+        if self.context.get('runner'): paths['/pwsh'] = self.context['runner'].parent
+        paths.update(self.worker.skill_resources.paths())
+        if self.worker.store.owner_type == 'project':
+            from image_instructions import ALIAS
+            paths['/sdk/' + ALIAS] = Path(__file__).resolve().parents[2] / 'shared/r4os/image-recipes'
+        return paths
+
+    def workspace(self):
+        return Workspace(self.worker.store.workspace, self.paths())
+
+    def command(self, command, workdir='.', patch=False):
+        context = self.workspace()
+        if patch and self.worker.config['engine'].get('kind') == 'studio' and digest(regular(self.binary)) != CODEX_SHA256:
+            raise ValueError('The standalone patch utility changed.')
+        paths = self.context['paths']
+        bins = [self.context['runner'].parent] if self.context.get('runner') else []
+        if paths.get('zig'): bins.append(paths['zig'])
+        if self.context.get('rust'): bins.append(self.context['rust']['prefix'] / self.context['rust']['compiler'].parent)
+        environment = {'HOME': self.cache / 'home', 'PATH': ':'.join(map(str, [*bins, '/usr/local/bin', '/usr/bin', '/bin'])),
+            'CARGO_HOME': self.cache / 'cargo', 'ZIG_GLOBAL_CACHE_DIR': self.cache / 'zig',
+            'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT': '1', 'POWERSHELL_TELEMETRY_OPTOUT': '1',
+            'STUDIO_PATCH_BINARY': self.binary}
+        for key, name in [('SDK_ROOT', 'sdk'), ('CONTRACT_ROOT', 'contract'), ('LIBRARIES_ROOT', 'libraries'), ('SDK_INSTALL_ROOT', 'install')]:
+            if name in paths: environment[key] = paths[name]
+        if '/tools' in context.paths: environment['SDK_TOOLS_ROOT'] = context.paths['/tools']
+        if self.context.get('rust'):
+            environment.update(RUSTUP_AUTO_INSTALL='0', RUSTUP_HOME=paths['install'] / 'Toolchains/Rust/rustup',
+                RUSTUP_TOOLCHAIN=Path(self.context['package']['record']['rust']['toolchain']).name)
+        return context.command(command, workdir, environment)
+
+    async def file(self, name, arguments):
+        import json
+        await self.prepare()
+        # All calls share this lock, including reads, so a read/hash pair observes
+        # the preceding Studio write. External administrator edits remain external.
+        async with self.lock:
+            proc = await asyncio.create_subprocess_exec(*self.command(['/usr/bin/python3', '-I', '-B', str(Path(__file__).with_name('file_worker.py'))], patch=name == 'apply_patch'),
+                       stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=262144)
+            try:
+                output, _ = await asyncio.wait_for(proc.communicate(json.dumps({'tool': name, 'arguments': arguments}).encode()), 30)
+                if proc.returncode or len(output) > 196608: raise ValueError()
+                return json.loads(output)
+            except BaseException:
+                if proc.returncode is None: proc.kill(); await proc.wait()
+                raise

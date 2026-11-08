@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unprivileged fixed-operation agent coordinator. Runs live in separate units."""
+"""Root agent coordinator. Runs live in separate units."""
 import asyncio
 import json
 import os

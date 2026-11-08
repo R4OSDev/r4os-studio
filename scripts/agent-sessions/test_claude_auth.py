@@ -38,7 +38,7 @@ class AuthProtocol(unittest.TestCase):
         for change in ({'authMethod':'api_key'},{'authMethod':'oauth_token'},{'apiProvider':'bedrock'},
                 {'apiKeySource':'ANTHROPIC_API_KEY'},{'subscriptionType':'team'},{'subscriptionType':None},{'configDirectory':'/foreign'},
                 {'forcedLoginMethod':'console'}):
-            self.assertEqual(status_result(json.dumps(STATUS|change),0)[0],'unsupported')
+            self.assertEqual(status_result(json.dumps(STATUS|change),0,'/config')[0],'unsupported')
         self.assertEqual(status_result(json.dumps({'loggedIn':False,'authMethod':'none','apiProvider':'firstParty'}),1)[0],'not-connected')
         self.assertEqual(status_result(json.dumps(STATUS),1)[0],'unsupported')
         for raw,code in [('not json',0),(json.dumps(STATUS|{'orgId':None}),0)]:
@@ -68,16 +68,16 @@ class AuthProtocol(unittest.TestCase):
         raw=(self.store.root/'Providers.sqlite').read_bytes()
         for forbidden in (URL.encode(),STATE.encode(),b'accessToken',b'refreshToken',b'authorizationUrl'):self.assertNotIn(forbidden,raw)
 
-    def test_private_home_refuses_links_and_native_environment_replaces_overrides(self):
+    def test_native_home_keeps_original_links_and_environment_replaces_overrides(self):
         root=auth_home(self.store,self.ident)
         self.assertEqual(root.stat().st_mode&0o777,0o700)
         foreign=self.root/'foreign';foreign.write_text('owned fixture');foreign.chmod(0o600)
         (root/'Config/link').symlink_to(foreign)
-        with self.assertRaises(ProjectFault):auth_home(self.store,self.ident)
+        self.assertEqual(auth_home(self.store,self.ident),root)
         self.assertEqual(foreign.read_text(),'owned fixture')
         args=command({'native':'/owned/pinned/claude'},root,'connect')
-        self.assertIn('--clearenv',args);self.assertIn('--claudeai',args);self.assertNotIn('--console',args)
-        self.assertEqual(args[-6:],['/claude','--setting-sources','','auth','login','--claudeai'])
+        self.assertEqual(args[:3],['/usr/bin/env','-i','-C']);self.assertIn('--claudeai',args);self.assertNotIn('--console',args)
+        self.assertEqual(args[-6:],['/owned/pinned/claude','--setting-sources','','auth','login','--claudeai'])
         for forbidden in ('ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_PROFILE','CLAUDE_CODE_OAUTH_TOKEN','HTTPS_PROXY'):
             self.assertNotIn(forbidden,args)
         self.assertNotIn('/etc/claude-code',args);self.assertNotIn(str(foreign),args)
@@ -108,7 +108,7 @@ class AuthLifecycle(unittest.IsolatedAsyncioTestCase):
                 if job['cancel']:raise asyncio.CancelledError()
                 self.assertEqual(job['child'].stdin.value,('own-once-code#'+STATE+'\n').encode())
                 return b'Login successful.',0
-            return json.dumps(STATUS).encode(),0
+            return json.dumps({**STATUS,'configDirectory':next(value.split('=',1)[1] for value in args if value.startswith('CLAUDE_CONFIG_DIR='))}).encode(),0
         with patch.object(self.manager,'execute',side_effect=controlled):
             op=await self.manager.start(self.ident,{'requestId':rid(),'revision':1,'action':'connect'},OWNER);request=op['requestId']
             await self.until(lambda:self.manager.jobs[self.ident]['url'] is not None)

@@ -181,7 +181,7 @@ class Terminals:
 
     async def call(self, name, args):
         if name == 'exec_command':
-            try: await self.worker.sandbox.prepare()
+            try: await self.worker.workspace_tools.prepare()
             except (OSError, ValueError, ProjectFault) as error:
                 return {'success': False, 'error': 'preparationFailed', 'output': str(error) if isinstance(error, ProjectFault) else 'The workspace environment is unavailable. No command started.'}
             async with self.lock:
@@ -195,17 +195,13 @@ class Terminals:
                     if process.finished.is_set() and not process.pending: del self.processes[ident]
                 if len(self.processes) >= 32:
                     return {'success': False, 'error': 'processLimit', 'output': 'Collect pending terminal output before starting another process.'}
-                names = parts(args.get('workdir', '.')); relative = '/'.join(names)
-                # Inspect cwd within a file sandbox; host never follows a path
-                # supplied by a command. Bubblewrap resolves it in its own root.
-                checked = await self.worker.sandbox.file('list_directory', {'path': relative or '.'})
-                if not checked['success']: return checked
+                workdir = args.get('workdir', '.')
                 admitted = get_run(self.worker.store, self.worker.run_id)
                 if getattr(self.worker, 'stopping', False) or not admitted['busy'] or admitted['state'] == 'stopping':
                     return {'success': False, 'error': 'interrupted', 'output': 'The run stopped before the command started.'}
                 inner = ['/usr/bin/bash', '--noprofile', '--norc', '-c', args['cmd']]
                 if args.get('tty'): inner = ['/usr/bin/setsid', '--ctty', '--wait', *inner]
-                command = self.worker.sandbox.command(inner, '/workspace' + ('/' + relative if relative else ''))
+                command = self.worker.workspace_tools.command(inner, workdir)
                 master = slave = None
                 try:
                     if args.get('tty'):

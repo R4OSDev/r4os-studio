@@ -92,27 +92,6 @@ class ImageInputs(unittest.IsolatedAsyncioTestCase):
             self.assertIn('missing or changed',get_run(store,run['id'])['error'])
             self.assertEqual(store.history(self.sid)['items'][0]['attachments'][0]['sha256'],image['sha256'])
 
-    async def test_native_namespace_has_only_sent_images_readonly_without_other_private_files(self):
-        with self.open() as store:
-            image=self.upload(store);unsent=self.upload(store,'red')
-            run,_=admit(store,self.sid,self.message([image['id']]),self.providers);config=json.loads(get_run(store,run['id'])['config'])
-            approved=mounts(store,self.sid,config);self.assertEqual(len(approved),1)
-            home=self.root/'own-native-home';home.mkdir();(home/'models_cache.json').write_text(encode({'models':[{'slug':'fixture'}]}))
-            dummy=self.root/'dummy-codex';dummy.write_text('not executed')
-            with patch('profile.digest',return_value=CODEX_SHA256):
-                args,_=prepare(dummy,home,self.root/'own-native-state',json.loads(Path(__file__).with_name('features.json').read_text()),attachment_mounts=approved)
-            args.insert(1,'--unshare-net');index=args.index('/bin/codex',args.index('--clearenv'))
-            check='''import os,json
-path=os.listdir('/attachments');assert len(path)==1
-assert not os.path.exists(%r)
-assert not os.path.exists('/attachments/%s.png')
-try:open('/attachments/'+path[0],'wb');raise RuntimeError('image was writable')
-except OSError:pass
-print(json.dumps({'readonly':True,'onlySentImage':True}))
-'''%(str(store.directory/self.sid/'Attachments'),unsent['id'])
-            result=subprocess.run(args[:index]+['/usr/bin/python3','-I','-c',check],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
-            self.assertEqual(result.returncode,0,result.stderr.decode());self.assertTrue(json.loads(result.stdout)['readonly'])
-
     async def test_current_uploads_need_explicit_qualified_send_and_goal_play_cannot_attach_drafts(self):
         with self.open() as store:
             first=self.upload(store);second=self.upload(store,'red');data=self.message([first['id']])

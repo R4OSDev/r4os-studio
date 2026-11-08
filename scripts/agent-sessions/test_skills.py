@@ -138,35 +138,6 @@ class Skills(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(method == 'thread/start' for method, _ in seen), 1)
         self.assertEqual(sum(method == 'turn/start' for method, _ in seen), 2)
 
-    @unittest.skipIf(os.getuid() == 0, 'Run actual author namespace as the unprivileged service user.')
-    async def test_real_namespace_has_no_sdk_other_owners_or_credentials(self):
-        installed = Path(__file__).resolve().parents[2] / 'Data/R4OS'
-        if not (installed / 'Toolchains/Codex' / CODEX_VERSION / 'codex').is_file(): self.skipTest('Qualified Codex runtime absent')
-        run = self.admit(); worker = Worker({**self.manifest(run), 'r4os': str(installed)})
-        try:
-            self.assertTrue((await worker.sandbox.file('create_directory', {'path': 'references'}))['success'])
-            result = await worker.sandbox.file('write_file', {'path': 'references/probe.txt', 'content': 'only selected skill', 'expectedSha256': None})
-            self.assertTrue(result['success'], result)
-            denied = await worker.sandbox.file('read_file', {'path': '.', 'root': 'sdk'})
-            self.assertFalse(denied['success'])
-            command = '''python3 - <<'PY'
-from pathlib import Path
-import socket
-assert Path('/workspace/references/probe.txt').read_text() == 'only selected skill'
-for path in ['/codex','/session','/sdk','/contract','/zig','/rust','/Data','/root','/run/r4os-studio-vms','/workspace/../Sessions']:
- assert not Path(path).exists(), path
-assert not Path('/workspace/module.R4MF').exists()
-try: socket.create_connection(('1.1.1.1',443),timeout=.1)
-except OSError: pass
-else: raise AssertionError('Network unexpectedly available')
-print('AUTHOR_NAMESPACE_OK')
-PY'''
-            result = await worker.terminals.call('exec_command', {'cmd': command, 'yield_time_ms': 1000})
-            output = result['output']
-            while result['state'] == 'running':
-                result = await worker.terminals.call('write_stdin', {'processId': result['processId'], 'yield_time_ms': 1000}); output += result['output']
-            self.assertEqual(result['exitCode'], 0, output); self.assertIn('AUTHOR_NAMESPACE_OK', output)
-        finally: await worker.cleanup(); worker.store.close()
 
 
 if __name__ == '__main__': unittest.main()

@@ -17,7 +17,7 @@ from session_store import SessionStore, encode, now
 from run_store import get_run, transition, event, item, request_text
 from codex_rpc import CodexRPC
 from tool_catalog import specifications, validate_arguments
-from sandbox import Sandbox
+from workspace_tools import WorkspaceTools
 from terminal import Terminals, bounded_text
 from system_prompt import snapshot as prompt_snapshot
 from store import ProjectFault
@@ -58,7 +58,7 @@ class Worker:
         self.items = {}; self.lease = None
         self.api_runtime=None;self.api_worker=None;self.zai_watch=None
         self.generated_started=set();self.stop_task=None;self.interrupt_tasks={};self.closing=False
-        self.sandbox = Sandbox(self)
+        self.workspace_tools = WorkspaceTools(self)
         from skill_resources import SkillResources
         self.skill_resources = SkillResources(self)
         from skill_mcp_tools import SkillTools as ManagedSkillTools
@@ -228,7 +228,7 @@ class Worker:
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
-            return await self.sandbox.file(name, arguments)
+            return await self.workspace_tools.file(name, arguments)
         return {'success': False, 'error': 'unavailable', 'output': 'This tool is not available in this Studio release.'}
 
     def unconfirmed(self):
@@ -501,7 +501,7 @@ class Worker:
                 self.error=str(error);raise
             args, runtime = prepare(binary, provider_home, state,
                                     json.loads((Path(__file__).parent / 'features.json').read_text()), self.config['model'], self.config['providerId'], tool_scope(self.config),
-                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'),image_generation_enabled=self.config.get('nativeImageGeneration') is True,generated_root=GeneratedImages(self.store,self.session_id).native_root() if self.config.get('nativeImageGeneration') else None,catalog_data=self.config.get('apiModels'),expected_engine=self.config['engine'])
+                                    fast_mode=self.config.get('fastMode', False), web_search_enabled=self.config.get('webSearchEnabled', False), goals_enabled=bool(self.goal_worker),attachment_mounts=mounts,image_modalities=self.config.get('imageInputModalities'),image_generation_enabled=self.config.get('nativeImageGeneration') is True,generated_root=GeneratedImages(self.store,self.session_id).native_root() if self.config.get('nativeImageGeneration') else None,catalog_data=self.config.get('apiModels'),expected_engine=self.config['engine'],workspace=self.store.workspace)
             if self.api_runtime:args=self.api_runtime.arguments(args)
             from instructions import compose
             instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
@@ -545,16 +545,19 @@ class Worker:
             if self.api_runtime:native_provider=self.api_runtime.selection()
             if self.thread_id:
                 try:
-                    response=await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'cwd': '/workspace', 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})}})
+                    response=await self.client.request('thread/resume', {**native_provider,'threadId': self.thread_id, 'path': str(__import__('native_tools').binding(self.store, self.session_id)['path']), 'cwd': str(self.store.workspace), 'excludeTurns': True, 'model': self.config['model'], 'serviceTier': service_tier, 'baseInstructions': instructions, 'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never', 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})}})
                 except Exception:
                     self.error = 'The saved conversation could not be resumed. Its files were preserved.'; raise
             else:
-                response = await self.client.request('thread/start', {**native_provider,'cwd': '/workspace', 'model': self.config['model'], 'serviceTier': service_tier,
+                response = await self.client.request('thread/start', {**native_provider,'cwd': str(self.store.workspace), 'model': self.config['model'], 'serviceTier': service_tier,
                            'ephemeral': False, 'dynamicTools': native_specifications(self.config), 'baseInstructions': instructions, 'config': {'web_search': web_search_mode, **({'model_reasoning_effort': self.config['effort']} if self.goal_worker and self.config['effort'] else {})},
                            'sandbox': SANDBOX_MODE, 'approvalPolicy': 'never'})
                 self.thread_id = response['thread']['id']
                 with self.store.db:
                     self.store.db.execute('UPDATE sessions SET thread_id=? WHERE id=?', (self.thread_id, self.session_id))
+            if self.config.get('nativeImageGeneration'):
+                from generated_images import native_output
+                native_output(provider_home, GeneratedImages(self.store, self.session_id).native_root(), self.thread_id)
             self.context.native(response)
             if self.stopping: self.outcome = 'interrupted'; return
             if self.goal_worker: await self.goal_worker.start_control()

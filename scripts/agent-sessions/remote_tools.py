@@ -69,7 +69,7 @@ class RemoteTools:
         if name == 'remote_files':
             # Share local file/terminal admission locks with existing file tools.
             async with worker.terminals.lock:
-                async with worker.sandbox.lock:
+                async with worker.workspace_tools.lock:
                     if any(not process.finished.is_set() for process in worker.terminals.processes.values()):
                         return {'success': False, 'error': 'busy', 'output': 'Finish this run’s terminal processes before a remote file transfer.'}
                     return await self.perform(frame, name, arguments, call_id)

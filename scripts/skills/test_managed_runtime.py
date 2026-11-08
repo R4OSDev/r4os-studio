@@ -70,7 +70,6 @@ class Artifacts(unittest.TestCase):
                 rea_recipe.prepare(api,self.root/'Skills',job['skillId'],job,source,{'commit':'a'*40},lambda **v:progress.append(v))
         self.assertEqual(progress,[])
 
-    @unittest.skipIf(os.getuid()==0,'Exercise the real namespace as the service owner.')
     def test_wrong_managed_node_never_falls_back_to_host_node(self):
         source=self.source();job=self.job();skills=self.root/'Skills'
         before=skills/job['skillId']/'Workspace';before.mkdir(parents=True);(before/'SKILL.md').write_bytes(b'old active bytes preserved')

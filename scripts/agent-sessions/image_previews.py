@@ -24,13 +24,9 @@ def descriptor(path,meta):
     return str(path)
 
 
-def isolated_preview(path):
+def decode_preview(path):
     script=Path(__file__).with_name('image_thumbnail.py').absolute()
-    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all','--cap-drop','ALL']
-    for root in ('/usr','/lib','/lib64'):
-        if Path(root).exists():args+=['--ro-bind',root,root]
-    args+=['--dev','/dev','--proc','/proc','--tmpfs','/tmp','--ro-bind',str(regular(path)),'/input',
-           '--ro-bind',str(script),'/preview.py','--clearenv','--setenv','LANG','C.UTF-8','/usr/bin/python3','-I','-B','/preview.py']
+    args=['/usr/bin/python3','-I','-B',str(script),str(regular(path))]
     try:
         completed=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,check=False)
         if completed.returncode or len(completed.stdout)>528384:raise ValueError()
@@ -40,7 +36,7 @@ def isolated_preview(path):
         if not 0<len(raw)<=MAX_PREVIEW or raw[:8]!=b'\x89PNG\r\n\x1a\n':raise ValueError()
         return raw,result
     except (OSError,ValueError,TypeError,KeyError,subprocess.TimeoutExpired):
-        raise ProjectFault('The isolated image preview is unavailable. Original bytes were preserved.',503) from None
+        raise ProjectFault('The image preview is unavailable. Original bytes were preserved.',503) from None
 
 
 def preview(images,ident,create=False):
@@ -60,7 +56,7 @@ def preview(images,ident,create=False):
             except (OSError,ValueError,TypeError,KeyError):
                 raise ProjectFault('The saved image preview needs review. Original bytes were preserved.',409) from None
     if not create:return None
-    before=original.stat();raw,facts=isolated_preview(original)
+    before=original.stat();raw,facts=decode_preview(original)
     after=images.path(ident).stat()
     if (before.st_dev,before.st_ino,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_dev,after.st_ino,after.st_mtime_ns,after.st_ctime_ns):
         raise ProjectFault('The original image changed during preview creation.',409)

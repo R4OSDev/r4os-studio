@@ -48,7 +48,7 @@ async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
         else:args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
                 Path(providers)/session['providerId'],store.directory/sid/'Codex',
                 json.loads((Path(__file__).parent/'features.json').read_text()),session['model'],session['providerId'],
-                tool_scope(session),goals_enabled=True,expected_engine=session['engine'])
+                tool_scope(session),goals_enabled=True,expected_engine=session['engine'],workspace=store.workspace)
         async def notification(method,params):
             # RPC readback is authoritative here. Do not issue another request
             # from the serial notification reader or consume opaque payloads.
@@ -58,7 +58,7 @@ async def idle_control(store, sid, rid, providers, rpc_factory=CodexRPC):
         if not thread:
             goals.stage(sid,rid,'thread_materialization');sent=True
             from tool_catalog import specifications
-            result=await client.request('thread/start',{'cwd':'/workspace','model':session['model'],'ephemeral':False,
+            result=await client.request('thread/start',{'cwd':str(store.workspace),'model':session['model'],'ephemeral':False,
                 'dynamicTools':specifications(tool_scope(session)), 'sandbox':SANDBOX_MODE,'approvalPolicy':'never',
                 'baseInstructions':'This is a Studio session. Saving a paused Goal grants no permission to start work.'})
             thread=result['thread']['id']
@@ -92,7 +92,7 @@ async def live_control(store,sid,rid):
     run=store.db.execute('SELECT * FROM runs WHERE session_id=? AND busy=1',(sid,)).fetchone()
     if not run: raise ProjectFault('The original Goal worker is no longer active. Read its result.',409)
     # Abstract address avoids Linux's108-byte pathname limit for UUID owners.
-    # Both peers verify UID; the caller also verifies the original worker PID.
+    # The caller verifies the original worker PID and birth.
     address='\0r4os-studio-goal-'+run['id']
     reader,writer=await asyncio.wait_for(asyncio.open_unix_connection(address),3)
     try:
@@ -101,7 +101,7 @@ async def live_control(store,sid,rid):
         # The coordinator does not import the development worker's modules.
         # Use the local process identity helper in a clean host interpreter too.
         from attachment_store import birth
-        if uid != __import__('os').getuid() or pid!=worker.get('pid') or birth(pid)!=worker.get('birth'):
+        if pid!=worker.get('pid') or birth(pid)!=worker.get('birth'):
             raise ProjectFault('The original Goal worker identity changed.',403)
         writer.write((json.dumps({'requestId':rid,'runId':run['id'],'sessionId':sid})+'\n').encode());await writer.drain()
         result=json.loads(await asyncio.wait_for(reader.readline(),20))

@@ -15,11 +15,11 @@ def main():
     if __version__!='11.1.0':raise ValueError('The raster decoder needs qualification.')
     Image.MAX_IMAGE_PIXELS=40_000_000;ImageFile.LOAD_TRUNCATED_IMAGES=False
     warnings.simplefilter('error',Image.DecompressionBombWarning)
-    with Image.open('/input',formats=['PNG','JPEG','WEBP']) as image:
+    with Image.open(sys.argv[1],formats=['PNG','JPEG','WEBP']) as image:
         width,height=image.size
         if not 0<width<=16384 or not 0<height<=16384 or width*height>40_000_000 or getattr(image,'n_frames',1)!=1:raise ValueError()
         image.verify()
-    with Image.open('/input',formats=['PNG','JPEG','WEBP']) as image:
+    with Image.open(sys.argv[1],formats=['PNG','JPEG','WEBP']) as image:
         # JPEG draft reduces decoder memory. Alpha remains alpha, including
         # palette transparency; no background color is composited.
         image.draft('RGB',(1024,1024))

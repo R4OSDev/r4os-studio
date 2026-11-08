@@ -211,50 +211,6 @@ class Application(unittest.IsolatedAsyncioTestCase):
         roots = next(value for value in specifications('studio-tools-v1') if value['name'] == 'studio_read_file')['inputSchema']['properties']['root']['enum']
         self.assertEqual(roots, ['workspace', 'sdk', 'contract', 'zig', 'rust'])
 
-    @unittest.skipIf(os.getuid() == 0, 'Run real readonly resource namespace as the unprivileged service user.')
-    async def test_real_readonly_broker_needs_no_sdk_and_rejects_disabled_resources_and_receipt_replay(self):
-        f = self.fixture
-        self.publish(f.ids[1], 'Second global body.')
-        with self.open() as store:
-            settings = json.loads(store.row(self.session['id'])['settings']); settings['permissions'] = {'studio.'+name: True for name in LEGACY_TOOLS}
-            with store.db: store.db.execute('UPDATE sessions SET settings=?,engine=? WHERE id=?', (encode(settings), encode({**f.engine, 'profile': SKILL_PROFILE}), self.session['id']))
-            store.update(self.session['id'], {'revision': 1, 'skillOverrides': {f.ids[1]: False}}, f.providers)
-            run, config, _, _ = self.admit(store)
-        worker = Worker(self.manifest(run)); worker.thread_id = 'thread'; worker.turn_id = 'turn'
-        path = config['skillAccess']['alias'] + '/' + f.ids[0] + '/SKILL.md'
-        async def call(name, args, call_id=None):
-            native = await worker.tool({'namespace': None, 'threadId': 'thread', 'turnId': 'turn', 'tool': 'studio_'+name, 'arguments': args, 'callId': call_id or str(uuid.uuid4())})
-            return json.loads(native['contentItems'][0]['text'])
-        try:
-            first = await call('read_file', {'root': 'workspace', 'path': path}, 'resource-receipt')
-            self.assertTrue(first['success'], first); self.assertIn('First published body.', first['output']); self.assertIsNone(worker.sandbox.context)
-            self.assertEqual((await call('write_file', {'path': path, 'content': 'must not write', 'expectedSha256': first['sha256']}))['error'], 'readOnly')
-            self.assertEqual((await call('apply_patch', {'patch': '*** Begin Patch\n*** Update File: '+path+'\n@@\n-bad\n+worse\n*** End Patch', 'expectedHashes': {path: first['sha256']}}))['error'], 'readOnly')
-            disabled = config['skillAccess']['alias'] + '/' + f.ids[1] + '/SKILL.md'
-            self.assertEqual((await call('read_file', {'path': disabled}))['error'], 'unavailable')
-            self.assertEqual((await call('read_file', {'path': path+'/../../secret'}))['error'], 'fileError')
-            self.assertFalse((worker.store.workspace / config['skillAccess']['alias']).exists())
-            transition(worker.store, run['id'], 'completed')
-        finally: await worker.cleanup(); worker.store.close()
-        with self.open() as store:
-            store.update(self.session['id'], {'revision': 2, 'skillOverrides': {f.ids[0]: False, f.ids[1]: False}}, f.providers)
-            run, _, _, _ = self.admit(store)
-        worker = Worker(self.manifest(run)); worker.thread_id = 'thread'; worker.turn_id = 'turn'
-        try:
-            self.assertEqual((await call('read_file', {'root': 'workspace', 'path': path}, 'resource-receipt'))['error'], 'unavailable')
-            self.assertEqual((await call('read_file', {'root': 'workspace', 'path': path}))['error'], 'unavailable')
-            self.assertIsNone(worker.sandbox.context)
-            transition(worker.store, run['id'], 'completed')
-        finally: await worker.cleanup(); worker.store.close()
-        with self.open() as store:
-            permissions = store.get(self.session['id'])['permissions'] | {'studio.read_file': False}
-            store.update(self.session['id'], {'revision': 3, 'skillOverrides': {f.ids[1]: False}, 'permissions': permissions}, f.providers)
-            run, _, _, _ = self.admit(store)
-        worker = Worker(self.manifest(run)); worker.thread_id = 'thread'; worker.turn_id = 'turn'
-        try:
-            self.assertEqual((await call('read_file', {'root': 'workspace', 'path': path}))['error'], 'disabled')
-            self.assertIsNone(worker.skill_resources.view)
-        finally: await worker.cleanup(); worker.store.close()
 
 
 if __name__ == '__main__': unittest.main()

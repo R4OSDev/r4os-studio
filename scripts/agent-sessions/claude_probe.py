@@ -1,8 +1,11 @@
-"""One fixed, bounded, unprivileged SDK/CLI metadata probe with no credentials."""
+"""One fixed, bounded SDK/CLI metadata probe with no credentials."""
 import asyncio
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import signal
 import tempfile
 
@@ -21,15 +24,9 @@ async def probe(providers,state,request_id):
         root=Path(temporary)
         for name in ('Home','Config'):(root/name).mkdir(mode=0o700)
         source=Path(__file__).resolve().parent
-        args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all',
-            '--ro-bind','/usr','/usr','--ro-bind','/lib','/lib','--ro-bind','/lib64','/lib64','--symlink','usr/bin','/bin',
-            '--proc','/proc','--dev','/dev','--tmpfs','/tmp','--tmpfs','/run','--dir','/inference','--chdir','/inference',
-            '--dir','/home','--bind',str(root/'Home'),'/home/studio','--bind',str(root/'Config'),'/config',
-            '--setenv','HOME','/home/studio','--setenv','USER','r4os-studio','--setenv','CLAUDE_CONFIG_DIR','/config',
-            '--dir','/runtime','--ro-bind',str(Path(runtime['sdk']).parent),'/runtime/sdk',
-            '--ro-bind',str(Path(runtime['native']).parent),'/runtime/native',
-            '--ro-bind',str(source/'claude_engine.mjs'),'/runtime/claude_engine.mjs',
-            '--ro-bind',str(source/'claude_control_probe.mjs'),'/runtime/probe.mjs','--','/usr/bin/node','/runtime/probe.mjs',request_id]
+        from claude_auth import auth_environment
+        args=Workspace(root).command(['/usr/bin/node', str(source/'claude_control_probe.mjs'), request_id],
+            environment=auth_environment(runtime, root))
         child=None
         try:
             child=await asyncio.create_subprocess_exec(*args,stdin=asyncio.subprocess.DEVNULL,
@@ -47,7 +44,7 @@ async def probe(providers,state,request_id):
                     or any(v not in ('tokenSource','apiProvider','apiKeySource','email','organization','subscriptionType') for v in value['accountFieldNames'])
                     or value['subscriptionVerified'] is not False or value['promptMessagesSubmitted']!=0
                     or value['toolsAuthorized'] is not False or value['modelTurnsQualified'] is not False):raise ValueError()
-            return value|{'requestId':request_id,'runtimeProfileId':runtime['id'],'filesystemIsolated':True,'networkIsolated':True}
+            return value|{'requestId':request_id,'runtimeProfileId':runtime['id'],'filesystemIsolated':False,'networkIsolated':False}
         except asyncio.CancelledError:raise
         except (OSError,ValueError,TypeError,asyncio.TimeoutError):
             raise ProjectFault('The original Claude metadata probe could not be confirmed. No model prompt or login was submitted.',503) from None

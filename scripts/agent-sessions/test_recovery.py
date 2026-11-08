@@ -25,7 +25,7 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         # The fake RPC below has no physical native rollout. These tests
         # exercise turn recovery; physical catalog files are a separate boundary.
         for target, result in (('native_tools.provider', 'openai'),
-                ('native_tools.synchronize', {'changed': False})):
+                ('native_tools.synchronize', {'changed': False}), ('native_tools.binding', {'path': Path('/own/fake-rollout')})):
             boundary = patch(target, return_value=result)
             boundary.start(); self.addCleanup(boundary.stop)
 
@@ -145,7 +145,7 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         await run(rid)
         self.assertTrue(seen[0][1]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\nGlobal prompt A\n') >= 0)
         self.assertEqual(seen[0][0], 'thread/start')
-        self.assertEqual(seen[0][1]['sandbox'], 'workspace-write')
+        self.assertEqual(seen[0][1]['sandbox'], 'danger-full-access')
         self.assertEqual(seen[0][1]['approvalPolicy'], 'never')
         with f.open() as store:
             row = get_run(store, rid)
@@ -155,7 +155,7 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         await run(self.admit())
         resumes = [p for m, p in seen if m == 'thread/resume']
         self.assertEqual(resumes[0]['threadId'], 'same-native-thread')
-        self.assertEqual(resumes[0]['sandbox'], 'workspace-write')
+        self.assertEqual(resumes[0]['sandbox'], 'danger-full-access')
         self.assertEqual(resumes[0]['approvalPolicy'], 'never')
         self.assertTrue(resumes[0]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\nGlobal prompt B\n') >= 0)
         update(f.projects, {'revision': 2}, reset=True)

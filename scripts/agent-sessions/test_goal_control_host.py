@@ -10,7 +10,6 @@ PROBE = r'''
 import asyncio
 import json
 import os
-import sys
 from types import SimpleNamespace
 import uuid
 

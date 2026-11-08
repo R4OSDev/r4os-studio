@@ -191,6 +191,9 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot.update(remote_snapshot(store, tool_scope(session), data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
         snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+    from workspace_instructions import snapshot as working_paths
+    if original is None or 'workspaceContext' in original:
+        snapshot['workspaceContext'] = original['workspaceContext'] if original else working_paths(store, snapshot)
     from goal_keepalive import freeze as freeze_keepalive
     freeze_keepalive(store,session_id,snapshot,keepalive,original)
     from api_models import freeze as freeze_api

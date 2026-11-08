@@ -3,6 +3,9 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import shutil
 import stat
 import uuid
@@ -41,15 +44,9 @@ class Packager:
             if payload(self.store, part['artifactId']) != part: raise DevelopmentFault('The accepted package input changed.')
 
     def command(self, arguments):
-        args = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
-        for path in ('/usr', '/lib', '/lib64'):
-            if Path(path).exists(): args += ['--ro-bind', path, path]
-        args += ['--symlink', '/usr/bin', '/bin', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
-                 '--dir', '/etc', '--ro-bind', str(self.root / 'inputs'), '/inputs',
-                 '--ro-bind', str(self.root / 'packer'), '/packer', '--bind', str(self.root / 'output'), '/output',
-                 '--chdir', '/output', '--clearenv', '--setenv', 'HOME', '/tmp', '--setenv', 'LANG', 'C.UTF-8',
-                 '--setenv', 'PATH', '/usr/bin:/bin']
-        return args + ['/packer', *arguments]
+        context = Workspace(self.root / 'output', {'/inputs': self.root / 'inputs',
+            '/output': self.root / 'output', '/packer': self.root / 'packer'})
+        return context.command(context.arguments(['/packer', *arguments]), environment={'HOME': self.root})
 
     def arguments(self):
         plan = self.job['updatePlan']; meta = plan['metadata']

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed unprivileged JSON adapter. Never accepts filesystem paths in input."""
+"""Fixed JSON adapter. Never accepts filesystem paths in input."""
 import json
 import os
 from pathlib import Path

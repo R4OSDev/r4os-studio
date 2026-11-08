@@ -1,3 +1,24 @@
+## 0.12.2: Direkter Rootbetrieb mit Workspaceführung
+
+Studio setzt eine vertrauenswürdige Hostumgebung voraus. Alle Studio-Dienste
+und Worker laufen als Root. Für Projekt- und Skillwerkzeuge ist der tatsächliche
+Workspace das Standardarbeitsverzeichnis; normale absolute Pfade, Elternpfade
+und Symlinks sind erlaubt. Terminalbefehle verwenden die Hostpfade und das
+Hostnetz. `STUDIO_WORKSPACE`, SDK-/Contract-/Toolvariablen und `STUDIO_PATHS`
+benennen die konkreten Pfade dieses Prozesses. Nur strukturierte alte
+`/workspace`-/Komponentenpfade werden aufgelöst; Shelltext wird unverändert
+übergeben. Es gibt keine globale Workspaceumleitung.
+
+Bubblewrap, Namespaceabschottung, interne Netzproxies und künstliche
+Read-only-Mounts entfallen. Native Codexläufe verwenden `danger-full-access`.
+Originale Providerhomes/Credentiallocks, SDKpins und Gesprächsdateien bleiben
+bestehen; frühere Codexrollouts werden über ihren physischen Pfad fortgesetzt.
+Claude verwendet einen stabilen Verweis pro Session auf deren bisherigen
+Gesprächsordner. Alte private REA-Programme bleiben bytegleich; kleine
+pro Lauf erzeugte Starter lösen deren frühere virtuelle Programmpfade auf.
+Dienst-/Jobzuordnung, Stop, Prozessende, Schreibkonflikte und Originalquittungen
+behalten ihre Funktion. Die folgende Beschreibung älterer Versionen ist historisch.
+
 ## 0.12.1
 
 Studio services and workers use one trusted host Root identity. Fresh installation no longer creates service or update-build accounts. User/owner authorization checks, Root rejections and Studio-specific Polkit delegations have been removed; process identity, original requests, lifecycle and data consistency remain functional. Systemd commands, timeouts and resource controls are retained while obsolete unit isolation is removed.

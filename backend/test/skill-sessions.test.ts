@@ -33,7 +33,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
   const app = createApp({ projectDirectory: join(root, 'Projects'), providers: { directory: providers } });
   try {
     await mkdir(join(providers, provider), { recursive: true });
-    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture', type: 'openai', connected: true }]));
+    await writeFile(join(providers, 'providers.json'), JSON.stringify([{ id: provider, name: 'Fixture', type: 'openai', connected: true, createdAt: '2026-11-08T00:00:00Z' }]));
     await writeFile(join(providers, provider, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'fixture', visibility: 'list', supported_reasoning_levels: [{ effort: 'low' }] }] }));
     const auth = await app.inject('/api/skills');
     const headers = { cookie: String(auth.headers['set-cookie']).split(';')[0], 'x-csrf-token': auth.json().csrfToken };
@@ -41,7 +41,7 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     const base = `/api/skills/${id}/sessions`;
     assert.equal((await app.inject(base)).statusCode, 403);
     const opts = await app.inject({ url: base + '/options', headers });
-    assert.equal(opts.statusCode, 200, opts.body); assert.equal(opts.json().tools.length, 17);
+    assert.equal(opts.statusCode, 200, opts.body); assert.equal(opts.json().tools.length, 18);
     assert.equal(opts.json().engine.toolScope, 'skill'); assert.equal(opts.json().engine.available, true);
     assert.equal(opts.json().skills.length, 2); assert(opts.json().skills.every((skill: { available: boolean }) => !skill.available));
     assert.equal(opts.json().development, undefined);
@@ -52,8 +52,8 @@ await test('skill sessions have independent owners, native profiles, HTTP securi
     const session = created.json().session;
     assert.deepEqual(session.owner, { type: 'skill', id }); assert.equal(session.projectId, undefined);
     assert.deepEqual(session.skillOverrides, {});
-    assert.equal(Object.keys(session.permissions).length, 17);
-    assert.equal(session.permissions['studio.skill_network'], false);
+    assert.equal(Object.keys(session.permissions).length, 18);
+    assert.equal('studio.skill_network' in session.permissions, false);
     assert.equal((await app.inject({ method: 'POST', url: base, headers, payload })).json().session.id, session.id);
     assert.equal((await app.inject({ url: `/api/skills/${other}/sessions/${session.id}`, headers })).statusCode, 404);
     assert.equal((await app.inject({ url: base, headers: { ...headers, origin: 'http://foreign.test' } })).statusCode, 403);

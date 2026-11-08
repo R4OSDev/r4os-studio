@@ -3,9 +3,9 @@ import { openControl } from './claude_engine.mjs';
 
 let control;
 try {
-  control = await openControl({ sdk: '/runtime/sdk/sdk.mjs', native: '/runtime/native/claude',
+  control = await openControl({ sdk: process.env.STUDIO_CLAUDE_SDK, native: process.env.STUDIO_CLAUDE_NATIVE,
     version: '2.1.312', sdkVersion: '0.3.312', qualified: { offlineInitialization: true, modelTurns: false } },
-  { cwd: '/inference', home: '/home/studio', config: '/config' }, process.argv[2]);
+  { cwd: process.cwd(), home: process.env.HOME, config: process.env.CLAUDE_CONFIG_DIR }, process.argv[2]);
   const initialize = await control.control('initialize'), models = await control.control('models');
   const account = await control.control('account'); await control.control('interrupt');
   if (control.events || initialize.value.claude_code_version !== '2.1.312' || !Array.isArray(models.value)) throw Error();

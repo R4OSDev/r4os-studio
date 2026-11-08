@@ -30,9 +30,9 @@ class Packages(unittest.IsolatedAsyncioTestCase):
 
     async def test_replayed_request_returns_original_when_busy_or_active_default_changes(self):
         job=self.admit();same,fresh=self.store.admit('package',self.request)
-        self.assertFalse(fresh);self.assertEqual(job,same)
+        self.assertFalse(fresh);self.assertEqual({**job,'requestId':self.request['requestId']},same)
         self.f.pinning_mock.return_value={**self.f.packer,'sha256':'f'*64}
-        self.assertEqual(self.store.admit('package',self.request)[0],job)
+        self.assertEqual(self.store.admit('package',self.request)[0],{**job,'requestId':self.request['requestId']})
         with self.assertRaises(DevelopmentFault):self.store.admit('package',{**self.request,'planSha256':'f'*64})
         with self.assertRaises(DevelopmentFault):self.store.admit('build',self.f.fixture.input())
         self.assertEqual(self.store.db.execute('SELECT count(*) FROM jobs WHERE kind=?',('package',)).fetchone()[0],1)
@@ -51,7 +51,7 @@ class Packages(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(value.count('|'),2);self.assertIn(r'C:\R4OS\SOFTWARE\FIXTURE\FIXTURE.R4X',value)
         self.assertEqual(args[args.index('--require')+1].count('|'),4)
         self.assertEqual(args[args.index('--title')+1],job['updatePlan']['metadata']['title'])
-        namespace=packer.command(args);self.assertIn('--unshare-net',namespace);self.assertIn('--clearenv',namespace)
+        namespace=packer.command(args);self.assertEqual(namespace[:3], ['/usr/bin/env', '-i', '-C']);self.assertIn(str(packer.root/'packer'),namespace)
         self.assertNotIn('/bin/sh',namespace);self.assertNotIn('/codex',namespace)
 
     async def test_stopped_job_and_changed_source_do_not_start_a_process(self):

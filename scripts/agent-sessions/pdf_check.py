@@ -1,4 +1,4 @@
-"""Bounded Poppler text extraction inside the fixed private decoder namespace."""
+"""Bounded Poppler text extraction in a bounded decoder subprocess."""
 import hashlib
 import json
 import re
@@ -45,7 +45,7 @@ def main():
     resource.setrlimit(resource.RLIMIT_CPU,(10,10));resource.setrlimit(resource.RLIMIT_FSIZE,(0,0))
     version=subprocess.run(['/usr/bin/pdftotext','-v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=2)
     if b'pdftotext version 25.03.0' not in version.stderr:raise ValueError('Unqualified PDF decoder.')
-    info,error,code,large=bounded(['/usr/bin/pdfinfo','-enc','UTF-8','/input'],65536,4)
+    info,error,code,large=bounded(['/usr/bin/pdfinfo','-enc','UTF-8',sys.argv[1]],65536,4)
     if b'Incorrect password' in error:return result(limitation='Encrypted PDF: text cannot be read. The original is retained; attach an unlocked copy or text.',encrypted=True)
     if code or large:raise ValueError('Invalid PDF information.')
     pages=re.search(rb'^Pages:\s+(\d+)\s*$',info,re.M)
@@ -54,7 +54,7 @@ def main():
     if re.search(rb'^Encrypted:\s+yes\b',info,re.M):
         return result(pages=pages,encrypted=True,limitation='Encrypted PDF: text access is unavailable. The original is retained; attach an unlocked copy or text.')
     if pages>128:return result(pages=pages,limitation='PDF exceeds128 pages. The original is retained; attach a smaller document or text excerpt.')
-    try:raw,error,code,truncated=bounded(['/usr/bin/pdftotext','-enc','UTF-8','-eol','unix','-layout','-nopgbrk','-f','1','-l',str(pages),'/input','-'],LIMIT,7)
+    try:raw,error,code,truncated=bounded(['/usr/bin/pdftotext','-enc','UTF-8','-eol','unix','-layout','-nopgbrk','-f','1','-l',str(pages),sys.argv[1],'-'],LIMIT,7)
     except (OSError,TimeoutError,subprocess.TimeoutExpired):
         return result(pages=pages,limitation='PDF text extraction exceeded its resource limit. The original is retained; attach a smaller document or text.')
     if code and not truncated:return result(pages=pages,limitation='PDF text extraction failed. The original is retained; attach text or a different PDF export.')

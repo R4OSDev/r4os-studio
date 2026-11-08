@@ -1,4 +1,4 @@
-"""Freeze assigned-VM metadata through its coordinator, outside the agent sandbox."""
+"""Freeze assigned-VM metadata through its coordinator, through the assigned owner binding."""
 import json
 import os
 import re

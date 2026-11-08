@@ -3,6 +3,9 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import re
 import signal
 import time
@@ -31,7 +34,7 @@ def native_url(text):
     return None
 
 
-def status_result(raw,returncode):
+def status_result(raw,returncode,config_dir=None):
     try:
         value=json.loads(raw)
         if not isinstance(value,dict) or type(value.get('loggedIn')) is not bool or returncode not in (0,1):raise ValueError()
@@ -39,7 +42,7 @@ def status_result(raw,returncode):
             if returncode!=1 or value.get('authMethod')!='none':raise ValueError()
             return 'not-connected',None,'No Claude subscription is signed in.'
         if (returncode!=0 or value.get('authMethod')!='claude.ai' or value.get('apiProvider')!='firstParty'
-            or value.get('apiKeySource') not in (None,'none') or value.get('configDirectory')!='/config'
+            or value.get('apiKeySource') not in (None,'none') or not isinstance(value.get('configDirectory'), str) or config_dir is not None and value.get('configDirectory')!=str(config_dir)
             or value.get('forcedLoginMethod') not in (None,'claudeai')):
             return 'unsupported',None,'Native authentication does not select a Claude subscription. Model access remains unavailable.'
         plan=value.get('subscriptionType')
@@ -57,30 +60,20 @@ def auth_home(store,ident):
     root=store.root/identity(ident);private(root,directory=True,create=True)
     for name in ('Home','Config'):
         folder=root/name;private(folder,directory=True,create=True)
-        count=0
-        for base,dirs,files in os.walk(folder,followlinks=False):
-            for name in dirs+files:
-                count+=1
-                if count>4096:raise ProjectFault('The native Claude auth directory exceeds its bound. Existing data was preserved.',503)
-                item=Path(base)/name;private(item,directory=name in dirs)
     return root
 
 
 def command(runtime,root,action,network=True):
-    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all']
-    if network:args+=['--share-net']
-    args+=['--clearenv','--ro-bind','/usr','/usr','--ro-bind','/lib','/lib','--ro-bind','/lib64','/lib64','--symlink','usr/bin','/bin',
-        '--proc','/proc','--dev','/dev','--tmpfs','/tmp','--tmpfs','/run','--dir','/inference','--chdir','/inference',
-        '--dir','/home','--bind',str(root/'Home'),'/home/studio','--bind',str(root/'Config'),'/config',
-        '--ro-bind',runtime['native'],'/claude']
-    for path in ('/etc/resolv.conf','/etc/hosts','/etc/nsswitch.conf','/etc/ssl/certs'):
-        if Path(path).exists():args+=['--ro-bind',path,path]
-    env={'PATH':'/usr/bin','HOME':'/home/studio','USER':'r4os-studio','CLAUDE_CONFIG_DIR':'/config','TERM':'dumb','NO_COLOR':'1',
-        'DISABLE_AUTOUPDATER':'1','DISABLE_UPDATES':'1','DISABLE_TELEMETRY':'1','DISABLE_ERROR_REPORTING':'1',
-        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC':'1','ENABLE_CLAUDEAI_MCP_SERVERS':'false'}
-    for key,value in env.items():args+=['--setenv',key,value]
     commands={'connect':['login','--claudeai'],'status':['status','--json'],'disconnect':['logout']}
-    return args+['--','/claude','--setting-sources','','auth',*commands[action]]
+    return Workspace(root).command([runtime['native'], '--setting-sources', '', 'auth', *commands[action]],
+        environment=auth_environment(runtime, root))
+
+
+def auth_environment(runtime, root):
+    return {'PATH': '/usr/bin:/bin', 'HOME': root / 'Home', 'USER': 'root', 'CLAUDE_CONFIG_DIR': root / 'Config',
+        'STUDIO_CLAUDE_SDK': runtime.get('sdk', ''), 'STUDIO_CLAUDE_NATIVE': runtime['native'],
+        'TERM': 'dumb', 'NO_COLOR': '1', 'DISABLE_AUTOUPDATER': '1', 'DISABLE_UPDATES': '1',
+        'DISABLE_TELEMETRY': '1', 'DISABLE_ERROR_REPORTING': '1', 'ENABLE_CLAUDEAI_MCP_SERVERS': 'false'}
 
 
 class ClaudeAuth:
@@ -160,13 +153,13 @@ class ClaudeAuth:
                 if root.exists() or root.is_symlink():
                     runtime=await asyncio.to_thread(installed,self.store.parent);root=auth_home(self.store,ident)
                     raw,code=await self.execute(job,command(runtime,root,'status',network=False))
-                    if status_result(raw,code)[0]!='not-connected':
+                    if status_result(raw,code,root/'Config')[0]!='not-connected':
                         message='Native sign-in is still present. Check status and disconnect before removing this provider.'
                         return
                     _,code=await self.execute(job,command(runtime,root,'disconnect',network=False))
                     if code!=0:raise ValueError()
                     raw,code=await self.execute(job,command(runtime,root,'status',network=False))
-                    if status_result(raw,code)[0]!='not-connected':raise ValueError()
+                    if status_result(raw,code,root/'Config')[0]!='not-connected':raise ValueError()
                     auth_home(self.store,ident)
                 self.store.finish_removed(ident,rid)
                 return
@@ -176,7 +169,7 @@ class ClaudeAuth:
                 _,code=await self.execute(job,command(runtime,root,action),action=='connect')
                 if code!=0:raise ValueError()
             raw,code=await self.execute(job,command(runtime,root,'status'))
-            status,account,message=status_result(raw,code)
+            status,account,message=status_result(raw,code,root/'Config')
             if action in ('limits','catalog') and status=='connected':
                 from claude_limits_command import limits_command
                 try:
@@ -194,7 +187,7 @@ class ClaudeAuth:
                     usage=report.get('usage')
                     models=report.get('models') if action=='catalog' else None
                     after,after_code=await self.execute(job,command(runtime,root,'status'))
-                    after_status,after_account,_=status_result(after,after_code)
+                    after_status,after_account,_=status_result(after,after_code,root/'Config')
                     from claude_provider_store import account_identity
                     if after_status!='connected' or account_identity(after_account)!=account_identity(account) or after_account['plan']!=account['plan']:
                         usage=None;models=None;status=after_status;account=after_account

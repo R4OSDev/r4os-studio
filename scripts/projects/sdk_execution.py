@@ -2,6 +2,9 @@
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import selectors
 import subprocess
 import time
@@ -17,30 +20,19 @@ def run(context, workspace, directory, arguments, label):
     for name in ('home', 'cargo'):
         (directory / name).mkdir(mode=0o700, exist_ok=True)
         folder(directory / name)
-    command = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts']
-    for name in ('/usr', '/lib', '/lib64'):
-        if Path(name).exists():
-            command += ['--ro-bind', name, name]
-    command += ['--symlink', '/usr/bin', '/bin', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp',
-                '--dir', '/etc', '--dir', '/home', '--bind', str(workspace), '/workspace', '--bind', str(directory), '/cache']
-    for name in ('passwd', 'group', 'nsswitch.conf', 'os-release'):
-        command += ['--ro-bind', '/etc/' + name, '/etc/' + name]
-    for name, path in context['paths'].items():
-        command += ['--ro-bind', str(path), '/' + name]
-    command += ['--ro-bind', str(context['runner'].parent), '/powershell']
-    rust_bin = ''
-    if context.get('rust'):
-        rust_bin = '/install/' + str(context['rust']['compiler'].relative_to('Install').parent)
-    command += ['--chdir', '/workspace', '--clearenv', '--setenv', 'HOME', '/cache/home',
-                '--setenv', 'PATH', ':'.join(name for name in ('/powershell', '/zig', rust_bin, '/usr/bin', '/bin') if name),
-                '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'CARGO_HOME', '/cache/cargo',
-                '--setenv', 'CARGO_NET_OFFLINE', 'true', '--setenv', 'RUSTUP_AUTO_INSTALL', '0',
-                '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1', '--setenv', 'POWERSHELL_TELEMETRY_OPTOUT', '1']
+    context_paths = {'/' + name: path for name, path in context['paths'].items()}
+    context_paths.update({'/cache': directory, '/powershell': context['runner'].parent})
+    working = Workspace(workspace, context_paths)
+    bins = [context['runner'].parent, context['paths']['zig']]
+    if context.get('rust'): bins.append(context['rust']['prefix'] / context['rust']['compiler'].parent)
+    command = working.command(working.arguments(arguments), environment={'HOME': directory / 'home',
+        'PATH': ':'.join(map(str, [*bins, '/usr/bin', '/bin'])), 'CARGO_HOME': directory / 'cargo',
+        'RUSTUP_AUTO_INSTALL': '0', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT': '1', 'POWERSHELL_TELEMETRY_OPTOUT': '1'})
     stdout, stderr = directory / (label + '.stdout'), directory / (label + '.stderr')
     # Bound streams while reading them. RLIMIT_FSIZE would also limit .NET's
     # anonymous backing files and can prevent PowerShell from starting.
     with stdout.open('wb') as out, stderr.open('wb') as err:
-        process = subprocess.Popen([*command, *map(str, arguments)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         selector = selectors.DefaultSelector(); total = 0; deadline = time.monotonic() + 120
         try:
             selector.register(process.stdout, selectors.EVENT_READ, out)

@@ -32,7 +32,7 @@ class DelegationTest(unittest.IsolatedAsyncioTestCase):
         fake = SimpleNamespace(manifest={'projects': str(fixture.root), 'r4os': str(fixture.root / 'R4OS'), 'projectId': fixture.id},
             run_id=run_id, session_id=session_id, stopping=False, store=SimpleNamespace(db=worker_db),
             terminals=SimpleNamespace(lock=asyncio.Lock(), processes={'active': SimpleNamespace(finished=asyncio.Event())}),
-            sandbox=SimpleNamespace(lock=asyncio.Lock()))
+            workspace_tools=SimpleNamespace(lock=asyncio.Lock()))
         server = AgentSnapshots(fake); lease = (fixture.root / 'lease').open('a')
         fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:

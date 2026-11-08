@@ -111,7 +111,11 @@ class GeneratedImages:
         raw=native.get('result');saved=native.get('savedPath')
         if saved is not None:
             expected=PurePosixPath('/codex/generated_images')/thread_id/(ident+'.png')
-            if not isinstance(saved,str) or PurePosixPath(saved)!=expected or saved!=str(expected):raise ProjectFault('Native image output is outside the private session output path.',409)
+            actual = Path(saved) if isinstance(saved, str) else None
+            # Older histories contain the virtual /codex prefix. Current native
+            # output uses its physical provider home and the same thread/item.
+            if actual is None or not actual.is_absolute() or actual.parts[-3:] != ('generated_images', thread_id, ident + '.png'):
+                raise ProjectFault('Native image output differs from its thread/item identity.',409)
         if not isinstance(raw,str) or not raw or len(raw)>4*((MAX_IMAGE+2)//3):raise ProjectFault('Native image data is missing or exceeds16 MiB. The native history was preserved.',413)
         try:data=base64.b64decode(raw,validate=True)
         except ValueError:raise ProjectFault('Native image data is not valid Base64.',400) from None
@@ -175,3 +179,13 @@ def presentation(worker,native,completed):
     meta=GeneratedImages(worker.store,worker.session_id).accept(worker.run_id,worker.thread_id,native)
     value.update(status='completed',output=encode({'image':meta,'stage':'Generated','next':'Use studio.list_generated_images, then import the chosen image into Assets. Generation alone does not embed an R4X resource.'}),generatedImage=meta)
     return value
+
+
+def native_output(provider_home, session_root, thread_id):
+    parent = directory(Path(provider_home) / 'generated_images')
+    target = directory(Path(session_root) / thread_id)
+    link = parent / thread_id
+    if link.is_symlink() and link.resolve() == target: return
+    if link.exists() or link.is_symlink():
+        raise ProjectFault('This native thread already has a different output directory. Existing images were preserved.',409)
+    link.symlink_to(target, target_is_directory=True)

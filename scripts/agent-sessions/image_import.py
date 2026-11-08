@@ -47,10 +47,7 @@ def check_worker(worker):
 
 
 async def prepare(source,stage,fmt,options):
-    script=Path(__file__).with_name('image_prepare.py');args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-all','--cap-drop','ALL']
-    for root in ('/usr','/lib','/lib64'):
-        if Path(root).exists():args+=['--ro-bind',root,root]
-    args+=['--dev','/dev','--proc','/proc','--tmpfs','/tmp','--ro-bind',str(regular(source)),'/input','--bind',str(stage),'/out','--ro-bind',str(script),'/prepare.py','--clearenv','--setenv','LANG','C.UTF-8','/usr/bin/python3','-I','-B','/prepare.py']
+    script=Path(__file__).with_name('image_prepare.py');args=['/usr/bin/python3','-I','-B',str(script),str(regular(source)),str(stage)]
     process=await asyncio.create_subprocess_exec(*args,stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,limit=4096)
     try:
         output,_=await asyncio.wait_for(process.communicate(encode({'format':fmt,'options':options}).encode()),12)
@@ -147,7 +144,7 @@ async def import_image(worker,args,call_id):
             held=regular(Path(parent)/name);info=held.stat();used+=info.st_size
             if info.st_nlink!=1 or used>256*1024*1024:raise ProjectFault('Import storage requires review before another conversion.',413)
     async with worker.terminals.lock:
-        async with worker.sandbox.lock:
+        async with worker.workspace_tools.lock:
             if any(not process.finished.is_set() for process in worker.terminals.processes.values()):raise ProjectFault('Finish active terminal processes before importing an image.',409)
             check_worker(worker)
             path=canonical_target(worker.store.workspace,path)

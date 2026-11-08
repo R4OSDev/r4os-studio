@@ -25,8 +25,7 @@ async def readback(store, sid, rpc_factory=CodexRPC):
     try:
         args,_=prepare(Path(store.r4os)/'Toolchains/Codex'/session['engine']['version']/'codex',
             state/'ReadbackHome',state,json.loads((Path(__file__).parent/'features.json').read_text()),
-            selected_profile=tool_scope(session),goals_enabled=True,expected_engine=session['engine'])
-        args.insert(1,'--unshare-net')
+            selected_profile=tool_scope(session),goals_enabled=True,expected_engine=session['engine'],workspace=store.workspace)
         async def notification(method,params):
             if method=='turn/started': raise RuntimeError('A Goal readback cannot start a native turn.')
         async def tool(params): raise RuntimeError('A Goal readback cannot execute model tools.')

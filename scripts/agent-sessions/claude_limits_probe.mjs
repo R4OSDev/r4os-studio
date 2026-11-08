@@ -1,10 +1,11 @@
 /** Fixed metadata control, never an OAuth HTTP client or model input. */
-import * as sdk from '/runtime/sdk/sdk.mjs';
+import { pathToFileURL } from 'node:url';
+const sdk = await import(pathToFileURL(process.env.STUDIO_CLAUDE_SDK).href);
 import { ClaudeControl } from './claude_engine.mjs';
 
 const requestId = process.argv[2];
 if (process.argv.length > 4 || process.argv[3] !== undefined && process.argv[3] !== 'catalog') throw Error('Unknown native metadata mode.');
-const control = new ClaudeControl(sdk, { executable: '/claude', cwd: '/inference', home: '/home/studio', config: '/config' }, requestId);
+const control = new ClaudeControl(sdk, { executable: process.env.STUDIO_CLAUDE_NATIVE, cwd: process.cwd(), home: process.env.HOME, config: process.env.CLAUDE_CONFIG_DIR }, requestId);
 try {
   const init = await control.control('initialize');
   if (init.value.claude_code_version !== '2.1.312') throw Error('Unqualified native version.');

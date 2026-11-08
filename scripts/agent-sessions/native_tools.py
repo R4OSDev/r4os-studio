@@ -44,9 +44,14 @@ def binding(store, sid):
              Path('/session/native'): root / 'native', Path('/session/archived'): root / 'archived'}
     target = next((base / virtual.relative_to(prefix) for prefix, base in roots.items()
                    if virtual.is_relative_to(prefix)), None)
-    if target is None or '..' in virtual.parts:
-        raise ValueError('The original native rollout path is outside this session.')
+    if target is None:
+        if not virtual.is_absolute(): raise ValueError('The original native rollout path is not absolute.')
+        target = virtual
     return {'threadId': thread, 'root': root, 'path': regular(target), 'provider': row[1]}
+
+
+def rollout_reference(path, root):
+    return str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
 
 
 def provider(store, sid):
@@ -96,7 +101,7 @@ def rebase(root, thread, saved, width, delta):
 def finish(value, folder, current):
     """Idempotently finish only the original metadata/cursor update."""
     path, root = current['path'], current['root']
-    if value['threadId'] != current['threadId'] or value['rollout'] != str(path.relative_to(root)):
+    if value['threadId'] != current['threadId'] or value['rollout'] != rollout_reference(path, root):
         raise ValueError('The original catalog journal belongs to another native thread.')
     actual = digest(path)
     if actual == value['beforeSha256']:
@@ -191,7 +196,7 @@ def synchronize(store, sid, run_id, config):
     if any(getattr(latest, key) != getattr(original, key) for key in fields) or digest(path) != before_hash.hexdigest():
         raise ValueError('The original native history changed before catalog activation.')
     value = {'phase': 'prepared', 'threadId': current['threadId'], 'runId': run_id,
-             'rollout': str(path.relative_to(root)), 'beforeSha256': before_hash.hexdigest(),
+             'rollout': rollout_reference(path, root), 'beforeSha256': before_hash.hexdigest(),
              'afterSha256': after_hash.hexdigest(), 'historyTailSha256': tail_hash.hexdigest(),
              'providerBefore': current['provider'], 'providerAfter': desired_provider,
              'beforeWidth': len(header), 'delta': len(replacement) - len(header),

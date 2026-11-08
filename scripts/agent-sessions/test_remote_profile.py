@@ -108,10 +108,10 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(original['state'], 'unknown'); self.assertFalse(original['result']['remoteProcessEndConfirmed'])
         await asyncio.sleep(.05)
 
-    async def test_metadata_reader_works_in_a_real_readonly_namespace_without_catalog_changes(self):
+    async def test_metadata_reader_reads_actual_host_paths_without_catalog_changes(self):
         worker = await self.native(); before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.directory.iterdir() if p.is_file()}
         from test_remote_commands import REMOTE
-        result = await asyncio.to_thread(subprocess.run, ['/usr/bin/bwrap', '--unshare-net', '--ro-bind', '/', '/', '--', '/usr/bin/python3', '-B', str(REMOTE / 'metadata.py'), str(self.directory), self.host['id']], capture_output=True, timeout=10)
+        result = await asyncio.to_thread(subprocess.run, ['/usr/bin/python3', '-B', str(REMOTE / 'metadata.py'), str(self.directory), self.host['id']], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr.decode()); value = json.loads(result.stdout)['result']; self.assertEqual(value['id'], self.host['id']); self.assertNotIn('password', value)
         self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.directory.iterdir() if p.is_file()})
 

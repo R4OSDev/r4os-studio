@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed author validation/publication broker; never mounted in the tool sandbox."""
+"""Fixed author validation/publication broker; bound to the original draft and run."""
 from contextlib import closing
 import fcntl
 import importlib.util

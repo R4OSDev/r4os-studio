@@ -1,4 +1,4 @@
-export type AgentToolId = 'studio.skill_network' | 'studio.skill_discover' | 'studio.skill_call' | 'studio.read_skill_result'
+export type AgentToolId = 'studio.skill_discover' | 'studio.skill_call' | 'studio.read_skill_result'
   | 'studio.exec_command' | 'studio.write_stdin' | 'studio.terminate_process'
   | 'studio.generate_image' | 'studio.read_context_result' | 'studio.read_attachment' | 'studio.list_generated_images' | 'studio.import_generated_image'
   | 'studio.list_directory' | 'studio.read_file' | 'studio.search' | 'studio.write_file'

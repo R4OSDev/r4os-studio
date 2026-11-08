@@ -19,11 +19,6 @@ def main():
     root.mkdir(mode=0o700, parents=False, exist_ok=True)
     os.chown(root, user.pw_uid, user.pw_gid)
     root.chmod(0o700)
-    escaped = str(root).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
-    dropin = Path('/etc/systemd/system/r4os-studio.service.d/40-projects.conf')
-    dropin.parent.mkdir(exist_ok=True)
-    dropin.write_text('[Service]\nReadWritePaths="' + escaped + '"\n')
-    subprocess.run(['systemctl', 'daemon-reload'], check=True)
     print(f'Projects support ready (SQLite {sqlite3.sqlite_version}). Applies on the next Studio start. No VMs were stopped.')
 
 

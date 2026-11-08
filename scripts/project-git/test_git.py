@@ -220,7 +220,7 @@ class GitTests(unittest.TestCase):
         vm_path = self.root / 'R4OS/Instances' / vm_id / 'vm.json'; vm_path.parent.mkdir(parents=True); vm_path.write_text(json.dumps({'id': vm_id}))
         # SDK validation already has its own pinned qualification. Here its
         # fixture isolates real registration/publication and source boundaries.
-        with connect(self.projects) as db, patch('github_import.checked_profile', return_value=({'pins': portable['pins']}, 'Zig', 'terminal')), patch('github_import.manifest', return_value='QA'):
+        with connect(self.projects) as db, patch('github_import.checked_profile', return_value=({'pins': portable['pins']}, 'Zig', 'terminal')), patch('github_import.manifest', return_value='QA'), patch('sdk.validate'):
             registered = register(db, self.projects, self.root / 'R4OS', new_id, {'name': 'Own imported roadmap QA', 'description': '', 'snapshot': value['snapshot'], 'remoteHostId': remote['id'], 'vmId': vm_id})
         db.close(); self.assertEqual(registered['id'], new_id)
         self.assertEqual(registered['remoteHostId'], remote['id']); self.assertEqual(registered['vmId'], vm_id)

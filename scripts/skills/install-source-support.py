@@ -32,16 +32,6 @@ ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/skill-source-launch.py %i
 KillMode=control-group
 TimeoutStopSec=10
 SendSIGKILL=yes
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=no
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths="''' + quoted + '''"
 MemoryMax=6G
 TasksMax=512
 '''

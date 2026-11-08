@@ -17,11 +17,7 @@ def main():
     directory.mkdir(mode=0o700, exist_ok=True)
     if not directory.is_dir(): raise SystemExit('Remote Host storage is not a directory.')
     user = pwd.getpwnam('root'); os.chown(directory, user.pw_uid, user.pw_gid); directory.chmod(0o700)
-    dropin = Path('/etc/systemd/system/r4os-studio.service.d/63-remote-hosts.conf'); dropin.parent.mkdir(exist_ok=True)
-    quoted = str(directory).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
-    dropin.write_text('[Service]\nReadWritePaths="' + quoted + '"\n')
-    subprocess.run(['systemctl', 'daemon-reload'], check=True)
-    print('Private Remote Host storage prepared. The next regular Studio update applies this one write path.')
+    print('Private Remote Host storage prepared. Root services use this data directory.')
 
 
 if __name__ == '__main__': main()

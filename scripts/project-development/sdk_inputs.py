@@ -134,19 +134,20 @@ def virtual(name):
     return '/workspace/' + relative(name)
 
 
-def arguments(value, root):
+def arguments(value, root, components=None):
     """Write the SDK's own additional library format; do not resolve it here."""
-    extras = [{**item, 'root': virtual(item['root'])} for item in value['additionalLibraries']]
+    extras = [{**item, 'root': str(Path(root) / 'source' / relative(item['root']))} for item in value['additionalLibraries']]
     additional = Path(root) / 'additional-libraries.json'
     additional.write_text(json.dumps(extras) + '\n')
     development = value['development']
-    paths = {name: virtual(development[key]) if development and key in development else '/' + name
+    components = components or {name: '/' + name for name in ('sdk', 'contract', 'libraries')}
+    physical = lambda name: str(Path(root) / 'source' / relative(name))
+    paths = {name: physical(development[key]) if development and key in development else str(components[name])
              for name, key in (('sdk', 'sdkRoot'), ('contract', 'contractRoot'), ('libraries', 'librariesRoot'))}
     common = ['-ContractRoot', paths['contract'], '-LibrariesRoot', paths['libraries'],
-              '-AdditionalLibrariesFile', '/cache/additional-libraries.json']
-    if development:
-        common += ['-DevelopmentProfile', virtual(development['profile'])]
-    dependencies = [virtual(item['root']) + ('/' + item['path'] if item.get('path') else '') for item in value['additionalLibraries']]
+              '-AdditionalLibrariesFile', str(additional)]
+    if development: common += ['-DevelopmentProfile', physical(development['profile'])]
+    dependencies = [physical(item['root']) + ('/' + item['path'] if item.get('path') else '') for item in value['additionalLibraries']]
     return paths, common, dependencies
 
 

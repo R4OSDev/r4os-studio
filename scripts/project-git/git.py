@@ -2,6 +2,9 @@
 from contextlib import contextmanager
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import signal
 import socket
 import struct
@@ -28,7 +31,6 @@ def credentials(base, token):
             with client:
                 client.settimeout(2)
                 try:
-                    _, uid, _ = struct.unpack('3i', client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                     request = client.recv(32)
                     if request in (b'username', b'password'):
                         client.sendall(b'x-access-token' if request == b'username' else token.encode())
@@ -47,29 +49,24 @@ class Git:
 
     def command(self, args, auth=None):
         helper = Path(__file__).with_name('askpass.py')
-        command = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-all', '--share-net',
-                   '--ro-bind', '/usr', '/usr', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/home',
-                   '--ro-bind' if self.read_only else '--bind', str(self.root), '/repo', '--ro-bind', str(self.workspace), '/workspace', '--ro-bind', str(self.empty), '/empty', '--chdir', '/workspace']
-        for item in ('/lib', '/lib64', '/etc/ssl', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf', '/etc/passwd', '/etc/group'):
-            if Path(item).exists(): command += ['--ro-bind', item, item]
-        if auth: command += ['--ro-bind', str(auth), '/credential.sock', '--ro-bind', str(helper), '/askpass.py']
-        command += ['--', '/usr/bin/git', '-c', 'safe.directory=*', '-c', 'core.hooksPath=/empty', '-c', 'core.fsmonitor=false',
+        command = []
+        command += ['/usr/bin/git', '-c', 'safe.directory=*', '-c', 'core.hooksPath=' + str(self.empty), '-c', 'core.fsmonitor=false',
                     '-c', 'core.autocrlf=false', '-c', 'core.attributesFile=/dev/null', '-c', 'credential.helper=',
                     '-c', 'http.followRedirects=false', '-c', 'protocol.file.allow=never', '-c', 'protocol.ext.allow=never',
                     '-c', 'submodule.recurse=false', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false']
-        if args[0] != 'init': command += ['--git-dir=/repo', '--work-tree=/workspace']
-        command += args
+        if args[0] != 'init': command += ['--git-dir=' + str(self.root), '--work-tree=' + str(self.workspace)]
+        command += Workspace(self.workspace, {'/repo': self.root, '/workspace': self.workspace, '/empty': self.empty}).arguments(args)
         return command
 
     def _run(self, args, auth, data, allow, timeout):
-        env = {'PATH': '/usr/bin:/bin', 'HOME': '/home', 'LANG': 'C.UTF-8', 'GIT_CONFIG_NOSYSTEM': '1',
-               'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TEMPLATE_DIR': '/empty', 'GIT_TERMINAL_PROMPT': '0', 'GIT_LITERAL_PATHSPECS': '1',
-               'GIT_ALLOW_PROTOCOL': 'https', 'GIT_PROTOCOL_FROM_USER': '0', 'GIT_ASKPASS': '/askpass.py'}
+        env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.temporary), 'LANG': 'C.UTF-8', 'GIT_CONFIG_NOSYSTEM': '1',
+               'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TEMPLATE_DIR': str(self.empty), 'GIT_TERMINAL_PROMPT': '0', 'GIT_LITERAL_PATHSPECS': '1',
+               'GIT_ALLOW_PROTOCOL': 'https', 'GIT_PROTOCOL_FROM_USER': '0', 'GIT_ASKPASS': str(Path(__file__).with_name('askpass.py'))}
         if self.read_only: env['GIT_OPTIONAL_LOCKS'] = '0'
         out, err = self.temporary / 'stdout', self.temporary / 'stderr'
         with out.open('wb') as stdout, err.open('wb') as stderr:
             process = subprocess.Popen(self.command(args, auth), stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
-                                       stdout=stdout, stderr=stderr, env=env, start_new_session=True)
+                                       stdout=stdout, stderr=stderr, env={**env, **({'STUDIO_GIT_AUTH_SOCKET': str(auth)} if auth else {})}, cwd=self.workspace, start_new_session=True)
             stopped, exceeded = threading.Event(), threading.Event()
             def monitor():
                 while not stopped.wait(.25):

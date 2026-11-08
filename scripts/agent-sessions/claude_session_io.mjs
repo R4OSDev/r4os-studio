@@ -164,7 +164,7 @@ function emit(value) {
 }
 function broker(value) {
   return new Promise((resolve, reject) => {
-    const socket = connect('/bridge/host.sock'); let raw = '', settled = false;
+    const socket = connect(process.env.STUDIO_CLAUDE_SOCKET); let raw = '', settled = false;
     const finish = (error, result) => {
       if (settled) return;
       settled = true; clearTimeout(timer); socket.destroy();
@@ -185,14 +185,14 @@ function broker(value) {
 }
 
 async function main() {
-  const raw = await readFile('/bridge/runtime.json');
+  const raw = await readFile(process.env.STUDIO_CLAUDE_BRIDGE + '/runtime.json');
   if (raw.byteLength > 262144) throw Error('Invalid frozen native runtime input.');
   const config = JSON.parse(raw);
   if (config.schema !== 1 || !/^[a-f0-9]{64}$/.test(config.capability)) throw Error('Invalid frozen native runtime binding.');
-  const sdk = await import(pathToFileURL('/runtime/sdk/sdk.mjs').href);
+  const sdk = await import(pathToFileURL(process.env.STUDIO_CLAUDE_SDK).href);
   let frozenInput;
   if (config.inputContract) {
-    const input = await readFile('/bridge/input.json');
+    const input = await readFile(process.env.STUDIO_CLAUDE_BRIDGE + '/input.json');
     if (input.byteLength > 12582912 + 4096) throw Error('The original native content exceeds its bound.');
     frozenInput = JSON.parse(input);
     const keys = ['profileId','requestId','textSha256','contentSha256'];
@@ -200,8 +200,8 @@ async function main() {
   }
   let admissionClosed = false, admissionSuspended = false;
   const observation = new NativeResponseObservation(config.binding);
-  const engine = new ClaudeSessionEngine(sdk, { ...config, frozenInput, cwd: '/inference', home: '/home/studio', config: '/config',
-    executable: '/runtime/native/claude' }, config.binding, {
+  const engine = new ClaudeSessionEngine(sdk, { ...config, frozenInput, cwd: process.cwd(), home: process.env.HOME, config: process.env.CLAUDE_CONFIG_DIR,
+    executable: process.env.STUDIO_CLAUDE_NATIVE }, config.binding, {
     authorize: value => admissionClosed || admissionSuspended ? false : broker({ ...value, operation: 'authorize', capability: config.capability }),
     admit: async ({ binding, query, retry }) => {
       if (admissionClosed) return { allowed: false };
@@ -274,7 +274,7 @@ async function main() {
     lines.close(); await engine.close(); await Promise.allSettled([...operations]);
     let historyReadable = false;
     if (engine.result) {
-      const info = await sdk.getSessionInfo(config.binding.nativeSessionId, { dir: '/inference' });
+      const info = await sdk.getSessionInfo(config.binding.nativeSessionId, { dir: process.cwd() });
       historyReadable = info?.sessionId === config.binding.nativeSessionId;
     }
     emit({ event: 'closed', nativeSessionId: config.binding.nativeSessionId, studioRequestId: config.binding.requestId, promptSubmitted: engine.sent,

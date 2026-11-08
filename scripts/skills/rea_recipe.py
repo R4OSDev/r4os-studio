@@ -5,6 +5,9 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from workspace_context import Workspace
 import shutil
 import subprocess
 from urllib.parse import urlsplit
@@ -12,40 +15,36 @@ from urllib.parse import urlsplit
 from managed_download import node_plan,install_node,file_hash
 import runtime_spec
 
-RECIPE_VERSION=2
+RECIPE_VERSION=3
 PROGRAM_PATH='/runtime/Programs/Bin:/runtime/Programs/Java/bin:/runtime/Programs/Python/bin:/runtime/Programs/OsTools/usr/bin:/runtime/Programs/Wabt/bin:/runtime/Node/bin:/usr/bin:/bin'
 
 
 def command(stage,work,arguments,network=False,readonly=False,environment=None):
-    args=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-pid','--unshare-ipc','--unshare-uts']
-    if not network:args+=['--unshare-net']
-    for path in ('/usr','/lib','/lib64'):
-        if Path(path).exists():args+=['--ro-bind',path,path]
-    args+=['--symlink','/usr/bin','/bin','--proc','/proc','--dev','/dev','--tmpfs','/tmp','--dir','/etc',
-           '--ro-bind' if readonly else '--bind',str(stage),'/runtime','--bind',str(work),'/work']
-    for path in ('/etc/passwd','/etc/group','/etc/nsswitch.conf','/etc/os-release'):
-        if Path(path).exists():args+=['--ro-bind',path,path]
-    if network:
-        for path in ('/etc/ssl','/etc/resolv.conf','/etc/hosts'):
-            if Path(path).exists():args+=['--ro-bind',path,path]
-    args+=['--chdir','/runtime/Repository','--clearenv','--setenv','HOME','/work/Home',
-           '--setenv','PATH',PROGRAM_PATH,'--setenv','LANG','C.UTF-8',
-           '--setenv','HUSKY','0','--setenv','npm_config_cache','/work/Cache','--setenv','npm_config_userconfig','/dev/null',
-           '--setenv','npm_config_audit','false','--setenv','npm_config_fund','false',
-           '--setenv','TURBO_TELEMETRY_DISABLED','1','--setenv','DO_NOT_TRACK','1',
-           '--setenv','GOMAXPROCS','2','--setenv','UV_THREADPOOL_SIZE','2',
-           '--setenv','CARGO_HOME','/work/Cargo','--setenv','CARGO_TARGET_DIR','/runtime/Repository/third_party/binwalk/target',
-           '--setenv','CC','/usr/bin/gcc','--setenv','CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER','/usr/bin/gcc',
-           '--setenv','PKG_CONFIG_SYSROOT_DIR','/runtime/Programs/OsTools',
-           '--setenv','PKG_CONFIG_PATH','/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu/pkgconfig:/runtime/Programs/OsTools/usr/share/pkgconfig',
-           '--setenv','LD_LIBRARY_PATH','/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu:/runtime/Programs/OsTools/lib/x86_64-linux-gnu:/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu/android',
-           '--setenv','UV_CACHE_DIR','/work/Cache/uv','--setenv','UV_PYTHON_DOWNLOADS','never',
-           '--setenv','PLAYWRIGHT_BROWSERS_PATH','/runtime/Programs/Browsers',
-           '--setenv','JAVA_HOME','/runtime/Programs/Java','--setenv','GHIDRA_INSTALL_DIR','/runtime/Programs/Ghidra',
-           '--setenv','REA_MCP_INPUT_SCHEMA_PROFILE','full','--setenv','REA_MCP_OUTPUT_SCHEMA_PROFILE','full']
-    for name,value in (environment or {}).items():args+=['--setenv',name,value]
-    args+=['--',*arguments]
-    return args
+    working = Workspace(Path(stage) / 'Repository', {'/runtime': stage, '/work': work})
+    # Runtime manifests retain their original relocatable paths; materialize
+    # those values for this particular build rather than mounting aliases.
+    mapped = lambda value: ':'.join(str(working.path(part)) if part.startswith('/') else part for part in str(value).split(':'))
+    env = {'HOME': str(work / 'Home'), 'PATH': mapped(PROGRAM_PATH), 'HUSKY': '0',
+        'npm_config_cache': str(work / 'Cache'), 'npm_config_userconfig': '/dev/null',
+        'npm_config_audit': 'false', 'npm_config_fund': 'false', 'TURBO_TELEMETRY_DISABLED': '1', 'DO_NOT_TRACK': '1',
+        'GOMAXPROCS': '2', 'UV_THREADPOOL_SIZE': '2', 'CARGO_HOME': str(work / 'Cargo'),
+        'CARGO_TARGET_DIR': str(stage / 'Repository/third_party/binwalk/target'),
+        'CC': '/usr/bin/gcc', 'CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER': '/usr/bin/gcc',
+        'PKG_CONFIG_SYSROOT_DIR': str(stage / 'Programs/OsTools'),
+        'PKG_CONFIG_PATH': mapped('/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu/pkgconfig:/runtime/Programs/OsTools/usr/share/pkgconfig'),
+        'LD_LIBRARY_PATH': mapped('/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu:/runtime/Programs/OsTools/lib/x86_64-linux-gnu:/runtime/Programs/OsTools/usr/lib/x86_64-linux-gnu/android'),
+        'UV_CACHE_DIR': str(work / 'Cache/uv'), 'UV_PYTHON_DOWNLOADS': 'never',
+        'PLAYWRIGHT_BROWSERS_PATH': str(stage / 'Programs/Browsers'), 'JAVA_HOME': str(stage / 'Programs/Java'),
+        'GHIDRA_INSTALL_DIR': str(stage / 'Programs/Ghidra'), 'STUDIO_SKILL_RUNTIME': str(stage),
+        'REA_MCP_INPUT_SCHEMA_PROFILE': 'full', 'REA_MCP_OUTPUT_SCHEMA_PROFILE': 'full'}
+    env.update({name: mapped(value) for name, value in (environment or {}).items()})
+    from runtime_paths import launchers
+    replacements, bins = launchers(stage, work / 'Commands')
+    for name, value in tuple(env.items()):
+        if name != 'PATH': env[name] = replacements.get(str(value), value)
+    env['PATH'] = ':'.join([*bins, env['PATH']])
+    selected = [replacements.get(value, value) for value in working.arguments(arguments)]
+    return working.command(selected, environment=env)
 
 
 def run(api,stage,work,label,arguments,network=False,timeout=1200):
@@ -55,7 +54,7 @@ def run(api,stage,work,label,arguments,network=False,timeout=1200):
         result=subprocess.run(command(stage,work,arguments,network),stdin=subprocess.DEVNULL,stdout=stream,stderr=subprocess.STDOUT,
                               timeout=timeout,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'})
         stream.flush();os.fsync(stream.fileno())
-    proof=dict(phase=label,exit=result.returncode,network=network)
+    proof=dict(phase=label,exit=result.returncode,networkMode='host',declaredNetwork=network)
     api.atomic(work/(label+'-receipt.json'),(api.encode(proof)+'\n').encode())
     if result.returncode:
         raise api.SkillFault('The managed REA '+label+' phase failed. Its original private log and previous active package were preserved.',409)
@@ -109,7 +108,7 @@ def prepare(api,skills,ident,job,source,source_manifest,progress):
     package=json.loads(api.regular(repository/'package.json')[0])
     if package.get('name')!='rea-agents' or not isinstance(package.get('version'),str):
         raise api.SkillFault('The selected source is not the official REA package.',409)
-    # Dependency install has no lifecycle execution. Later source scripts run offline.
+    # Dependency install has no lifecycle execution. Every phase uses the host network.
     npm_config=api.regular(repository/'.npmrc')[0].decode().strip()
     if npm_config!='engine-strict=true':
         raise api.SkillFault('This REA source changes npm configuration beyond the managed recipe. Review it before preparation.',409)

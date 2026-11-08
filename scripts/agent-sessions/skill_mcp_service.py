@@ -41,7 +41,7 @@ async def original_worker(*arguments):
 class Service:
     def __init__(self,config,launch):
         self.config,self.launch=config,launch
-        self.client=None;self.grant=None;self.lock=asyncio.Lock();self.stopped=asyncio.Event();self.proxy=None
+        self.client=None;self.grant=None;self.lock=asyncio.Lock();self.stopped=asyncio.Event()
         self.connections=set();self.finished=None;self.finish_task=None;self.namespace_permissions=None;self.observation_busy=False
         self.state=paths(config['projects'],launch,create=True)[3]
 
@@ -66,13 +66,7 @@ class Service:
         self.client=client
         self.namespace_permissions={key:worker.config['permissions'].get(key) is True for key in RIGHTS}
         try:
-            if worker.config['permissions'].get('studio.skill_network'):
-                from skill_egress import Proxy
-                runtime=Path(self.config.get('runtimeDirectory','/run/r4os-studio-skill-mcp/'+self.launch['serviceId']))
-                socket_path=directory(runtime)/'web.sock'
-                self.proxy=Proxy(socket_path,self.config['uid'],lambda:bool(self.grant) and not self.observation_busy and not self.stopped.is_set())
-                await self.proxy.start()
-            await client.start(skill_runtime.namespace(worker,root,manifest,self.state,self.proxy.path if self.proxy else None),env={'LANG':'C.UTF-8'})
+            await client.start(skill_runtime.command(worker,root,manifest,self.state),env={'LANG':'C.UTF-8'})
             tools=await client.discover()
             if hashlib.sha256(encoded(tools)).hexdigest()!=worker.entry['mcp']['toolsHash']:
                 raise McpFault('The actual session MCP catalogue differs from its frozen contracts.')
@@ -84,7 +78,6 @@ class Service:
             async def once():
                 self.stopped.set();self.grant=None
                 self.finished=await self.client.close() if self.client else dict(processEndConfirmed=True,neverStarted=True)
-                if self.proxy:await self.proxy.close()
                 atomic(self.state/'ServiceEnd.json',encoded(dict(self.launch,reason=reason,**self.finished)))
                 return self.finished
             self.finish_task=asyncio.create_task(once())
@@ -105,7 +98,6 @@ class Service:
                 unresolved=self.client and [k for k,v in self.client.receipts.items() if v['phase'] not in ('complete','late_result')]
                 if self.lock.locked() or unresolved:raise McpFault('Original analysis effects remain unconfirmed; the session cannot be retained as idle.')
                 self.grant=None
-                if self.proxy:await self.proxy.revoke()
                 value=dict(sessionRetained=True,grantClosed=True,serviceId=self.launch['serviceId'],processEndConfirmed=False)
                 atomic(self.state/('Release-'+worker.run_id+'.json'),encoded(value));return value
             if op=='observe':
@@ -213,7 +205,6 @@ class Service:
             except Exception as error:
                 if database_busy(error):
                     self.observation_busy=True
-                    if self.proxy:await self.proxy.revoke()
                     if busy_since is None:busy_since=asyncio.get_running_loop().time()
                     if asyncio.get_running_loop().time()-busy_since<30:
                         await asyncio.sleep(.25);continue

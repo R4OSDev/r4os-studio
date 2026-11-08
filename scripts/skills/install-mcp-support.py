@@ -33,16 +33,6 @@ RuntimeDirectoryMode=0700
 KillMode=control-group
 TimeoutStopSec=25
 SendSIGKILL=yes
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=no
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths='''+' '.join(quote(path) for path in roots)+'''
 MemoryMax=6G
 TasksMax=512
 '''

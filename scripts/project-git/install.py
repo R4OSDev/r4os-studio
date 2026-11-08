@@ -14,7 +14,7 @@ from service_runtime import root_service
 
 def main():
     if os.geteuid() != 0: raise SystemExit('Run the Git host installer as root.')
-    for tool in ('/usr/bin/git', '/usr/bin/bwrap', '/usr/bin/python3'):
+    for tool in ('/usr/bin/git', '/usr/bin/python3'):
         if not Path(tool).is_file(): raise SystemExit('Missing Git host prerequisite: ' + tool)
     update = json.loads(Path('/etc/r4os-studio-updates/config.json').read_text())
     data = Path(update['dataDirectory']).resolve(strict=True); user = pwd.getpwnam('root')
@@ -42,14 +42,6 @@ ExecStart=/usr/bin/python3 -B /opt/r4os-studio/bin/git-launch.py
 RuntimeDirectory=r4os-studio-git
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-NoNewPrivileges=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-CapabilityBoundingSet=
 MemoryMax=1G
 TasksMax=64
 CPUQuota=200%
@@ -58,10 +50,8 @@ KillMode=mixed
 TimeoutStopSec=15
 Restart=on-failure
 '''
-    unit += 'ReadWritePaths=' + quote(data / 'Projects') + '\n'
-    for item in ('LLMProvider', 'Skills', 'R4OS'):
-        unit += 'InaccessiblePaths=-' + quote(data / item) + '\n'
-    unit += 'InaccessiblePaths=-/run/r4os-studio-vms\nInaccessiblePaths=-/run/r4os-studio-agents\nInaccessiblePaths=-/run/r4os-studio-development\n\n[Install]\nWantedBy=multi-user.target\n'
+    unit += '\n[Install]\nWantedBy=multi-user.target\n'
+    unit = root_service(unit)
     target_unit = Path('/etc/systemd/system/r4os-studio-git.service')
     if target_unit.exists() and target_unit.read_text() != unit: raise SystemExit('Existing Git service differs; preserve it for review.')
     target_unit.write_text(root_service(unit))

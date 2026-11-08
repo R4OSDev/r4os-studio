@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fixed stdio MCP tool transport. No credentials, shell, files or HTTP tools."""
 import json
+import os
 from pathlib import Path
 import re
 import socket
@@ -99,7 +100,7 @@ def broker(value):
     if len(data)>MAX_REQUEST:raise McpFault(-32602,'Tool arguments exceed the bound.')
     try:
         with socket.socket(socket.AF_UNIX) as client:
-            client.settimeout(1210);client.connect('/bridge/host.sock');client.sendall(data);client.shutdown(socket.SHUT_WR)
+            client.settimeout(1210);client.connect(os.environ['STUDIO_CLAUDE_SOCKET']);client.sendall(data);client.shutdown(socket.SHUT_WR)
             with client.makefile('rb') as stream:raw=stream.readline(MAX_RESULT+1)
         if not raw.endswith(b'\n') or len(raw)>MAX_RESULT:raise ValueError()
         response=json.loads(raw)
@@ -114,7 +115,7 @@ def main():
     # It cannot select an executable, input file, socket, endpoint or CLI flags.
     if len(sys.argv)!=1:raise SystemExit(1)
     try:
-        path=Path('/bridge/tools.json')
+        path=Path(os.environ['STUDIO_CLAUDE_BRIDGE'])/'tools.json'
         if path.stat().st_size>MAX_REQUEST:raise ValueError()
         server=StudioMcp(json.loads(path.read_bytes()),broker)
         while True:

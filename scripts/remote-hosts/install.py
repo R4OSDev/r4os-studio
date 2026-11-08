@@ -64,22 +64,9 @@ Restart=always
 RestartSec=3
 KillMode=control-group
 TimeoutStopSec=20
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-RestrictSUIDSGID=yes
-RestrictNamespaces=yes
-LockPersonality=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 MemoryMax=256M
 TasksMax=64
 LimitNOFILE=256
-ReadWritePaths="''' + quoted + '''" /run/r4os-studio-remote
 
 [Install]
 WantedBy=multi-user.target

@@ -38,7 +38,7 @@ class GitHubTools:
     async def inspect(self,arguments,call_id):
         worker=self.worker
         async with worker.terminals.lock:
-            async with worker.sandbox.lock:
+            async with worker.workspace_tools.lock:
                 if arguments.get('view')!='job' and any(not p.finished.is_set() for p in worker.terminals.processes.values()):
                     return {'success':False,'error':'busy','output':'Finish the current terminal processes before capturing/selecting Git sources.'}
                 if worker.lease is None or worker.lease.closed:raise ValueError('The own workspace lease is unavailable.')
@@ -59,7 +59,7 @@ class GitHubTools:
     async def call(self, arguments, call_id):
         worker = self.worker
         async with worker.terminals.lock:
-            async with worker.sandbox.lock:
+            async with worker.workspace_tools.lock:
                 if any(not process.finished.is_set() for process in worker.terminals.processes.values()):
                     return {'success': False, 'error': 'busy', 'output': 'Finish this run’s terminal processes before pushing.'}
                 if worker.lease is None or worker.lease.closed: raise ValueError('The project workspace lease is unavailable.')

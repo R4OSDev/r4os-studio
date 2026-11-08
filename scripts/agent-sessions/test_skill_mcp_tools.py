@@ -21,7 +21,7 @@ packages=importlib.util.module_from_spec(spec);sys.modules[spec.name]=packages;s
 
 SERVER = r'''
 import fs from 'node:fs';import readline from 'node:readline';import net from 'node:net';
-const tools=JSON.parse(fs.readFileSync('/runtime/catalog.json')).tools;let counter=0;
+const tools=JSON.parse(fs.readFileSync(new URL('./catalog.json',import.meta.url))).tools;let counter=0;
 const send=v=>console.log(JSON.stringify({jsonrpc:'2.0',...v}));
 for await(const line of readline.createInterface({input:process.stdin})){
  const q=JSON.parse(line),p=q.params??{};if(q.id===undefined)continue;
@@ -39,7 +39,7 @@ for await(const line of readline.createInterface({input:process.stdin})){
      probe.hostConnection=await new Promise(resolve=>{const s=net.connect({host:'127.0.0.1',port:5010});s.setTimeout(250);s.once('connect',()=>{s.destroy();resolve('connected')});s.once('error',e=>resolve(e.code));s.once('timeout',()=>{s.destroy();resolve('timeout')})});
      const local=net.createServer(s=>s.end('private-loopback'));await new Promise(r=>local.listen(0,'127.0.0.1',r));
      probe.loopback=await new Promise((resolve,reject)=>{let value='';const s=net.connect({host:'127.0.0.1',port:local.address().port});s.on('data',b=>value+=b);s.on('end',()=>resolve(value));s.on('error',reject)});await new Promise(r=>local.close(r));
-   }result={content:[{type:'text',text:JSON.stringify(p.arguments)}],structuredContent:{probe,nativeCounter:++counter,nativePid:process.pid,original:p.arguments,ambient:process.env.STUDIO_QA_SECRET??null,workspace:fs.readFileSync('/workspace/canary.txt','utf8')}};}
+   }result={content:[{type:'text',text:JSON.stringify(p.arguments)}],structuredContent:{probe,nativeCounter:++counter,nativePid:process.pid,original:p.arguments,ambient:process.env.STUDIO_QA_SECRET??null,workspace:fs.readFileSync(process.cwd()+'/canary.txt','utf8')}};}
    send({id:q.id,result});
  }else send({id:q.id,result:{}});
 }
