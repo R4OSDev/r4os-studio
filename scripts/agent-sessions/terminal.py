@@ -6,27 +6,13 @@ import json
 import os
 from pathlib import Path
 import pty
-import signal
 import sqlite3
 import uuid
-from file_worker import parts
 from run_store import event, item, get_run
-from session_store import encode
 from store import ProjectFault
 from terminal_timing import Timing, retained as retained_timing, unknown as unknown_timing
 from terminal_group import Group
-
-
-def bounded_text(value, budget, tail=False):
-    """Bound the actual JSON representation, including escaped control bytes."""
-    if len(encode(value).encode()) <= budget: return value, False
-    low, high = 0, len(value)
-    while low < high:
-        middle = (low+high+1)//2
-        candidate = value[-middle:] if tail else value[:middle]
-        if len(encode(candidate).encode()) <= budget: low = middle
-        else: high = middle-1
-    return (value[-low:] if tail and low else value[:low]), True
+from text_budget import bounded_text, TextBuffer
 
 
 class Process:
@@ -35,13 +21,22 @@ class Process:
         self.timing=timing or Timing();self.timing.bind_process(proc)
         self.group = Group(proc.pid, self.timing.birth)
         self.stop_lock = asyncio.Lock()
-        self.pending = ''; self.dropped = False; self.bytes = 0; self.reason = None
+        self.pending_buffer = TextBuffer(60000, True); self.output_buffer = TextBuffer(120000)
+        self.dropped = False; self.bytes = 0; self.reason = None
         self.changed = asyncio.Event(); self.finished = asyncio.Event(); self.exited = asyncio.Event(); self.readers = []
         self.io_lock = asyncio.Lock()
         self.value = {'id': 'process-' + ident, 'runId': manager.worker.run_id, 'type': 'terminal',
                       'processId': ident, 'tool': 'studio.exec_command', 'arguments': {'cmd': cmd}, 'output': '', 'status': 'running'}
         self.publish()
         self.exit_observer=asyncio.create_task(self.observe_exit())
+
+    @property
+    def pending(self):return self.pending_buffer.value
+
+    @pending.setter
+    def pending(self,value):
+        self.pending_buffer = TextBuffer(60000, True)
+        self.pending_buffer.append(value)
 
     def publish(self):
         self.refresh_timing()
@@ -71,17 +66,15 @@ class Process:
         if not text: return
         self.refresh_timing()
         self.bytes += len(text.encode())
-        self.pending += text
-        self.pending, clipped = bounded_text(self.pending, 60000, True)
+        _, clipped = self.pending_buffer.append(text)
         self.dropped = self.dropped or clipped
-        visible = self.value['output']
-        remaining = max(0, 120000-len(encode(visible).encode()))
-        if remaining:
-            delta, clipped = bounded_text(text, remaining+2); self.value['output'] += delta
+        delta, clipped = self.output_buffer.append(text)
+        if delta:
+            self.value['output'] = self.output_buffer.value
             w = self.manager.worker
             from public_stream import delta as public_delta
             public_delta(w.store, w.session_id, w.run_id, self.value, {'itemId': self.value['id'], 'text': delta, 'field': 'output'})
-        if len(encode(text).encode()) > remaining+2: self.value['truncated'] = True
+        if clipped: self.value['truncated'] = True
         self.changed.set()
         if self.bytes > 2*1024*1024 and self.reason is None:
             self.reason = 'outputLimit'; asyncio.create_task(self.terminate('outputLimit'))

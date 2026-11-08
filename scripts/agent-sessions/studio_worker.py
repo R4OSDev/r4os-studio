@@ -293,6 +293,8 @@ class StudioWorker(Worker):
         transition(self.store, self.run_id, 'running', turn_id=self.turn_id)
         ident = 'assistant-' + self.run_id + '-' + str(self.round)
         preview = {'id': ident, 'runId': self.run_id, 'type': 'assistant', 'text': '', 'status': 'running'}
+        from text_budget import TextBuffer
+        budget = TextBuffer(196608)
         announced = False
         async def text(delta):
             nonlocal announced
@@ -303,11 +305,9 @@ class StudioWorker(Worker):
                 announced = True
             # The public preview has the existing item bound. The full original
             # belongs in Conversation, independently of UI truncation.
-            from terminal import bounded_text
-            previous = preview['text']
-            preview['text'], clipped = bounded_text(previous + delta, 196608)
+            added, clipped = budget.append(delta)
+            preview['text'] = budget.value
             preview['truncated'] = bool(preview.get('truncated') or clipped)
-            added = preview['text'][len(previous):]
             if not added: return
             from public_stream import delta as public_delta
             public_delta(self.store, self.session_id, self.run_id, preview, {'itemId': ident, 'text': added})

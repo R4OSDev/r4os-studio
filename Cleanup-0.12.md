@@ -33,3 +33,7 @@ Skill options, freezing and workspace metadata use one catalog snapshot per oper
 ## 0.12.10
 
 Context reporting returns the estimate and encoded size from the same prepared request. Compaction decisions reuse that pair within the operation and recompute after input or checkpoint changes.
+
+## 0.12.11
+
+Streaming text budgets count only new JSON string content and evict pending tail fragments incrementally. Public deltas retain bounded immutable snapshots and serialize complete projections at flush; original model history stays separate.
