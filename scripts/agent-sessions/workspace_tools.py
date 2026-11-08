@@ -10,19 +10,16 @@ from profile import regular, digest, directory, CODEX_SHA256,CODEX_VERSION
 
 class WorkspaceTools:
     def __init__(self, worker):
-        self.worker = worker; self.context = None
+        self.worker = worker; self.context = None; self.sdk_ready = False
         self.script_roots = []
         self.lock = asyncio.Lock(); self.initializing = asyncio.Lock()
 
-    async def prepare(self):
+    async def prepare(self, sdk=True):
         async with self.initializing:
-            if self.context is not None: return
-            if self.worker.store.owner_type == 'skill':
-                context = {'paths': {}}
-            else:
-                from sdk import profile
-                context = await asyncio.to_thread(profile, Path(self.worker.manifest['r4os']),
-                                  self.worker.store.projects, self.worker.config['projectPins'])
+            if self.context is not None:
+                if sdk: await self.prepare_sdk()
+                return
+            context = {'paths': {}}
             # The official patch parser is a separate pinned tool, independent
             # of the Claude model engine and its native2.x version.
             patch_version=CODEX_VERSION if self.worker.config['engine'].get('kind') in ('claude-code', 'studio') else self.worker.config['engine']['version']
@@ -39,12 +36,35 @@ class WorkspaceTools:
             self.script_roots = await asyncio.to_thread(bindings, self.worker)
             self.cache = directory(self.worker.store.directory / self.worker.session_id / 'Tools' / self.worker.run_id)
             for name in ('home', 'zig', 'cargo'): directory(self.cache / name)
-            if self.worker.store.owner_type == 'project':
-                package_link = self.cache / 'zig/p'
-                packages = context['cache'] / 'global/p'
-                if package_link.is_symlink() and os.readlink(package_link) == '/packages': package_link.unlink()
-                if not package_link.exists() and not package_link.is_symlink(): package_link.symlink_to(packages)
             self.context = context
+            if sdk: await self.prepare_sdk()
+
+    async def prepare_sdk(self):
+        if self.sdk_ready or self.worker.store.owner_type == 'skill': return
+        from sdk import profile
+        context = await asyncio.to_thread(profile, Path(self.worker.manifest['r4os']),
+                          self.worker.store.projects, self.worker.config['projectPins'])
+        package_link = self.cache / 'zig/p'
+        packages = context['cache'] / 'global/p'
+        if package_link.is_symlink() and os.readlink(package_link) == '/packages': package_link.unlink()
+        if not package_link.exists() and not package_link.is_symlink(): package_link.symlink_to(packages)
+        self.context = context; self.sdk_ready = True
+
+    def needs_sdk(self, arguments):
+        from image_instructions import ALIAS
+        recipe = '/sdk/' + ALIAS
+        def component(path):
+            if path == recipe or path.startswith(recipe + '/'): return False
+            return any(path == '/' + name or path.startswith('/' + name + '/')
+                for name in ('sdk','contract','libraries','install','zig','rust','tools','pwsh'))
+        root = arguments.get('root','workspace')
+        path = arguments.get('path','.')
+        if root != 'workspace' and not (root == 'sdk' and (path == ALIAS or path.startswith(ALIAS + '/'))): return True
+        paths = [path, *arguments.get('expectedHashes',{})]
+        for line in arguments.get('patch','').splitlines():
+            for prefix in ('*** Add File: ', '*** Update File: ', '*** Delete File: ', '*** Move to: '):
+                if line.startswith(prefix): paths.append(line[len(prefix):])
+        return any(component(path) for path in paths)
 
     def paths(self):
         paths = {'/' + name: path for name, path in self.context['paths'].items()}
@@ -60,6 +80,7 @@ class WorkspaceTools:
         paths.update(self.worker.skill_resources.paths())
         if self.worker.store.owner_type == 'project':
             from image_instructions import ALIAS
+            if '/sdk' not in paths: paths['/sdk'] = directory(self.cache / 'recipe-root')
             paths['/sdk/' + ALIAS] = Path(__file__).resolve().parents[2] / 'shared/r4os/image-recipes'
         return paths
 
@@ -88,7 +109,7 @@ class WorkspaceTools:
 
     async def file(self, name, arguments):
         import json
-        await self.prepare()
+        await self.prepare(sdk=self.needs_sdk(arguments))
         # All calls share this lock, including reads, so a read/hash pair observes
         # the preceding Studio write. External administrator edits remain external.
         async with self.lock:

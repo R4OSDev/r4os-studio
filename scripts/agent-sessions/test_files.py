@@ -11,6 +11,29 @@ from tool_catalog import validate_arguments
 
 
 class Files(unittest.TestCase):
+    def test_workspace_file_operations_do_not_require_an_sdk(self):
+        import asyncio
+        from types import SimpleNamespace
+        from workspace_tools import WorkspaceTools
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);workspace=root/'workspace';workspace.mkdir()
+            worker=SimpleNamespace(store=SimpleNamespace(owner_type='project',workspace=workspace,projects=root/'Projects',directory=root/'Sessions'),
+                manifest={'r4os':str(root/'missing-sdk')},session_id='own-session',run_id='own-run',
+                config={'engine':{'kind':'studio'},'projectPins':{}},skill_resources=SimpleNamespace(paths=lambda:{}))
+            async def scenario():
+                tools=WorkspaceTools(worker)
+                with patch('sdk.profile',side_effect=ValueError('Own unavailable SDK')) as profile:
+                    written=await tools.file('write_file',{'path':'own.txt','content':'needle ä🦀\n','expectedSha256':None})
+                    self.assertTrue(written['success'])
+                    self.assertIn('needle ä🦀',(await tools.file('read_file',{'path':'own.txt'}))['output'])
+                    self.assertIn('own.txt',(await tools.file('list_directory',{'path':'.'}))['output'])
+                    self.assertIn('own.txt',(await tools.file('search',{'path':'.','query':'needle'}))['output'])
+                    profile.assert_not_called()
+                    with self.assertRaisesRegex(ValueError,'unavailable SDK'):await tools.file('read_file',{'root':'sdk','path':'README.md'})
+                    self.assertEqual(profile.call_count,1)
+                    self.assertTrue((await tools.file('read_file',{'path':'own.txt'}))['success'])
+            asyncio.run(scenario())
+
     def test_scope_conflicts_and_bounded_reads(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / 'workspace'; root.mkdir()

@@ -17,3 +17,7 @@ Project and skill helpers decode UTF-8 incrementally across stdout chunks and en
 ## 0.12.6
 
 Owner retirement stops the current MCP controller even when an older end receipt exists. Controller PID, birth and invocation bind new receipts; previous end bytes remain archived and unresolved effects remain blocked.
+
+## 0.12.7
+
+Ordinary workspace file tools prepare only file paths, run caches and the standalone patch utility. SDK roots and terminal compiler environments resolve the pinned SDK lazily, once per run.
