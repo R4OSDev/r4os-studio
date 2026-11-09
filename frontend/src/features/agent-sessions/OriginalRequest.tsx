@@ -1,40 +1,25 @@
-import {useEffect,useId,useRef,useState} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useId,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {trapDialogFocus} from './dialogFocus';
-import type {ContextRequestChunk,ContextRequestDetail} from '../../../../shared/context-requests';
+import type {ContextRequestDetail} from '../../../../shared/context-requests';
 import {sessionPath,useSessionApi} from './api';
+
+const RequestDocument=lazy(async()=>({default:(await import('./RequestDocument')).RequestDocument}));
 
 const number=new Intl.NumberFormat('en-US');
 export function OriginalRequest({projectId,sessionId,record,close}:{projectId:string;sessionId:string;record:ContextRequestDetail;close:()=>void}) {
   const prepared=record.status==='blocked-before-send';
-  const dialog=useRef<HTMLDialogElement>(null),title=useId(),{request,base}=useSessionApi();
-  const [offsets,setOffsets]=useState([0]),[page,setPage]=useState<{text:string;end:number;next:number|null}|null>(null);
+  const dialog=useRef<HTMLDialogElement>(null),title=useId(),{base}=useSessionApi();
+  const [formatted,setFormatted]=useState<{text:string;notice:string|null}|null>(null),[retry,setRetry]=useState(0);
   const [error,setError]=useState(''),[actionError,setActionError]=useState(''),[status,setStatus]=useState('');
   const [pending,setPending]=useState<'copy'|'download'|null>(null);
   const original=useRef<Promise<ArrayBuffer>|null>(null),fullRead=useRef<AbortController|null>(null);
-  const offset=offsets[offsets.length-1],path=sessionPath(projectId,sessionId)+'/context-requests/'+record.id;
+  const path=sessionPath(projectId,sessionId)+'/context-requests/'+record.id;
   useEffect(()=>{
     const element=dialog.current!,opener=document.activeElement;element.showModal();
     return()=>{element.close();fullRead.current?.abort();if(opener instanceof HTMLElement&&opener.isConnected)opener.focus();};
   },[]);
-  useEffect(()=>{
-    const controller=new AbortController();
-    void request<ContextRequestChunk>(path+'/body?offset='+offset+'&limit=65536','','GET',undefined,controller.signal)
-      .then(value=>{
-        if(controller.signal.aborted)return;
-        if(value.requestId!==record.id||value.offset!==offset||value.bytes!==record.bytes)throw Error('The original request range changed.');
-        const bytes=Uint8Array.from(atob(value.base64),character=>character.charCodeAt(0));
-        // Do not replace a code point cut by the byte range with U+FFFD. The
-        // following page starts at the first unconsumed original byte.
-        const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes,{stream:value.nextOffset!==null});
-        const end=offset+new TextEncoder().encode(text).length;
-        if(end<=offset&&end<record.bytes)throw Error('The original request range is incomplete.');
-        setPage({text,end,next:end<record.bytes?end:null});setError('');
-      }).catch(failure=>{if(!controller.signal.aborted)setError(failure instanceof Error?failure.message:'The original request could not be read.');});
-    return()=>controller.abort();
-  },[path,request,offset,record.id,record.bytes]);
-  function navigate(starts:number[]){setPage(null);setError('');setOffsets(starts);}
-  async function whole(){
+  const whole=useCallback(async()=>{
     if(!original.current){
       const controller=new AbortController();fullRead.current=controller;
       original.current=fetch(base+path+'/download',{cache:'no-store',signal:controller.signal}).then(async response=>{
@@ -45,7 +30,22 @@ export function OriginalRequest({projectId,sessionId,record,close}:{projectId:st
       });
     }
     try{return await original.current;}catch(failure){original.current=null;throw failure;}
-  }
+  },[base,path,record.bytes]);
+  useEffect(()=>{
+    let active=true;let worker:Worker|null=null,timer:ReturnType<typeof setTimeout>|undefined;
+    const stop=()=>{worker?.terminate();if(timer)clearTimeout(timer);};
+    void whole().then(bytes=>{
+      if(!active)return;
+      const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
+      worker=new Worker(new URL('./request-format.worker.ts',import.meta.url),{type:'module'});
+      worker.onmessage=event=>{if(active){setFormatted(event.data);setError('');}stop();};
+      worker.onerror=()=>{if(active)setError('The formatted request could not be prepared.');stop();};
+      timer=setTimeout(()=>{if(active)setError('The formatted request took too long to prepare.');stop();},15000);
+      worker.postMessage(text);
+    }).catch(failure=>{if(active)setError(failure instanceof Error?failure.message:'The original request could not be read.');});
+    return()=>{active=false;stop();};
+  },[retry,whole]);
+  function readAgain(){setFormatted(null);setError('');setRetry(value=>value+1);}
   async function copy(){
     setPending('copy');setStatus('');setActionError('');
     try{
@@ -78,14 +78,11 @@ export function OriginalRequest({projectId,sessionId,record,close}:{projectId:st
     <header className="context-inspector-header"><h2 id={title}>{prepared?'Prepared request · not sent':'Full request'}</h2><button type="button" onClick={close}>Back to context</button></header>
     <div className="request-original-meta"><strong>{record.model}</strong><span>{record.id}</span>
       <small>{number.format(record.bytes)} original UTF-8 bytes · SHA-256 {record.sha256}</small></div>
-    <div className="request-original-pager" aria-label="Original request pages">
-      <button type="button" disabled={offsets.length===1} onClick={()=>navigate(offsets.slice(0,-1))}>Previous page</button>
-      <span>{page?`Bytes ${number.format(offset+1)}–${number.format(page.end)} of ${number.format(record.bytes)}`:'Loading page…'}</span>
-      <button type="button" disabled={!page||page.next==null} onClick={()=>navigate([...offsets,page!.next!])}>Next page</button>
-    </div>
-    {error?<div className="context-message" role="alert"><p>{error}</p><button type="button" onClick={()=>navigate([0])}>Read again</button></div>:
-      page?<pre className="request-original-content" tabIndex={0} aria-label="Original request body page">{page.text}</pre>:<p role="status" className="request-original-loading">Loading original bytes…</p>}
-    <footer className="context-inspector-footer"><div><small>The body is shown in pages. Copy and download include the entire request.</small>
+    {error?<div className="context-message" role="alert"><p>{error}</p><button type="button" onClick={readAgain}>Read again</button></div>:
+      formatted?<Suspense fallback={<p role="status" className="request-original-loading">Opening formatted request…</p>}><RequestDocument text={formatted.text}/></Suspense>:
+        <p role="status" className="request-original-loading">Loading and formatting the complete request…</p>}
+    <footer className="context-inspector-footer"><div><small>Formatted view with text line breaks. Copy and download preserve the complete original JSON.</small>
+      {formatted?.notice&&<small>{formatted.notice}</small>}
       {status&&<small role="status">{status}</small>}{actionError&&<small role="alert">{actionError}</small>}</div>
       <div className="context-footer-actions"><button type="button" disabled={pending!==null} onClick={()=>void copy()}>{pending==='copy'?'Copying…':'Copy full request'}</button>
         <button type="button" disabled={pending!==null} onClick={()=>void download()}>{pending==='download'?'Downloading…':'Download JSON'}</button></div></footer>

@@ -64,9 +64,12 @@
 .request-original-meta { display:flex; flex-direction:column; gap:4px; padding:14px 20px; overflow-wrap:anywhere; flex-shrink:0; }
 .request-original-meta span,.request-original-meta small { color:#b6a0c6; font-size:11px; }
 .request-original-meta small { font-family:monospace; font-size:10px; }
-.request-original-pager { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 20px; border-top:1px solid #463052; font-size:11px; flex-shrink:0; }
-.request-original-pager span { font-variant-numeric:tabular-nums; text-align:center; }
-.request-original-content { flex:1; min-height:0; overflow:auto; margin:0; padding:16px 20px; background:#18111f; color:#ddcbe8; white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; }
+.request-original-content { flex:1; min-height:0; min-width:0; overflow:hidden; border-top:1px solid #463052; font-size:12px; }
+.request-original-content .cm-scroller { overflow-y:scroll!important; overflow-x:hidden!important; scrollbar-gutter:stable; scrollbar-width:auto; scrollbar-color:#88609f #201727; overscroll-behavior:contain; }
+.request-original-content .cm-scroller::-webkit-scrollbar { width:12px; }
+.request-original-content .cm-scroller::-webkit-scrollbar-track { background:#201727; }
+.request-original-content .cm-scroller::-webkit-scrollbar-thumb { background:#88609f; border:3px solid #201727; border-radius:8px; }
+.request-original-content .cm-content { overflow-wrap:anywhere; }
 .request-original-loading { flex:1; padding:20px; }
 .request-original-dialog>.context-message { flex:1; padding:16px 20px; overflow:auto; }
 @media(max-width:500px) {
@@ -74,8 +77,6 @@
   .context-footer-actions button { font-size:11px; padding:7px 9px; }
   .request-original-meta { padding:12px; }
   .request-original-meta small { font-size:9px; }
-  .request-original-pager { padding:8px 12px; gap:8px; flex-wrap:wrap; }
-  .request-original-pager span { order:-1; flex-basis:100%; }
-  .request-original-pager button { font-size:11px; padding:6px 8px; }
-  .request-original-content { padding:12px; font-size:11px; }
+  .request-original-content { font-size:11px; }
+  .request-original-content .cm-line { padding-left:12px!important; padding-right:12px!important; }
 }

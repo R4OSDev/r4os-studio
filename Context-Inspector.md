@@ -1,3 +1,24 @@
+# Full request presentation from 0.12.26
+
+Full request now opens one read-only, continuously scrollable document with a
+visible vertical scrollbar on the right. Manual 64 KiB page controls are removed.
+The complete retained body is loaded once on opening; copy/download reuse those
+original bytes. The existing protected download route and retention remain unchanged.
+
+Formatting runs in a short-lived browser worker. JSON structure is indented and
+escaped text line breaks are displayed as readable continuation lines; this is
+a presentation, not rewritten valid JSON. Number lexemes, literal escaped
+backslashes and Unicode are preserved. Copy full request and Download JSON
+always use the exact original UTF-8 bytes, including a BOM when present.
+
+The existing CodeMirror runtime is loaded on demand and renders a viewport of the
+whole document, keeping a single scrollbar without creating DOM for every line.
+Indentation and formatted output have bounds; invalid or excessive formatting
+falls back to the complete original text with an explanation. Closing aborts the
+read and terminates the formatter. No model, count, tool or session action runs.
+
+The earlier paged presentation described below is historical.
+
 # Context request inspection
 
 ## 0.12.18 — original capture

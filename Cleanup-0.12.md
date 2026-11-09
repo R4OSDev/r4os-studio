@@ -93,3 +93,7 @@ Optionally count complete Responses inputs through qualified provider routes wit
 ## 0.12.25
 
 Show characters, count provenance and optional provider totals in the context inspector, with a separate bounded history of exact inputs blocked before send.
+
+## 0.12.26
+
+Show the complete request as a formatted read-only document with one continuous right scrollbar, while preserving original copy and download bytes.
