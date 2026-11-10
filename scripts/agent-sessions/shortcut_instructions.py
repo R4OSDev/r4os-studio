@@ -8,12 +8,13 @@ RETIREMENT = ('CURRENT STUDIO DESKTOP CONTRACT (0.9.27): Studio desktop publicat
     'run\'s declared tools/permissions; no shortcut-writing capability is claimed.')
 
 
-def compose(config, text):
+def compose(config, text, source=''):
     if config.get('owner', {}).get('type') != 'project': return text
-    # Remove only the exact bundled paragraph, if already in a default or copied
-    # custom source. Never rewrite stored text, revision/hash or an accepted run.
-    text = text.replace(GUIDE, '').rstrip()
     tools = (config.get('toolCatalog') or {}).get('tools', [])
     enabled = (config.get('permissions', {}).get('studio.run_vm_command') is True
         and 'studio_run_vm_command' in tools)
-    return text + '\n\n' + (GUIDE if enabled else RETIREMENT)
+    guide = GUIDE if enabled else RETIREMENT
+    # The source remains verbatim, including any bundled guide. Append a current
+    # contract only when missing; disabled tools still receive retirement guidance.
+    if guide in source or guide in text: return text
+    return text + '\n\n' + guide

@@ -7,7 +7,7 @@ from model_transport import ModelFault, dumps
 from run_store import get_run, transition
 from session_context import Context, empty, number
 from session_store import now
-from context_policy import threshold
+from context_policy import optimized, threshold
 from input_budget import METHOD, strict
 
 SUMMARY = ('STUDIO CONTEXT SUMMARY: Summarize the supplied conversation for continuation. '
@@ -164,6 +164,12 @@ class StudioContext(Context):
         bounded=strict(w.config.get('contextPolicy'))
         pressure = (limit is not None and (estimate is not None and estimate >= limit or fresh and measured is not None and measured >= limit)) or size >= 6*1024*1024
         if not pressure: return active, False
+        if optimized(w.config.get('contextPolicy'),1):
+            from signed_history import latest as signed
+            if signed(active,w.transport().binding):
+                if size >= 6*1024*1024 or limit is not None and estimate > limit:
+                    raise ModelFault('context_signed_prefix',not_dispatched=True)
+                return active, False
         from checkpoint_records import plan
         byte_limit=min(512*1024, max(256,(limit or 250000)) if bounded else max(16384,(limit or 250000)*2))
         planned = plan(w, active, checkpoint, byte_limit)

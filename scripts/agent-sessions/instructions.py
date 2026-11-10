@@ -1,5 +1,6 @@
 """Compose frozen global and project sources without native file discovery."""
 import hashlib
+import re
 from pathlib import Path
 from store import ProjectFault
 from system_prompt import validate_text
@@ -31,6 +32,40 @@ TERMINAL_LIFETIME_RECEIPTS = (
 )
 
 
+SECTION_HEADING = re.compile(
+    r'^(?P<title>(?:CURRENT )?STUDIO [A-Z][A-Z0-9 /_-]*(?: v[0-9]+)?(?: \([^\n)]*\))?'
+    r'|CURRENT CLEANUP CAPABILITY|ACCEPTED HUMAN PLAY OBJECTIVE \(JSON\)'
+    r'|SENT ATTACHMENT MANIFEST \(task data, in Send order\))(?::[ \t]*|[ \t]*$)'
+)
+
+
+def format_sections(text):
+    """Format generated Studio sections only; leave fenced examples intact."""
+    result = []
+    fence = None
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip('\r\n')
+        ending = line[len(body):]
+        marker = re.match(r'^\s*(`{3,}|~{3,})', body)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not body[marker.end():].strip():
+                fence = None
+            result.append(line)
+            continue
+        if marker:
+            fence = marker[1]
+            result.append(line)
+            continue
+        heading = SECTION_HEADING.match(body)
+        if heading:
+            remainder = body[heading.end():]
+            result.append('*** ' + heading['title'].rstrip() + ' ***'
+                          + ('\n' + remainder if remainder else '') + ending)
+        else:
+            result.append(line)
+    return ''.join(result)
+
+
 def base(config):
     if config.get('owner', {}).get('type') == 'skill':
         source = config.get('skillManagerPrompt', {})
@@ -50,16 +85,15 @@ def base(config):
     text = validate(project['text'])
     if hashlib.sha256(text.encode('utf-8')).hexdigest() != project['sha256']:
         raise ProjectFault('The saved project instructions checksum changed.', 409)
-    return ('The following are the current R4OS Studio instruction sources for this run. '
-            'They replace all earlier Studio global and project instruction versions in this conversation. '
-            'Global instructions take precedence over conflicting project instructions. '
-            'Project instructions supplement the global instructions; an empty project source adds no instructions.\n\n'
-            'GLOBAL R4OS STUDIO INSTRUCTIONS\n' + global_text +
-            '\n\nPROJECT INSTRUCTIONS FROM Workspace/Agents.md\n' + text)
+    return ('*** GLOBAL R4OS STUDIO INSTRUCTIONS ***\n' + global_text +
+            '\n\n*** PROJECT INSTRUCTIONS FROM Workspace/Agents.md ***\n' + text)
 
 
 def compose(config, project=None):
-    text = base(config)
+    # Frozen instruction sources are opaque sections. Only generated additions
+    # may be formatted; preserve source whitespace and internal headings verbatim.
+    source = base(config)
+    text = ''
     from goal_keepalive import instructions as keepalive_instructions
     text += keepalive_instructions(config)
     from active_tools import instructions as current_tool_instructions
@@ -88,27 +122,28 @@ def compose(config, project=None):
     text += image_generation_instructions(config)
     # Saved custom prompts remain original. Bound workers apply current timing
     # guidance without changing their frozen source text/revision/hash.
-    if config.get('permissions', {}).get('studio.exec_command') and TERMINAL_TIMING not in text:
+    if (config.get('permissions', {}).get('studio.exec_command')
+            and TERMINAL_TIMING not in source and TERMINAL_TIMING not in text):
         text += '\n\n' + TERMINAL_TIMING
-    if any(config.get('permissions',{}).get(key) for key in ('studio.exec_command','studio.write_stdin')) and TERMINAL_LIFETIME_RECEIPTS not in text:
+    if (any(config.get('permissions', {}).get(key) for key in ('studio.exec_command', 'studio.write_stdin'))
+            and TERMINAL_LIFETIME_RECEIPTS not in source and TERMINAL_LIFETIME_RECEIPTS not in text):
         text += '\n\n' + TERMINAL_LIFETIME_RECEIPTS
     from roadmap_instructions import compose as roadmap_instructions
     text += roadmap_instructions(config)
     from development_instructions import compose as development_instructions
     text += development_instructions(config)
-    if config.get('owner', {}).get('type') == 'project':
-        # Supplement the next normal run without rewriting saved prompt sources
-        # or an accepted snapshot; copied defaults contain this paragraph once.
-        text = text.replace(SDK_PROFILE_GUIDE, '').rstrip() + '\n\n' + SDK_PROFILE_GUIDE
+    if (config.get('owner', {}).get('type') == 'project'
+            and SDK_PROFILE_GUIDE not in source and SDK_PROFILE_GUIDE not in text):
+        text += '\n\n' + SDK_PROFILE_GUIDE
     from remote_instructions import compose as remote_instructions
     text += remote_instructions(config)
     from shortcut_instructions import compose as shortcut_instructions
-    text = shortcut_instructions(config, text)
+    text = shortcut_instructions(config, text, source)
     if 'skillAccess' in config:
         from skill_application import catalog_text
         text += catalog_text(config['skillAccess'], config.get('workspaceContext'))
     from workspace_instructions import compose as workspace_guidance
-    return text + runtime_guidance(config, project) + workspace_guidance(config)
+    return source + format_sections(text + runtime_guidance(config, project) + workspace_guidance(config))
 
 
 def runtime_guidance(config, project=None):

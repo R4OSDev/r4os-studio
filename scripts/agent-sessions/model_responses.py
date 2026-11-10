@@ -55,6 +55,7 @@ class Responses:
         self.finished_items = {}
         self.response_id = None
         self.pending_text = {}
+        self.output_seen = False
 
     def push(self, raw):
         if raw == '[DONE]':
@@ -64,10 +65,21 @@ class Responses:
         if not isinstance(value, dict): raise ModelFault()
         kind = value.get('type')
         if self.response is not None: raise ModelFault()
+        envelope = value.get('response')
+        envelope = envelope if isinstance(envelope,dict) else {}
+        if envelope.get('output') or envelope.get('usage') is not None:
+            self.output_seen = True
         if kind in ('error', 'response.failed', 'response.incomplete'):
-            error=value.get('error') if kind=='error' else value.get('response',{}).get('error')
+            error=value.get('error') if kind=='error' else envelope.get('error')
             code=error.get('code') if isinstance(error,dict) else value.get('code')
-            raise ModelFault(code if isinstance(code,str) else 'model_response_incomplete',details={'providerParam':error.get('param')} if isinstance(error,dict) else None)
+            # Retry only an explicit rejection before any answer or tool output.
+            empty_rejection = (not self.output_seen and isinstance(error,dict)
+                and (kind=='error' or kind=='response.failed' and envelope.get('status')=='failed'))
+            raise ModelFault(code if isinstance(code,str) else 'model_response_incomplete',
+                details={'providerParam':error.get('param')} if isinstance(error,dict) else None,
+                confirmed_overload=empty_rejection)
+        if kind not in ('response.created','response.in_progress','response.metadata'):
+            self.output_seen = True
         if kind == 'response.output_text.delta':
             if not isinstance(value.get('delta'), str): raise ModelFault()
             key = (value.get('output_index', 0), value.get('content_index', 0))

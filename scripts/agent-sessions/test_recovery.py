@@ -143,7 +143,7 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
             worker.config['engine'] = {'version': '0.163.0', 'profile': PROFILE, 'sha256': hashlib.sha256((f.r4os / 'Toolchains/Codex/0.163.0/codex').read_bytes()).hexdigest()}
             with patch('worker.prepare', return_value=([], {})), patch('worker.CodexRPC', Native): await worker.run()
         await run(rid)
-        self.assertTrue(seen[0][1]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\nGlobal prompt A\n') >= 0)
+        self.assertTrue(seen[0][1]['baseInstructions'].find('*** GLOBAL R4OS STUDIO INSTRUCTIONS ***\nGlobal prompt A\n') >= 0)
         self.assertEqual(seen[0][0], 'thread/start')
         self.assertEqual(seen[0][1]['sandbox'], 'danger-full-access')
         self.assertEqual(seen[0][1]['approvalPolicy'], 'never')
@@ -157,10 +157,10 @@ class Recovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resumes[0]['threadId'], 'same-native-thread')
         self.assertEqual(resumes[0]['sandbox'], 'danger-full-access')
         self.assertEqual(resumes[0]['approvalPolicy'], 'never')
-        self.assertTrue(resumes[0]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\nGlobal prompt B\n') >= 0)
+        self.assertTrue(resumes[0]['baseInstructions'].find('*** GLOBAL R4OS STUDIO INSTRUCTIONS ***\nGlobal prompt B\n') >= 0)
         update(f.projects, {'revision': 2}, reset=True)
         await run(self.admit())
-        self.assertTrue([p for m, p in seen if m == 'thread/resume'][-1]['baseInstructions'].find('GLOBAL R4OS STUDIO INSTRUCTIONS\n' + default_text().split('\n\n', 1)[0]) >= 0)
+        self.assertTrue([p for m, p in seen if m == 'thread/resume'][-1]['baseInstructions'].find('*** GLOBAL R4OS STUDIO INSTRUCTIONS ***\n' + default_text().split('\n\n', 1)[0]) >= 0)
         with f.open() as store:
             self.assertEqual(store.row(f.sid)['thread_id'], 'same-native-thread')
             self.assertEqual(len([i for i in store.history(f.sid)['items'] if i['type'] == 'user']), 3)

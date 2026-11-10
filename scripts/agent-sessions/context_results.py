@@ -89,7 +89,9 @@ def load(worker,ref):
 class Projection:
     def __init__(self,worker):
         from collections import OrderedDict
+        from context_media import Screenshots
         self.w=worker;self.key=None;self.value=None;self.source=None;self.cache=OrderedDict();self.bytes=0
+        self.screenshots=Screenshots(worker)
 
     def project(self,active,records,checkpoint):
         w=self.w
@@ -98,6 +100,13 @@ class Projection:
         key=w.history_reader.scope
         if self.source is active and self.key==key and self.value is not None:return self.value,records,checkpoint
         if self.key!=key:self.cache.clear();self.bytes=0
+        from context_policy import optimized
+        from signed_history import latest, protected_route
+        policy=w.config.get('contextPolicy')
+        explicit_media=optimized(policy,1)
+        binding={**w.config.get('apiProvider',{}),'model':w.config.get('model')}
+        if explicit_media and (protected_route(binding) or latest(active,binding)):
+            return active,records,checkpoint
         responses=[m.get('sequence',0) for m in active if m.get('role')=='assistant' and m.get('origin',{}).get('providerResponseId')]
         from checkpoint_records import references
         retained={ref['sequence'] for ref in references(checkpoint)}
@@ -105,21 +114,25 @@ class Projection:
         recent=responses[-KEEP_RESULTS] if len(responses)>=KEEP_RESULTS else 0
         human=max((m.get('sequence',0) for m in active if m.get('role')=='user' and m.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation')),default=0)
         protected={s for s in tools[-KEEP_RESULTS:] if s>=max(recent,human)};cutoff=responses[-MIN_LATER_RESPONSES] if len(responses)>=MIN_LATER_RESPONSES else 0
+        retired=self.screenshots.retired(active,retained) if explicit_media else set()
         result=[]
         for record in active:
             # Latest results, native/signed assistant blocks and exact human
             # instructions stay intact. Only confirmed, consumed tool rows vary.
-            if record.get('role')!='tool' or record.get('sequence',0)>=cutoff or record.get('sequence') in protected or record.get('sequence') in retained:
+            seq=record.get('sequence',0)
+            historical=seq<cutoff and seq not in protected and seq not in retained
+            if record.get('role')!='tool' or not (historical or seq in retired):
                 result.append(record);continue
             original=record.get('content',[]);parts=[];projected=False
+            remove_pixels=seq in retired if explicit_media else True
             saved=self.cache.get(record.get('sequence'))
-            if saved and saved[0] is original:
+            if saved and saved[0] is original and saved[3]==(historical,remove_pixels):
                 self.cache.move_to_end(record['sequence']);result.append(saved[1]);continue
             result_indices=[i for i,p in enumerate(original) if p.get('type')=='tool_result']
             if len(result_indices)!=1:result.append(record);continue
             index=result_indices[0];part=original[index];value=part['result']
-            images=[p for p in original if p.get('type')=='image']
-            output=value.get('output');large=isinstance(output,str) and len(output.encode())>LARGE_OUTPUT
+            images=[p for p in original if p.get('type')=='image'] if remove_pixels else []
+            output=value.get('output');large=historical and isinstance(output,str) and len(output.encode())>LARGE_OUTPUT
             if not (large or images) or not settled(value):result.append(record);continue
             try:
                 ref=reference(w,record,index);_,_,tool=load(w,ref)
@@ -129,7 +142,7 @@ class Projection:
                 if not confirmed:result.append(record);continue
             except ProjectFault:result.append(record);continue
             for offset,p in enumerate(original):
-                if p['type']=='image':continue
+                if remove_pixels and p['type']=='image':continue
                 if offset!=index:parts.append(p);continue
                 small=dict(value)
                 if large:
@@ -137,6 +150,8 @@ class Projection:
                     preview,_=bounded_text(output,512)
                     small['output']=encode({'kind':'historical_tool_preview','tool':tool['tool'],'originalOutputBytes':len(output.encode()),'textPreview':preview,
                         'truncated':True,'notice':'This is a short historical preview, not the complete original. Read the exact original before relying on omitted details.'})
+                if images and explicit_media:
+                    small['imageDelivery']='reference-only'
                 small['contextArchive']={'reference':ref,'historical':True,'tool':tool['tool'],'imageCount':len(images),
                     'notice':'Original tool data and images are retained. This reference is not a full read, current screenshot or proof of GUI success. Use studio_read_context_result for exact JSON pages or an original image. Reading never repeats this tool or captures a new frame.'}
                 parts.append({**p,'result':small});projected=True
@@ -144,9 +159,10 @@ class Projection:
             result.append(value)
             size=len(encoded(original).encode())
             if projected and size<=8*1024*1024:
+                if seq in self.cache:self.bytes-=self.cache.pop(seq)[2]
                 while self.cache and (self.bytes+size>8*1024*1024 or len(self.cache)>=1024):
-                    _,(_,_,amount)=self.cache.popitem(last=False);self.bytes-=amount
-                self.cache[record['sequence']]=(original,value,size);self.bytes+=size
+                    _,(_,_,amount,_)=self.cache.popitem(last=False);self.bytes-=amount
+                self.cache[seq]=(original,value,size,(historical,remove_pixels));self.bytes+=size
         self.key=key;self.value=result;self.source=active;return result,records,checkpoint
 
 

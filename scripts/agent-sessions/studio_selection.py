@@ -88,8 +88,9 @@ def validate_context(store, sid, messages, selection):
     # Future-selection preflight uses the same conservative historical view as
     # a new run. Current/unconsumed pixels and all original records stay intact.
     from context_results import Projection
+    from context_policy import OPTIMIZATION
     permissions=selection.get('permissions',store.get(sid)['permissions'])
-    preview=SimpleNamespace(store=store,session_id=sid,config={**selection,'owner':{'type':store.owner_type,'id':store.owner_id},'permissions':permissions,'contextResultProtocol':1},history_reader=SimpleNamespace(scope='selection-preflight'))
+    preview=SimpleNamespace(store=store,session_id=sid,config={**selection,'owner':{'type':store.owner_type,'id':store.owner_id},'permissions':permissions,'contextResultProtocol':1,'contextPolicy':{'optimization':OPTIMIZATION}},history_reader=SimpleNamespace(scope='selection-preflight'))
     messages=Projection(preview).project(messages,[],None)[0]
     model = selection['apiModel']
     transport = ModelTransport({**selection['apiProvider'], **model, **model.get('messages', {})}, selection['model'],

@@ -11,6 +11,12 @@ from store import ProjectFault
 
 DEFAULT = 250000
 MAXIMUM = 10000000
+OPTIMIZATION = 1
+
+
+def optimized(policy, version):
+    value = (policy or {}).get('optimization')
+    return type(value) is int and version <= value <= OPTIMIZATION
 
 def budget(value):
     if type(value) is not int or not 1 <= value <= MAXIMUM:
@@ -102,6 +108,8 @@ def freeze(snapshot,projects,original,session=None):
     from provider_count import supported,CONTRACT
     provider=snapshot.get('apiProvider',{})
     snapshot['contextPolicy']['providerCount']={'version':1,'enabled':provider.get('inputTokenCounting') is True and supported(provider),'contract':CONTRACT}
+    if snapshot['engine'].get('kind')=='studio':
+        snapshot['contextPolicy']['optimization']=OPTIMIZATION
     if snapshot['engine'].get('kind')!='studio' and snapshot['contextPolicy']['enabled']:
         raise ProjectFault('This native connection cannot check the complete provider input against a Studio limit. Review an explicit conversation conversion, or switch the session limit Off. Original history was preserved; no model request was started.',409)
 

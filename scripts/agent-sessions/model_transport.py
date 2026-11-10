@@ -11,8 +11,12 @@ from api_endpoint import resolve_binding
 from store import ProjectFault
 
 
+OVERLOAD_CODES = frozenset(('server_is_overloaded', 'overloaded_error'))
+
+
 class ModelFault(ProjectFault):
-    def __init__(self, code='model_protocol_error', http_status=None, *, not_dispatched=False, details=None):
+    def __init__(self, code='model_protocol_error', http_status=None, *, not_dispatched=False, details=None,
+                 confirmed_overload=False):
         messages = {401: 'The provider credential was rejected.', 402: 'The API account needs credits or billing attention.',
                     403: 'The account cannot access the selected model.', 404: 'The selected model or API route was not found.',
                     429: 'The model service is rate or usage limited.'}
@@ -21,6 +25,8 @@ class ModelFault(ProjectFault):
         self.code = code
         self.http_status = http_status
         self.not_dispatched=not_dispatched;self.details=details
+        overload = isinstance(code,str) and code in OVERLOAD_CODES and http_status in (None,503,529)
+        self.confirmed_overload = confirmed_overload is True and overload and not not_dispatched
         self.category=('connection' if not_dispatched and http_status is None else 'authentication' if http_status==401 else 'access' if http_status in (403,404)
             else 'billing' if http_status==402 else 'quota' if str(code) in ('insufficient_quota','quota_exceeded','zai_subscription_exhausted','subscription_sharing_usage_limit_exceeded')
             else 'rate' if http_status==429 else 'context' if http_status==413 or code in ('context_length_exceeded','context_window_exceeded','prompt_too_long','model_input_limit')
@@ -42,6 +48,11 @@ class ModelFault(ProjectFault):
         if code=='model_tool_schema_rejected':
             self.category='protocol'
             self.args=('The model service rejected a Studio tool input schema. The request was not repeated.',)
+        if overload:
+            self.category='service'
+            self.args=('The model service reported overload.',)
+        if code=='model_retry_input_changed':
+            self.args=('The original model request changed before retry. No repeat was sent.',)
         if code in ('context_retained_limit','context_compaction_bound'):
             self.category='context'
             self.args=('The context could not be reduced safely within its limits. Current and unresolved tool observations were preserved. No further model request was sent.',)
@@ -55,6 +66,10 @@ class ModelFault(ProjectFault):
             self.args=(f"Required input exceeds the effective limit ({values.get('inputEstimate','unknown')} / {values.get('inputLimit','unknown')}; "
                 f"system {values.get('system','unknown')}, tools {values.get('tools','unknown')}, conversation {values.get('conversation','unknown')}). "
                 'There is no consumed history to summarize. Review the required input or session limit. No model request was sent.',)
+        if code=='context_signed_prefix':
+            self.category='context'
+            self.args=('The original Messages prefix for signed thinking could not be preserved. '
+                       'Original history was retained. No model request was sent.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -161,6 +176,7 @@ class ModelTransport:
         self.request_sha256 = None
         self.media_resolver = None
         self.history_resolver = None
+        self.signed_prefix = None
         self.history_scope = ()
         self._frozen = None
         self.context_policy = None
@@ -263,27 +279,33 @@ class ModelTransport:
                 self.headers = {**self.headers, **client_headers(self.client)}
         else:
             raise ModelFault('model_protocol_unavailable')
+        if self.signed_prefix is not None:
+            self.signed_prefix.check(messages, body)
         return body, self.parser(tools)
 
-    async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None):
+    async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None,
+                       *, expected_sha256=None):
         if self.child is not None: raise ModelFault('model_request_busy')
         self.attempted = False; self.request_sha256 = None
         body, parser = self.prepare(messages, instructions, tools, effort)
         try:
-            await self.send(body, parser, on_text, on_reasoning)
+            await self.send(body, parser, on_text, on_reasoning, expected_sha256=expected_sha256)
             return parser.result()
         except ModelFault as error:
             error.partial={'origin':getattr(parser,'origin',None),'usage':getattr(parser,'usage',None)}
-            if self.credential and self.credential in str(error.code): error.code = 'model_provider_error'
+            if self.credential and self.credential in str(error.code):
+                error.code = 'model_provider_error';error.confirmed_overload = False
             raise
 
-    async def send(self, body, parser, on_text=None, on_reasoning=None):
+    async def send(self, body, parser, on_text=None, on_reasoning=None, *, expected_sha256=None):
         if self.child is not None:
             raise ModelFault('model_request_busy')
         if self._frozen is not None and self._frozen['body'] is body and self._frozen['scope'] != self.freeze_scope():
             raise ModelFault('model_request_selection_changed', not_dispatched=True)
         raw_body = self.encoded(body)
         self.request_sha256=hashlib.sha256(raw_body.encode()).hexdigest()
+        if expected_sha256 is not None and self.request_sha256 != expected_sha256:
+            raise ModelFault('model_retry_input_changed',not_dispatched=True)
         if len(raw_body.encode()) > 8 * 1024 * 1024:
             raise ModelFault('model_input_limit',not_dispatched=True)
         try:
@@ -328,8 +350,10 @@ class ModelTransport:
                     if self.binding.get('kind') == 'claude-plan':
                         from claude_tool_schema import rejected
                         if rejected(frame.get('httpStatus'), frame.get('details')): code = 'model_tool_schema_rejected'
-                    error = ModelFault(code, frame.get('httpStatus'),
-                        not_dispatched=frame.get('notDispatched') is True,details=frame.get('details'))
+                    status, details = frame.get('httpStatus'), frame.get('details')
+                    error = ModelFault(code, status, not_dispatched=frame.get('notDispatched') is True, details=details,
+                        confirmed_overload=status in (503,529) and isinstance(details,dict)
+                        and details.get('httpResponseComplete') is True)
                     if (self.binding.get('kind') == 'zai-coding-plan' and frame.get('httpStatus') == 400 and str(code) == '1261'
                             and isinstance(error.details, dict) and error.details.get('httpResponseComplete') is True):
                         error.category='context'

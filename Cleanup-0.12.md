@@ -97,3 +97,7 @@ Show characters, count provenance and optional provider totals in the context in
 ## 0.12.26
 
 Show the complete request as a formatted read-only document with one continuous right scrollbar, while preserving original copy and download bytes.
+
+## 0.12.27
+
+Project superseded, confirmed tool screenshots as exact original references and preserve signed Messages prefixes. Includes the installed prompt formatting, Full Request indentation and overload retry hotfixes.

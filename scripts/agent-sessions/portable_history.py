@@ -71,14 +71,18 @@ def visible(original, connector=None):
     return parts
 
 
+def foreign_selection(selection, binding):
+    return bool(selection) and (selection.get('providerId') != binding['id'] or selection.get('model') != binding['model']
+        or any(selection.get('connection', {}).get(k, binding.get(k)) != binding.get(k)
+               for k in ('baseUrl','protocol','kind','revision','credentialRevision')))
+
+
 def project(messages, binding, recoveries=None):
     result = []
     for message in messages:
         origin = message.get('origin', {}); selection = origin.get('selection', {})
         originals = [p for p in message['content'] if p['type'] == 'provider']
-        foreign = bool(selection) and (selection.get('providerId') != binding['id'] or selection.get('model') != binding['model']
-            or any(selection.get('connection', {}).get(k, binding.get(k)) != binding.get(k) for k in ('baseUrl','protocol','kind','revision','credentialRevision')))
-        if not foreign:
+        if not foreign_selection(selection, binding):
             result.append(message); continue
         parts = [p for p in message['content'] if p['type'] != 'provider']
         if originals:

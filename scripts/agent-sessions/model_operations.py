@@ -141,6 +141,10 @@ class Operations:
                 data['quotaEvidence']=proof
                 if not attempted:data['processEnd']={'confirmed':True,'observedBy':'not-dispatched','at':now()}
                 self.put(rid,'failed',data)
+            elif (getattr(error,'confirmed_overload',False) and attempted
+                    and data.get('processEnd',{}).get('confirmed') is True):
+                data['error']['confirmedOverload']=True
+                self.put(rid,'failed',data)
             else:self.put(rid,'unknown' if attempted else 'failed',data)
         from studio_usage import record
         record(self.store,self.row(rid)[0])

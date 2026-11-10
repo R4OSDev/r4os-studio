@@ -9,6 +9,7 @@ import signal
 import uuid
 
 from conversation import Conversation
+from context_policy import optimized
 from model_transport import ModelTransport, ModelFault
 from owner import open_lock
 from profile import NOTE_TOOLS, ROADMAP_TOOLS
@@ -192,6 +193,9 @@ class StudioWorker(Worker):
             headers=getattr(self,'model_headers',None), chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
         model.media_resolver=self.media.resolve
         model.context_policy=self.config.get('contextPolicy')
+        if optimized(model.context_policy, 1) and model.binding['protocol']=='messages':
+            from signed_history import Prefix
+            model.signed_prefix=Prefix(self.store,self.session_id,model.binding)
         model.count_observer=lambda receipt:event(self.store,self.session_id,self.run_id,'inputCount',receipt)
         from studio_history import recoveries
         model.history_resolver=lambda messages:recoveries(self.store,self.session_id,messages)
@@ -199,13 +203,22 @@ class StudioWorker(Worker):
         return model
 
     async def infer(self,messages,instructions,tools,on_text=None):
+        expected_sha256 = None
         while True:
-            try:return await self.infer_once(messages,instructions,tools,on_text)
+            try:return await self.infer_once(messages,instructions,tools,on_text,expected_sha256=expected_sha256)
             except ModelFault as error:
-                if not await self.provider_retry.direct(error):raise
+                if await self.provider_retry.direct(error):
+                    expected_sha256 = self.model.request_sha256
+                    continue
+                if self.stopping: raise asyncio.CancelledError() from None
+                execution = getattr(error,'retry_goal_execution',None)
+                if execution and execution == self.goal_worker.execution:
+                    await self.goal_worker.pause(status='blocked',reason=str(error))
+                raise
 
-    async def infer_once(self,messages,instructions,tools,on_text=None):
+    async def infer_once(self,messages,instructions,tools,on_text=None,*,expected_sha256=None):
         self.validate_lease()
+        if not self.active():raise asyncio.CancelledError()
         if self.config['apiProvider']['kind']=='codex-subscription':
             from native_openai import access
             original=await asyncio.to_thread(access,self.manifest['providers'],self.config['apiProvider']['id'],self.config['apiNativeAccount'])
@@ -241,7 +254,8 @@ class StudioWorker(Worker):
         self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'))
         self.operations.observe(self.model,request_id)
         execution = self.goal_worker.execution if self.goal_worker.active else None
-        self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],on_text=on_text))
+        self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],
+            on_text=on_text,expected_sha256=expected_sha256))
         try:result = await self.operation
         except (asyncio.CancelledError,ProjectFault) as error:
             unsent=isinstance(error,ModelFault) and error.not_dispatched
@@ -250,10 +264,14 @@ class StudioWorker(Worker):
             proof=evidence(self.config,error) or snapshot_evidence(self.config,error,self.manifest['providers'])
             if proof:error.quota_evidence=proof
             self.operations.finish(request_id,error=error,attempted=self.model.attempted and not unsent)
+            if isinstance(error,ModelFault) and error.confirmed_overload:
+                error.retry_operation_id=request_id
             waiting=register(self,request_id,proof) if proof else None
             if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
             if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
-                if not unsent and not waiting:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
+                if not unsent and not waiting:
+                    if error.confirmed_overload:error.retry_goal_execution=execution
+                    else:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
             raise
         self.operations.finish(request_id,result=result,attempted=self.model.attempted)
         self.provider_retry.direct_complete()
@@ -404,9 +422,13 @@ class StudioWorker(Worker):
                 media=[{'type':'image','reference':value['presentation']['reference']} for value in result.get('images',[])] if self.config.get('apiModel',{}).get('imageInput')=='supported' else []
                 if result.get('screenshotReference') and result.get('imageDelivery')=='pixels':
                     media.append({'type':'image','reference':result['screenshotReference']})
+                origin={'toolReceiptId': bound_id, 'turnId': self.turn_id}
+                if media and optimized(self.config.get('contextPolicy'), 1):
+                    from context_media import purpose
+                    origin['mediaPurpose']=purpose(call['name'],call['arguments'])
                 self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
                     [{'type': 'tool_result', 'callId': call['callId'], 'result': reply},*media],
-                    {'toolReceiptId': bound_id, 'turnId': self.turn_id})
+                    origin)
                 if result.get('error') == 'unknown' or result.get('partialChangesPossible') and result.get('error') == 'interrupted':
                     self.unconfirmed()
             # An unrelated later schema error gets its own correction. Text,

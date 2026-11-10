@@ -1,8 +1,7 @@
-"""Original-worker continuations after qualified HTTP or body-read failures.
+"""Original-worker continuations after qualified provider failures.
 
-Only the pinned zero-retry native provider is eligible. A continuation carries
-no user input. This ledger is observation/recovery evidence, never permission
-for a replacement worker, process or browser to submit inference.
+Native continuations carry no user input. Direct retries keep the original
+request. The ledger grants no authority to a replacement worker or browser.
 """
 import asyncio
 import hashlib
@@ -65,15 +64,40 @@ class ProviderRetry:
         self.goal = GoalRetry(self)
         self.goal_mode = False
 
+    def direct_goal_allows(self, error):
+        execution = getattr(error,'retry_goal_execution',None)
+        if execution is None: return True
+        goal = self.w.goal_worker
+        value = goal.current()
+        # A rejected response may omit usage. Never spend against a Goal token
+        # budget whose remaining balance cannot be confirmed.
+        return bool(goal.execution == execution and goal.active and value
+                    and value.get('tokenBudget') is None)
+
     async def direct(self,error):
-        """The existing timer may repeat only a provably undispatched request."""
+        """Retry a confirmed refusal or a provably undispatched request."""
         w=self.w;row=get_run(w.store,w.run_id)
+        overload = getattr(error,'confirmed_overload',False)
+        unsent = (getattr(error,'not_dispatched',False) and error.http_status is None
+                  and isinstance(error.details,dict) and error.details.get('connectionCode')
+                  in ('ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN'))
         if (w.config['engine'].get('kind')!='studio' or w.config.get('streamRetryProtocol')!=2
-                or not getattr(error,'not_dispatched',False) or error.http_status is not None
-                or not isinstance(error.details,dict) or error.details.get('connectionCode') not in ('ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN')
+                or not (overload or unsent) or not self.direct_goal_allows(error)
                 or not w.model or not w.model.closed_confirmed
                 or self.closed or w.stopping or w.done.is_set() or w.uncertain_effect
                 or not row['busy'] or row['state']!='running'):return False
+        self.failure={'text':str(error) if overload else 'The connection failed before the model request was dispatched.',
+                      'httpStatusCode':error.http_status}
+        if overload:
+            request_id = getattr(error,'retry_operation_id',None)
+            if not request_id or not w.model.request_sha256: return False
+            call, evidence = w.operations.row(request_id)
+            if (call['run_id'] != w.run_id or call['phase'] != 'failed' or evidence['sessionId'] != w.session_id
+                    or evidence.get('requestSha256') != w.model.request_sha256
+                    or evidence.get('error',{}).get('confirmedOverload') is not True
+                    or evidence['error'].get('code') != error.code
+                    or evidence.get('processEnd',{}).get('confirmed') is not True): return False
+            self.failure['modelRequest']={'id':request_id,'sha256':w.model.request_sha256,'code':error.code}
         if self.attempt>=MAX_ATTEMPTS:
             with w.store.db:self.write('exhausted')
             return False
@@ -81,22 +105,27 @@ class ProviderRetry:
             'sessionId':w.session_id,'runId':w.run_id,'requestId':row['request_id'],'inputSha256':row['payload_hash'],
             'configSha256':digest(w.config),'threadId':w.thread_id,'release':w.manifest['release'],
             'pid':owner['pid'],'birth':owner['birth'],'boot':boot()}
-        self.failure={'text':'The connection failed before the model request was dispatched.','httpStatusCode':None}
         self.failed_turn=w.turn_id;self.deadline=time.monotonic_ns()+DELAY_NS;self.sequence+=1
         with w.store.db:self.write('waiting')
         self.task=asyncio.create_task(asyncio.sleep(DELAY_NS/1_000_000_000))
         try:await self.task
         finally:self.task=None
         current=get_run(w.store,w.run_id)
-        if (w.stopping or w.done.is_set() or self.closed or not current['busy'] or current['state']!='running'
+        worker=json.loads(current['worker'] or '{}')
+        if (w.stopping or w.done.is_set() or self.closed or w.uncertain_effect
+                or not current['busy'] or current['state']!='running' or current['turn_id']!=self.failed_turn
+                or not self.direct_goal_allows(error)
+                or any(worker.get(k)!=self.original[k] for k in ('pid','birth','release'))
                 or digest(json.loads(current['config']))!=self.original['configSha256']):return False
         w.validate_lease();self.attempt+=1;self.sequence+=1;self.retry_turn=w.turn_id
         with w.store.db:self.write('continuing')
         return True
 
     def direct_complete(self):
-        if self.w.config['engine'].get('kind')=='studio' and self.state=='continuing':
-            with self.w.store.db:self.write('completed')
+        if self.w.config['engine'].get('kind')=='studio':
+            if self.state=='continuing':
+                with self.w.store.db:self.write('completed')
+            self.attempt = 0  # The next model request starts a fresh retry budget.
 
     def eligible(self):
         from image_provider import PROVIDER
@@ -176,6 +205,8 @@ class ProviderRetry:
         payload = {'binding': self.original, 'failedTurnId': self.failed_turn, 'retryTurnId': self.retry_turn,
                    'toolReceiptsSha256': self.receipts, 'deadlineNs': self.deadline,
                    'error': self.failure['text'], 'httpStatusCode': self.failure['httpStatusCode']}
+        if 'modelRequest' in self.failure:
+            payload['modelRequest'] = self.failure['modelRequest']
         if self.goal_mode:
             payload['goal'] = self.goal.public_evidence()
         db.execute('''CREATE TABLE IF NOT EXISTS provider_retries(
