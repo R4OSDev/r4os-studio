@@ -105,3 +105,7 @@ Project superseded, confirmed tool screenshots as exact original references and 
 ## 0.12.28
 
 Use qualified image input estimates for documented direct OpenAI model and detail combinations, and keep the planning threshold, compaction target and complete-input limit separate.
+
+## 0.12.29
+
+Project continuation-summary inputs before sizing, retaining exact human objectives and original tool groups while leaving usage attribution in the original archive.

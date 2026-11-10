@@ -63,6 +63,11 @@ def plan(worker, active, checkpoint, byte_limit):
     its old running/unknown/partial observations are never declared resolved.
     """
     from context_results import has_uncertain_result
+    from context_policy import optimized
+    from summary_context import record_view
+    config=getattr(worker,'config',{})
+    projected=optimized(config.get('contextPolicy'),3)
+    archive=worker if projected and config.get('contextResultProtocol')==1 and config.get('permissions',{}).get('studio.read_context_result') else None
     consumed = max((r.get('sequence', 0) for r in active if r.get('role') == 'assistant'
         and r.get('origin', {}).get('providerResponseId')), default=0)
     through = None; data = []; retained = []; size = 0; pending = set(); group = []; confirmed = False
@@ -75,7 +80,8 @@ def plan(worker, active, checkpoint, byte_limit):
         if pending: continue
         sequence = max((r.get('sequence', 0) for r in group), default=0)
         if sequence >= consumed: break
-        plain = [{**r, 'content': [p for p in r['content'] if p['type'] != 'provider']} for r in group]
+        plain = ([record_view(r,archive) for r in group] if projected else
+                 [{**r, 'content': [p for p in r['content'] if p['type'] != 'provider']} for r in group])
         amount = len(dumps(plain).encode())
         if any(has_uncertain_result(r) for r in group) or amount > byte_limit:
             retained.extend(reference(worker, r) for r in group if 'sequence' in r)
