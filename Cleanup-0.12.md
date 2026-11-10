@@ -109,3 +109,7 @@ Use qualified image input estimates for documented direct OpenAI model and detai
 ## 0.12.29
 
 Project continuation-summary inputs before sizing, retaining exact human objectives and original tool groups while leaving usage attribution in the original archive.
+
+## 0.12.30
+
+Use a short summary-only prompt, bounded output and time, and qualified reasoning settings without changing the normal request on the original connection.

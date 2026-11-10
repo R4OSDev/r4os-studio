@@ -84,7 +84,7 @@ class Operations:
     def put(self,rid,phase,value):
         with self.store.db:self.store.db.execute('UPDATE studio_model_calls SET phase=?,data=? WHERE request_id=?',(phase,encode(value),rid))
 
-    def begin(self,run_id,rid,child=None,purpose='conversation'):
+    def begin(self,run_id,rid,child=None,purpose='conversation',summary_budget=None):
         row=get_run(self.store,run_id);config=json.loads(row['config'])
         if child is not None:
             if child.get('purpose') not in ('vision','image-generation') or child.get('parentRunId') != run_id or child['snapshot']['apiRunId'] != rid: raise ProjectFault('Invalid image operation binding.',409)
@@ -93,6 +93,7 @@ class Operations:
             'purpose':child['purpose'] if child else purpose,
             'selection':{key:config[key] for key in ('providerId','model','effort','apiProvider')},'createdAt':now()}
         if child is not None: data['vision' if child['purpose']=='vision' else 'imageGeneration'] = child
+        if purpose=='summary' and summary_budget is not None:data['summaryBudget']=summary_budget
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
 
     def observe(self,model,rid):

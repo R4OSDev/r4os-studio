@@ -82,6 +82,9 @@ def detail(store,sid,rid):
     counts=numbers(usage,meta['protocol'])
     result['usage']={'input':counts['input'],'cachedInput':counts['cachedInput'],'cacheWrite':counts['cacheWrite'],
         'source':usage_source if counts['input'] is not None else 'unavailable'}
+    if meta.get('summaryBudget'):
+        result['summaryBudget']=meta['summaryBudget']
+        result['usage']['output']=counts['output']
     result['policy']=meta['contextPolicy']
     blocked=result['status']=='blocked-before-send'
     condition=BLOCKED if blocked else SENT

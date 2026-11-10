@@ -26,7 +26,8 @@ export interface ContextRequest {
 export interface ContextRequestDetail extends ContextRequest {
   context: RequestContext | null; older: string | null; newer: string | null;
   position: number; total: number; policy: Record<string,unknown> | null;
-  usage: {input:number|null;cachedInput:number|null;cacheWrite:number|null;source:string};
+  usage: {input:number|null;cachedInput:number|null;cacheWrite:number|null;output?:number|null;source:string};
+  summaryBudget?:{version:1;targetTokens:number;maxOutputTokens:number|null;timeoutSeconds:number;effort:string};
 }
 export interface ContextRequestPage {
   requests: ContextRequest[]; nextBefore: number | null; notice: string;

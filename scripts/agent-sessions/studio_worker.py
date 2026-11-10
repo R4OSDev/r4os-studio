@@ -184,22 +184,24 @@ class StudioWorker(Worker):
         scope = encode([self.config, hashlib.sha256((self.credential or '').encode()).hexdigest()])
         return self.context_results.project(*self.history_reader.read(scope))
 
-    def transport(self):
-        scope = encode([self.config, self.credential, getattr(self,'model_headers',None)])
-        if getattr(self,'transport_scope',None) == scope:
-            return self.prepared_transport
+    def transport(self, *, summary=None):
+        scope = encode([self.config, self.credential, getattr(self,'model_headers',None), summary])
+        scope_attr,transport_attr=('summary_scope','summary_transport') if summary else ('transport_scope','prepared_transport')
+        if getattr(self,scope_attr,None) == scope:
+            return getattr(self,transport_attr)
         model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
             headers=getattr(self,'model_headers',None), chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
         model.media_resolver=self.media.resolve
         model.context_policy=self.config.get('contextPolicy')
+        model.summary_budget=summary
         if optimized(model.context_policy, 1) and model.binding['protocol']=='messages':
             from signed_history import Prefix
             model.signed_prefix=Prefix(self.store,self.session_id,model.binding)
         model.count_observer=lambda receipt:event(self.store,self.session_id,self.run_id,'inputCount',receipt)
         from studio_history import recoveries
         model.history_resolver=lambda messages:recoveries(self.store,self.session_id,messages)
-        self.transport_scope=scope;self.prepared_transport=model
+        setattr(self,scope_attr,scope);setattr(self,transport_attr,model)
         return model
 
     async def infer(self,messages,instructions,tools,on_text=None):
@@ -249,12 +251,14 @@ class StudioWorker(Worker):
                 raise error
         if self.goal_worker.execution and not self.goal_worker.active:
             raise GoalHalted()
-        self.model = self.transport(); self.turn_requested = True
+        summary=getattr(self,'request_summary_budget',None)
+        self.model = self.transport(summary=summary) if summary else self.transport()
+        self.turn_requested = True
         request_id = str(uuid.uuid4())
-        self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'))
+        self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'),summary_budget=summary)
         self.operations.observe(self.model,request_id)
         execution = self.goal_worker.execution if self.goal_worker.active else None
-        self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,self.config['effort'],
+        self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,summary['effort'] if summary else self.config['effort'],
             on_text=on_text,expected_sha256=expected_sha256))
         try:result = await self.operation
         except (asyncio.CancelledError,ProjectFault) as error:

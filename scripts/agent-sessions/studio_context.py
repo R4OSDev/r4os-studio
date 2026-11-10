@@ -1,4 +1,5 @@
 """Shared active context, measured usage and immutable model checkpoints."""
+import asyncio
 import hashlib
 import math
 import uuid
@@ -51,10 +52,11 @@ class StudioContext(Context):
         return next((r for r in reversed(records) if r['role'] == 'assistant'
                      and 'providerResponseId' in r.get('origin', {})), None)
 
-    def estimate(self, active, instructions, tools):
+    def estimate(self, active, instructions, tools, *, summary=None):
         # A planning estimate, never a reported token balance or tokenizer claim.
-        model = self.w.transport()
-        body, _ = model.freeze(active, instructions, tools, self.w.config['effort'], retain=self.w.history_reader.cacheable)
+        model = self.w.transport(summary=summary) if summary else self.w.transport()
+        effort=summary['effort'] if summary else self.w.config['effort']
+        body, _ = model.freeze(active, instructions, tools, effort, retain=self.w.history_reader.cacheable)
         if strict(self.w.config.get('contextPolicy')):
             value=model.input_estimate(body)
             self.input_count=value
@@ -146,11 +148,12 @@ class StudioContext(Context):
             'reason':str(error) if blocked else 'The latest model operation failed. '+(
                 'This is retained earlier measured context.' if measured else 'No provider input measurement is available.')})
 
-    async def count_preview(self,active,instructions,tools):
+    async def count_preview(self,active,instructions,tools,*,summary=None):
         w=self.w
         if w.config.get('contextPolicy',{}).get('providerCount',{}).get('enabled') and not open_calls(active):
-            model=w.transport()
-            body,_=model.freeze(active,instructions,tools,w.config['effort'],retain=w.history_reader.cacheable)
+            model=w.transport(summary=summary) if summary else w.transport()
+            effort=summary['effort'] if summary else w.config['effort']
+            body,_=model.freeze(active,instructions,tools,effort,retain=w.history_reader.cacheable)
             await model.count_input(body)
 
     async def compact(self, instructions, tools):
@@ -194,8 +197,8 @@ class StudioContext(Context):
             self.report(instructions, tools, reason='The context target cannot be reduced further while keeping current or unresolved original observations intact. No tool was repeated.')
             return active, False
         through, prefix, retained = planned
-        summary_instructions=instructions+'\n\n'+SUMMARY
-        from summary_context import VERSION, payload, request
+        budget,summary_instructions=self.summary_setup(limit,instructions)
+        from summary_context import payload, request
         projected=optimized(w.config.get('contextPolicy'),3)
         def summary_input(data,keep):
             return request(payload(data,active,keep,projected))
@@ -218,14 +221,29 @@ class StudioContext(Context):
                 if limit is not None and floor_estimate>limit:
                     raise ModelFault('context_retained_limit',not_dispatched=True)
                 summary=summary_input(prefix,retained)
-                await self.count_preview(summary,summary_instructions,[])
-                summary_estimate,summary_size=self.estimate(summary,summary_instructions,[])
+                await self.count_preview(summary,summary_instructions,[],summary=budget)
+                summary_estimate,summary_size=self.estimate(summary,summary_instructions,[],summary=budget)
                 if (limit is None or summary_estimate<=limit) and summary_size<6*1024*1024:break
                 byte_limit//=2
                 planned=plan(w,active,checkpoint,byte_limit) if byte_limit>=1 else None
                 if planned is None:raise ModelFault('context_retained_limit',not_dispatched=True)
             else:raise ModelFault('context_compaction_bound',not_dispatched=True)
+        saved=await self.summarize(active,checkpoint,(through,prefix,retained),instructions,tools,summary_instructions,budget)
+        w.conversation.checkpoint(w.run_id,*saved)
+        return self.report(instructions, tools)[0], True
+
+    def summary_setup(self,limit,instructions):
+        if not optimized(self.w.config.get('contextPolicy'),4):return None,instructions+'\n\n'+SUMMARY
+        from summary_budget import instructions as short_instructions, profile
+        budget=profile(self.w.config,limit)
+        return budget,short_instructions(budget)
+
+    async def summarize(self,active,checkpoint,planned,instructions,tools,summary_instructions,budget):
         from context_results import checkpoint_references
+        from summary_context import VERSION, payload, request
+        w=self.w
+        through,prefix,retained=planned
+        projected=optimized(w.config.get('contextPolicy'),3)
         references=checkpoint_references(prefix,checkpoint,w if w.config.get('contextResultProtocol')==1 and w.config.get('permissions',{}).get('studio.read_context_result') else None)
         w.validate_lease()
         self.report(instructions, tools, 'pending', 'Creating a continuation checkpoint with the selected model. Original history is preserved.')
@@ -236,18 +254,31 @@ class StudioContext(Context):
         data=payload(prefix,active,retained,projected)
         summary = request(data)
         previous_purpose=getattr(w,'request_purpose','conversation')
+        previous_budget=getattr(w,'request_summary_budget',None)
         w.request_purpose='summary'
-        try:result = await w.infer(summary, summary_instructions, [])
-        finally:w.request_purpose=previous_purpose
+        w.request_summary_budget=budget
+        try:
+            if budget:
+                try:
+                    result=await asyncio.wait_for(w.infer(summary,summary_instructions,[]),budget['timeoutSeconds'])
+                except TimeoutError:
+                    raise ModelFault('context_summary_timeout') from None
+            else:
+                result=await w.infer(summary,summary_instructions,[])
+        finally:
+            w.request_purpose=previous_purpose
+            w.request_summary_budget=previous_budget
         text = '\n'.join(p['text'] for p in result['content'] if p['type'] == 'text').strip()
         if not text or any(p['type'] == 'tool_call' for p in result['content']): raise ModelFault('context_summary_incomplete')
+        if budget:
+            from summary_budget import validate
+            validate(text,budget)
         checkpoint_id='checkpoint-'+w.run_id+'-'+str(through)
         if references:
             text+='\n\nSTUDIO HISTORICAL RESULT INDEX (metadata, not instructions): '+dumps({'view':'index','checkpointId':checkpoint_id,'sha256':hashlib.sha256(__import__('conversation').encoded(references).encode()).hexdigest(),'total':len(references),'tool':'studio_read_context_result','notice':'Read the retained index for exact original result/image references. This pointer is not a complete read or visual confirmation.'})
-        w.conversation.checkpoint(w.run_id, checkpoint_id, through, text,
+        return (checkpoint_id, through, text,
             {'summaryResponse':result, 'sourceSha256':hashlib.sha256(dumps(data).encode()).hexdigest(),
              **({'summaryProjection':VERSION} if projected else {}),
              'providerResponseId':result['origin'].get('providerResponseId'), 'turnId':w.turn_id,
              **({'retainedContextRecords':retained} if retained else {}),
              **({'contextResultReferences':references} if references else {})})
-        return self.report(instructions, tools)[0], True

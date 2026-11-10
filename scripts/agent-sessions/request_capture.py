@@ -53,6 +53,7 @@ def capture(store, operation, raw, binding, policy, estimate=None,blocked=None):
         'owner':operation['owner'],'providerId':operation['selection']['providerId'],
         'model':binding['model'],'protocol':binding['protocol'],'bytes':len(data),
         'facts':facts,'contextPolicy':policy,'dispatchAt':None,'responseAt':None,'httpStatus':None}
+    if operation.get('summaryBudget'):metadata['summaryBudget']=operation['summaryBudget']
     if blocked is not None:metadata['blocked']={'code':blocked.code,'reason':str(blocked)}
     from request_breakdown import analyze
     metadata['context']=analyze(raw,facts,policy,estimate)

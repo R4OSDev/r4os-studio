@@ -104,6 +104,13 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
               <dt>Provider count before send</dt><dd>{providerCount?.state==='complete'?amount(providerCount.inputTokens):providerCount?providerCount.state:'Not used'}</dd>
               <dt>Input used for limit</dt><dd>{amount(admitted)}</dd>
               <dt>Provider-reported input</dt><dd>{amount(record.usage.input)}</dd>
+              {record.summaryBudget&&<>
+                <dt>Summary output target</dt><dd>{amount(record.summaryBudget.targetTokens)} tokens</dd>
+                {record.summaryBudget.maxOutputTokens!=null&&<><dt>Provider output limit</dt><dd>{amount(record.summaryBudget.maxOutputTokens)} tokens</dd></>}
+                <dt>Provider-reported output</dt><dd>{amount(record.usage.output)}</dd>
+                <dt>Summary time limit</dt><dd>{amount(record.summaryBudget.timeoutSeconds)} seconds</dd>
+                <dt>Summary reasoning</dt><dd>{record.summaryBudget.effort||'Provider default'}</dd>
+              </>}
               {record.usage.cachedInput!=null&&<><dt>Cached input (included)</dt><dd>{amount(record.usage.cachedInput)}</dd></>}
               {record.usage.cacheWrite!=null&&<><dt>Cache write (included)</dt><dd>{amount(record.usage.cacheWrite)}</dd></>}
               <dt>Effective input limit</dt><dd>{amount(breakdown?.inputLimit)}</dd>

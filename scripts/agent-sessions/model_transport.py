@@ -70,6 +70,13 @@ class ModelFault(ProjectFault):
             self.category='context'
             self.args=('The original Messages prefix for signed thinking could not be preserved. '
                        'Original history was retained. No model request was sent.',)
+        if code in ('context_summary_incomplete','context_summary_invalid','context_summary_timeout'):
+            self.category='context'
+            self.args=({
+                'context_summary_incomplete':'The model did not return a complete continuation summary.',
+                'context_summary_invalid':'The continuation summary did not meet its structure or output budget.',
+                'context_summary_timeout':'Context summarization reached its time limit.',
+            }[code]+' The previous context was kept.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
@@ -177,6 +184,7 @@ class ModelTransport:
         self.media_resolver = None
         self.history_resolver = None
         self.signed_prefix = None
+        self.summary_budget = None
         self.history_scope = ()
         self._frozen = None
         self.context_policy = None
@@ -200,7 +208,7 @@ class ModelTransport:
         return SSE()
 
     def freeze_scope(self):
-        return (dumps([self.binding,self.chat_policy,self.client,self.headers,self.context_policy]), self.credential,
+        return (dumps([self.binding,self.chat_policy,self.client,self.headers,self.context_policy,self.summary_budget]), self.credential,
                 self.history_resolver, self.history_scope)
 
     def freeze(self, messages, instructions, tools, effort='', *, retain=True):
@@ -281,6 +289,8 @@ class ModelTransport:
             raise ModelFault('model_protocol_unavailable')
         if self.signed_prefix is not None:
             self.signed_prefix.check(messages, body)
+        if self.summary_budget and self.summary_budget['maxOutputTokens'] is not None:
+            body['max_output_tokens']=self.summary_budget['maxOutputTokens']
         return body, self.parser(tools)
 
     async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None,
