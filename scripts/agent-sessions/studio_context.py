@@ -7,7 +7,7 @@ from model_transport import ModelFault, dumps
 from run_store import get_run, transition
 from session_context import Context, empty, number
 from session_store import now
-from context_policy import optimized, threshold
+from context_policy import compaction_limits, optimized, threshold
 from input_budget import METHOD, strict
 
 SUMMARY = ('STUDIO CONTEXT SUMMARY: Summarize the supplied conversation for continuation. '
@@ -73,6 +73,7 @@ class StudioContext(Context):
         capacity = capacity if number(capacity, positive=True) else None
         estimate, size = (None, None) if open_calls(active) else self.estimate(active, instructions, tools)
         value = empty(w.store, w.store.row(w.session_id))
+        trigger,target=compaction_limits(w.config,capacity)
         reported_model = (latest or {}).get('origin', {}).get('reportedModel') if same_selection else None
         if (not isinstance(reported_model,str) or not 1 <= len(reported_model) <= 200
                 or any(ord(c)<32 or ord(c)==127 for c in reported_model)
@@ -93,9 +94,10 @@ class StudioContext(Context):
             estimatedInputTokens=getattr(self,'input_count',{}).get('tokens',estimate), inputCount=getattr(self,'input_count',None) if estimate is not None else None,
             estimateMethod=getattr(self,'input_count',{}).get('method',METHOD) if strict(w.config.get('contextPolicy')) else ('UTF-8 JSON bytes including encoded media (conservative planning proxy, not a token count)' if any(p['type']=='image' for m in active for p in m['content']) else 'UTF-8 JSON bytes / 4, rounded up; planning estimate, not a token count'), estimateAt=now(),
             capacitySource='accepted model configuration' if capacity is not None else None,
-            autoCompactThreshold=threshold(w.config,capacity), contextPolicy=w.config.get('contextPolicy'),
+            autoCompactThreshold=trigger, contextPolicy=w.config.get('contextPolicy'),
             inputLimit=threshold(w.config,capacity) if strict(w.config.get('contextPolicy')) else None,
             checkpoint={'recordId':checkpoint['id'], 'throughSequence':checkpoint['throughSequence']} if checkpoint else None)
+        if optimized(w.config.get('contextPolicy'),2):value['compactionTargetTokens']=target
         self.write(value)
         return active, records, checkpoint, measured, capacity, estimate, size
 
@@ -162,7 +164,10 @@ class StudioContext(Context):
         fresh = latest and (not checkpoint or latest['sequence'] > checkpoint['sequence'])
         limit=threshold(w.config,capacity)
         bounded=strict(w.config.get('contextPolicy'))
-        pressure = (limit is not None and (estimate is not None and estimate >= limit or fresh and measured is not None and measured >= limit)) or size >= 6*1024*1024
+        current_estimate_only=optimized(w.config.get('contextPolicy'),2)
+        trigger,_=compaction_limits(w.config,capacity)
+        measured_pressure=not current_estimate_only and fresh and measured is not None
+        pressure = (trigger is not None and (estimate is not None and estimate >= trigger or measured_pressure and measured >= trigger)) or size >= 6*1024*1024
         if not pressure: return active, False
         if optimized(w.config.get('contextPolicy'),1):
             from signed_history import latest as signed
@@ -173,7 +178,7 @@ class StudioContext(Context):
         from checkpoint_records import plan
         byte_limit=min(512*1024, max(256,(limit or 250000)) if bounded else max(16384,(limit or 250000)*2))
         planned = plan(w, active, checkpoint, byte_limit)
-        unsafe = size >= 6*1024*1024 or (bounded and limit is not None and estimate>limit) or fresh and measured is not None and capacity is not None and measured >= int(capacity*0.8)
+        unsafe = size >= 6*1024*1024 or (bounded and limit is not None and estimate>limit) or measured_pressure and capacity is not None and measured >= int(capacity*0.8)
         # Exact retained observations can form an irreducible floor above a
         # small target. Do not pay for another summary after every tiny turn.
         little_new_data = (planned is not None and checkpoint and checkpoint['origin'].get('retainedContextRecords')

@@ -101,3 +101,7 @@ Show the complete request as a formatted read-only document with one continuous 
 ## 0.12.27
 
 Project superseded, confirmed tool screenshots as exact original references and preserve signed Messages prefixes. Includes the installed prompt formatting, Full Request indentation and overload retry hotfixes.
+
+## 0.12.28
+
+Use qualified image input estimates for documented direct OpenAI model and detail combinations, and keep the planning threshold, compaction target and complete-input limit separate.

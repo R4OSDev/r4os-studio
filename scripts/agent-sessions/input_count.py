@@ -55,9 +55,12 @@ def estimate(raw,policy,binding):
         from model_transport import ModelFault
         raise ModelFault('context_input_unavailable',not_dispatched=True)
     groups={key:{'raw':[],'text':[],'media':0} for key in LABELS};message_count=0
+    from context_policy import optimized
+    from image_input_cost import ImageCost
+    media_cost=ImageCost(binding) if optimized(policy,2) else None
     for kind,part,value,messages in regions(raw):
         message_count+=messages
-        _,media,_,replacements=scan(value) if value is not None else (0,0,0,[])
+        _,media,_,replacements=scan(value,media_cost) if value is not None else (0,0,0,[])
         text=part
         for original,replacement in replacements:
             # Provider serialization quotes these ASCII data strings verbatim.
@@ -84,4 +87,5 @@ def estimate(raw,policy,binding):
         'textTokens':sum(amounts),'accuracy':'estimated','fallbackReason':reason,
         'requestSha256':hashlib.sha256(raw.encode()).hexdigest(),
         'modelBinding':{key:binding.get(key) for key in ('id','model','protocol','revision','credentialRevision')},'bindingSha256':scope(binding),
-        'reserves':{'framing':framing,'media':media},'categories':categories}
+        'reserves':{'framing':framing,'media':media},'categories':categories,
+        **({'mediaCost':media_cost.provenance()} if media_cost else {})}

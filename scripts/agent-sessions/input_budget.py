@@ -35,7 +35,7 @@ def limit(policy,binding):
     return result
 
 
-def raster(data,mime):
+def raster_dimensions(data,mime):
     from model_transport import ModelFault
     try:
         from PIL import Image
@@ -44,14 +44,20 @@ def raster(data,mime):
             width,height=image.size
             if mime!={'PNG':'image/png','JPEG':'image/jpeg','WEBP':'image/webp'}[image.format]:raise ValueError()
         if not 0<width<=16384 or not 0<height<=16384 or width*height>40_000_000:raise ValueError()
-        # Auto detail and model-specific resizing can charge more than a small
-        # compressed file suggests. This reserve intentionally stops early.
-        return max(65536,16*math.ceil(width/32)*math.ceil(height/32))
+        return width,height
     except (ImportError,OSError,ValueError,KeyError,TypeError):
         raise ModelFault('context_input_unavailable',not_dispatched=True) from None
 
 
-def scan(body):
+def raster_reserve(width,height):
+    return max(65536,16*math.ceil(width/32)*math.ceil(height/32))
+
+
+def raster(data,mime):
+    return raster_reserve(*raster_dimensions(data,mime))
+
+
+def scan(body, media_cost=None):
     """Charge raster inputs once; expose exact strings whose base64 is not text."""
     from model_transport import ModelFault
     pending=[body];nodes=0;media=0;encoded_media=0;replacements=[]
@@ -71,7 +77,10 @@ def scan(body):
                     raise ModelFault('context_input_unavailable',not_dispatched=True)
                 data=source['data'];mime=source.get('media_type')
             if data is not None:
-                media+=raster(data,mime);encoded_media+=len(data.encode())
+                detail=value.get('detail','auto')
+                if kind=='image_url' and isinstance(value.get('image_url'),dict):
+                    detail=value['image_url'].get('detail','auto')
+                media+=(media_cost(data,mime,detail) if media_cost else raster(data,mime));encoded_media+=len(data.encode())
                 if kind=='image':replacements.append((data,''))
                 else:replacements.append((url,url[:-len(data)] if data else url))
             pending.extend(value.values())

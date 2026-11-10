@@ -11,7 +11,7 @@ from store import ProjectFault
 
 DEFAULT = 250000
 MAXIMUM = 10000000
-OPTIMIZATION = 1
+OPTIMIZATION = 2
 
 
 def optimized(policy, version):
@@ -122,3 +122,11 @@ def threshold(config,capacity):
     if value.get('enabled',True) is False:return model_limit
     limit=budget(value.get('budgetTokens'))
     return min(limit,model_limit) if model_limit is not None else limit
+
+
+def compaction_limits(config, capacity):
+    maximum = threshold(config, capacity)
+    if maximum is None or not optimized(config.get('contextPolicy'), 2):
+        return maximum, maximum
+    trigger = maximum - min(2048, maximum // 20)
+    return trigger, trigger - min(4096, trigger // 10)

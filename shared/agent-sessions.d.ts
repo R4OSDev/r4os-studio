@@ -68,6 +68,7 @@ export interface SessionContext {
   estimatedInputTokens?: number | null; estimateMethod?: string; estimateAt?: string; capacitySource?: string | null;
   inputLimit?: number | null;
   inputCount?: import('./context-requests').InputCount|null;
+  compactionTargetTokens?: number | null;
   blockedRequestId?:string|null;
   checkpoint?: { recordId: string; throughSequence: number } | null;
 }
