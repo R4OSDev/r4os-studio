@@ -74,9 +74,11 @@ def bind_catalog(store, sid, config):
             if dispatch: operations.update(dispatch[action]['tool'] for action in selected.get('actions',{}).get(name,dispatch))
             else: operations.add(name[7:])
         if any(name in independent and not config['permissions'].get('studio.'+name) for name in operations): raise ValueError()
-        from profile import NOTE_TOOLS, ROADMAP_TOOLS
-        if any(name[7:] in ROADMAP_TOOLS for name in names) and not config.get('roadmapEnabled'): raise ValueError()
-        if any(name[7:] in NOTE_TOOLS for name in names) and not config.get('environmentNotesEnabled'): raise ValueError()
+        from profile import NOTE_TOOLS, ROADMAP_TOOLS, UPDATE_TOOLS
+        if operations.intersection(ROADMAP_TOOLS) and not config.get('roadmapEnabled'): raise ValueError()
+        if operations.intersection(NOTE_TOOLS) and not config.get('environmentNotesEnabled'): raise ValueError()
+        if prior.get('updateToolsEnabled') and not config.get('updateToolsEnabled') and operations.intersection(UPDATE_TOOLS):
+            raise ValueError()
         mode=selected.get('presentation')
         if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
         actions={name:items for name,items in selected.get('actions',{}).items() if name in names}

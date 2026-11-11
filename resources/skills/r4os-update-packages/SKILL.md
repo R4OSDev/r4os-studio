@@ -7,13 +7,13 @@ description: Plan, build, transfer, install, verify and recover R4OS update pack
 
 Use this skill when a user requests an R4OS update package, persistent update installation or recovery. Read [the reviewed English workflow](references/Updates.txt) and [the source binding](references/source-profile.json) before acting.
 
-Run the workflow in a project session with the declared update tools and their required permissions. Use Skill Manager to edit the skill. If an operation is unavailable, report the required tool, permission or capability.
+For a new update, enable Update tools in Session settings → Tools → Updates. Use the declared actions and their individual permissions. For an existing update, start with the original job and update records.
 
 Follow build artifact → immutable plan → R4UPack package → assigned VM readiness → own Inbox upload/full readback → public VERIFY → STAGE → actual live proof or own awaiting-commit batch → separately authorized COMMIT/reboot → correlated status/inventory/full hashes. Use the Studio tools and wait for their original durable jobs, without model polling or resubmitting writes.
 
 Package version, native component version and target OS release are distinct. Preserve the actual project SDK/contract/compiler pins and catalogue target. Do not infer minimum dependency versions from API imports. Public VERIFY checks the actual installed state; there is no public JSON or VERIFY-BATCH interface. A valid package build does not imply native compatibility.
 
-STAGE can execute live APPLY. COMMIT and a prepared RESUME-BATCH can install and reboot. Reboot/rollback need a concrete user task and their separate frozen session rights; commit and rollback default off. A rejected or unconfirmed effect is never permission to repeat a native write.
+STAGE can execute live APPLY. COMMIT and a prepared RESUME-BATCH can install and reboot. Reboot and rollback need explicit user authorization and their own session permissions. Follow the original receipt after a rejected or unconfirmed effect.
 
 Read existing updates/jobs to resume a conversation. Preserve original package/VM/batch/transaction IDs and receipts. Never adopt a foreign or uncorrelated batch, overwrite Inbox paths, edit native private journals, stages, locks, backups, MODULES.JSON or VERSION.R4S. source=- alone proves no ownership. Studio leases do not atomically exclude another native administrator; the native API has no expected-batch argument.
 

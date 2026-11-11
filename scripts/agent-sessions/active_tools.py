@@ -81,8 +81,61 @@ def remote_jobs(store,sid):
         return True  # The original job reader can report why storage is unavailable.
 
 
-def eligible(config, *, documents=False, images=False, goal=False, remote_history=False, roadmap_admin=True, vm=True):
-    from profile import NOTE_TOOLS, ROADMAP_TOOLS, REMOTE_TOOLS
+def update_recovery_options(store, sid, project_id):
+    from contracts import DevelopmentFault, identity
+    from update_state import TERMINAL, read_file
+
+    options = set()
+    project = store.workspace.parent
+    path = project / 'Development/Development.sqlite'
+    if path.is_file():
+        try:
+            with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=.1)) as db:
+                row = db.execute("""
+                    SELECT 1 FROM jobs
+                    WHERE (busy=1 OR state='unknown')
+                    AND kind IN ('package','update_probe','update_transfer','update_install','update_commit','update_verify','update_recovery')
+                    AND json_extract(payload,'$.sessionId')=?
+                    LIMIT 1
+                """, (sid,)).fetchone()
+            if row:
+                options.add('read_update_package')
+        except sqlite3.Error:
+            pass
+
+    vm = getattr(store, 'project', {}).get('vmId')
+    if not vm:
+        return options
+    try:
+        owner_path = project.parent / '.studio/development/UpdateOwners' / (identity(vm) + '.json')
+        owner = read_file(owner_path) if owner_path.is_file() else None
+    except DevelopmentFault:
+        return options
+    if not owner or any(owner.get(key) != value for key, value in
+                       (('projectId', project_id), ('sessionId', sid), ('vmId', vm))):
+        return options
+    phase = owner.get('phase')
+    if not isinstance(phase, str) or not phase:
+        return options
+    if phase == 'awaiting_commit':
+        options.update(('read_update_package', 'commit_update', 'abort_update', 'resume_update'))
+    elif phase == 'cleanup_unconfirmed':
+        options.update(('read_update_package', 'cleanup_update_transport'))
+    elif phase in TERMINAL:
+        if phase != 'rejected' and not owner.get('cleanupConfirmed'):
+            options.update(('read_update_package', 'cleanup_update_transport'))
+        if phase in ('installed', 'live_installed', 'rolled_back') and not owner.get('proof'):
+            options.update(('read_update_package', 'verify_update'))
+    else:
+        options.update(('read_update_package', 'verify_update', 'resume_update'))
+        if owner.get('batchId'):
+            options.add('abort_update')
+    return options
+
+
+def eligible(config, *, documents=False, images=False, goal=False, remote_history=False, roadmap_admin=True,
+             vm=True, updates=None):
+    from profile import NOTE_TOOLS, ROADMAP_TOOLS, REMOTE_TOOLS, UPDATE_TOOLS
     permissions=config['permissions']
     direct=config['engine'].get('kind')=='studio'
     can_generate=(config.get('imageGenerationEnabled') and permissions.get('studio.generate_image')
@@ -97,6 +150,8 @@ def eligible(config, *, documents=False, images=False, goal=False, remote_histor
         if name in ('get_goal','update_goal'):
             return bool(config.get('goalKeepalive') or direct and (goal or config.get('goalExecution') or config.get('studioGoalPreparation')))
         if not permissions.get('studio.'+name): return False
+        if updates is not None and name in UPDATE_TOOLS:
+            return name in updates and (vm or name in ('read_update_package', 'plan_update_package', 'build_update_package'))
         if name == 'read_attachment': return documents and permissions.get('studio.read_file')
         if name == 'generate_image': return direct and can_generate
         if name in ('list_generated_images','import_generated_image'): return images or can_generate
@@ -131,10 +186,16 @@ def freeze(store,sid,config,*,images):
         goal=bool((row(store,sid) or {}).get('goal'))
     mode = saved.get('presentation') if saved else roadmap_presentation(config,root)
     if mode=='administration' and not config.get('roadmapAdministrationEnabled'): mode='standard'
+    definitions=tool_definitions(tool_scope(config),root)
+    updates = None
+    if 'check_update' in definitions:
+        from profile import UPDATE_TOOLS
+        updates = (UPDATE_TOOLS if config.get('updateToolsEnabled') is True
+                   else update_recovery_options(store, sid, config['owner']['id']))
     permitted=eligible(config,documents=config.get('documentContext',False),images=images,goal=goal,
                        remote_history=tool_scope(config)=='project' and not config.get('remoteHostBinding') and remote_jobs(store,sid),
-                       roadmap_admin=mode!='standard',vm=bool(getattr(store,'project',{'vmId':True}).get('vmId')) if tool_scope(config)=='project' else False)
-    definitions=tool_definitions(tool_scope(config),root)
+                       roadmap_admin=mode!='standard',vm=bool(getattr(store,'project',{'vmId':True}).get('vmId')) if tool_scope(config)=='project' else False,
+                       updates=updates)
     names=[];actions={}
     for tool in declarations(config,root):
         full=tool['name']; name=full[7:]

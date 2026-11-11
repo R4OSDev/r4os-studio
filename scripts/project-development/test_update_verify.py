@@ -138,7 +138,7 @@ class Admission(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(DevelopmentFault):update_jobs.admit(store,'update_verify',{**request,**changes},None,vm)
                 job,fresh=update_jobs.admit(store,'update_verify',request,None,vm)
                 self.assertTrue(fresh);self.assertEqual(job['verification'],{'seconds':120,'hashes':True})
-                self.assertEqual(update_jobs.admit(store,'update_verify',request,None,None),(job,False))
+                self.assertEqual(update_jobs.admit(store,'update_verify',request,None,None),({**job,'requestId':request['requestId']},False))
         finally:fixture.tearDown()
 
 if __name__=='__main__':unittest.main()

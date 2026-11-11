@@ -170,7 +170,19 @@ def runtime_guidance(config, project=None):
         text += ('\n\nSTUDIO GUI: Use a fresh focused frame of the owned app for input. Capture a current frame '
                  'after a view change. Check the original receipt and observe the app after an action.')
     from profile import UPDATE_TOOLS
-    if any(rights.get('studio.' + name) for name in UPDATE_TOOLS):
-        text += ('\n\nSTUDIO UPDATES: Use the R4OS Update Packages skill when available. Review the original package, '
-                 'transfer, native check and installation receipts. Obtain user authorization for the specific reboot or rollback.')
+    catalog = config.get('toolCatalog', {})
+    if catalog.get('version') == 2:
+        names = set(catalog['tools'])
+        update_tools = names.intersection({'studio_' + name for name in UPDATE_TOOLS} |
+                                          {'studio_check_update', 'studio_manage_update_recovery'})
+    else:
+        update_tools = any(rights.get('studio.' + name) for name in UPDATE_TOOLS)
+    if update_tools:
+        if config.get('updateToolsEnabled') is False:
+            text += ('\n\nSTUDIO UPDATES: Follow this session’s original update and job IDs. Use the '
+                     'declared actions for the saved phase. Obtain explicit authorization for a reboot or rollback.')
+        else:
+            text += ('\n\nSTUDIO UPDATES: Use the declared phases for package planning, build, VM preflight, '
+                     'Inbox transfer, native VERIFY and STAGE, and authorized COMMIT. Follow the original job '
+                     'and verify installation with its saved update ID. Obtain explicit authorization for a reboot or rollback.')
     return text

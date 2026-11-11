@@ -2296,6 +2296,78 @@
       }
     },
     {
+      "name": "studio_check_update",
+      "description": "Check fresh VM update prerequisites or verify the original update and its installed effects.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "preflight"
+                ]
+              },
+              "packageArtifactId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed result."
+              }
+            },
+            "required": [
+              "action",
+              "packageArtifactId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "verify"
+                ]
+              },
+              "updateId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed result."
+              },
+              "updateRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "deadlineSeconds": {
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 300
+              },
+              "fullArtifactHashes": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "action",
+              "updateId",
+              "updateRevision"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "dispatch": {
+        "preflight": {
+          "tool": "check_update_vm"
+        },
+        "verify": {
+          "tool": "verify_update"
+        }
+      }
+    },
+    {
       "name": "studio_check_update_vm",
       "description": "Read fresh assigned-VM VER, native SYSUPD STATUS, installed release and full inventory under its reservation. Never starts/reboots or uploads. STATUS may materialize update directories. Wait for this one original observation; it is not native VERIFY.",
       "inputSchema": {
@@ -2311,7 +2383,8 @@
           "packageArtifactId"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_upload_update_package",
@@ -2429,6 +2502,194 @@
           "updateRevision"
         ],
         "additionalProperties": false
+      },
+      "retired": true
+    },
+    {
+      "name": "studio_manage_update_recovery",
+      "description": "Resume, abort, roll back or clean up the exact original update. Reboot requires explicit authorization.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "resume"
+                ]
+              },
+              "updateId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed result."
+              },
+              "updateRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "vmRevision": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "targetRelease": {
+                "type": "string",
+                "maxLength": 24
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "transaction",
+                  "batch"
+                ]
+              },
+              "confirmReboot": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "action",
+              "updateId",
+              "updateRevision",
+              "vmRevision",
+              "targetRelease",
+              "mode",
+              "confirmReboot"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "abort"
+                ]
+              },
+              "updateId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed result."
+              },
+              "updateRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "vmRevision": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "targetRelease": {
+                "type": "string",
+                "maxLength": 24
+              }
+            },
+            "required": [
+              "action",
+              "updateId",
+              "updateRevision",
+              "vmRevision",
+              "targetRelease"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "rollback"
+                ]
+              },
+              "updateId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed result."
+              },
+              "updateRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "vmRevision": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "targetRelease": {
+                "type": "string",
+                "maxLength": 24
+              },
+              "confirmReboot": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "action",
+              "updateId",
+              "updateRevision",
+              "vmRevision",
+              "targetRelease",
+              "confirmReboot"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "cleanup"
+                ]
+              },
+              "updateId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed result."
+              },
+              "updateRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "vmRevision": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "targetRelease": {
+                "type": "string",
+                "maxLength": 24
+              }
+            },
+            "required": [
+              "action",
+              "updateId",
+              "updateRevision",
+              "vmRevision",
+              "targetRelease"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "dispatch": {
+        "resume": {
+          "tool": "resume_update"
+        },
+        "abort": {
+          "tool": "abort_update"
+        },
+        "rollback": {
+          "tool": "rollback_update"
+        },
+        "cleanup": {
+          "tool": "cleanup_update_transport"
+        }
       }
     },
     {
@@ -2475,7 +2736,8 @@
           "confirmReboot"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_abort_update",
@@ -2509,7 +2771,8 @@
           "targetRelease"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_rollback_update",
@@ -2548,7 +2811,8 @@
           "confirmReboot"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_cleanup_update_transport",
@@ -2582,7 +2846,8 @@
           "targetRelease"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_push_project",

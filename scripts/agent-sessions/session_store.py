@@ -183,6 +183,8 @@ def validate_settings(data, provider_dir, *, direct=None):
         raise ProjectFault('Invalid Roadmap setting.', 400)
     if type(data.get('roadmapAdministrationEnabled', False)) is not bool:
         raise ProjectFault('Invalid Roadmap administration setting.',400)
+    if type(data.get('updateToolsEnabled', False)) is not bool:
+        raise ProjectFault('Invalid Update tools setting.', 400)
     if data.get('fastMode', False) and not model['fastModeAvailable']:
         raise ProjectFault('Fast Mode is unavailable for the selected model.', 400)
     if not isinstance(data['permissions'], dict) or set(data['permissions']) != {'studio.' + t for t in permission_tools(tool_scope(data))} or any(type(v) is not bool for v in data['permissions'].values()):
@@ -302,9 +304,11 @@ PRAGMA user_version=1;
         if self.owner_type == 'project':
             settings.setdefault('roadmapEnabled', True)
             settings.setdefault('roadmapAdministrationEnabled', False)
+            settings.setdefault('updateToolsEnabled', False)
         else:
             settings.pop('roadmapEnabled', None)
             settings.pop('roadmapAdministrationEnabled', None)
+            settings.pop('updateToolsEnabled', None)
         latest = self.db.execute('SELECT * FROM runs WHERE session_id=? ORDER BY created_at DESC LIMIT 1', (row['id'],)).fetchone()
         engine = json.loads(row['engine'])
         if engine.get('kind') == 'studio':
@@ -424,13 +428,13 @@ PRAGMA user_version=1;
 
     @guarded
     def update(self, session_id, data, provider_dir):
-        if not set(data).issubset({'revision', 'selectionRevision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled', 'roadmapAdministrationEnabled', 'contextLimit'}) or type(data.get('revision')) is not int:
+        if not set(data).issubset({'revision', 'selectionRevision', 'name', 'providerId', 'model', 'effort', 'fastMode', 'permissions', 'skillOverrides', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled', 'roadmapEnabled', 'roadmapAdministrationEnabled', 'updateToolsEnabled', 'contextLimit'}) or type(data.get('revision')) is not int:
             raise ProjectFault('Unexpected session settings.', 400)
         if 'selectionRevision' in data and (type(data['selectionRevision']) is not int or data['selectionRevision']<0):
             raise ProjectFault('Invalid model-choice revision.',400)
-        for name in ('roadmapEnabled','roadmapAdministrationEnabled'):
+        for name in ('roadmapEnabled', 'roadmapAdministrationEnabled', 'updateToolsEnabled'):
             if name in data and (self.owner_type != 'project' or type(data[name]) is not bool):
-                raise ProjectFault('Roadmap settings must be boolean and apply to project sessions only.',400)
+                raise ProjectFault('Project tool settings must be boolean and apply to project sessions only.', 400)
         if 'fastMode' in data and type(data['fastMode']) is not bool:
             raise ProjectFault('Invalid Fast Mode setting.', 400)
         if 'environmentNotesEnabled' in data and type(data['environmentNotesEnabled']) is not bool:raise ProjectFault('Invalid Environment notes setting.',400)
@@ -462,7 +466,8 @@ PRAGMA user_version=1;
             settings = {k: value[k] for k in ('providerId', 'model', 'effort', 'fastMode', 'permissions', 'webSearchEnabled', 'imageGenerationEnabled', 'environmentNotesEnabled')}
             settings['contextLimit']=value['contextLimit']
             if self.owner_type == 'project':
-                settings.update(roadmapEnabled=value['roadmapEnabled'],roadmapAdministrationEnabled=value['roadmapAdministrationEnabled'])
+                settings.update(roadmapEnabled=value['roadmapEnabled'],
+                    roadmapAdministrationEnabled=value['roadmapAdministrationEnabled'], updateToolsEnabled=value['updateToolsEnabled'])
             choices = skill_preferences.normalize(value['skillOverrides'])
             skill_change = choices != previous['skillOverrides']
             value['name'] = text(value['name'], 120)

@@ -169,6 +169,10 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         snapshot['roadmapAdministrationEnabled']=original['roadmapAdministrationEnabled']
     elif original is None and store.owner_type=='project':
         snapshot['roadmapAdministrationEnabled']=snapshot['roadmapEnabled'] and session.get('roadmapAdministrationEnabled',False)
+    if original is not None and 'updateToolsEnabled' in original:
+        snapshot['updateToolsEnabled'] = original['updateToolsEnabled']
+    elif original is None and store.owner_type == 'project':
+        snapshot['updateToolsEnabled'] = session.get('updateToolsEnabled', False)
     if data.get('skillSelection') == 1:
         from skill_application import freeze
         snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1, mcp=data.get('skillMcp') == 1)

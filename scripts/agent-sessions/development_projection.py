@@ -77,6 +77,10 @@ def summary(job,page=None):
     if diagnosis: value['desktopDiagnostics'] = diagnosis
     if page.get('stop'):value['stop']=page['stop']
     if page.get('diagnosticPreview'):value['diagnosticPreview']=page['diagnosticPreview']
+    kind=job.get('kind','')
+    if kind=='package' or kind.startswith('update_'):
+        from update_tools import phase_evidence
+        value['update']=phase_evidence(job)
     value['outputPage']=output_state(page)
     # A preview consumes no cursor. Explicit output begins at the original requested offset.
     if page.get('output'):value['outputPreview']={'text':fragment(page['output'][:500]),'consumesCursor':False}
@@ -86,7 +90,8 @@ def summary(job,page=None):
             'check':pick(small.get('check',{}),('state','assessment')),'checkCompletion':small.get('checkCompletion'),
             'readiness':pick(small.get('readiness',{}),('state','reasonCode')),
             'desktopDiagnostics': diagnosis, 'diagnosticPreview': page.get('diagnosticPreview'),
-            'notice':'Detailed checks, artifacts and cleanup receipts are retained in view=details.'}
+            'notice':'Detailed checks, artifacts and cleanup receipts are retained in view=details.',
+            **({'update':value['update']} if 'update' in value else {})}
     return value
 
 

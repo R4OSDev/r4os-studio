@@ -43,6 +43,7 @@ export interface AgentSession {
   imageGenerationEnabled?: boolean;
   roadmapEnabled?: boolean;
   roadmapAdministrationEnabled?: boolean;
+  updateToolsEnabled?: boolean;
   environmentNotesAccess?: { available: boolean; reason?: string };
   roadmapAccess?: { available: boolean; reason?: string };
   remoteHostAccess?: { available: boolean; assignedId?: string | null; hostName?: string; reason?: string };
@@ -91,6 +92,7 @@ export interface SessionUpdate {
   imageGenerationEnabled?: boolean;
   roadmapEnabled?: boolean;
   roadmapAdministrationEnabled?: boolean;
+  updateToolsEnabled?: boolean;
   skillOverrides?: Record<string, boolean>;
 }
 export interface SessionOptions {

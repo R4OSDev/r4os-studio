@@ -1,7 +1,6 @@
 """V5 update tool harness: original durable job, one admission, read-only waiting."""
 import asyncio
 import uuid
-from profile import UPDATE_TOOLS
 from contracts import DevelopmentFault,UnconfirmedGuestEffect,ACTIVE
 
 class UpdateTools:
@@ -10,10 +9,12 @@ class UpdateTools:
   from session_store import encode
   job=None;request_id=str(uuid.uuid5(uuid.UUID(self.worker.run_id),'development:'+call_id))
   try:
-   from vm_worker import broker_call
-   cap=await broker_call({'operation':'capabilities'})
+   try:
+    cap=await self.development.capabilities()
+   except (OSError, asyncio.TimeoutError):
+    raise DevelopmentFault('The development coordinator is unavailable.',503) from None
    if cap.get('features',{}).get('updateAgentTools')!=1:
-    raise DevelopmentFault('Adopt the update-agent-capable development host before using this new session profile.',503)
+    raise DevelopmentFault('The active development coordinator does not support update tools.',503)
    request=self.development.request
    revision=self.worker.store.project['revision']
    if name=='read_update_package':
@@ -50,33 +51,82 @@ class UpdateTools:
      body['action']={'abort_update':'abort-batch','rollback_update':'rollback-last','cleanup_update_transport':'cleanup'}[name]
      if name!='rollback_update':body['confirmReboot']=False
    job=await request(op,input=body)
-   return await self.wait(name,job,call_id,value)
+   if job.get('requestId',request_id)!=request_id:
+    raise UnconfirmedGuestEffect('The original update admission could not be matched to its request ID.')
+   return await self.wait(name,job,call_id,value,request_id)
   except DevelopmentFault as error:
    return {'success':False,'error':'unknown' if getattr(error,'uncertain',False) else 'unavailable',
     'output':str(error)+' Original request ID: '+request_id+'. Read existing jobs; do not replay writes.','reasonCode':getattr(error,'reason_code',None),
-    **({'development':{'jobId':job['id']}} if job else {})}
- async def wait(self,name,job,call_id,arguments):
+    **({'development':{'jobId':job['id'],'requestId':request_id}} if job else {})}
+ async def wait(self,name,job,call_id,arguments,request_id):
   from run_store import item
   worker=self.worker
+  job_id=job['id'];kind=job['kind']
   pending={'id':call_id,'runId':worker.run_id,'type':'tool','tool':'studio.'+name,
-    'arguments':arguments,'status':'pending','development':{'jobId':job['id']}}
+    'arguments':arguments,'status':'pending','development':{'jobId':job_id,'requestId':request_id}}
   worker.items[call_id]=pending;item(worker.store,worker.session_id,worker.run_id,pending)
   deadline=asyncio.get_running_loop().time()+720
   page=None
   while job['state'] in ACTIVE:
    if worker.stopping:
-    return {'success':False,'error':'interrupted','output':'Update wait stopped. A native effect may remain durable; inspect its original job/update. Stop does not roll it back.','development':{'jobId':job['id']}}
+    return {'success':False,'error':'interrupted','output':'Update wait stopped. Inspect the original job and update for its current outcome.',
+     'development':{'jobId':job_id,'requestId':request_id}}
    if asyncio.get_running_loop().time()>=deadline:
     raise UnconfirmedGuestEffect('The original update job remains unconfirmed. Read its saved ID; no admission or native write was repeated.')
    try:
-    page=await self.development.request('wait_update',id=job['id']);job=page['job']
+    page=await self.development.request('wait_update',id=job_id)
+    observed=page.get('job') or {}
+    if (observed.get('id')!=job_id or observed.get('kind')!=kind
+            or observed.get('requestId',request_id)!=request_id):
+     raise UnconfirmedGuestEffect('The original update job and request IDs could not be matched. Read its saved receipt.')
+    job=observed
    except DevelopmentFault as error:
     if error.code!=503 or getattr(error,'uncertain',False):raise
     await asyncio.sleep(1)  # Only reconnect to the original read-only wait.
-  if job.get('updateInstallation'):
-   job={**job,'updateInstallation':compact_record(job['updateInstallation'])}
-   if page:page={**page,'job':job}
   return self.development.result(job,page)
+
+
+def phase_evidence(job):
+    """Project the evidence needed to choose the next phase from the original job."""
+    from development_projection import pick
+
+    evidence = pick(job, ('requestId', 'packageArtifactId', 'updateId', 'updateRevision', 'recoveryAction'))
+    if job.get('updateProbe'):
+        probe = job['updateProbe']
+        fields = ('state', 'mayUpload', 'checkedAt', 'target', 'installedRelease', 'requestedTargetRelease',
+                  'baseImageId', 'baseImageSha256', 'activeKernel', 'hostKeyFingerprint', 'ownership')
+        preflight = pick(probe, fields)
+        inventory = probe.get('inventoryRead') or {}
+        if inventory:
+            preflight['inventoryRead'] = {
+                'method': inventory.get('method'),
+                'reads': [pick(read, ('sha256', 'bytes')) for read in inventory.get('reads', [])],
+            }
+        evidence['preflight'] = preflight
+    if job.get('updateTransfer'):
+        transfer = job['updateTransfer']
+        evidence['transfer'] = pick(transfer, ('phase', 'published', 'guestPath', 'target', 'sha256', 'bytes',
+                                               'renameAcknowledged', 'sshExitCode', 'error'))
+        if transfer.get('finalRead'):
+            evidence['transfer']['finalRead'] = pick(transfer['finalRead'], ('sha256', 'bytes'))
+    if job.get('updateInstallation'):
+        record = job['updateInstallation']
+        fields = ('id', 'revision', 'phase', 'vmId', 'vmRevision', 'imageId', 'imageSha256', 'systemGeneration',
+                  'targetRelease', 'batchId', 'transactions', 'transferJobIds', 'packageArtifactIds',
+                  'installationConfirmed', 'rollbackConfirmed', 'abortConfirmed', 'cleanupConfirmed')
+        installation = pick(record, fields)
+        if record.get('proof'):
+            proof = record['proof']
+            files = proof.get('files', [])
+            installation['proof'] = {
+                **pick(proof, ('confirmedAt', 'target', 'outcome', 'fullArtifactHashesComplete',
+                               'previousArtifactBaselineAvailable', 'installedRelease', 'activeKernel',
+                               'readOnly', 'commitNotRepeated', 'resumeNotIssued')),
+                'fileCount': len(files),
+                'files': [pick(file, ('target', 'bytes', 'sha256')) for file in files[:16]],
+            }
+        evidence['installation'] = installation
+    return evidence
 
 def compact_record(value):
  """Keep decisions/proof; full original diagnostics remain in the durable browser record."""

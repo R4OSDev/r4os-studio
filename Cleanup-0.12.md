@@ -197,3 +197,7 @@ Read original context and skill results through one tool. Record environment not
 ## 0.12.51
 
 Merge Remote Job actions, keep exact original evidence, and send concise SFTP and Git reads.
+
+## 0.12.52
+
+Select update tooling per session and original recovery phase. Merge VM checks and recovery actions and retain original update evidence.

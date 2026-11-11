@@ -3,19 +3,21 @@ import json,os,unittest,uuid
 from unittest.mock import patch
 import test_authorization
 from authorization import authorize,authorize_job
-from update_authorization import parent,filtered_options
+from update_authorization import PERMISSIONS, RECOVERY_PERMISSIONS, parent, filtered_options
 from contracts import DevelopmentFault
 
 class Updates(unittest.TestCase):
  def setUp(self):
   self.f=test_authorization.AuthorizationTest();self.f.setUp();self.store=self.f.store;self.owner=self.f.owner
-  self.f.config['engine']['profile']='studio-tools-v5'
-  for name in ('resume_update','abort_update','rollback_update','cleanup_update_transport','commit_update'):
+  self.f.config['owner']={'type':'project','id':self.store.id}
+  for name in set(PERMISSIONS.values()) | set(RECOVERY_PERMISSIONS.values()):
    self.f.config['permissions']['studio.'+name]=True
   self.f.save()
  def tearDown(self):self.f.tearDown()
- def test_v4_cannot_gain_update_declarations_from_an_active_skill(self):
-  self.f.config['engine']['profile']='studio-tools-v4';self.f.save()
+ def test_active_skill_does_not_grant_disabled_update_permission(self):
+  self.f.config['permissions']['studio.plan_update_package']=False
+  self.f.config['skillAccess']={'entries':[{'name':'R4OS Update Packages'}]}
+  self.f.save()
   with self.assertRaises(DevelopmentFault):authorize(self.store,self.owner,'update_plan',os.getpid())
   self.assertEqual(self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0],1)
  def test_disabled_commit_and_rollback_are_denied_before_admission(self):

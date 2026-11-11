@@ -139,7 +139,7 @@ class Admission(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(DevelopmentFault):admit(self.store,'update_commit',{**request,**changes},None,self.vm)
             job,fresh=admit(self.store,'update_commit',request,None,self.vm);self.assertTrue(fresh)
             record['phase']='commit_unconfirmed';state.write(self.store,record)
-            self.assertEqual(admit(self.store,'update_commit',request,None,None),(job,False))
+            self.assertEqual(admit(self.store,'update_commit',request,None,None),({**job,'requestId':request['requestId']},False))
 
 if __name__=='__main__':unittest.main()
 

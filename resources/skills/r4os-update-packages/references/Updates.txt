@@ -1,8 +1,9 @@
 R4OS UPDATE PACKAGES IN STUDIO
 
-Use the assigned VM and declared project update tools. Package, component and
-target OS release versions identify different things. Read the actual project
-pins and native source binding before relying on an API or update requirement.
+For a new update, enable Update tools in Session settings → Tools → Updates.
+Use the assigned VM and the declared actions. Package, component and target OS
+release versions identify different things. Read the project pins and native
+source binding before relying on an API or update requirement.
 
 1. Select the package inputs
 
@@ -29,7 +30,7 @@ assigned VM.
 3. Check the VM and transfer the package
 
 Use the separately permitted VM-start action when startup is part of the task.
-Call studio_check_update_vm with packageArtifactId for the assigned VM's
+Call studio_check_update with action=preflight and packageArtifactId for the assigned VM's
 current VER, SYSUPD STATUS, installed release and inventory. Resolve unavailable
 development access, unsupported target or conflicting native state before upload.
 
@@ -56,7 +57,7 @@ once and reads bounded post-boot evidence on the bound VM.
 5. Verify and recover the original operation
 
 Use studio_read_update_package to read the original jobs and update records.
-Use studio_verify_update with the current updateId and updateRevision for
+Use studio_check_update with action=verify and the current updateId and updateRevision for
 native terminal state, installed component inventory and full artifact hashes.
 Bind the evidence to the recorded VM, batch, transaction, components and
 packages. Report transfer, awaiting commit, confirmed installation, rollback
@@ -66,18 +67,18 @@ If a response is lost, inspect the original operation and its current
 receipts before any further effect. The tool waits on the original job while
 the call is active. A newly requested read can verify the same operation.
 
-Use studio_resume_update for an explicitly requested, freshly verified owned
-transaction or batch. A prepared batch resume can commit and reboot and
+Use studio_manage_update_recovery with action=resume and mode=transaction or
+mode=batch for an explicitly requested, freshly verified owned update. A
+prepared batch resume can commit and reboot and
 requires the corresponding authorization, Commit permission and
 confirmReboot=true. A rolled_back journal with a rolling-back batch requires
-a separately authorized batch resume for native finalization. Use
-studio_abort_update for a verified owned prepared batch before a durable
-batch transaction. Use studio_rollback_update for the exact latest proved own
-update when rollback and possible reboot are authorized and the Rollback
-permission is enabled.
+a separately authorized batch resume for native finalization. Use action=abort
+for a verified owned prepared batch before a durable batch transaction. Use
+action=rollback for the exact latest proved own update when rollback and
+possible reboot are authorized and the Rollback permission is enabled.
 
 After correlated terminal proof or confirmed abort, use
-studio_cleanup_update_transport for this update's original matching Inbox
+action=cleanup for this update's original matching Inbox
 files. Preserve partial, different or foreign files and the original
 diagnostic evidence. Studio's VM reservation coordinates its own workers.
 Check native ownership and state before any write if another update client
