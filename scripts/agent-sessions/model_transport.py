@@ -74,6 +74,9 @@ class ModelFault(ProjectFault):
             self.category='context'
             self.args=('The required Messages prefix exceeds the input limit and must be kept intact for signed thinking. '
                        'No model request was sent.',)
+        if code=='context_native_compaction_unqualified':
+            self.category='context'
+            self.args=('The selected connection has no verified native compaction contract. The previous context was kept.',)
         if code in ('context_summary_incomplete','context_summary_invalid','context_summary_timeout',
                     'context_summary_no_progress','context_compaction_timeout','context_history_changed','context_has_open_tool_pairs'):
             self.category='context'
@@ -204,7 +207,8 @@ class ModelTransport:
         protocol = self.binding['protocol']
         if protocol == 'responses':
             from model_responses import Responses
-            return Responses(self.binding, tools)
+            from context_policy import optimized
+            return Responses(self.binding, tools, local_compaction=optimized(self.context_policy,6))
         if protocol == 'chat-completions':
             from model_chat import Chat
             return Chat(self.binding, tools)
@@ -276,7 +280,9 @@ class ModelTransport:
             messages=resolve(messages,self.media_resolver)
         if self.binding['protocol'] == 'responses':
             from model_responses import request
-            body = request(self.binding, messages, instructions, tools, effort)
+            from context_policy import optimized
+            body = request(self.binding, messages, instructions, tools, effort,
+                           local_compaction=optimized(self.context_policy,6))
         elif self.binding['protocol'] == 'chat-completions':
             from model_chat import request
             body, headers = request(self.binding, messages, instructions, tools, effort, self.chat_policy, self.client)

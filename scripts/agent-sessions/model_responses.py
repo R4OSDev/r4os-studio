@@ -2,7 +2,15 @@
 from model_transport import ModelFault, dumps, loads, text_fragment
 
 
-def request(binding, messages, instructions, tools, effort):
+NATIVE_COMPACTION_ITEMS = ('compaction','compaction_trigger','context_compaction')
+
+
+def reject_compaction(items, *, not_dispatched=False):
+    if any(isinstance(item,dict) and item.get('type') in NATIVE_COMPACTION_ITEMS for item in items):
+        raise ModelFault('context_native_compaction_unqualified',not_dispatched=not_dispatched)
+
+
+def request(binding, messages, instructions, tools, effort, *, local_compaction=False):
     inputs = []; pending=set(); images=[]
     from studio_media import image
     for message in messages:
@@ -14,6 +22,7 @@ def request(binding, messages, instructions, tools, effort):
                 raise ModelFault('model_context_not_portable')
             output = loads(originals[0]['value'])
             if not isinstance(output, list): raise ModelFault()
+            if local_compaction:reject_compaction(output,not_dispatched=True)
             inputs.extend(output)
             pending.update(p['call_id'] for p in output if p.get('type')=='function_call')
             continue
@@ -48,7 +57,7 @@ def request(binding, messages, instructions, tools, effort):
 
 
 class Responses:
-    def __init__(self, binding, tools):
+    def __init__(self, binding, tools, *, local_compaction=False):
         self.binding = binding
         self.names = {tool['name'] for tool in tools}
         self.response = None
@@ -56,6 +65,7 @@ class Responses:
         self.response_id = None
         self.pending_text = {}
         self.output_seen = False
+        self.local_compaction = local_compaction
 
     def push(self, raw):
         if raw == '[DONE]':
@@ -123,6 +133,7 @@ class Responses:
             for key, value in output[index].items():
                 if key in original and value is not None and original[key] != value: raise ModelFault()
             output[index] = {**output[index], **original}
+        if self.local_compaction:reject_compaction(output)
         content = []; calls = set()
         for item in output:
             if not isinstance(item, dict): raise ModelFault()

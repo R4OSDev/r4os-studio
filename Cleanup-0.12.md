@@ -117,3 +117,7 @@ Use a short summary-only prompt, bounded output and time, and qualified reasonin
 ## 0.12.31
 
 Plan the largest fitting whole-history prefix against the complete next request, commit only confirmed progress, and show compaction state and estimates in the session and Context overlay.
+
+## 0.12.32
+
+Qualify the public and subscription compaction contracts separately and retain local checkpoints until an exact connection and measurable advantage are confirmed.
