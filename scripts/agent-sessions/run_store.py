@@ -203,7 +203,10 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     if snapshot['engine'].get('kind')=='studio':
         if original is None:
             snapshot['contextResultProtocol']=1
-            if snapshot.get('apiModel',{}).get('imageInput')=='supported':
+            from context_policy import optimized
+            from image_token_rules import rule_for
+            has_rule=optimized(snapshot['contextPolicy'],8) and rule_for(snapshot.get('apiProvider',{}))
+            if snapshot.get('apiModel',{}).get('imageInput')=='supported' and not has_rule:
                 from image_usage import previous
                 observations=previous(store,session_id,{**snapshot['apiProvider'],'model':snapshot['model']})
                 if observations:snapshot['contextPolicy']['imageEstimate']=observations

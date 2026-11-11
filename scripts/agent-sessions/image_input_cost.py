@@ -52,3 +52,23 @@ class ImageCost:
                 'qualifiedImages': self.qualified, 'conservativeImages': self.conservative,
                 'profile': 'openai-patches-32-v1' if self.qualified else None,
                 **({'historicalImages':self.historical} if self.use_history else {})}
+
+
+class RuleImageCost:
+    def __init__(self, model, rule):
+        self.model = model
+        self.profile, self.calculate = rule
+        self.images = 0
+        self.unavailable = 0
+
+    def __call__(self, data, mime, detail):
+        self.images += 1
+        tokens = self.calculate(self.model, *raster_dimensions(data, mime), detail)
+        if tokens is None:
+            self.unavailable += 1
+            return 0
+        return tokens
+
+    def provenance(self):
+        return {'version': 3, 'profile': self.profile, 'images': self.images,
+                'unavailableImages': self.unavailable}

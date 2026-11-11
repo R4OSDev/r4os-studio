@@ -56,8 +56,14 @@ def estimate(raw,policy,binding):
         raise ModelFault('context_input_unavailable',not_dispatched=True)
     groups={key:{'raw':[],'text':[],'media':0} for key in LABELS};message_count=0
     from context_policy import optimized
-    from image_input_cost import ImageCost
-    media_cost=ImageCost(binding,history=policy.get('imageEstimate'),use_history=optimized(policy,7)) if optimized(policy,2) else None
+    from image_input_cost import ImageCost, RuleImageCost
+    from image_token_rules import rule_for
+    rule=rule_for(binding) if optimized(policy,8) else None
+    media_cost=None
+    if rule:
+        media_cost=RuleImageCost(binding.get('model'),rule)
+    elif optimized(policy,2):
+        media_cost=ImageCost(binding,history=policy.get('imageEstimate'),use_history=optimized(policy,7))
     for kind,part,value,messages in regions(raw):
         message_count+=messages
         _,media,_,replacements=scan(value,media_cost) if value is not None else (0,0,0,[])
@@ -79,13 +85,18 @@ def estimate(raw,policy,binding):
         text_chars+=len(text);media+=group['media']
         tokens=amount+group['media']+(framing if kind=='other' else 0)
         categories.append({'id':kind,'label':label,'tokens':tokens,'bytes':len(original.encode()),'characters':len(original)})
-    return {'schema':1,'tokens':sum(item['tokens'] for item in categories),'bytes':len(raw.encode()),
+    image_count=media_cost.provenance() if media_cost else None
+    unavailable=bool(rule and media_cost.unavailable)
+    method=('tiktoken 0.14.0 '+name+' over disjoint original JSON text, framing and raster reserves; local estimate, not provider usage') if name else METHOD
+    if rule and media_cost.images:
+        method=method.replace('raster reserves','provider image token rules')
+    return {'schema':1,'tokens':None if unavailable else sum(item['tokens'] for item in categories),'bytes':len(raw.encode()),
         'characters':len(raw),'textCharacters':text_chars,'textBytes':sum(len(''.join(g['text']).encode()) for g in groups.values()),
-        'mediaTokens':media,'method':('tiktoken 0.14.0 '+name+' over disjoint original JSON text, framing and raster reserves; local estimate, not provider usage') if name else METHOD,
+        'mediaTokens':None if unavailable else media,'method':method,
         'source':'local-tokenizer' if name else 'character-estimate','methodVersion':'local-tokenizer-v1' if name else 'characters-v1',
         'tokenizer':{'library':'tiktoken','version':'0.14.0','encoding':name,'manifestSha256':TOKENIZER['manifestSha256']} if name else None,
-        'textTokens':sum(amounts),'accuracy':'estimated','fallbackReason':reason,
+        'textTokens':sum(amounts),'accuracy':'unavailable' if unavailable else 'estimated','fallbackReason':reason,
         'requestSha256':hashlib.sha256(raw.encode()).hexdigest(),
         'modelBinding':{key:binding.get(key) for key in ('id','model','protocol','revision','credentialRevision')},'bindingSha256':scope(binding),
-        'reserves':{'framing':framing,'media':media},'categories':categories,
-        **({'mediaCost':media_cost.provenance()} if media_cost else {})}
+        'reserves':{'framing':framing,'media':0 if rule else media},'categories':[] if unavailable else categories,
+        **({'mediaCost':image_count} if image_count and (not rule or media_cost.images) else {})}

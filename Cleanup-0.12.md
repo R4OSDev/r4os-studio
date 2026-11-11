@@ -129,3 +129,7 @@ Select low reasoning for summaries when the existing model catalog offers it.
 ## 0.12.34
 
 Estimate image tokens from reported usage and resolution, with a 5,000-token default for unsupported inputs.
+
+## 0.12.35
+
+Count vision inputs on the Codex subscription route with the observed 32-pixel rule and model-specific detail limits.

@@ -11,7 +11,7 @@ from store import ProjectFault
 
 DEFAULT = 250000
 MAXIMUM = 10000000
-OPTIMIZATION = 7
+OPTIMIZATION = 8
 
 
 def optimized(policy, version):

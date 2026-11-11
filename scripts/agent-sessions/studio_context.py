@@ -191,6 +191,7 @@ class StudioContext(Context):
             await self.count_preview(active,instructions,tools)
         active, records, checkpoint, measured, capacity, estimate, size = self.report(instructions, tools)
         if open_calls(active): raise ModelFault('context_has_open_tool_pairs',not_dispatched=True)
+        if estimate is None: raise ModelFault('context_input_unavailable',not_dispatched=True)
         latest = self.latest(records)
         fresh = latest and (not checkpoint or latest['sequence'] > checkpoint['sequence'])
         limit=threshold(w.config,capacity)
