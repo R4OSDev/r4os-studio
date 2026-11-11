@@ -55,13 +55,8 @@ def reference(worker, record):
     return {'sequence': row['seq'], 'recordId': row['record_id'], 'runId': row['run_id'], 'sha256': digest(row)}
 
 
-def plan(worker, active, checkpoint, byte_limit):
-    """Bound summary input and retain complete, consumed uncertain batches.
-
-    The final response and its current results stay in the unsummarized tail.
-    A retained batch is loaded from its exact original rows after the checkpoint;
-    its old running/unknown/partial observations are never declared resolved.
-    """
+def choices(worker, active, checkpoint, byte_limit):
+    """Store shared prefix data and the admissible whole-group boundaries."""
     from context_results import has_uncertain_result
     from context_policy import optimized
     from summary_context import record_view
@@ -70,7 +65,7 @@ def plan(worker, active, checkpoint, byte_limit):
     archive=worker if projected and config.get('contextResultProtocol')==1 and config.get('permissions',{}).get('studio.read_context_result') else None
     consumed = max((r.get('sequence', 0) for r in active if r.get('role') == 'assistant'
         and r.get('origin', {}).get('providerResponseId')), default=0)
-    through = None; data = []; retained = []; size = 0; pending = set(); group = []; confirmed = False
+    data = []; retained = []; ends = []; size = 0; pending = set(); group = []; confirmed = False
     for record in active:
         group.append(record)
         for part in record['content']:
@@ -90,10 +85,19 @@ def plan(worker, active, checkpoint, byte_limit):
             data.extend(plain); size += amount
             confirmed = confirmed or any(r['role'] == 'assistant' and r.get('origin', {}).get('providerResponseId')
                 and any(p['type'] == 'provider' for p in r['content']) for r in group)
-        if sequence: through = sequence
+        if sequence and confirmed and (not checkpoint or sequence > checkpoint['throughSequence']):
+            ends.append((sequence,len(data),len(retained)))
         group = []
-    if through is None or checkpoint and through <= checkpoint['throughSequence'] or not confirmed:
-        return None
     if len(retained) > MAX_RECORDS:
         raise ProjectFault('Too many original tool observations need exact retention. Original history was preserved.', 409)
-    return through, data, retained
+    return data, retained, ends
+
+
+def select(data, retained, end):
+    through, records, originals = end
+    return through, data[:records], retained[:originals]
+
+
+def plan(worker, active, checkpoint, byte_limit):
+    data, retained, ends = choices(worker,active,checkpoint,byte_limit)
+    return select(data,retained,ends[-1]) if ends else None

@@ -69,8 +69,16 @@ export interface SessionContext {
   inputLimit?: number | null;
   inputCount?: import('./context-requests').InputCount|null;
   compactionTargetTokens?: number | null;
+  compaction?: ContextCompaction | null;
   blockedRequestId?:string|null;
   checkpoint?: { recordId: string; throughSequence: number } | null;
+}
+export interface ContextCompaction {
+  state: 'running' | 'completed' | 'stopped'; runId: string; startedAt: string;
+  elapsedMs: number; completedSteps: number; maximumSteps: number; targetTokens: number|null;
+  before: {estimatedTokens:number; bytes:number; images:number};
+  after: {estimatedTokens:number; bytes:number; images:number}|null;
+  reason: string|null;
 }
 export interface SessionCreate { name: string; providerId: string; model: string; effort: string; fastMode?: boolean; requestId: string }
 export interface SessionUpdate {

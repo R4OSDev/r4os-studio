@@ -47,8 +47,11 @@ def read(store,row):
     current=empty(store,row);snapshot=saved(store,row['id'])
     if not snapshot:return current
     if any(snapshot.get(k)!=current[k] for k in ('owner','sessionId','engine','engineVersion','engineSha256','providerId','requestedModel','threadId')):
-        return {**snapshot,'state':'pending','reason':'The selection or native conversation changed. Waiting for a matching context measurement.'}
+        return {**snapshot,'compaction':None,'state':'pending','reason':'The selection or native conversation changed. Waiting for a matching context measurement.'}
     latest=store.db.execute('SELECT id,busy,state,config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
+    progress=snapshot.get('compaction')
+    if progress and progress['state']=='running' and (not latest or not latest['busy'] or latest['id']!=progress['runId']):
+        snapshot={**snapshot,'compaction':{**progress,'state':'stopped','reason':'The original worker ended before the checkpoint was confirmed.'}}
     if latest and latest['state']=='unknown':
         if snapshot.get('usedTokens') is None:
             return {**snapshot,'state':'unavailable','reason':'The latest execution is unconfirmed. No provider input measurement is available.'}

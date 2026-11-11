@@ -94,14 +94,21 @@ class Screenshots:
         # An explicit use of the original frame for input establishes its role
         # as the preceding live frame. Comparisons and historical reads may
         # use the same image bytes but are never retirement candidates.
-        later = {}; uses = {}; result = set()
+        from context_results import has_uncertain_result
+        later = {}; uses = {}; results = {}; retired = set()
         for record in reversed(active):
+            if record['role']=='tool':
+                for part in record['content']:
+                    if part['type']=='tool_result':
+                        results[(record.get('runId'),part['callId'])]=record
             if record['role']=='assistant' and record.get('origin',{}).get('providerResponseId'):
                 for part in record['content']:
-                    if part['type']=='tool_call' and part['name']=='studio_send_vm_input':
-                        args=part['arguments']
-                        if isinstance(args.get('frameId'),str):
-                            uses[(record['runId'],args.get('jobId'),args['frameId'])]=record
+                    if part['type']!='tool_call' or part['name']!='studio_send_vm_input':
+                        continue
+                    outcome=results.get((record['runId'],part['callId']))
+                    args=part['arguments']
+                    if outcome and isinstance(args.get('frameId'),str) and not has_uncertain_result(outcome):
+                        uses[(record['runId'],args.get('jobId'),args['frameId'])]=record
             candidate=self.captured(record)
             if candidate is None:continue
             slot,image=candidate
@@ -113,5 +120,5 @@ class Screenshots:
             part=record['content'][0]
             if used and used['sequence']<new['sequence'] and self.processed(used,part['callId'],
                     part['result']['screenshotReference'],image['sha256']):
-                result.add(seq)
-        return result
+                retired.add(seq)
+        return retired

@@ -26,7 +26,9 @@ export function ContextIndicator({context,projectId,sessionId}:{context?:Session
     </button>
     {known&&<span className="agent-context-meter" role="meter" aria-label="Context usage" aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={fill*100} aria-valuetext={percent.format(ratio)+(context?.engine==='studio'?' of the configured model window':' of the reported effective context window')}/>}
-    {context?.inputCount?.characters!=null&&<small className="context-count-caption">{compact.format(context.inputCount.characters)} chars</small>}
+    {context?.compaction?.state==='running'
+      ?<small className="context-count-caption context-compacting" role="status">Summarizing…</small>
+      :context?.inputCount?.characters!=null&&<small className="context-count-caption">{compact.format(context.inputCount.characters)} chars</small>}
     {open&&<ContextInspector key={projectId+':'+sessionId} projectId={projectId} sessionId={sessionId} context={context} close={()=>setOpen(false)}/>}
   </div>;
 }

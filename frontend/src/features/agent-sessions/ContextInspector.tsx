@@ -6,6 +6,7 @@ import type {ContextRequestDetail,ContextRequestPage} from '../../../../shared/c
 import {sessionPath,useSessionApi} from './api';
 import './context-inspector.css';
 import {OriginalRequest} from './OriginalRequest';
+import {CompactionProgress} from './CompactionProgress';
 
 const number=new Intl.NumberFormat('en-US');
 const percentage=new Intl.NumberFormat('en-US',{style:'percent',maximumFractionDigits:1});
@@ -69,6 +70,7 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
     }}><option value="dispatched">Dispatched requests</option><option value="blocked">Blocked before send</option></select></label>
       <small>{kind==='blocked'?'Prepared inputs · not sent':'Last observed LLM dispatch by default'}</small></div>
     <div className="context-inspector-scroll" aria-busy={loading}>
+      {context?.compaction&&<CompactionProgress progress={context.compaction}/>}
       {loading&&<p role="status">Loading original request…</p>}
       {error&&<div className="context-message" role="alert"><p>{error}</p><button type="button" onClick={()=>choose(selected)}>Try again</button></div>}
       {!loading&&!error&&view&&!record&&<div className="context-message"><h3>{kind==='blocked'?'No blocked input':'No captured request'}</h3><p>{view.page.notice}</p>

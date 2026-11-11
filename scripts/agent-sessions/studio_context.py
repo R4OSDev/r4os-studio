@@ -1,5 +1,6 @@
 """Shared active context, measured usage and immutable model checkpoints."""
 import asyncio
+from contextlib import nullcontext
 import hashlib
 import math
 import uuid
@@ -100,19 +101,46 @@ class StudioContext(Context):
             inputLimit=threshold(w.config,capacity) if strict(w.config.get('contextPolicy')) else None,
             checkpoint={'recordId':checkpoint['id'], 'throughSequence':checkpoint['throughSequence']} if checkpoint else None)
         if optimized(w.config.get('contextPolicy'),2):value['compactionTargetTokens']=target
+        if getattr(self,'compaction_progress',None):value['compaction']=self.compaction_progress
         self.write(value)
         return active, records, checkpoint, measured, capacity, estimate, size
 
     async def prepare(self, instructions, tools):
+        modern=optimized(self.w.config.get('contextPolicy'),5)
+        self.compaction=None
+        if modern:
+            from compaction import Compaction, MAX_STEPS, TOTAL_SECONDS
+            self.compaction=Compaction(self)
         try:
-            for _ in range(16):
-                active, progress = await self.compact(instructions, tools)
-                if not progress: return active
+            async with (asyncio.timeout(TOTAL_SECONDS) if modern else nullcontext()):
+                for _ in range(MAX_STEPS+1 if modern else 16):
+                    active, progress = await self.compact(instructions, tools)
+                    if not progress: return active
             raise ModelFault('context_compaction_bound', not_dispatched=True)
+        except TimeoutError:
+            error=ModelFault('context_compaction_timeout')
+            if self.compaction:self.compaction.interrupted(str(error))
+            raise error from None
+        except asyncio.CancelledError:
+            if self.compaction:self.compaction.interrupted('Context summarization was stopped.')
+            raise
         except ModelFault as error:
+            if self.compaction:self.compaction.interrupted(str(error))
             if error.category=='context' and error.not_dispatched and self.w.config.get('contextPolicy',{}).get('schema')==4:
                 self.record_blocked(instructions,tools,error)
             raise
+        except Exception as error:
+            from store import ProjectFault
+            if self.compaction:self.compaction.interrupted(str(error) if isinstance(error,ProjectFault) else
+                'The continuation checkpoint could not be confirmed.')
+            raise
+
+    def show_compaction(self, progress):
+        from session_context import saved
+        self.compaction_progress=progress
+        if self.active():
+            w=self.w; value=saved(w.store,w.session_id) or empty(w.store,w.store.row(w.session_id))
+            self.write({**value,'compaction':progress})
 
     def record_blocked(self,instructions,tools,error):
         """A prepared input is not a model call or a dispatched request."""
@@ -145,7 +173,7 @@ class StudioContext(Context):
         model=getattr(w,'prepared_transport',None)
         self.write({**value,'state':'stale' if measured else 'blocked' if blocked else 'unavailable',
             'blockedRequestId':getattr(model,'blocked_request_id',None) if blocked else None,
-            'reason':str(error) if blocked else 'The latest model operation failed. '+(
+            'reason':str(error) if isinstance(error,ModelFault) and error.category=='context' else 'The latest model operation failed. '+(
                 'This is retained earlier measured context.' if measured else 'No provider input measurement is available.')})
 
     async def count_preview(self,active,instructions,tools,*,summary=None):
@@ -162,22 +190,25 @@ class StudioContext(Context):
             active,_,_=self.history()
             await self.count_preview(active,instructions,tools)
         active, records, checkpoint, measured, capacity, estimate, size = self.report(instructions, tools)
-        if open_calls(active): raise ModelFault('context_has_open_tool_pairs')
+        if open_calls(active): raise ModelFault('context_has_open_tool_pairs',not_dispatched=True)
         latest = self.latest(records)
         fresh = latest and (not checkpoint or latest['sequence'] > checkpoint['sequence'])
         limit=threshold(w.config,capacity)
         bounded=strict(w.config.get('contextPolicy'))
         current_estimate_only=optimized(w.config.get('contextPolicy'),2)
-        trigger,_=compaction_limits(w.config,capacity)
+        trigger,target=compaction_limits(w.config,capacity)
         measured_pressure=not current_estimate_only and fresh and measured is not None
         pressure = (trigger is not None and (estimate is not None and estimate >= trigger or measured_pressure and measured >= trigger)) or size >= 6*1024*1024
         if not pressure: return active, False
         if optimized(w.config.get('contextPolicy'),1):
             from signed_history import latest as signed
             if signed(active,w.transport().binding):
-                if size >= 6*1024*1024 or limit is not None and estimate > limit:
-                    raise ModelFault('context_signed_prefix',not_dispatched=True)
+                from request_capture import MAX_BODY
+                if size > MAX_BODY or limit is not None and estimate > limit:
+                    raise ModelFault('context_signed_limit',not_dispatched=True)
                 return active, False
+        if getattr(self,'compaction',None):
+            return await self.compaction.step(instructions,tools,active,records,checkpoint,limit,target,estimate,size)
         from checkpoint_records import plan
         byte_limit=min(512*1024, max(256,(limit or 250000)) if bounded else max(16384,(limit or 250000)*2))
         planned = plan(w, active, checkpoint, byte_limit)
@@ -232,13 +263,13 @@ class StudioContext(Context):
         w.conversation.checkpoint(w.run_id,*saved)
         return self.report(instructions, tools)[0], True
 
-    def summary_setup(self,limit,instructions):
+    def summary_setup(self,limit,instructions,*,target_hint=None):
         if not optimized(self.w.config.get('contextPolicy'),4):return None,instructions+'\n\n'+SUMMARY
         from summary_budget import instructions as short_instructions, profile
-        budget=profile(self.w.config,limit)
+        budget=profile(self.w.config,limit,target_hint)
         return budget,short_instructions(budget)
 
-    async def summarize(self,active,checkpoint,planned,instructions,tools,summary_instructions,budget):
+    async def summarize(self,active,checkpoint,planned,instructions,tools,summary_instructions,budget,*,announce=True):
         from context_results import checkpoint_references
         from summary_context import VERSION, payload, request
         w=self.w
@@ -246,7 +277,7 @@ class StudioContext(Context):
         projected=optimized(w.config.get('contextPolicy'),3)
         references=checkpoint_references(prefix,checkpoint,w if w.config.get('contextResultProtocol')==1 and w.config.get('permissions',{}).get('studio.read_context_result') else None)
         w.validate_lease()
-        self.report(instructions, tools, 'pending', 'Creating a continuation checkpoint with the selected model. Original history is preserved.')
+        if announce:self.report(instructions, tools, 'pending', 'Creating a continuation checkpoint with the selected model. Original history is preserved.')
         w.turn_id = 'studio-summary-' + str(uuid.uuid4())
         transition(w.store, w.run_id, 'running', turn_id=w.turn_id)
         # Historical calls are data for the summarizer, without active tools.

@@ -7,10 +7,12 @@ from model_transport import ModelFault
 HEADINGS = ('Objective', 'Current state', 'Open work', 'Effects', 'Original references')
 
 
-def profile(config, input_limit):
+def profile(config, input_limit, target_hint=None):
     provider = config['apiProvider']
     model = config.get('apiModel', {})
     target = min(2048, max(256, input_limit // 8)) if input_limit is not None else 2048
+    if target_hint is not None:
+        target = min(target, max(256, target_hint))
     effort = config['effort']
     cap = None
     if (provider.get('kind') == 'openai-compatible' and provider.get('baseUrl') == 'https://api.openai.com/v1'

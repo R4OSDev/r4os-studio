@@ -113,3 +113,7 @@ Project continuation-summary inputs before sizing, retaining exact human objecti
 ## 0.12.30
 
 Use a short summary-only prompt, bounded output and time, and qualified reasoning settings without changing the normal request on the original connection.
+
+## 0.12.31
+
+Plan the largest fitting whole-history prefix against the complete next request, commit only confirmed progress, and show compaction state and estimates in the session and Context overlay.

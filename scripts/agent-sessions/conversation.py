@@ -118,12 +118,17 @@ class Conversation:
             raise ProjectFault('Invalid conversation role.', 400)
         return self._append(run_id, record_id, 'message', role, content, origin, commit=commit)
 
-    def checkpoint(self, run_id, record_id, through_seq, text, origin):
+    def head(self):
+        return self.store.db.execute('SELECT COALESCE(MAX(seq),0) FROM conversation_records WHERE session_id=?',
+                                     (self.session_id,)).fetchone()[0]
+
+    def checkpoint(self, run_id, record_id, through_seq, text, origin, *, expected_head=None):
         if type(through_seq) is not int or through_seq < 1 or not isinstance(text, str) or not text.strip():
             raise ProjectFault('A conversation checkpoint requires confirmed source content and a summary.', 400)
-        return self._append(run_id, record_id, 'checkpoint', 'assistant', [{'type': 'text', 'text': text}], origin, through_seq)
+        return self._append(run_id, record_id, 'checkpoint', 'assistant', [{'type': 'text', 'text': text}], origin,
+                            through_seq, expected_head=expected_head)
 
-    def _append(self, run_id, record_id, kind, role, content, origin, through_seq=None, commit=True):
+    def _append(self, run_id, record_id, kind, role, content, origin, through_seq=None, commit=True, *, expected_head=None):
         from run_store import event, get_run
         if self.metadata() is None:
             raise ProjectFault('This session has not been explicitly initialized for the Studio runtime.', 409)
@@ -153,6 +158,8 @@ class Conversation:
                 if tuple(old[k] for k in ('run_id', 'kind', 'role', 'content', 'origin', 'through_seq')) != expected:
                     raise ProjectFault('This conversation record identity has different original content.', 409)
                 return self.present(old)
+            if expected_head is not None and self.head()!=expected_head:
+                raise ProjectFault('The conversation changed during context summarization. The prior checkpoint was kept.',409)
             if through_seq is not None:
                 source = self.store.db.execute("SELECT 1 FROM conversation_records WHERE session_id=? AND seq=? AND kind='message'",
                                                (self.session_id, through_seq)).fetchone()

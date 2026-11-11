@@ -14,6 +14,9 @@
 .context-source-controls select { max-width:100%; min-width:0; padding:6px; color:#e4d5ef; background:#33233e; border:1px solid #624575; border-radius:5px; font:inherit; }
 .context-source-controls small { color:#ac98bd; font-size:10px; }
 .context-inspector-scroll { min-height:100px; overflow:auto; padding:20px; }
+.context-compaction-progress { margin:0 0 16px; padding:10px 12px; border:1px solid #5d496e; border-radius:6px; background:#2a2033; }
+.context-compaction-progress>.context-facts { margin:6px 0 0; }
+.context-compaction-progress>p { margin:8px 0 0; color:#c4adcf; }
 .context-request-heading { display:flex; flex-direction:column; gap:3px; margin-bottom:22px; overflow-wrap:anywhere; }
 .context-request-heading strong { font-size:15px; color:#f0defe; }
 .context-request-heading span,.context-request-heading time { color:#b7a3c5; font-size:12px; }

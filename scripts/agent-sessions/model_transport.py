@@ -70,12 +70,21 @@ class ModelFault(ProjectFault):
             self.category='context'
             self.args=('The original Messages prefix for signed thinking could not be preserved. '
                        'Original history was retained. No model request was sent.',)
-        if code in ('context_summary_incomplete','context_summary_invalid','context_summary_timeout'):
+        if code=='context_signed_limit':
+            self.category='context'
+            self.args=('The required Messages prefix exceeds the input limit and must be kept intact for signed thinking. '
+                       'No model request was sent.',)
+        if code in ('context_summary_incomplete','context_summary_invalid','context_summary_timeout',
+                    'context_summary_no_progress','context_compaction_timeout','context_history_changed','context_has_open_tool_pairs'):
             self.category='context'
             self.args=({
                 'context_summary_incomplete':'The model did not return a complete continuation summary.',
                 'context_summary_invalid':'The continuation summary did not meet its structure or output budget.',
                 'context_summary_timeout':'Context summarization reached its time limit.',
+                'context_summary_no_progress':'The confirmed summary would not meaningfully reduce the next request.',
+                'context_compaction_timeout':'Context compaction reached its total time limit.',
+                'context_history_changed':'The conversation changed before the summary could be applied.',
+                'context_has_open_tool_pairs':'The context still has open tool calls.',
             }[code]+' The previous context was kept.',)
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
