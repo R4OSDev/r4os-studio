@@ -117,12 +117,19 @@ class WorkspaceTools:
         # All calls share this lock, including reads, so a read/hash pair observes
         # the preceding Studio write. External administrator edits remain external.
         async with self.lock:
+            from terminal_group import Group, identity
             proc = await asyncio.create_subprocess_exec(*self.command(['/usr/bin/python3', '-I', '-B', str(Path(__file__).with_name('file_worker.py'))], patch=name == 'apply_patch'),
-                       stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=262144)
+                       stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                       limit=262144, start_new_session=True)
+            original = identity(proc.pid)
+            group = Group(proc.pid, original[3] if original else None)
             try:
                 output, _ = await asyncio.wait_for(proc.communicate(json.dumps({'tool': name, 'arguments': arguments}).encode()), 30)
                 if proc.returncode or len(output) > 196608: raise ValueError()
                 return json.loads(output)
             except BaseException:
-                if proc.returncode is None: proc.kill(); await proc.wait()
+                await group.stop()
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
                 raise

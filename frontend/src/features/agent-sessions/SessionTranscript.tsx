@@ -62,7 +62,9 @@ const ToolDetails = memo(function ToolDetails({ i, jobId, projectId, sessionId, 
         {i.partialChangesPossible === true && <p>Partial changes may remain.</p>}
         {i.files != null && typeof i.files === 'object' && <CodeBlock text={JSON.stringify(i.files, null, 2)} label="Copy changed files" language="Files" />}
         <TerminalLifetime value={i} />
-        {i.exitCode != null && <p>Exit code {i.exitCode}</p>}{i.error && <p>{i.error}</p>}
+        {i.exitCode != null && <p>Exit code {i.exitCode}</p>}
+        {i.error && <p>{i.error === 'deadlineExceeded' && typeof i.deadlineSeconds === 'number'
+          ? `Tool deadline exceeded (${i.deadlineSeconds.toLocaleString('en-US')} seconds).` : i.error}</p>}
         {i.captureState === 'confirmed' && <p>Screenshot saved.{i.imageDelivery === 'reference-only' && ' This model received the image reference without pixels.'}</p>}
         {i.visionAnalysis && <div aria-label="Screenshot analysis">
           <p>{({ 'not-requested': 'Analysis not requested.', native: 'Image delivered directly to the main model.', completed: 'External Vision analysis completed.', failed: 'Analysis unavailable. The saved screenshot is retained.', unknown: 'Analysis unconfirmed. The saved screenshot is retained.' })[i.visionAnalysis.state]}</p>

@@ -199,8 +199,10 @@ class StudioWorker(Worker):
         model.context_policy=self.config.get('contextPolicy')
         model.summary_budget=summary
         if optimized(model.context_policy, 1) and model.binding['protocol']=='messages':
+            from instructions import TOOL_EXECUTION
             from signed_history import Prefix
-            model.signed_prefix=Prefix(self.store,self.session_id,model.binding)
+            guidance = TOOL_EXECUTION if self.config.get('toolDeadlines', {}).get('version') == 1 else None
+            model.signed_prefix=Prefix(self.store,self.session_id,model.binding,guidance)
         model.count_observer=lambda receipt:event(self.store,self.session_id,self.run_id,'inputCount',receipt)
         from studio_history import recoveries
         model.history_resolver=lambda messages:recoveries(self.store,self.session_id,messages)
@@ -353,6 +355,7 @@ class StudioWorker(Worker):
     async def cycle(self):
         from instructions import compose
         instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
+        final_tool_results = self.config.get('toolDeadlines', {}).get('version') == 1
         correction_attempts=0; rejected=set()
         while self.active():
             await self.goal_worker.boundary(allow_play=False)
@@ -436,7 +439,8 @@ class StudioWorker(Worker):
                 self.conversation.append(self.run_id, 'tool-' + bound_id + '-' + str(self.round), 'tool',
                     [{'type': 'tool_result', 'callId': call['callId'], 'result': reply},*media],
                     origin)
-                if result.get('error') == 'unknown' or result.get('partialChangesPossible') and result.get('error') == 'interrupted':
+                if not final_tool_results and (result.get('error') == 'unknown'
+                        or result.get('partialChangesPossible') and result.get('error') == 'interrupted'):
                     self.unconfirmed()
             # An unrelated later schema error gets its own correction. Text,
             # failed/partial batches and uncertain effects never renew it.

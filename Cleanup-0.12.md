@@ -157,3 +157,7 @@ Finite noninteractive terminal commands wait for a final process receipt while S
 ## 0.12.41
 
 Complete historical tool groups can be summarized with failures, possible partial effects and references to their originals. Current results and signed Messages history stay exact.
+
+## 0.12.42
+
+Direct Studio runs return every tool outcome together at the next model step. Tool-specific deadlines are configurable under System Settings Tools and freeze at run acceptance.

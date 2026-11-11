@@ -93,6 +93,9 @@ def project(messages, binding, recoveries=None):
         for part in parts:
             if part['type'] == 'tool_result' and (part['result'].get('error') == 'unknown' or part['result'].get('partialChangesPossible')):
                 proof = (recoveries or {}).get((message.get('runId'), part['callId']))
+                if (not proof and part['result'].get('success') is False
+                        and part['result'].get('error') in ('deadlineExceeded', 'resultUnavailable')):
+                    continue  # Archived failure with original output and possible partial effects.
                 if not proof: raise ModelFault('model_context_unconfirmed_tool')
                 if proof.get('kind')=='terminal-patch-observation':
                     notes.append({'type':'text','text':'STUDIO ORIGINAL PATCH OBSERVATION. This patch failed and may have applied only part of its edits. '

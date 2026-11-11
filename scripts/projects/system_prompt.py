@@ -31,14 +31,15 @@ def validate_text(value):
 
 
 def location(projects, create=False, kind='system'):
-    if kind not in ('system', 'skill'): raise ProjectFault('Unknown prompt settings.', 400)
+    names = {'system': 'Settings.sqlite', 'skill': 'SkillManagerSettings.sqlite', 'tools': 'ToolSettings.sqlite'}
+    if kind not in names: raise ProjectFault('Unknown settings storage.', 400)
     root = Path(projects).absolute() / '.studio'
     if create:
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
     if root.exists() or root.is_symlink():
         if root.resolve(strict=True) != root or not stat.S_ISDIR(root.lstat().st_mode):
             raise ProjectFault('Prompt storage is unavailable.', 503)
-    path = root / ('SkillManagerSettings.sqlite' if kind == 'skill' else 'Settings.sqlite')
+    path = root / names[kind]
     for candidate in (path, path.with_name(path.name + '-journal')):
         if candidate.exists() or candidate.is_symlink():
             if not stat.S_ISREG(candidate.lstat().st_mode):

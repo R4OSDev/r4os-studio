@@ -118,6 +118,7 @@ export interface SessionItem extends Partial<TerminalTimingFields> {
   attachments?: import('./agent-inputs.js').FrozenAttachment[];
   id: string; runId: string; turnId?: string; type: string; text?: string; tool?: string; status?: string;
   arguments?: unknown; output?: string; error?: string; exitCode?: number; [key: string]: unknown;
+  deadlineSeconds?: number;
   developmentStop?: import('./project-development.js').DevelopmentStopReceipt;
   roadmap?: { operation: string; code?: number; workflowId?: string; phase?: string; revision?: number; currentVersionId?: string; requestId?: string; versionId?: string; sha256?: string };
   remote?: RemoteReceiptSummary;

@@ -259,6 +259,9 @@ class Host:
         if op == 'context_settings_save':
             from context_policy import update
             return await self.read_work.run(update,self.config['projects'],request.get('input'))
+        if op == 'tool_deadlines_save':
+            from tool_deadlines import update
+            return await self.read_work.run(update, self.config['projects'], request.get('input'))
         if op == 'fallback_save':
             from global_fallback import update
             return await self.read_work.run(update,self.config['projects'],self.config['providers'],request.get('input'),request.get('purpose','vision'))

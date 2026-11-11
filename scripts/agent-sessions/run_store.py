@@ -204,6 +204,8 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         if original is None:
             snapshot['contextResultProtocol']=1
             snapshot['terminalCompletion']=1
+            from tool_deadlines import freeze as freeze_tool_deadlines
+            snapshot['toolDeadlines'] = freeze_tool_deadlines(store.projects)
             from context_policy import optimized
             from image_token_rules import rule_for
             has_rule=optimized(snapshot['contextPolicy'],8) and rule_for(snapshot.get('apiProvider',{}))
@@ -212,7 +214,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
                 observations=previous(store,session_id,{**snapshot['apiProvider'],'model':snapshot['model']})
                 if observations:snapshot['contextPolicy']['imageEstimate']=observations
         else:
-            for key in ('contextResultProtocol', 'terminalCompletion'):
+            for key in ('contextResultProtocol', 'terminalCompletion', 'toolDeadlines'):
                 if key in original: snapshot[key] = original[key]
     if original is not None:
         for key in ('nativeGoalPreparation','apiGoalProtocol'):

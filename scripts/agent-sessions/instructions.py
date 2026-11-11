@@ -35,6 +35,16 @@ TERMINAL_EXECUTION = (
     'Studio shows output while it runs and returns the final exit status. Use tty for an interactive '
     'terminal or set yield_time_ms when a resumable process handle is needed.'
 )
+TOOL_EXECUTION = (
+    '\n\n*** STUDIO TOOL EXECUTION ***\n'
+    'You can request several tool calls in one model response. Studio runs them in the order requested. '
+    'Your next model step receives all the results together, with one success or failure per call. '
+    'Wait for the next step when a tool argument depends on an earlier result. '
+    'Each tool has a Studio deadline. A deadline failure can include partial output or a job reference. '
+    'Check the supplied evidence before repeating an action with possible partial effects. '
+    'For finite host commands, omit tty and yield_time_ms to receive the final exit status. '
+    'Use tty or an explicit yield_time_ms when you need a resumable process handle.'
+)
 
 
 SECTION_HEADING = re.compile(
@@ -130,7 +140,9 @@ def compose(config, project=None):
     if (config.get('permissions', {}).get('studio.exec_command')
             and TERMINAL_TIMING not in source and TERMINAL_TIMING not in text):
         text += '\n\n' + TERMINAL_TIMING
-    if (config.get('terminalCompletion') == 1 and config.get('permissions', {}).get('studio.exec_command')
+    batch_results = config.get('toolDeadlines', {}).get('version') == 1
+    if (not batch_results and config.get('terminalCompletion') == 1
+            and config.get('permissions', {}).get('studio.exec_command')
             and config.get('apiProvider', {}).get('protocol') in ('responses', 'chat-completions')):
         text += '\n\n' + TERMINAL_EXECUTION
     if (any(config.get('permissions', {}).get(key) for key in ('studio.exec_command', 'studio.write_stdin'))
@@ -151,7 +163,8 @@ def compose(config, project=None):
         from skill_application import catalog_text
         text += catalog_text(config['skillAccess'], config.get('workspaceContext'))
     from workspace_instructions import compose as workspace_guidance
-    return source + format_sections(text + runtime_guidance(config, project) + workspace_guidance(config))
+    generated = format_sections(text + runtime_guidance(config, project) + workspace_guidance(config))
+    return source + generated + (TOOL_EXECUTION if batch_results else '')
 
 
 def runtime_guidance(config, project=None):

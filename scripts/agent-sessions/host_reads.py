@@ -7,7 +7,7 @@ from session_store import SessionStore, identity
 from store import ProjectFault
 
 OPERATIONS = frozenset(('events', 'goal', 'goal_receipt', 'goal_clock', 'run_receipt',
-    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools', 'fallback', 'fallback_receipt','context_settings','context_settings_receipt','quota_wait','quota_wait_receipt'))
+    'messages', 'message_receipt', 'environment_notes', 'environment_note_receipt', 'session_delete_receipt', 'statistics','model_choice_receipt', 'system_tools', 'fallback', 'fallback_receipt','context_settings','context_settings_receipt','tool_deadlines','quota_wait','quota_wait_receipt'))
 
 
 def read(config, request):
@@ -15,6 +15,9 @@ def read(config, request):
     if op in ('context_settings','context_settings_receipt'):
         from context_policy import read, receipt
         return read(config['projects']) if op=='context_settings' else receipt(config['projects'],request.get('requestId'))
+    if op == 'tool_deadlines':
+        from tool_deadlines import read
+        return read(config['projects'])
     if op in ('fallback','fallback_receipt'):
         from global_fallback import present, receipt
         return present(config['projects'],config['providers'],request.get('purpose','vision')) if op == 'fallback' else receipt(config['projects'],request.get('requestId'),request.get('purpose','vision'))

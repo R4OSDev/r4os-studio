@@ -31,13 +31,25 @@ def prefix(body, count):
     return hashlib.sha256(dumps([body.get('system'), body.get('tools'), body['messages'][:count]]).encode()).hexdigest()
 
 
+def without_instruction(system, instruction):
+    blocks = isinstance(system, list)
+    text = system[-1].get('text') if blocks and system and isinstance(system[-1], dict) else system
+    if not isinstance(text, str):
+        return None
+    before, found, after = text.rpartition(instruction)
+    if not found:
+        return None
+    return [*system[:-1], {**system[-1], 'text': before + after}] if blocks else before + after
+
+
 class Prefix:
-    def __init__(self, store, sid, binding):
+    def __init__(self, store, sid, binding, optional_instruction=None):
         self.store = store
         self.sid = sid
         self.binding = binding
         self.record = None
         self.proof = None
+        self.optional_instruction = optional_instruction
 
     def check(self, messages, body):
         record = latest(messages, self.binding)
@@ -53,5 +65,18 @@ class Prefix:
         wire = body['messages']
         position = next((i for i in range(len(wire) - 1, -1, -1)
                          if wire[i]['role'] == 'assistant' and signed(wire[i]['content'])), None)
-        if self.proof is None or position != self.proof[0] or prefix(body, position) != self.proof[1]:
+        if self.proof is None or position != self.proof[0]:
             raise ModelFault('context_signed_prefix', not_dispatched=True)
+        if prefix(body, position) == self.proof[1]:
+            return
+        if self.optional_instruction:
+            system = body.get('system')
+            previous = without_instruction(system, self.optional_instruction)
+            if previous is not None:
+                body['system'] = previous
+                # Older signed blocks predate this generated system section.
+                # Accept its removal only if the entire original prefix matches.
+                if prefix(body, position) == self.proof[1]:
+                    return
+                body['system'] = system
+        raise ModelFault('context_signed_prefix', not_dispatched=True)

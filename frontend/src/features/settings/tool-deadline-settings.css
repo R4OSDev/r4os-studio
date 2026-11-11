@@ -1,0 +1,16 @@
+.tool-deadline-settings select, .tool-deadline-settings input {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  padding: 10px 12px;
+  border: 1px solid #4b3b5d;
+  border-radius: 7px;
+  background: #17111f;
+  color: #f0e7fa;
+  font: inherit;
+}
+.tool-deadline-settings select { margin-bottom: 20px; }
+.tool-deadline-settings select:focus-visible, .tool-deadline-settings input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

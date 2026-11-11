@@ -35,6 +35,16 @@ export async function settingsRoutes(app: FastifyInstance, { directory }: { dire
     sessions.mutation(request,reply);reply.header('Cache-Control','private, no-store');
     return agentHost({operation:'context_settings_save',input:request.body});
   });
+  app.get('/tool-deadlines', async (request, reply) => {
+    const session = sessions.session(request, reply, true);
+    reply.header('Cache-Control', 'private, no-store');
+    return { ...await agentHost<Record<string, unknown>>({ operation: 'tool_deadlines' }), csrfToken: session.token };
+  });
+  app.post('/tool-deadlines', { bodyLimit: 4096 }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    reply.header('Cache-Control', 'private, no-store');
+    return agentHost({ operation: 'tool_deadlines_save', input: request.body });
+  });
   app.get('/tools' , async (request, reply) => {
     sessions.session(request, reply, true);
     return agentHost({ operation: 'system_tools' });

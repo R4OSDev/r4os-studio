@@ -279,6 +279,10 @@ class Worker:
         import hashlib
         hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
         previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
+        tool_id = name.replace('studio_', 'studio.', 1)
+        from tool_deadlines import seconds_for
+        from tool_outcomes import execute_with_deadline, reported_result
+        deadline = seconds_for(self.config, tool_id)
         if previous:
             if roadmap_denial:
                 return await output({'success': False, 'error': 'disabled', 'output': roadmap_denial})
@@ -289,6 +293,8 @@ class Worker:
                 return await output(replay(self,name[7:],arguments,previous))
             if previous['result']:
                 result = json.loads(previous['result'])
+                if deadline is not None:
+                    result = reported_result(result)
                 if result.get('image') and result.get('error')=='unknown' and name in ('studio_capture_vm','studio_send_vm_input'):
                     self.unconfirmed()
                     return await output(result)
@@ -321,7 +327,6 @@ class Worker:
             admission_closed = self.closing or self.stopping or not row['busy'] or row['state'] == 'stopping'
             self.store.db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,NULL)',
                                   (self.run_id, call_id, name, hashed, 'intent', encode(arguments)))
-        tool_id = name.replace('studio_', 'studio.', 1)
         if admission_closed:
             result = {'success': False, 'error': 'interrupted', 'output': 'The run is stopping.'}
         elif admission_error is not None:
@@ -333,7 +338,11 @@ class Worker:
                 and not self.config['permissions'].get(tool_id, False)):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
         else:
-            try: result = await self.execute(name[7:], arguments, call_id)
+            try:
+                if deadline is None:
+                    result = await self.execute(name[7:], arguments, call_id)
+                else:
+                    result = await execute_with_deadline(self, name[7:], arguments, call_id, deadline)
             except asyncio.CancelledError:
                 result = ({'success':False,'error':'interrupted','output':'The read-only Git inspection was interrupted. No commit, pull or push was submitted.'}
                     if name == 'studio_read_project_git' else
@@ -344,6 +353,8 @@ class Worker:
                 uncertain = uncertain or name == 'studio_skill_call'
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
                           **({'partialChangesPossible': True} if uncertain else {})}
+            if deadline is not None:
+                result = reported_result(result)
         # Strip image bytes before any durable tool result, item or SSE event.
         # Replayed results have only the image reference and revalidate its file.
         image_data = result.pop('_transientImage', None)
@@ -355,7 +366,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'generatedImage', 'imageGeneration', 'skillMcp', 'skillMcpRequest'):
+        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'generatedImage', 'imageGeneration', 'skillMcp', 'skillMcpRequest', 'deadlineSeconds'):
             if key in result: value[key] = result[key]
         if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
             from terminal_timing import FIELDS as terminal_time_fields
