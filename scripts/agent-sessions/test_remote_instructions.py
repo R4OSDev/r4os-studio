@@ -71,7 +71,8 @@ class RemoteInstructions(unittest.TestCase):
     def test_disabled_or_partial_rights_have_only_actual_capability_data(self):
         self.host()
         enabled = self.frozen(); disabled = deepcopy(enabled)
-        disabled['permissions'] = {k: False for k in enabled['permissions']}; p = data(compose(disabled)); self.assertFalse(any(p['permissions'].values()))
+        disabled['permissions'] = {k: False for k in enabled['permissions']}
+        self.assertNotIn('STUDIO REMOTE HOST', compose(disabled))
         enabled['permissions']['studio.remote_files'] = False; partial = data(compose(enabled))
         self.assertTrue(partial['permissions']['studio.run_remote_command']); self.assertFalse(partial['permissions']['studio.remote_files'])
         enabled['remoteHostContext']['password'] = self.secret; enabled['remoteHostContext']['privatePath'] = '/private/credentials'
@@ -79,8 +80,9 @@ class RemoteInstructions(unittest.TestCase):
 
     def test_missing_host_needs_no_catalog_process_and_skill_scope_has_no_remote_contract(self):
         with patch('remote_context.subprocess.run', side_effect=AssertionError('No catalog read without an assignment')):
-            config = self.frozen(); public = data(compose(config))
-        self.assertIsNone(public['assignedHost']); self.assertEqual(public['defaultTarget'], 'virtual_machine'); self.assertIn('No Remote Host', public['availabilityReason'])
+            config = self.frozen(); rendered = compose(config)
+        self.assertIn('No Remote Host is assigned for this run', rendered)
+        self.assertNotIn('BEGIN FROZEN REMOTE HOST DATA', rendered)
         text = 'Own skill manager text.'; skill = {'owner': {'type': 'skill', 'id': self.pid}, 'permissions': {},
             'engine': {'toolScope': 'skill'}, 'skillManagerPrompt': {'text': text, 'sha256': hashlib.sha256(text.encode()).hexdigest()}}
         self.assertNotIn('STUDIO REMOTE HOST', compose(skill)); self.assertEqual(compose(skill).count(text), 1)

@@ -108,7 +108,7 @@ class ClaudeInputs(unittest.TestCase):
             run,_=admit(store,self.f.sid,{'requestId':str(uuid.uuid4()),'revision':1,'text':'Own instruction source check','skillSelection':1},self.f.providers)
             config=json.loads(get_run(store,run['id'])['config']);prompt=compose(config)
             self.assertIn('GLOBAL R4OS STUDIO INSTRUCTIONS',prompt);self.assertIn('PROJECT INSTRUCTIONS FROM Workspace/Agents.md',prompt)
-            self.assertIn('CURRENT STUDIO GLOBAL SKILLS',prompt)
+            self.assertEqual('CURRENT STUDIO GLOBAL SKILLS' in prompt, bool(config['skillAccess']['entries']))
             self.assertEqual(config['claudeInstructions']['sha256'],sha(prompt.encode()))
             self.assertEqual(config['claudeInstructions']['bytes'],len(prompt.encode()))
             changed=copy.deepcopy(config);changed['projectInstructions']['text']+=' altered source'

@@ -23,12 +23,14 @@ def snapshot(store, config):
 
 
 def compose(config):
-    paths = config.get('workspaceContext')
-    return ('\n\nSTUDIO WORKSPACE: Studio runs directly as host Root in a trusted environment. '
-        'Use the selected workspace as the working directory and keep task changes there unless the task calls for another location. '
-        'Relative file paths and omitted terminal workdir use that workspace. Absolute host paths, parent paths and symlinks use normal host semantics. '
-        'The workspace is an orientation, with no filesystem, process or network sandbox. '
-        'File tools resolve named roots and structured /workspace or SDK paths to the actual paths of this run. '
-        'In terminals use STUDIO_WORKSPACE, SDK_ROOT, CONTRACT_ROOT and SDK_TOOLS_ROOT or actual paths. '
-        'User authorization, selected tool availability and original job/receipt identities still apply. '
-        + ('Actual working paths: ' + json.dumps(paths, ensure_ascii=False, sort_keys=True) + '.' if paths else ''))
+    path = (config.get('workspaceContext') or {}).get('workspace')
+    text = ('\n\nSTUDIO WORKSPACE: Use the selected workspace unless the user specifies another location. '
+            'Relative file paths and the default terminal workdir start there.')
+    if path:
+        text += ' Workspace path ' + json.dumps(path, ensure_ascii=True) + '.'
+    if config.get('owner', {}).get('type') == 'project':
+        text += ' Use the file-tool roots workspace, sdk and contract for the selected sources.'
+    if config.get('permissions', {}).get('studio.exec_command'):
+        text += (' Host commands run as Root. Use STUDIO_WORKSPACE and the paths in STUDIO_PATHS. '
+                 'Project terminals expose the pinned SDK_ROOT and CONTRACT_ROOT when available.')
+    return text

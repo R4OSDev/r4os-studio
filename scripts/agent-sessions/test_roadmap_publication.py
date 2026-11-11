@@ -31,11 +31,11 @@ class Publication(unittest.TestCase):
             original = copy.deepcopy(config)
             text = compose(config)
             self.assertIn('STUDIO PUBLICATION CONTEXT: enabled.', text)
-            self.assertIn('autonomously commit and push each subversion', text)
+            self.assertIn('Commit and push each finished subversion', text)
             self.assertIn('all required checks have passed', text)
-            self.assertIn('meaningful commitMessage that includes the subversion number', text)
+            self.assertIn('commitMessage with the subversion number', text)
             self.assertIn('nothingToPush', text); self.assertIn('original job/request ID', text)
-            self.assertIn('do not blindly use a new call ID', text)
+            self.assertIn('Check the original job/request ID after an uncertain reply', text)
             self.assertNotIn(binding['connectionId'], text)
             self.assertEqual(config, original)
             self.assertEqual(compose(config), text)  # same contract before native start/resume
@@ -44,7 +44,7 @@ class Publication(unittest.TestCase):
                 value = {**config, **changed}
                 if not changed: value.pop('githubBinding')
                 self.assertIn('STUDIO PUBLICATION CONTEXT: disabled.', roadmap(value)); self.assertIn(reason, roadmap(value))
-            self.assertNotIn('CHECKED SUBVERSION PUBLICATION', roadmap({**config, 'roadmapEnabled': False}))
+            self.assertNotIn('STUDIO PUBLICATION CONTEXT', roadmap({**config, 'roadmapEnabled': False}))
             self.assertEqual(roadmap({**config, 'owner': {'type': 'skill', 'id': self.pid}}), '')
 
     def test_only_original_completed_publication_or_noop_is_success(self):

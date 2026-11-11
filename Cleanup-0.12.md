@@ -165,3 +165,7 @@ Direct Studio runs return every tool outcome together at the next model step. To
 ## 0.12.43
 
 Describe the current Studio workflow in global instructions, generated guidance, tool descriptions and the shipped update skill.
+
+## 0.12.44
+
+Shorten model-facing Studio instructions and tool descriptions. Include feature guidance and metadata only where needed, and read original development jobs on demand.

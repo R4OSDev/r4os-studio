@@ -2,7 +2,6 @@
 from functools import cache
 import importlib.util
 from pathlib import Path
-import sqlite3
 
 
 @cache
@@ -14,12 +13,3 @@ def reader():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def capture(projects, project_id, session_id):
-    try:
-        return {'developmentJobReferences': reader().listing(projects, project_id, session_id, {'limit': 6})}
-    except (ImportError, OSError, ValueError, sqlite3.Error):
-        # Context enrichment is optional, including its module loading. Missing
-        # references never confirm an old effect or authorize a replacement run.
-        return {'developmentJobReferencesUnavailable': True}

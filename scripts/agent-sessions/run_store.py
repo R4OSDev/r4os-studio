@@ -165,9 +165,6 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     if original is not None:
         for key in ('developmentJobReferences','developmentJobReferencesUnavailable'):
             if key in original: snapshot[key] = original[key]
-    elif store.owner_type == 'project' and snapshot['permissions'].get('studio.read_development_job'):
-        from development_references import capture as job_references
-        snapshot.update(job_references(store.workspace.parent.parent, store.owner_id, session_id))
     snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
     if data.get('skillSelection') == 1:
         from skill_application import freeze

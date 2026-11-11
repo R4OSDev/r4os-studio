@@ -1,35 +1,12 @@
-"""Project-bound guidance; no native capabilities are inferred from SDK numbers."""
+"""Show the project's selected development inputs."""
 import json
 
 
-def compose(project, config=None):
-    from host_linker import qualify
-    pins = project.get('pins', {})
-    context = {'projectRevision': project.get('revision'), 'language': project.get('language'),
-               'role': project.get('template'), 'hostCLinker': qualify()}
+def compose(project, config):
+    pins = config.get('projectPins', project.get('pins', {}))
+    context = {'language': project.get('language'), 'role': project.get('template')}
     for name in ('sdk', 'contract', 'zig', 'rust'):
         value = pins.get(name)
         if isinstance(value, dict):
             context[name] = {key: value[key] for key in ('version', 'revision') if key in value}
-    from tool_catalog import specifications
-    config=config or {};permissions=config.get('permissions',{})
-    context['ownWindowControl']={'registered':'studio_control_app_window' in {item['name'] for item in specifications(config)},
-        'permittedByFrozenRights':all(permissions.get('studio.'+key) is True for key in ('control_app_window','run_project')),
-        'guestAndDeploymentVerified':False}
-    return ('\n\nSTUDIO PROJECT ENVIRONMENT: Current project metadata at worker startup: '
-        + json.dumps(context, ensure_ascii=False, sort_keys=True) + '. '
-        'This describes configured host build inputs, not the capabilities of a running guest or an older deployed artifact. '
-        'Use the original build/deployment pins and authenticated guest evidence for that target; do not change pins to work around missing APIs. '
-        'Current Studio registers studio_control_app_window for its owned application. Registration and frozen permission do not establish guest readiness. '
-        'Control requires a requested windowControl execution, a verified compatible deployment/helper/native guest contract and its current owned process/window binding. '
-        'Use the declared resize/minimize/restore operations only when those receipts and permissions allow them; confirm the actual effect. '
-        'Verify applied geometry from the owned window observation. Confirm ABI fields and input capabilities in the pinned sources. '
-        'For C GUI work, distinguish the higher app_gui.h message facade from technical generated raw focus/font enums and native window flags; '
-        'WindowService flags are not interchangeable with GuiWindowFlag. Inspect the selected SDK/Contract sources before using an enum. '
-        'Check path and filename support on the selected guest volume. Verify guest compiler availability, HTTP streaming and TCP behavior in the pinned language APIs and native runtime. '
-        'Missing glyphs need localization to application/font/rendering; do not silently substitute text or claim a Studio encoding defect. '
-        'For host-only Rust tests, cc in the tool terminal resolves to the qualified existing public host driver; '
-        'an unavailable driver produces a specific Host C linker diagnostic. This is separate from pinned native R4X build/link tooling; '
-        'do not change project pins, test scripts or global compiler defaults to repair a host linker. '
-        'The detailed pinned qualification is documented in the Studio installation as R4OS-Environment.md; '
-        'that Studio documentation is separate from the app workspace.')
+    return '\n\nSTUDIO PROJECT ENVIRONMENT: ' + json.dumps(context, ensure_ascii=True, separators=(',', ':'))
