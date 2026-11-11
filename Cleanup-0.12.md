@@ -181,3 +181,7 @@ Freeze the tools available to each accepted run and reuse prepared definitions. 
 ## 0.12.47
 
 Shrink Roadmap request schemas and enable archive, import and export through Roadmap administration.
+
+## 0.12.48
+
+Combine process and workspace actions with original receipts, rights and deadlines. Reuse the workspace file reader.

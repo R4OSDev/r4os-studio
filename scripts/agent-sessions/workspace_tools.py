@@ -1,5 +1,6 @@
 """Direct tools in the selected workspace with per-run paths and caches."""
 import asyncio
+import json
 import os
 from pathlib import Path
 import sys
@@ -13,6 +14,7 @@ class WorkspaceTools:
         self.worker = worker; self.context = None; self.sdk_ready = False
         self.script_roots = []
         self.lock = asyncio.Lock(); self.initializing = asyncio.Lock()
+        self.reader = None
 
     async def prepare(self, sdk=True):
         async with self.initializing:
@@ -112,11 +114,12 @@ class WorkspaceTools:
         return context.command(command, workdir, environment)
 
     async def file(self, name, arguments):
-        import json
         await self.prepare(sdk=self.needs_sdk(arguments))
         # All calls share this lock, including reads, so a read/hash pair observes
         # the preceding Studio write. External administrator edits remain external.
         async with self.lock:
+            if name in ('list_directory','read_file','search'):
+                return await self.read_file_tool(name,arguments)
             from terminal_group import Group, identity
             proc = await asyncio.create_subprocess_exec(*self.command(['/usr/bin/python3', '-I', '-B', str(Path(__file__).with_name('file_worker.py'))], patch=name == 'apply_patch'),
                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -133,3 +136,36 @@ class WorkspaceTools:
                     proc.kill()
                     await proc.wait()
                 raise
+
+    async def read_file_tool(self,name,arguments):
+        from terminal_group import Group, identity
+        command=self.command(['/usr/bin/python3','-I','-B',str(Path(__file__).with_name('file_worker.py')),'--serve'])
+        if self.reader and (self.reader[0]!=command or self.reader[1].returncode is not None): await self.close_reader()
+        if self.reader is None:
+            proc=await asyncio.create_subprocess_exec(*command,stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL,limit=262144,start_new_session=True)
+            original=identity(proc.pid)
+            self.reader=(command,proc,Group(proc.pid,original[3] if original else None))
+        _,proc,_=self.reader
+        try:
+            async with asyncio.timeout(30):
+                proc.stdin.write(json.dumps({'tool':name,'arguments':arguments}).encode()+b'\n')
+                await proc.stdin.drain()
+                output=await proc.stdout.readline()
+            if not output or len(output)>196608: raise ValueError('The file reader returned no bounded result.')
+            return json.loads(output)
+        except BaseException:
+            await self.close_reader()
+            raise
+
+    async def close_reader(self):
+        if self.reader is None: return
+        _,proc,group=self.reader; self.reader=None
+        proc.stdin.close()
+        try: await asyncio.wait_for(proc.wait(),.5)
+        except asyncio.TimeoutError:
+            await group.stop()
+            if proc.returncode is None: proc.kill(); await proc.wait()
+
+    async def close(self):
+        async with self.lock: await self.close_reader()

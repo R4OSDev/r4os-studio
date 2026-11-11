@@ -49,7 +49,7 @@ def bind_catalog(store, sid, config):
     from history_receipts import original_input
     from run_store import get_run
     from store import ProjectFault
-    from tool_catalog import declarations, permission_tools, tool_scope
+    from tool_catalog import declarations, permission_tools, tool_definitions, tool_scope
     from studio_engine import engine
     try:
         prior = loads(get_run(store,record['runId'])['config'])
@@ -65,15 +65,22 @@ def bind_catalog(store, sid, config):
         # The archived prefix is not authority to restore an action disabled
         # in the current session. The transport verifies the whole prefix.
         independent = set(permission_tools(config))
-        version = prior.get('toolCatalog',{}).get('version',1)
+        selected=prior.get('toolCatalog',{})
+        version = selected.get('version',1)
+        definitions=tool_definitions(tool_scope(prior),root)
+        operations=set()
         for name in names:
-            if name[7:] in independent and not config['permissions'].get('studio.'+name[7:]): raise ValueError()
+            dispatch=definitions[name[7:]].get('dispatch')
+            if dispatch: operations.update(dispatch[action]['tool'] for action in selected.get('actions',{}).get(name,dispatch))
+            else: operations.add(name[7:])
+        if any(name in independent and not config['permissions'].get('studio.'+name) for name in operations): raise ValueError()
         from profile import NOTE_TOOLS, ROADMAP_TOOLS
         if any(name[7:] in ROADMAP_TOOLS for name in names) and not config.get('roadmapEnabled'): raise ValueError()
         if any(name[7:] in NOTE_TOOLS for name in names) and not config.get('environmentNotesEnabled'): raise ValueError()
-        mode=prior.get('toolCatalog',{}).get('presentation')
+        mode=selected.get('presentation')
         if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
-        config['toolCatalog'] = snapshot(prior,root=root,names=names,version=version,presentation=mode)
+        actions={name:items for name,items in selected.get('actions',{}).items() if name in names}
+        config['toolCatalog'] = snapshot(prior,root=root,names=names,version=version,presentation=mode,actions=actions)
         config['engine'] = engine(tool_scope(config),config['engine'].get('api'),root=root)
     except (OSError, ValueError, KeyError, TypeError, ProjectFault, ModelFault):
         raise ProjectFault('The original signed Claude tool catalog is unavailable or the selection changed. Use a fresh context for changed instructions or tools.',409) from None

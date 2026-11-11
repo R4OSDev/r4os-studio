@@ -12,7 +12,7 @@ TERMINAL_TIMING = (
     'STUDIO TERMINAL TIMING: Use studio_build_project for normal project builds when permitted. '
     'timeout_ms sets the host process lifetime. In direct Studio runs the configured tool deadline also applies. '
     'Use tty or an explicit yield_time_ms to request a resumable process handle. '
-    'Use studio_write_stdin on the returned handle to interact or read the exit status.'
+    'Use studio_control_process on the returned handle to interact or read the exit status.'
 )
 TERMINAL_EXECUTION = (
     'STUDIO TERMINAL EXECUTION: For a finite noninteractive command, omit tty and yield_time_ms. '
@@ -111,8 +111,14 @@ def compose(config, project=None):
     # Saved custom prompts remain original. Bound workers apply current timing
     # guidance without changing their frozen source text/revision/hash.
     if (config.get('permissions', {}).get('studio.exec_command')
-            and TERMINAL_TIMING not in source and TERMINAL_TIMING not in text):
-        text += '\n\n' + TERMINAL_TIMING
+            and 'STUDIO TERMINAL TIMING' not in source and 'STUDIO TERMINAL TIMING' not in text):
+        names=config.get('toolCatalog',{}).get('tools',[])
+        terminal=TERMINAL_TIMING
+        if 'studio_write_stdin' in names and 'studio_control_process' not in names:
+            terminal=terminal.replace('studio_control_process','studio_write_stdin')
+        elif 'studio_control_process' not in names:
+            terminal=terminal.rsplit(' Use studio_control_process',1)[0]
+        text += '\n\n' + terminal
     batch_results = config.get('toolDeadlines', {}).get('version') == 1
     if (not batch_results and config.get('terminalCompletion') == 1
             and config.get('permissions', {}).get('studio.exec_command')

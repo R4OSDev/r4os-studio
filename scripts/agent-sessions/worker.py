@@ -264,6 +264,12 @@ class Worker:
             return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
         try: validate_arguments(name[7:], arguments, self.config)
         except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
+        from tool_catalog import operation
+        from tool_receipt_boundary import fingerprint, original_hash, record_input
+        requested=name
+        requested_hash=fingerprint(name,arguments)
+        handler,arguments=operation(name[7:],arguments,self.config)
+        name='studio_'+handler
         if name[7:] in NOTE_TOOLS:
             from environment_note_tools import require
             try:require(self)
@@ -276,8 +282,7 @@ class Worker:
         if name[7:] in WEB_TOOLS:
             try:__import__('studio_web').require(self)
             except ProjectFault as error:roadmap_denial=str(error)
-        import hashlib
-        hashed = hashlib.sha256(encode({'tool': name, 'arguments': arguments}).encode()).hexdigest()
+        hashed = requested_hash if requested==name else fingerprint(name,arguments)
         previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
         tool_id = name.replace('studio_', 'studio.', 1)
         from tool_deadlines import seconds_for
@@ -286,7 +291,7 @@ class Worker:
         if previous:
             if roadmap_denial:
                 return await output({'success': False, 'error': 'disabled', 'output': roadmap_denial})
-            if previous['arguments_hash'] != hashed:
+            if original_hash(self.store,previous) != requested_hash:
                 return await output({'success': False, 'error': 'conflict', 'output': 'Tool call ID has different arguments.'})
             if name[7:] in NOTE_TOOLS:
                 from environment_note_tools import replay
@@ -327,6 +332,8 @@ class Worker:
             admission_closed = self.closing or self.stopping or not row['busy'] or row['state'] == 'stopping'
             self.store.db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,NULL)',
                                   (self.run_id, call_id, name, hashed, 'intent', encode(arguments)))
+            if requested!=name:
+                record_input(self.store,self.run_id,call_id,requested,requested_hash)
         if admission_closed:
             result = {'success': False, 'error': 'interrupted', 'output': 'The run is stopping.'}
         elif admission_error is not None:
@@ -445,6 +452,7 @@ class Worker:
         await self.build_snapshots.close()
         if self.client: await self.client.close()
         await self.terminals.close()
+        await self.workspace_tools.close()
         await self.skill_mcp.close()
         await self.skill_resources.close()
         from public_stream import flush

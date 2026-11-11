@@ -61,16 +61,17 @@ class StudioWorker(Worker):
         return [tool for tool in self._tool_declarations if allowed(tool['name'][7:])]
 
     def validate_calls(self, calls, tools, rejected=()):
+        from tool_receipt_boundary import fingerprint, original_hash
         names = {tool['name'] for tool in tools}; ids = set()
         previous_effect=False
         for call in calls:
             if call['name'] not in names or call['callId'] in ids: raise ModelFault('model_tool_not_allowed')
             if call['callId'] in rejected:raise ModelFault('model_tool_identity_conflict')
             ids.add(call['callId'])
-            previous = self.store.db.execute('SELECT arguments_hash FROM tools WHERE run_id=? AND call_id=?',
+            previous = self.store.db.execute('SELECT run_id,call_id,arguments_hash FROM tools WHERE run_id=? AND call_id=?',
                 (self.run_id, self.receipt_id(call['callId']))).fetchone()
-            expected = hashlib.sha256(encode({'tool':call['name'], 'arguments':call['arguments']}).encode()).hexdigest()
-            if previous and previous['arguments_hash'] != expected: raise ModelFault('model_tool_identity_conflict')
+            expected = fingerprint(call['name'],call['arguments'])
+            if previous and original_hash(self.store,previous) != expected: raise ModelFault('model_tool_identity_conflict')
             previous_effect=previous_effect or previous is not None
         invalid=[]
         for call in calls:

@@ -35,40 +35,56 @@ def catalog(root=ROOT):
 
 @lru_cache(maxsize=32)
 def prepared(scope, root=ROOT, presentation='standard'):
-    tools = deepcopy(catalog(root)[scope])
-    for tool in tools:
+    tools = {}
+    for original in catalog(root)[scope]:
+        if presentation == 'legacy' and original.get('dispatch') or presentation != 'legacy' and original.get('retired'):
+            continue
+        tool = deepcopy(original)
+        tool.pop('dispatch',None);tool.pop('retired',None)
         wire = tool.pop('modelSchemas', {})
         if presentation in wire:
             tool['inputSchema'] = wire[presentation]
-        schema = tool['inputSchema']
-        schema.setdefault('type', 'object')
-        variants = schema.get('oneOf', [])
-        # Expose object fields to model grammars while retaining every original
-        # variant. The broker still validates against the unmodified catalog.
-        if 'properties' in schema or not variants or any(
-                part.get('type') != 'object' or part.get('additionalProperties') is not False for part in variants):
-            continue
-        fields = {}
-        for part in variants:
-            for name, rule in part.get('properties', {}).items():
-                if rule not in fields.setdefault(name, []): fields[name].append(rule)
-        properties = {}
-        for name, rules in fields.items():
-            if len(rules) == 1:
-                properties[name] = rules[0]
-            elif all('enum' in rule and set(rule) <= {'type', 'enum', 'description'}
-                     and rule.get('type') == rules[0].get('type') for rule in rules):
-                values = []
-                for rule in rules:
-                    for value in rule['enum']:
-                        if value not in values: values.append(value)
-                properties[name] = {'type': rules[0]['type'], 'enum': values}
-            else:
-                properties[name] = {'anyOf': rules}
-        schema['properties'] = properties
-        schema['required'] = [name for name in variants[0].get('required', [])
-                              if all(name in part.get('required', []) for part in variants)]
-    return {tool['name']: tool for tool in tools}
+        expand(tool['inputSchema'])
+        tools[tool['name']]=tool
+    return tools
+
+
+def expand(schema):
+    schema.setdefault('type','object')
+    variants = schema.get('oneOf',[])
+    # Keep precise variants and expose their common envelope to model grammars.
+    if 'properties' in schema or not variants or any(
+            part.get('type')!='object' or part.get('additionalProperties') is not False for part in variants): return
+    fields = {}
+    for part in variants:
+        for name, rule in part.get('properties',{}).items():
+            if rule not in fields.setdefault(name,[]): fields[name].append(rule)
+    properties = {}
+    for name,rules in fields.items():
+        if len(rules)==1: properties[name]=rules[0]
+        elif all('enum' in rule and set(rule)<={'type','enum','description'}
+                 and rule.get('type')==rules[0].get('type') for rule in rules):
+            values=list(dict.fromkeys(value for rule in rules for value in rule['enum']))
+            properties[name]={'type':rules[0]['type'],'enum':values}
+        else: properties[name]={'anyOf':rules}
+    schema['properties']=properties
+    schema['required']=[name for name in variants[0].get('required',[])
+                        if all(name in part.get('required',[]) for part in variants)]
+
+
+def restricted(tool, actions):
+    if not actions: raise ValueError('The accepted tool has no available actions.')
+    schema = {key:value for key,value in tool['inputSchema'].items() if key not in ('oneOf','properties','required')}
+    schema['oneOf'] = [part for part in tool['inputSchema']['oneOf']
+                       if any(action in actions for action in part['properties']['action']['enum'])]
+    expand(schema)
+    if set(schema['properties']['action']['enum']) != set(actions):
+        raise ValueError('The accepted tool actions are unavailable.')
+    # The broker keeps the exact variants. The model needs their shared fields
+    # and the actions admitted for this run only.
+    del schema['oneOf']
+    schema['additionalProperties']=False
+    return {**tool,'inputSchema':schema}
 
 
 def digest(tools):
@@ -88,7 +104,10 @@ def declarations(scope='project', root=ROOT):
                 or len(set(saved['tools']))!=len(saved['tools'])):
             raise ValueError('The original tool catalog binding is invalid.')
         if any(name not in by_name for name in saved['tools']):raise ValueError('The original accepted tool catalog is unavailable.')
-        tools=[by_name[name] for name in saved['tools']]
+        actions=saved.get('actions',{})
+        if not isinstance(actions,dict) or not actions.keys()<=set(saved['tools']):
+            raise ValueError('The original tool action binding is invalid.')
+        tools=[restricted(by_name[name],actions[name]) if name in actions else by_name[name] for name in saved['tools']]
         if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
         return tools
@@ -109,12 +128,19 @@ def tools_for(scope='project'):
 
 def permission_tools(scope='project'):
     grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note',*GOAL_TOOLS,*WEB_TOOLS}
-    return tuple(name for name in tools_for(scope) if name not in grouped)
+    return tuple(name for name,item in tool_definitions(tool_scope(scope)).items() if name not in grouped and not item.get('dispatch'))
 
 
-@lru_cache(maxsize=2)
-def tool_definitions(scope):
-    return {item['name'][7:]: item for item in catalog()[scope]}
+@lru_cache(maxsize=32)
+def tool_definitions(scope,root=ROOT):
+    return {item['name'][7:]: item for item in catalog(root)[scope]}
+
+
+def operation(name,value,scope='project'):
+    action=tool_definitions(tool_scope(scope))[name].get('dispatch')
+    if not action: return name,value
+    entry=action[value['action']]
+    return entry['tool'],{**{key:v for key,v in value.items() if key!='action'},**entry.get('set',{})}
 
 
 def validate_arguments(name,value,scope='project'):
@@ -128,6 +154,9 @@ def validate_arguments(name,value,scope='project'):
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root = definition['inputSchema']
     selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
+    actions = selected.get('actions',{}).get('studio_'+name)
+    if actions is not None and isinstance(value,dict) and value.get('action') not in actions:
+        raise ValueError('arguments.action: allowed values are '+', '.join(actions)+'.')
     wire = definition.get('modelSchemas',{}).get(selected.get('presentation'))
     if wire and isinstance(value,dict):
         for field in ('operation','view'):
@@ -212,6 +241,9 @@ def validate_arguments(name,value,scope='project'):
                 if not isinstance(spec, dict): raise ValueError('Unknown tool argument.')
                 validate(spec, entry, path + '.' + key)
     validate(root, value)
+    if definition.get('dispatch'):
+        handler, arguments = operation(name,value,scope)
+        validate_arguments(handler,arguments,scope)
     if (name == 'update_roadmap'
             and value.get('operation') == 'mutate' and value.get('action') == 'create'):
         kind = value['target']['kind']

@@ -34,7 +34,7 @@ LONGER = {
 
 def defaults():
     return dict(sorted((tool, LONGER.get(tool, DEFAULT_SECONDS)) for tool in {
-        entry['name'].replace('studio_', 'studio.', 1) for tools in catalog().values() for entry in tools
+        entry['name'].replace('studio_', 'studio.', 1) for tools in catalog().values() for entry in tools if not entry.get('dispatch')
     }))
 
 

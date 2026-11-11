@@ -13,7 +13,7 @@ import threading
 
 from owner import skills_root
 from store import ProjectFault
-from tool_catalog import catalog, native_capabilities
+from tool_catalog import catalog, native_capabilities, specifications
 
 ROOT = Path(__file__).resolve().parents[2]
 _CACHE = OrderedDict()
@@ -53,8 +53,8 @@ def declaration(raw):
 
 def studio():
     merged = OrderedDict()
-    for scope, tools in catalog().items():
-        for raw in tools:
+    for scope in catalog():
+        for raw in specifications(scope):
             value = declaration(raw); key = digest(value)
             if key not in merged: merged[key] = {**value, 'id': key, 'scopes': []}
             merged[key]['scopes'].append(scope)

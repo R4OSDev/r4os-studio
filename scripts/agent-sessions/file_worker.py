@@ -1,5 +1,6 @@
 """Bounded UTF-8 file tools using the current workspace and ordinary host paths."""
 import hashlib
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -23,7 +24,12 @@ def parts(path):
 
 
 def context():
-    return Workspace(os.environ.get('STUDIO_WORKSPACE', os.getcwd()), json.loads(os.environ.get('STUDIO_PATHS', '{}')))
+    return working_context(os.environ.get('STUDIO_WORKSPACE',os.getcwd()),os.environ.get('STUDIO_PATHS','{}'))
+
+
+@lru_cache(maxsize=4)
+def working_context(workspace,paths):
+    return Workspace(workspace,json.loads(paths))
 
 
 def root_fd(name):
@@ -69,6 +75,22 @@ def read(root, path, limit=8*1024*1024):
 
 
 def sha(value): return hashlib.sha256(value).hexdigest()
+
+
+def generation(info):
+    return info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns
+
+
+def file_lines(root,path,cache):
+    if cache is not None and cache.get('generation')==generation(selected(root,path).stat()):
+        return cache['lines'],cache['hash']
+    data,info=read(root,path)
+    lines=data.decode('utf8').splitlines(); checksum=sha(data)
+    if cache is not None:
+        cache.clear()
+        if len(data)<=2*1024*1024 and len(lines)<=100000 and generation(info)==generation(selected(root,path).stat()):
+            cache.update(generation=generation(info),lines=lines,hash=checksum)
+    return lines,checksum
 
 
 def validate_expected(expected):
@@ -222,12 +244,12 @@ def search(root, args):
             'truncated': truncated or limited or bool(skipped), 'skippedFiles': skipped}
 
 
-def execute(tool, args):
+def execute(tool, args, cache=None):
     if tool == 'write_file': validate_expected(args.get('expectedSha256'))
     root_name = args.get('root', 'workspace'); root = root_fd(root_name)
     try:
         if tool == 'read_file':
-            data, _ = read(root, args['path']); lines = data.decode('utf8').splitlines()
+            lines,checksum=file_lines(root,args['path'],cache)
             start = args.get('startLine', 1); selected = lines[start-1:start-1+args.get('maxLines', 200)]
             rendered = []; used = 0; next_line = None; line_truncated = None
             for index, line in enumerate(selected, start):
@@ -242,7 +264,7 @@ def execute(tool, args):
             else:
                 end = start+len(selected)
                 next_line = end if end <= len(lines) else None
-            return {'success': True, 'output': '\n'.join(rendered), 'sha256': sha(data), 'totalLines': len(lines),
+            return {'success': True, 'output': '\n'.join(rendered), 'sha256': checksum, 'totalLines': len(lines),
                     'truncated': next_line is not None or line_truncated is not None, 'nextLine': next_line,
                     'lineTruncated': line_truncated}
         if tool == 'list_directory':
@@ -295,11 +317,21 @@ def failure(tool, error):
             **({'reasonCode': error.reason} if isinstance(error, SearchFault) else {})}
 
 
-if __name__ == '__main__':
+def response(raw,cache=None):
     value = {}
     try:
-        value = json.load(sys.stdin)
-        result = execute(value['tool'], value['arguments'])
+        value = json.loads(raw)
+        if cache is not None and value['tool'] not in ('read_file','list_directory','search'):
+            raise Fault('The file reader accepts only read operations.')
+        return execute(value['tool'],value['arguments'],cache)
     except (Fault, UnicodeError, OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as e:
-        result = failure(value.get('tool'), e)
-    print(json.dumps(result, ensure_ascii=False))
+        return failure(value.get('tool'),e)
+
+
+if __name__ == '__main__':
+    if sys.argv[1:]==['--serve']:
+        cache={}
+        for raw in sys.stdin.buffer:
+            print(json.dumps(response(raw,cache),ensure_ascii=False),flush=True)
+    else:
+        print(json.dumps(response(sys.stdin.buffer.read()),ensure_ascii=False))
