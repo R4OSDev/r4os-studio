@@ -13,7 +13,7 @@ import test_remote_files as remote_files_tests
 from profile import PROFILE, REMOTE_TOOLS, permission_tools, tools_for
 from run_store import get_run, transition
 from store import connect, operation
-from tool_catalog import validate_arguments
+from tool_catalog import tool_scope, validate_arguments
 import remote_tools
 import job_store
 
@@ -30,7 +30,7 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
 
     def reserve(self, worker):
         # This suite requires actual RunStore.freeze; no trusted-field rewrite.
-        self.assertEqual(worker.config['engine']['profile'], PROFILE)
+        self.assertEqual(tool_scope(worker.config), PROFILE)
         self.assertEqual(worker.config['remoteHostBinding'], self.host)
 
     async def native(self, files=False):
@@ -48,16 +48,33 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
     async def test_actual_frozen_host_native_dispatch_streamed_card_and_original_receipt(self):
         worker = await self.native(); self.assertFalse(self.calls)
         metadata = await self.call(worker, 'get_remote_host', {}); self.assertTrue(metadata['success'], metadata)
-        self.assertEqual(json.loads(metadata['output'])['hostId'], self.host['id']); self.assertFalse(self.calls)
+        self.assertEqual(metadata['remote']['hostId'], self.host['id']); self.assertFalse(self.calls)
+        capability = json.loads(metadata['output'])
+        self.assertEqual(capability['capabilities'], {'commands': True, 'files': True})
+        self.assertIn('lastCheckedAt', capability)
+        self.assertNotIn('host', capability)
         result = await self.call(worker, 'run_remote_command', {'requestId': str(uuid.uuid4()), 'command': 'VER'})
         self.assertTrue(result['success'], result); self.assertEqual(result['exitCode'], 0); self.assertEqual(self.calls, ['VER'])
         self.assertEqual(result['remote']['hostName'], self.host['name']); self.assertFalse(result['remote']['remoteProcessEndConfirmed'])
-        read = await self.call(worker, 'read_remote_job', {'jobId': result['remote']['id']}); self.assertTrue(read['success']); self.assertEqual(len(self.calls), 1)
+        read = await self.call(worker, 'remote_job', {'action': 'read', 'requestId': result['remote']['requestId']})
+        self.assertTrue(read['success'], read); self.assertEqual(len(self.calls), 1)
+        self.assertEqual(json.loads(read['output'])['id'], result['remote']['id'])
         cards = [json.loads(row[0]) for row in worker.store.db.execute("SELECT payload FROM events WHERE kind='item'")]
         self.assertTrue(any(c.get('remote', {}).get('id') == result['remote']['id'] and c['status'] == 'running' for c in cards))
         self.assertTrue(any(c.get('remote', {}).get('state') == 'completed' for c in cards))
         self.assertNotIn('rosebud', json.dumps(cards))
         frozen = json.loads(get_run(worker.store, worker.run_id)['config']); self.assertEqual(frozen['remoteHostBinding'], self.host)
+        self.finish(worker)
+        with closing(connect(self.projects)) as db:
+            revision = db.execute('SELECT revision FROM projects WHERE id=?', (self.pid,)).fetchone()[0]
+            operation(db, {'operation': 'update', 'id': self.pid, 'input': {'revision': revision, 'remoteHostId': None}}, self.r4os)
+        worker = self.start()
+        names = set(worker.config['toolCatalog']['tools'])
+        self.assertIn('studio_remote_job', names)
+        self.assertFalse(names & {'studio_get_remote_host', 'studio_run_remote_command', 'studio_remote_files'})
+        later = await self.call(worker, 'remote_job', {'action': 'read', 'requestId': result['remote']['requestId']})
+        self.assertEqual(later['output'], read['output'])
+        self.assertEqual(self.calls, ['VER'])
 
     async def test_saved_off_is_frozen_and_does_not_contact_the_host(self):
         worker = await self.native(); self.finish(worker)
@@ -68,8 +85,9 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all(saved['permissions']['studio.' + name] is False for name in REMOTE_TOOLS))
         worker = self.start(); worker.development.stop_owned = AsyncMock()
         self.assertEqual(worker.config['permissions'], permissions); self.assertEqual(worker.config['remoteHostBinding'], self.host)
+        self.assertNotIn('studio_run_remote_command', worker.config['toolCatalog']['tools'])
         result = await self.call(worker, 'run_remote_command', {'requestId': str(uuid.uuid4()), 'command': 'VER'})
-        self.assertFalse(result['success']); self.assertEqual(result['error'], 'disabled'); self.assertFalse(self.calls)
+        self.assertFalse(result['success']); self.assertFalse(self.calls)
 
     async def test_native_file_schema_dispatch_permissions_and_original_sftp_receipt(self):
         worker = await self.native(files=True); raw = b'own native-file-boundary bytes'; (self.workspace / 'new.bin').write_bytes(raw)
@@ -90,7 +108,8 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
             revision = db.execute('SELECT revision FROM projects WHERE id=?', (self.pid,)).fetchone()[0]
             operation(db, {'operation': 'update', 'id': self.pid, 'input': {'revision': revision, 'remoteHostId': None}}, self.r4os)
         worker = self.start(); self.assertIsNone(worker.config['remoteHostBinding'])
-        metadata = await self.call(worker, 'get_remote_host', {}); self.assertFalse(metadata['success']); self.assertIn('No Remote Host', metadata['output'])
+        self.assertNotIn('studio_get_remote_host', worker.config['toolCatalog']['tools'])
+        metadata = await self.call(worker, 'get_remote_host', {}); self.assertFalse(metadata['success'])
         result = await self.call(worker, 'run_remote_command', {'requestId': str(uuid.uuid4()), 'command': 'VER'})
         self.assertFalse(result['success']); self.assertFalse(self.calls)
 
@@ -100,6 +119,7 @@ class RemoteProfileTests(unittest.IsolatedAsyncioTestCase):
             value = store.get(self.sid); permissions = {**value['permissions'], 'studio.stop_remote_job': False}
             store.update(self.sid, {'revision': value['revision'], 'permissions': permissions}, self.providers)
         worker = self.start(); worker.development.stop_owned = AsyncMock(); self.release.clear()
+        self.assertEqual(worker.config['toolCatalog']['actions']['studio_remote_job'], ['read'])
         pending = asyncio.create_task(self.call(worker, 'run_remote_command', {'requestId': str(uuid.uuid4()), 'command': 'OWN WORK'}))
         await asyncio.wait_for(self.reached.wait(), 5)
         transition(worker.store, worker.run_id, 'stopping'); await worker.stop(); result = await asyncio.wait_for(pending, 8); await self.wait()

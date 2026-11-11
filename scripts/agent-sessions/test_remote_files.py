@@ -107,9 +107,9 @@ class RemoteFilesTests(unittest.IsolatedAsyncioTestCase):
                   'files': [{'path': 'OWN.R4X', 'bytes': len(raw), 'sha256': file_access.sha(raw)}], 'buildProof': {'bytes': len(proof), 'sha256': file_access.sha(proof)}}
         record['packageSha256'] = hash_value(record['files']); (files / 'artifact.json').write_text(json.dumps(record))
         build = {'kind': 'build', 'state': 'completed', 'artifactId': artifact_id, 'sessionId': None}
-        db = sqlite3.connect(root / 'Development.sqlite'); db.executescript('CREATE TABLE artifacts(id TEXT,build_id TEXT,payload TEXT);CREATE TABLE jobs(id TEXT,payload TEXT);')
+        db = sqlite3.connect(root / 'Development.sqlite'); db.executescript('CREATE TABLE artifacts(id TEXT,build_id TEXT,payload TEXT);CREATE TABLE jobs(id TEXT,request_id TEXT,payload TEXT);')
         with db:
-            db.execute('INSERT INTO artifacts VALUES(?,?,?)', (artifact_id, build_id, json.dumps(record))); db.execute('INSERT INTO jobs VALUES(?,?)', (build_id, json.dumps(build)))
+            db.execute('INSERT INTO artifacts VALUES(?,?,?)', (artifact_id, build_id, json.dumps(record))); db.execute('INSERT INTO jobs VALUES(?,?,?)', (build_id, str(uuid.uuid4()), json.dumps(build)))
         (root / 'Development.sqlite').chmod(0o600)
         args = self.args('upload', 'OWN.R4X', artifactId=artifact_id, artifactPath='OWN.R4X', sha256=file_access.sha(raw))
         value = await self.transfer(worker, args); self.assertEqual(value['state'], 'completed', value); self.assertEqual((self.remote_root / 'C/TEMP/OWN.R4X').read_bytes(), raw)

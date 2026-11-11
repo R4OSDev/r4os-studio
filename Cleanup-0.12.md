@@ -193,3 +193,7 @@ Combine assigned VM and development job actions. Return confirmed SSH results an
 ## 0.12.50
 
 Read original context and skill results through one tool. Record environment notes atomically without a pre-read.
+
+## 0.12.51
+
+Merge Remote Job actions, keep exact original evidence, and send concise SFTP and Git reads.

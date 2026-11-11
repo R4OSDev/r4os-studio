@@ -52,7 +52,9 @@ class GitHubTools:
                     if len(raw)>12288:raise ValueError('The Git read response exceeded its bound.')
                     response=json.loads(raw)
                     if response.get('error'):return {'success':False,'error':'unavailable','output':response['error']}
-                    return {'success':True,'output':encode(response['result'])}
+                    internal = {'limits', 'notice', 'sourceSnapshot', 'readOnly', 'immutableSnapshot', 'replayed'}
+                    return {'success':True,'output':encode({key: value for key, value in response['result'].items()
+                                                            if key not in internal})}
                 finally:
                     if process.returncode is None:process.kill();await process.wait()
 

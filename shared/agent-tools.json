@@ -6571,7 +6571,7 @@
     },
     {
       "name": "studio_remote_files",
-      "description": "List/read/upload/download over assigned-host SFTP, not FTP. This call waits for its original durable receipt. Upload a saved Workspace file or an explicitly selected verified project artifact with its exact sha256; native upload is create-only and every byte is read back. Download requires remoteSha256 and Workspace write permission, localPath and expectedSha256=null for a NEW file. Existing files and editor drafts are preserved; choose another name. No overwrite/rename/delete fallback. List returns up to128 entries; read up to16KiB, transfer up to8MiB. Unknown upload/CLOSE/publication must never be retried; inspect the original job and use explicit reads.",
+      "description": "List, read, upload or download by absolute drive path using SFTP. Use a requestId. For a new upload give sha256 and sourcePath or artifactId and artifactPath. For a new download give localPath, expectedSha256=null and remoteSha256. Inspect the original job after an unconfirmed transfer.",
       "inputSchema": {
         "type": "object",
         "oneOf": [
@@ -6779,6 +6779,242 @@
             "additionalProperties": false
           }
         ]
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 1023,
+              "description": "Actual absolute R4OS SFTP drive path, e.g. /C/TEMP/file.bin. No implicit F: drive or persistent working directory. Preserve UTF-8 names and spaces."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "list",
+                "read",
+                "upload",
+                "download"
+              ]
+            },
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            },
+            "sourcePath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "description": "Relative permitted Workspace file, no links, private paths or traversal."
+            },
+            "sha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "description": "Confirmed lowercase SHA-256 of the selected complete bytes."
+            },
+            "artifactId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+            },
+            "artifactPath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "description": "Relative permitted Workspace file, no links, private paths or traversal."
+            },
+            "localPath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "description": "Relative permitted Workspace file, no links, private paths or traversal."
+            },
+            "expectedSha256": {
+              "type": "null"
+            },
+            "remoteSha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "description": "Confirmed lowercase SHA-256 of the selected complete bytes."
+            }
+          },
+          "required": [
+            "requestId",
+            "action",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 1023,
+              "description": "Actual absolute R4OS SFTP drive path, e.g. /C/TEMP/file.bin. No implicit F: drive or persistent working directory. Preserve UTF-8 names and spaces."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "list",
+                "read",
+                "upload",
+                "download"
+              ]
+            },
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            },
+            "sourcePath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "description": "Relative permitted Workspace file, no links, private paths or traversal."
+            },
+            "sha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "description": "Confirmed lowercase SHA-256 of the selected complete bytes."
+            },
+            "artifactId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+            },
+            "artifactPath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "description": "Relative permitted Workspace file, no links, private paths or traversal."
+            },
+            "localPath": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "description": "Relative permitted Workspace file, no links, private paths or traversal."
+            },
+            "expectedSha256": {
+              "type": "null"
+            },
+            "remoteSha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "description": "Confirmed lowercase SHA-256 of the selected complete bytes."
+            }
+          },
+          "required": [
+            "requestId",
+            "action",
+            "path"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "name": "studio_remote_job",
+      "description": "Read or stop an original job of this session. A local SSH client end alone does not confirm a remote process end.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "read"
+                ]
+              },
+              "jobId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+              }
+            },
+            "required": [
+              "action",
+              "jobId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "read"
+                ]
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+              }
+            },
+            "required": [
+              "action",
+              "requestId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "stop"
+                ]
+              },
+              "jobId": {
+                "type": "string",
+                "minLength": 36,
+                "maxLength": 36,
+                "description": "Original Studio UUID; preserve the same requestId when reconciling a lost admission reply."
+              }
+            },
+            "required": [
+              "action",
+              "jobId"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "dispatch": {
+        "read": {
+          "tool": "read_remote_job"
+        },
+        "stop": {
+          "tool": "stop_remote_job"
+        }
       }
     },
     {
@@ -6818,7 +7054,8 @@
             "additionalProperties": false
           }
         ]
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_stop_remote_job",
@@ -6837,7 +7074,8 @@
           "jobId"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_read_attachment",
@@ -7262,7 +7500,7 @@
     },
     {
       "name": "studio_read_project_git",
-      "description": "Read status and diff for the bound repository. Follow snapshotId and nextOffset. Create a reviewed selection from explicit changed paths. Include both paths for a rename. Use selectionId for an authorized push. Read the original job after a lost push reply.",
+      "description": "Read bound Git status, diff or a prior selection by its ID and nextOffset. Select explicit reviewed paths from snapshotId, including both sides of a rename. Use selectionId for an authorized push. Read an original job by requestId.",
       "inputSchema": {
         "oneOf": [
           {
@@ -7412,6 +7650,126 @@
             "additionalProperties": false
           }
         ]
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "view": {
+              "type": "string",
+              "enum": [
+                "status",
+                "diff",
+                "select",
+                "selection",
+                "job"
+              ]
+            },
+            "snapshotId": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 131072
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
+            },
+            "files": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 512,
+              "items": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
+              }
+            },
+            "selectionId": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "requestId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            }
+          },
+          "required": [
+            "view"
+          ],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "view": {
+              "type": "string",
+              "enum": [
+                "status",
+                "diff",
+                "select",
+                "selection",
+                "job"
+              ]
+            },
+            "snapshotId": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 131072
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
+            },
+            "files": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 512,
+              "items": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Relative paths use the selected root; absolute host paths and parent paths are supported. Use . for its directory."
+              }
+            },
+            "selectionId": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "requestId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            }
+          },
+          "required": [
+            "view"
+          ],
+          "additionalProperties": false
+        }
       }
     },
     {

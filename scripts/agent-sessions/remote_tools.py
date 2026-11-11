@@ -87,7 +87,11 @@ class RemoteTools:
                     **({'partialChangesPossible': True} if uncertain else {})}
         value = response['result']; summary = self.summary(value)
         if name == 'get_remote_host':
-            return {'success': value.get('available', False), 'output': encode(value), 'remote': summary,
+            check = (value.get('host') or {}).get('lastTest') or {}
+            capability = {key: value[key] for key in ('available', 'capabilities', 'reason') if key in value}
+            if isinstance(check.get('checkedAt'), str):
+                capability['lastCheckedAt'] = check['checkedAt']
+            return {'success': value.get('available', False), 'output': encode(capability), 'remote': summary,
                     **({'error': 'unavailable'} if not value.get('available', False) else {})}
         unknown = value.get('state') in ('unknown', 'unknown_reviewed') and name in ('run_remote_command', 'remote_files')
         failed = value.get('state') == 'failed' and name in ('run_remote_command', 'remote_files')
