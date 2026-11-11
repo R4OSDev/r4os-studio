@@ -165,6 +165,10 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         for key in ('developmentJobReferences','developmentJobReferencesUnavailable'):
             if key in original: snapshot[key] = original[key]
     snapshot['roadmapEnabled'] = store.owner_type == 'project' and session.get('roadmapEnabled', True)
+    if original is not None and 'roadmapAdministrationEnabled' in original:
+        snapshot['roadmapAdministrationEnabled']=original['roadmapAdministrationEnabled']
+    elif original is None and store.owner_type=='project':
+        snapshot['roadmapAdministrationEnabled']=snapshot['roadmapEnabled'] and session.get('roadmapAdministrationEnabled',False)
     if data.get('skillSelection') == 1:
         from skill_application import freeze
         snapshot['skillAccess'] = freeze(store, session['skillOverrides'], terminal=data.get('skillScripts') == 1, mcp=data.get('skillMcp') == 1)

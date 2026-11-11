@@ -12,7 +12,7 @@ import { useSessionApi, sessionPath, busyRun, toolLabels, permissionToolIds, upd
 
 const tools = permissionToolIds;
 const sections = ['General', 'Context', 'Tools', 'Skills', 'Conversation'] as const;
-const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.contextLimit?.mode??'global', s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
+const editable = (s: AgentSession) => JSON.stringify([s.name, s.providerId, s.model, s.effort, s.fastMode, s.contextLimit?.mode??'global', s.webSearchEnabled ?? true, s.imageGenerationEnabled ?? true, s.environmentNotesEnabled ?? true, s.roadmapEnabled ?? true, s.roadmapAdministrationEnabled ?? false, tools.map((id) => s.permissions[id]), Object.entries(s.skillOverrides ?? {}).sort()]);
 export function SessionSettings({ session, token, projectId, close, saved, reloaded, dirtyChanged, busyChanged, deleteSession }: {
   session: AgentSession; token: string; projectId: string; close: () => void; saved: (session: AgentSession) => void;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
@@ -64,7 +64,8 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
     setSaving(true); setError('');
     try {
       const { revision, name, permissions, providerId, model, effort, fastMode } = draft;
-      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision,selectionRevision:draft.selectionRevision??0, name: name.trim(), permissions, providerId, model, effort, fastMode, contextLimit:{mode:draft.contextLimit?.mode??'global',budgetTokens:amount}, webSearchEnabled: draft.webSearchEnabled ?? true, imageGenerationEnabled: draft.imageGenerationEnabled ?? true, environmentNotesEnabled: draft.environmentNotesEnabled ?? true, ...(scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true } : {}), skillOverrides: draft.skillOverrides ?? {} });
+      const roadmap = scope === 'project' ? { roadmapEnabled: draft.roadmapEnabled ?? true, roadmapAdministrationEnabled: draft.roadmapAdministrationEnabled ?? false } : {};
+      const result = await projectRequest<{ session: AgentSession }>(sessionPath(projectId, session.id) + '/settings', token, 'PATCH', { revision,selectionRevision:draft.selectionRevision??0, name: name.trim(), permissions, providerId, model, effort, fastMode, contextLimit:{mode:draft.contextLimit?.mode??'global',budgetTokens:amount}, webSearchEnabled: draft.webSearchEnabled ?? true, imageGenerationEnabled: draft.imageGenerationEnabled ?? true, environmentNotesEnabled: draft.environmentNotesEnabled ?? true, ...roadmap, skillOverrides: draft.skillOverrides ?? {} });
       saved(result.session);
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -121,6 +122,8 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
           <p className="agent-terminal-hint">{studio ? 'Studio web access uses the same tool control with every conversation model. Page data is untrusted. Changes apply from the next run.' : hostedToolsUnavailable ? 'Hosted web search is unavailable through this provider adapter.' : 'Search the web, open pages and find text. On by default. Changes apply from the next run. Availability depends on the selected model and account.'}</p>
         </fieldset>{scope === 'project' && <fieldset><legend>Roadmap</legend>
           <label className="agent-permission"><span>Roadmap</span><input type="checkbox" role="switch" aria-label="Roadmap" checked={draft.roadmapEnabled ?? true} onChange={(e) => patch({ roadmapEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
+          <label className="agent-permission"><span>Roadmap administration</span><input type="checkbox" role="switch" aria-label="Roadmap administration" disabled={draft.roadmapEnabled === false} checked={draft.roadmapAdministrationEnabled ?? false} onChange={event => patch({ roadmapAdministrationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
+          <p className="agent-terminal-hint">Enable initialization, import, export and archival tools for new runs.</p>
           <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content stays in its original history.</p>
           <p className="agent-terminal-hint" role="status">{draft.roadmapAccess?.available ? 'Roadmap tools available in this session.' : draft.roadmapAccess?.reason ?? 'Roadmap tools are unavailable through the active host.'}</p>
         </fieldset>}{(scope === 'skill' ? ['Files', 'Terminal', 'Skills', 'Images'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub', 'Remote Hosts', 'Images']).map((group) => <fieldset key={group}><legend>{group}</legend>

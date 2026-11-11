@@ -262,7 +262,7 @@ class Worker:
             return await output({'success':False,'error':'invalidCall','output':'This tool is outside the original Studio run binding.'})
         if not isinstance(arguments, dict) or len(encode(arguments).encode()) > 131072:
             return await output({'success': False, 'error': 'invalidArguments', 'output': 'Invalid tool arguments.'})
-        try: validate_arguments(name[7:], arguments, tool_scope(self.config))
+        try: validate_arguments(name[7:], arguments, self.config)
         except ValueError as e: return await output({'success': False, 'error': 'invalidArguments', 'output': str(e)})
         if name[7:] in NOTE_TOOLS:
             from environment_note_tools import require

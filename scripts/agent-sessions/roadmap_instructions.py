@@ -24,9 +24,9 @@ def compose(config):
         return ('\n\nSTUDIO ROADMAP AVAILABILITY: Roadmap tools are disabled for this run. '
                 'Do not bypass the frozen setting through files, shell, external URLs or another session.')
     source = Path(__file__).resolve().parents[2] / 'shared/project-roadmap-instructions.txt'
-    return ('\n\n'
-            + source.read_text(encoding='utf-8') + publication_context(config) +
-            '\n\nCURRENT CLEANUP CAPABILITY: Prepare the selected version and verify the complete archive in '
+    guidance='\n\n'+source.read_text(encoding='utf-8')+publication_context(config)
+    if config.get('toolCatalog',{}).get('presentation')=='standard': return guidance
+    return (guidance+'\n\nCURRENT CLEANUP CAPABILITY: Prepare the selected version and verify the complete archive in '
             'Docs/Changelogs/<version>.txt. Update the relevant Docs with permitted file tools. Use prepare again '
             'with a new requestId, the same workflowId, documents and documentationSummary. For each document, '
             'expectedSha256 is its starting hash or null for a new file. sha256 is its final hash. '

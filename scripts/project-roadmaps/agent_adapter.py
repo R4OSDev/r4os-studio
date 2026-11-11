@@ -137,20 +137,24 @@ def read(projects, project_id, arguments):
         with open_archive(projects,project_id,metadata['id']) as (_,stream):
             if metadata['byteLength']<=32768:
                 return {'snapshot':metadata,'completeInline':True,'document':json.load(stream)}
-        return {'snapshot':metadata,'completeInline':False,'readback':{'view':'json_chunk','exportId':metadata['id'],'offset':0,'byteLimit':8192},'notice':'The complete original JSON file is retained. No content was silently truncated; use bounded readback or download.'}
+        return {'snapshot':metadata,'completeInline':False,'readback':{'view':'export_chunk','exportId':metadata['id'],'format':'json','offset':0,'byteLimit':8192},'notice':'The complete original JSON file is retained. Use bounded readback or download.'}
     if view in ('json_info','json_chunk'):
         fields(extra,['exportId'],['offset','byteLimit'] if view=='json_chunk' else [])
         info=operation(projects,{'operation':'export_info',**common,'exportId':extra['exportId']})
         if info.get('format')!='json':raise ProjectFault('The selected original is not a JSON snapshot.',400)
         if view=='json_info':return info
         return operation(projects,{'operation':'export_chunk',**common,'exportId':extra['exportId'],'offset':extra.get('offset',0),'limit':extra.get('byteLimit',8192)})
-    if view == 'export_info':
-        fields(extra, ['exportId'])
-        return operation(projects, {'operation': view, **common, **extra})
-    if view == 'export_chunk':
-        fields(extra, ['exportId'], ['offset', 'byteLimit'])
-        return operation(projects, {'operation': view, **common, 'exportId': extra['exportId'],
-                                    'offset': extra.get('offset', 0), 'limit': extra.get('byteLimit', 8192)})
+    if view in ('export_info','export_chunk'):
+        fields(extra,['exportId'],['format',*(['offset','byteLimit'] if view=='export_chunk' else [])])
+        export_id = extra['exportId']
+        expected = extra.get('format')
+        if view=='export_info' or expected is not None:
+            info = operation(projects,{'operation':'export_info',**common,'exportId':export_id})
+            if expected is not None and info.get('format','text') != expected:
+                raise ProjectFault('The original Roadmap export has a different format.',400)
+            if view=='export_info': return info
+        return operation(projects,{'operation':view,**common,'exportId':export_id,
+                                   'offset':extra.get('offset',0),'limit':extra.get('byteLimit',8192)})
     raise ProjectFault('Unsupported Roadmap read view.', 400)
 
 

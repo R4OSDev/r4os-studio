@@ -34,9 +34,12 @@ def catalog(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def prepared(scope, root=ROOT):
+def prepared(scope, root=ROOT, presentation='standard'):
     tools = deepcopy(catalog(root)[scope])
     for tool in tools:
+        wire = tool.pop('modelSchemas', {})
+        if presentation in wire:
+            tool['inputSchema'] = wire[presentation]
         schema = tool['inputSchema']
         schema.setdefault('type', 'object')
         variants = schema.get('oneOf', [])
@@ -76,8 +79,9 @@ def digest(tools):
 def declarations(scope='project', root=ROOT):
     """Read-only, in catalogue or original request order."""
     kind = tool_scope(scope)
-    by_name = prepared(kind, root)
     saved=scope.get('toolCatalog') if isinstance(scope,dict) else None
+    presentation = saved.get('presentation','legacy') if isinstance(saved,dict) else 'standard'
+    by_name = prepared(kind, root, presentation)
     if saved is not None:
         if (not isinstance(saved,dict) or saved.get('scope')!=kind or saved.get('version',1) not in (1,2)
                 or not isinstance(saved.get('tools'),list) or any(not isinstance(name,str) for name in saved['tools'])
@@ -109,8 +113,8 @@ def permission_tools(scope='project'):
 
 
 @lru_cache(maxsize=2)
-def argument_definitions(scope):
-    return {item['name'][7:]: item['inputSchema'] for item in catalog()[scope]}
+def tool_definitions(scope):
+    return {item['name'][7:]: item for item in catalog()[scope]}
 
 
 def validate_arguments(name,value,scope='project'):
@@ -120,8 +124,16 @@ def validate_arguments(name,value,scope='project'):
         from file_worker import validate_expected,Fault
         try:validate_expected(value['expectedSha256'])
         except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
-    root = argument_definitions(tool_scope(scope)).get(name)
-    if root is None:raise ValueError('This tool is unavailable for this workspace kind.')
+    definition = tool_definitions(tool_scope(scope)).get(name)
+    if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
+    root = definition['inputSchema']
+    selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
+    wire = definition.get('modelSchemas',{}).get(selected.get('presentation'))
+    if wire and isinstance(value,dict):
+        for field in ('operation','view'):
+            allowed = wire.get('properties',{}).get(field,{}).get('enum')
+            if allowed and field in value and value[field] not in allowed:
+                raise ValueError('arguments.'+field+': allowed values are '+', '.join(allowed)+'.')
 
     def resolve(rule):
         if '$ref' not in rule: return rule

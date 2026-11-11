@@ -40,7 +40,8 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
         sid = sid or self.sid
         with self.open() as store:
             value = store.get(sid)
-            value = store.update(sid, {'revision': value['revision'], 'roadmapEnabled': enabled}, self.providers)
+            value = store.update(sid, {'revision': value['revision'], 'roadmapEnabled': enabled,
+                                       'roadmapAdministrationEnabled': enabled}, self.providers)
             run, _ = admit(store, sid, {**self.data, 'requestId': str(uuid.uuid4()), 'revision': value['revision']}, self.providers)
             birth = (Path('/proc') / str(os.getpid()) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
             transition(store, run['id'], 'running', worker={'release': 'fixture', 'pid': os.getpid(), 'birth': birth})
@@ -112,7 +113,7 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
     async def test_off_parent_scope_stale_binding_worker_change_and_stop_fail_before_effect(self):
         worker = self.start(enabled=False)
         denied = await self.call(worker, 'update_roadmap', {'operation': 'initialize', 'requestId': str(uuid.uuid4())}, 'off')
-        self.assertEqual(denied['error'], 'disabled')
+        self.assertEqual(denied['error'], 'invalidCall')
         self.assertFalse((self.projects / self.pid / 'Roadmap').exists())
         self.finish(worker)
         worker = self.start()
@@ -121,7 +122,7 @@ class RoadmapToolsTest(unittest.IsolatedAsyncioTestCase):
         self.finish(worker)
         off_worker = self.start(enabled=False)
         historical = await self.call(off_worker, 'update_roadmap', initialize, 'original-enabled-call')
-        self.assertEqual(historical['error'], 'disabled')
+        self.assertEqual(historical['error'], 'invalidCall')
         self.finish(off_worker)
         worker = self.start()
         current = await self.good(worker, 'read_roadmap', {'view': 'current'})

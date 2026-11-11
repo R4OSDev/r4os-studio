@@ -140,9 +140,11 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
       if(request.body&&Object.hasOwn(request.body,'selectionRevision')&&!Number.isSafeInteger(request.body.selectionRevision))throw new ProjectError('Invalid model-choice revision.',400);
       if (request.body && Object.hasOwn(request.body, 'environmentNotesEnabled') && typeof request.body.environmentNotesEnabled !== 'boolean') throw new ProjectError('Environment notes must be a boolean setting.',400);
       if (request.body && Object.hasOwn(request.body, 'imageGenerationEnabled') && typeof request.body.imageGenerationEnabled !== 'boolean') throw new ProjectError('Image generation must be a boolean setting.',400);
-      if (request.body && Object.hasOwn(request.body, 'roadmapEnabled')
-        && (ownerType !== 'project' || typeof request.body.roadmapEnabled !== 'boolean')) {
-        throw new ProjectError('Roadmap is a boolean setting for project sessions only.', 400);
+      for (const name of ['roadmapEnabled', 'roadmapAdministrationEnabled'] as const) {
+        if (request.body && Object.hasOwn(request.body, name)
+          && (ownerType !== 'project' || typeof request.body[name] !== 'boolean')) {
+          throw new ProjectError('Roadmap settings must be boolean and apply to project sessions only.', 400);
+        }
       }
     },
     schema: { params, body: { type: 'object', additionalProperties: false, required: ['revision'], minProperties: 2, properties: {
@@ -151,7 +153,7 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
       contextLimit: { type:'object', additionalProperties:false, required:['mode','budgetTokens'], properties: {
         mode:{type:'string',enum:['off','global','on']}, budgetTokens:{anyOf:[{type:'null'},{type:'integer',minimum:1,maximum:10000000}]} } },
       webSearchEnabled: { type: 'boolean' }, environmentNotesEnabled: { type: 'boolean' }, imageGenerationEnabled: { type: 'boolean' },
-      ...(ownerType === 'project' ? { roadmapEnabled: { type: 'boolean' } } : {}),
+      ...(ownerType === 'project' ? { roadmapEnabled: { type: 'boolean' }, roadmapAdministrationEnabled: { type: 'boolean' } } : {}),
       permissions: { type: 'object', additionalProperties: { type: 'boolean' }, minProperties: 9 },
       skillOverrides: { type: 'object', additionalProperties: { type: 'boolean' }, maxProperties: 256 },
     } } },

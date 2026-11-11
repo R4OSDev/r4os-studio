@@ -4,4 +4,4 @@ Use the declared Roadmap tools for the project's shared data. Read the current v
 
 Keep tasks and acceptance items separate. Use description for their text and notes for evidence. The read tool accepts expectedRevision only for view=text. Mark only completed work and verified checks as done. Append findings to existing notes. Use stable request IDs and inspect the original receipt after an uncertain reply. For a coordinated change use the batch tool with the exact current revision.
 
-"Roadmap abarbeiten" means work through the requested open subversions in order. Only an explicit "Roadmap aufräumen" authorizes archiving and rolling over the main version. Use the declared cleanup workflow to verify the complete archive and updated Docs before finalizing.
+"Roadmap abarbeiten" means work through the requested open subversions in order. Enable Roadmap administration for initialization, import, export or cleanup. Only an explicit "Roadmap aufräumen" authorizes archiving and rolling over the main version.

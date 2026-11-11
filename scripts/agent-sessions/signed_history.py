@@ -49,7 +49,7 @@ def bind_catalog(store, sid, config):
     from history_receipts import original_input
     from run_store import get_run
     from store import ProjectFault
-    from tool_catalog import declarations, permission_tools, prepared, tool_scope
+    from tool_catalog import declarations, permission_tools, tool_scope
     from studio_engine import engine
     try:
         prior = loads(get_run(store,record['runId'])['config'])
@@ -64,14 +64,16 @@ def bind_catalog(store, sid, config):
         if len(names)!=len(set(names)) or not set(names)<=source: raise ValueError()
         # The archived prefix is not authority to restore an action disabled
         # in the current session. The transport verifies the whole prefix.
-        eligible = set(config['toolCatalog']['tools'])
         independent = set(permission_tools(config))
-        current = prepared(tool_scope(config))
         version = prior.get('toolCatalog',{}).get('version',1)
         for name in names:
             if name[7:] in independent and not config['permissions'].get('studio.'+name[7:]): raise ValueError()
-            if version==2 and name not in eligible and name in current: raise ValueError()
-        config['toolCatalog'] = snapshot(prior,root=root,names=names,version=version)
+        from profile import NOTE_TOOLS, ROADMAP_TOOLS
+        if any(name[7:] in ROADMAP_TOOLS for name in names) and not config.get('roadmapEnabled'): raise ValueError()
+        if any(name[7:] in NOTE_TOOLS for name in names) and not config.get('environmentNotesEnabled'): raise ValueError()
+        mode=prior.get('toolCatalog',{}).get('presentation')
+        if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
+        config['toolCatalog'] = snapshot(prior,root=root,names=names,version=version,presentation=mode)
         config['engine'] = engine(tool_scope(config),config['engine'].get('api'),root=root)
     except (OSError, ValueError, KeyError, TypeError, ProjectFault, ModelFault):
         raise ProjectFault('The original signed Claude tool catalog is unavailable or the selection changed. Use a fresh context for changed instructions or tools.',409) from None

@@ -1845,6 +1845,13 @@
                 "type": "string",
                 "minLength": 36,
                 "maxLength": 36
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "text"
+                ]
               }
             },
             "required": [
@@ -1876,6 +1883,13 @@
                 "type": "integer",
                 "minimum": 4,
                 "maximum": 8192
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "text"
+                ]
               }
             },
             "required": [
@@ -2383,6 +2397,252 @@
             ],
             "additionalProperties": false
           }
+        }
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "view": {
+              "type": "string",
+              "enum": [
+                "overview",
+                "current",
+                "revision",
+                "versions",
+                "subversions",
+                "tasks",
+                "acceptances",
+                "entry",
+                "text",
+                "receipt"
+              ]
+            },
+            "cursor": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "versionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Exact parent main-version ID from an original roadmap read."
+            },
+            "subversionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Exact parent subversion ID within versionId, from an original roadmap read."
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100663296
+            },
+            "byteLimit": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 8192
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "target": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "roadmap",
+                    "version",
+                    "subversion",
+                    "task",
+                    "acceptance"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "versionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "subversionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "field": {
+              "type": "string",
+              "enum": [
+                "notes",
+                "vision",
+                "description"
+              ]
+            }
+          },
+          "required": [
+            "view"
+          ],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "view": {
+              "type": "string",
+              "enum": [
+                "overview",
+                "current",
+                "revision",
+                "versions",
+                "subversions",
+                "tasks",
+                "acceptances",
+                "entry",
+                "text",
+                "receipt",
+                "export_info",
+                "export_chunk",
+                "json",
+                "import_preview",
+                "import_preview_chunk"
+              ]
+            },
+            "cursor": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "versionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Exact parent main-version ID from an original roadmap read."
+            },
+            "subversionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Exact parent subversion ID within versionId, from an original roadmap read."
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100663296
+            },
+            "byteLimit": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 8192
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "target": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "roadmap",
+                    "version",
+                    "subversion",
+                    "task",
+                    "acceptance"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "versionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "subversionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "field": {
+              "type": "string",
+              "enum": [
+                "notes",
+                "vision",
+                "description"
+              ]
+            },
+            "exportId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "previewId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "roadmap",
+                "version",
+                "subversion"
+              ]
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "json",
+                "text"
+              ]
+            }
+          },
+          "required": [
+            "view"
+          ],
+          "additionalProperties": false
         }
       }
     },
@@ -4335,6 +4595,725 @@
             ],
             "additionalProperties": false
           }
+        }
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "mutate",
+                "batch"
+              ]
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "currentVersionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Separate current-version binding from the latest read, not the roadmap root identity or an inferred target ID."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "create",
+                "update",
+                "delete",
+                "reorder",
+                "append_notes",
+                "replace_notes",
+                "set_current"
+              ]
+            },
+            "target": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "roadmap",
+                    "version",
+                    "subversion",
+                    "task",
+                    "acceptance"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "versionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "subversionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "input": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "type": "string",
+                  "description": "Version number."
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "vision": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "complete",
+                    "done",
+                    "discarded"
+                  ]
+                },
+                "confirm": {
+                  "type": "boolean"
+                },
+                "ids": {
+                  "type": "array",
+                  "maxItems": 500,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65
+                  }
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "operations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "create",
+                      "update",
+                      "delete",
+                      "reorder",
+                      "append_notes",
+                      "replace_notes",
+                      "set_current"
+                    ]
+                  },
+                  "target": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "roadmap",
+                          "version",
+                          "subversion",
+                          "task",
+                          "acceptance"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 65
+                      },
+                      "versionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 65
+                      },
+                      "subversionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 65
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "input": {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "string",
+                        "description": "Version number."
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "notes": {
+                        "type": "string"
+                      },
+                      "vision": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "complete",
+                          "done",
+                          "discarded"
+                        ]
+                      },
+                      "confirm": {
+                        "type": "boolean"
+                      },
+                      "ids": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65
+                        }
+                      }
+                    },
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                    "description": "Optional unique name for create; later target IDs/input.ids can reference it as $key."
+                  }
+                },
+                "required": [
+                  "action",
+                  "target"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "operation",
+            "requestId",
+            "expectedRevision",
+            "currentVersionId"
+          ],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "mutate",
+                "batch",
+                "initialize",
+                "export",
+                "import_preview",
+                "import_apply"
+              ]
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "currentVersionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Separate current-version binding from the latest read, not the roadmap root identity or an inferred target ID."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "create",
+                "update",
+                "delete",
+                "reorder",
+                "append_notes",
+                "replace_notes",
+                "set_current"
+              ]
+            },
+            "target": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "roadmap",
+                    "version",
+                    "subversion",
+                    "task",
+                    "acceptance"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "versionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "subversionId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "input": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "type": "string",
+                  "description": "Version number."
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "vision": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "complete",
+                    "done",
+                    "discarded"
+                  ]
+                },
+                "confirm": {
+                  "type": "boolean"
+                },
+                "ids": {
+                  "type": "array",
+                  "maxItems": 500,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65
+                  }
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "operations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "create",
+                      "update",
+                      "delete",
+                      "reorder",
+                      "append_notes",
+                      "replace_notes",
+                      "set_current"
+                    ]
+                  },
+                  "target": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "roadmap",
+                          "version",
+                          "subversion",
+                          "task",
+                          "acceptance"
+                        ]
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 65
+                      },
+                      "versionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 65
+                      },
+                      "subversionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 65
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "input": {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "string",
+                        "description": "Version number."
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "notes": {
+                        "type": "string"
+                      },
+                      "vision": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "complete",
+                          "done",
+                          "discarded"
+                        ]
+                      },
+                      "confirm": {
+                        "type": "boolean"
+                      },
+                      "ids": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65
+                        }
+                      }
+                    },
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                    "description": "Optional unique name for create; later target IDs/input.ids can reference it as $key."
+                  }
+                },
+                "required": [
+                  "action",
+                  "target"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "versionId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36,
+              "description": "Exact parent main-version ID from an original roadmap read."
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "add",
+                "update"
+              ]
+            },
+            "numberPolicy": {
+              "type": "string",
+              "enum": [
+                "preserve",
+                "next"
+              ]
+            },
+            "previewId": {
+              "type": "string",
+              "minLength": 36,
+              "maxLength": 36
+            },
+            "previewSha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "confirm": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            },
+            "source": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "document",
+                    "export",
+                    "workspace"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                },
+                "sha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "byteLength": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16777216
+                },
+                "exportId": {
+                  "type": "string",
+                  "minLength": 36,
+                  "maxLength": 36
+                },
+                "document": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {
+                      "type": "string",
+                      "enum": [
+                        "r4os-studio-roadmap"
+                      ]
+                    },
+                    "schemaVersion": {
+                      "type": "integer",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "roadmap",
+                        "version",
+                        "subversion"
+                      ]
+                    },
+                    "source": {
+                      "type": "object",
+                      "properties": {
+                        "projectId": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                        },
+                        "roadmapId": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "currentVersionId": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                        },
+                        "exportId": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "maxLength": 80
+                        }
+                      },
+                      "required": [
+                        "projectId",
+                        "roadmapId",
+                        "revision",
+                        "currentVersionId",
+                        "exportId",
+                        "createdAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "completeness": {
+                      "type": "object",
+                      "properties": {
+                        "storedTreeComplete": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "archivedTreesIncluded": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        }
+                      },
+                      "required": [
+                        "storedTreeComplete",
+                        "archivedTreesIncluded"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "archiveReferences": {
+                      "type": "array",
+                      "maxItems": 50000,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "workflowId": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                          },
+                          "versionId": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                          },
+                          "phase": {
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          "number": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "maxLength": 80
+                          },
+                          "archive": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string",
+                                "maxLength": 1024
+                              },
+                              "sha256": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "byteLength": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100663296
+                              },
+                              "exportId": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
+                              },
+                              "encoding": {
+                                "type": "string",
+                                "enum": [
+                                  "utf-8"
+                                ]
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "subtreeIncluded": {
+                            "type": "boolean",
+                            "enum": [
+                              false
+                            ]
+                          }
+                        },
+                        "required": [
+                          "workflowId",
+                          "versionId",
+                          "phase",
+                          "number",
+                          "archive",
+                          "subtreeIncluded"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Exact complete exported tree for the selected scope."
+                    }
+                  },
+                  "required": [
+                    "schema",
+                    "schemaVersion",
+                    "scope",
+                    "source",
+                    "completeness",
+                    "archiveReferences",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "operation",
+            "requestId"
+          ],
+          "additionalProperties": false
         }
       }
     },

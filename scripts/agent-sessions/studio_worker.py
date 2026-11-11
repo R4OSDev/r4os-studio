@@ -74,7 +74,7 @@ class StudioWorker(Worker):
             previous_effect=previous_effect or previous is not None
         invalid=[]
         for call in calls:
-            try: validate_arguments(call['name'][7:], call['arguments'], tool_scope(self.config))
+            try: validate_arguments(call['name'][7:], call['arguments'], self.config)
             except ValueError as error:
                 # Only the pure schema validator supplies feedback: no host,
                 # provider or tool-execution exception can enter this path.

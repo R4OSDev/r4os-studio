@@ -177,3 +177,7 @@ Speed up session deletion and remove historical receipt checks. Bind confirmatio
 ## 0.12.46
 
 Freeze the tools available to each accepted run and reuse prepared definitions. Preserve original native and signed Claude catalogs.
+
+## 0.12.47
+
+Shrink Roadmap request schemas and enable archive, import and export through Roadmap administration.

@@ -5,21 +5,24 @@ from pathlib import Path
 import re
 import sqlite3
 
-from tool_catalog import ROOT, declarations, digest, prepared, tool_scope
+from tool_catalog import ROOT, catalog, declarations, digest, prepared, tool_scope
 
 RELEASES = Path('/opt/r4os-studio/releases')
 
 
-def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1):
+def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None):
     scope = tool_scope(value)
     if names is None:
-        tools = [item for item in declarations(value, root) if item['name'] not in exclude]
+        source = (declarations(value,root) if isinstance(value,dict) and value.get('toolCatalog')
+                  else prepared(scope,root,presentation or 'legacy').values())
+        tools = [item for item in source if item['name'] not in exclude]
     else:
-        definitions = prepared(scope, root)
+        definitions = prepared(scope, root, presentation or 'legacy')
         tools = [definitions[name] for name in names]
     result = {'scope':scope, 'sha256':digest(tools), 'tools':[item['name'] for item in tools]}
     if version == 2:
         result['version'] = version
+        if presentation is not None: result['presentation'] = presentation
         if root.is_relative_to(RELEASES) and (root/'release.json').is_file():
             result['release'] = json.loads((root/'release.json').read_text())['id']
     return result
@@ -58,7 +61,13 @@ def worker_release(config, current, root=RELEASES):
 
 def goal_selection(store,sid):
     session=store.get(sid)
-    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2)}
+    mode = roadmap_presentation(session, ROOT)
+    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode)}
+
+
+def roadmap_presentation(config, root):
+    if not any('modelSchemas' in item for item in catalog(root)[tool_scope(config)]): return None
+    return 'administration' if config.get('roadmapAdministrationEnabled') else 'standard'
 
 
 def remote_jobs(store,sid):
@@ -71,7 +80,7 @@ def remote_jobs(store,sid):
         return True  # The original job reader can report why storage is unavailable.
 
 
-def eligible(config, *, documents=False, images=False, goal=False, remote_history=False):
+def eligible(config, *, documents=False, images=False, goal=False, remote_history=False, roadmap_admin=True):
     from profile import NOTE_TOOLS, ROADMAP_TOOLS, REMOTE_TOOLS
     permissions=config['permissions']
     direct=config['engine'].get('kind')=='studio'
@@ -81,7 +90,8 @@ def eligible(config, *, documents=False, images=False, goal=False, remote_histor
 
     def permitted(name):
         if name in NOTE_TOOLS: return config.get('environmentNotesEnabled') is True
-        if name in ROADMAP_TOOLS: return config.get('roadmapEnabled') is True
+        if name in ROADMAP_TOOLS:
+            return config.get('roadmapEnabled') is True and (name!='cleanup_roadmap' or roadmap_admin)
         if name == 'web_search': return direct and config.get('webSearchEnabled') is True
         if name in ('get_goal','update_goal'):
             return bool(config.get('goalKeepalive') or direct and (goal or config.get('goalExecution') or config.get('studioGoalPreparation')))
@@ -113,10 +123,13 @@ def freeze(store,sid,config,*,images):
     if not goal and config.get('goalKeepaliveControl'):
         from goal_keepalive import row
         goal=bool((row(store,sid) or {}).get('goal'))
+    mode = saved.get('presentation') if saved else roadmap_presentation(config,root)
+    if mode=='administration' and not config.get('roadmapAdministrationEnabled'): mode='standard'
     permitted=eligible(config,documents=config.get('documentContext',False),images=images,goal=goal,
-                       remote_history=tool_scope(config)=='project' and not config.get('remoteHostBinding') and remote_jobs(store,sid))
+                       remote_history=tool_scope(config)=='project' and not config.get('remoteHostBinding') and remote_jobs(store,sid),
+                       roadmap_admin=mode!='standard')
     names=[t['name'] for t in declarations(config,root) if permitted(t['name'][7:])]
-    config['toolCatalog']=snapshot(config,root=root,names=names,version=2)
+    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode)
 
 
 def instructions(config):
