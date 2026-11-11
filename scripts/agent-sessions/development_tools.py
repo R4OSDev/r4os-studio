@@ -1,13 +1,31 @@
 """Fixed broker calls; VM startup waits in the harness, outside model inference."""
 from tool_catalog import tool_scope
 import json
+import os
 from pathlib import Path
 import uuid
 import asyncio
 
 
 class DevelopmentTools:
-    def __init__(self, worker): self.worker = worker
+    def __init__(self, worker):
+        self.worker = worker
+        self.capability_snapshot = None
+        self.capability_lock = asyncio.Lock()
+
+    async def capabilities(self):
+        from vm_worker import broker_call
+        path=Path(os.environ.get('STUDIO_DEVELOPMENT_SOCKET','/run/r4os-studio-development/host.sock'))
+        async with self.capability_lock:
+            try:
+                info=path.stat()
+                identity=(info.st_dev,info.st_ino,info.st_ctime_ns)
+            except OSError: identity=None
+            if identity is not None and self.capability_snapshot and self.capability_snapshot[0]==identity:
+                return self.capability_snapshot[1]
+            value=await broker_call({'operation':'capabilities'})
+            self.capability_snapshot=(identity,value) if identity is not None else None
+            return value
 
     def compact(self): return tool_scope(self.worker.config) == 'project'
 
@@ -143,15 +161,15 @@ class DevelopmentTools:
                 reject_retired(value)
             if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command'):
                 if name in ('start_project_vm','stop_project_vm','restart_project_vm'):
-                    from vm_worker import broker_call
-                    capabilities = await broker_call({'operation': 'capabilities'})
+                    capabilities = await self.capabilities()
                     if capabilities.get('features', {}).get('vmStart' if name=='start_project_vm' else 'vmLifecycle') != 1:
                         raise DevelopmentFault('VM start support requires development host maintenance.', 503)
                 if name == 'run_vm_command':
-                    from vm_worker import broker_call
-                    capability = await broker_call({'operation':'capabilities'})
+                    capability = await self.capabilities()
                     if capability.get('features',{}).get('projectSsh') != 1:
                         raise DevelopmentFault('Project SSH requires the current coordinator and SSH worker support. No command was admitted.', 503)
+                    if capability.get('sshWait')!=1:
+                        raise DevelopmentFault('Wait for the development coordinator to adopt SSH result support before starting this command.',503)
                 settings = await self.request('settings')
                 from jobs import Jobs
                 store = Jobs(self.worker.manifest['projects'], self.worker.manifest['r4os'], self.worker.manifest['projectId'])
@@ -166,8 +184,7 @@ class DevelopmentTools:
                     if 'windowControl' in value:
                         if type(value['windowControl']) is not bool: raise DevelopmentFault('Window control must be a boolean.',400)
                         if value['windowControl']:
-                            from vm_worker import broker_call
-                            capability = await broker_call({'operation':'capabilities'})
+                            capability = await self.capabilities()
                             if capability.get('features',{}).get('windowControl') != 1:
                                 raise DevelopmentFault('Window controls require the current development coordinator. No app was started.',503)
                         body['windowControl'] = value['windowControl']
@@ -176,19 +193,14 @@ class DevelopmentTools:
                     if overrides: body['overrides'] = overrides
                 if name == 'run_vm_command': body['command'] = value['command']
                 job = await self.request(operation, input=body)
-                if name == 'run_vm_command':
-                    # Admission returns the durable original immediately; no model
-                    # tool-wait deadline is a guest completion claim.
-                    return self.result(job)
                 if name in ('start_project_vm','stop_project_vm','restart_project_vm'): return await self.wait_for_vm(job, call_id, value,name)
-                if name in ('build_project', 'deploy_project', 'run_project'): return await self.wait_for_job(name, job, call_id, value)
+                if name in ('build_project', 'deploy_project', 'run_project','run_vm_command'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
                 if 'lookup' in value:
                     if tool_scope(self.worker.config) != 'project' or set(value) != {'lookup'}:
                         raise DevelopmentFault('Job lookup requires its declared v19 read option.',403)
-                    from vm_worker import broker_call
-                    capabilities = await broker_call({'operation':'capabilities'})
+                    capabilities = await self.capabilities()
                     if capabilities.get('features',{}).get('sessionJobLookup') != 1:
                         raise DevelopmentFault('Original job lookup requires the current development coordinator.',503)
                     references = await self.request('session_jobs',query=value['lookup'])
@@ -217,8 +229,7 @@ class DevelopmentTools:
                 page = await self.request('complete_check', id=value['jobId'], input={'requestId': request_id})
                 return self.result(page['job'], page)
             if name == 'stop_development_job':
-                from vm_worker import broker_call
-                capabilities = await broker_call({'operation': 'capabilities'})
+                capabilities = await self.capabilities()
                 if capabilities.get('features', {}).get('stopReceipts') != 1:
                     raise DevelopmentFault('The development coordinator must adopt the installed Stop-receipt support before this call.', 503)
                 stopped = await self.request('stop_job', id=value['jobId'])
@@ -252,8 +263,7 @@ class DevelopmentTools:
                 if 'scope' in value and value['scope'] != 'vm': raise DevelopmentFault('Choose the explicit vm diagnosis scope.', 400)
                 diagnostic = value.get('scope') == 'vm'
                 if diagnostic:
-                    from vm_worker import broker_call
-                    capability = await broker_call({'operation':'capabilities'})
+                    capability = await self.capabilities()
                     if capability.get('features',{}).get('vmObservation') != 1:
                         raise DevelopmentFault('VM diagnosis requires the current development coordinator.', 503)
                 if action == 'inspect':
@@ -282,13 +292,11 @@ class DevelopmentTools:
                 return {'success': data.get('confirmed', False), 'output': encode(data), 'development': {'jobId': value['jobId']}}
             if name == 'send_vm_input':
                 if value.get('kind') == 'keyPlan':
-                    from vm_worker import broker_call
-                    capability = await broker_call({'operation':'capabilities'})
+                    capability = await self.capabilities()
                     if capability.get('features',{}).get('keyPlan') != 1:
                         raise DevelopmentFault('Key plans require the current development coordinator; no input was admitted.',503)
                 if 'interrupt' in value:
-                    from vm_worker import broker_call
-                    capability = await broker_call({'operation': 'capabilities'})
+                    capability = await self.capabilities()
                     if capability.get('features', {}).get('dragInterrupt') != 1:
                         raise DevelopmentFault('Drag interrupts require the current development coordinator; no input was admitted.', 503)
                 if value.get('observeAfterStep') is not None: self.capture_capable()
@@ -345,12 +353,16 @@ class DevelopmentTools:
     async def wait_for_job(self, name, job, call_id, arguments):
         from contracts import ACTIVE, DevelopmentFault, UnconfirmedGuestEffect, LIMITS
         from run_store import item
-        worker = self.worker; operation = {'build_project': 'wait_build', 'deploy_project': 'wait_deploy', 'run_project': 'wait_execution', 'capture_vm':'wait_observation'}[name]
+        worker = self.worker; operation = {'build_project': 'wait_build', 'deploy_project': 'wait_deploy',
+            'run_project': 'wait_execution', 'capture_vm':'wait_observation','run_vm_command':'wait_ssh'}[name]
         value = {'id': call_id, 'runId': worker.run_id, 'type': 'tool', 'tool': 'studio.' + name,
                  'arguments': arguments, 'status': 'pending', 'development': {'jobId': job['id'],'requestId':job.get('requestId')}}
         worker.items[call_id] = value; item(worker.store, worker.session_id, worker.run_id, value)
-        timeout = LIMITS['buildTimeoutSeconds'] + 300 if name == 'build_project' else (660 if name == 'deploy_project' else job['settings']['timeoutSeconds'] + 300)
-        if name == 'capture_vm': timeout = 120
+        if name=='run_vm_command':
+            from tool_deadlines import seconds_for
+            timeout=seconds_for(worker.config,'studio.run_vm_command') or 600
+        elif name=='capture_vm': timeout=120
+        else: timeout=LIMITS['buildTimeoutSeconds']+300 if name=='build_project' else (660 if name=='deploy_project' else job['settings']['timeoutSeconds']+300)
         deadline = asyncio.get_running_loop().time() + timeout; page = None; legacy_build_wait = False
         while job['state'] in ACTIVE:
             if worker.stopping:
@@ -373,6 +385,8 @@ class DevelopmentTools:
                 or (job.get('readiness') or {}).get('reasonCode') == 'desktop_content_unconfirmed'):
                 break
         if name=='build_project':page=await self.with_artifact(job,page)
+        if name=='run_vm_command' and page is None:
+            page=await self.request('wait_ssh',id=job['id']); job=page['job']
         return self.result(job, page)
 
     async def with_artifact(self,job,page):

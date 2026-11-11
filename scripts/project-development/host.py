@@ -379,17 +379,18 @@ class Host:
             from project_ssh import supported as ssh_supported
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
                     'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'vmReleaseBatch':1, 'vmObservation':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
-                    'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version']}
+                    'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version'], 'sshWait': 1}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
-        if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', 'wait_build', 'wait_deploy', 'wait_execution', 'wait_observation', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
+        waits = {'wait_build':'build','wait_deploy':'deploy','wait_execution':'execution','wait_observation':'observation','wait_ssh':'ssh'}
+        if op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'artifact', 'package_artifact', 'deployment', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'): allowed.add('id')
         if op == 'job_request': allowed.add('requestId')
         if op == 'evidence_history': allowed.add('before')
         if op == 'read_job': allowed.update(('offset', 'metadataOnly', 'channel', 'tailBytes'))
         if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'window', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', 'wait_build', 'wait_deploy', 'wait_execution', 'wait_observation', 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         if op in ('deploy', 'execution'):
             from retired_desktop import request as reject_retired
@@ -411,7 +412,7 @@ class Host:
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', 'wait_build', 'wait_deploy', 'wait_execution', 'wait_observation', 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
                 if op == 'observation' or op == 'capture' and request.get('input', {}).get('scope') == 'vm':
                     from access import vm_config
@@ -467,9 +468,9 @@ class Host:
                     await asyncio.sleep(.5); job = store.get(job['id'])
                 authorize(store, owner, op, peer_pid, job)
                 return job
-            if op in ('wait_build', 'wait_deploy', 'wait_execution', 'wait_observation'):
+            if op in waits:
                 from authorization import authorize
-                job = store.get(request['id']); expected = {'wait_build': 'build', 'wait_deploy': 'deploy', 'wait_execution': 'execution', 'wait_observation': 'observation'}[op]
+                job = store.get(request['id']); expected = waits[op]
                 if owner is None or job['kind'] != expected or job.get('agentRunId') != owner['agentRunId']:
                     raise DevelopmentFault('Wait only for this active run\'s original development job.', 403)
                 deadline = asyncio.get_running_loop().time() + 12

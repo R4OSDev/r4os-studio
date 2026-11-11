@@ -159,6 +159,8 @@ def validate_arguments(name,value,scope='project'):
         raise ValueError('arguments.action: allowed values are '+', '.join(actions)+'.')
     wire = definition.get('modelSchemas',{}).get(selected.get('presentation'))
     if wire and isinstance(value,dict):
+        if name=='send_vm_input' and value.get('kind')=='text' and 'frameId' in value:
+            raise ValueError('arguments.kind: use guiText for text bound to a GUI frame.')
         for field in ('operation','view'):
             allowed = wire.get('properties',{}).get(field,{}).get('enum')
             if allowed and field in value and value[field] not in allowed:

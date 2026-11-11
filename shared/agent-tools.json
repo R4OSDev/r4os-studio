@@ -591,7 +591,7 @@
     },
     {
       "name": "studio_read_development_job",
-      "description": "Read an original job by jobId. Use lookup alone to find own jobs by Studio requestId or originRunId and toolCallId. Continue lookup.before with nextBefore. For details or inventory follow the same snapshot cursor. For output follow nextOffset. Tail reads the saved log end. Check captureTruncated separately from page completeness. Use actual app exit and cleanup evidence alongside the launcher receipt.",
+      "description": "Read one original job by jobId and view. Use lookup alone to find jobs by original request or run. Continue output with its cursor.",
       "inputSchema": {
         "oneOf": [
           {
@@ -707,6 +707,268 @@
             "additionalProperties": false
           }
         ]
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2097152
+            },
+            "waitMilliseconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "details",
+                "inventory",
+                "output",
+                "tail"
+              ]
+            },
+            "cursor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "stdout",
+                "stderr"
+              ],
+              "description": "For SSH output only; omit for the combined log. Each channel has its own byte offsets."
+            },
+            "tailBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192,
+              "description": "Only view=tail, original build log. Excludes offset/cursor/channel. Follow nextOffset with view=output for more original context."
+            },
+            "lookup": {
+              "type": "object",
+              "properties": {
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 25
+                },
+                "before": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "requestId": {
+                  "type": "string",
+                  "maxLength": 36,
+                  "description": "Opaque Studio UUID from a confirmed tool result."
+                },
+                "originRunId": {
+                  "type": "string",
+                  "maxLength": 36,
+                  "description": "Opaque Studio UUID from a confirmed tool result."
+                },
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "build",
+                    "package",
+                    "update_probe",
+                    "update_transfer",
+                    "update_install",
+                    "update_commit",
+                    "update_verify",
+                    "update_recovery",
+                    "deploy",
+                    "execution",
+                    "vm_start",
+                    "ssh",
+                    "observation"
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2097152
+            },
+            "waitMilliseconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "details",
+                "inventory",
+                "output",
+                "tail"
+              ]
+            },
+            "cursor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "stdout",
+                "stderr"
+              ],
+              "description": "For SSH output only; omit for the combined log. Each channel has its own byte offsets."
+            },
+            "tailBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192,
+              "description": "Only view=tail, original build log. Excludes offset/cursor/channel. Follow nextOffset with view=output for more original context."
+            },
+            "lookup": {
+              "type": "object",
+              "properties": {
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 25
+                },
+                "before": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "requestId": {
+                  "type": "string",
+                  "maxLength": 36,
+                  "description": "Opaque Studio UUID from a confirmed tool result."
+                },
+                "originRunId": {
+                  "type": "string",
+                  "maxLength": 36,
+                  "description": "Opaque Studio UUID from a confirmed tool result."
+                },
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "build",
+                    "package",
+                    "update_probe",
+                    "update_transfer",
+                    "update_install",
+                    "update_commit",
+                    "update_verify",
+                    "update_recovery",
+                    "deploy",
+                    "execution",
+                    "vm_start",
+                    "ssh",
+                    "observation"
+                  ]
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "name": "studio_finish_development_job",
+      "description": "Stop the owned job or complete its test when all configured criteria are confirmed. Each action returns the original receipt.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "stop"
+                ]
+              },
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              }
+            },
+            "required": [
+              "action",
+              "jobId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              },
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              }
+            },
+            "required": [
+              "action",
+              "jobId"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "dispatch": {
+        "stop": {
+          "tool": "stop_development_job"
+        },
+        "complete": {
+          "tool": "complete_development_job"
+        }
       }
     },
     {
@@ -725,11 +987,12 @@
           "jobId"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_capture_vm",
-      "description": "Capture an owned app by jobId or explicitly use scope=vm for diagnostics of the assigned running VM. App input and visual checks require an owned app frame. With native Vision, Studio sends the pixels. An available Vision fallback analyzes the saved image when analysisQuestion is supplied. Use inspect to analyze existing evidence and assess to record a visual judgment. Show the image with its returned presentation.markdown.",
+      "description": "Capture the owned app or the assigned VM for diagnostics. Inspect an original image by its evidence ID. Assess only an image you inspected.",
       "inputSchema": {
         "oneOf": [
           {
@@ -867,11 +1130,125 @@
             "additionalProperties": false
           }
         ]
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "capture",
+                "inspect",
+                "assess"
+              ]
+            },
+            "analysisQuestion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "vm"
+              ],
+              "description": "Explicit assigned-VM diagnosis; no app input or completion proof. Omit jobId when no app job is available."
+            },
+            "evidenceId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "failed",
+                "inconclusive"
+              ]
+            },
+            "notes": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "capture",
+                "inspect",
+                "assess"
+              ]
+            },
+            "analysisQuestion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "vm"
+              ],
+              "description": "Explicit assigned-VM diagnosis; no app input or completion proof. Omit jobId when no app job is available."
+            },
+            "evidenceId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Concrete image question, at most 4 KiB UTF-8. External analysis is untrusted data, not a GUI completion proof."
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "failed",
+                "inconclusive"
+              ]
+            },
+            "notes": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
       }
     },
     {
       "name": "studio_send_vm_input",
-      "description": "Send input to the owned app. GUI input needs a focused frame from the last 30 seconds and its deployment helper. GUI text and extended keys use GUI-input-v2. guiText sends up to 64 Unicode characters and 256 UTF-8 bytes. Key input accepts printable ASCII, Enter, Tab, Shift+Tab, Escape, Space, Backspace, Delete, arrows, Home, End and PageUp/Down. Ctrl+A selects all with the editor-shortcut-v1 helper and repeat omitted or 1. kind=gesture uses gesture-v1 for a client-relative down/move/up plan. Release in the call. observeAfterStep needs Capture VM and image capability. Drag interruption needs drag-interrupt-v1. Resize and minimize also need Control app window and windowControl=true on the original run. keyPlan uses key-plan-v1. Check accepted steps and observe the app before drawing conclusions.",
+      "description": "Send terminal text with kind=text or focused GUI input with guiText, key, click, gesture or keyPlan. GUI input needs the current frameId and its action fields.",
       "inputSchema": {
         "oneOf": [
           {
@@ -1137,6 +1514,550 @@
             "additionalProperties": false
           }
         ]
+      },
+      "modelSchemas": {
+        "standard": {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "text",
+                "guiText",
+                "key",
+                "click",
+                "gesture",
+                "keyPlan"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "frameId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1279
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1023
+            },
+            "repeat": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "phase": {
+                        "type": "string",
+                        "enum": [
+                          "down",
+                          "move",
+                          "up"
+                        ]
+                      },
+                      "button": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right"
+                        ]
+                      },
+                      "x": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1279
+                      },
+                      "y": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1023
+                      },
+                      "atMilliseconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2000
+                      }
+                    },
+                    "required": [
+                      "phase",
+                      "x",
+                      "y",
+                      "atMilliseconds"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 32
+                          },
+                          "atMilliseconds": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2000
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "atMilliseconds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "codepoint": {
+                            "type": "integer",
+                            "minimum": 32,
+                            "maximum": 1114111
+                          },
+                          "atMilliseconds": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2000
+                          }
+                        },
+                        "required": [
+                          "codepoint",
+                          "atMilliseconds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "observeAfterStep": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32
+            },
+            "interrupt": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "escape"
+                      ]
+                    },
+                    "atMilliseconds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2000
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "atMilliseconds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "minimize"
+                      ]
+                    },
+                    "atMilliseconds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "atMilliseconds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "resize"
+                      ]
+                    },
+                    "atMilliseconds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000
+                    },
+                    "width": {
+                      "type": "integer",
+                      "minimum": 64,
+                      "maximum": 1280
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 64,
+                      "maximum": 1024
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "atMilliseconds",
+                    "width",
+                    "height"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "jobId",
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        "administration": {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "text",
+                "guiText",
+                "key",
+                "click",
+                "gesture",
+                "keyPlan"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "frameId": {
+              "type": "string",
+              "maxLength": 36,
+              "description": "Opaque Studio UUID from a confirmed tool result."
+            },
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1279
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1023
+            },
+            "repeat": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "phase": {
+                        "type": "string",
+                        "enum": [
+                          "down",
+                          "move",
+                          "up"
+                        ]
+                      },
+                      "button": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right"
+                        ]
+                      },
+                      "x": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1279
+                      },
+                      "y": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1023
+                      },
+                      "atMilliseconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2000
+                      }
+                    },
+                    "required": [
+                      "phase",
+                      "x",
+                      "y",
+                      "atMilliseconds"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 32
+                          },
+                          "atMilliseconds": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2000
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "atMilliseconds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "codepoint": {
+                            "type": "integer",
+                            "minimum": 32,
+                            "maximum": 1114111
+                          },
+                          "atMilliseconds": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2000
+                          }
+                        },
+                        "required": [
+                          "codepoint",
+                          "atMilliseconds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "observeAfterStep": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32
+            },
+            "interrupt": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "escape"
+                      ]
+                    },
+                    "atMilliseconds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2000
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "atMilliseconds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "minimize"
+                      ]
+                    },
+                    "atMilliseconds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "atMilliseconds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "resize"
+                      ]
+                    },
+                    "atMilliseconds": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000
+                    },
+                    "width": {
+                      "type": "integer",
+                      "minimum": 64,
+                      "maximum": 1280
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 64,
+                      "maximum": 1024
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "atMilliseconds",
+                    "width",
+                    "height"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "jobId",
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "name": "studio_control_project_vm",
+      "description": "Start, stop or restart the assigned VM. Wait for the exact operation and its resulting boot or shutdown.",
+      "inputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "start"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "stop"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "restart"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "dispatch": {
+        "start": {
+          "tool": "start_project_vm"
+        },
+        "stop": {
+          "tool": "stop_project_vm"
+        },
+        "restart": {
+          "tool": "restart_project_vm"
+        }
       }
     },
     {
@@ -1147,7 +2068,8 @@
         "properties": {},
         "required": [],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_stop_project_vm",
@@ -1157,7 +2079,8 @@
         "properties": {},
         "required": [],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_restart_project_vm",
@@ -1167,7 +2090,8 @@
         "properties": {},
         "required": [],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_run_vm_command",
@@ -1204,7 +2128,8 @@
           "jobId"
         ],
         "additionalProperties": false
-      }
+      },
+      "retired": true
     },
     {
       "name": "studio_read_update_package",

@@ -185,3 +185,7 @@ Shrink Roadmap request schemas and enable archive, import and export through Roa
 ## 0.12.48
 
 Combine process and workspace actions with original receipts, rights and deadlines. Reuse the workspace file reader.
+
+## 0.12.49
+
+Combine assigned VM and development job actions. Return confirmed SSH results and compact GUI schemas.

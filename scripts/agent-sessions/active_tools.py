@@ -81,7 +81,7 @@ def remote_jobs(store,sid):
         return True  # The original job reader can report why storage is unavailable.
 
 
-def eligible(config, *, documents=False, images=False, goal=False, remote_history=False, roadmap_admin=True):
+def eligible(config, *, documents=False, images=False, goal=False, remote_history=False, roadmap_admin=True, vm=True):
     from profile import NOTE_TOOLS, ROADMAP_TOOLS, REMOTE_TOOLS
     permissions=config['permissions']
     direct=config['engine'].get('kind')=='studio'
@@ -101,6 +101,11 @@ def eligible(config, *, documents=False, images=False, goal=False, remote_histor
         if name == 'generate_image': return direct and can_generate
         if name in ('list_generated_images','import_generated_image'): return images or can_generate
         if name in ('skill_discover','skill_call','read_skill_result'): return skills
+        if name in ('start_project_vm','stop_project_vm','restart_project_vm','run_vm_command','capture_vm',
+                    'send_vm_input','control_app_window','deploy_project','run_project') and not vm: return False
+        if name=='restart_project_vm': return permissions.get('studio.start_project_vm') and permissions.get('studio.stop_project_vm')
+        if name=='complete_development_job': return permissions.get('studio.run_project') and permissions.get('studio.stop_development_job')
+        if name=='control_app_window': return permissions.get('studio.run_project')
         if name in REMOTE_TOOLS:
             return bool(config.get('remoteHostBinding') or (remote_history and name in ('read_remote_job','stop_remote_job')))
         if name == 'push_project': return bool(config.get('githubBinding'))
@@ -128,7 +133,7 @@ def freeze(store,sid,config,*,images):
     if mode=='administration' and not config.get('roadmapAdministrationEnabled'): mode='standard'
     permitted=eligible(config,documents=config.get('documentContext',False),images=images,goal=goal,
                        remote_history=tool_scope(config)=='project' and not config.get('remoteHostBinding') and remote_jobs(store,sid),
-                       roadmap_admin=mode!='standard')
+                       roadmap_admin=mode!='standard',vm=bool(getattr(store,'project',{'vmId':True}).get('vmId')) if tool_scope(config)=='project' else False)
     definitions=tool_definitions(tool_scope(config),root)
     names=[];actions={}
     for tool in declarations(config,root):
