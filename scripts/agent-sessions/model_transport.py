@@ -80,14 +80,12 @@ class ModelFault(ProjectFault):
         if code=='context_native_compaction_unqualified':
             self.category='context'
             self.args=('The selected connection has no verified native compaction contract. The previous context was kept.',)
-        if code in ('context_summary_incomplete','context_summary_invalid','context_summary_timeout',
-                    'context_summary_no_progress','context_compaction_timeout','context_history_changed','context_has_open_tool_pairs'):
+        if code in ('context_summary_incomplete','context_summary_timeout',
+                    'context_compaction_timeout','context_history_changed','context_has_open_tool_pairs'):
             self.category='context'
             self.args=({
                 'context_summary_incomplete':'The model did not return a complete continuation summary.',
-                'context_summary_invalid':'The continuation summary did not meet its structure or output budget.',
                 'context_summary_timeout':'Context summarization reached its time limit.',
-                'context_summary_no_progress':'The confirmed summary would not meaningfully reduce the next request.',
                 'context_compaction_timeout':'Context compaction reached its total time limit.',
                 'context_history_changed':'The conversation changed before the summary could be applied.',
                 'context_has_open_tool_pairs':'The context still has open tool calls.',

@@ -145,3 +145,7 @@ Count Z.AI GLM-5.3-Flash image inputs with the published preprocessing rule and 
 ## 0.12.38
 
 Show rule-counted image tokens in the Context overlay and preserve prepared inputs when a required count is unavailable.
+
+## 0.12.39
+
+Use bound terminal and development completion receipts when planning context summaries. Carry forward the summary input-limit hotfix.

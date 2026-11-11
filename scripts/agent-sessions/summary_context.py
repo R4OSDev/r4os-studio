@@ -14,7 +14,7 @@ def human_instruction(active):
                  and record.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation')),None)
 
 
-def record_view(record, worker=None):
+def record_view(record, worker=None, *, completions=None):
     from context_results import load, reference
     view = {key:record[key] for key in ('sequence','id','runId','role') if key in record}
     origin = record.get('origin', {})
@@ -39,6 +39,8 @@ def record_view(record, worker=None):
                         'notice':'Original output retained. This is a preview; use the original reference for a complete read.'}}}
                 except (ProjectFault, KeyError):
                     pass
+            if completions and index in completions:
+                part={**part,'result':{**part['result'],'laterCompletion':completions[index]}}
         parts.append(part)
     return {**view,'content':parts}
 

@@ -35,11 +35,12 @@ selected model lists `low` in its catalog, Studio uses it for summaries.
 Otherwise summaries use the session's reasoning setting.
 [Responses request fields](https://developers.openai.com/api/reference/resources/responses/methods/create)
 
-Studio commits a checkpoint when the confirmed summary reduces the complete
-continuation and the original history head still matches. A preparation can use
-up to three steps within its 180-second deadline. Context shows elapsed time,
-committed steps, image counts and estimated input before and after each step.
-Provider-reported usage remains available for the original request.
+Studio commits a checkpoint when the complete next request fits the input limit
+and the original history head still matches. The summary prompt gives guidance
+on length and headings. The continuation check includes the summary, original
+records, tool definitions and system instructions. Context shows elapsed time,
+image counts and estimated input before and after compaction. Provider-reported
+usage remains available for the original request.
 
 ## Signed Messages history
 

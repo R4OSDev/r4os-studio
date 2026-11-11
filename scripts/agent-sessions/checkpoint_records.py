@@ -62,6 +62,9 @@ def choices(worker, active, checkpoint, byte_limit):
     from summary_context import record_view
     config=getattr(worker,'config',{})
     projected=optimized(config.get('contextPolicy'),3)
+    reconcile=optimized(config.get('contextPolicy'),9)
+    if reconcile:
+        from tool_completion import completions
     archive=worker if projected and config.get('contextResultProtocol')==1 and config.get('permissions',{}).get('studio.read_context_result') else None
     consumed = max((r.get('sequence', 0) for r in active if r.get('role') == 'assistant'
         and r.get('origin', {}).get('providerResponseId')), default=0)
@@ -75,10 +78,14 @@ def choices(worker, active, checkpoint, byte_limit):
         if pending: continue
         sequence = max((r.get('sequence', 0) for r in group), default=0)
         if sequence >= consumed: break
-        plain = ([record_view(r,archive) for r in group] if projected else
-                 [{**r, 'content': [p for p in r['content'] if p['type'] != 'provider']} for r in group])
-        amount = len(dumps(plain).encode())
-        if any(has_uncertain_result(r) for r in group) or amount > byte_limit:
+        later = [completions(worker,r) if reconcile else {} for r in group]
+        keep = any(has_uncertain_result(r,completions=c) for r,c in zip(group,later))
+        if not keep:
+            plain = ([record_view(r,archive,completions=c) for r,c in zip(group,later)] if projected else
+                     [{**r, 'content': [p for p in r['content'] if p['type'] != 'provider']} for r in group])
+            amount = len(dumps(plain).encode())
+            keep = amount > byte_limit
+        if keep:
             retained.extend(reference(worker, r) for r in group if 'sequence' in r)
         else:
             if size + amount > byte_limit: break

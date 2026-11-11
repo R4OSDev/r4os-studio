@@ -299,10 +299,13 @@ def read_index(worker,args):
     return {'success':True,'output':encode({'unavailable':unavailable,'historical':True,'checkpointId':args['checkpointId'],'sha256':sha,'total':len(refs),'offset':offset,'nextOffset':offset+len(page) if offset+len(page)<len(refs) else None,'references':page,'notice':'Original reference index only; read exact result JSON or historical pixels before relying on omitted details.'})}
 
 
-def has_uncertain_result(record):
-    for part in record['content']:
+def has_uncertain_result(record, *, completions=None):
+    for index,part in enumerate(record['content']):
         if part['type']!='tool_result':continue
         result=part['result']
+        if completions and index in completions:
+            from tool_completion import with_completion
+            result=with_completion(result,completions[index])
         if uncertain(result):return True
         output=result.get('output')
         if isinstance(output,str) and output.lstrip().startswith(('{','[')):

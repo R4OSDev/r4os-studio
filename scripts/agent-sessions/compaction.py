@@ -12,7 +12,6 @@ from summary_context import human_instruction, payload, request
 
 
 SOFT_BYTES = 6 * 1024 * 1024
-MAX_STEPS = 3
 TOTAL_SECONDS = 180
 
 
@@ -62,7 +61,6 @@ def largest_input(context, active, candidates, instructions, budget, maximum):
 class Compaction:
     def __init__(self, context):
         self.context = context
-        self.steps = 0
         self.started = None
         self.started_at = None
 
@@ -73,7 +71,7 @@ class Compaction:
         self.context.show_compaction({
             'state':state,'runId':self.context.w.run_id,'startedAt':self.started_at,
             'elapsedMs':round((monotonic()-self.started)*1000),
-            'completedSteps':self.steps,'maximumSteps':MAX_STEPS,'targetTokens':target,
+            'completedSteps':int(state=='completed'),'maximumSteps':1,'targetTokens':target,
             'before':before.public(),'after':after.public() if after else None,'reason':reason})
 
     def interrupted(self, reason):
@@ -94,9 +92,6 @@ class Compaction:
             if unsafe:
                 raise ModelFault(code,not_dispatched=True)
             return active,False
-
-        if self.steps>=MAX_STEPS:
-            return stop('The maximum number of compaction steps was reached.','context_compaction_bound')
 
         candidates = choices(worker,active,checkpoint,MAX_BODY)
         data, retained, ends = candidates
@@ -128,14 +123,12 @@ class Compaction:
             active,checkpoint,planned,instructions,tools,summary_instructions,budget,announce=False)
 
         projected=continuation(worker,records,through,keep,text)
-        _,next_bytes=context.estimate(projected,instructions,tools)
+        fits,next_bytes=await context.continuation_fit(projected,instructions,tools,maximum)
+        if not fits:
+            if worker.conversation.head()!=head:
+                raise ModelFault('context_history_changed',not_dispatched=True)
+            return stop('The next request with this summary does not fit its input limit.')
         after=estimates(context,next_bytes)
-        small_gain=after.tokens>=before.tokens-32 and after.bytes>=before.bytes-4096
-        new_token_overflow=maximum is not None and before.tokens<=maximum<after.tokens
-        new_byte_overflow=before.bytes<=MAX_BODY<after.bytes
-        if small_gain or new_token_overflow or new_byte_overflow:
-            self.progress('stopped',before,target=target,reason='The confirmed summary would not make the next request smaller within its limits.')
-            raise ModelFault('context_summary_no_progress')
         worker.validate_lease()
         if worker.stopping or not worker.active():
             raise asyncio.CancelledError()
@@ -143,6 +136,5 @@ class Compaction:
             **origin,'sourceHeadSequence':head,'previousCheckpointId':(checkpoint or {}).get('id'),
             'compaction':{'before':before.public(),'after':after.public()},
         },expected_head=head)
-        self.steps += 1
         self.progress('completed',before,after=after,target=target)
         return context.report(instructions,tools)[0],True
