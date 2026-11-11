@@ -203,6 +203,7 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     if snapshot['engine'].get('kind')=='studio':
         if original is None:
             snapshot['contextResultProtocol']=1
+            snapshot['terminalCompletion']=1
             from context_policy import optimized
             from image_token_rules import rule_for
             has_rule=optimized(snapshot['contextPolicy'],8) and rule_for(snapshot.get('apiProvider',{}))
@@ -210,7 +211,9 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
                 from image_usage import previous
                 observations=previous(store,session_id,{**snapshot['apiProvider'],'model':snapshot['model']})
                 if observations:snapshot['contextPolicy']['imageEstimate']=observations
-        elif 'contextResultProtocol' in original:snapshot['contextResultProtocol']=original['contextResultProtocol']
+        else:
+            for key in ('contextResultProtocol', 'terminalCompletion'):
+                if key in original: snapshot[key] = original[key]
     if original is not None:
         for key in ('nativeGoalPreparation','apiGoalProtocol'):
             if key in original:snapshot[key]=original[key]

@@ -30,6 +30,11 @@ TERMINAL_LIFETIME_RECEIPTS = (
     'new budget. Process output, exit code, signal and timeout reason remain separate. No extra shell '
     'query is needed to inspect these original timing fields.'
 )
+TERMINAL_EXECUTION = (
+    'STUDIO TERMINAL EXECUTION: For a finite noninteractive command, omit tty and yield_time_ms. '
+    'Studio shows output while it runs and returns the final exit status. Use tty for an interactive '
+    'terminal or set yield_time_ms when a resumable process handle is needed.'
+)
 
 
 SECTION_HEADING = re.compile(
@@ -125,6 +130,9 @@ def compose(config, project=None):
     if (config.get('permissions', {}).get('studio.exec_command')
             and TERMINAL_TIMING not in source and TERMINAL_TIMING not in text):
         text += '\n\n' + TERMINAL_TIMING
+    if (config.get('terminalCompletion') == 1 and config.get('permissions', {}).get('studio.exec_command')
+            and config.get('apiProvider', {}).get('protocol') in ('responses', 'chat-completions')):
+        text += '\n\n' + TERMINAL_EXECUTION
     if (any(config.get('permissions', {}).get(key) for key in ('studio.exec_command', 'studio.write_stdin'))
             and TERMINAL_LIFETIME_RECEIPTS not in source and TERMINAL_LIFETIME_RECEIPTS not in text):
         text += '\n\n' + TERMINAL_LIFETIME_RECEIPTS

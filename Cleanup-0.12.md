@@ -149,3 +149,7 @@ Show rule-counted image tokens in the Context overlay and preserve prepared inpu
 ## 0.12.39
 
 Use bound terminal and development completion receipts when planning context summaries. Carry forward the summary input-limit hotfix.
+
+## 0.12.40
+
+Finite noninteractive terminal commands wait for a final process receipt while Studio streams progress. Explicit yield and interactive commands return a resumable handle.

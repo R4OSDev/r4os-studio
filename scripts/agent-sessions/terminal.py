@@ -142,6 +142,25 @@ class Process:
             except asyncio.TimeoutError: pass
         # Wait a short scheduling turn so fast commands include an exit status.
         await asyncio.sleep(0.02)
+        return self.collect()
+
+    async def wait_result(self, watcher):
+        interrupted = False
+        try:
+            await asyncio.shield(watcher)
+        except asyncio.CancelledError:
+            interrupted = True
+            await self.terminate('interrupted')
+            await asyncio.shield(watcher)
+        result = self.collect()
+        if result['processEndConfirmed'] is not True or result['exitCode'] is None:
+            return {**result, 'success': False, 'state': 'unknown', 'error': 'unknown',
+                    'partialChangesPossible': True}
+        if interrupted:
+            return {**result, 'success': False, 'error': 'interrupted', 'partialChangesPossible': True}
+        return result
+
+    def collect(self):
         text, self.pending = self.pending, ''
         truncated, self.dropped = self.dropped, False
         self.publish()
@@ -183,6 +202,8 @@ class Terminals:
             try: await self.worker.workspace_tools.prepare()
             except (OSError, ValueError, ProjectFault) as error:
                 return {'success': False, 'error': 'preparationFailed', 'output': str(error) if isinstance(error, ProjectFault) else 'The workspace environment is unavailable. No command started.'}
+            foreground = getattr(self.worker, 'config', {}).get('terminalCompletion') == 1
+            resumable = not foreground or bool(args.get('tty')) or 'yield_time_ms' in args
             async with self.lock:
                 if sum(not p.finished.is_set() for p in self.processes.values()) >= 4:
                     return {'success': False, 'error': 'processLimit', 'output': 'This run reached its process limit.'}
@@ -207,8 +228,9 @@ class Terminals:
                     if args.get('tty'):
                         master, slave = pty.openpty(); os.set_blocking(master, False)
                     timing=Timing(args.get('timeout_ms',120000))
+                    stdin = asyncio.subprocess.PIPE if resumable else asyncio.subprocess.DEVNULL
                     proc = await asyncio.create_subprocess_exec(*command,
-                        stdin=slave if slave is not None else asyncio.subprocess.PIPE,
+                        stdin=slave if slave is not None else stdin,
                         stdout=slave if slave is not None else asyncio.subprocess.PIPE,
                         stderr=slave if slave is not None else asyncio.subprocess.PIPE,
                         start_new_session=True)
@@ -225,7 +247,9 @@ class Terminals:
                     asyncio.get_running_loop().add_reader(master, process.pty_read)
                 task = asyncio.create_task(process.watch(args.get('timeout_ms', 120000)))
                 self.tasks.add(task); task.add_done_callback(self.tasks.discard)
-            return await process.result(args.get('yield_time_ms', 1000))
+            if resumable:
+                return await process.result(args.get('yield_time_ms', 1000))
+            return await process.wait_result(task)
         process = self.processes.get(args['processId'])
         if process is None:
             worker = self.worker
