@@ -133,3 +133,7 @@ Estimate image tokens from reported usage and resolution, with a 5,000-token def
 ## 0.12.35
 
 Count vision inputs on the Codex subscription route with the observed 32-pixel rule and model-specific detail limits.
+
+## 0.12.36
+
+Count Claude image inputs by documented 28-pixel patches and resolution tiers while preserving the signed Messages prefix.
