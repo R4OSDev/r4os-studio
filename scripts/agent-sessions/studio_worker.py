@@ -189,9 +189,12 @@ class StudioWorker(Worker):
         scope_attr,transport_attr=('summary_scope','summary_transport') if summary else ('transport_scope','prepared_transport')
         if getattr(self,scope_attr,None) == scope:
             return getattr(self,transport_attr)
+        chat_policy = self.config.get('apiChat')
+        if summary and chat_policy and 'selectedEffort' in chat_policy:
+            chat_policy = {**chat_policy, 'selectedEffort': summary['effort']}
         model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
-            headers=getattr(self,'model_headers',None), chat_policy=self.config.get('apiChat'), client=self.config.get('apiZaiClient'))
+            headers=getattr(self,'model_headers',None), chat_policy=chat_policy, client=self.config.get('apiZaiClient'))
         model.media_resolver=self.media.resolve
         model.context_policy=self.config.get('contextPolicy')
         model.summary_budget=summary

@@ -13,7 +13,7 @@ def profile(config, input_limit, target_hint=None):
     target = min(2048, max(256, input_limit // 8)) if input_limit is not None else 2048
     if target_hint is not None:
         target = min(target, max(256, target_hint))
-    effort = config['effort']
+    effort = model.get('summaryEffort', config['effort'])
     cap = None
     if (provider.get('kind') == 'openai-compatible' and provider.get('baseUrl') == 'https://api.openai.com/v1'
             and provider.get('protocol') == 'responses'):
@@ -22,11 +22,9 @@ def profile(config, input_limit, target_hint=None):
         if type(maximum) is int and maximum > 0:
             cap = min(cap, maximum)
         target = min(target, cap)
-        if config['model']=='gpt-5.2' and effort in ('medium','high','xhigh'):
+        # Previously accepted runs may predate the frozen summary choice.
+        if 'summaryEffort' not in model and config['model']=='gpt-5.2' and effort in ('medium','high','xhigh'):
             effort = 'low'
-    elif (provider.get('kind')=='codex-subscription' and provider.get('baseUrl')=='https://chatgpt.com/backend-api/codex'
-            and provider.get('protocol')=='responses' and model.get('summaryEffort')=='low'):
-        effort='low'
     return {'version': 1, 'targetTokens': target, 'maxOutputTokens': cap, 'timeoutSeconds': 90, 'effort': effort}
 
 

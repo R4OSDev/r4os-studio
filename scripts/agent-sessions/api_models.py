@@ -153,11 +153,7 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
     from studio_engine import model_binding
     snapshot['apiProvider'] = model_binding(provider)
     snapshot.update(studio_model_facts(provider,model,snapshot['effort']))
-    if (provider['kind']=='codex-subscription' and provider['protocol']=='responses'
-            and provider['baseUrl']=='https://chatgpt.com/backend-api/codex' and listing['metadataCurrent']
-            and (model.get('source') or {}).get('kind')=='metadata'
-            and snapshot['effort'] in ('medium','high','xhigh','max') and 'low' in model['efforts']):
-        snapshot['apiModel']['summaryEffort']='low'
+    snapshot['apiModel']['summaryEffort'] = 'low' if 'low' in model['efforts'] else snapshot['effort']
     if provider['kind'] == 'zai-coding-plan':
         from zai_client import freeze as freeze_client
         snapshot['apiZaiClient'] = freeze_client(store,sid,provider)

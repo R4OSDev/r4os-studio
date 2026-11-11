@@ -21,8 +21,9 @@ use the conservative raster estimate. The overlay shows which estimate was used.
 Local summary requests use selected history, the current objective and original
 references. Usage attribution stays in the request and conversation archives.
 The summary has its own prompt, output target and 90-second timeout. A provider
-output cap is sent through the public OpenAI Responses contract. A lower
-reasoning setting is used only when the route and model support it.
+output cap is sent through the public OpenAI Responses contract. When the
+selected model lists `low` in its catalog, Studio uses it for summaries.
+Otherwise summaries use the session's reasoning setting.
 [Responses request fields](https://developers.openai.com/api/reference/resources/responses/methods/create)
 
 Studio commits a checkpoint when the confirmed summary reduces the complete

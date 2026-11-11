@@ -121,3 +121,7 @@ Plan the largest fitting whole-history prefix against the complete next request,
 ## 0.12.32
 
 Qualify the public and subscription compaction contracts separately and retain local checkpoints until an exact connection and measurable advantage are confirmed.
+
+## 0.12.33
+
+Select low reasoning for summaries when the existing model catalog offers it.
