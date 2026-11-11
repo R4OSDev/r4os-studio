@@ -153,3 +153,7 @@ Use bound terminal and development completion receipts when planning context sum
 ## 0.12.40
 
 Finite noninteractive terminal commands wait for a final process receipt while Studio streams progress. Explicit yield and interactive commands return a resumable handle.
+
+## 0.12.41
+
+Complete historical tool groups can be summarized with failures, possible partial effects and references to their originals. Current results and signed Messages history stay exact.

@@ -1,4 +1,4 @@
-"""Keep exact unresolved tool batches outside a summarized context prefix."""
+"""Select complete historical groups for a summarized context prefix."""
 import hashlib
 
 from conversation import identifier
@@ -63,6 +63,7 @@ def choices(worker, active, checkpoint, byte_limit):
     config=getattr(worker,'config',{})
     projected=optimized(config.get('contextPolicy'),3)
     reconcile=optimized(config.get('contextPolicy'),9)
+    report_failures=optimized(config.get('contextPolicy'),10)
     if reconcile:
         from tool_completion import completions
     archive=worker if projected and config.get('contextResultProtocol')==1 and config.get('permissions',{}).get('studio.read_context_result') else None
@@ -79,9 +80,9 @@ def choices(worker, active, checkpoint, byte_limit):
         sequence = max((r.get('sequence', 0) for r in group), default=0)
         if sequence >= consumed: break
         later = [completions(worker,r) if reconcile else {} for r in group]
-        keep = any(has_uncertain_result(r,completions=c) for r,c in zip(group,later))
+        keep = not report_failures and any(has_uncertain_result(r,completions=c) for r,c in zip(group,later))
         if not keep:
-            plain = ([record_view(r,archive,completions=c) for r,c in zip(group,later)] if projected else
+            plain = ([record_view(r,archive,completions=c,report_failures=report_failures) for r,c in zip(group,later)] if projected else
                      [{**r, 'content': [p for p in r['content'] if p['type'] != 'provider']} for r in group])
             amount = len(dumps(plain).encode())
             keep = amount > byte_limit

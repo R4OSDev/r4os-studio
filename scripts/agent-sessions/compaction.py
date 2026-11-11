@@ -5,6 +5,7 @@ from time import monotonic
 
 from active_history import checkpoint_view
 from checkpoint_records import choices, select
+from context_policy import optimized
 from model_transport import ModelFault
 from request_capture import MAX_BODY
 from session_store import now
@@ -43,12 +44,13 @@ def continuation(worker, records, through, retained, text):
 
 def largest_input(context, active, candidates, instructions, budget, maximum):
     data, retained, ends = candidates
+    report_failures=optimized(context.w.config.get('contextPolicy'),10)
     low, high = 0, len(ends)-1
     best = None
     while low<=high:
         index=(low+high)//2
         candidate=select(data,retained,ends[index])
-        messages=request(payload(candidate[1],active,candidate[2],True))
+        messages=request(payload(candidate[1],active,candidate[2],True),report_failures=report_failures)
         tokens,size=context.estimate(messages,instructions,[],summary=budget)
         if size<=MAX_BODY and (maximum is None or tokens<=maximum):
             best=candidate
@@ -101,7 +103,7 @@ class Compaction:
         floor=continuation(worker,records,whole[0],whole[2],'')
         floor_tokens,floor_bytes=context.estimate(floor,instructions,tools)
         if floor_bytes>MAX_BODY or maximum is not None and floor_tokens>maximum:
-            return stop('Required input and exact unresolved observations exceed the input limit.')
+            return stop('Required input and retained tool results exceed the input limit.')
 
         budget,summary_instructions=context.summary_setup(maximum,instructions)
         planned=largest_input(context,active,candidates,summary_instructions,budget,maximum)

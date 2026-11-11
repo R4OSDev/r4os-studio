@@ -237,8 +237,9 @@ class StudioContext(Context):
         budget,summary_instructions=self.summary_setup(limit,instructions)
         from summary_context import payload, request
         projected=optimized(w.config.get('contextPolicy'),3)
+        report_failures=optimized(w.config.get('contextPolicy'),10)
         def summary_input(data,keep):
-            return request(payload(data,active,keep,projected))
+            return request(payload(data,active,keep,projected),report_failures=report_failures)
         if bounded:
             # A summary request must fit too. Reduce only whole historical
             # groups through the existing planner; never slice tool pairs or
@@ -285,7 +286,7 @@ class StudioContext(Context):
         if not optimized(self.w.config.get('contextPolicy'),4):return None,instructions+'\n\n'+SUMMARY
         from summary_budget import instructions as short_instructions, profile
         budget=profile(self.w.config,limit,target_hint)
-        return budget,short_instructions(budget)
+        return budget,short_instructions(budget,report_failures=optimized(self.w.config.get('contextPolicy'),10))
 
     async def summarize(self,active,checkpoint,planned,instructions,tools,summary_instructions,budget,*,announce=True):
         from context_results import checkpoint_references
@@ -301,7 +302,7 @@ class StudioContext(Context):
         # Historical calls are data for the summarizer, without active tools.
         # Opaque provider blocks stay in their original conversation archive.
         data=payload(prefix,active,retained,projected)
-        summary = request(data)
+        summary = request(data,report_failures=optimized(w.config.get('contextPolicy'),10))
         previous_purpose=getattr(w,'request_purpose','conversation')
         previous_budget=getattr(w,'request_summary_budget',None)
         w.request_purpose='summary'
