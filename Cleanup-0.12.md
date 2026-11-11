@@ -137,3 +137,7 @@ Count vision inputs on the Codex subscription route with the observed 32-pixel r
 ## 0.12.36
 
 Count Claude image inputs by documented 28-pixel patches and resolution tiers while preserving the signed Messages prefix.
+
+## 0.12.37
+
+Count Z.AI GLM-5.3-Flash image inputs with the published preprocessing rule and two image markers measured on the Coding Plan.

@@ -78,6 +78,32 @@ def claude_tokens(model, width, height, detail):
     return grid(low, max(1, round(low / ratio)), 28)
 
 
+def ceil_sqrt_ratio(numerator, denominator):
+    root = isqrt(numerator // denominator)
+    return root + int(root * root * denominator < numerator)
+
+
+def zai_tokens(model, width, height, detail):
+    """GLM-5.3-Flash's merged patch grid plus two image markers."""
+    if model != 'glm-5.3-flash' or detail != 'auto':
+        return None
+    tokens = grid(width, height, 28)
+    if tokens < 16:
+        tokens = ceil_sqrt_ratio(16 * width, height) * ceil_sqrt_ratio(16 * height, width)
+    elif tokens > 8000:
+        # The processor searches along the original height, then pads both
+        # axes to the merged grid. Keep that orientation for the resize.
+        low, high = 1, height
+        while low < high:
+            middle = (low + high + 1) // 2
+            if grid(max(1, width * middle // height), middle, 28) <= 8000:
+                low = middle
+            else:
+                high = middle - 1
+        tokens = grid(max(1, width * low // height), low, 28)
+    return tokens + 2
+
+
 def rule_for(binding):
     if (binding.get('kind') == 'codex-subscription' and binding.get('protocol') == 'responses'
             and binding.get('baseUrl') == 'https://chatgpt.com/backend-api/codex'
@@ -86,4 +112,7 @@ def rule_for(binding):
     if (binding.get('kind') == 'claude-plan' and binding.get('protocol') == 'messages'
             and binding.get('baseUrl') == 'https://api.anthropic.com/v1'):
         return 'claude-vision-28-v1', claude_tokens
+    if (binding.get('kind') == 'zai-coding-plan' and binding.get('protocol') == 'chat-completions'
+            and binding.get('baseUrl') == 'https://api.z.ai/api/coding/paas/v4'):
+        return 'zai-vision-28-v1', zai_tokens
     return None
