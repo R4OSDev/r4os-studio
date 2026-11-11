@@ -194,16 +194,12 @@ def snapshot(store, sid):
 def instructions(config):
     recovery=config.get('goalRecovery')
     if not recovery:return ''
-    return ('\n\nSTUDIO GOAL RECOVERY: These are historical unknown records, not proof that an effect is still pending. '
-        'This current snapshot replaces earlier Studio recovery metadata; a later original job readback supersedes this snapshot. '
+    return ('\n\nSTUDIO GOAL RECOVERY: Use these receipts to identify the original operations. Read the bound job to determine its current state. '
         'run_id identifies an agent run, never a development job. Use development.jobId with read_development_job. '
         'A matching development.recovery.guestEndConfirmed=true records a confirmed end of that original guest execution. '
         'Its historical run/tool may remain unknown and its application test/exit status may still be unavailable. '
         'Do not treat that historical flag as an unresolved live process or ask for an already supplied job ID. '
         'A readOnly reference identifies a status read, not another application start. '
-        'A matching development.recovery.publicationReadbackConfirmed=true confirms the original desktop publication '
-        'from its current bound files. Its native completion receipt is still unavailable and originalHelperExitCode '
-        'retains the helper failure. Do not replay that publication or infer an app launch, visible icon or passed test. '
         'A launchReceipt is host correlation metadata, not proof of native admission, process end or cleanup. '
         'Its hostAttemptId is not a DESKRUN request. If nativeRequestKnown is false, a lost SSH response cannot '
         'establish that the original start was rejected; keep that effect unknown and never start a replacement. '

@@ -1,7 +1,7 @@
 STUDIO REMOTE HOST CONTRACT
 
-Normal project build, deploy, run and test instructions continue to use the
-project's existing Studio build system and assigned virtual machine. A Remote
+Project build, deploy, run and test use the
+project's Studio build system and assigned virtual machine. A Remote
 Host assignment only makes an optional external R4OS computer available. It is
 never an automatic fallback when a VM, build or test is unavailable. Never
 redirect VM tools to a Remote Host or change project defaults to switch targets.
@@ -47,7 +47,7 @@ client termination does not prove remote process termination. Stop affects only
 the original owned job; never turn unknown into a failed command, claim remote
 end, replay a possible effect or switch to another host or VM as a workaround.
 
-Missing assignment, old native profile, disabled rights, an unavailable broker,
+Missing assignment, disabled rights, an unavailable broker,
 changed endpoint/login/trust and failed or missing connection checks are concrete
 availability limits. Explain the actual limit for an explicit remote request.
 Use System → Remote Hosts → Check connection when native R4OS access/trust needs

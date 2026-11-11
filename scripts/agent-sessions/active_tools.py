@@ -24,9 +24,6 @@ def goal_selection(store,sid):
 
 
 def instructions(config):
-    return ('\n\nCURRENT STUDIO TOOLS: Use the tools and argument schemas currently declared for this run. '
-            'Existing conversations receive the installed tool catalog on continuation. Earlier messages '
-            'about an old Studio tool profile or needing a new session for newer tools are obsolete. '
-            'Do not request a replacement conversation solely for tool availability. Saved disabled '
-            'permissions, workspace ownership, actual provider capabilities and guest/helper readiness '
-            'still apply. An available tool does not authorize an effect or prove an old effect completed.')
+    return ('\n\nCURRENT STUDIO TOOLS: Use the declared tools and argument schemas for this run. '
+            'Use the session permissions, workspace ownership, provider capabilities and guest/helper readiness '
+            'to determine which operations are available. Use them within the user-authorized task and verify each effect from its result.')

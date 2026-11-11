@@ -1,4 +1,4 @@
-STUDIO SSH DESKTOP LINKS (0.9.27): Studio desktop automation is removed; this replaces older publication/ownership or blanket shell-edit guidance. Only when studio_run_vm_command is declared, enabled and available, create a shortcut on explicit user request. The pinned R4OS0.89.18 Terminal/SSHD sources support ECHO redirection and TYPE; actual guest write rights still apply. Read the existing C:\R4OS\DESKTOP\APP.LNK first, preserving unrelated files. Choose a short appropriate .LNK name and replace R4X_PATH below with the actual verified guest R4X path (never assume its drive). Submit each line as a separate short SSH job; confirm its original return before the next:
+STUDIO SSH DESKTOP LINKS: For an explicitly requested shortcut, use the declared and enabled studio_run_vm_command on the assigned VM. Verify guest support for ECHO redirection and TYPE and the required write permission. Read the existing C:\R4OS\DESKTOP\APP.LNK first and preserve unrelated files. Choose an appropriate short .LNK name and substitute the verified guest R4X path for R4X_PATH. Submit one line per SSH job and confirm its return before submitting the next.
 ECHO R4S_FORMAT=1 > C:\R4OS\DESKTOP\APP.LNK
 ECHO SCHEMA=R4LNK >> C:\R4OS\DESKTOP\APP.LNK
 ECHO TARGET=R4X_PATH >> C:\R4OS\DESKTOP\APP.LNK
@@ -6,4 +6,4 @@ ECHO TITLE=MyApp >> C:\R4OS\DESKTOP\APP.LNK
 ECHO POLICY=gui >> C:\R4OS\DESKTOP\APP.LNK
 ECHO ICON=INTERNAL >> C:\R4OS\DESKTOP\APP.LNK
 TYPE C:\R4OS\DESKTOP\APP.LNK
-Keep every command within112 UTF-8 bytes. On denied writes, unsupported syntax or uncertain results, report the original error and inspect the same job; do not replay or disable native protection. ICON=INTERNAL reads the first embedded R4X ICON (type1/index0), requiring no window/taskbar icon API. File readback, visible icon and actual link activation are separate observations.
+Keep each command within 112 UTF-8 bytes. On a denied write, unsupported syntax or an uncertain result, inspect the original job and report its evidence. Keep the guest's write protections in effect. ICON=INTERNAL selects the first embedded R4X icon (type 1, index 0). Verify file contents, visible icon and activation separately when the task calls for those checks.

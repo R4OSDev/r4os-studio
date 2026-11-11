@@ -7,7 +7,7 @@ description: Plan, build, transfer, install, verify and recover R4OS update pack
 
 Use this skill when a user requests an R4OS update package, persistent update installation or recovery. Read [the reviewed English workflow](references/Updates.txt) and [the source binding](references/source-profile.json) before acting.
 
-This is project-session knowledge. Skill Manager sessions may edit the skill; they have no VM update tools. An active skill grants no permissions. If this session lacks the v5 update tools, create a new project session; preserve the old conversation. Never replace missing tools with SSH, network access, credentials or a guest shell.
+Run the workflow in a project session with the declared update tools and their required permissions. Use Skill Manager to edit the skill. If an operation is unavailable, report the required tool, permission or capability.
 
 Follow build artifact → immutable plan → R4UPack package → assigned VM readiness → own Inbox upload/full readback → public VERIFY → STAGE → actual live proof or own awaiting-commit batch → separately authorized COMMIT/reboot → correlated status/inventory/full hashes. Use the Studio tools and wait for their original durable jobs, without model polling or resubmitting writes.
 

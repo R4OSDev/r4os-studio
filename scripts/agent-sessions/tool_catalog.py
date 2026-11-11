@@ -92,7 +92,7 @@ def permission_tools(scope='project'):
 
 def validate_arguments(name,value,scope='project'):
     if name in ('deploy_project','run_project') and isinstance(value,dict) and any(key in value for key in ('desktopShortcut','desktopLink')):
-        raise ValueError('Studio desktop automation was removed. Use normal deploy/run or the project VM SSH tool for a requested guest shortcut.')
+        raise ValueError('Use the declared deploy or run arguments. For an explicitly requested guest shortcut, use the project VM SSH tool when permitted.')
     if name=='write_file' and isinstance(value,dict) and 'expectedSha256' in value:
         from file_worker import validate_expected,Fault
         try:validate_expected(value['expectedSha256'])

@@ -13,8 +13,8 @@ Pause allows the current turn to end and prevents following turns. Stop also
 interrupts the current owned run. Saving a different objective requires a fresh
 explicit Play. Preserve honest Blocked, usage/budget limits and uncertain effects.
 
-Every continuation keeps this run's frozen file/tool/network rights, model,
-project pins and owner. A Goal does not grant additional permissions. Native
+Every continuation keeps this run's frozen tool permissions, model, project
+pins and owner. A Goal does not grant additional permissions. Native
 tools unavailable in this run remain unavailable. Work normally targets the
 assigned VM; an explicit human instruction naming the assigned Remote Host can
 choose that optional host. Availability alone, a file, metadata, a failed VM or

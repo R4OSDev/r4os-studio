@@ -48,7 +48,7 @@ class RoadmapInstructions(unittest.TestCase):
             self.assertIn(config['systemPrompt']['text'], base(config))
             if custom: self.assertIn(config['systemPrompt']['text'], result)
             self.assertIn(config['projectInstructions']['text'], result)
-            self.assertIn(CONTRACT.read_text(), result)
+            self.assertIn('*** STUDIO PROJECT ROADMAP CONTRACT ***\n' + CONTRACT.read_text().split('\n', 1)[1], result)
             self.assertEqual(config, original)
             self.assertEqual(agents.read_bytes(), raw_agents)
             self.assertEqual(read(self.projects), global_source)

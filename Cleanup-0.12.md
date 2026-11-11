@@ -161,3 +161,7 @@ Complete historical tool groups can be summarized with failures, possible partia
 ## 0.12.42
 
 Direct Studio runs return every tool outcome together at the next model step. Tool-specific deadlines are configurable under System Settings Tools and freeze at run acceptance.
+
+## 0.12.43
+
+Describe the current Studio workflow in global instructions, generated guidance, tool descriptions and the shipped update skill.

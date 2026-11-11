@@ -2,10 +2,10 @@
   "schema": 1,
   "id": "cb324e61-5196-5710-ac2f-33b459a5b1d1",
   "name": "R4OS Update Packages",
-  "version": "0.4.20",
+  "version": "0.4.21",
   "files": {
-    "SKILL.md": "7f41f7c9a55a947a8fa7fab908cf61e91cb97136a2478a4909e23784acc151db",
-    "references/Updates.txt": "681480a1aaeeb4de6d1ebe9ecda79ca5f6caf852916d8fec9af1d9e8d84ba39b",
+    "SKILL.md": "46e9a2e0cd8ca03c12c931041ea7802a7cde04a4289a47f79bf5068277ac2d47",
+    "references/Updates.txt": "e346e7ce62d84381550f0cded0b1bfb344c3384bab60141ffa471f1604e863d1",
     "references/source-profile.json": "2ebcc1489dd34d49a355e26881dd75db1012702d793b60d467b16fdee072e21e"
   }
 }

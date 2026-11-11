@@ -62,7 +62,9 @@ class RemoteInstructions(unittest.TestCase):
         frozen = self.frozen(); before = deepcopy(frozen); raw_agents = agents.read_bytes(); global_source = read(self.projects)
         settings = self.projects / '.studio/Settings.sqlite'; raw_settings = settings.read_bytes()
         rendered = compose(frozen)
-        self.assertIn(global_source['text'], rendered); self.assertIn(raw_agents.decode(), rendered); self.assertIn(CONTRACT.read_text(), rendered)
+        self.assertIn(global_source['text'], rendered)
+        self.assertIn(raw_agents.decode(), rendered)
+        self.assertIn('*** STUDIO REMOTE HOST CONTRACT ***\n' + CONTRACT.read_text().split('\n', 1)[1], rendered)
         self.assertEqual(frozen, before); self.assertEqual(agents.read_bytes(), raw_agents); self.assertEqual(settings.read_bytes(), raw_settings)
         self.assertEqual(read(self.projects), global_source); self.assertEqual(frozen['systemPrompt']['sha256'], hashlib.sha256(global_source['text'].encode()).hexdigest())
 
