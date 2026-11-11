@@ -138,7 +138,11 @@ def compose(config, project=None):
     text = shortcut_instructions(config, text, source)
     if 'skillAccess' in config:
         from skill_application import catalog_text
-        text += catalog_text(config['skillAccess'], config.get('workspaceContext'))
+        text += catalog_text(config['skillAccess'], config.get('workspaceContext'),config)
+    result_actions=config.get('toolCatalog',{}).get('actions',{}).get('studio_read_result',())
+    if 'context' in result_actions:
+        text += ('\n\nSTUDIO ORIGINAL RESULTS: Follow saved result references with studio_read_result. '
+                 'Use context for JSON pages, image for a saved image and index for checkpoint references.')
     from workspace_instructions import compose as workspace_guidance
     generated = format_sections(text + runtime_guidance(config, project) + workspace_guidance(config))
     return source + generated + (TOOL_EXECUTION if batch_results else '')

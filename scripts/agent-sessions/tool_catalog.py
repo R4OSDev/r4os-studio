@@ -143,6 +143,16 @@ def operation(name,value,scope='project'):
     return entry['tool'],{**{key:v for key,v in value.items() if key!='action'},**entry.get('set',{})}
 
 
+def result_readback(config, action):
+    selected=config.get('toolCatalog',{})
+    if action in selected.get('actions',{}).get('studio_read_result',()):
+        return {'tool':'studio_read_result','action':action}
+    if action=='skill':
+        if selected.get('version')==2 and 'studio_read_skill_result' not in selected['tools']: return {}
+        return {'tool':'studio_read_skill_result'}
+    return {'tool':'studio_read_context_result','view':'result' if action=='context' else action}
+
+
 def validate_arguments(name,value,scope='project'):
     if name in ('deploy_project','run_project') and isinstance(value,dict) and any(key in value for key in ('desktopShortcut','desktopLink')):
         raise ValueError('Use the declared deploy or run arguments. For an explicitly requested guest shortcut, use the project VM SSH tool when permitted.')

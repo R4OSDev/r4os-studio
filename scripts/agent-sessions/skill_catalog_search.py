@@ -4,7 +4,7 @@ import json
 from skill_mcp_client import McpFault, encoded, strict
 
 
-def search(entry, kind, values, args):
+def search(entry, kind, values, args, readback=None):
     query = args.get('query')
     if (kind not in ('tools', 'prompts') or not isinstance(query, str) or not query.strip()
         or len(query.encode('utf-8')) > 160 or any(k in args for k in ('name', 'offset', 'schemaOffset'))):
@@ -27,19 +27,23 @@ def search(entry, kind, values, args):
     if offset>len(matched):raise McpFault('This search continuation is outside its original matches.')
     selected=matched[offset:offset+limit];end=offset+len(selected)
     following=base64.urlsafe_b64encode(encoded({**binding,'offset':end})).decode().rstrip('=') if end<len(matched) else None
+    if readback is None: readback={'tool':'studio_read_skill_result'}
     return {**binding,'items':[dict(name=v.get('name'),title=v.get('title'),descriptionPreview=v.get('description','')[:600]) for v in selected],
         'total':len(values),'matches':len(matched),'offset':offset,'nextCursor':following,'complete':True,
         'search':'case-insensitive literal name/description substring',
-        'fullSchemas':'Choose an exact returned name without query/searchCursor. Read every schema page with studio_read_skill_result reference/nextOffset before invoking. Search results are orientation only.'}
+        'fullSchemas':'Choose an exact returned name without query/searchCursor. Read the complete schema before invoking.',
+        **({'readback':readback} if readback else {})}
 
 
-def orientation(value, page):
+def orientation(value, page, readback=None):
     schema=value.get('inputSchema') or {}
     required=schema.get('required',[])
     if not isinstance(required,list):required=[]
     shown=[name for name in required if isinstance(name,str) and len(name.encode('utf-8'))<=128][:16]
+    if readback is None: readback={'tool':'studio_read_skill_result'}
     return dict(orientationOnly=True,topLevelRequired=shown,additionalRequiredFields=max(0,len(required)-len(shown)),
         branchDependent=any(k in schema for k in ('oneOf','anyOf','allOf','if','$ref')),
         notice='Orientation only; native unions, nulls, defaults and descriptions remain in the complete unchanged schema.',
         fullSchema=dict(reference=page['reference'],sha256=page['sha256'],bytes=page['bytes'],nextOffset=page['nextOffset'],
-            readTool='studio_read_skill_result',instruction='If complete=false, continue from nextOffset until complete=true and verify the same sha256. Do not infer omitted fields from this preview.'))
+            **({'readTool':readback['tool']} if readback else {}),**({'action':readback['action']} if 'action' in readback else {}),
+            instruction='Continue with nextOffset and the same sha256 until the schema is complete.'))

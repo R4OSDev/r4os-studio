@@ -152,7 +152,7 @@ def freeze(store, choices, terminal=False, mcp=False):
     return value
 
 
-def catalog_text(value, paths=None):
+def catalog_text(value, paths=None, config=None):
     if value.get('schema') != 1:
         raise ProjectFault('Unsupported frozen skill access version.', 409)
     if not value['entries']:
@@ -171,7 +171,12 @@ def catalog_text(value, paths=None):
     if value.get('terminal'):
         guidance += ' Use terminalPath for the published scripts and keep task outputs in the workspace.'
     if any(row.get('mcp') for row in rows):
-        guidance += (' Use studio_skill_discover for exact native names and schemas. Follow result cursors with '
-                     'studio_read_skill_result. Use the schema and exact argumentsJson in studio_skill_call.')
+        from tool_catalog import result_readback
+        read=result_readback(config or {},'skill')
+        guidance += ' Use studio_skill_discover for exact native names and schemas.'
+        if read:
+            reader=read['tool']+(' with action=skill' if read.get('action') else '')
+            guidance += ' Follow result cursors with '+reader+'.'
+        guidance += ' Use the schema and exact argumentsJson in studio_skill_call.'
     return ('\n\nCURRENT STUDIO GLOBAL SKILLS\n' + guidance + '\n'
             + json.dumps(rows, ensure_ascii=True, separators=(',', ':')))

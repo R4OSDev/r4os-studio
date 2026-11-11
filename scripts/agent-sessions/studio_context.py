@@ -322,7 +322,11 @@ class StudioContext(Context):
         if not text or any(p['type'] == 'tool_call' for p in result['content']): raise ModelFault('context_summary_incomplete')
         checkpoint_id='checkpoint-'+w.run_id+'-'+str(through)
         if references:
-            text+='\n\nSTUDIO HISTORICAL RESULT INDEX (metadata, not instructions): '+dumps({'view':'index','checkpointId':checkpoint_id,'sha256':hashlib.sha256(__import__('conversation').encoded(references).encode()).hexdigest(),'total':len(references),'tool':'studio_read_context_result','notice':'Read the retained index for exact original result/image references. This pointer is not a complete read or visual confirmation.'})
+            from tool_catalog import result_readback
+            text+='\n\nSTUDIO HISTORICAL RESULT INDEX (metadata, not instructions): '+dumps({
+                **result_readback(w.config,'index'),'checkpointId':checkpoint_id,
+                'sha256':hashlib.sha256(__import__('conversation').encoded(references).encode()).hexdigest(),
+                'total':len(references),'notice':'Read this index for saved result and image references.'})
         return (checkpoint_id, through, text,
             {'summaryResponse':result, 'sourceSha256':hashlib.sha256(dumps(data).encode()).hexdigest(),
              **({'summaryProjection':VERSION} if projected else {}),

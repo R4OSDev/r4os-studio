@@ -138,7 +138,8 @@ class SkillTools:
                                          'resourceTemplates' if kind=='resourceTemplates' else 'resources')
         if 'query' in args or 'searchCursor' in args:
             from skill_catalog_search import search
-            return dict(success=True,output=encoded(search(entry,kind,values,args)).decode())
+            from tool_catalog import result_readback
+            return dict(success=True,output=encoded(search(entry,kind,values,args,result_readback(self.worker.config,'skill'))).decode())
         if args.get('name') is not None:
             value = next((v for v in values if v.get('name',v.get('uri'))==args['name']),None)
             if value is None: raise McpFault('This exact name is absent from the complete frozen skill catalogue. Use studio_skill_discover with this skillId/kind and query, or list with offset; choose an actual returned name.')
@@ -146,7 +147,8 @@ class SkillTools:
             result=self.page(metadata,raw,args.get('schemaOffset',0))
             if kind=='tools':
                 from skill_catalog_search import orientation
-                page=json.loads(result['output']);page['schemaOrientation']=orientation(value,page);result['output']=encoded(page).decode()
+                from tool_catalog import result_readback
+                page=json.loads(result['output']);page['schemaOrientation']=orientation(value,page,result_readback(self.worker.config,'skill'));result['output']=encoded(page).decode()
             return result
         offset, limit = args.get('offset',0),args.get('limit',12)
         selected = values[offset:offset+limit]

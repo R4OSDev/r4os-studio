@@ -8,7 +8,8 @@ from store import ProjectFault
 
 
 def purpose(name, arguments):
-    if name=='studio_read_context_result' or name=='studio_capture_vm' and arguments.get('action')=='inspect':
+    if (name=='studio_read_context_result' or name=='studio_read_result' and arguments.get('action') in ('context','image','index')
+            or name=='studio_capture_vm' and arguments.get('action')=='inspect'):
         return 'historical'
     if name=='studio_capture_vm':
         return 'comparison' if 'analysisQuestion' in arguments else 'capture'

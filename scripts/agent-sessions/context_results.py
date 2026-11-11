@@ -152,8 +152,11 @@ class Projection:
                         'truncated':True,'notice':'This is a short historical preview, not the complete original. Read the exact original before relying on omitted details.'})
                 if images and explicit_media:
                     small['imageDelivery']='reference-only'
+                from tool_catalog import result_readback
                 small['contextArchive']={'reference':ref,'historical':True,'tool':tool['tool'],'imageCount':len(images),
-                    'notice':'Original tool data and images are retained. This reference is not a full read, current screenshot or proof of GUI success. Use studio_read_context_result for exact JSON pages or an original image. Reading never repeats this tool or captures a new frame.'}
+                    'read':result_readback(w.config,'context'),
+                    **({'readImage':result_readback(w.config,'image')} if images else {}),
+                    'notice':'Use the reference and read fields to retrieve the saved result or image. This is a historical observation.'}
                 parts.append({**p,'result':small});projected=True
             value={**record,'content':parts} if projected else record
             result.append(value)

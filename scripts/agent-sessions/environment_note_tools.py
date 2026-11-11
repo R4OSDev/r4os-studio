@@ -33,14 +33,15 @@ def replay(worker,name,arguments,previous):
         if previous['result']:
             original=json.loads(previous['result'])
             if original.get('error')!='unknown' and not original.get('success'):return original
-        return {'success':False,'error':'noteUnconfirmed','output':'No committed original note receipt was found. The note was not repeated. Read the current notes before considering a new relevant report.'}
-    return {'success':False,'error':'readAgain','output':'Read the current notes with a new call before recording; historical note contents were not replayed.'}
+        return {'success':False,'error':'noteUnconfirmed','output':'No committed original note receipt was found. Inspect current notes using a fresh read.'}
+    return {'success':False,'error':'readAgain','output':'Read current notes using a new call.'}
 
 def execute(worker,name,arguments,call):
     from environment_notes import Notes
     require(worker);notes=Notes(worker.store)
     try:
-        value=(notes.read_tool(worker.session_id,worker.run_id,call,arguments) if name=='read_environment_notes'
+        remember='studio_environment_notes' not in worker.config.get('toolCatalog',{}).get('tools',[])
+        value=(notes.read_tool(worker.session_id,worker.run_id,call,arguments,remember=remember) if name=='read_environment_notes'
                else notes.record(worker.session_id,worker.run_id,call,arguments,worker.manifest['version']))
         return result(value)
     except ProjectFault as error:return {'success':False,'error':'noteRejected','output':str(error)[:400]}
@@ -52,4 +53,8 @@ Consider one optional note for an evidenced Studio or non-editable environment f
 
 
 def instructions(config):
-    return '\n\n'+INSTRUCTIONS if config.get('environmentNotesEnabled') is True and availability(tool_scope(config))['available'] else ''
+    if config.get('environmentNotesEnabled') is not True: return ''
+    if 'studio_environment_notes' in config.get('toolCatalog',{}).get('tools',[]):
+        return ('\n\nSTUDIO ENVIRONMENT NOTES: Optionally record one evidenced Studio fault or concrete improvement. '
+                'Describe the component, behavior and impact briefly. Studio checks duplicates. Use the available evidence and continue the task.')
+    return '\n\n'+INSTRUCTIONS

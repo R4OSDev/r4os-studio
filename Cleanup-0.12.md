@@ -189,3 +189,7 @@ Combine process and workspace actions with original receipts, rights and deadlin
 ## 0.12.49
 
 Combine assigned VM and development job actions. Return confirmed SSH results and compact GUI schemas.
+
+## 0.12.50
+
+Read original context and skill results through one tool. Record environment notes atomically without a pre-read.

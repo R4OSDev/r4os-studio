@@ -37,6 +37,7 @@ class Notes:
         with self.store.db:
             self.store.db.execute('CREATE TABLE IF NOT EXISTS environment_notes(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id),fingerprint TEXT NOT NULL,data TEXT,revision INTEGER NOT NULL,created_at TEXT NOT NULL,deleted_at TEXT)')
             self.store.db.execute('CREATE UNIQUE INDEX IF NOT EXISTS environment_note_duplicate ON environment_notes(session_id,fingerprint) WHERE data IS NOT NULL')
+            self.store.db.execute('CREATE INDEX IF NOT EXISTS environment_note_fingerprint ON environment_notes(session_id,fingerprint)')
             self.store.db.execute('CREATE TABLE IF NOT EXISTS environment_note_collections(session_id TEXT PRIMARY KEY REFERENCES sessions(id),revision INTEGER NOT NULL)')
             self.store.db.execute('CREATE TABLE IF NOT EXISTS environment_note_reads(run_id TEXT PRIMARY KEY,session_id TEXT NOT NULL,revision INTEGER NOT NULL,call_id TEXT NOT NULL)')
             self.store.db.execute('CREATE TABLE IF NOT EXISTS environment_note_calls(run_id TEXT NOT NULL,call_id TEXT NOT NULL,session_id TEXT NOT NULL,fingerprint TEXT NOT NULL,note_id TEXT NOT NULL,PRIMARY KEY(run_id,call_id))')
@@ -86,9 +87,11 @@ class Notes:
         if (not run or not run['busy'] or run['state']!='running' or not owned or owned['tool']!='studio_'+tool
                 or json.loads(run['config']).get('owner')!={'type':self.store.owner_type,'id':self.store.owner_id}):raise ProjectFault('This note call does not belong to the active session run.',409)
         if json.loads(run['config']).get('environmentNotesEnabled') is False:raise ProjectFault('Environment notes are disabled for this run.',403)
-    def read_tool(self,sid,rid,call,query):
-        self.schema();self.live(sid,rid,call,'read_environment_notes');result=self.listing(sid,query)
-        with self.store.db:self.store.db.execute('INSERT OR REPLACE INTO environment_note_reads VALUES (?,?,?,?)',(rid,sid,result['revision'],call))
+    def read_tool(self,sid,rid,call,query,*,remember=True):
+        self.live(sid,rid,call,'read_environment_notes');result=self.listing(sid,query)
+        if remember:
+            self.schema()
+            with self.store.db:self.store.db.execute('INSERT OR REPLACE INTO environment_note_reads VALUES (?,?,?,?)',(rid,sid,result['revision'],call))
         return result
     def call_receipt(self,sid,rid,call,payload_hash):
         self.store.row(sid)
@@ -99,19 +102,24 @@ class Notes:
         active=self.store.db.execute('SELECT data FROM environment_notes WHERE id=? AND session_id=?',(row['note_id'],sid)).fetchone()
         return {'id':row['note_id'],'state':'active' if active and active['data'] else 'deleted','revision':self.current(sid)[0]}
     def record(self,sid,rid,call,data,version):
-        if not isinstance(data,dict) or 'revision' not in data or type(data['revision']) is not int:raise ProjectFault('Read this session’s current notes before recording.',400)
+        if not isinstance(data,dict) or 'revision' in data and type(data['revision']) is not int:
+            raise ProjectFault('Invalid Environment Notes revision.',400)
         value=content({k:v for k,v in data.items() if k!='revision'});payload_hash=hashed(data)
         self.schema();previous=self.call_receipt(sid,rid,call,payload_hash)
         if previous:return previous
         self.store.db.execute('BEGIN IMMEDIATE')
         try:
             self.live(sid,rid,call,'record_environment_note');revision,count=self.current(sid)
-            read=self.store.db.execute('SELECT revision FROM environment_note_reads WHERE run_id=? AND session_id=?',(rid,sid)).fetchone()
-            if data['revision']!=revision or not read or read[0]!=revision:raise ProjectFault('The notes changed or were not read. Read/search the current collection again.',409)
+            if 'revision' in data:
+                read=self.store.db.execute('SELECT revision FROM environment_note_reads WHERE run_id=? AND session_id=?',(rid,sid)).fetchone()
+                if data['revision']!=revision or not read or read[0]!=revision:
+                    raise ProjectFault('The notes changed or were not read. Read/search the current collection again.',409)
             if self.store.db.execute('SELECT COUNT(*) FROM environment_note_calls WHERE session_id=?',(sid,)).fetchone()[0]>=16384:raise ProjectFault('This session reached its note receipt limit.',409)
             fingerprint=hashed({k:normalize(value.get(k,'')) for k in CONTENT})
-            duplicate=self.store.db.execute('SELECT id FROM environment_notes WHERE session_id=? AND fingerprint=? AND data IS NOT NULL',(sid,fingerprint)).fetchone()
-            if duplicate:ident=duplicate[0]
+            duplicate=self.store.db.execute('''SELECT id,data IS NULL FROM environment_notes WHERE session_id=? AND fingerprint=?
+                ORDER BY data IS NULL, rowid DESC LIMIT 1''',(sid,fingerprint)).fetchone()
+            state='active'
+            if duplicate: ident=duplicate[0]; state='deleted' if duplicate[1] else 'active'
             else:
                 if count>=MAX_NOTES:raise ProjectFault('This session has200 environment notes. Existing entries were preserved.',409)
                 ident=str(uuid.uuid4());stamp=now()
@@ -120,7 +128,7 @@ class Notes:
                 revision+=1;self.store.db.execute('INSERT OR REPLACE INTO environment_note_collections VALUES (?,?)',(sid,revision))
                 self.publish(sid,revision,count+1)
             self.store.db.execute('INSERT INTO environment_note_calls VALUES (?,?,?,?,?)',(rid,call,sid,payload_hash,ident))
-            self.store.db.commit();return {'id':ident,'state':'active','revision':revision}
+            self.store.db.commit();return {'id':ident,'state':state,'revision':revision}
         finally:
             if self.store.db.in_transaction:self.store.db.rollback()
     def publish(self,sid,revision,count):event(self.store,sid,None,'environmentNotes',{'revision':revision,'count':count},False)
