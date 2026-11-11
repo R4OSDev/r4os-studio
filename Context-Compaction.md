@@ -12,11 +12,12 @@ the view. User attachments, historical image reads and captures with an analysis
 question remain available. The original-result reader can retrieve the exact
 archived image. The Context overlay shows the request body that was actually sent.
 
-Direct OpenAI image profiles are scoped to documented model, endpoint and detail
-combinations. The 32-pixel patch estimate applies to `gpt-4.1-mini-2025-04-14`
-and `gpt-5.2` images that fit their documented sizing bounds. Other image inputs
-use the conservative raster estimate. The overlay shows which estimate was used.
-[OpenAI image input rules](https://developers.openai.com/api/docs/guides/images-vision)
+New Studio inputs can use provider-reported image usage from earlier requests
+in the same session, on the same model and connection. Studio binds a reported
+count to its original resolution and detail, then scales it by the number of
+32-pixel patches. Where no matching sample exists, Studio uses a documented
+model formula when available, or 5,000 tokens per image. The Context overlay
+shows the source of the estimate. [OpenAI image input rules](https://developers.openai.com/api/docs/guides/images-vision)
 
 Local summary requests use selected history, the current objective and original
 references. Usage attribution stays in the request and conversation archives.

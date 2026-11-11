@@ -29,7 +29,8 @@ class Estimate:
 def estimates(context, size):
     count = context.input_count
     media = count.get('mediaCost', {})
-    return Estimate(count['tokens'],size,media.get('qualifiedImages',0)+media.get('conservativeImages',0))
+    images=sum(media.get(key,0) for key in ('qualifiedImages','conservativeImages','historicalImages'))
+    return Estimate(count['tokens'],size,images)
 
 
 def continuation(worker, records, through, retained, text):

@@ -57,7 +57,7 @@ def estimate(raw,policy,binding):
     groups={key:{'raw':[],'text':[],'media':0} for key in LABELS};message_count=0
     from context_policy import optimized
     from image_input_cost import ImageCost
-    media_cost=ImageCost(binding) if optimized(policy,2) else None
+    media_cost=ImageCost(binding,history=policy.get('imageEstimate'),use_history=optimized(policy,7)) if optimized(policy,2) else None
     for kind,part,value,messages in regions(raw):
         message_count+=messages
         _,media,_,replacements=scan(value,media_cost) if value is not None else (0,0,0,[])

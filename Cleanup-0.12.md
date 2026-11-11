@@ -125,3 +125,7 @@ Qualify the public and subscription compaction contracts separately and retain l
 ## 0.12.33
 
 Select low reasoning for summaries when the existing model catalog offers it.
+
+## 0.12.34
+
+Estimate image tokens from reported usage and resolution, with a 5,000-token default for unsupported inputs.

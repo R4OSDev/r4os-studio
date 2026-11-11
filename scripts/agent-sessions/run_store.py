@@ -201,7 +201,12 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     from context_policy import freeze as freeze_context
     freeze_context(snapshot,store.projects,original,session)
     if snapshot['engine'].get('kind')=='studio':
-        if original is None:snapshot['contextResultProtocol']=1
+        if original is None:
+            snapshot['contextResultProtocol']=1
+            if snapshot.get('apiModel',{}).get('imageInput')=='supported':
+                from image_usage import previous
+                observations=previous(store,session_id,{**snapshot['apiProvider'],'model':snapshot['model']})
+                if observations:snapshot['contextPolicy']['imageEstimate']=observations
         elif 'contextResultProtocol' in original:snapshot['contextResultProtocol']=original['contextResultProtocol']
     if original is not None:
         for key in ('nativeGoalPreparation','apiGoalProtocol'):

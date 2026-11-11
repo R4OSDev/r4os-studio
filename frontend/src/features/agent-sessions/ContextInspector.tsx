@@ -121,7 +121,8 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
               {counting?.reserves&&<><dt>Input framing estimate</dt><dd>{amount(counting.reserves.framing)}</dd>
                 <dt>Estimated media tokens</dt><dd>{amount(counting.reserves.media)}</dd></>}
               {!!counting?.mediaCost?.qualifiedImages&&<><dt>OpenAI image profile</dt><dd>{amount(counting.mediaCost.qualifiedImages)} images</dd></>}
-              {!!counting?.mediaCost?.conservativeImages&&<><dt>Conservative image estimate</dt><dd>{amount(counting.mediaCost.conservativeImages)} images</dd></>}
+              {!!counting?.mediaCost?.historicalImages&&<><dt>Image estimate from request history</dt><dd>{amount(counting.mediaCost.historicalImages)} images</dd></>}
+              {!!counting?.mediaCost?.conservativeImages&&<><dt>{counting.mediaCost.version===2?'Default image estimate':'Conservative image estimate'}</dt><dd>{amount(counting.mediaCost.conservativeImages)} images</dd></>}
             </dl>
             <p className="context-explanation">Categories and Free use one local estimate. A confirmed provider count can determine limit admission; it does not measure individual categories. Reported usage is separate. Output is excluded.</p>
             {counting?.fallbackReason&&<p className="context-explanation">{counting.fallbackReason}</p>}

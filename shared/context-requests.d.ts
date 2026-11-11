@@ -5,7 +5,7 @@ export interface InputCount {
   accuracy?:'estimated'|'unavailable'; fallbackReason?:string|null; requestSha256?:string;
   tokenizer?:{library:string;version:string;encoding:string;manifestSha256:string}|null;
   reserves?:{framing:number;media:number}; admissionTokens?:number;
-  mediaCost?:{version:1;qualifiedImages:number;conservativeImages:number;profile:string|null};
+  mediaCost?:{version:1|2;qualifiedImages:number;conservativeImages:number;historicalImages?:number;profile:string|null};
   providerCount?:{id:string;purpose:'input-count';state:'checking'|'complete'|'unavailable'|'interrupted';
     inputTokens:number|null;createdAt:string;finishedAt?:string;error?:{code:string|number;httpStatus:number|null}};
 }
