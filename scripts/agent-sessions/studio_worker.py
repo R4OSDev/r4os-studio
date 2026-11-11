@@ -16,7 +16,7 @@ from profile import NOTE_TOOLS, ROADMAP_TOOLS
 from run_store import get_run, transition, event, item, request_text
 from session_store import encode
 from store import ProjectFault
-from tool_catalog import specifications, tool_scope, validate_arguments
+from tool_catalog import declarations, tool_scope, validate_arguments
 from worker import Worker, reconcile_items
 
 
@@ -43,6 +43,8 @@ class StudioWorker(Worker):
         self.goal_worker = self.keepalive_goal or StudioGoal(self)
 
     def declarations(self):
+        if not hasattr(self,'_tool_declarations'): self._tool_declarations=declarations(self.config)
+        if self.config.get('toolCatalog',{}).get('version')==2: return self._tool_declarations
         def allowed(name):
             if name in __import__('tool_catalog').WEB_TOOLS:return self.config.get('webSearchEnabled',False)
             if name == 'generate_image': return self.config.get('imageGenerationEnabled',False) and self.config['permissions'].get('studio.generate_image',False) and self.config.get('imageGenerationTarget',{}).get('available',False)
@@ -56,7 +58,7 @@ class StudioWorker(Worker):
                 try: require(self); return True
                 except ProjectFault: return False
             return self.config['permissions'].get('studio.' + name, False)
-        return [tool for tool in specifications(self.config) if allowed(tool['name'][7:])]
+        return [tool for tool in self._tool_declarations if allowed(tool['name'][7:])]
 
     def validate_calls(self, calls, tools, rejected=()):
         names = {tool['name'] for tool in tools}; ids = set()

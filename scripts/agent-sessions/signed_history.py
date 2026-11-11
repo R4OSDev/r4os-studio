@@ -27,6 +27,56 @@ def latest(messages, binding):
     return None
 
 
+def bind_catalog(store, sid, config):
+    """Continue a signed context with the declarations that produced it."""
+    from context_policy import optimized
+    binding = {**config.get('apiProvider', {}), 'model':config['model']}
+    if not protected_route(binding) or not optimized(config.get('contextPolicy'),1): return
+    from conversation import Conversation
+    if not Conversation(store,sid).metadata(): return
+    rows = store.db.execute("""SELECT * FROM conversation_records WHERE session_id=? AND role='assistant'
+        AND kind='message' AND json_type(origin,'$.providerResponseId') IS NOT NULL
+        AND json_extract(origin,'$.selection.providerId')=? AND json_extract(origin,'$.selection.model')=?
+        ORDER BY seq DESC""", (sid,binding['id'],binding['model']))
+    record = None
+    for row in rows:
+        value = Conversation.present(row)
+        if latest([value],binding):
+            record = value
+            break
+    if record is None: return
+    from active_tools import ROOT, snapshot, worker_release
+    from history_receipts import original_input
+    from run_store import get_run
+    from store import ProjectFault
+    from tool_catalog import declarations, permission_tools, prepared, tool_scope
+    from studio_engine import engine
+    try:
+        prior = loads(get_run(store,record['runId'])['config'])
+        if prior['engine'].get('kind')!='studio' or tool_scope(prior)!=tool_scope(config): raise ValueError()
+        if prior['engine']==engine(tool_scope(prior),prior['engine'].get('api')):
+            root = ROOT
+        else:
+            root = worker_release(prior,ROOT)
+        original = original_input(store,sid,record)
+        names = [item['name'].removeprefix('mcp_') for item in original['tools']]
+        source = {t['name'] for t in declarations(prior,root)}
+        if len(names)!=len(set(names)) or not set(names)<=source: raise ValueError()
+        # The archived prefix is not authority to restore an action disabled
+        # in the current session. The transport verifies the whole prefix.
+        eligible = set(config['toolCatalog']['tools'])
+        independent = set(permission_tools(config))
+        current = prepared(tool_scope(config))
+        version = prior.get('toolCatalog',{}).get('version',1)
+        for name in names:
+            if name[7:] in independent and not config['permissions'].get('studio.'+name[7:]): raise ValueError()
+            if version==2 and name not in eligible and name in current: raise ValueError()
+        config['toolCatalog'] = snapshot(prior,root=root,names=names,version=version)
+        config['engine'] = engine(tool_scope(config),config['engine'].get('api'),root=root)
+    except (OSError, ValueError, KeyError, TypeError, ProjectFault, ModelFault):
+        raise ProjectFault('The original signed Claude tool catalog is unavailable or the selection changed. Use a fresh context for changed instructions or tools.',409) from None
+
+
 def prefix(body, count):
     return hashlib.sha256(dumps([body.get('system'), body.get('tools'), body['messages'][:count]]).encode()).hexdigest()
 

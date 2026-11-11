@@ -44,10 +44,9 @@ def release_for(value,current,root=Path('/opt/r4os-studio/releases')):
     raise ProjectFault('The original immutable Studio worker is unavailable. The accepted input was preserved; select no replacement automatically.',409)
 
 
-def engine(scope, api=None):
-    root = Path(__file__).resolve().parents[2]
+def engine(scope, api=None, *, root=Path(__file__).resolve().parents[2]):
     value = {'kind': 'studio', 'toolScope': scope, 'available': True,
              'version': json.loads((root / 'shared/version.json').read_text())['version'],
-             'sha256': hashlib.sha256(Path(__file__).with_name('studio_worker.py').read_bytes()).hexdigest()}
+             'sha256': hashlib.sha256((root/'scripts/agent-sessions/studio_worker.py').read_bytes()).hexdigest()}
     if api: value['api'] = dict(api)
     return value

@@ -650,8 +650,8 @@ class Host:
     async def launch_admitted(self, store, run, kind, project_id, session_id):
         try:
             release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
-            from studio_engine import release_for
-            release=release_for(json.loads(get_run(store,run['id'])['config'])['engine'],release)
+            from active_tools import worker_release
+            release=worker_release(json.loads(get_run(store,run['id'])['config']),release)
             if not release.is_relative_to('/opt/r4os-studio/releases'): raise ProjectFault('Invalid agent worker release.', 503)
             release_protocol(release)
             if not (release / 'scripts/agent-sessions/instructions.py').is_file():
@@ -720,8 +720,8 @@ class Host:
                 config = frozen['config']
                 from model_choice import prepare as prepare_model_choice
                 await prepare_model_choice(self,store,sid,frozen['runInput'],config)
-                from studio_engine import release_for
-                release_for(config['engine'],Path(self.config.get('workerReleaseRoot','/opt/r4os-studio/current')).resolve(strict=True))
+                from active_tools import worker_release
+                worker_release(config,Path(self.config.get('workerReleaseRoot','/opt/r4os-studio/current')).resolve(strict=True))
                 run, fresh = admit(store, sid, frozen['runInput'], self.config['providers'], config.get('imageGenerationCapability'), config)
                 if not fresh:
                     messages.hold(sid, 'The original queued run already exists. Inspect its receipt; it was not started again.'); continue

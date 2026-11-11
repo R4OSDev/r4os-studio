@@ -10,6 +10,8 @@ def compose(config):
     permissions = config.get('permissions', {}); compatible = tool_scope(config) == 'project'
     permitted = {'studio.' + name: bool(compatible and permissions.get('studio.' + name) is True) for name in REMOTE_TOOLS}
     if not any(permitted.values()): return ''
+    catalog = config.get('toolCatalog',{})
+    if catalog.get('version')==2 and not any('studio_'+name in catalog['tools'] for name in REMOTE_TOOLS): return ''
     source = config.get('remoteHostContext') or config.get('remoteHostBinding')
     if not isinstance(source, dict):
         return '\n\nSTUDIO REMOTE HOST: No Remote Host is assigned for this run.'

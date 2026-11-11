@@ -173,3 +173,7 @@ Shorten model-facing Studio instructions and tool descriptions. Include feature 
 ## 0.12.45
 
 Speed up session deletion and remove historical receipt checks. Bind confirmation to the session identity and remove its archived requests through normal cleanup.
+
+## 0.12.46
+
+Freeze the tools available to each accepted run and reuse prepared definitions. Preserve original native and signed Claude catalogs.

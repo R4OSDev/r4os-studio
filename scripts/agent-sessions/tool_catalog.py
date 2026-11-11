@@ -7,6 +7,7 @@ from pathlib import Path
 
 GOAL_TOOLS = ('get_goal', 'update_goal')
 WEB_TOOLS = ('web_search',)
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def tool_scope(value='project'):
@@ -21,9 +22,9 @@ def tool_scope(value='project'):
     raise ValueError('Unknown Studio workspace kind.')
 
 
-@lru_cache(maxsize=1)
-def catalog():
-    value=json.loads((Path(__file__).resolve().parents[2]/'shared/agent-tools.json').read_text())
+@lru_cache(maxsize=16)
+def catalog(root=ROOT):
+    value=json.loads((root/'shared/agent-tools.json').read_text())
     if set(value)!={'project','skill'}:raise ValueError('The installed tool catalog is invalid.')
     for declarations in value.values():
         names=[item['name'] for item in declarations]
@@ -32,8 +33,9 @@ def catalog():
     return value
 
 
-def specifications(scope='project'):
-    tools = deepcopy(catalog()[tool_scope(scope)])
+@lru_cache(maxsize=32)
+def prepared(scope, root=ROOT):
+    tools = deepcopy(catalog(root)[scope])
     for tool in tools:
         schema = tool['inputSchema']
         schema.setdefault('type', 'object')
@@ -63,18 +65,34 @@ def specifications(scope='project'):
         schema['properties'] = properties
         schema['required'] = [name for name in variants[0].get('required', [])
                               if all(name in part.get('required', []) for part in variants)]
+    return {tool['name']: tool for tool in tools}
+
+
+def digest(tools):
+    raw = json.dumps(tools, ensure_ascii=False, sort_keys=True, separators=(',',':')).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def declarations(scope='project', root=ROOT):
+    """Read-only, in catalogue or original request order."""
+    kind = tool_scope(scope)
+    by_name = prepared(kind, root)
     saved=scope.get('toolCatalog') if isinstance(scope,dict) else None
     if saved is not None:
-        if (not isinstance(saved,dict) or saved.get('scope')!=tool_scope(scope)
-                or not isinstance(saved.get('tools'),list) or len(set(saved['tools']))!=len(saved['tools'])):
+        if (not isinstance(saved,dict) or saved.get('scope')!=kind or saved.get('version',1) not in (1,2)
+                or not isinstance(saved.get('tools'),list) or any(not isinstance(name,str) for name in saved['tools'])
+                or len(set(saved['tools']))!=len(saved['tools'])):
             raise ValueError('The original tool catalog binding is invalid.')
-        by_name={t['name']:t for t in tools}
         if any(name not in by_name for name in saved['tools']):raise ValueError('The original accepted tool catalog is unavailable.')
         tools=[by_name[name] for name in saved['tools']]
-        raw=json.dumps(tools,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
-        if hashlib.sha256(raw).hexdigest()!=saved.get('sha256'):
+        if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
-    return tools
+        return tools
+    return list(by_name.values())
+
+
+def specifications(scope='project'):
+    return deepcopy(declarations(scope))
 
 
 def native_specifications(scope='project'):
@@ -90,6 +108,11 @@ def permission_tools(scope='project'):
     return tuple(name for name in tools_for(scope) if name not in grouped)
 
 
+@lru_cache(maxsize=2)
+def argument_definitions(scope):
+    return {item['name'][7:]: item['inputSchema'] for item in catalog()[scope]}
+
+
 def validate_arguments(name,value,scope='project'):
     if name in ('deploy_project','run_project') and isinstance(value,dict) and any(key in value for key in ('desktopShortcut','desktopLink')):
         raise ValueError('Use the declared deploy or run arguments. For an explicitly requested guest shortcut, use the project VM SSH tool when permitted.')
@@ -97,9 +120,8 @@ def validate_arguments(name,value,scope='project'):
         from file_worker import validate_expected,Fault
         try:validate_expected(value['expectedSha256'])
         except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
-    definition=next((item for item in catalog()[tool_scope(scope)] if item['name']=='studio_'+name),None)
-    if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
-    root=definition['inputSchema']
+    root = argument_definitions(tool_scope(scope)).get(name)
+    if root is None:raise ValueError('This tool is unavailable for this workspace kind.')
 
     def resolve(rule):
         if '$ref' not in rule: return rule

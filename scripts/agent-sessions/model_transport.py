@@ -72,7 +72,7 @@ class ModelFault(ProjectFault):
         if code=='context_signed_prefix':
             self.category='context'
             self.args=('The original Messages prefix for signed thinking could not be preserved. '
-                       'Original history was retained. No model request was sent.',)
+                       'Use a fresh context for changed instructions or tools. Original history was retained. No model request was sent.',)
         if code=='context_signed_limit':
             self.category='context'
             self.args=('The required Messages prefix exceeds the input limit and must be kept intact for signed thinking. '
