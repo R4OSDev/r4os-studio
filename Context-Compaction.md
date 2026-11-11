@@ -12,12 +12,20 @@ the view. User attachments, historical image reads and captures with an analysis
 question remain available. The original-result reader can retrieve the exact
 archived image. The Context overlay shows the request body that was actually sent.
 
-New Studio inputs can use provider-reported image usage from earlier requests
-in the same session, on the same model and connection. Studio binds a reported
-count to its original resolution and detail, then scales it by the number of
-32-pixel patches. Where no matching sample exists, Studio uses a documented
-model formula when available, or 5,000 tokens per image. The Context overlay
-shows the source of the estimate. [OpenAI image input rules](https://developers.openai.com/api/docs/guides/images-vision)
+New Codex, Claude and Z.AI inputs use the image rule for the selected model and
+the dimensions and detail of each image in the final request. Codex uses
+32-pixel patches with the input contribution observed on the subscription
+route. Claude uses 28-pixel patches after applying its model's resolution tier.
+Z.AI GLM-5.3-Flash uses its merged patch grid and two image markers.
+[OpenAI vision](https://developers.openai.com/api/docs/guides/images-vision)
+[Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision)
+[GLM-5.3-Flash image processor](https://huggingface.co/zai-org/GLM-5.3-Flash/blob/46a050bec13002ad29ee795c16e61cf4fa3c4a9c/processor_config.json)
+
+The Context overlay shows the image tokens and rule alongside the total input
+estimate and provider-reported usage. An unavailable image count blocks a
+request before dispatch and its prepared body can be inspected. Previously
+accepted runs keep their counting policy. OpenRouter uses its existing
+image estimation.
 
 Local summary requests use selected history, the current objective and original
 references. Usage attribution stays in the request and conversation archives.

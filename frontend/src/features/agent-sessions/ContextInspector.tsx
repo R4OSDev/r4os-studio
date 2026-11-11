@@ -15,6 +15,11 @@ const date=(value:string)=>new Date(value).toLocaleString();
 const purposes:Record<string,string>={conversation:'Conversation',summary:'Summary',vision:'Vision','image-generation':'Image generation'};
 const colors:Record<string,string>={free:'#66a98f',tools:'#b9a060',conversation:'#9576cf',system:'#c08b70',other:'#747089'};
 const countSources:Record<string,string>={'local-tokenizer':'Local tokenizer','character-estimate':'Character estimate',unavailable:'Unavailable'};
+const imageRules:Record<string,string>={
+  'codex-vision-32-v1':'Codex subscription · 32 px patches',
+  'claude-vision-28-v1':'Claude · 28 px patches',
+  'zai-vision-28-v1':'Z.AI · 28 px merged patches',
+};
 
 export function ContextInspector({projectId,sessionId,context,close}:{projectId:string;sessionId:string;context?:SessionContext;close:()=>void}) {
   const dialog=useRef<HTMLDialogElement>(null),title=useId();
@@ -49,6 +54,9 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
   function choose(id:string|null){setLoading(true);setError('');setView(null);setSelected(id);setRefresh(value=>value+1);}
   const record=view?.record,breakdown=record?.context;
   const counting=breakdown?.counting,providerCount=counting?.providerCount;
+  const media=counting?.mediaCost;
+  const imageRule=media?.version===3?media:null;
+  const imageEstimate=media?.version!==3?media:null;
   const blocked=record?.status==='blocked-before-send';
   const admitted=counting?.admissionTokens??breakdown?.estimatedInput;
   const admissionOverflow=admitted!=null&&breakdown?.capacity!=null?Math.max(0,admitted-breakdown.capacity):0;
@@ -119,10 +127,15 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
               <dt>Model window</dt><dd>{amount(breakdown?.modelWindow)}</dd>
               <dt>Output / headroom reserve</dt><dd>{amount(breakdown?.outputReserve)}</dd>
               {counting?.reserves&&<><dt>Input framing estimate</dt><dd>{amount(counting.reserves.framing)}</dd>
-                <dt>Estimated media tokens</dt><dd>{amount(counting.reserves.media)}</dd></>}
-              {!!counting?.mediaCost?.qualifiedImages&&<><dt>OpenAI image profile</dt><dd>{amount(counting.mediaCost.qualifiedImages)} images</dd></>}
-              {!!counting?.mediaCost?.historicalImages&&<><dt>Image estimate from request history</dt><dd>{amount(counting.mediaCost.historicalImages)} images</dd></>}
-              {!!counting?.mediaCost?.conservativeImages&&<><dt>{counting.mediaCost.version===2?'Default image estimate':'Conservative image estimate'}</dt><dd>{amount(counting.mediaCost.conservativeImages)} images</dd></>}
+                {!imageRule&&<><dt>Estimated media tokens</dt><dd>{amount(counting.reserves.media)}</dd></>}</>}
+              {imageRule&&<><dt>Image input tokens</dt><dd>{amount(counting?.mediaTokens)}</dd>
+                <dt>Image token rule</dt><dd>{imageRules[imageRule.profile]??imageRule.profile}
+                  {imageRule.unavailableImages>0
+                    ? ' · '+amount(imageRule.unavailableImages)+(imageRule.unavailableImages===1?' image':' images')+' without a token count'
+                    : ' · '+amount(imageRule.images)+(imageRule.images===1?' image':' images')}</dd></>}
+              {!!imageEstimate?.qualifiedImages&&<><dt>OpenAI image profile</dt><dd>{amount(imageEstimate.qualifiedImages)} images</dd></>}
+              {!!imageEstimate?.historicalImages&&<><dt>Image estimate from request history</dt><dd>{amount(imageEstimate.historicalImages)} images</dd></>}
+              {!!imageEstimate?.conservativeImages&&<><dt>{imageEstimate.version===2?'Default image estimate':'Conservative image estimate'}</dt><dd>{amount(imageEstimate.conservativeImages)} images</dd></>}
             </dl>
             <p className="context-explanation">Categories and Free use one local estimate. A confirmed provider count can determine limit admission; it does not measure individual categories. Reported usage is separate. Output is excluded.</p>
             {counting?.fallbackReason&&<p className="context-explanation">{counting.fallbackReason}</p>}

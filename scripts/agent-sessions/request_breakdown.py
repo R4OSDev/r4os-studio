@@ -25,7 +25,7 @@ def spans(raw,object_members=False):
         yield key,raw[start:pos],value
 
 
-def analyze(raw,facts,policy,full=None):
+def analyze(raw,facts,policy,full=None,*,binding=None):
     window=facts.get('contextWindow')
     window=window if type(window) is int and window>0 else None
     input_limit=limit(policy,facts) if isinstance(policy,dict) and strict(policy) else None
@@ -37,13 +37,15 @@ def analyze(raw,facts,policy,full=None):
         'outputReserve':window-model_ceiling if window is not None and model_ceiling is not None else None,
         'free':None,'overflow':None,'policyEnforced':isinstance(policy,dict) and strict(policy),'reason':None}
     try:
-        full=full or estimate(raw,policy,facts)
+        full=full or estimate(raw,policy,binding or facts)
         if full.get('schema')==1:
             known=type(full['tokens']) is int
             result.update(state='estimated' if known else 'unavailable',method=full['method'],estimatedInput=full['tokens'],
                 categories=full['categories'],counting={key:value for key,value in full.items() if key!='categories'},
                 free=max(0,capacity-full['tokens']) if capacity is not None and known else None,
                 overflow=max(0,full['tokens']-capacity) if capacity is not None and known else None)
+            if full.get('mediaCost',{}).get('unavailableImages'):
+                result['reason']='Image input tokens are unavailable for this request.'
             return result
         amounts={key:0 for key in LABELS};sizes={key:0 for key in LABELS}
         def add(kind,span):

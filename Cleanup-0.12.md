@@ -141,3 +141,7 @@ Count Claude image inputs by documented 28-pixel patches and resolution tiers wh
 ## 0.12.37
 
 Count Z.AI GLM-5.3-Flash image inputs with the published preprocessing rule and two image markers measured on the Coding Plan.
+
+## 0.12.38
+
+Show rule-counted image tokens in the Context overlay and preserve prepared inputs when a required count is unavailable.

@@ -60,6 +60,9 @@ class ModelFault(ProjectFault):
             self.category='context'
             self.args=(('The complete provider input exceeds the effective input limit. Reduce the current input or review the session limit. Original history was preserved; no model request was sent.' if code=='context_input_limit' else
                 'The complete provider input could not be checked against its limit. Original history was preserved; no model request was sent.'),)
+        if code=='context_image_tokens_unavailable':
+            self.category='context'
+            self.args=('Image input tokens are unavailable for this model or image. The original input was preserved. No model request was sent.',)
         if code=='context_required_input_limit':
             self.category='context'
             values=details or {}
@@ -255,14 +258,14 @@ class ModelTransport:
         await count(self,body)
 
     def check_input(self,body):
-        from input_budget import strict,limit
+        from input_budget import strict,limit,unavailable_count
         if not strict(self.context_policy):return
         binding=self.binding.copy()
         for key in ('max_output_tokens','max_completion_tokens','max_tokens'):
             if type(body.get(key)) is int and body[key]>0:binding['maxOutputTokens']=body[key];break
         value=self.input_estimate(body);maximum=limit(self.context_policy,binding)
         admitted=value.get('admissionTokens',value['tokens'])
-        if admitted is None:raise ModelFault('context_input_unavailable',not_dispatched=True)
+        if admitted is None:raise unavailable_count(value)
         if maximum is not None and admitted>maximum:
             raise ModelFault('context_input_limit',not_dispatched=True,
                 details={'inputEstimate':admitted,'inputLimit':maximum,'method':value['method']})

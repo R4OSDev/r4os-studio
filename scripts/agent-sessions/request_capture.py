@@ -56,7 +56,7 @@ def capture(store, operation, raw, binding, policy, estimate=None,blocked=None):
     if operation.get('summaryBudget'):metadata['summaryBudget']=operation['summaryBudget']
     if blocked is not None:metadata['blocked']={'code':blocked.code,'reason':str(blocked)}
     from request_breakdown import analyze
-    metadata['context']=analyze(raw,facts,policy,estimate)
+    metadata['context']=analyze(raw,facts,policy,estimate,binding=binding)
     packed = zlib.compress(data, 3)
     try:
         with store.db:

@@ -35,6 +35,13 @@ def limit(policy,binding):
     return result
 
 
+def unavailable_count(value):
+    from model_transport import ModelFault
+    missing_images=value.get('mediaCost',{}).get('unavailableImages')
+    code='context_image_tokens_unavailable' if missing_images else 'context_input_unavailable'
+    return ModelFault(code,not_dispatched=True)
+
+
 def raster_dimensions(data,mime):
     from model_transport import ModelFault
     try:

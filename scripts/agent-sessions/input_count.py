@@ -90,10 +90,11 @@ def estimate(raw,policy,binding):
     method=('tiktoken 0.14.0 '+name+' over disjoint original JSON text, framing and raster reserves; local estimate, not provider usage') if name else METHOD
     if rule and media_cost.images:
         method=method.replace('raster reserves','provider image token rules')
+    source='local-tokenizer' if name else 'character-estimate'
     return {'schema':1,'tokens':None if unavailable else sum(item['tokens'] for item in categories),'bytes':len(raw.encode()),
         'characters':len(raw),'textCharacters':text_chars,'textBytes':sum(len(''.join(g['text']).encode()) for g in groups.values()),
         'mediaTokens':None if unavailable else media,'method':method,
-        'source':'local-tokenizer' if name else 'character-estimate','methodVersion':'local-tokenizer-v1' if name else 'characters-v1',
+        'source':'unavailable' if unavailable else source,'methodVersion':'local-tokenizer-v1' if name else 'characters-v1',
         'tokenizer':{'library':'tiktoken','version':'0.14.0','encoding':name,'manifestSha256':TOKENIZER['manifestSha256']} if name else None,
         'textTokens':sum(amounts),'accuracy':'unavailable' if unavailable else 'estimated','fallbackReason':reason,
         'requestSha256':hashlib.sha256(raw.encode()).hexdigest(),
