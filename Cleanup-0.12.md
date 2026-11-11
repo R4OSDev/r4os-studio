@@ -169,3 +169,7 @@ Describe the current Studio workflow in global instructions, generated guidance,
 ## 0.12.44
 
 Shorten model-facing Studio instructions and tool descriptions. Include feature guidance and metadata only where needed, and read original development jobs on demand.
+
+## 0.12.45
+
+Speed up session deletion and remove historical receipt checks. Bind confirmation to the session identity and remove its archived requests through normal cleanup.

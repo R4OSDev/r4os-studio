@@ -14,7 +14,7 @@ from profile import directory
 from session_store import SessionStore, encode, identity, now
 from session_lifetime import acquire
 from skill_lifecycle import api as lifecycle
-from stats_store import Source, scope as statistic_scope
+from stats_store import Source, hashed, scope as statistic_scope
 from stats_lifecycle import preserve_pending
 from store import ProjectFault
 
@@ -29,13 +29,13 @@ def has(db, table): return db.execute("SELECT 1 FROM sqlite_master WHERE type='t
 
 
 async def unit_states(units):
+    if not units: return False
     from host import systemctl
-    for start in range(0,len(units),128):
-        batch=units[start:start+128]
-        values=(await systemctl('show',*batch,'--property=ActiveState','--value')).split()
-        if len(values)!=len(batch): raise ProjectFault('Original worker status could not be verified.',503)
-        if any(value not in ('inactive','failed') for value in values): return True
-    return False
+    selected = set(units)
+    loaded = await systemctl('list-units','--all','--type=service','--no-legend','--plain','--full',
+                             '--no-pager','r4os-studio-*@*.service')
+    return any(unit in selected and active not in ('inactive','failed')
+               for unit, _, active, *_ in (line.split() for line in loaded.splitlines() if line))
 
 
 def schema(db):
@@ -85,9 +85,8 @@ def external(store, sid):
     path = store.workspace.parent / 'Development/Development.sqlite'
     if path.exists() or path.is_symlink():
         with read_db(path) as db:
-            for row in db.execute('SELECT id,busy,payload FROM jobs'):
+            for row in db.execute("SELECT id,busy,payload FROM jobs WHERE json_extract(payload,'$.sessionId')=?", (sid,)):
                 value = json.loads(row['payload'])
-                if value.get('sessionId') != sid: continue
                 if value.get('projectId') != store.owner_id: raise ProjectFault('Original job owner changed.', 503)
                 jobs[identity(row['id'])] = value['kind']
                 if row['busy'] or value['state'] in ('queued','starting','running','stopping'):
@@ -126,7 +125,24 @@ def external(store, sid):
     return blockers, jobs
 
 
-async def inspect(host, store, sid):
+def history_blockers(store, sid):
+    """Migration preserves local work receipts and their original outcomes."""
+    blockers = []
+    if has(store.db,'session_attachments') and store.db.execute("SELECT 1 FROM session_attachments WHERE session_id=? AND state NOT IN ('ready','removed','rejected','purged') LIMIT 1",(sid,)).fetchone():
+        blockers.append('An attachment operation is active or unconfirmed.')
+    from goal_recovery import development
+    for tool in store.db.execute("SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.state IN ('intent','unknown')",(sid,)):
+        if tool['tool'] in READ_ONLY: continue
+        proof = development(store, sid, tool)
+        if not proof or not (proof.get('recovery') or {}).get('guestEndConfirmed'):
+            blockers.append('An original tool effect is unconfirmed. Reconcile it before migrating the session.')
+            break
+    from skill_mcp_lifecycle import blockers as analysis_blockers
+    blockers.extend(analysis_blockers(store.projects,ownerType=store.owner_type,ownerId=store.owner_id,sessionId=sid))
+    return blockers
+
+
+async def inspect(host, store, sid, *, preserve_history=False):
     sid = identity(sid)
     database = store.directory/'Sessions.sqlite'
     if database.stat().st_nlink != 1:
@@ -141,7 +157,7 @@ async def inspect(host, store, sid):
     selected_provider = api['providerId'] if api else json.loads(row['settings'])['providerId']
     if ApiProviders(host.config['providers']).held_session(selected_provider,store.owner_type,store.owner_id,sid):
         blockers.append('An original API admission or transport is unconfirmed. Reconcile or disconnect that provider before deleting its evidence.')
-    for run in store.db.execute('SELECT * FROM runs WHERE session_id=?', (sid,)):
+    for run in store.db.execute('SELECT id,state,busy,worker FROM runs WHERE session_id=?', (sid,)):
         runs.add(identity(run['id']))
         if run['busy'] or run['state'] in ('queued','starting','running','stopping'):
             blockers.append('An original agent run is still active.')
@@ -164,56 +180,44 @@ async def inspect(host, store, sid):
     if await unit_states(['r4os-studio-agent@'+rid+'.service' for rid in sorted(runs)]):
         blockers.append('An original session worker unit is active.')
     if host.unbound: blockers.append('Reconcile unbound original workers before deletion.')
-    if has(store.db,'session_messages') and store.db.execute("SELECT 1 FROM session_messages WHERE session_id=? AND state IN ('queued','dispatching','pending','unknown') LIMIT 1",(sid,)).fetchone():
-        blockers.append('A queued, pending or unconfirmed message still belongs to this session.')
+    if has(store.db,'session_messages') and store.db.execute("SELECT 1 FROM session_messages WHERE session_id=? AND (state IN ('queued','dispatching','pending') OR (? AND state='unknown')) LIMIT 1",(sid,preserve_history)).fetchone():
+        blockers.append('A queued or unfinished message still belongs to this session.')
     if has(store.db,'goal_commands') and store.db.execute("SELECT 1 FROM goal_commands WHERE session_id=? AND state='pending' LIMIT 1",(sid,)).fetchone():
         blockers.append('An original Goal command is still pending.')
     from goal_keepalive import row as keepalive_row
     keepalive=keepalive_row(store,sid)
-    if keepalive and (keepalive['active'] or keepalive['phase']=='unknown'):
+    if keepalive and (keepalive['active'] or preserve_history and keepalive['phase']=='unknown'):
         blockers.append('Pause or stop session Goal keepalive and confirm its original receipt first.')
     if has(store.db,'session_goals'):
         goal = store.db.execute('SELECT phase,native FROM session_goals WHERE session_id=?',(sid,)).fetchone()
-        if goal and (goal['phase'] != 'idle' or json.loads(goal['native'] or '{}').get('status') == 'active'):
-            blockers.append('Pause or stop the Goal and confirm its original receipt first.')
-    # Rejected uploads and confirmed purges are terminal original receipts.
-    # Preserve blockers for pending, unknown, removing and unfamiliar states.
-    if has(store.db,'session_attachments') and store.db.execute("SELECT 1 FROM session_attachments WHERE session_id=? AND state NOT IN ('ready','removed','rejected','purged') LIMIT 1",(sid,)).fetchone():
-        blockers.append('An attachment operation is active or unconfirmed.')
-    for tool in store.db.execute("SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.state IN ('intent','unknown')",(sid,)):
-        if tool['tool'] in READ_ONLY: continue
-        from goal_recovery import development
-        proof = development(store, sid, tool)
-        if not proof or not (proof.get('recovery') or {}).get('guestEndConfirmed'):
-            blockers.append('An original tool effect is unconfirmed. Reconcile it before deleting the evidence.')
+        if goal:
+            idle_phases = ('idle',) if preserve_history else ('idle','unknown')
+            if goal['phase'] not in idle_phases or json.loads(goal['native'] or '{}').get('status') == 'active':
+                blockers.append('Pause or stop the Goal and confirm its original receipt first.')
+    if preserve_history: blockers.extend(history_blockers(store,sid))
     additional, jobs = external(store, sid); blockers.extend(additional)
-    from skill_mcp_lifecycle import blockers as analysis_blockers
-    blockers.extend(analysis_blockers(store.projects,ownerType=store.owner_type,ownerId=store.owner_id,sessionId=sid))
     units=[]
     for job_id, kind in jobs.items():
         unit = ('r4os-studio-development-ssh@' if kind == 'ssh' else 'r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + job_id + '.service'
         units.append(unit)
     if await unit_states(units): blockers.append('An original development worker unit is still active.')
-    tree = hashlib.sha256(); tree.update(encode(sorted(runs)).encode())
-    for table, where, args in selections(store.db, sid):
-        tree.update(table.encode())
-        for value in store.db.execute('SELECT * FROM "'+table+'" WHERE '+where+' ORDER BY rowid',args):
-            tree.update(encode(list(value)).encode()+b'\n')
-    path = store.directory / sid; device = inode = 0; history = []
+    path = store.directory / sid; device = inode = 0
     if path.exists() or path.is_symlink():
         if path.resolve(strict=True) != path or not path.is_dir(): raise ProjectFault('Session directory identity is unconfirmed.',503)
         info = path.stat(); device, inode = info.st_dev, info.st_ino
-        for parent, dirs, files in os.walk(path,followlinks=False):
-            dirs[:] = sorted(dirs)
-            for name in sorted(dirs+files):
-                child = Path(parent)/name; info = child.lstat()
-                tree.update(encode([str(child.relative_to(path)),info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns]).encode())
-                if name.endswith('.jsonl') and row['thread_id'] and child.is_relative_to(path/'Codex'):
-                    history.append(hashlib.sha256(encode({'session':sid,'thread':row['thread_id'],'file':str(child.relative_to(path/'Codex'))}).encode()).hexdigest())
-    tree.update(encode([device,inode]).encode())
-    public = {'sessionId':sid,'name':row['name'],'revision':row['revision'],'scopeHash':tree.hexdigest(),
+    scope_hash = hashed({'owner':{'type':store.owner_type,'id':store.owner_id},'sessionId':sid,
+                         'directory':[device,inode]})
+    public = {'sessionId':sid,'name':row['name'],'revision':row['revision'],'scopeHash':scope_hash,
         'allowed':not blockers,'blockers':list(dict.fromkeys(blockers))[:32]}
-    return public, {'device':device,'inode':inode,'runs':sorted(runs),'history':history}
+    return public, {'device':device,'inode':inode,'runs':sorted(runs),'thread':row['thread_id']}
+
+
+def native_history_keys(store, sid, thread):
+    if not thread or not has(store.db,'statistic_history'): return []
+    root = store.directory / sid / 'Codex'
+    if root.is_symlink(): return []
+    return [hashed({'session':sid,'thread':thread,'file':str((Path(parent)/name).relative_to(root))})
+            for parent, _, files in os.walk(root,followlinks=False) for name in files if name.endswith('.jsonl')]
 
 
 async def exclusive(store, sid):
@@ -230,9 +234,8 @@ async def exclusive(store, sid):
 
 
 async def preview(host, kind, owner, sid):
-    store = SessionStore(host.config['projects'],host.config['r4os'],owner,kind)
-    try:
-        with (await exclusive(store, sid)): return (await inspect(host,store,sid))[0]
+    store = SessionStore(host.config['projects'],host.config['r4os'],owner,kind,read_only=True)
+    try: return (await inspect(host,store,sid))[0]
     finally: store.close()
 
 
@@ -255,8 +258,6 @@ async def delete(host, kind, owner, sid, data):
             if not current['allowed']: raise ProjectFault(current['blockers'][0],409)
             if data['revision'] != current['revision'] or data['scopeHash'] != current['scopeHash'] or data['confirmName'] != current['name']:
                 raise ProjectFault('The session or deletion scope changed. Reload and confirm its current name again.',409)
-            from skill_mcp_lifecycle import stop_owned
-            await stop_owned(store.projects,ownerType=kind,ownerId=owner,sessionId=sid)
             # The exclusive gate is borrowed by numeric capture, never reacquired.
             store.session_uses[sid]=None
             from usage_stats import Usage
@@ -265,9 +266,10 @@ async def delete(host, kind, owner, sid, data):
             reconcile_goal_clock(store,sid)
             Source(store).flush(include_acknowledged=True)
             preserve_pending(store.projects,store.directory/'Sessions.sqlite')
+            history = native_history_keys(store,sid,private['thread'])
             with store.db:
                 store.db.execute('INSERT INTO session_deletions VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)',
-                    (rid,sid,fingerprint,data['revision'],data['scopeHash'],'reserved',private['device'],private['inode'],encode(private['runs']),encode(private['history']),now()))
+                    (rid,sid,fingerprint,data['revision'],data['scopeHash'],'reserved',private['device'],private['inode'],encode(private['runs']),encode(history),now()))
             return original(store,sid,rid)
     finally: store.close()
 
@@ -291,9 +293,6 @@ def sync(path):
 
 async def finish(host,store,row):
     sid=row['session_id'];rid=row['request_id'];source=store.directory/sid
-    from skill_mcp_lifecycle import stop_owned,forget
-    selected=await stop_owned(store.projects,ownerType=store.owner_type,ownerId=store.owner_id,sessionId=sid)
-    forget(store.projects,selected)
     stage=directory(store.directory/'.deleting')/rid
     present=source if source.exists() or source.is_symlink() else stage
     if present.exists() or present.is_symlink():
@@ -302,15 +301,21 @@ async def finish(host,store,row):
             raise ProjectFault('Original session directory identity changed. Existing data was preserved.',503)
     elif row['phase']=='reserved' and row['inode']:
         raise ProjectFault('Original session directory is missing. Existing data was preserved.',503)
+    if row['phase']!='reserved' and (source.exists() or source.is_symlink()):
+        raise ProjectFault('A retired session directory reappeared.',503)
+    if await unit_states(['r4os-studio-agent@'+identity(rid)+'.service' for rid in json.loads(row['runs'])]):
+        raise ProjectFault('An original session worker is active. Existing data was preserved.',409)
+    from skill_mcp_lifecycle import forget, instances
+    from skill_session_client import stop_unit
+    selected=instances(store.projects,ownerType=store.owner_type,ownerId=store.owner_id,sessionId=sid)
+    for _, launch in selected:
+        await stop_unit('r4os-studio-skill-mcp@'+launch['serviceId']+'.service')
+    forget(store.projects,selected)
     if row['phase']=='reserved':
         if source.exists():
             if stage.exists(): raise ProjectFault('Session staging path is occupied.',503)
             os.rename(source,stage);sync(store.directory);sync(stage.parent)
         with store.db: store.db.execute("UPDATE session_deletions SET phase='staged' WHERE request_id=?",(rid,))
-    elif source.exists() or source.is_symlink(): raise ProjectFault('A retired session directory reappeared.',503)
-    # Keep project development artifacts/receipts and numeric lifetime aggregates.
-    if await unit_states(['r4os-studio-agent@'+identity(rid)+'.service' for rid in json.loads(row['runs'])]):
-        raise ProjectFault('An original session worker is active. Existing data was preserved.',409)
     for run_id in json.loads(row['runs']):
         target=host.root/identity(run_id)
         if target.exists():

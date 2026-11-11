@@ -15,7 +15,7 @@ from host import Host
 from session_store import SessionStore, encode
 from profile import SKILL_PROFILE
 from run_store import admit, transition
-from session_delete import preview, delete, resume, original, recover
+from session_delete import preview, delete, inspect, resume, original, recover
 from session_lifetime import acquire
 from skill_application import packages
 from stats_store import Source, read
@@ -70,6 +70,10 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                     store.db.execute("INSERT INTO session_attachments VALUES (?,?,?,'hash','{\"private\":\"private attachment metadata\"}','ready',NULL,'{}','now')",(str(uuid.uuid4()),sid,str(uuid.uuid4())))
                     store.db.execute("INSERT INTO environment_notes VALUES (?,?,'fingerprint','{\"private\":\"private note metadata\"}',1,'now',NULL)",(str(uuid.uuid4()),sid))
                     store.db.execute("INSERT INTO generated_images VALUES (?,?,?,'own-thread','image-item','{\"private\":\"private image metadata\"}','now')",(str(uuid.uuid4()),sid,run_id))
+                from request_capture import capture
+                capture(store,{'owner':{'type':kind,'id':owner},'sessionId':sid,'runId':run_id,
+                               'requestId':str(uuid.uuid4()),'selection':{'providerId':self.provider}},
+                        '{"input":"Own archived model input"}',{'protocol':'responses','model':'fixture'}, {})
                 create_id=str(uuid.uuid4());payload={'name':'Retired fixture','providerId':self.provider,'model':'fixture','effort':'low','requestId':create_id}
                 import hashlib
                 with store.db:store.db.execute('INSERT INTO requests VALUES (?,?,?,?,?)',(create_id,'create',hashlib.sha256(encode(payload).encode()).hexdigest(),sid,encode({'private':'create response'})))
@@ -77,6 +81,8 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                 if not workspace.exists():workspace.write_text('Own skill source')
                 source_before=workspace.read_bytes()
             data=await self.command(host,kind,owner,sid)
+            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store,store.db:
+                store.db.execute('UPDATE studio_request_bodies SET compressed=? WHERE session_id=?',(b'updated binary body',sid))
             self.assertEqual((await delete(host,kind,owner,sid,data))['state'],'deleting')
             await resume(host,kind,owner,sid,data['requestId'])
             with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
@@ -90,6 +96,8 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                 for private in ('private attachment metadata','private note metadata','private image metadata','own-turn'):
                     self.assertNotIn(private,'\n'.join(store.db.iterdump()))
                 self.assertIsNone(store.db.execute('SELECT 1 FROM goal_time_coverage WHERE session_id=?',(sid,)).fetchone())
+                self.assertIsNone(store.db.execute('SELECT 1 FROM studio_request_bodies WHERE session_id=?',(sid,)).fetchone())
+                self.assertIsNone(store.db.execute('SELECT 1 FROM studio_requests WHERE session_id=?',(sid,)).fetchone())
                 self.assertEqual(workspace.read_bytes(),source_before);self.assertEqual(foreign.read_text(),'preserve outside')
             self.assertEqual(await delete(host,kind,owner,sid,data),final)
             self.assertEqual(read(self.projects)['tokens']['total'], '7' if kind=='project' else '14')
@@ -114,7 +122,8 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
         host=self.host();data=await self.command(host)
         with self.open() as store:
             store.row(self.sid)
-            with self.assertRaises(ProjectFault) as locked:await preview(host,'project',self.pid,self.sid)
+            self.assertTrue((await preview(host,'project',self.pid,self.sid))['allowed'])
+            with self.assertRaises(ProjectFault) as locked:await delete(host,'project',self.pid,self.sid,data)
             self.assertEqual(locked.exception.code,423)
             with store.db:store.db.execute('UPDATE sessions SET revision=2 WHERE id=?',(self.sid,))
         with self.assertRaises(ProjectFault):await delete(host,'project',self.pid,self.sid,data)
@@ -177,7 +186,7 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(store.db.execute('SELECT 1 FROM session_attachments WHERE session_id=?',(sid,)).fetchone())
                 self.assertFalse(ready_path.exists())
 
-    async def test_active_uncertain_cleanup_and_unfamiliar_upload_states_still_block_both_scopes(self):
+    async def test_abandoned_upload_receipts_block_migration_but_can_be_deleted_in_both_scopes(self):
         from attachment_store import Attachments
         skill,skill_sid=self.add_skill();host=self.host()
         for kind,owner,sid in [('project',self.pid,self.sid),('skill',skill,skill_sid)]:
@@ -188,21 +197,23 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
                     store.db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,NULL,1,'now','now')",(other_sid,owner,'Other session',row['settings'],row['engine']))
                     for ident,session,state in [(own_attachment,sid,'ready'),(other_attachment,other_sid,'pending')]:
                         store.db.execute("INSERT INTO session_attachments VALUES (?,?,?,'hash','{}',?,NULL,'{}','now')",(ident,session,str(uuid.uuid4()),state))
-            data=await self.command(host,kind,owner,sid)
             for state in ('pending','unknown','removing','future-state'):
                 with self.subTest(scope=kind,state=state):
                     with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store,store.db:
                         store.db.execute('UPDATE session_attachments SET state=? WHERE id=?',(state,own_attachment))
-                    view=await preview(host,kind,owner,sid)
-                    self.assertFalse(view['allowed']);self.assertIn('An attachment operation is active or unconfirmed.',view['blockers'])
-                    with self.assertRaises(ProjectFault) as blocked:await delete(host,kind,owner,sid,data)
-                    self.assertEqual(blocked.exception.code,409)
-                    self.assertIn('attachment operation',str(blocked.exception))
                     with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
-                        self.assertFalse(store.db.execute('SELECT 1 FROM session_deletions WHERE session_id=?',(sid,)).fetchone())
-                        self.assertEqual(store.db.execute('SELECT state FROM session_attachments WHERE id=?',(other_attachment,)).fetchone()[0],'pending')
+                        migration, _ = await inspect(host,store,sid,preserve_history=True)
+                        self.assertIn('An attachment operation is active or unconfirmed.',migration['blockers'])
+                    self.assertTrue((await preview(host,kind,owner,sid))['allowed'])
+            data=await self.command(host,kind,owner,sid)
+            await delete(host,kind,owner,sid,data)
+            await resume(host,kind,owner,sid,data['requestId'])
+            with closing(SessionStore(self.projects,self.r4os,owner,kind)) as store:
+                self.assertEqual(original(store,sid,data['requestId'])['state'],'deleted')
+                self.assertIsNone(store.db.execute('SELECT 1 FROM session_attachments WHERE id=?',(own_attachment,)).fetchone())
+                self.assertEqual(store.db.execute('SELECT state FROM session_attachments WHERE id=?',(other_attachment,)).fetchone()[0],'pending')
 
-    async def test_active_queue_goal_and_unknown_tool_are_denied_before_deletion(self):
+    async def test_active_queue_and_goal_block_deletion_but_old_unknown_receipts_do_not(self):
         host=self.host()
         with self.open() as store:
             run,_=admit(store,self.sid,self.data,self.providers)
@@ -216,39 +227,59 @@ class SessionDeleteTests(unittest.IsolatedAsyncioTestCase):
             with store.db:store.db.execute("UPDATE session_messages SET state='removed' WHERE session_id=?",(self.sid,))
             from goal_store import Goals
             Goals(store).schema()
-            with store.db:store.db.execute("INSERT INTO session_goals VALUES (?,1,NULL,NULL,'unknown',NULL,NULL,NULL)",(self.sid,))
+            with store.db:store.db.execute("INSERT INTO session_goals VALUES (?,1,NULL,NULL,'pending',NULL,NULL,NULL)",(self.sid,))
         self.assertFalse((await preview(host,'project',self.pid,self.sid))['allowed'])
         with self.open() as store:
             with store.db:
-                store.db.execute("UPDATE session_goals SET phase='idle' WHERE session_id=?",(self.sid,))
+                store.db.execute("UPDATE session_goals SET phase='unknown' WHERE session_id=?",(self.sid,))
                 store.db.execute("INSERT INTO tools VALUES (?,?,?,'hash','unknown','{}',NULL)",(run['id'],'own-call','studio_exec_command'))
-        self.assertFalse((await preview(host,'project',self.pid,self.sid))['allowed'])
-        with self.open() as store:
-            with store.db:store.db.execute("UPDATE tools SET state='completed',result='{}'")
+            migration, _ = await inspect(host,store,self.sid,preserve_history=True)
+            self.assertTrue(any('original tool effect' in reason for reason in migration['blockers']))
         data=await self.command(host);await delete(host,'project',self.pid,self.sid,data)
         await resume(host,'project',self.pid,self.sid,data['requestId'])
         with self.open() as store:
             self.assertEqual(original(store,self.sid,data['requestId'])['state'],'deleted')
             self.assertFalse(store.db.execute('SELECT 1 FROM runs WHERE id=?',(run['id'],)).fetchone())
 
+    async def test_deletion_stops_only_its_analysis_service_and_discards_its_unknown_result(self):
+        from skill_session_state import paths, registry
+        host=self.host()
+        own={'schema':1,'ownerType':'project','ownerId':self.pid,'sessionId':self.sid,
+             'skillId':str(uuid.uuid4()),'serviceId':str(uuid.uuid4())}
+        foreign={**own,'sessionId':str(uuid.uuid4()),'serviceId':str(uuid.uuid4())}
+        for launch in (own,foreign):
+            path=registry(self.projects,launch['serviceId']);path.mkdir(parents=True)
+            (path/'Launch.json').write_text(encode(launch))
+            calls=paths(self.projects,launch)[3]/'Transport/Calls';calls.mkdir(parents=True)
+            (calls/'original.json').write_text(encode({'phase':'unknown'}))
+        data=await self.command(host)
+        with patch('skill_session_client.stop_unit',new_callable=AsyncMock) as stop:
+            await delete(host,'project',self.pid,self.sid,data)
+            await resume(host,'project',self.pid,self.sid,data['requestId'])
+            stop.assert_awaited_once_with('r4os-studio-skill-mcp@'+own['serviceId']+'.service')
+        self.assertFalse(registry(self.projects,own['serviceId']).exists())
+        self.assertFalse(paths(self.projects,own)[3].exists())
+        self.assertTrue(registry(self.projects,foreign['serviceId']).exists())
+        self.assertTrue(paths(self.projects,foreign)[3].exists())
+
     async def test_external_remote_and_guest_effects_block_and_unrelated_session_remains_usable(self):
         host=self.host()
         import sqlite3
         path=self.projects/self.pid/'RemoteHosts/Jobs.sqlite';path.parent.mkdir()
-        with sqlite3.connect(path) as db:db.execute('CREATE TABLE jobs(session_id TEXT,state TEXT)');db.execute('INSERT INTO jobs VALUES (?,?)',(self.sid,'unknown'))
+        with closing(sqlite3.connect(path)) as db,db:db.execute('CREATE TABLE jobs(session_id TEXT,state TEXT)');db.execute('INSERT INTO jobs VALUES (?,?)',(self.sid,'unknown'))
         view=await preview(host,'project',self.pid,self.sid);self.assertFalse(view['allowed']);self.assertIn('remote',view['blockers'][0])
-        with sqlite3.connect(path) as db:db.execute("UPDATE jobs SET state='completed'")
+        with closing(sqlite3.connect(path)) as db,db:db.execute("UPDATE jobs SET state='completed'")
         await self.command(host)
         development=self.projects/self.pid/'Development/Development.sqlite';development.parent.mkdir()
         job_id=str(uuid.uuid4());proof_id=str(uuid.uuid4())
         job={'id':job_id,'projectId':self.pid,'sessionId':self.sid,'kind':'execution','state':'unknown','guestState':{'closeConfirmed':False}}
-        with sqlite3.connect(development) as db:
+        with closing(sqlite3.connect(development)) as db,db:
             db.execute('CREATE TABLE jobs(id TEXT,busy INTEGER,payload TEXT)');db.execute('INSERT INTO jobs VALUES (?,0,?)',(job_id,encode(job)))
             db.execute('CREATE TABLE recoveries(id TEXT,job_id TEXT,receipt TEXT)')
         self.assertFalse((await preview(host,'project',self.pid,self.sid))['allowed'])
         proof={'id':proof_id,'schema':1,'source':'private-guest-close-receipt','guestEndConfirmed':True,'replayed':False}
         job['guestState']['closeConfirmed']=True;job['recovery']=proof
-        with sqlite3.connect(development) as db:
+        with closing(sqlite3.connect(development)) as db,db:
             db.execute('UPDATE jobs SET payload=?',(encode(job),));db.execute('INSERT INTO recoveries VALUES (?,?,?)',(proof_id,job_id,encode(proof)))
         await self.command(host)
         with patch('session_delete.unit_states',new=AsyncMock(return_value=True)):

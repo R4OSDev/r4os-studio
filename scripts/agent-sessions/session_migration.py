@@ -302,7 +302,7 @@ async def dispatch(host, request):
         if op == 'session_migration_rollback' and old and old['state'] == 'reverted': return migration.status()
         # Share the existing original-worker/job/Goal/queue/MCP lifetime read.
         from session_delete import inspect
-        idle, _ = await inspect(host, store, sid)
+        idle, _ = await inspect(host, store, sid, preserve_history=True)
         if op == 'session_migration_preview':
             result = {**migration.status(), 'allowed': False, 'blockers': idle['blockers']}
             if result['blockers']: return result
