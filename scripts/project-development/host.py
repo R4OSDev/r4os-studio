@@ -389,7 +389,8 @@ class Host:
         if op == 'read_job': allowed.update(('offset', 'metadataOnly', 'channel', 'tailBytes'))
         if op in ('build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation'): allowed.update(('input', 'owner'))
         if op in ('save_settings', 'capture', 'input', 'window', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
-        if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId'))
+        if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId', 'screenshotOriginal'))
+        if op in ('capture', 'input', 'evidence'): allowed.add('screenshotPreview')
         if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         if op in ('deploy', 'execution'):
@@ -532,14 +533,20 @@ class Host:
                     actor_id={'agentRunId': owner['agentRunId'], 'model': authorization['model']} if owner else None)
             if op == 'evidence':
                 from evidence import read
+                original = request.get('screenshotOriginal', False)
+                if original and (original is not True or owner is not None or request.get('screenshotPreview')):
+                    raise DevelopmentFault('Use the browser original screenshot download.', 400)
                 if 'presentationSessionId' in request:
                     session_id = identity(request['presentationSessionId'])
                     if store.get(request['id']).get('sessionId') != session_id:
                         raise DevelopmentFault('This screenshot belongs to another session.', 403)
-                image = read(store, request['id'], request['evidenceId'])
+                mode = 'download' if original else 'preview' if request.get('screenshotPreview') is True else 'legacy'
+                image = read(store, request['id'], request['evidenceId'], mode=mode)
                 if 'presentationSessionId' in request and (image['metadata']['kind'] != 'screenshot' or
                     image['metadata'].get('projectId') != store.id or image['metadata'].get('jobId') != request['id']):
                     raise DevelopmentFault('This reference is not a session screenshot.', 403)
+                if mode == 'legacy' and image.get('previewError'):
+                    raise DevelopmentFault(image['previewError'],413)
                 return image
             if op == 'evidence_history':
                 from evidence import history
@@ -557,13 +564,27 @@ class Host:
                 if set(message) != expected: raise DevelopmentFault('Unexpected execution action fields.', 400)
                 identity(message['requestId'])
                 if owner is not None: message.update(owner=owner, peerPid=peer_pid)
+                preview = request.get('screenshotPreview') is True
+                mode = 'preview' if preview else 'legacy'
+
+                def captured(image):
+                    if not preview and image.get('previewError'):
+                        raise DevelopmentFault(image['previewError'],413)
+                    return image
+
+                def with_observation(receipt):
+                    if owner is not None: authorize(store, owner, 'evidence', peer_pid, job)
+                    image = read(store, job['id'], receipt['observationId'], mode=mode)
+                    if not preview and image.get('previewError'):
+                        return {**receipt, 'observationError':image['previewError']}
+                    return {**receipt, 'observation':image}
+
                 recorded = previous(store, job['id'], message)
                 if recorded is not None:
                     if recorded.get('error'): raise DevelopmentFault(recorded['error'], recorded.get('code', 409))
                     if op == 'input' and recorded.get('observationId'):
-                        if owner is not None: authorize(store, owner, 'evidence', peer_pid, job)
-                        return {**recorded, 'observation': read(store, job['id'], recorded['observationId'])}
-                    return read(store, job['id'], recorded['evidenceId']) if op == 'capture' else (store.page(job['id']) if op == 'complete_check' else recorded)
+                        return with_observation(recorded)
+                    return captured(read(store, job['id'], recorded['evidenceId'], mode=mode)) if op == 'capture' else (store.page(job['id']) if op == 'complete_check' else recorded)
                 if op == 'complete_check' and job.get('checkCompletion'):
                     raise UnconfirmedGuestEffect('This check completion already has an original receipt or pending close. Inspect the saved job without another close.')
                 if job['kind'] == 'execution' and job['state'] == 'running':
@@ -576,14 +597,15 @@ class Host:
                 else: raise DevelopmentFault('This job has no active guest input target.')
                 if result.get('error'): raise DevelopmentFault(result['error'], result.get('code', 409))
                 if op == 'complete_check': return store.page(job['id'])
+                if op == 'capture' and not preview and result['metadata'].get('preview'):
+                    result = captured(read(store,job['id'],result['metadata']['id'],mode=mode))
                 if op == 'capture' and owner is not None:
                     # Replace the authorization formerly performed by a second
                     # evidence fetch after capture. Older agents ignore the hint.
                     authorize(store, owner, op, peer_pid, job)
                     result = {**result, 'authorizedForAgentOutput': True}
                 if op == 'input' and result.get('observationId'):
-                    if owner is not None: authorize(store, owner, 'evidence', peer_pid, job)
-                    result = {**result, 'observation': read(store, job['id'], result['observationId'])}
+                    result = with_observation(result)
                 return result
             async with self.lock:
                 await self.refresh()

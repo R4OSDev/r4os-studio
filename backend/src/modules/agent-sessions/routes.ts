@@ -5,6 +5,7 @@ import type { AgentSession, AgentSessionSummary, SessionCreate, SessionHistory, 
 import type { ProjectSessions } from '../projects/sessions.js';
 import { sessionStore } from './store.js';
 import { developmentHost } from '../project-development/host.js';
+import { readEvidence, screenshotPayload, type EvidenceMedia } from '../project-development/evidence-media.js';
 import { ProjectError } from '../projects/store.js';
 import type { DevelopmentJobPage } from '../../../../shared/project-development.js';
 import { agentHost } from './host.js';
@@ -51,30 +52,31 @@ export function agentSessionRoutes(app: FastifyInstance, directory: string, secu
   contextRequestRoutes(app,directory,security,providers,ownerType);
   const route = '/:id/sessions';
   const owner = (id: string) => ownerType === 'skill' ? { ownerType, ownerId: id } : { projectId: id };
-  if (ownerType === 'project') app.get<{ Params: SessionParams & { jobId: string; evidenceId: string } }>(route + '/:sessionId/images/:jobId/:evidenceId', {
+  if (ownerType === 'project') app.get<{ Params: SessionParams & { jobId: string; evidenceId: string }; Querystring: { original?: boolean } }>(route + '/:sessionId/images/:jobId/:evidenceId', {
     schema: { params: { ...params, required: ['id', 'sessionId', 'jobId', 'evidenceId'],
-      properties: { ...params.properties, jobId: identity, evidenceId: identity } } },
+      properties: { ...params.properties, jobId: identity, evidenceId: identity } },
+      querystring: { type: 'object', properties: { original: { type: 'boolean' } } } },
   }, async (request, reply) => {
     security.session(request, reply);
     const { id, sessionId, jobId, evidenceId } = request.params;
     await sessionStore<AgentSession>(directory, { operation: 'get', projectId: id, sessionId }, providers);
-    type Image = { metadata: { kind: string; id: string; projectId: string; jobId: string; bytes: number }; base64: string };
     const read = { operation: 'evidence', projectId: id, id: jobId, evidenceId };
-    let image: Image;
-    try { image = await developmentHost<Image>({ ...read, presentationSessionId: sessionId }); }
+    const original = request.query.original === true;
+    let image: EvidenceMedia;
+    try { image = await readEvidence({ ...read, presentationSessionId: sessionId }, original); }
     catch (error) {
       if (!(error instanceof ProjectError) || error.statusCode !== 400 || error.message !== 'Unsupported development coordinator operation.') throw error;
       // Older coordinators keep their live workers. Establish session ownership
       // with a read before fetching exactly the same immutable image once.
       const page = await developmentHost<DevelopmentJobPage>({ operation: 'read_job', projectId: id, id: jobId });
       if (page.job.sessionId !== sessionId) throw new ProjectError('This screenshot belongs to another session.', 403);
-      image = await developmentHost<Image>(read);
+      image = await readEvidence(read, original);
     }
-    if (image.metadata.kind !== 'screenshot' || image.metadata.id !== evidenceId || image.metadata.projectId !== id || image.metadata.jobId !== jobId
-      || !Number.isSafeInteger(image.metadata.bytes) || image.metadata.bytes < 1 || image.metadata.bytes > 393216)
+    if (image.metadata.kind !== 'screenshot' || image.metadata.id !== evidenceId || image.metadata.projectId !== id || image.metadata.jobId !== jobId)
       throw new ProjectError('This reference is not a session screenshot.', 403);
+    const media = await screenshotPayload(image, original);
     return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
-      .header('Content-Disposition', 'inline; filename="screenshot.png"').type('image/png').send(Buffer.from(image.base64, 'base64'));
+      .header('Content-Disposition', `${original ? 'attachment' : 'inline'}; filename="${media.filename}"`).type(media.mediaType).send(media.data);
   });
   app.get<{ Params: { id: string } }>(route + '/options', { schema: { params: projectParams } }, async (request, reply) => {
     security.session(request, reply);

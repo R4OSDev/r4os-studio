@@ -15,7 +15,10 @@ export function DevelopmentImage({ projectId, value }: { projectId: string; valu
   const image = value as DevelopmentEvidence & { jobId?: string };
   if (image.kind !== 'screenshot' || !uuid.test(image.id) || !image.jobId || !uuid.test(image.jobId)) return null;
   const path = `/api/projects/${projectId}/development/jobs/${image.jobId}/evidence/${image.id}`;
-  return <figure className="development-image"><a href={path} target="_blank" rel="noopener noreferrer"><img src={path} loading="lazy" alt="Assigned VM screenshot" width={image.width} height={image.height} /></a><figcaption>{image.observationMode === 'vm-diagnostic' ? 'VM diagnostic · No app input or test proof · ' : image.diagnosticOnly ? 'Diagnostic only · Desktop content unconfirmed · ' : ''}{new Date(image.createdAt).toLocaleString()} · {image.width} × {image.height}</figcaption></figure>;
+  return <figure className="development-image">{image.preview?.error
+    ? <p role="status">{image.preview.error}</p>
+    : <a href={path} target="_blank" rel="noopener noreferrer"><img src={path} loading="lazy" alt="Assigned VM screenshot" width={image.width} height={image.height} /></a>}
+    <figcaption>{image.observationMode === 'vm-diagnostic' ? 'VM diagnostic · No app input or test proof · ' : image.diagnosticOnly ? 'Diagnostic only · Desktop content unconfirmed · ' : ''}{new Date(image.createdAt).toLocaleString()} · {image.width} × {image.height} · <a href={path+'?original=true'} download>Download PNG</a></figcaption></figure>;
 }
 export function DevelopmentCard({ projectId, jobId, token }: { projectId: string; jobId: string; token: string }) {
   const [job, setJob] = useState<DevelopmentJob | null>(null), [error, setError] = useState(''), [stopping, setStopping] = useState(false);

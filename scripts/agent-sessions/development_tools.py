@@ -38,9 +38,17 @@ class DevelopmentTools:
         from vm_worker import broker_call
         from contracts import DevelopmentFault, UnconfirmedGuestEffect
         worker = self.worker
+        request = {'operation': operation, 'projectId': worker.manifest['projectId'],
+            'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields}
+        if operation in ('capture','input','evidence'):
+            if request.pop('screenshotPreview',True): request['screenshotPreview'] = True
         try:
-            return await broker_call({'operation': operation, 'projectId': worker.manifest['projectId'],
-                'owner': {'sessionId': worker.session_id, 'agentRunId': worker.run_id}, **fields})
+            try: return await broker_call(request)
+            except DevelopmentFault as error:
+                if ('screenshotPreview' not in request or error.code != 400
+                        or str(error) != 'Unsupported development coordinator operation.'): raise
+                del request['screenshotPreview']
+                return await broker_call(request)
         except (OSError, asyncio.TimeoutError):
             if operation in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'observation', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
@@ -87,13 +95,21 @@ class DevelopmentTools:
             if not (self.worker.config['permissions'].get('studio.capture_vm') or historical) or (not self.image_capable() and result.get('imageDelivery') != 'reference-only'):
                 return {'success': False, 'contentItems': [{'type': 'inputText', 'text': 'Image inspection is unavailable for this model or permission.'}]}
             image = result['image']
-            data = image_data if image_data is not None else await self.request('evidence', id=image['jobId'], evidenceId=image['id'])
+            if image.get('preview',{}).get('error') and result.get('imageDelivery')=='reference-only':
+                return {'success': result['success'], 'contentItems': content}
+            media_type = result.get('screenshotMediaType','image/png')
+            data = image_data if image_data is not None else await self.request('evidence', id=image['jobId'], evidenceId=image['id'],
+                **({'screenshotPreview':media_type=='image/webp'} if image.get('preview') else {}))
             if (data['metadata'] != image or image['projectId'] != self.worker.manifest['projectId'] or image['kind'] != 'screenshot'
                     or (image.get('observer') or {}).get('sessionId') != self.worker.session_id):
                 raise ValueError('Image identity changed.')
             # Transient RPC image only. Durable tools/events retain opaque refs.
             if self.image_capable():
-                content.append({'type': 'inputImage', 'imageUrl': 'data:image/png;base64,' + data['base64']})
+                if data.get('mediaType','image/png')!=media_type:raise ValueError('The screenshot delivery format changed.')
+                if media_type=='image/webp':
+                    from vision_analysis import transmitted_image
+                    transmitted_image(data)
+                content.append({'type':'inputImage','imageUrl':'data:'+media_type+';base64,'+data['base64']})
             else:
                 content.append({'type':'inputText','text':'The saved screenshot reference is available for presentation. This model did not receive pixels. Any visionAnalysis is attributed external image analysis, not this model’s own perception or proof of GUI actions.'})
         return {'success': result['success'], 'contentItems': content}
@@ -118,12 +134,19 @@ class DevelopmentTools:
         reference = 'studio-image:' + metadata['jobId'] + '/' + metadata['id']
         presentation = {'reference':reference,'markdown':'![VM screenshot]('+reference+')',
             'instruction':'Reuse this exact saved image reference in your reply; do not capture again just to present it.'}
+        if data.get('previewError'):
+            return {'success':False,'error':'unavailable','reasonCode':'screenshotPreviewUnavailable',
+                'output':encode({**metadata,'presentation':presentation,'previewError':data['previewError']}),
+                'development':{'jobId':job_id},'image':metadata,'presentation':presentation,
+                'captureState':'confirmed','imageDelivery':'reference-only'}
         return {'success':True,'output':encode({**metadata,'presentation':presentation}),
             'development':{'jobId':job_id},'image':metadata,'presentation':presentation,
             'captureState':'confirmed','imageDelivery':'pixels' if self.image_capable() else 'reference-only',
+            **({'screenshotMediaType':'image/webp'} if data.get('mediaType')=='image/webp' else {}),
             '_transientImage':data}
 
     async def analyse_screenshot(self,result,data,question,call_id):
+        if not result['success']: return result
         from session_store import encode
         from store import ProjectFault
         if question is None: analysis = {'state':'not-requested'}
@@ -305,7 +328,8 @@ class DevelopmentTools:
                 result = {'success':data.get('complete',True),'output':encode(data),'development':{'jobId':value['jobId']}}
                 if observation:
                     image = self.screenshot(observation,value['jobId'])
-                    result.update({k:v for k,v in image.items() if k not in ('success','output','development')})
+                    result.update({k:v for k,v in image.items() if k not in ('success','output','development','error','reasonCode')})
+                    if not image['success']: result['output']=encode({**data,'observationError':observation['previewError']})
                     result['visionAnalysis'] = {'state':'not-requested'}
                 return result
             raise DevelopmentFault('Unknown development tool.', 400)

@@ -39,7 +39,9 @@ class Media:
         elif reference.startswith('studio-image:'):
             from screenshot_media import read
             meta,raw=read(w.store,w.session_id,reference)
-            mime='image/png';digest=meta['sha256']
+            webp=reference.endswith('/webp')
+            mime='image/webp' if webp else 'image/png'
+            digest=(meta['preview'] if webp else meta)['sha256']
         else:raise ProjectFault('This media reference is unavailable in the current session.',403)
         if w.config.get('apiModel',{}).get('imageInput')!='supported':raise ModelFault('model_image_input_unavailable')
         if mime not in MIMES or hashlib.sha256(raw).hexdigest()!=digest:raise ProjectFault('The original media bytes changed. Its reference was preserved.',409)

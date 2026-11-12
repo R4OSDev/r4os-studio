@@ -3,6 +3,7 @@ import type { DevelopmentBuildInput, DevelopmentDeployInput, DevelopmentRunInput
 import type { ProjectSessions } from '../projects/sessions.js';
 import { ProjectError } from '../projects/store.js';
 import { developmentHost } from './host.js';
+import { readEvidence, screenshotPayload } from './evidence-media.js';
 import { updatePackageRoutes } from './update-packages.js';
 
 const identity = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
@@ -65,17 +66,32 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
       bodyLimit: 16384, schema: { params: jobParams, body: { type: 'object', additionalProperties: true } },
     }, async (request, reply) => {
       security.mutation(request, reply);
-      return developmentHost({ operation, projectId: request.params.id, id: request.params.jobId, input: request.body });
+      const action = { operation, projectId: request.params.id, id: request.params.jobId, input: request.body };
+      if (operation === 'assess') return developmentHost(action);
+      try { return await developmentHost({ ...action, screenshotPreview: true }); }
+      catch (error) {
+        if (!(error instanceof ProjectError) || error.statusCode !== 400
+            || error.message !== 'Unsupported development coordinator operation.') throw error;
+        return developmentHost(action);
+      }
     });
   }
-  app.get<{ Params: { id: string; jobId: string; evidenceId: string } }>(base + '/jobs/:jobId/evidence/:evidenceId', {
-    schema: { params: { ...jobParams, required: ['id', 'jobId', 'evidenceId'], properties: { ...jobParams.properties, evidenceId: identity } } },
+  app.get<{ Params: { id: string; jobId: string; evidenceId: string }; Querystring: { original?: boolean } }>(base + '/jobs/:jobId/evidence/:evidenceId', {
+    schema: { params: { ...jobParams, required: ['id', 'jobId', 'evidenceId'], properties: { ...jobParams.properties, evidenceId: identity } },
+      querystring: { type: 'object', additionalProperties: false, properties: { original: { type: 'boolean' } } } },
   }, async (request, reply) => {
     security.session(request, reply);
-    const value = await developmentHost<{ metadata: { kind: string }; base64: string }>({ operation: 'evidence',
-      projectId: request.params.id, id: request.params.jobId, evidenceId: request.params.evidenceId });
-    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff')
-      .type(value.metadata.kind === 'screenshot' ? 'image/png' : 'application/octet-stream').send(Buffer.from(value.base64, 'base64'));
+    const { id, jobId, evidenceId } = request.params;
+    const original = request.query.original === true;
+    const value = await readEvidence({ operation: 'evidence', projectId: id, id: jobId, evidenceId }, original);
+    reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff');
+    if (value.metadata.kind !== 'screenshot' && !original)
+      return reply.type('application/octet-stream').send(Buffer.from(value.base64 ?? '', 'base64'));
+    if (value.metadata.projectId !== id || value.metadata.jobId !== jobId || value.metadata.id !== evidenceId)
+      throw new ProjectError('This screenshot does not belong to this development job.', 403);
+    const image = await screenshotPayload(value, original);
+    return reply.header('Content-Disposition', `${original ? 'attachment' : 'inline'}; filename="${image.filename}"`)
+      .type(image.mediaType).send(image.data);
   });
   app.get<{ Params: { id: string; jobId: string }; Querystring: { before?: number } }>(base + '/jobs/:jobId/evidence', {
     schema: { params: jobParams, querystring: { type: 'object', additionalProperties: false, properties: { before: revision } } },

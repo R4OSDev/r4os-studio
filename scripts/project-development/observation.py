@@ -1,8 +1,9 @@
 """Image capture remains bound to a project job, image and observed VM boot."""
+import asyncio
 from contracts import DevelopmentFault
 from lease import VmLease, inspect
 from vm_client import vm_call
-from evidence import png, publish, response
+from evidence import lossless_webp, png, publish, preview_response
 from frame_binding import window
 from jobs import now
 import json
@@ -66,13 +67,16 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
     if validate: validate()
     if vm_diagnostic:
         diagnostic_target(store, job, await vm_call(lease, 'info'))
-    try: captured = await vm_call(lease, 'capture_running')
+    try: captured = await vm_call(lease, 'capture_original')
     except DevelopmentFault as error:
         # A rollback may leave this worker connected to an older web bridge.
-        if vm_diagnostic or error.code != 400 or str(error) != 'Unsupported private VM operation.': raise
-        info = await vm_call(lease, 'info')
-        if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM is not running.')
-        captured = await vm_call(lease, 'capture')
+        if error.code != 400 or str(error) != 'Unsupported private VM operation.': raise
+        try: captured = await vm_call(lease, 'capture_running')
+        except DevelopmentFault as legacy:
+            if vm_diagnostic or legacy.code != 400 or str(legacy) != 'Unsupported private VM operation.': raise
+            info = await vm_call(lease, 'info')
+            if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM is not running.')
+            captured = await vm_call(lease, 'capture')
     data, width, height = png(captured)
     bound_lease(store,job,lease)
     if vm_diagnostic:
@@ -106,8 +110,11 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
                 'releaseQueuedBefore': state.get('gestureReleaseQueued'), 'releaseQueuedAfter': after.get('gestureReleaseQueued'),
                 'consumptionConfirmed': False}
         native['process'] = {**(job.get('process') or {}), **{k: after[k] for k in ('instanceId', 'generation', 'windowId')}}
-    value = publish(store, job, 'screenshot', data, width=width, height=height,
+    webp = await asyncio.to_thread(lossless_webp, data)
+    bound_lease(store,job,lease)
+    if validate: validate()
+    value = publish(store, job, 'screenshot', data, webp=webp, width=width, height=height,
         observer=observer, captureOrigin=origin, vmId=target['vmId'], scope='assigned-vm-screen', source='qmp-png', guestRevision=(state or {}).get('guiRevision'),
         windowVisible=None if vm_diagnostic else bool((state or {}).get('windowVisible')), windowFocused=None if vm_diagnostic else bool((state or {}).get('windowFocused')), **native)
     # Publication has fsynced these exact immutable bytes and their receipt.
-    return response(value, data)
+    return preview_response(value,webp)

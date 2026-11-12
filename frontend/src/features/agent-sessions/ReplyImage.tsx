@@ -5,7 +5,7 @@ import type { ImageResource } from './imageResources';
 import { useImageVisibility } from './useImageVisibility';
 
 const uuid = '[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}';
-const reference = new RegExp(`^studio-image:(${uuid})/(${uuid})$`);
+const reference = new RegExp(`^studio-image:(${uuid})/(${uuid})(?:/webp)?$`);
 export function replyImageReference(value: string) {
   const match = reference.exec(value);
   return match ? { jobId: match[1], evidenceId: match[2] } : null;
@@ -54,6 +54,7 @@ export function ReplyImage({ projectId, sessionId, jobId, evidenceId, alt }: {
 }) {
   const { ref: previewRef, visible } = useImageVisibility();
   const endpoint = `/api/projects/${projectId}/sessions/${sessionId}/images/${jobId}/${evidenceId}`;
+  const original = endpoint + '?original=true';
   const [opened, setOpen] = useState<string | null>(null), [attempt, setAttempt] = useState(0), [failed, setFailed] = useState<string | null>(null);
   const open = opened === endpoint, unavailable = failed === endpoint;
   const [height, setHeight] = useState(180);
@@ -65,8 +66,8 @@ export function ReplyImage({ projectId, sessionId, jobId, evidenceId, alt }: {
         <img src={image.url} alt={label} onLoad={event => setHeight(Math.max(80, previewRef.current?.clientHeight ?? event.currentTarget.clientHeight))} onError={() => { setFailed(endpoint); setOpen(null); }} />
       </button>
       <span className="agent-image-actions"><button type="button" onClick={() => setOpen(endpoint)}>Enlarge</button>
-        <a href={image.url} download={filename}>Download PNG</a></span>
-    </> : <span className="agent-image-loading" role="status">{image?.failed || unavailable ? <>Screenshot unavailable. <button type="button" onClick={() => { setFailed(null); setAttempt(value => value + 1); }}>Reload screenshot</button></> : visible ? 'Loading screenshot…' : 'Screenshot preview'}</span>}
-    {open && image?.url && !unavailable && <ImageDialog url={image.url} alt={label} filename={filename} close={() => setOpen(null)} />}
+        <a href={original} download>Download PNG</a></span>
+    </> : <span className="agent-image-loading" role="status">{image?.failed || unavailable ? <>Screenshot preview unavailable. <button type="button" onClick={() => { setFailed(null); setAttempt(value => value + 1); }}>Reload screenshot</button> <a href={original} download>Download PNG</a></> : visible ? 'Loading screenshot…' : 'Screenshot preview'}</span>}
+    {open && image?.url && !unavailable && <ImageDialog url={image.url} alt={label} filename={filename} download={original} close={() => setOpen(null)} />}
   </span>;
 }

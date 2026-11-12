@@ -81,12 +81,20 @@ class ClaudeWorker(Worker):
             content.append({'type':'text','text':'The original screenshot was captured and retained, but image delivery is unavailable for this model. This result does not confirm visual inspection.'})
         if result.get('image') and self.config.get('claudeModel',{}).get('imageInput')=='supported':
             image=result['image']
+            if image.get('preview',{}).get('error') and result.get('imageDelivery')=='reference-only':
+                return {'content':content,'isError':not result['success']}
             if not self.config['permissions'].get('studio.capture_vm'):
                 return {'content':[{'type':'text','text':'Image inspection is disabled in the original Studio run.'}],'isError':True}
-            data=image_data if image_data is not None else await self.development.request('evidence',id=image['jobId'],evidenceId=image['id'])
+            media_type=result.get('screenshotMediaType','image/png')
+            data=image_data if image_data is not None else await self.development.request('evidence',id=image['jobId'],evidenceId=image['id'],
+                **({'screenshotPreview':media_type=='image/webp'} if image.get('preview') else {}))
             if data['metadata']!=image or image.get('projectId')!=self.manifest.get('projectId') or image.get('kind')!='screenshot':
                 raise ValueError('The original screenshot binding changed.')
-            content.append({'type':'image','mimeType':'image/png','data':data['base64']})
+            if data.get('mediaType','image/png')!=media_type:raise ValueError('The screenshot delivery format changed.')
+            if media_type=='image/webp':
+                from vision_analysis import transmitted_image
+                transmitted_image(data)
+            content.append({'type':'image','mimeType':media_type,'data':data['base64']})
         return {'content':content,'isError':not result['success']}
 
     async def effect(self,name,arguments,call_id):

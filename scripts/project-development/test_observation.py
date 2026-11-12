@@ -145,7 +145,9 @@ class LiveFileTest(unittest.IsolatedAsyncioTestCase):
 
 class DiagnosticCaptureTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        from io import BytesIO
         import sqlite3
+        from PIL import Image
         from types import SimpleNamespace
         self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
         self.root=Path(self.temporary.name);self.db=sqlite3.connect(':memory:');self.addCleanup(self.db.close)
@@ -160,7 +162,9 @@ class DiagnosticCaptureTest(unittest.IsolatedAsyncioTestCase):
         self.lease=SimpleNamespace(id='lease',token='private')
         self.reservation={'vmId':target['vmId'],'scope':{'projectId':self.store.id,'projectRevision':1,'jobId':self.job['id'],
             **{key:target[key] for key in ('vmRevision','imageId','imageSha256','bootId')}}}
-        self.png={'base64':base64.b64encode(b'\x89PNG\r\n\x1a\n'+struct.pack('>I',13)+b'IHDR'+struct.pack('>II',800,600)+b'\x08\x02\0\0\0'+b'\0'*4).decode()}
+        output = BytesIO()
+        Image.new('RGB', (800, 600)).save(output, 'PNG')
+        self.png = output.getvalue()
     async def capture(self,after=None):
         from unittest.mock import patch,AsyncMock
         from types import SimpleNamespace

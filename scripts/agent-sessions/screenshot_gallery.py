@@ -96,7 +96,7 @@ def project(store,source,rows,sid):
             yield row,None,False;continue
         valid=(relevant and row['project']==store.owner_id and value.get('projectId')==store.owner_id and value.get('jobId')==row['job_id']
             and value.get('id')==row['id'] and value.get('source')=='qmp-png' and value.get('scope')=='assigned-vm-screen'
-            and type(value.get('bytes')) is int and 0<value['bytes']<=BOUNDS['screenshotBytes']
+            and type(value.get('bytes')) is int and 0<value['bytes']<=BOUNDS['screenshotOriginalBytes']
             and type(value.get('width')) is int and 0<value['width']<=BOUNDS['screenshotMaxWidth']
             and type(value.get('height')) is int and 0<value['height']<=BOUNDS['screenshotMaxHeight']
             and isinstance(value.get('sha256'),str) and len(value['sha256'])==64 and all(c in '0123456789abcdef' for c in value['sha256']))
@@ -122,6 +122,7 @@ def project(store,source,rows,sid):
             **match,'vmId':vm,'bootId':value.get('bootId'),'createdAt':value.get('createdAt'),
             'width':value['width'],'height':value['height'],'bytes':value['bytes'],'sha256':value['sha256'],
             'source':'agent-vm-capture','reference':'studio-image:'+row['job_id']+'/'+row['id'],
+            **({'preview':value['preview']} if isinstance(value.get('preview'),dict) else {}),
             **({'observationMode':'vm-diagnostic'} if value.get('observationMode') == 'vm-diagnostic' else {}),
             **({'diagnosticOnly':True,'contentUnconfirmed':True} if value.get('diagnosticOnly') is True else {})}
         yield row,entry,False

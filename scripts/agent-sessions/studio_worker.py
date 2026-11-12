@@ -101,12 +101,21 @@ class StudioWorker(Worker):
         if not result.get('success') or not call_id:return result
         images=self.skill_mcp.images(result)
         screenshot=None;registered=[];errors=[]
+        meta=result.get('image')
+        media_type=result.get('screenshotMediaType','image/png')
+        if meta and meta.get('preview',{}).get('error') and result.get('imageDelivery')=='reference-only':return result
         if image_data:
             import base64
-            meta=result.get('image')
             if (not isinstance(image_data,dict) or image_data.get('metadata')!=meta or not meta
                     or meta.get('projectId')!=self.manifest.get('projectId') or meta.get('kind')!='screenshot'
-                    or hashlib.sha256(base64.b64decode(image_data.get('base64',''),validate=True)).hexdigest()!=meta.get('sha256')):
+                    or image_data.get('mediaType','image/png')!=media_type):
+                raise ProjectFault('The original screenshot reference changed.',409)
+            raw=base64.b64decode(image_data.get('base64',''),validate=True)
+            if media_type=='image/webp':
+                from screenshot_media import check_webp
+                try: check_webp(raw,meta['preview'])
+                except (ValueError,KeyError): raise ProjectFault('The saved screenshot WebP changed.',409) from None
+            elif hashlib.sha256(raw).hexdigest()!=meta.get('sha256'):
                 raise ProjectFault('The original screenshot reference changed.',409)
             if result.get('imageDelivery')=='reference-only' and self.config.get('apiModel',{}).get('imageInput')!='supported':
                 return result
@@ -114,7 +123,7 @@ class StudioWorker(Worker):
             if self.config.get('apiModel',{}).get('imageInput')!='supported':return result
             from screenshot_media import read,reference
             try:
-                screenshot=reference(result['image'])
+                screenshot=reference(result['image'],media_type)
                 read(self.store,self.session_id,screenshot,expected=result['image'])
             except (ProjectFault,KeyError,ValueError,TypeError) as error:
                 screenshot=None;errors.append(str(error))

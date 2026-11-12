@@ -143,7 +143,9 @@ export interface DesktopLaunchReceipt {
   statusError?: string;
   statusErrorlevel?: number;
 }
+export interface ScreenshotPreview { mediaType: 'image/webp'; bytes: number; sha256: string; error?: string }
 export interface DevelopmentEvidence {
+  preview?: ScreenshotPreview;
   observationMode?: 'vm-diagnostic';
   diagnosticOnly?: true; contentUnconfirmed?: true; inputReference?: false; completionReference?: false;
   gestureObservation?: {

@@ -124,7 +124,7 @@ class Execution:
         previous = admit(self.store, self.job['id'], message)
         if previous is not None:
             if previous.get('error'): return state, previous
-            result = read(self.store, self.job['id'], previous['evidenceId']) if operation == 'capture' else previous
+            result = read(self.store, self.job['id'], previous['evidenceId'], mode='preview') if operation == 'capture' else previous
             return state, result
         guard(self.store, self.job, lease)
         # Refresh and consume output once before another observation/action.

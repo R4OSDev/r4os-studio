@@ -117,7 +117,7 @@ with sqlite3.connect(sys.argv[1]+'/Sessions/Sessions.sqlite') as db:
  db.execute("INSERT INTO runs VALUES (?,?,?,'owned','completed',0,'{}',NULL,NULL,NULL,'now','now')",(run,sid,str(uuid.uuid4())))
  db.execute('INSERT INTO tools VALUES (?,?,?,?,?,?,?)',(run,'owned-capture','studio_capture_vm','own','completed',json.dumps({'jobId':job}),json.dumps({'success':True,'image':image})))
 with sqlite3.connect(sys.argv[1]+'/Development/Development.sqlite') as db:
- db.execute('CREATE TABLE jobs(id TEXT PRIMARY KEY,payload TEXT NOT NULL)');db.execute('INSERT INTO jobs VALUES (?,?)',(job,json.dumps({'projectId':image['projectId'],'sessionId':sid})))
+ db.execute('CREATE TABLE jobs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,request_id TEXT NOT NULL,payload TEXT NOT NULL)');db.execute('INSERT INTO jobs VALUES (?,?,?,?)',(job,'build',str(uuid.uuid4()),json.dumps({'projectId':image['projectId'],'sessionId':sid})))
  db.execute('CREATE TABLE evidence(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,payload TEXT NOT NULL)');db.execute('INSERT INTO evidence VALUES (?,?,?)',(image['id'],job,json.dumps(image)))
 `,join(directory,ids[0]),JSON.stringify(image)]);
     const gallery=url+'/screenshots',socket=join(root,'gallery.sock'),originalSocket=process.env.STUDIO_DEVELOPMENT_SOCKET;
@@ -137,7 +137,7 @@ with sqlite3.connect(sys.argv[1]+'/Development/Development.sqlite') as db:
       assert.equal(imageCalls.length,0);
       const actual=await app.inject({url:pngUrl,headers});assert.equal(actual.statusCode,200,actual.body);
       assert.equal(actual.headers['content-type'],'image/png');assert.equal(actual.headers['cache-control'],'private, no-store');assert.deepEqual(actual.rawPayload,png);
-      assert.deepEqual(imageCalls.at(-1),{operation:'evidence',projectId:ids[0],id:jobId,evidenceId,presentationSessionId:session.id});
+      assert.deepEqual(imageCalls.at(-1),{operation:'evidence',projectId:ids[0],id:jobId,evidenceId,presentationSessionId:session.id,screenshotPreview:true});
       foreignObserver=true;assert.equal((await app.inject({url:pngUrl,headers})).statusCode,409);foreignObserver=false;
       corrupt=true;assert.equal((await app.inject({url:pngUrl,headers})).statusCode,409);
       missing=true;assert.equal((await app.inject({url:pngUrl,headers})).statusCode,404);

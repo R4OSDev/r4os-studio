@@ -89,7 +89,7 @@ class StudioMcp:
         for block in result['content']:
             if not isinstance(block,dict):raise McpFault(-32603,'Invalid original tool content.')
             if block.get('type')=='text' and set(block)=={'type','text'} and isinstance(block['text'],str):continue
-            if (block.get('type')=='image' and set(block)=={'type','mimeType','data'} and block['mimeType']=='image/png'
+            if (block.get('type')=='image' and set(block)=={'type','mimeType','data'} and block['mimeType'] in ('image/png','image/webp')
                 and isinstance(block['data'],str) and re.fullmatch('[A-Za-z0-9+/]*={0,2}',block['data'])):continue
             raise McpFault(-32603,'The original Studio tool content is unavailable.')
         return result

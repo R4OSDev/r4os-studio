@@ -245,3 +245,7 @@ Allow GUI input with the same focused VM frame for up to 300 seconds while prese
 ## 0.12.63
 
 Trigger normal Claude compaction at an accepted instruction change and continue the same Studio session with a fresh signed context.
+
+## 0.12.64
+
+Archive original VM PNG screenshots on the host and deliver pixel-identical lossless WebP within the transfer limit.

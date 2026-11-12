@@ -9,10 +9,11 @@ import './gallery.css';
 function date(value:string|null) {const parsed=value?new Date(value):null;return parsed&&!Number.isNaN(parsed.valueOf())?parsed.toLocaleString():'Unknown time';}
 function GalleryImage({entry,thumbnail=false,paused=false}:{entry:SessionScreenshot;thumbnail?:boolean;paused?:boolean}) {
   const [attempt,setAttempt]=useState(0);
-  const {base}=useSessionApi(),endpoint=paused?null:base+sessionPath(entry.projectId,entry.sessionId)+'/screenshots/'+entry.jobId+'/'+entry.id+(attempt?'?retry='+attempt:'');
+  const {base}=useSessionApi(),endpoint=paused||entry.preview?.error?null:base+sessionPath(entry.projectId,entry.sessionId)+'/screenshots/'+entry.jobId+'/'+entry.id+(attempt?'?retry='+attempt:'');
   const image=useStoredImage(endpoint),[failed,setFailed]=useState(false);
   const label='VM screenshot saved '+date(entry.createdAt);
-  if(image?.failed||failed)return <span className="gallery-image-status" role={thumbnail?undefined:'status'}>{thumbnail?'Unavailable':<>The original screenshot is unavailable. <button type="button" className="gallery-image-retry" onClick={()=>{setFailed(false);setAttempt(value=>value+1);}}>Retry image</button></>}</span>;
+  if(entry.preview?.error)return <span className="gallery-image-status" role={thumbnail?undefined:'status'}>{thumbnail?'Unavailable':entry.preview.error}</span>;
+  if(image?.failed||failed)return <span className="gallery-image-status" role={thumbnail?undefined:'status'}>{thumbnail?'Unavailable':<>The screenshot preview is unavailable. <button type="button" className="gallery-image-retry" onClick={()=>{setFailed(false);setAttempt(value=>value+1);}}>Retry image</button></>}</span>;
   if(!image?.url)return <span className="gallery-image-status" aria-hidden={thumbnail||undefined} role={thumbnail?undefined:'status'}>{thumbnail?'…':'Loading screenshot…'}</span>;
   return <img src={image.url} alt={label} onError={()=>setFailed(true)}/>;
 }
@@ -27,6 +28,7 @@ function ThumbnailImage({entry,paused}:{entry:SessionScreenshot;paused:boolean})
 }
 
 export function ScreenshotGallery({ownerId,sessionId,reauth,close,run,stop}:{ownerId:string;sessionId:string;reauth:()=>Promise<void>;close:()=>void;run:AgentRun|null|undefined;stop:()=>Promise<void>}) {
+  const {base}=useSessionApi();
   const gallery=useScreenshotGallery(ownerId,sessionId,reauth),dialog=useRef<HTMLDialogElement>(null),closer=useRef<HTMLButtonElement>(null),strip=useRef<HTMLDivElement>(null),title=useId();
   const [selected,setSelected]=useState<{entry:SessionScreenshot;latest:string|null}|null>(null),[edges,setEdges]=useState({start:true,end:true});
   const [shown,setShown]=useState(!document.hidden);
@@ -70,7 +72,7 @@ export function ScreenshotGallery({ownerId,sessionId,reauth,close,run,stop}:{own
     {visible&&!gallery.page!.coverage.complete&&<p className="gallery-status" role="status">Reading older saved screenshots…</p>}
     {!!gallery.page?.coverage.unqualified&&<p className="gallery-status" role="status">{gallery.page.coverage.unqualified} saved {gallery.page.coverage.unqualified===1?'capture could':'captures could'} not be linked to an original agent call.</p>}
     <div className="gallery-large">{visible&&entry?<GalleryImage key={entry.id} entry={entry} paused={!shown}/>:gallery.page?.available&&!gallery.busy&&!gallery.authLost?<p>No screenshots yet.</p>:null}</div>
-    {visible&&entry&&<p className="gallery-caption">{entry.observationMode === 'vm-diagnostic' ? 'VM diagnostic · No app input or test proof · ' : entry.diagnosticOnly && 'Diagnostic only · Desktop content unconfirmed · '}Saved {date(entry.createdAt)} · {entry.width} × {entry.height}</p>}
+    {visible&&entry&&<p className="gallery-caption">{entry.observationMode === 'vm-diagnostic' ? 'VM diagnostic · No app input or test proof · ' : entry.diagnosticOnly && 'Diagnostic only · Desktop content unconfirmed · '}Saved {date(entry.createdAt)} · {entry.width} × {entry.height} · <a href={base+sessionPath(entry.projectId,entry.sessionId)+'/screenshots/'+entry.jobId+'/'+entry.id+'?original=true'} download>Download PNG</a></p>}
     {visible&&<div className="gallery-filmstrip"><button type="button" className="gallery-scroll" aria-label="Scroll to newer screenshots" disabled={gallery.busy||edges.start&&!gallery.hasNewer} onClick={()=>scroll(-1)}>‹</button>
       <div ref={strip} className="gallery-thumbnails" role="group" aria-label="Saved screenshots" onKeyDown={event=>{
         if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;

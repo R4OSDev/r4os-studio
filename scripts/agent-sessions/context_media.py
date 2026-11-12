@@ -19,6 +19,8 @@ def purpose(name, arguments):
 def delivered(body, call, ref, sha):
     """Require the original result binding and its exact pixels in that input."""
     pixels = []; original = False
+    webp = ref.endswith('/webp')
+    media_type = 'image/webp' if webp else 'image/png'
     pending = [body.get('input', body.get('messages', []))]
     while pending:
         value = pending.pop()
@@ -30,9 +32,9 @@ def delivered(body, call, ref, sha):
         if kind in ('input_image','image_url'):
             url=value.get('image_url')
             if isinstance(url,dict):url=url.get('url')
-            if isinstance(url,str) and url.startswith('data:image/png;base64,'):
+            if isinstance(url,str) and url.startswith('data:'+media_type+';base64,'):
                 pixels.append(url.split(',',1)[1])
-        if kind=='image' and isinstance(value.get('source'),dict) and value['source'].get('media_type')=='image/png':
+        if kind=='image' and isinstance(value.get('source'),dict) and value['source'].get('media_type')==media_type:
             pixels.append(value['source'].get('data'))
         text = None
         if kind=='function_call_output' and value.get('call_id')==call:text=value.get('output')
@@ -43,8 +45,9 @@ def delivered(body, call, ref, sha):
         if isinstance(text,str):
             try: result=json.loads(text)
             except ValueError: result=None
-            original=original or (isinstance(result,dict) and result.get('screenshotReference')==ref
-                and result.get('imageDelivery')=='pixels' and (result.get('image') or {}).get('sha256')==sha)
+            if isinstance(result,dict) and result.get('screenshotReference')==ref and result.get('imageDelivery')=='pixels':
+                image=result.get('image') or {}
+                original=original or (image.get('preview',{}) if webp else image).get('sha256')==sha
         pending.extend(p for p in value.values() if isinstance(p,(dict,list)))
     if original:
         for data in pixels:
@@ -119,7 +122,8 @@ class Screenshots:
                 continue
             used=uses.get((record['runId'],image['jobId'],image['id']))
             part=record['content'][0]
-            if used and used['sequence']<new['sequence'] and self.processed(used,part['callId'],
-                    part['result']['screenshotReference'],image['sha256']):
+            ref=part['result']['screenshotReference']
+            media=image.get('preview',{}) if ref.endswith('/webp') else image
+            if used and used['sequence']<new['sequence'] and media.get('sha256') and self.processed(used,part['callId'],ref,media['sha256']):
                 retired.add(seq)
         return retired

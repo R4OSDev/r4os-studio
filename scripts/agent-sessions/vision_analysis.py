@@ -44,9 +44,9 @@ def validate_question(question):
         raise ProjectFault('Provide an image question of at most 4 KiB.',400)
 
 
-def png(data):
+def png(data, *, maximum=MAX_IMAGE):
     raw = base64.b64decode(data['base64'],validate=True); meta = data['metadata']
-    if (not 33 <= len(raw) <= MAX_IMAGE or raw[:8] != b'\x89PNG\r\n\x1a\n' or raw[12:16] != b'IHDR' or raw[8:12] != b'\x00\x00\x00\r'
+    if (not 33 <= len(raw) <= maximum or raw[:8] != b'\x89PNG\r\n\x1a\n' or raw[12:16] != b'IHDR' or raw[8:12] != b'\x00\x00\x00\r'
             or hashlib.sha256(raw).hexdigest() != meta['sha256'] or len(raw) != meta['bytes']): raise ValueError()
     width,height = struct.unpack('>II',raw[16:24])
     if not 1 <= width <= 4096 or not 1 <= height <= 4096 or width*height > 4*1024*1024: raise ValueError()
@@ -72,6 +72,16 @@ def png(data):
     return raw
 
 
+def transmitted_image(data):
+    media_type = data.get('mediaType','image/png')
+    if media_type == 'image/png': return png(data),media_type
+    if media_type != 'image/webp': raise ValueError('Unsupported screenshot media type.')
+    from screenshot_media import check_webp
+    meta=data['metadata']
+    media=meta.get('preview',meta)
+    return check_webp(base64.b64decode(data['base64'],validate=True),media),media_type
+
+
 def authorize(w, call_id, data, question):
     row = get_run(w.store,w.run_id)
     tool = w.store.db.execute('SELECT tool,intent FROM tools WHERE run_id=? AND call_id=?',(w.run_id,call_id)).fetchone()
@@ -93,7 +103,7 @@ def authorize(w, call_id, data, question):
             or (meta.get('observer') or {}).get('sessionId') != w.session_id or meta.get('jobId') != arguments.get('jobId')):
         raise ProjectFault('The original image does not belong to this project/session tool.',403)
     identity(meta['id']); identity(meta['jobId'])
-    try: raw = png(data)
+    try: raw, _ = transmitted_image(data)
     except (ValueError,KeyError,TypeError,zlib.error): raise ProjectFault('The original screenshot format, dimensions or hash is invalid.',409) from None
     return raw, meta
 
@@ -222,7 +232,8 @@ class Vision:
             await authorize_call(w,call_id,data,question,historical)  # Fresh parent/rights/bytes check after account access.
             model = self.model = VisionTransport({**provider,**frozen['apiModel'],**frozen['apiModel'].get('messages',{})},frozen['model'],credential,
                 headers=headers,chat_policy=frozen.get('apiChat'),client=frozen.get('apiZaiClient'))
-            model.media_resolver = lambda reference: {'type':'image','mediaType':'image/png','data':base64.b64encode(raw).decode()} if reference == image_ref else None
+            media_type = data.get('mediaType','image/png')
+            model.media_resolver = lambda reference: {'type':'image','mediaType':media_type,'data':base64.b64encode(raw).decode()} if reference == image_ref else None
             model.context_policy = frozen.get('contextPolicy')
             operations.observe(model,op)
             length = 0

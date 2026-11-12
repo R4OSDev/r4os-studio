@@ -272,14 +272,24 @@ async def original_image(worker,ref,index):
         if not any(v.get('id')==meta['id'] and v.get('sha256')==meta['sha256'] for v in recorded):raise ProjectFault('This image is not registered in the original tool result.',409)
         return meta,raw,None
     screenshot=part['result'].get('image')
-    if (worker.store.owner_type!='project' or not isinstance(screenshot,dict) or reference!='studio-image:'+str(screenshot.get('jobId'))+'/'+str(screenshot.get('id'))
+    if not isinstance(screenshot,dict):raise ProjectFault('The original screenshot is unavailable.',404)
+    original='studio-image:'+str(screenshot.get('jobId'))+'/'+str(screenshot.get('id'))
+    if (worker.store.owner_type!='project' or reference not in (original,original+'/webp')
         or screenshot.get('projectId')!=worker.store.owner_id or screenshot.get('observer',{}).get('sessionId')!=worker.session_id):raise ProjectFault('The original screenshot is not bound to this owner/session result.',403)
-    data=await worker.development.request('evidence',id=screenshot['jobId'],evidenceId=screenshot['id'])
+    webp=reference.endswith('/webp') or part['result'].get('screenshotMediaType')=='image/webp'
+    if screenshot.get('preview',{}).get('error') and (webp or part['result'].get('imageDelivery')=='reference-only'):
+        raise ProjectFault(screenshot['preview']['error'],413)
+    data=await worker.development.request('evidence',id=screenshot['jobId'],evidenceId=screenshot['id'],
+        **({'screenshotPreview':webp} if screenshot.get('preview') else {}))
     if data.get('metadata')!=screenshot:raise ProjectFault('The original screenshot metadata changed.',409)
-    from vision_analysis import png
-    try:raw=png(data)
+    if data.get('previewError'):raise ProjectFault(data['previewError'],413)
+    from vision_analysis import transmitted_image
+    try:raw,media_type=transmitted_image(data)
     except (ValueError,KeyError,TypeError,zlib.error):raise ProjectFault('The original screenshot bytes are unavailable or changed.',409) from None
-    meta={'id':screenshot['id'],'sessionId':worker.session_id,'runId':ref['runId'],'sha256':screenshot['sha256'],'size':len(raw),'mediaType':'image/png','width':screenshot['width'],'height':screenshot['height']}
+    if (media_type=='image/webp')!=webp:raise ProjectFault('The screenshot delivery format changed.',409)
+    meta={'id':screenshot['id'],'sessionId':worker.session_id,'runId':ref['runId'],
+          'sha256':(screenshot['preview'] if webp else screenshot)['sha256'],'size':len(raw),'mediaType':media_type,
+          'width':screenshot['width'],'height':screenshot['height'],**({'originalSha256':screenshot['sha256']} if webp else {})}
     return meta,raw,data
 
 
@@ -315,14 +325,16 @@ async def execute(worker,args,call_id):
     native=native_vision(worker)
     value={**selection,'historical':True,'notice':notice,'image':meta,'nativePixels':native}
     if native:
-        if data is not None:return {'success':True,'output':encode(value),'image':data['metadata'],'imageDelivery':'pixels','contextReadback':ref,'_transientImage':data}
+        if data is not None:return {'success':True,'output':encode(value),'image':data['metadata'],'imageDelivery':'pixels','contextReadback':ref,'_transientImage':data,
+            **({'screenshotMediaType':'image/webp'} if meta['mediaType']=='image/webp' else {})}
         return {'success':True,'output':encode(value),'generatedImage':meta}
     question=args.get('question')
     if question:
         from vision_analysis import Vision
         if worker.vision_helper is None:worker.vision_helper=Vision(worker)
         historic={'reference':ref,'imageIndex':args.get('imageIndex',0)}
-        payload={'metadata':{'id':meta['id'],'bytes':len(raw),'sha256':meta['sha256'],'width':meta['width'],'height':meta['height'],'kind':'historical-image'},'base64':base64.b64encode(raw).decode()}
+        payload={'metadata':{'id':meta['id'],'bytes':len(raw),'sha256':meta['sha256'],'width':meta['width'],'height':meta['height'],'kind':'historical-image'},
+                 'base64':base64.b64encode(raw).decode(),**({'mediaType':'image/webp'} if meta.get('originalSha256') else {})}
         try:value['visionAnalysis']=await worker.vision_helper.analyse(call_id,payload,question,historical=historic)
         except ProjectFault as error:value['visionAnalysis']={'state':'unavailable','reason':str(error),'originalRetained':True}
     else:value['visionAnalysis']={'state':'not-requested','reason':'Provide question to request the configured Vision fallback. The text model did not receive pixels.'}
@@ -333,7 +345,7 @@ async def authorize_vision(worker,call_id,data,question,historical):
     # Invoked before/after account access by the same Vision helper. No live
     # capture grant or foreign image can enter through this historical branch.
     admit(worker)
-    from vision_analysis import native_vision,validate_question,png
+    from vision_analysis import native_vision,validate_question,transmitted_image
     from attachment_store import birth
     if native_vision(worker):raise ProjectFault('Historical Vision fallback requires a non-Vision main model.',403)
     row=worker.store.db.execute('SELECT worker,request_id FROM runs WHERE id=?',(worker.run_id,)).fetchone();peer=json.loads(row['worker'] or '{}')
@@ -343,10 +355,12 @@ async def authorize_vision(worker,call_id,data,question,historical):
     args=json.loads(tool['intent'])
     if args.get('view')!='image' or result_reference(worker,args)!=historical['reference'] or args.get('imageIndex',0)!=historical['imageIndex'] or args.get('question')!=question:raise ProjectFault('The original historical image question or reference changed.',409)
     validate_question(question);meta,raw,_=await original_image(worker,historical['reference'],historical['imageIndex'])
-    if meta['mediaType']!='image/png':raise ProjectFault('This Vision fallback accepts retained PNG images; the original raster is still available to a native Vision model.',409)
-    try:checked=png(data)
-    except (ValueError,KeyError,TypeError,zlib.error):raise ProjectFault('The original historical PNG format or hash is invalid.',409) from None
-    if checked!=raw or data['metadata']['sha256']!=meta['sha256']:raise ProjectFault('The original historical image bytes changed.',409)
+    if meta['mediaType']!='image/png' and not meta.get('originalSha256'):
+        raise ProjectFault('This historical image format is unavailable to the Vision fallback.',409)
+    try:checked,media_type=transmitted_image(data)
+    except (ValueError,KeyError,TypeError,zlib.error):raise ProjectFault('The original historical image format or hash is invalid.',409) from None
+    if checked!=raw or media_type!=meta['mediaType'] or data['metadata']['sha256']!=meta['sha256']:
+        raise ProjectFault('The original historical image bytes changed.',409)
     if worker.config.get('apiProvider'):
         from api_provider_store import ApiProviders
         ApiProviders(worker.manifest['providers']).validate_active(worker.run_id,worker.store.owner_type,worker.store.owner_id,worker.session_id,row['request_id'],worker.config,{k:peer[k] for k in ('pid','birth','release')})
