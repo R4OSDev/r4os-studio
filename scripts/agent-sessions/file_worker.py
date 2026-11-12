@@ -39,16 +39,23 @@ def root_fd(name):
     return os.open(selected, os.O_RDONLY | os.O_DIRECTORY)
 
 
-def selected(root, path):
+def target_path(workspace, base, path, follow_leaf=True):
     parts(path)
     value = Path(path)
-    if value.is_absolute(): return context().path(value).resolve()
+    target = workspace.path(value) if value.is_absolute() else base / value
+    if not value.is_absolute():
+        for alias, mount in workspace.paths.items():
+            if mount == base:
+                target = workspace.path(alias + '/' + str(value))
+                break
+    return target.resolve() if follow_leaf else target.parent.resolve() / target.name
+
+
+def selected(root, path, follow_leaf=True):
+    if isinstance(path, Path): return path
     # dirfd stays local to this request; no global cwd is changed.
     base = Path(os.readlink('/proc/self/fd/' + str(root)))
-    working = context()
-    for alias, target in working.paths.items():
-        if target == base: return working.path(alias + '/' + str(value)).resolve()
-    return (base / value).resolve()
+    return target_path(context(), base, path, follow_leaf)
 
 
 def parent(root, path, create=False):
@@ -98,8 +105,12 @@ def validate_expected(expected):
         raise Fault('Use JSON null for a new file, or the exact lowercase 64-character SHA-256 read from an existing file. The string "null" is not JSON null. No file was written.')
 
 
-def check(root, path, expected):
+def check(root, path, expected, *, create=False):
     validate_expected(expected)
+    if create:
+        try: path.lstat()
+        except FileNotFoundError: return None
+        raise Fault('The new file path is already occupied. Choose a free path.')
     try: value, info = read(root, path)
     except FileNotFoundError:
         if expected is not None: raise Fault('File disappeared. Read the current file before changing it.')
@@ -109,32 +120,58 @@ def check(root, path, expected):
     return info
 
 
-def patch(root, args):
-    text = args['patch']; hashes = args['expectedHashes']; targets = []
+PATCH_PATHS = {'*** Add File: ': 'new', '*** Delete File: ': 'old',
+               '*** Update File: ': 'old', '*** Move to: ': 'new'}
+
+
+def patch_targets(text):
+    targets = []
     lines = text.strip().splitlines()
     if not lines or lines[0] != '*** Begin Patch' or lines[-1] != '*** End Patch': raise Fault('Supply a Codex-format patch.')
     for line in lines:
-        for prefix, role in [('*** Add File: ', 'new'), ('*** Delete File: ', 'old'), ('*** Update File: ', 'old'), ('*** Move to: ', 'new')]:
+        for prefix, role in PATCH_PATHS.items():
             if line.startswith(prefix):
-                path = line[len(prefix):]; parts(path); targets.append(path)
-                if role == 'old' and path not in hashes: raise Fault('Supply an expected hash for every existing source file.')
-                check(root, path, hashes.get(path))
+                path = line[len(prefix):]
+                parts(path)
+                targets.append((path, role))
     if not targets or len(targets) > 64: raise Fault('Patch must contain between one and 64 file entries.')
+    return targets
+
+
+def resolved_target(root, path, bindings, follow_leaf=True):
+    target = selected(root, path, follow_leaf)
+    if bindings is not None and bindings.get(path) != str(target):
+        raise Fault('The file path changed. Read the current file before changing it.')
+    return target
+
+
+def patch(root, args, record_versions=False, bindings=None):
+    text = args['patch']
+    hashes = args['expectedHashes']
+    entries = patch_targets(text)
+    targets = {(path,role):resolved_target(root,path,bindings,not (record_versions and role=='new'))
+               for path,role in entries}
+    for path, role in entries:
+        if role == 'old' and path not in hashes: raise Fault('Supply an expected hash for every existing source file.')
+        create = record_versions and role == 'new'
+        check(root, targets[path,role], None if create else hashes.get(path), create=create)
     translated = []
     for line in text.splitlines():
-        for prefix in ('*** Add File: ', '*** Delete File: ', '*** Update File: ', '*** Move to: '):
+        for prefix, role in PATCH_PATHS.items():
             if line.startswith(prefix):
-                line = prefix + str(selected(root, line[len(prefix):])); break
+                line = prefix + str(targets[line[len(prefix):],role]); break
         translated.append(line)
     text = '\n'.join(translated)
     result = subprocess.run([os.environ['STUDIO_PATCH_BINARY'], '--codex-run-as-apply-patch', text], capture_output=True, timeout=15, cwd=os.readlink('/proc/self/fd/' + str(root)), env=dict(os.environ))
     changed = {}
-    for path in dict.fromkeys(targets):
-        try: changed[path] = sha(read(root, path)[0])
+    for (path, _), target in targets.items():
+        try: changed[path] = sha(read(root, target)[0])
         except FileNotFoundError: changed[path] = None
         except (OSError, Fault): changed[path] = 'unavailable'
     return {'success': result.returncode == 0, 'output': (result.stdout+result.stderr).decode('utf8', 'replace')[:24000],
-            'files': changed, **({'error': 'patchFailed', 'partialChangesPossible': True} if result.returncode else {})}
+            'files': changed, **({'error': 'patchFailed', 'partialChangesPossible': True} if result.returncode else {}),
+            **({'_fileVersions':{str(target):changed[path] for (path,_),target in targets.items()}}
+               if record_versions and result.returncode == 0 else {})}
 
 
 class SearchFault(Fault):
@@ -244,15 +281,16 @@ def search(root, args):
             'truncated': truncated or limited or bool(skipped), 'skippedFiles': skipped}
 
 
-def execute(tool, args, cache=None):
+def execute(tool, args, cache=None, *, record_versions=False, bindings=None):
     if tool == 'write_file': validate_expected(args.get('expectedSha256'))
     root_name = args.get('root', 'workspace'); root = root_fd(root_name)
     try:
         if tool == 'read_file':
-            lines,checksum=file_lines(root,args['path'],cache)
-            start = args.get('startLine', 1); selected = lines[start-1:start-1+args.get('maxLines', 200)]
+            path = selected(root,args['path']) if record_versions else args['path']
+            lines,checksum=file_lines(root,path,cache)
+            start = args.get('startLine', 1); page = lines[start-1:start-1+args.get('maxLines', 200)]
             rendered = []; used = 0; next_line = None; line_truncated = None
-            for index, line in enumerate(selected, start):
+            for index, line in enumerate(page, start):
                 raw = f'{index}: {line}'.encode()
                 if used + len(raw) + bool(rendered) > 60000:
                     if rendered: next_line = index
@@ -262,11 +300,12 @@ def execute(tool, args, cache=None):
                     break
                 rendered.append(raw.decode()); used += len(raw) + (len(rendered)>1)
             else:
-                end = start+len(selected)
+                end = start+len(page)
                 next_line = end if end <= len(lines) else None
             return {'success': True, 'output': '\n'.join(rendered), 'sha256': checksum, 'totalLines': len(lines),
                     'truncated': next_line is not None or line_truncated is not None, 'nextLine': next_line,
-                    'lineTruncated': line_truncated}
+                    'lineTruncated': line_truncated,
+                    **({'_fileVersions':{str(path):checksum}} if record_versions else {})}
         if tool == 'list_directory':
             fd = directory(root, args['path'])
             try:
@@ -282,12 +321,15 @@ def execute(tool, args, cache=None):
         if tool == 'write_file':
             content = args['content'].encode()
             if len(content) > 65536: raise Fault('File write limit exceeded.')
-            info = check(root, args['path'], args['expectedSha256']); par, name = parent(root, args['path'])
+            expected = args['expectedSha256']
+            create = record_versions and expected is None
+            path = resolved_target(root,args['path'],bindings,not create) if record_versions else args['path']
+            info = check(root, path, expected, create=create); par, name = parent(root, path)
             temp = '.studio-write-' + uuid.uuid4().hex
             try:
                 fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, stat.S_IMODE(info.st_mode) if info else 0o644, dir_fd=par)
                 with os.fdopen(fd, 'wb') as f: f.write(content); f.flush(); os.fsync(f.fileno())
-                check(root, args['path'], args['expectedSha256'])
+                check(root, path, expected, create=create)
                 if info: os.replace(temp, name, src_dir_fd=par, dst_dir_fd=par)
                 else: os.link(temp, name, src_dir_fd=par, dst_dir_fd=par, follow_symlinks=True); os.unlink(temp, dir_fd=par)
                 os.fsync(par)
@@ -295,7 +337,9 @@ def execute(tool, args, cache=None):
                 try: os.unlink(temp, dir_fd=par)
                 except FileNotFoundError: pass
                 os.close(par)
-            return {'success': True, 'output': 'File written.', 'sha256': sha(content)}
+            checksum = sha(content)
+            return {'success': True, 'output': 'File written.', 'sha256': checksum,
+                    **({'_fileVersions':{str(path):checksum}} if record_versions else {})}
         if tool == 'create_directory':
             par, name = parent(root, args['path'], True)
             try:
@@ -305,7 +349,7 @@ def execute(tool, args, cache=None):
                 os.fsync(par)
             finally: os.close(par)
             return {'success': True, 'output': 'Directory created.'}
-        if tool == 'apply_patch': return patch(root, args)
+        if tool == 'apply_patch': return patch(root, args, record_versions, bindings)
         raise Fault('Unknown file tool.')
     finally: os.close(root)
 
@@ -323,7 +367,8 @@ def response(raw,cache=None):
         value = json.loads(raw)
         if cache is not None and value['tool'] not in ('read_file','list_directory','search'):
             raise Fault('The file reader accepts only read operations.')
-        return execute(value['tool'],value['arguments'],cache)
+        return execute(value['tool'],value['arguments'],cache,record_versions=value.get('recordFileVersions') is True,
+                       bindings=value.get('fileBindings'))
     except (Fault, UnicodeError, OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as e:
         return failure(value.get('tool'),e)
 

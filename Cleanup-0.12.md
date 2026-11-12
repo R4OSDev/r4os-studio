@@ -217,3 +217,7 @@ Expose action-specific required arguments in direct and native tool declarations
 ## 0.12.56
 
 Accept argument-free tool calls in Messages streams by skipping empty JSON fragments. Preserve complete-message validation and all nonempty fragments.
+
+## 0.12.57
+
+Use the latest returned file version for workspace writes and patches. New catalogs offer an explicit create-file action, and existing tool receipts and signed inputs retain their original arguments.

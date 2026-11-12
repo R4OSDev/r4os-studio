@@ -34,9 +34,9 @@ def catalog(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def prepared(scope, root=ROOT, presentation='standard'):
+def prepared(scope, root=ROOT, presentation='standard', file_writes=None):
     tools = {}
-    for original in catalog(root)[scope]:
+    for original in tool_definitions(scope, root, file_writes).values():
         if presentation == 'legacy' and original.get('dispatch') or presentation != 'legacy' and original.get('retired'):
             continue
         tool = deepcopy(original)
@@ -44,6 +44,12 @@ def prepared(scope, root=ROOT, presentation='standard'):
         wire = tool.pop('modelSchemas', {})
         if presentation in wire:
             tool['inputSchema'] = wire[presentation]
+        if file_writes and original['name'] in ('studio_write_workspace','studio_write_file','studio_apply_patch'):
+            schema = tool['inputSchema']
+            for variant in schema.get('oneOf', [schema]):
+                for field in ('expectedSha256', 'expectedHashes'):
+                    if field not in variant.get('required', []):
+                        variant.get('properties', {}).pop(field, None)
         expand(tool['inputSchema'])
         tools[tool['name']]=tool
     return tools
@@ -90,13 +96,13 @@ def restricted(tool, actions):
 VARIANT_SELECTORS = ('operation', 'view', 'action', 'kind', 'scope', 'mode', 'field')
 
 
-def argument_requirements(tools, scope, root, version):
+def argument_requirements(tools, scope, root, version, file_writes=None):
     """Show broker-required variants in the flat declaration used by adapters."""
     if version is None:
         return tools
     if type(version) is not int or version != 1:
         raise ValueError('The original tool argument requirements are unavailable.')
-    definitions = tool_definitions(scope, root)
+    definitions = tool_definitions(scope, root, file_writes)
     decorated = []
     for tool in tools:
         canonical = definitions[tool['name'][7:]]['inputSchema']
@@ -147,7 +153,8 @@ def declarations(scope='project', root=ROOT):
     kind = tool_scope(scope)
     saved=scope.get('toolCatalog') if isinstance(scope,dict) else None
     presentation = saved.get('presentation','legacy') if isinstance(saved,dict) else 'standard'
-    by_name = prepared(kind, root, presentation)
+    file_writes = saved.get('fileWritePreconditions') if isinstance(saved,dict) else None
+    by_name = prepared(kind, root, presentation, file_writes)
     if saved is not None:
         if (not isinstance(saved,dict) or saved.get('scope')!=kind or saved.get('version',1) not in (1,2)
                 or not isinstance(saved.get('tools'),list) or any(not isinstance(name,str) for name in saved['tools'])
@@ -158,7 +165,7 @@ def declarations(scope='project', root=ROOT):
         if not isinstance(actions,dict) or not actions.keys()<=set(saved['tools']):
             raise ValueError('The original tool action binding is invalid.')
         tools=[restricted(by_name[name],actions[name]) if name in actions else by_name[name] for name in saved['tools']]
-        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'))
+        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes)
         if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
         return tools
@@ -182,13 +189,43 @@ def permission_tools(scope='project'):
     return tuple(name for name,item in tool_definitions(tool_scope(scope)).items() if name not in grouped and not item.get('dispatch'))
 
 
+def automatic_file_writes(config):
+    return (config.get('toolCatalog') or {}).get('fileWritePreconditions') == 1
+
+
 @lru_cache(maxsize=32)
-def tool_definitions(scope,root=ROOT):
-    return {item['name'][7:]: item for item in catalog(root)[scope]}
+def tool_definitions(scope,root=ROOT,file_writes=None):
+    tools = {item['name'][7:]: item for item in catalog(root)[scope]}
+    if file_writes is None:
+        return tools
+    if type(file_writes) is not int or file_writes != 1:
+        raise ValueError('The original file write contract is unavailable.')
+    for name, field in (('write_file','expectedSha256'), ('apply_patch','expectedHashes')):
+        tool = deepcopy(tools[name])
+        tool['inputSchema']['required'].remove(field)
+        tools[name] = tool
+    tools['write_file']['description'] = 'Replace an existing UTF-8 file using the file version previously returned by Studio.'
+    tools['apply_patch']['description'] = (
+        'Apply a Codex-format patch using the versions of existing files previously returned by Studio. '
+        'Read each existing source file before editing. New paths must be free.')
+    combined = deepcopy(tools['write_workspace'])
+    write = next(variant for variant in combined['inputSchema']['oneOf']
+                 if variant['properties']['action']['enum'] == ['write_file'])
+    write['required'].remove('expectedSha256')
+    create = deepcopy(write)
+    create['properties']['action']['enum'] = ['create_file']
+    del create['properties']['expectedSha256']
+    combined['inputSchema']['oneOf'].insert(1, create)
+    combined['dispatch']['create_file'] = {'tool':'write_file','set':{'expectedSha256':None}}
+    combined['description'] = (
+        'Write a previously read UTF-8 file with write_file. Create a new file with create_file or a directory with create_directory.')
+    tools['write_workspace'] = combined
+    return tools
 
 
 def operation(name,value,scope='project'):
-    action=tool_definitions(tool_scope(scope))[name].get('dispatch')
+    selected = scope.get('toolCatalog', {}) if isinstance(scope,dict) else {}
+    action=tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions'))[name].get('dispatch')
     if not action: return name,value
     entry=action[value['action']]
     return entry['tool'],{**{key:v for key,v in value.items() if key!='action'},**entry.get('set',{})}
@@ -211,10 +248,10 @@ def validate_arguments(name,value,scope='project'):
         from file_worker import validate_expected,Fault
         try:validate_expected(value['expectedSha256'])
         except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
-    definition = tool_definitions(tool_scope(scope)).get(name)
+    selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
+    definition = tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions')).get(name)
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root = definition['inputSchema']
-    selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
     actions = selected.get('actions',{}).get('studio_'+name)
     if actions is not None and isinstance(value,dict) and value.get('action') not in actions:
         raise ValueError('arguments.action: allowed values are '+', '.join(actions)+'.')

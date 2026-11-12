@@ -92,8 +92,13 @@ def compose(config, project=None):
     from active_tools import instructions as current_tool_instructions
     text += current_tool_instructions(config)
     if config['engine'].get('kind') == 'studio':
-        text += ('\n\nSTUDIO FILE EDITS: Use JSON null as expectedSha256 for a new file. '
-                 'For a replacement, read the exact SHA-256 first.')
+        from tool_catalog import automatic_file_writes
+        if automatic_file_writes(config):
+            text += ('\n\nSTUDIO FILE EDITS: Read existing files with studio_read_file before editing. '
+                     'Studio uses the last returned file version. For a new file use studio_write_workspace with action=create_file.')
+        else:
+            text += ('\n\nSTUDIO FILE EDITS: Use JSON null as expectedSha256 for a new file. '
+                     'For a replacement, read the exact SHA-256 first.')
     from environment_note_tools import instructions as environment_instructions
     text += environment_instructions(config)
     from input_instructions import compose as input_instructions

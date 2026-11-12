@@ -16,7 +16,7 @@ from profile import NOTE_TOOLS, ROADMAP_TOOLS
 from run_store import get_run, transition, event, item, request_text
 from session_store import encode
 from store import ProjectFault
-from tool_catalog import declarations, tool_scope, validate_arguments
+from tool_catalog import automatic_file_writes, declarations, tool_scope, validate_arguments
 from worker import Worker, reconcile_items
 
 
@@ -427,6 +427,10 @@ class StudioWorker(Worker):
             # Broker locks serialize workspace effects. Keeping the batch ordered
             # also makes dependent write/read pairs deterministic.
             batch_succeeded=True
+            file_preconditions = automatic_file_writes(self.config)
+            if file_preconditions:
+                # The model will only receive this batch's results together.
+                self.workspace_tools.file_batch = self.workspace_tools.file_versions.copy()
             for index, call in enumerate(calls):
                 await self.goal_worker.boundary(allow_play=False)
                 if not self.active() or self.goal_worker.execution and not self.goal_worker.active:
@@ -454,6 +458,8 @@ class StudioWorker(Worker):
                 if not final_tool_results and (result.get('error') == 'unknown'
                         or result.get('partialChangesPossible') and result.get('error') == 'interrupted'):
                     self.unconfirmed()
+            if file_preconditions:
+                self.workspace_tools.file_batch = None
             # An unrelated later schema error gets its own correction. Text,
             # failed/partial batches and uncertain effects never renew it.
             if batch_succeeded and not self.uncertain_effect:correction_attempts=0

@@ -7,6 +7,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from workspace_context import Workspace
 from profile import regular, digest, directory, CODEX_SHA256,CODEX_VERSION
+from tool_catalog import automatic_file_writes
 
 
 class WorkspaceTools:
@@ -15,6 +16,8 @@ class WorkspaceTools:
         self.script_roots = []
         self.lock = asyncio.Lock(); self.initializing = asyncio.Lock()
         self.reader = None
+        self.file_versions = {}
+        self.file_batch = None
 
     async def prepare(self, sdk=True):
         async with self.initializing:
@@ -113,13 +116,56 @@ class WorkspaceTools:
                 RUSTUP_TOOLCHAIN=Path(self.context['package']['record']['rust']['toolchain']).name)
         return context.command(command, workdir, environment)
 
-    async def file(self, name, arguments):
+    def write_basis(self, name, arguments, versions):
+        from file_worker import Fault, patch_targets, target_path
+        workspace = self.workspace()
+        entries = patch_targets(arguments['patch']) if name == 'apply_patch' else [(arguments['path'], 'old')]
+        proofs = {}
+        for path, role in entries:
+            target = str(target_path(workspace, workspace.workspace, path, follow_leaf=role=='old'))
+            if role == 'old' and target not in versions:
+                raise Fault(f'Read {path} with studio_read_file before changing it.')
+            source, checksum = versions[target] if role == 'old' else (None, None)
+            proofs[path] = {'path':target,'sha256':checksum,'sourceCallId':source}
+        return proofs
+
+    def record_file_versions(self, versions, call_id):
+        for path, checksum in versions.items():
+            if checksum in (None, 'unavailable'):
+                self.file_versions.pop(path, None)
+            else:
+                self.file_versions[path] = (call_id, checksum)
+
+    async def file(self, name, arguments, call_id=None):
+        modern = automatic_file_writes(self.worker.config)
+        automatic = modern and (name=='write_file' and 'expectedSha256' not in arguments
+                                or name=='apply_patch' and 'expectedHashes' not in arguments)
+        versions = (self.file_batch if self.file_batch is not None else self.file_versions.copy()) if automatic else None
         await self.prepare(sdk=self.needs_sdk(arguments))
         # All calls share this lock, including reads, so a read/hash pair observes
         # the preceding Studio write. External administrator edits remain external.
         async with self.lock:
+            request = {'tool':name,'arguments':arguments}
+            if modern and name in ('read_file','write_file','apply_patch'):
+                request['recordFileVersions'] = True
+            if automatic:
+                from file_worker import Fault
+                from session_store import encode
+                try:
+                    proofs = self.write_basis(name,arguments,versions)
+                except (Fault,OSError,ValueError,RuntimeError) as error:
+                    return {'success':False,'error':'fileError','output':str(error)[:1000]}
+                # The original request hash and the derived write basis serve
+                # different purposes. Retain both before the mutation starts.
+                with self.worker.store.db:
+                    self.worker.store.db.execute("UPDATE tools SET intent=? WHERE run_id=? AND call_id=? AND state='intent'",
+                        (encode({**arguments,'_fileWriteBasis':proofs}),self.worker.run_id,call_id))
+                hashes = {path:proof['sha256'] for path,proof in proofs.items()}
+                precondition = {'expectedHashes':hashes} if name=='apply_patch' else {'expectedSha256':hashes[arguments['path']]}
+                request['arguments'] = {**arguments,**precondition}
+                request['fileBindings'] = {path:proof['path'] for path,proof in proofs.items()}
             if name in ('list_directory','read_file','search'):
-                return await self.read_file_tool(name,arguments)
+                return await self.read_file_tool(request)
             from terminal_group import Group, identity
             proc = await asyncio.create_subprocess_exec(*self.command(['/usr/bin/python3', '-I', '-B', str(Path(__file__).with_name('file_worker.py'))], patch=name == 'apply_patch'),
                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -127,7 +173,7 @@ class WorkspaceTools:
             original = identity(proc.pid)
             group = Group(proc.pid, original[3] if original else None)
             try:
-                output, _ = await asyncio.wait_for(proc.communicate(json.dumps({'tool': name, 'arguments': arguments}).encode()), 30)
+                output, _ = await asyncio.wait_for(proc.communicate(json.dumps(request).encode()), 30)
                 if proc.returncode or len(output) > 196608: raise ValueError()
                 return json.loads(output)
             except BaseException:
@@ -137,7 +183,7 @@ class WorkspaceTools:
                     await proc.wait()
                 raise
 
-    async def read_file_tool(self,name,arguments):
+    async def read_file_tool(self,request):
         from terminal_group import Group, identity
         command=self.command(['/usr/bin/python3','-I','-B',str(Path(__file__).with_name('file_worker.py')),'--serve'])
         if self.reader and (self.reader[0]!=command or self.reader[1].returncode is not None): await self.close_reader()
@@ -149,7 +195,7 @@ class WorkspaceTools:
         _,proc,_=self.reader
         try:
             async with asyncio.timeout(30):
-                proc.stdin.write(json.dumps({'tool':name,'arguments':arguments}).encode()+b'\n')
+                proc.stdin.write(json.dumps(request).encode()+b'\n')
                 await proc.stdin.drain()
                 output=await proc.stdout.readline()
             if not output or len(output)>196608: raise ValueError('The file reader returned no bounded result.')

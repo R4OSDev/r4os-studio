@@ -228,7 +228,7 @@ class Worker:
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
-            return await self.workspace_tools.file(name, arguments)
+            return await self.workspace_tools.file(name, arguments, call_id)
         return {'success': False, 'error': 'unavailable', 'output': 'This tool is not available in this Studio release.'}
 
     def unconfirmed(self):
@@ -298,6 +298,7 @@ class Worker:
                 return await output(replay(self,name[7:],arguments,previous))
             if previous['result']:
                 result = json.loads(previous['result'])
+                result.pop('_fileVersions', None)
                 if deadline is not None:
                     result = reported_result(result)
                 if result.get('image') and result.get('error')=='unknown' and name in ('studio_capture_vm','studio_send_vm_input'):
@@ -365,11 +366,13 @@ class Worker:
         # Strip image bytes before any durable tool result, item or SSE event.
         # Replayed results have only the image reference and revalidate its file.
         image_data = result.pop('_transientImage', None)
+        file_versions = result.pop('_fileVersions', None)
         if result.get('error') == 'unknown':
             self.unconfirmed()
+        stored_result = {**result,'_fileVersions':file_versions} if file_versions else result
         with self.store.db:
             self.store.db.execute('UPDATE tools SET state=?,result=? WHERE run_id=? AND call_id=?',
-                                  ('completed' if result['success'] else ('unknown' if result.get('error') == 'unknown' else 'failed'), encode(result), self.run_id, call_id))
+                                  ('completed' if result['success'] else ('unknown' if result.get('error') == 'unknown' else 'failed'), encode(stored_result), self.run_id, call_id))
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
@@ -384,7 +387,10 @@ class Worker:
         value['output'], clipped = bounded_text(str(value['output']), max(2, 261000-base_size))
         value['truncated'] = value['truncated'] or clipped
         self.items[call_id] = value; item(self.store, self.session_id, self.run_id, value)
-        return await output(result, image_data)
+        reply = await output(result, image_data)
+        if file_versions and result['success']:
+            self.workspace_tools.record_file_versions(file_versions, call_id)
+        return reply
 
     def defer_stop(self):
         # A notification runs on the RPC reader. Keep it free to receive the

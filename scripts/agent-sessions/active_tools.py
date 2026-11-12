@@ -10,23 +10,24 @@ from tool_catalog import ROOT, argument_requirements, catalog, declarations, dig
 RELEASES = Path('/opt/r4os-studio/releases')
 
 
-def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None):
+def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None, file_writes=None):
     scope = tool_scope(value)
     if names is None:
         source = (declarations(value,root) if isinstance(value,dict) and value.get('toolCatalog')
-                  else prepared(scope,root,presentation or 'legacy').values())
+                  else prepared(scope,root,presentation or 'legacy',file_writes).values())
         tools = [item for item in source if item['name'] not in exclude]
     else:
-        definitions = prepared(scope, root, presentation or 'legacy')
+        definitions = prepared(scope, root, presentation or 'legacy', file_writes)
         tools = [restricted(definitions[name],actions[name]) if actions and name in actions else definitions[name] for name in names]
     if requirements is not None:
-        tools = argument_requirements(tools,scope,root,requirements)
+        tools = argument_requirements(tools,scope,root,requirements,file_writes)
     result = {'scope':scope, 'sha256':digest(tools), 'tools':[item['name'] for item in tools]}
     if version == 2:
         result['version'] = version
         if presentation is not None: result['presentation'] = presentation
         if actions: result['actions'] = actions
         if requirements is not None: result['argumentRequirements'] = requirements
+        if file_writes is not None: result['fileWritePreconditions'] = file_writes
         if root.is_relative_to(RELEASES) and (root/'release.json').is_file():
             result['release'] = json.loads((root/'release.json').read_text())['id']
     return result
@@ -66,7 +67,7 @@ def worker_release(config, current, root=RELEASES):
 def goal_selection(store,sid):
     session=store.get(sid)
     mode = roadmap_presentation(session, ROOT)
-    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,requirements=1)}
+    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,requirements=1,file_writes=1)}
 
 
 def roadmap_presentation(config, root):
@@ -190,7 +191,8 @@ def freeze(store,sid,config,*,images):
         goal=bool((row(store,sid) or {}).get('goal'))
     mode = saved.get('presentation') if saved else roadmap_presentation(config,root)
     if mode=='administration' and not config.get('roadmapAdministrationEnabled'): mode='standard'
-    definitions=tool_definitions(tool_scope(config),root)
+    file_writes = saved.get('fileWritePreconditions') if saved else 1
+    definitions=tool_definitions(tool_scope(config),root,file_writes)
     updates = None
     if 'check_update' in definitions:
         from profile import UPDATE_TOOLS
@@ -211,7 +213,7 @@ def freeze(store,sid,config,*,images):
                 names.append(full);actions[full]=available
         elif permitted(name): names.append(full)
     requirements = saved.get('argumentRequirements') if saved else 1
-    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,requirements=requirements)
+    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,requirements=requirements,file_writes=file_writes)
 
 
 def instructions(config):
