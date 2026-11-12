@@ -10,7 +10,7 @@ from run_store import get_run, transition
 from session_context import Context, empty, number
 from session_store import now
 from context_policy import compaction_limits, optimized, threshold
-from input_budget import METHOD, strict, unavailable_count
+from input_budget import METHOD, admission_tokens, estimated_tokens, strict, unavailable_count
 from request_capture import MAX_BODY
 
 SUMMARY = ('STUDIO CONTEXT SUMMARY: Summarize the supplied conversation for continuation. '
@@ -62,7 +62,7 @@ class StudioContext(Context):
         if strict(self.w.config.get('contextPolicy')):
             value=model.input_estimate(body)
             self.input_count=value
-            return value.get('admissionTokens',value['tokens']),value['bytes']
+            return admission_tokens(value),value['bytes']
         size = len(model.encoded(body).encode())
         has_media=any(p['type']=='image' for m in active for p in m['content'])
         return (size if has_media else math.ceil(size / 4)), size
@@ -97,8 +97,9 @@ class StudioContext(Context):
             overflowTokens=max(0,measured-capacity) if capacity is not None and measured is not None else None,
             usedRatio=measured/capacity if capacity is not None and measured is not None else None,
             last={'inputTokens':measured} if measured is not None else None,
-            estimatedInputTokens=counting.get('tokens',estimate), inputCount=counting or None,
-            estimateMethod=counting.get('method',METHOD) if strict(w.config.get('contextPolicy')) else ('UTF-8 JSON bytes including encoded media (conservative planning proxy, not a token count)' if any(p['type']=='image' for m in active for p in m['content']) else 'UTF-8 JSON bytes / 4, rounded up; planning estimate, not a token count'), estimateAt=now(),
+            estimatedInputTokens=estimated_tokens(counting) if counting else estimate, inputCount=counting or None,
+            estimateMethod=('Confirmed provider input plus estimated input delta' if counting.get('measuredPrefix') else
+                counting.get('method',METHOD)) if strict(w.config.get('contextPolicy')) else ('UTF-8 JSON bytes including encoded media (conservative planning proxy, not a token count)' if any(p['type']=='image' for m in active for p in m['content']) else 'UTF-8 JSON bytes / 4, rounded up; planning estimate, not a token count'), estimateAt=now(),
             capacitySource='accepted model configuration' if capacity is not None else None,
             autoCompactThreshold=trigger, contextPolicy=w.config.get('contextPolicy'),
             inputLimit=threshold(w.config,capacity) if strict(w.config.get('contextPolicy')) else None,

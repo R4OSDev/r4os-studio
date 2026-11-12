@@ -5,6 +5,7 @@ export interface InputCount {
   accuracy?:'estimated'|'unavailable'; fallbackReason?:string|null; requestSha256?:string;
   tokenizer?:{library:string;version:string;encoding:string;manifestSha256:string}|null;
   reserves?:{framing:number;media:number}; admissionTokens?:number; mediaTokens?:number|null;
+  measuredPrefix?:{requestId:string;requestSha256:string;inputTokens:number;deltaTokens:number;reserveTokens:number;estimatedTokens:number};
   mediaCost?:
     | {version:1|2;qualifiedImages:number;conservativeImages:number;historicalImages?:number;profile:string|null}
     | {version:3;images:number;unavailableImages:number;profile:string};
@@ -30,6 +31,7 @@ export interface ContextRequestDetail extends ContextRequest {
   position: number; total: number; policy: Record<string,unknown> | null;
   usage: {input:number|null;cachedInput:number|null;cacheWrite:number|null;output?:number|null;source:string};
   summaryBudget?:{version:1;targetTokens:number;maxOutputTokens:number|null;timeoutSeconds:number;effort:string};
+  contextProjection?:{checkpointSequence:number|null;retiredScreenshotSequences:number[]};
 }
 export interface ContextRequestPage {
   requests: ContextRequest[]; nextBefore: number | null; notice: string;

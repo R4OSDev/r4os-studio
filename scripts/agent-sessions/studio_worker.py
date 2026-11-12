@@ -29,6 +29,10 @@ class StudioWorker(Worker):
         self.history_reader = ActiveHistory(self.store, self.session_id)
         from context_results import Projection
         self.context_results=Projection(self)
+        self.measured_input = None
+        if optimized(self.config.get('contextPolicy'), 12):
+            from measured_input import MeasuredInput
+            self.measured_input = MeasuredInput(self.store, self.session_id)
         self.model = None; self.operation = None; self.credential = None
         self.round = 0
         from model_operations import Operations
@@ -185,7 +189,10 @@ class StudioWorker(Worker):
         # Accepted records/configs are immutable. Recovery gets a new reader;
         # any changed current route or credential discards worker-local reuse.
         scope = encode([self.config, hashlib.sha256((self.credential or '').encode()).hexdigest()])
-        return self.context_results.project(*self.history_reader.read(scope))
+        history = self.history_reader.read(scope)
+        if self.measured_input:
+            self.measured_input.select(history[1])
+        return self.context_results.project(*history)
 
     def transport(self, *, summary=None):
         scope = encode([self.config, self.credential, getattr(self,'model_headers',None), summary])
@@ -201,6 +208,7 @@ class StudioWorker(Worker):
             prompt_cache_key=self.config.get('promptCacheKey'))
         model.media_resolver=self.media.resolve
         model.context_policy=self.config.get('contextPolicy')
+        model.measured_input=self.measured_input if summary is None else None
         model.summary_budget=summary
         if optimized(model.context_policy, 1) and model.binding['protocol']=='messages':
             from instructions import TOOL_EXECUTION

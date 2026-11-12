@@ -21,7 +21,7 @@ def completed_call(store, sid, row):
     return meta, call
 
 
-def original_input(store, sid, record):
+def original_request(store, sid, record):
     origin = record.get('origin', {})
     rid = origin.get('studioRequestId')
     if not rid or not exists(store.db):
@@ -44,6 +44,16 @@ def original_input(store, sid, record):
                 or meta.get('model') != selection.get('model')
                 or meta.get('protocol') != selection.get('connection', {}).get('protocol')):
             return None
-        return json.loads(body(store, sid, rid))
+        return body(store, sid, rid).decode('utf-8'), meta, call
     except (ProjectFault, ValueError, TypeError, KeyError, RecursionError):
+        return None
+
+
+def original_input(store, sid, record):
+    original = original_request(store, sid, record)
+    if original is None:
+        return None
+    try:
+        return json.loads(original[0])
+    except (ValueError, RecursionError):
         return None

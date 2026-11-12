@@ -53,12 +53,13 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
   },[path,request,scope,selected,refresh,kind,context?.revision]);
   function choose(id:string|null){setLoading(true);setError('');setView(null);setSelected(id);setRefresh(value=>value+1);}
   const record=view?.record,breakdown=record?.context;
-  const counting=breakdown?.counting,providerCount=counting?.providerCount;
+  const counting=breakdown?.counting,providerCount=counting?.providerCount,prefix=counting?.measuredPrefix;
   const media=counting?.mediaCost;
   const imageRule=media?.version===3?media:null;
   const imageEstimate=media?.version!==3?media:null;
   const blocked=record?.status==='blocked-before-send';
-  const admitted=counting?.admissionTokens??breakdown?.estimatedInput;
+  const estimate=prefix?.estimatedTokens??breakdown?.estimatedInput;
+  const admitted=counting?.admissionTokens??(prefix?prefix.estimatedTokens+prefix.reserveTokens:estimate);
   const admissionOverflow=admitted!=null&&breakdown?.capacity!=null?Math.max(0,admitted-breakdown.capacity):0;
   const estimated=breakdown?.state==='estimated',capacity=breakdown?.capacity;
   const denominator=estimated?Math.max(capacity??0,breakdown.estimatedInput??0):0;
@@ -93,24 +94,29 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
           {blocked&&record.blockedReason&&<p className="context-overflow">{record.blockedReason}</p>}
         </div>
         <div className="context-inspector-body">
-          <div className="context-bar-column"><span>Estimated input</span>
+          <div className="context-bar-column"><span>{prefix?'Local breakdown':'Estimated input'}</span>
             <div className={'context-stack'+(!estimated?' context-stack-unknown':'')} aria-hidden="true">
               {categories.map(row=>row.tokens!=null&&row.tokens>0&&<div key={row.id} data-category={row.id} style={{height:denominator>0?`${row.tokens/denominator*100}%`:'0%',background:colors[row.id]}}>
                 {denominator>0&&row.tokens/denominator>.1&&<span>{row.label}</span>}</div>)}
             </div><small>{capacity==null?'Capacity unknown':amount(capacity)+' capacity'}</small>
           </div>
           <div className="context-breakdown">
-            <h3>Context breakdown <small>Estimated tokens</small></h3>
+            <h3>Context breakdown <small>{prefix?'Local component estimates':'Estimated tokens'}</small></h3>
             {estimated?<dl className="context-categories">{categories.map(row=><div key={row.id} data-category={row.id}>
               <dt><i style={{background:colors[row.id]}} aria-hidden="true"/>{row.label}</dt>
               <dd>{amount(row.tokens)}<small>{row.tokens!=null&&denominator>0?percentage.format(row.tokens/denominator):'Unknown'}</small></dd>
             </div>)}</dl>:<p>{breakdown?.reason??'Component estimates are unavailable for this original request.'}</p>}
-            {!!breakdown?.overflow&&<p className="context-overflow">Local estimate exceeds capacity by {amount(breakdown.overflow)} tokens. The bar is scaled to the estimate.</p>}
-            {!!admissionOverflow&&counting?.admissionTokens!=null&&<p className="context-overflow">Provider count used for the limit exceeds capacity by {amount(admissionOverflow)} tokens.</p>}
+            {!prefix&&!!breakdown?.overflow&&<p className="context-overflow">Local estimate exceeds capacity by {amount(breakdown.overflow)} tokens. The bar is scaled to the estimate.</p>}
+            {!!admissionOverflow&&(prefix||counting?.admissionTokens!=null)&&<p className="context-overflow">Input used for the limit exceeds capacity by {amount(admissionOverflow)} tokens.</p>}
             <dl className="context-facts">
               <dt>Unicode characters</dt><dd>{amount(counting?.characters)}</dd>
               <dt>Counting source</dt><dd>{counting?.source?countSources[counting.source]:breakdown?.method?'Legacy byte estimate':'Unavailable'}</dd>
-              <dt>Estimated input</dt><dd>{amount(breakdown?.estimatedInput)}</dd>
+              {prefix&&<>
+                <dt>Reported input for reference request</dt><dd>{amount(prefix.inputTokens)}</dd>
+                <dt>Estimated additional input</dt><dd>{amount(prefix.deltaTokens)}</dd>
+                <dt>Safety reserve</dt><dd>{amount(prefix.reserveTokens)}</dd>
+              </>}
+              <dt>Estimated input</dt><dd>{amount(estimate)}</dd>
               <dt>Provider count before send</dt><dd>{providerCount?.state==='complete'?amount(providerCount.inputTokens):providerCount?providerCount.state:'Not used'}</dd>
               <dt>Input used for limit</dt><dd>{amount(admitted)}</dd>
               <dt>Provider-reported input</dt><dd>{amount(record.usage.input)}</dd>
@@ -142,6 +148,7 @@ export function ContextInspector({projectId,sessionId,context,close}:{projectId:
             {breakdown&&!breakdown.policyEnforced&&<p className="context-explanation">This legacy request did not use full-input limit admission. Capacity uses its recorded model window.</p>}
             <details><summary>Counting method and original</summary><p>{breakdown?.method??'Unavailable'}</p>
               <dl className="context-facts"><dt>Usage source</dt><dd>{record.usage.source}</dd><dt>Original body</dt><dd>{amount(record.bytes)} bytes</dd>
+                {prefix&&<><dt>Reference request</dt><dd>{prefix.requestId}</dd></>}
                 <dt>Request</dt><dd>{record.id}</dd><dt>Provider</dt><dd>{record.providerId}</dd><dt>SHA-256</dt><dd>{record.sha256}</dd></dl>
             </details>
           </div>

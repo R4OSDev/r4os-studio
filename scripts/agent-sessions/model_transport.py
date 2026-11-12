@@ -208,6 +208,7 @@ class ModelTransport:
         self._frozen = None
         self.context_policy = None
         self._input_estimate = None
+        self.measured_input = None
         self.count_observer = None
 
     def parser(self, tools):
@@ -248,10 +249,16 @@ class ModelTransport:
     def input_estimate(self,body):
         raw=self.encoded(body)
         scope=dumps([self.context_policy,self.binding])
-        if self._input_estimate is None or self._input_estimate[0]!=raw or getattr(self,'_estimate_scope',None)!=scope:
+        reference_id = self.measured_input.request_id if self.measured_input else None
+        if (self._input_estimate is None or self._input_estimate[0]!=raw or getattr(self,'_estimate_scope',None)!=scope
+                or getattr(self,'_estimate_reference',None)!=reference_id):
             from input_budget import estimate
-            self._input_estimate=(raw,estimate(raw,self.context_policy,self.binding))
+            value=estimate(raw,self.context_policy,self.binding)
+            if self.measured_input:
+                self.measured_input.estimate(raw,body,value,self.context_policy,self.binding)
+            self._input_estimate=(raw,value)
             self._estimate_scope=scope
+            self._estimate_reference=reference_id
         value=self._input_estimate[1]
         if 'admissionTokens' in value and getattr(self,'_provider_count_scope',None)!=self.freeze_scope():
             value.pop('admissionTokens',None)
@@ -262,17 +269,20 @@ class ModelTransport:
         await count(self,body)
 
     def check_input(self,body):
-        from input_budget import strict,limit,unavailable_count
+        from input_budget import admission_tokens,strict,limit,unavailable_count
         if not strict(self.context_policy):return
         binding=self.binding.copy()
         for key in ('max_output_tokens','max_completion_tokens','max_tokens'):
             if type(body.get(key)) is int and body[key]>0:binding['maxOutputTokens']=body[key];break
         value=self.input_estimate(body);maximum=limit(self.context_policy,binding)
-        admitted=value.get('admissionTokens',value['tokens'])
+        admitted=admission_tokens(value)
         if admitted is None:raise unavailable_count(value)
         if maximum is not None and admitted>maximum:
+            method=value['method']
+            if 'admissionTokens' in value:method='provider input count'
+            elif value.get('measuredPrefix'):method='measured prefix plus estimated delta and reserve'
             raise ModelFault('context_input_limit',not_dispatched=True,
-                details={'inputEstimate':admitted,'inputLimit':maximum,'method':value['method']})
+                details={'inputEstimate':admitted,'inputLimit':maximum,'method':method})
 
     def prepare(self, messages, instructions, tools, effort=''):
         recoveries = self.history_resolver(messages) if self.history_resolver else {}

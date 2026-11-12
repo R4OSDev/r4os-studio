@@ -205,3 +205,7 @@ Select update tooling per session and original recovery phase. Merge VM checks a
 ## 0.12.53
 
 Keep the Codex prompt-cache key and the conversation prefix stable. Freeze tool previews when first sent and carry original result references across continuation. Include the installed project admission fix.
+
+## 0.12.54
+
+Calibrate append-only context estimates with confirmed provider input and a local delta. Use the same reserve for compaction and admission and show the measurement basis in the Context overlay.

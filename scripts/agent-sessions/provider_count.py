@@ -73,11 +73,13 @@ async def count(model,body):
             'accuracy':'unavailable','source':'unavailable','method':'Local input could not be counted.',
             'requestSha256':key[0],'fallbackReason':'Local media accounting is unavailable.'}
         model._input_estimate=(raw,value);model._estimate_scope=json.dumps([model.context_policy,model.binding],ensure_ascii=False,separators=(',',':'))
-    from input_budget import limit
+        model._estimate_reference=model.measured_input.request_id if model.measured_input else None
+    from input_budget import admission_tokens,limit
     maximum=limit(policy,model.binding)
+    admitted=admission_tokens(value)
     # Count only ambiguous media/unmapped models or a request near its limit.
     needed=(value['tokens'] is None or value.get('fallbackReason') is not None or value.get('mediaTokens',0)>0
-        or maximum is not None and value['tokens']>=maximum*0.8)
+        or maximum is not None and admitted is not None and admitted>=maximum*0.8)
     if not needed:return
     cache=getattr(model,'_count_cache',None)
     if cache is None:cache=model._count_cache=OrderedDict()

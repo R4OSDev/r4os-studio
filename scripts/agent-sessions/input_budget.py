@@ -35,6 +35,18 @@ def limit(policy,binding):
     return result
 
 
+def estimated_tokens(value):
+    prefix = value.get('measuredPrefix')
+    return prefix['estimatedTokens'] if prefix else value['tokens']
+
+
+def admission_tokens(value):
+    if 'admissionTokens' in value:
+        return value['admissionTokens']
+    prefix = value.get('measuredPrefix')
+    return prefix['estimatedTokens'] + prefix['reserveTokens'] if prefix else value['tokens']
+
+
 def unavailable_count(value):
     from model_transport import ModelFault
     missing_images=value.get('mediaCost',{}).get('unavailableImages')
