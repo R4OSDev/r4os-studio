@@ -209,3 +209,7 @@ Keep the Codex prompt-cache key and the conversation prefix stable. Freeze tool 
 ## 0.12.54
 
 Calibrate append-only context estimates with confirmed provider input and a local delta. Use the same reserve for compaction and admission and show the measurement basis in the Context overlay.
+
+## 0.12.55
+
+Expose action-specific required arguments in direct and native tool declarations. Derive variants from broker rules and preserve signed Claude catalogs on continuation.

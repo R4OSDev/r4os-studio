@@ -82,7 +82,24 @@ def bind_catalog(store, sid, config):
         mode=selected.get('presentation')
         if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
         actions={name:items for name,items in selected.get('actions',{}).items() if name in names}
-        config['toolCatalog'] = snapshot(prior,root=root,names=names,version=version,presentation=mode,actions=actions)
+        options = dict(names=names,version=version,presentation=mode,actions=actions,
+                       requirements=selected.get('argumentRequirements'))
+        catalog = snapshot(prior,root=root,**options)
+        if root != ROOT and config['engine'] == engine(tool_scope(config),config['engine'].get('api')):
+            # A new admission can use the current runtime when the archived
+            # declarations and their broker rules can be reproduced exactly.
+            current = tool_definitions(tool_scope(prior),ROOT)
+            relevant = operations | {name[7:] for name in names}
+            if all(definitions[name] == current.get(name) for name in relevant):
+                candidate = snapshot(prior,root=ROOT,**options)
+                if candidate['sha256'] == catalog['sha256']:
+                    root, catalog = ROOT, candidate
+        if root != ROOT:
+            policy = config['contextPolicy']
+            original_optimization = prior.get('contextPolicy', {}).get('optimization')
+            if type(original_optimization) is int:
+                policy['optimization'] = min(policy['optimization'], original_optimization)
+        config['toolCatalog'] = catalog
         config['engine'] = engine(tool_scope(config),config['engine'].get('api'),root=root)
     except (OSError, ValueError, KeyError, TypeError, ProjectFault, ModelFault):
         raise ProjectFault('The original signed Claude tool catalog is unavailable or the selection changed. Use a fresh context for changed instructions or tools.',409) from None

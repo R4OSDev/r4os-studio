@@ -5,12 +5,12 @@ from pathlib import Path
 import re
 import sqlite3
 
-from tool_catalog import ROOT, catalog, declarations, digest, prepared, restricted, tool_definitions, tool_scope
+from tool_catalog import ROOT, argument_requirements, catalog, declarations, digest, prepared, restricted, tool_definitions, tool_scope
 
 RELEASES = Path('/opt/r4os-studio/releases')
 
 
-def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None):
+def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None):
     scope = tool_scope(value)
     if names is None:
         source = (declarations(value,root) if isinstance(value,dict) and value.get('toolCatalog')
@@ -19,11 +19,14 @@ def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentatio
     else:
         definitions = prepared(scope, root, presentation or 'legacy')
         tools = [restricted(definitions[name],actions[name]) if actions and name in actions else definitions[name] for name in names]
+    if requirements is not None:
+        tools = argument_requirements(tools,scope,root,requirements)
     result = {'scope':scope, 'sha256':digest(tools), 'tools':[item['name'] for item in tools]}
     if version == 2:
         result['version'] = version
         if presentation is not None: result['presentation'] = presentation
         if actions: result['actions'] = actions
+        if requirements is not None: result['argumentRequirements'] = requirements
         if root.is_relative_to(RELEASES) and (root/'release.json').is_file():
             result['release'] = json.loads((root/'release.json').read_text())['id']
     return result
@@ -63,7 +66,7 @@ def worker_release(config, current, root=RELEASES):
 def goal_selection(store,sid):
     session=store.get(sid)
     mode = roadmap_presentation(session, ROOT)
-    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode)}
+    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,requirements=1)}
 
 
 def roadmap_presentation(config, root):
@@ -207,7 +210,8 @@ def freeze(store,sid,config,*,images):
             if available:
                 names.append(full);actions[full]=available
         elif permitted(name): names.append(full)
-    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions)
+    requirements = saved.get('argumentRequirements') if saved else 1
+    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,requirements=requirements)
 
 
 def instructions(config):

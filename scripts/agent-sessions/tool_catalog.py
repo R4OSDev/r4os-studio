@@ -87,6 +87,56 @@ def restricted(tool, actions):
     return {**tool,'inputSchema':schema}
 
 
+VARIANT_SELECTORS = ('operation', 'view', 'action', 'kind', 'scope', 'mode', 'field')
+
+
+def argument_requirements(tools, scope, root, version):
+    """Show broker-required variants in the flat declaration used by adapters."""
+    if version is None:
+        return tools
+    if type(version) is not int or version != 1:
+        raise ValueError('The original tool argument requirements are unavailable.')
+    definitions = tool_definitions(scope, root)
+    decorated = []
+    for tool in tools:
+        canonical = definitions[tool['name'][7:]]['inputSchema']
+        schema = tool['inputSchema']
+        properties = dict(schema.get('properties', {}))
+        common = set(schema.get('required', []))
+        patterns = []
+        for variant in canonical.get('oneOf', []):
+            fields = variant.get('properties', {})
+            selectors = {}
+            for field in VARIANT_SELECTORS:
+                values = fields.get(field, {}).get('enum')
+                if values:
+                    available = properties.get(field, {}).get('enum', values)
+                    selectors[field] = [value for value in values if value in available]
+            if any(not values for values in selectors.values()):
+                continue
+            required = [field for field in variant.get('required', []) if field not in common]
+            if not required:
+                continue
+            for field in required:
+                if field not in properties:
+                    properties[field] = fields[field]
+            parts = [field + '=' + '/'.join(str(value) for value in values) for field, values in selectors.items()]
+            parts.extend(field for field in required if field not in selectors)
+            patterns.append('{' + ', '.join(parts) + '}')
+        if patterns:
+            hint = ' Required field sets by variant include ' + ' or '.join(dict.fromkeys(patterns)) + '.'
+            tool = {**tool, 'description': tool.get('description', '') + hint,
+                    'inputSchema': {**schema, 'properties': properties}}
+        if tool['name'] == 'studio_send_vm_input':
+            # Execution accepts a different exact field set for each input
+            # kind. The broker schema also accepts legacy console/GUI forms.
+            tool = {**tool, 'description': tool['description'] +
+                    ' For text provide text. For guiText provide frameId and text. For key provide frameId and key. '
+                    'For click provide frameId, x and y. For gesture or keyPlan provide frameId and steps.'}
+        decorated.append(tool)
+    return decorated
+
+
 def digest(tools):
     raw = json.dumps(tools, ensure_ascii=False, sort_keys=True, separators=(',',':')).encode()
     return hashlib.sha256(raw).hexdigest()
@@ -108,6 +158,7 @@ def declarations(scope='project', root=ROOT):
         if not isinstance(actions,dict) or not actions.keys()<=set(saved['tools']):
             raise ValueError('The original tool action binding is invalid.')
         tools=[restricted(by_name[name],actions[name]) if name in actions else by_name[name] for name in saved['tools']]
+        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'))
         if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
         return tools
