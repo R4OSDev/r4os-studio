@@ -5,6 +5,7 @@ import json
 import os
 import zlib
 from conversation import encoded,identifier
+from context_result_ids import address,enabled as result_ids,identifier as result_id,resolve as result_reference
 from session_store import identity,encode
 from store import ProjectFault
 
@@ -198,7 +199,8 @@ class Projection:
             if stable:
                 if part['callId'] in self.previous:
                     prior = self.previous[part['callId']]
-                    if prior is not None and prior['contextArchive'].get('reference') == ref:
+                    if prior is not None and (prior['contextArchive'].get('reference') == ref or
+                            result_ids(w.config) and prior['contextArchive'].get('resultId') == result_id(ref)):
                         previous = prior
                     # A previously transmitted result stays full unless its
                     # original request proves a preview was sent.
@@ -224,14 +226,15 @@ class Projection:
                 if images and explicit_media:
                     small['imageDelivery']='reference-only'
                 from tool_catalog import result_readback
-                small['contextArchive']={'reference':ref,'historical':not stable or bool(images),'tool':tool['tool'],'imageCount':len(images),
+                small['contextArchive']={**address(w,ref),'historical':not stable or bool(images),'tool':tool['tool'],'imageCount':len(images),
                     'read':result_readback(w.config,'context'),
                     **({'readImage':result_readback(w.config,'image')} if images else {}),
                     'notice':('Use the reference and read fields to retrieve the saved result or image.' if stable else
                         'Use the reference and read fields to retrieve the saved result or image. This is a historical observation.')}
                 if previous is not None:
                     prior = previous['contextArchive']
-                    if all(prior.get(key) == small['contextArchive'].get(key) for key in ('read','readImage','imageCount')):
+                    if all(prior.get(key) == small['contextArchive'].get(key)
+                           for key in ('reference','resultId','read','readImage','imageCount')):
                         small['contextArchive'] = prior
                 parts.append({**p,'result':small});projected=True
             value={**record,'content':parts} if projected else record
@@ -290,7 +293,9 @@ def admit(worker):
 async def execute(worker,args,call_id):
     admit(worker)
     if args.get('view')=='index':return read_index(worker,args)
-    record,part,tool=load(worker,args['reference'])
+    ref=result_reference(worker,args)
+    record,part,tool=load(worker,ref)
+    selection={'resultId':args['resultId']} if 'resultId' in args else {'reference':ref}
     notice='Historical original observation only. Reading does not repeat a tool, capture a frame, refresh GUI evidence or confirm its underlying effect.'
     if args.get('view','result')=='result':
         raw=encoded(part['result']).encode();offset=args.get('offset',0);limit=args.get('byteLimit',8192)
@@ -301,22 +306,22 @@ async def execute(worker,args,call_id):
         while True:
             try:text=raw[offset:end].decode('utf-8');break
             except UnicodeError:end-=1
-        value={'reference':args['reference'],'historical':True,'notice':notice,'tool':tool['tool'],'originalReceiptState':tool['state'],'originalSuccess':part['result'].get('success'),
+        value={**selection,'historical':True,'notice':notice,'tool':tool['tool'],'originalReceiptState':tool['state'],'originalSuccess':part['result'].get('success'),
             'sha256':hashlib.sha256(raw).hexdigest(),'encoding':'utf-8','mediaType':'application/json','byteLength':len(raw),'offset':offset,'nextOffset':end if end<len(raw) else None,'text':text,'complete':offset==0 and end==len(raw),
             'imageCount':len([p for p in record['content'] if p.get('type')=='image']) or int(isinstance(part['result'].get('image'),dict))}
         return {'success':True,'output':encode(value)}
-    meta,raw,data=await original_image(worker,args['reference'],args.get('imageIndex',0))
+    meta,raw,data=await original_image(worker,ref,args.get('imageIndex',0))
     from vision_analysis import native_vision
     native=native_vision(worker)
-    value={'reference':args['reference'],'historical':True,'notice':notice,'image':meta,'nativePixels':native}
+    value={**selection,'historical':True,'notice':notice,'image':meta,'nativePixels':native}
     if native:
-        if data is not None:return {'success':True,'output':encode(value),'image':data['metadata'],'imageDelivery':'pixels','contextReadback':args['reference'],'_transientImage':data}
+        if data is not None:return {'success':True,'output':encode(value),'image':data['metadata'],'imageDelivery':'pixels','contextReadback':ref,'_transientImage':data}
         return {'success':True,'output':encode(value),'generatedImage':meta}
     question=args.get('question')
     if question:
         from vision_analysis import Vision
         if worker.vision_helper is None:worker.vision_helper=Vision(worker)
-        historic={'reference':args['reference'],'imageIndex':args.get('imageIndex',0)}
+        historic={'reference':ref,'imageIndex':args.get('imageIndex',0)}
         payload={'metadata':{'id':meta['id'],'bytes':len(raw),'sha256':meta['sha256'],'width':meta['width'],'height':meta['height'],'kind':'historical-image'},'base64':base64.b64encode(raw).decode()}
         try:value['visionAnalysis']=await worker.vision_helper.analyse(call_id,payload,question,historical=historic)
         except ProjectFault as error:value['visionAnalysis']={'state':'unavailable','reason':str(error),'originalRetained':True}
@@ -336,7 +341,7 @@ async def authorize_vision(worker,call_id,data,question,historical):
     tool=worker.store.db.execute('SELECT tool,intent FROM tools WHERE run_id=? AND call_id=?',(worker.run_id,call_id)).fetchone()
     if not tool or tool['tool']!='studio_read_context_result':raise ProjectFault('Historical image analysis needs its own original readback tool.',403)
     args=json.loads(tool['intent'])
-    if args.get('view')!='image' or args.get('reference')!=historical['reference'] or args.get('imageIndex',0)!=historical['imageIndex'] or args.get('question')!=question:raise ProjectFault('The original historical image question or reference changed.',409)
+    if args.get('view')!='image' or result_reference(worker,args)!=historical['reference'] or args.get('imageIndex',0)!=historical['imageIndex'] or args.get('question')!=question:raise ProjectFault('The original historical image question or reference changed.',409)
     validate_question(question);meta,raw,_=await original_image(worker,historical['reference'],historical['imageIndex'])
     if meta['mediaType']!='image/png':raise ProjectFault('This Vision fallback accepts retained PNG images; the original raster is still available to a native Vision model.',409)
     try:checked=png(data)
@@ -355,7 +360,8 @@ def checkpoint_references(prefix,checkpoint=None,worker=None):
     for record in prefix:
         for index,part in enumerate(record['content']):
             if part['type']=='tool_result':
-                ref=part['result'].get('contextArchive',{}).get('reference')
+                archive=part['result'].get('contextArchive',{})
+                ref=result_reference(worker,archive) if worker is not None else archive.get('reference')
                 if not ref and worker is not None and record.get('runId') and record.get('sequence'):
                     try:ref=reference(worker,record,index);load(worker,ref)
                     except ProjectFault:ref=None
@@ -370,12 +376,17 @@ def read_index(worker,args):
     if args['sha256']!=sha:raise ProjectFault('The original historical result index hash changed.',409)
     offset=args.get('offset',0);limit=args.get('limit',20)
     if type(offset) is not int or not 0<=offset<=len(refs) or type(limit) is not int or not 1<=limit<=20:raise ProjectFault('Use an index offset and limit 1–20.',400)
-    page=refs[offset:offset+limit];unavailable=[]
+    page=refs[offset:offset+limit];unavailable=[];addresses=[]
+    short=result_ids(worker.config)
     for i,ref in enumerate(page):
         if ref.get('owner')!={'type':worker.store.owner_type,'id':worker.store.owner_id} or ref.get('sessionId')!=worker.session_id:raise ProjectFault('The retained reference index contains a foreign owner/session.',409)
-        try:load(worker,ref)
+        entry={'sequence':ref.get('sequence'),'partIndex':ref.get('partIndex')} if short else None
+        try:
+            _,_,tool=load(worker,ref)
+            if short:entry.update(address(worker,ref),tool=tool['tool'])
         except ProjectFault as error:unavailable.append({'offset':offset+i,'code':error.code,'reason':str(error)})
-    return {'success':True,'output':encode({'unavailable':unavailable,'historical':True,'checkpointId':args['checkpointId'],'sha256':sha,'total':len(refs),'offset':offset,'nextOffset':offset+len(page) if offset+len(page)<len(refs) else None,'references':page,'notice':'Original reference index only; read exact result JSON or historical pixels before relying on omitted details.'})}
+        if short:addresses.append(entry)
+    return {'success':True,'output':encode({'unavailable':unavailable,'historical':True,'checkpointId':args['checkpointId'],'sha256':sha,'total':len(refs),'offset':offset,'nextOffset':offset+len(page) if offset+len(page)<len(refs) else None,'references':addresses if short else page,'notice':'Original reference index only; read exact result JSON or historical pixels before relying on omitted details.'})}
 
 
 def has_uncertain_result(record, *, completions=None):

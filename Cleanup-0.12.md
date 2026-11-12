@@ -233,3 +233,7 @@ Keep fully evidenced workspace patch failures portable after a model change when
 ## 0.12.60
 
 Use normal Studio compaction for Claude at the existing threshold, continue with a fresh Messages context, and preserve the signed original archive.
+
+## 0.12.61
+
+Read archived tool results and original images with a short result ID bound to the saved hashes and session.

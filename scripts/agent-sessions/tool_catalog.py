@@ -34,9 +34,9 @@ def catalog(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_timeout=None):
+def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_timeout=None, result_ids=None):
     tools = {}
-    for original in tool_definitions(scope, root, file_writes, run_timeout).values():
+    for original in tool_definitions(scope, root, file_writes, run_timeout, result_ids).values():
         if presentation == 'legacy' and original.get('dispatch') or presentation != 'legacy' and original.get('retired'):
             continue
         tool = deepcopy(original)
@@ -96,13 +96,13 @@ def restricted(tool, actions):
 VARIANT_SELECTORS = ('operation', 'view', 'action', 'kind', 'scope', 'mode', 'field')
 
 
-def argument_requirements(tools, scope, root, version, file_writes=None, run_timeout=None):
+def argument_requirements(tools, scope, root, version, file_writes=None, run_timeout=None, result_ids=None):
     """Show broker-required variants in the flat declaration used by adapters."""
     if version is None:
         return tools
     if type(version) is not int or version != 1:
         raise ValueError('The original tool argument requirements are unavailable.')
-    definitions = tool_definitions(scope, root, file_writes, run_timeout)
+    definitions = tool_definitions(scope, root, file_writes, run_timeout, result_ids)
     decorated = []
     for tool in tools:
         canonical = definitions[tool['name'][7:]]['inputSchema']
@@ -155,7 +155,8 @@ def declarations(scope='project', root=ROOT):
     presentation = saved.get('presentation','legacy') if isinstance(saved,dict) else 'standard'
     file_writes = saved.get('fileWritePreconditions') if isinstance(saved,dict) else None
     run_timeout = saved.get('runTestTimeoutSeconds') if isinstance(saved,dict) else None
-    by_name = prepared(kind, root, presentation, file_writes, run_timeout)
+    result_ids = saved.get('resultIds') if isinstance(saved,dict) else None
+    by_name = prepared(kind, root, presentation, file_writes, run_timeout, result_ids)
     if saved is not None:
         if (not isinstance(saved,dict) or saved.get('scope')!=kind or saved.get('version',1) not in (1,2)
                 or not isinstance(saved.get('tools'),list) or any(not isinstance(name,str) for name in saved['tools'])
@@ -166,7 +167,7 @@ def declarations(scope='project', root=ROOT):
         if not isinstance(actions,dict) or not actions.keys()<=set(saved['tools']):
             raise ValueError('The original tool action binding is invalid.')
         tools=[restricted(by_name[name],actions[name]) if name in actions else by_name[name] for name in saved['tools']]
-        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes,run_timeout)
+        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes,run_timeout,result_ids)
         if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
         return tools
@@ -200,8 +201,26 @@ def execution_timeout(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None):
+def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None,result_ids=None):
     tools = {item['name'][7:]: item for item in catalog(root)[scope]}
+    if result_ids is not None:
+        if type(result_ids) is not int or result_ids != 1:
+            raise ValueError('The original result ID contract is unavailable.')
+        for name, selector, views in (('read_result','action',('context','image')),
+                                      ('read_context_result','view',('result','image'))):
+            tool = deepcopy(tools[name])
+            for variant in tool['inputSchema']['oneOf']:
+                fields = variant['properties']
+                if fields[selector]['enum'][0] in views:
+                    del fields['reference']
+                    fields['resultId'] = {'type':'string','minLength':16,'maxLength':16,
+                                          'description':'The resultId returned in the saved preview or checkpoint index.'}
+                    variant['required'] = ['resultId' if field == 'reference' else field for field in variant['required']]
+            tool['description'] = ('Read a saved result or original image by resultId. Use the returned UTF-8 offset for pages. '
+                                   'Read a checkpoint index with its checkpointId and sha256.')
+            if name == 'read_result':
+                tool['description'] += ' For a skill result, use its original skill reference.'
+            tools[name] = tool
     # Original catalogs still reproduce their declared override range exactly.
     if run_timeout is not None:
         if scope != 'project' or type(run_timeout) is not int or not 1 <= run_timeout <= execution_timeout(root):
@@ -265,7 +284,7 @@ def validate_arguments(name,value,scope='project'):
         except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
     selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
     definition = tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions'),
-                                  run_timeout=selected.get('runTestTimeoutSeconds')).get(name)
+                                  run_timeout=selected.get('runTestTimeoutSeconds'),result_ids=selected.get('resultIds')).get(name)
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root = definition['inputSchema']
     actions = selected.get('actions',{}).get('studio_'+name)

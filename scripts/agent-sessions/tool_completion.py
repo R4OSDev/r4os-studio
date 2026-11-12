@@ -54,6 +54,7 @@ def job_end(worker, record, tool, original):
 def completions(worker, record):
     """Bind later evidence to the exact original result and its owning run."""
     from context_results import load, reference
+    from context_result_ids import resolve
     later = {}
     for index, part in enumerate(record['content']):
         if part['type'] != 'tool_result':
@@ -66,7 +67,7 @@ def completions(worker, record):
         if not (terminal or job):
             continue
         try:
-            ref = (result.get('contextArchive') or {}).get('reference') or reference(worker, record, index)
+            ref = resolve(worker,result.get('contextArchive') or {}) or reference(worker, record, index)
             if ref['sequence'] != record['sequence'] or ref['partIndex'] != index or ref['callId'] != part['callId']:
                 continue
             _, original, receipt = load(worker, ref)

@@ -10,17 +10,17 @@ from tool_catalog import ROOT, argument_requirements, catalog, declarations, dig
 RELEASES = Path('/opt/r4os-studio/releases')
 
 
-def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None, file_writes=None, run_timeout=None):
+def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None, file_writes=None, run_timeout=None, result_ids=None):
     scope = tool_scope(value)
     if names is None:
         source = (declarations(value,root) if isinstance(value,dict) and value.get('toolCatalog')
-                  else prepared(scope,root,presentation or 'legacy',file_writes,run_timeout).values())
+                  else prepared(scope,root,presentation or 'legacy',file_writes,run_timeout,result_ids).values())
         tools = [item for item in source if item['name'] not in exclude]
     else:
-        definitions = prepared(scope, root, presentation or 'legacy', file_writes, run_timeout)
+        definitions = prepared(scope, root, presentation or 'legacy', file_writes, run_timeout, result_ids)
         tools = [restricted(definitions[name],actions[name]) if actions and name in actions else definitions[name] for name in names]
     if requirements is not None:
-        tools = argument_requirements(tools,scope,root,requirements,file_writes,run_timeout)
+        tools = argument_requirements(tools,scope,root,requirements,file_writes,run_timeout,result_ids)
     result = {'scope':scope, 'sha256':digest(tools), 'tools':[item['name'] for item in tools]}
     if version == 2:
         result['version'] = version
@@ -29,6 +29,7 @@ def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentatio
         if requirements is not None: result['argumentRequirements'] = requirements
         if file_writes is not None: result['fileWritePreconditions'] = file_writes
         if run_timeout is not None: result['runTestTimeoutSeconds'] = run_timeout
+        if result_ids is not None: result['resultIds'] = result_ids
         if root.is_relative_to(RELEASES) and (root/'release.json').is_file():
             result['release'] = json.loads((root/'release.json').read_text())['id']
     return result
@@ -70,7 +71,8 @@ def goal_selection(store,sid):
     mode = roadmap_presentation(session, ROOT)
     run_timeout = execution_timeout() if tool_scope(session)=='project' else None
     return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,
-            requirements=1,file_writes=1,run_timeout=run_timeout)}
+            requirements=1,file_writes=1,run_timeout=run_timeout,
+            result_ids=1 if session.get('engine',{}).get('kind')=='studio' else None)}
 
 
 def roadmap_presentation(config, root):
@@ -197,7 +199,8 @@ def freeze(store,sid,config,*,images):
     file_writes = saved.get('fileWritePreconditions') if saved else 1
     scope = tool_scope(config)
     run_timeout = saved.get('runTestTimeoutSeconds') if saved else execution_timeout(root) if scope=='project' else None
-    definitions=tool_definitions(scope,root,file_writes,run_timeout)
+    result_ids = saved.get('resultIds') if saved else 1 if config['engine'].get('kind')=='studio' else None
+    definitions=tool_definitions(scope,root,file_writes,run_timeout,result_ids)
     updates = None
     if 'check_update' in definitions:
         from profile import UPDATE_TOOLS
@@ -219,7 +222,7 @@ def freeze(store,sid,config,*,images):
         elif permitted(name): names.append(full)
     requirements = saved.get('argumentRequirements') if saved else 1
     config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,
-                                  requirements=requirements,file_writes=file_writes,run_timeout=run_timeout)
+                                  requirements=requirements,file_writes=file_writes,run_timeout=run_timeout,result_ids=result_ids)
 
 
 def instructions(config):

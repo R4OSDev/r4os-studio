@@ -30,7 +30,8 @@ def record_view(record, worker=None, *, completions=None, report_failures=False)
             original=part['result']
             value=reported_result(original) if report_failures else original
             output=value.get('output')
-            existing=value.get('contextArchive',{}).get('reference')
+            archive=value.get('contextArchive',{})
+            existing=archive.get('reference') or archive.get('resultId')
             large=isinstance(output,str) and len(output.encode())>4096
             failed_with_effects=report_failures and value.get('success') is False and value.get('partialChangesPossible') is True
             if worker is not None and not existing and (large or failed_with_effects):
