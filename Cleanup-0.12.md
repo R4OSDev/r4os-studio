@@ -241,3 +241,7 @@ Read archived tool results and original images with a short result ID bound to t
 ## 0.12.62
 
 Allow GUI input with the same focused VM frame for up to 300 seconds while preserving live window and process binding.
+
+## 0.12.63
+
+Trigger normal Claude compaction at an accepted instruction change and continue the same Studio session with a fresh signed context.

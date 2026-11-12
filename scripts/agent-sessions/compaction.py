@@ -84,12 +84,13 @@ class Compaction:
             self.context.show_compaction({**previous,'state':'stopped','reason':reason,
                 'elapsedMs':round((monotonic()-self.started)*1000)})
 
-    async def step(self, instructions, tools, active, records, checkpoint, maximum, target, estimate, size):
+    async def step(self, instructions, tools, active, records, checkpoint, maximum, target, estimate, size, *, instruction_change=False):
         context = self.context
         worker = context.w
         start_fresh = can_restart_messages(worker.config)
         before = estimates(context,size,estimate if start_fresh else None)
-        unsafe = size>MAX_BODY or maximum is not None and estimate>maximum
+        unsafe = instruction_change or size>MAX_BODY or maximum is not None and estimate>maximum
+        reason = 'Studio instructions changed.' if instruction_change else None
         head = worker.history_reader.heads[-1]
         restart = (checkpoint or {}).get('origin', {}).get('messagesContextRestart')
         if start_fresh or restart:
@@ -104,7 +105,7 @@ class Compaction:
                 raise ModelFault(code,not_dispatched=True,details=details)
             return active,False
 
-        candidates = choices(worker,active,checkpoint,MAX_BODY)
+        candidates = choices(worker,active,checkpoint,MAX_BODY,instruction_change=instruction_change)
         data, retained, ends = candidates
         if not ends:
             return stop('No complete, consumed history group can be summarized.')
@@ -125,11 +126,11 @@ class Compaction:
             budget,summary_instructions=context.summary_setup(maximum,instructions,target_hint=target-min_tokens)
         token_room=before.tokens-min_tokens
         byte_room=before.bytes-min_bytes
-        if token_room<=288 and byte_room<=8192:
+        if not instruction_change and token_room<=288 and byte_room<=8192:
             return stop('The largest admissible summary would leave the active context essentially unchanged.')
         if worker.conversation.head()!=head:
             raise ModelFault('context_history_changed',not_dispatched=True)
-        self.progress('running',before,target=target)
+        self.progress('running',before,target=target,reason=reason)
         ident,through,text,origin=await context.summarize(
             active,checkpoint,planned,instructions,tools,summary_instructions,budget,announce=False)
 
@@ -149,8 +150,9 @@ class Compaction:
             raise asyncio.CancelledError()
         worker.conversation.checkpoint(worker.run_id,ident,through,text,{
             **origin,'sourceHeadSequence':head,'previousCheckpointId':(checkpoint or {}).get('id'),
-            'compaction':{'before':before.public(),'after':after.public()},
+            'compaction':{'before':before.public(),'after':after.public(),
+                          **({'trigger':'instructionsChanged'} if instruction_change else {})},
             **({'messagesContextRestart':restart} if restart else {}),
         },expected_head=head)
-        self.progress('completed',before,after=after,target=target)
+        self.progress('completed',before,after=after,target=target,reason=reason)
         return context.report(instructions,tools)[0],True

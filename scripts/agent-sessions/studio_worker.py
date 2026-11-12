@@ -212,9 +212,11 @@ class StudioWorker(Worker):
         model.summary_budget=summary
         if optimized(model.context_policy, 1) and model.binding['protocol']=='messages':
             from instructions import TOOL_EXECUTION
-            from signed_history import Prefix
+            from signed_history import Prefix, can_restart_messages, instruction_sources
             guidance = TOOL_EXECUTION if self.config.get('toolDeadlines', {}).get('version') == 1 else None
-            model.signed_prefix=Prefix(self.store,self.session_id,model.binding,guidance)
+            changed = optimized(model.context_policy,14) and can_restart_messages(self.config)
+            sources = instruction_sources(self.config) if changed else None
+            model.signed_prefix=Prefix(self.store,self.session_id,model.binding,guidance,current_sources=sources)
         model.count_observer=lambda receipt:event(self.store,self.session_id,self.run_id,'inputCount',receipt)
         from studio_history import recoveries
         model.history_resolver=lambda messages:recoveries(self.store,self.session_id,messages)

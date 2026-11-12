@@ -194,10 +194,17 @@ class StudioContext(Context):
 
     async def compact(self, instructions, tools):
         w = self.w
-        if w.config.get('contextPolicy',{}).get('providerCount',{}).get('enabled'):
-            active,_,_=self.history()
-            await self.count_preview(active,instructions,tools)
-        active, records, checkpoint, measured, capacity, estimate, size = self.report(instructions, tools)
+        from signed_history import InstructionsChanged
+        instruction_change = False
+        try:
+            if w.config.get('contextPolicy',{}).get('providerCount',{}).get('enabled'):
+                active,_,_=self.history()
+                await self.count_preview(active,instructions,tools)
+            active, records, checkpoint, measured, capacity, estimate, size = self.report(instructions, tools)
+        except InstructionsChanged as change:
+            if not getattr(self,'compaction',None): raise
+            active, records, checkpoint, measured, capacity, estimate, size = self.report(change.original_instructions,tools)
+            instruction_change = True
         if open_calls(active): raise ModelFault('context_has_open_tool_pairs',not_dispatched=True)
         if estimate is None: raise unavailable_count(getattr(self,'input_count',{}))
         latest = self.latest(records)
@@ -208,7 +215,7 @@ class StudioContext(Context):
         trigger,target=compaction_limits(w.config,capacity)
         measured_pressure=not current_estimate_only and fresh and measured is not None
         pressure = (trigger is not None and (estimate is not None and estimate >= trigger or measured_pressure and measured >= trigger)) or size >= 6*1024*1024
-        if not pressure: return active, False
+        if not pressure and not instruction_change: return active, False
         if optimized(w.config.get('contextPolicy'),1):
             from signed_history import can_restart_messages, latest as signed
             if not can_restart_messages(w.config) and signed(active,w.transport().binding):
@@ -216,7 +223,8 @@ class StudioContext(Context):
                     raise ModelFault('context_signed_limit',not_dispatched=True)
                 return active, False
         if getattr(self,'compaction',None):
-            return await self.compaction.step(instructions,tools,active,records,checkpoint,limit,target,estimate,size)
+            return await self.compaction.step(instructions,tools,active,records,checkpoint,limit,target,estimate,size,
+                                              instruction_change=instruction_change)
         from checkpoint_records import plan
         byte_limit=min(512*1024, max(256,(limit or 250000)) if bounded else max(16384,(limit or 250000)*2))
         planned = plan(w, active, checkpoint, byte_limit)

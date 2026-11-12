@@ -126,25 +126,49 @@ def prefix(body, count):
     return hashlib.sha256(dumps([body.get('system'), body.get('tools'), body['messages'][:count]]).encode()).hexdigest()
 
 
+def instruction_sources(config):
+    return tuple((config.get(key) or {}).get('text') for key in
+                 ('systemPrompt','projectInstructions','skillManagerPrompt'))
+
+
+def system_text(system):
+    if isinstance(system, list):
+        return system[-1].get('text') if system and isinstance(system[-1], dict) else None
+    return system
+
+
+def with_system_text(system, text):
+    return [*system[:-1], {**system[-1], 'text':text}] if isinstance(system, list) else text
+
+
 def without_instruction(system, instruction):
-    blocks = isinstance(system, list)
-    text = system[-1].get('text') if blocks and system and isinstance(system[-1], dict) else system
+    text = system_text(system)
     if not isinstance(text, str):
         return None
     before, found, after = text.rpartition(instruction)
     if not found:
         return None
-    return [*system[:-1], {**system[-1], 'text': before + after}] if blocks else before + after
+    return with_system_text(system,before+after)
+
+
+class InstructionsChanged(ModelFault):
+    def __init__(self, original_instructions):
+        super().__init__('context_instructions_changed',not_dispatched=True)
+        self.category = 'context'
+        self.args = ('Studio instructions changed. This signed context requires compaction before continuing.',)
+        self.original_instructions = original_instructions
 
 
 class Prefix:
-    def __init__(self, store, sid, binding, optional_instruction=None):
+    def __init__(self, store, sid, binding, optional_instruction=None, *, current_sources=None):
         self.store = store
         self.sid = sid
         self.binding = binding
         self.record = None
         self.proof = None
+        self.original_system = None
         self.optional_instruction = optional_instruction
+        self.current_sources = current_sources
 
     def check(self, messages, body):
         record = latest(messages, self.binding)
@@ -157,6 +181,7 @@ class Prefix:
             self.record = rid
             self.proof = (len(original['messages']), prefix(original, len(original['messages']))) if (
                 isinstance(original, dict) and isinstance(original.get('messages'), list)) else None
+            self.original_system = original.get('system') if self.proof else None
         wire = body['messages']
         position = next((i for i in range(len(wire) - 1, -1, -1)
                          if wire[i]['role'] == 'assistant' and signed(wire[i]['content'])), None)
@@ -174,4 +199,16 @@ class Prefix:
                 if prefix(body, position) == self.proof[1]:
                     return
                 body['system'] = system
+        if self.current_sources is not None:
+            system = body.get('system')
+            before, after = system_text(self.original_system), system_text(system)
+            if (isinstance(before,str) and isinstance(after,str) and before != after
+                    and with_system_text(system,before) == self.original_system
+                    and prefix({**body,'system':self.original_system},position) == self.proof[1]):
+                from run_store import get_run
+                prior = loads(get_run(self.store,record['runId'])['config'])
+                # Effective text can also contain changing run data. Only a
+                # newly accepted instruction source can restart this prefix.
+                if instruction_sources(prior) != self.current_sources:
+                    raise InstructionsChanged(before)
         raise ModelFault('context_signed_prefix', not_dispatched=True)

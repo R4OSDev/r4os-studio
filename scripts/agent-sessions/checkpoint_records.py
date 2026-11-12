@@ -55,7 +55,7 @@ def reference(worker, record):
     return {'sequence': row['seq'], 'recordId': row['record_id'], 'runId': row['run_id'], 'sha256': digest(row)}
 
 
-def choices(worker, active, checkpoint, byte_limit):
+def choices(worker, active, checkpoint, byte_limit, *, instruction_change=False):
     """Store shared prefix data and the admissible whole-group boundaries."""
     from context_results import has_uncertain_result
     from context_policy import optimized
@@ -78,9 +78,14 @@ def choices(worker, active, checkpoint, byte_limit):
             elif part['type'] == 'tool_result': pending.discard(key)
         if pending: continue
         sequence = max((r.get('sequence', 0) for r in group), default=0)
-        if sequence >= consumed: break
+        last_response = instruction_change and sequence >= consumed and any(
+            r.get('sequence') == consumed and r.get('role') == 'assistant' for r in group)
+        if sequence >= consumed and not last_response: break
         later = [completions(worker,r) if reconcile else {} for r in group]
-        keep = not report_failures and any(has_uncertain_result(r,completions=c) for r,c in zip(group,later))
+        # An instruction change can cut even a one-response history. Keep the
+        # newest completed tool group exact until a model consumes its results.
+        keep = (last_response and sequence > consumed or
+                not report_failures and any(has_uncertain_result(r,completions=c) for r,c in zip(group,later)))
         if not keep:
             plain = ([record_view(r,archive,completions=c,report_failures=report_failures) for r,c in zip(group,later)] if projected else
                      [{**r, 'content': [p for p in r['content'] if p['type'] != 'provider']} for r in group])
@@ -93,9 +98,10 @@ def choices(worker, active, checkpoint, byte_limit):
             data.extend(plain); size += amount
             confirmed = confirmed or any(r['role'] == 'assistant' and r.get('origin', {}).get('providerResponseId')
                 and any(p['type'] == 'provider' for p in r['content']) for r in group)
-        if sequence and confirmed and (not checkpoint or sequence > checkpoint['throughSequence']):
+        if sequence and (confirmed or last_response) and (not checkpoint or sequence > checkpoint['throughSequence']):
             ends.append((sequence,len(data),len(retained)))
         group = []
+        if last_response: break
     if len(retained) > MAX_RECORDS:
         raise ProjectFault('Too many original tool observations need exact retention. Original history was preserved.', 409)
     return data, retained, ends
