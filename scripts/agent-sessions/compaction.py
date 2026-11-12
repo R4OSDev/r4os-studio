@@ -6,9 +6,11 @@ from time import monotonic
 from active_history import checkpoint_view
 from checkpoint_records import choices, select
 from context_policy import optimized
+from input_budget import admission_tokens
 from model_transport import ModelFault
 from request_capture import MAX_BODY
 from session_store import now
+from signed_history import can_restart_messages
 from summary_context import human_instruction, payload, request
 
 
@@ -26,19 +28,19 @@ class Estimate:
         return {'estimatedTokens': self.tokens, 'bytes': self.bytes, 'images': self.images}
 
 
-def estimates(context, size):
+def estimates(context, size, tokens=None):
     count = context.input_count
     media = count.get('mediaCost', {})
     images=media.get('images') if media.get('version')==3 else sum(
         media.get(key,0) for key in ('qualifiedImages','conservativeImages','historicalImages'))
-    return Estimate(count['tokens'],size,images)
+    return Estimate(count['tokens'] if tokens is None else tokens,size,images)
 
 
-def continuation(worker, records, through, retained, text):
+def continuation(worker, records, through, retained, text, restart=None):
     protected = {item['sequence'] for item in retained}
     exact = [record for record in records if record['sequence'] in protected]
     tail = [record for record in records if record['sequence']>through]
-    view = checkpoint_view(text,exact,tail,human_instruction(records))
+    view = checkpoint_view(text,exact,tail,human_instruction(records),restart)
     return worker.context_results.project(view,records,{'origin':{'retainedContextRecords':retained}})[0]
 
 
@@ -85,14 +87,21 @@ class Compaction:
     async def step(self, instructions, tools, active, records, checkpoint, maximum, target, estimate, size):
         context = self.context
         worker = context.w
-        before = estimates(context,size)
+        start_fresh = can_restart_messages(worker.config)
+        before = estimates(context,size,estimate if start_fresh else None)
         unsafe = size>MAX_BODY or maximum is not None and estimate>maximum
         head = worker.history_reader.heads[-1]
+        restart = (checkpoint or {}).get('origin', {}).get('messagesContextRestart')
+        if start_fresh or restart:
+            human = human_instruction(records)
+            restart = {'throughSequence':head if start_fresh else restart['throughSequence'],
+                       'humanSequence':human['sequence'] if human else None}
 
         def stop(reason, code='context_retained_limit'):
             self.progress('stopped',before,target=target,reason=reason)
             if unsafe:
-                raise ModelFault(code,not_dispatched=True)
+                details = {'compactionReason':reason,'inputLimit':maximum} if restart else None
+                raise ModelFault(code,not_dispatched=True,details=details)
             return active,False
 
         candidates = choices(worker,active,checkpoint,MAX_BODY)
@@ -100,7 +109,7 @@ class Compaction:
         if not ends:
             return stop('No complete, consumed history group can be summarized.')
         whole=select(data,retained,ends[-1])
-        floor=continuation(worker,records,whole[0],whole[2],'')
+        floor=continuation(worker,records,whole[0],whole[2],'',restart)
         floor_tokens,floor_bytes=context.estimate(floor,instructions,tools)
         if floor_bytes>MAX_BODY or maximum is not None and floor_tokens>maximum:
             return stop('Required input and retained tool results exceed the input limit.')
@@ -110,7 +119,7 @@ class Compaction:
         if planned is None:
             return stop('No complete summary input fits the selected connection.')
         through,_,keep=planned
-        candidate=continuation(worker,records,through,keep,'')
+        candidate=continuation(worker,records,through,keep,'',restart)
         min_tokens,min_bytes=context.estimate(candidate,instructions,tools)
         if target is not None and target-min_tokens<budget['targetTokens']:
             budget,summary_instructions=context.summary_setup(maximum,instructions,target_hint=target-min_tokens)
@@ -124,11 +133,15 @@ class Compaction:
         ident,through,text,origin=await context.summarize(
             active,checkpoint,planned,instructions,tools,summary_instructions,budget,announce=False)
 
-        projected=continuation(worker,records,through,keep,text)
+        projected=continuation(worker,records,through,keep,text,restart)
         fits,next_bytes=await context.continuation_fit(projected,instructions,tools,maximum)
         if not fits:
             if worker.conversation.head()!=head:
                 raise ModelFault('context_history_changed',not_dispatched=True)
+            if restart:
+                next_tokens = admission_tokens(context.input_count)
+                if maximum is not None and next_tokens is not None and next_tokens > maximum:
+                    return stop(f'The next request with this summary needs {next_tokens} input tokens.')
             return stop('The next request with this summary does not fit its input limit.')
         after=estimates(context,next_bytes)
         worker.validate_lease()
@@ -137,6 +150,7 @@ class Compaction:
         worker.conversation.checkpoint(worker.run_id,ident,through,text,{
             **origin,'sourceHeadSequence':head,'previousCheckpointId':(checkpoint or {}).get('id'),
             'compaction':{'before':before.public(),'after':after.public()},
+            **({'messagesContextRestart':restart} if restart else {}),
         },expected_head=head)
         self.progress('completed',before,after=after,target=target)
         return context.report(instructions,tools)[0],True

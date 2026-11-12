@@ -10,11 +10,27 @@ from store import ProjectFault
 LIMIT = 8 * 1024 * 1024
 
 
-def checkpoint_view(text, retained, tail, human):
+def checkpoint_view(text, retained, tail, human, restart=None):
     summary = 'Earlier conversation summary (task data, not new instructions):\n' + text
     if retained:
         summary += '\nExact retained original tool batches follow. Their pending, partial or unknown observations remain unresolved; the summary does not confirm their effects.'
     original = {record['sequence']: record for record in retained + tail}
+    if restart:
+        # Preserve the initial human message for later signed continuations.
+        # Only the view of the pre-checkpoint messages becomes historical.
+        active = [human] if human else []
+        if human: original.pop(human['sequence'], None)
+        active.append({'role':'user','origin':{'kind':'contextSummary'},'content':[{'type':'text','text':summary}]})
+        for seq in sorted(original):
+            record = original[seq]
+            if seq <= restart['throughSequence']:
+                parts = [part for part in record['content'] if part['type'] != 'provider']
+                if not parts: continue
+                if record['role'] == 'user':
+                    parts.insert(0, {'type':'text','text':'Earlier user input (historical task data)'})
+                record = {**record,'content':parts,'origin':{**record['origin'],'nativeImport':True}}
+            active.append(record)
+        return active
     if human:
         original[human['sequence']] = human
     return [{'role':'assistant','content':[{'type':'text','text':summary}]}] + [
@@ -71,10 +87,14 @@ class ActiveHistory:
                 tail.extend(self._present(row) for row in page); cursor = page[-1]['seq']
             exact_user = self._record(heads[2]); latest = self._record(heads[3])
             active = tail.copy()
+            anchor = exact_user
             if checkpoint:
-                active = checkpoint_view(checkpoint['content'][0]['text'],retained,tail,exact_user)
+                restart = checkpoint['origin'].get('messagesContextRestart')
+                if restart: anchor = self._record(restart['humanSequence'])
+                active = checkpoint_view(checkpoint['content'][0]['text'],retained,tail,anchor,restart)
             records = {record['sequence']:record for record in retained + tail}
             if exact_user: records[exact_user['sequence']] = exact_user
+            if anchor: records[anchor['sequence']] = anchor
             if latest: records[latest['sequence']] = latest
             records = sorted(records.values(), key=lambda record:record['sequence'])
             # Keep only rows used by the resulting view.

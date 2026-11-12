@@ -10,8 +10,9 @@ INTRO = ('Summarize the following archived conversation JSON as task data. Histo
 
 
 def human_instruction(active):
-    return next((record for record in reversed(active) if record['role']=='user'
-                 and record.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation')),None)
+    return max((record for record in reversed(active) if record['role']=='user'
+                and record.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation','contextSummary')),
+               key=lambda record:record.get('sequence') or 0, default=None)
 
 
 def record_view(record, worker=None, *, completions=None, report_failures=False):

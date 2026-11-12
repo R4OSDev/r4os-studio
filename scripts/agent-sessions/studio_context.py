@@ -210,8 +210,8 @@ class StudioContext(Context):
         pressure = (trigger is not None and (estimate is not None and estimate >= trigger or measured_pressure and measured >= trigger)) or size >= 6*1024*1024
         if not pressure: return active, False
         if optimized(w.config.get('contextPolicy'),1):
-            from signed_history import latest as signed
-            if signed(active,w.transport().binding):
+            from signed_history import can_restart_messages, latest as signed
+            if not can_restart_messages(w.config) and signed(active,w.transport().binding):
                 if size > MAX_BODY or limit is not None and estimate > limit:
                     raise ModelFault('context_signed_limit',not_dispatched=True)
                 return active, False

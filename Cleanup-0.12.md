@@ -229,3 +229,7 @@ Use 600 seconds as the standard and maximum Run & Test limit across the UI, agen
 ## 0.12.59
 
 Keep fully evidenced workspace patch failures portable after a model change when Studio supplied the original file hashes.
+
+## 0.12.60
+
+Use normal Studio compaction for Claude at the existing threshold, continue with a fresh Messages context, and preserve the signed original archive.

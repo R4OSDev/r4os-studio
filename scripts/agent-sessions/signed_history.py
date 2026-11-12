@@ -9,6 +9,14 @@ def protected_route(binding):
     return binding.get('protocol') == 'messages' and binding.get('kind') != 'zai-coding-plan'
 
 
+def can_restart_messages(config):
+    from context_policy import optimized
+    provider = config.get('apiProvider', {})
+    model = config.get('model', '')
+    return (optimized(config.get('contextPolicy'), 13) and protected_route(provider)
+            and (provider.get('kind') == 'claude-plan' or model.startswith(('claude-', 'anthropic/claude-'))))
+
+
 def signed(blocks):
     return isinstance(blocks, list) and any(
         block.get('type') == 'redacted_thinking' or block.get('type') == 'thinking' and block.get('signature')
@@ -33,11 +41,17 @@ def bind_catalog(store, sid, config):
     binding = {**config.get('apiProvider', {}), 'model':config['model']}
     if not protected_route(binding) or not optimized(config.get('contextPolicy'),1): return
     from conversation import Conversation
-    if not Conversation(store,sid).metadata(): return
+    conversation = Conversation(store,sid)
+    if not conversation.metadata(): return
+    cutoff = 0
+    if optimized(config.get('contextPolicy'),13):
+        checkpoint = conversation.latest_checkpoint()
+        restart = (checkpoint or {}).get('origin', {}).get('messagesContextRestart')
+        if restart: cutoff = restart['throughSequence']
     rows = store.db.execute("""SELECT * FROM conversation_records WHERE session_id=? AND role='assistant'
-        AND kind='message' AND json_type(origin,'$.providerResponseId') IS NOT NULL
+        AND kind='message' AND seq>? AND json_type(origin,'$.providerResponseId') IS NOT NULL
         AND json_extract(origin,'$.selection.providerId')=? AND json_extract(origin,'$.selection.model')=?
-        ORDER BY seq DESC""", (sid,binding['id'],binding['model']))
+        ORDER BY seq DESC""", (sid,cutoff,binding['id'],binding['model']))
     record = None
     for row in rows:
         value = Conversation.present(row)

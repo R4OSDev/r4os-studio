@@ -56,6 +56,11 @@ class ModelFault(ProjectFault):
         if code in ('context_retained_limit','context_compaction_bound'):
             self.category='context'
             self.args=('The context could not be reduced safely within its limits. Current tool results and original history were preserved. No further model request was sent.',)
+            if (details or {}).get('compactionReason'):
+                reason = details['compactionReason']
+                limit = details.get('inputLimit')
+                self.args=(reason + (f' The effective input limit is {limit} tokens.' if limit is not None else '') +
+                           ' Original history was preserved. No further model request was sent.',)
         if code in ('context_input_limit','context_input_unavailable'):
             self.category='context'
             self.args=(('The complete provider input exceeds the effective input limit. Reduce the current input or review the session limit. Original history was preserved; no model request was sent.' if code=='context_input_limit' else
