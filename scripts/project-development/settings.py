@@ -1,8 +1,18 @@
 """Small explicit Run & Test contract; no arbitrary runner/shell selection."""
 import re
-from contracts import DevelopmentFault, encode
+from contracts import DevelopmentFault, LIMITS, encode
 
 DEFAULTS = {'outputFiles': [], 'serviceResponseContains': None}
+TIMEOUT = LIMITS['executionTimeoutSeconds']
+
+
+def effective(saved):
+    value = {**DEFAULTS, **saved}
+    # Settings saves always advance the revision. Only the original, untouched
+    # 60-second default adopts the new default when read.
+    if value['revision'] == 1 and value['timeoutSeconds'] == 60:
+        value['timeoutSeconds'] = TIMEOUT
+    return value
 
 
 def validate(value):
@@ -14,7 +24,8 @@ def validate(value):
     if type(value['revision']) is not int or value['revision'] < 1: raise DevelopmentFault('Invalid settings revision.', 400)
     if not string(value['arguments'], 127): raise DevelopmentFault('Arguments are limited to 127 UTF-8 bytes (95 for services).', 400)
     if value['workingDirectory'] != '.': raise DevelopmentFault('Use the deployment working directory.', 400)
-    if type(value['timeoutSeconds']) is not int or not 1 <= value['timeoutSeconds'] <= 300: raise DevelopmentFault('Choose a time limit from 1 to 300 seconds.', 400)
+    if type(value['timeoutSeconds']) is not int or not 1 <= value['timeoutSeconds'] <= TIMEOUT:
+        raise DevelopmentFault(f'Choose a time limit from 1 to {TIMEOUT} seconds.', 400)
     exit_code = value['expectedExitCode']
     if exit_code is not None and (type(exit_code) is not int or not -2147483648 <= exit_code <= 2147483647): raise DevelopmentFault('Invalid expected exit code.', 400)
     output = value['outputContains']

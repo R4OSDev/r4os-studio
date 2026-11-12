@@ -36,7 +36,7 @@ Existing files/services refuse admission. The bootstrap starts an unlinked
 console host and removes its own service record before application admission,
 leaving the guest's limited service slots available for the project service.
 The watchdog owns the project process,
-checks heartbeats (15 seconds), enforces the application limit (at most 300
+checks heartbeats (15 seconds), enforces the application limit (at most 600
 seconds), requests Close, then kills only the exact owned generation. Its final
 receipt remains available after SSH loss. Normal finish confirms watchdog exit
 and removes any owned project service. Interrupted bootstrap records are

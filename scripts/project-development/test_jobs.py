@@ -124,6 +124,7 @@ class JobsTest(unittest.TestCase):
         vm=str(uuid.uuid4());self.store.project.update(vmId=vm,template='desktop')
         artifact={'id':str(uuid.uuid4()),'role':'desktop','pins':{}}
         deployment={'id':str(uuid.uuid4()),'artifactId':artifact['id'],'role':'desktop','pins':{},'target':{'vmId':vm},'guestDirectory':r'F:\Build\P123ABCD\D123ABCD'}
+        deployment['helperCapabilities']={'executionTimeoutSeconds':600}
         body={**self.input(),'deploymentId':deployment['id'],'overrides':{'arguments':'x'*90}}
         with patch.object(self.store,'deployment_metadata',return_value=deployment),patch.object(self.store,'artifact',return_value=artifact):
             with self.assertRaises(NotSubmitted) as failure:self.store.admit('execution',body)

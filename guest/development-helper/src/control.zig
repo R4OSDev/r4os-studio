@@ -6,6 +6,10 @@ const gesture = @import("gesture.zig");
 const key_plan = @import("key_plan.zig");
 const evidence = @import("desktop_evidence.zig");
 const window_control = @import("window_control.zig");
+pub const execution_timeout_seconds: u32 = 600;
+// Allow Desktop adoption and bounded cleanup around the application deadline.
+pub const watchdog_lifetime_ns = (@as(u64, execution_timeout_seconds) + 60) * 1_000_000_000;
+
 pub const Request = struct {
     version: u32 = 1,
     instance: []const u8,
@@ -13,7 +17,7 @@ pub const Request = struct {
     operation: []const u8,
     role: []const u8 = "",
     arguments: []const u8 = "",
-    timeoutSeconds: u32 = 60,
+    timeoutSeconds: u32 = execution_timeout_seconds,
     input: []const u8 = "",
     generation: []const u8 = "",
     instanceId: u32 = 0,
@@ -237,7 +241,7 @@ const Controller = struct {
         return true;
     }
     fn start(self: *Controller, req: Request) bool {
-        if (self.started or req.arguments.len > 127 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300 or
+        if (self.started or req.arguments.len > 127 or req.timeoutSeconds < 1 or req.timeoutSeconds > execution_timeout_seconds or
             std.mem.indexOfScalar(u8, req.arguments, 0) != null) return false;
         const is_service = std.mem.eql(u8, req.role, "service");
         if (!is_service and !std.mem.eql(u8, req.role, "terminal")) return false;
@@ -277,7 +281,7 @@ const Controller = struct {
         return true;
     }
     fn adoptDesktop(self: *Controller, req: Request) bool {
-        if (self.started or req.instanceId == 0 or req.timeoutSeconds < 1 or req.timeoutSeconds > 300) return false;
+        if (self.started or req.instanceId == 0 or req.timeoutSeconds < 1 or req.timeoutSeconds > execution_timeout_seconds) return false;
         const generation = std.fmt.parseInt(u64, req.generation, 10) catch return false;
         if (generation == 0) return false;
         const process = r4os.app_resources.ProcessHandle{ .sys = self.sys, .raw = req.instanceId, .generation = generation };
@@ -897,7 +901,7 @@ pub fn watch(app: *r4os.App, instance: []const u8) i32 {
     var heartbeat = born;
     while (true) {
         const current = sys.monotonicNanoseconds() orelse return 73;
-        if (current - heartbeat > 15_000_000_000 or current - born > 310_000_000_000 or sys.programShouldClose()) {
+        if (current - heartbeat > 15_000_000_000 or current - born > watchdog_lifetime_ns or sys.programShouldClose()) {
             controller.stop("control_lost");
             const cleanup_ticks: usize = 350;
             const cleanup_deadline = controller.clock() +| @as(u64, @intCast(cleanup_ticks)) * 10_000_000;

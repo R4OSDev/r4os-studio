@@ -221,3 +221,7 @@ Accept argument-free tool calls in Messages streams by skipping empty JSON fragm
 ## 0.12.57
 
 Use the latest returned file version for workspace writes and patches. New catalogs offer an explicit create-file action, and existing tool receipts and signed inputs retain their original arguments.
+
+## 0.12.58
+
+Use 600 seconds as the standard and maximum Run & Test limit across the UI, agent tools, host, and guest. Deployments report the supported limit, and accepted jobs keep their saved timeout.

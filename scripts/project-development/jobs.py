@@ -9,7 +9,7 @@ import time
 import sys
 import uuid
 
-from contracts import ACTIVE, TERMINAL, DevelopmentFault, encode, hash_value, identity, LIMITS, relative, digest
+from contracts import ACTIVE, TERMINAL, DevelopmentFault, encode, hash_value, identity, LIMITS, relative, digest, require_execution_timeout
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import connect, public
 from layout import workspace, save
@@ -81,14 +81,14 @@ class Jobs:
         for statement in schema.split(';'):
             if statement.strip(): self.db.execute(statement)
         self.db.execute('INSERT INTO settings VALUES(1,?)', (encode({'revision': 1,
-            'arguments': '', 'workingDirectory': '.', 'timeoutSeconds': 60,
+            'arguments': '', 'workingDirectory': '.', 'timeoutSeconds': LIMITS['executionTimeoutSeconds'],
             'expectedExitCode': None, 'outputContains': [], 'visualCriteria': ''}),))
 
     def close(self):
         self.db.close(); self.project_use.close()
     def settings(self):
-        from settings import DEFAULTS
-        return {**DEFAULTS, **json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0])}
+        from settings import effective
+        return effective(json.loads(self.db.execute('SELECT payload FROM settings WHERE id=1').fetchone()[0]))
 
     def get(self, job_id):
         row = self.db.execute('SELECT payload,request_id FROM jobs WHERE id=?', (identity(job_id),)).fetchone()
@@ -149,7 +149,8 @@ class Jobs:
             if previous:
                 if previous['request_hash'] != fingerprint: raise DevelopmentFault('This request ID belongs to different development input.')
                 self.db.commit(); return self.get(previous['id']), False
-            if request['projectRevision'] != self.project['revision'] or request['settingsRevision'] != self.settings()['revision']:
+            settings = self.settings()
+            if request['projectRevision'] != self.project['revision'] or request['settingsRevision'] != settings['revision']:
                 raise DevelopmentFault('Project or Run & Test settings changed. Reload before starting.')
             if self.db.execute('SELECT id FROM jobs WHERE busy=1').fetchone():
                 raise DevelopmentFault('This project already has an active development job.')
@@ -157,11 +158,10 @@ class Jobs:
             artifact = self.artifact(request['artifactId'] if kind == 'deploy' else deployment['artifactId']) if kind in ('deploy', 'execution') else None
             if deployment and (deployment['target']['vmId'] != self.project['vmId'] or deployment.get('pins') != self.project['pins']):
                 raise DevelopmentFault('This deployment belongs to a different project target or component identity.')
-            if kind == 'execution' and self.settings()['workingDirectory'] != '.':
+            if kind == 'execution' and settings['workingDirectory'] != '.':
                 raise DevelopmentFault('Only the deployment directory is a qualified R4OS working directory.')
             if artifact and artifact.get('pins') != self.project['pins']:
                 raise DevelopmentFault('The artifact pins differ from the current project identity.')
-            settings = self.settings()
             if 'overrides' in request:
                 from settings import validate
                 overrides = request['overrides']
@@ -175,6 +175,7 @@ class Jobs:
             if kind == 'execution':
                 from settings import validate
                 settings = validate(settings)
+                require_execution_timeout(deployment.get('helperCapabilities', {}), settings['timeoutSeconds'])
                 if artifact['role'] == 'service' and len(settings['arguments'].encode()) > 95:
                     raise DevelopmentFault('Service arguments are limited to 95 UTF-8 bytes.', 400)
             launch_budget = None
@@ -188,7 +189,7 @@ class Jobs:
                 'target': None, 'process': None, 'exitCode': None, 'error': None,
                 'phase': 'queued', 'check': None, 'createdAt': now(), 'completedAt': None,
                 'source': None, 'projectRevision': self.project['revision'],
-                'settingsRevision': self.settings()['revision'], 'pins': self.project['pins'], 'binding': binding,
+                'settingsRevision': settings['revision'], 'pins': self.project['pins'], 'binding': binding,
                 'settings': settings, **({'desktopLaunchBudget':launch_budget} if launch_budget else {})}
             if kind == 'build':
                 from sdk_inputs import read

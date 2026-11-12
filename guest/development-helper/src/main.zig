@@ -1,6 +1,7 @@
 //! Studio-owned guest adapter. Only public pinned SDK interfaces are used.
 const std = @import("std");
 const r4os = @import("r4os");
+const control = @import("control.zig");
 
 pub fn r4_app_main(app: *r4os.App) i32 {
     const sys = app.system();
@@ -19,8 +20,8 @@ pub fn r4_app_main(app: *r4os.App) i32 {
     const count = sys.programModulePath(&path);
     if (count <= 0) return 66;
     if (recovery) return @import("desktop_evidence.zig").recover(sys, instance, path[0..@intCast(count)]);
-    if (watchdog) return @import("control.zig").watch(app, instance);
-    if (persistent) return @import("control.zig").serve(app, instance, path[0..@intCast(count)]);
+    if (watchdog) return control.watch(app, instance);
+    if (persistent) return control.serve(app, instance, path[0..@intCast(count)]);
     const response = .{
         .version = @as(u32, 1),
         .requestId = instance,
@@ -33,6 +34,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
             .controlVersion = @as(u32, 2),
             .watchdogVersion = @as(u32, 1),
             .watchdogLaunchVersion = @as(u32, 2),
+            .executionTimeoutSeconds = control.execution_timeout_seconds,
             .modulePath = path[0..@intCast(count)],
             .processHandles = resources.available(),
             .consoleInput = true,

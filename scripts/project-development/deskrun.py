@@ -6,6 +6,7 @@ u64 counters are parsed as Python integers and exported only as decimal strings.
 import asyncio
 import base64
 import json
+import math
 import re
 import uuid
 from contracts import DevelopmentFault, UnconfirmedGuestEffect
@@ -337,7 +338,7 @@ class DesktopLaunch:
             value = await self.query('DESKRUN /JSON /STATUS:' + self.key, 5)
         self.process = (value['process_id'], value['process_generation'])
         # Do not reap Desktop-owned children or replace their native window ID.
-        remaining = max(1, min(300, int(self.deadline - loop.time()) + 1))
+        remaining = max(1, min(self.job['settings']['timeoutSeconds'], math.ceil(self.deadline - loop.time())))
         broker_id, broker_generation, _, _ = self.key.split(':')
         retained = None
         if self.deployment.get('helperCapabilities', {}).get('desktopEvidenceVersion') == 1 and self.evidence_launch:

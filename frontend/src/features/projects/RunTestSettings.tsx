@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Project } from '../../../../shared/projects';
 import type { DevelopmentOptions, DevelopmentSettings } from '../../../../shared/project-development';
+import developmentHost from '../../../../shared/development-host.json';
 import { projectRequest, ProjectRequestError } from './api';
 import { ProjectField } from './ProjectField';
 import { UpdatePackages } from './UpdatePackages';
@@ -66,7 +67,7 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
         : layout&&!layout.available ? layout.reason : 'A verified current Desktop deployment is required for its argument budget.'}</p>}
       <div className="project-form-row">
         <ProjectField id="run-cwd" label="Working directory"><input id="run-cwd" value={project?.template === 'desktop' ? 'Native Desktop directory' : 'Deployment directory'} readOnly /></ProjectField>
-        <ProjectField id="run-timeout" label="Time limit (seconds)"><input id="run-timeout" type="number" min={1} max={300} required value={draft.timeoutSeconds} onChange={(e) => patch({ timeoutSeconds: Number(e.target.value) })} /></ProjectField>
+        <ProjectField id="run-timeout" label="Time limit (seconds)"><input id="run-timeout" type="number" min={1} max={developmentHost.limits.executionTimeoutSeconds} required value={draft.timeoutSeconds} onChange={(e) => patch({ timeoutSeconds: Number(e.target.value) })} /></ProjectField>
       </div>
       <h3>Checks</h3>
       {options?.evidenceCapabilities && <div className="project-message">

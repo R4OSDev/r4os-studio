@@ -30,6 +30,14 @@ class SshNotReady(DevelopmentFault):
     """A read-only readiness probe may be retried within its original deadline."""
 
 
+def require_execution_timeout(capabilities, seconds):
+    # Qualification receipts from before the explicit capability had a 300 s bound.
+    limit = capabilities.get('executionTimeoutSeconds', 300)
+    if type(limit) is not int or limit < 1 or seconds > limit:
+        raise DevelopmentFault('Deploy the artifact again with the current guest controller before using this test time limit.',
+                               reason_code='deployment_controller_upgrade_required')
+
+
 def identity(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}', value):
         raise DevelopmentFault('Invalid development identity.', 400)

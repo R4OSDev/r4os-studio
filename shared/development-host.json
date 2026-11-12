@@ -15,7 +15,7 @@
     "pageBytes": 65536,
     "buildTimeoutSeconds": 600,
     "transferTimeoutSeconds": 300,
-    "executionTimeoutSeconds": 300,
+    "executionTimeoutSeconds": 600,
     "guestFrameBytes": 65536,
     "screenshotBytes": 393216,
     "screenshotMaxWidth": 1280,

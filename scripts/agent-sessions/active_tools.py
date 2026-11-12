@@ -5,22 +5,22 @@ from pathlib import Path
 import re
 import sqlite3
 
-from tool_catalog import ROOT, argument_requirements, catalog, declarations, digest, prepared, restricted, tool_definitions, tool_scope
+from tool_catalog import ROOT, argument_requirements, catalog, declarations, digest, execution_timeout, prepared, restricted, tool_definitions, tool_scope
 
 RELEASES = Path('/opt/r4os-studio/releases')
 
 
-def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None, file_writes=None):
+def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentation=None, actions=None, requirements=None, file_writes=None, run_timeout=None):
     scope = tool_scope(value)
     if names is None:
         source = (declarations(value,root) if isinstance(value,dict) and value.get('toolCatalog')
-                  else prepared(scope,root,presentation or 'legacy',file_writes).values())
+                  else prepared(scope,root,presentation or 'legacy',file_writes,run_timeout).values())
         tools = [item for item in source if item['name'] not in exclude]
     else:
-        definitions = prepared(scope, root, presentation or 'legacy', file_writes)
+        definitions = prepared(scope, root, presentation or 'legacy', file_writes, run_timeout)
         tools = [restricted(definitions[name],actions[name]) if actions and name in actions else definitions[name] for name in names]
     if requirements is not None:
-        tools = argument_requirements(tools,scope,root,requirements,file_writes)
+        tools = argument_requirements(tools,scope,root,requirements,file_writes,run_timeout)
     result = {'scope':scope, 'sha256':digest(tools), 'tools':[item['name'] for item in tools]}
     if version == 2:
         result['version'] = version
@@ -28,6 +28,7 @@ def snapshot(value, exclude=(), *, root=ROOT, names=None, version=1, presentatio
         if actions: result['actions'] = actions
         if requirements is not None: result['argumentRequirements'] = requirements
         if file_writes is not None: result['fileWritePreconditions'] = file_writes
+        if run_timeout is not None: result['runTestTimeoutSeconds'] = run_timeout
         if root.is_relative_to(RELEASES) and (root/'release.json').is_file():
             result['release'] = json.loads((root/'release.json').read_text())['id']
     return result
@@ -67,7 +68,9 @@ def worker_release(config, current, root=RELEASES):
 def goal_selection(store,sid):
     session=store.get(sid)
     mode = roadmap_presentation(session, ROOT)
-    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,requirements=1,file_writes=1)}
+    run_timeout = execution_timeout() if tool_scope(session)=='project' else None
+    return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,
+            requirements=1,file_writes=1,run_timeout=run_timeout)}
 
 
 def roadmap_presentation(config, root):
@@ -192,7 +195,9 @@ def freeze(store,sid,config,*,images):
     mode = saved.get('presentation') if saved else roadmap_presentation(config,root)
     if mode=='administration' and not config.get('roadmapAdministrationEnabled'): mode='standard'
     file_writes = saved.get('fileWritePreconditions') if saved else 1
-    definitions=tool_definitions(tool_scope(config),root,file_writes)
+    scope = tool_scope(config)
+    run_timeout = saved.get('runTestTimeoutSeconds') if saved else execution_timeout(root) if scope=='project' else None
+    definitions=tool_definitions(scope,root,file_writes,run_timeout)
     updates = None
     if 'check_update' in definitions:
         from profile import UPDATE_TOOLS
@@ -213,7 +218,8 @@ def freeze(store,sid,config,*,images):
                 names.append(full);actions[full]=available
         elif permitted(name): names.append(full)
     requirements = saved.get('argumentRequirements') if saved else 1
-    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,requirements=requirements,file_writes=file_writes)
+    config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,
+                                  requirements=requirements,file_writes=file_writes,run_timeout=run_timeout)
 
 
 def instructions(config):

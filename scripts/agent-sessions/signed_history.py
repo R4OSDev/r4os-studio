@@ -68,7 +68,8 @@ def bind_catalog(store, sid, config):
         selected=prior.get('toolCatalog',{})
         version = selected.get('version',1)
         file_writes=selected.get('fileWritePreconditions')
-        definitions=tool_definitions(tool_scope(prior),root,file_writes)
+        run_timeout=selected.get('runTestTimeoutSeconds')
+        definitions=tool_definitions(tool_scope(prior),root,file_writes,run_timeout)
         operations=set()
         for name in names:
             dispatch=definitions[name[7:]].get('dispatch')
@@ -84,12 +85,12 @@ def bind_catalog(store, sid, config):
         if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
         actions={name:items for name,items in selected.get('actions',{}).items() if name in names}
         options = dict(names=names,version=version,presentation=mode,actions=actions,
-                       requirements=selected.get('argumentRequirements'),file_writes=file_writes)
+                       requirements=selected.get('argumentRequirements'),file_writes=file_writes,run_timeout=run_timeout)
         catalog = snapshot(prior,root=root,**options)
         if root != ROOT and config['engine'] == engine(tool_scope(config),config['engine'].get('api')):
             # A new admission can use the current runtime when the archived
             # declarations and their broker rules can be reproduced exactly.
-            current = tool_definitions(tool_scope(prior),ROOT,file_writes)
+            current = tool_definitions(tool_scope(prior),ROOT,file_writes,run_timeout)
             relevant = operations | {name[7:] for name in names}
             if all(definitions[name] == current.get(name) for name in relevant):
                 candidate = snapshot(prior,root=ROOT,**options)

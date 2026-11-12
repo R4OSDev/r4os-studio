@@ -4,7 +4,7 @@ import base64
 import hashlib
 import os
 import uuid
-from contracts import DevelopmentFault, UnconfirmedGuestEffect, LIMITS, digest
+from contracts import DevelopmentFault, UnconfirmedGuestEffect, LIMITS, digest, require_execution_timeout
 from jobs import folder, now
 from layout import save, sync
 from lease import VmLease
@@ -350,6 +350,7 @@ class Execution:
                     if hello['result'].get('watchdogLaunchVersion') != 2:
                         raise UnconfirmedGuestEffect('The original controller did not confirm its independent watchdog contract.')
                     self.controller_hello = hello['result']
+                    require_execution_timeout(self.controller_hello, job['settings']['timeoutSeconds'])
                     from window_control import enabled as window_enabled
                     self.window_controller = (hello['result'] if desktop and window_enabled(store,job)
                         and deployment.get('helperCapabilities',{}).get('windowControlVersion') == 1

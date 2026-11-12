@@ -34,9 +34,9 @@ def catalog(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def prepared(scope, root=ROOT, presentation='standard', file_writes=None):
+def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_timeout=None):
     tools = {}
-    for original in tool_definitions(scope, root, file_writes).values():
+    for original in tool_definitions(scope, root, file_writes, run_timeout).values():
         if presentation == 'legacy' and original.get('dispatch') or presentation != 'legacy' and original.get('retired'):
             continue
         tool = deepcopy(original)
@@ -96,13 +96,13 @@ def restricted(tool, actions):
 VARIANT_SELECTORS = ('operation', 'view', 'action', 'kind', 'scope', 'mode', 'field')
 
 
-def argument_requirements(tools, scope, root, version, file_writes=None):
+def argument_requirements(tools, scope, root, version, file_writes=None, run_timeout=None):
     """Show broker-required variants in the flat declaration used by adapters."""
     if version is None:
         return tools
     if type(version) is not int or version != 1:
         raise ValueError('The original tool argument requirements are unavailable.')
-    definitions = tool_definitions(scope, root, file_writes)
+    definitions = tool_definitions(scope, root, file_writes, run_timeout)
     decorated = []
     for tool in tools:
         canonical = definitions[tool['name'][7:]]['inputSchema']
@@ -154,7 +154,8 @@ def declarations(scope='project', root=ROOT):
     saved=scope.get('toolCatalog') if isinstance(scope,dict) else None
     presentation = saved.get('presentation','legacy') if isinstance(saved,dict) else 'standard'
     file_writes = saved.get('fileWritePreconditions') if isinstance(saved,dict) else None
-    by_name = prepared(kind, root, presentation, file_writes)
+    run_timeout = saved.get('runTestTimeoutSeconds') if isinstance(saved,dict) else None
+    by_name = prepared(kind, root, presentation, file_writes, run_timeout)
     if saved is not None:
         if (not isinstance(saved,dict) or saved.get('scope')!=kind or saved.get('version',1) not in (1,2)
                 or not isinstance(saved.get('tools'),list) or any(not isinstance(name,str) for name in saved['tools'])
@@ -165,7 +166,7 @@ def declarations(scope='project', root=ROOT):
         if not isinstance(actions,dict) or not actions.keys()<=set(saved['tools']):
             raise ValueError('The original tool action binding is invalid.')
         tools=[restricted(by_name[name],actions[name]) if name in actions else by_name[name] for name in saved['tools']]
-        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes)
+        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes,run_timeout)
         if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
         return tools
@@ -193,9 +194,23 @@ def automatic_file_writes(config):
     return (config.get('toolCatalog') or {}).get('fileWritePreconditions') == 1
 
 
+@lru_cache(maxsize=16)
+def execution_timeout(root=ROOT):
+    return json.loads((root/'shared/development-host.json').read_text())['limits']['executionTimeoutSeconds']
+
+
 @lru_cache(maxsize=32)
-def tool_definitions(scope,root=ROOT,file_writes=None):
+def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None):
     tools = {item['name'][7:]: item for item in catalog(root)[scope]}
+    # Original catalogs still reproduce their declared override range exactly.
+    if run_timeout is not None:
+        if scope != 'project' or type(run_timeout) is not int or not 1 <= run_timeout <= execution_timeout(root):
+            raise ValueError('The original Run & Test timeout contract is unavailable.')
+        run = deepcopy(tools['run_project'])
+        run['inputSchema']['properties']['timeoutSeconds']['maximum'] = run_timeout
+        run['description'] += (f' Uses the project Run & Test limit ({run_timeout} seconds by default) unless timeoutSeconds is supplied. '
+                               'Deploy again if the guest helper cannot run for the chosen duration.')
+        tools['run_project'] = run
     if file_writes is None:
         return tools
     if type(file_writes) is not int or file_writes != 1:
@@ -249,7 +264,8 @@ def validate_arguments(name,value,scope='project'):
         try:validate_expected(value['expectedSha256'])
         except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
     selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
-    definition = tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions')).get(name)
+    definition = tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions'),
+                                  run_timeout=selected.get('runTestTimeoutSeconds')).get(name)
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root = definition['inputSchema']
     actions = selected.get('actions',{}).get('studio_'+name)

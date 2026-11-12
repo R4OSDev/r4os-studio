@@ -139,7 +139,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
         .gestureVersion = @as(u32, 1),
         .dragInterruptVersion = @as(u32, 1),
         .watchdogVersion = @as(u32, 1), .bootstrapRemoved = true, .watchdogInstanceId = daemon.instance_id,
-        .watchdogLaunchVersion = @as(u32, 2), .bootstrapUsed = false,
+        .watchdogLaunchVersion = @as(u32, 2), .executionTimeoutSeconds = control.execution_timeout_seconds, .bootstrapUsed = false,
         .watchdogGeneration = daemon_generation[0..daemon_generation_len],
         .receiptFile = std.mem.sliceTo(&response, 0), .modulePath = module_path });
     var line: [4096]u8 = undefined;
@@ -149,7 +149,7 @@ pub fn serve(app: *r4os.App, instance: []const u8, module_path: []const u8) i32 
     var heartbeat = born;
     while (true) {
         const current = sys.monotonicNanoseconds() orelse return 86;
-        if (current - heartbeat > 15_000_000_000 or current - born > 315_000_000_000 or sys.programShouldClose()) return 87;
+        if (current - heartbeat > 15_000_000_000 or current - born > control.watchdog_lifetime_ns + 5_000_000_000 or sys.programShouldClose()) return 87;
         const key = sys.readKey();
         if (key == 0) { sys.sleepTicks(1); continue; }
         if (key != '\r' and key != '\n') {
