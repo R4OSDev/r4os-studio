@@ -20,7 +20,7 @@ async def run(store, job):
     from actions import admit, finish
     from evidence import read
     vm = job['binding']
-    scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
+    scope = {'kind': 'job', 'observationOnly': True, 'projectId': store.id, 'projectRevision': job['projectRevision'],
         'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
     async with reserve(store, job, scope) as lease:
         guard(store, job, lease)
@@ -36,7 +36,7 @@ async def run(store, job):
         previous = admit(store, job['id'], message)
         if previous is not None:
             if previous.get('error'): raise DevelopmentFault(previous['error'], previous.get('code', 409))
-            data = read(store, job['id'], previous['evidenceId'])
+            data = read(store, job['id'], previous['evidenceId'], mode='preview')
         else:
             store.update(job['id'], phase='capturing', captureState='pending')
             try:

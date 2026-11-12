@@ -14,7 +14,7 @@ async def vm_call(lease, operation, **fields):
         if len(raw) > 2097152: raise DevelopmentFault('Private VM response exceeds the limit.', 503)
         value = json.loads(raw)
         if value.get('error'): raise DevelopmentFault(value['error'], value.get('code', 503))
-        if operation == 'capture_original':
+        if operation in ('capture_original', 'capture_diagnostic'):
             length = value.get('result', {}).get('bytes')
             if type(length) is not int or not 0 < length <= LIMITS['screenshotOriginalBytes']:
                 raise DevelopmentFault('The original VM screenshot has an invalid byte length.', 503)

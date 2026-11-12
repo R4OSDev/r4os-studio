@@ -18,7 +18,7 @@ interface Lease {
   id: string; vmId: string;
   lifecycle?: LifecycleProof;
   scope: { kind: 'access' | 'job' | 'recovery'; projectId?: string; projectRevision?: number;
-    vmRevision: string; imageId: string; imageSha256: string; bootId?: string };
+    vmRevision: string; imageId: string; imageSha256: string; bootId?: string; observationOnly?: boolean };
 }
 
 function inspectLease(leaseId: string, token: string, checkBoot = true, lifecycleCleanup = false): Promise<Lease> {
@@ -58,9 +58,12 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           const request = JSON.parse(pending.split('\n')[0]);
           if (!request || typeof request !== 'object' || Object.keys(request).some((k) => !['operation', 'leaseId', 'token', 'port'].includes(k))
             || !validId(request.leaseId) || !/^[a-f0-9]{64}$/.test(request.token)) throw new VmError('Invalid private VM request.', 400);
-          if (!['info', 'start', 'shutdown', 'lifecycle_info', 'forward_open', 'forward_close', 'capture', 'capture_running', 'capture_original'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
+          if (!['info', 'start', 'shutdown', 'restart', 'lifecycle_info', 'forward_open', 'forward_close', 'capture', 'capture_running', 'capture_original', 'capture_diagnostic'].includes(request.operation)) throw new VmError('Unsupported private VM operation.', 400);
           const lease = await inspectLease(request.leaseId, request.token, request.operation !== 'forward_close', request.operation === 'forward_close'), id = lease.vmId;
           const config = await manager.config(id), scope = lease.scope;
+          const diagnostic = request.operation === 'capture_diagnostic';
+          if (scope.observationOnly && !['info', 'capture_diagnostic'].includes(request.operation))
+            throw new VmError('This reservation only permits VM diagnosis.', 403);
           if ((config.revision ?? config.imageSha256) !== scope.vmRevision || config.imageId !== scope.imageId || config.imageSha256 !== scope.imageSha256)
             throw new VmError('The reserved VM configuration or image changed.');
           if (scope.kind === 'job' && !(request.operation === 'forward_close' && lease.lifecycle)) {
@@ -74,29 +77,36 @@ export function developmentVmBridge(app: FastifyInstance, manager: VmManager, co
           }
           // Observation survives admission. Close controls before any private
           // development operation, and drain/release held relative mouse input.
-          consoles.closeControls(id); await pointers.closeVm(id);
+          if (!scope.observationOnly && !diagnostic) { consoles.closeControls(id); await pointers.closeVm(id); }
           let result: unknown;
           if (request.operation === 'lifecycle_info') {
             if (!lease.lifecycle) throw new VmError('This reservation has no VM lifecycle authority.', 403);
             result = await lifecycleInfo(manager, id, lease.lifecycle);
-          } else if (request.operation === 'shutdown' || request.operation === 'start' && lease.lifecycle) {
+          } else if (request.operation === 'shutdown' || request.operation === 'restart' || request.operation === 'start' && lease.lifecycle) {
             if (!lease.lifecycle) throw new VmError('This reservation has no VM lifecycle authority.', 403);
-            const action = request.operation === 'shutdown' ? 'shutdown' : 'start';
-            result = { vm: await manager.action(id, action, async () => {
-              const fresh = await inspectLease(request.leaseId, request.token, false);
-              if (fresh.vmId !== id || !fresh.lifecycle) throw new VmError('The original VM lifecycle reservation changed.', 403);
-              lifecycleTarget(await manager.get(id), fresh.scope);
-              await lifecycleEffect(manager, id, fresh.lifecycle, action);
-            }) };
+            const action = request.operation === 'restart' ? 'restart' : request.operation === 'shutdown' ? 'shutdown' : 'start';
+            let dispatching = false;
+            try {
+              result = { vm: await manager.action(id, action === 'restart' ? 'hard-restart' : action, async () => {
+                const fresh = await inspectLease(request.leaseId, request.token, false);
+                if (fresh.vmId !== id || !fresh.lifecycle) throw new VmError('The original VM lifecycle reservation changed.', 403);
+                lifecycleTarget(await manager.get(id), fresh.scope);
+                await lifecycleEffect(manager, id, fresh.lifecycle, action);
+                dispatching = true;
+              }) };
+            } catch (error) {
+              if (action === 'restart' && dispatching) throw new VmError('The original QEMU reset response was not confirmed.', 503);
+              throw error;
+            }
           } else if (request.operation === 'info') {
             const { stdout } = await exec('/usr/bin/systemctl', ['show', `r4os-studio-vm@${id}.service`, '--property=InvocationID', '--value'], { timeout: 5000 });
-            result = { vm: await manager.get(id), invocationId: stdout.trim(), exchange: await exchangeIdentity(vmPath(id)),
-              exchangeWorker: await exchangeWorkerCapability(id) };
-          } else if (['capture', 'capture_running', 'capture_original'].includes(request.operation)) {
-            const original = request.operation === 'capture_original';
+            result = { vm: await manager.get(id), invocationId: stdout.trim(),
+              ...(scope.observationOnly ? {} : { exchange: await exchangeIdentity(vmPath(id)), exchangeWorker: await exchangeWorkerCapability(id) }) };
+          } else if (['capture', 'capture_running', 'capture_original', 'capture_diagnostic'].includes(request.operation)) {
+            const original = request.operation === 'capture_original' || diagnostic;
             if (request.operation !== 'capture') {
               const unit = await unitState(id);
-              if (!['active', 'activating'].includes(unit.ActiveState) || (await qmp(id, 'query-status')).running !== true)
+              if (!['active', 'activating'].includes(unit.ActiveState) || (!diagnostic && (await qmp(id, 'query-status')).running !== true))
                 throw new VmError('The assigned VM is not running.');
             }
             const limits = JSON.parse(await readFile(new URL('../../../../shared/development-host.json', import.meta.url), 'utf8')).limits;

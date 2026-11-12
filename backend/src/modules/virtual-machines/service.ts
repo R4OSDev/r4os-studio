@@ -201,6 +201,7 @@ export class VmManager {
       else {
         if (!['running', 'paused'].includes(vm.state)) throw new VmError('The VM is not running.');
         await beforeEffect?.(); await qmp(id, action === 'shutdown' ? 'system_powerdown' : 'system_reset');
+        if (action === 'hard-restart' && vm.state === 'paused') await qmp(id, 'cont');
       }
       return this.get(id);
     }));

@@ -6,7 +6,6 @@ from vm_client import vm_call
 from evidence import lossless_webp, png, publish, preview_response
 from frame_binding import window
 from jobs import now
-import json
 import time
 
 
@@ -18,22 +17,9 @@ def bound_lease(store,job,lease):
         raise DevelopmentFault('The screenshot reservation no longer matches the original job/boot binding.')
 
 
-def diagnostic_target(store, job, info):
-    if info['vm']['state'] != 'running': raise DevelopmentFault('The assigned VM must already be running. No VM was started.')
-    from quarantine import path, admission
-    file = path(store.projects, job['target']['vmId'])
-    if not file.exists(): return
-    if file.resolve(strict=True) != file or file.stat().st_size > 16384:
-        raise DevelopmentFault('Invalid guest recovery record.', 503)
-    value = json.loads(file.read_text())
-    current = store.get(job['id'])
-    # A live execution already owns its claim and this same reservation. A
-    # terminal/foreign/unconfirmed claim is never cleared by an observation.
-    own = (current['kind'] == 'execution' and current['state'] == 'running'
-        and value.get('projectId') == store.id and value.get('jobId') == job['id']
-        and current.get('executionId') and value.get('executionId') == current['executionId']
-        and value.get('target') == current.get('target') == job['target'])
-    if not own: admission(store.projects, job['target']['vmId'], 'running')
+def diagnostic_target(info):
+    if info['vm']['state'] not in ('running', 'paused'):
+        raise DevelopmentFault('The assigned VM has no active QEMU screen.')
 
 
 async def capture(store, job, lease=None, state=None, observer=None, control=None, consume=None, origin=None, vm_diagnostic=False, validate=None):
@@ -66,8 +52,8 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
     bound_lease(store,job,lease)
     if validate: validate()
     if vm_diagnostic:
-        diagnostic_target(store, job, await vm_call(lease, 'info'))
-    try: captured = await vm_call(lease, 'capture_original')
+        diagnostic_target(await vm_call(lease, 'info'))
+    try: captured = await vm_call(lease, 'capture_diagnostic' if vm_diagnostic else 'capture_original')
     except DevelopmentFault as error:
         # A rollback may leave this worker connected to an older web bridge.
         if error.code != 400 or str(error) != 'Unsupported private VM operation.': raise
@@ -81,7 +67,7 @@ async def capture(store, job, lease=None, state=None, observer=None, control=Non
     bound_lease(store,job,lease)
     if vm_diagnostic:
         info = await vm_call(lease, 'info')
-        diagnostic_target(store, job, info)
+        diagnostic_target(info)
         bound_lease(store,job,lease)
         if validate: validate()
         elapsed = int((time.monotonic() - started) * 1000)

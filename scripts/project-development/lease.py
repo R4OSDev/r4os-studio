@@ -18,13 +18,17 @@ def birth(pid):
     return (Path('/proc') / str(pid) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
 
 
+def lock_path(root, vm_id, scope):
+    return root / ('vm-observation-locks' if scope.get('observationOnly') is True else 'vm-locks') / (identity(vm_id) + '.lock')
+
+
 class VmLease:
     def __init__(self, projects, vm_id, scope):
         self.root = folder(Path(projects) / '.studio/development'); self.vm_id = identity(vm_id)
         self.id = str(uuid.uuid4()); self.token = secrets.token_hex(32); self.scope = scope; self.stream = None
 
     def __enter__(self):
-        path = folder(self.root / 'vm-locks') / (self.vm_id + '.lock')
+        path = lock_path(self.root, self.vm_id, self.scope); folder(path.parent)
         if path.is_symlink(): raise DevelopmentFault('Invalid VM reservation file.', 503)
         fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600); self.stream = os.fdopen(fd, 'a')
         try: fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -83,7 +87,7 @@ def inspect(projects, lease_id, token=None, check_boot=True, cleanup=False, *, c
             if (not boot['connected'] or boot['bootId'] != value['scope']['bootId']
                 or boot['vmRevision'] != value['scope']['vmRevision'] or birth(boot['pid']) != boot['birth']): raise ValueError()
         except (OSError, ValueError, KeyError): raise DevelopmentFault('The guest boot binding changed or its observer was lost.', 409)
-    lock = root / 'vm-locks' / (identity(value['vmId']) + '.lock')
+    lock = lock_path(root, value['vmId'], value['scope'])
     if lock.resolve(strict=True) != lock: raise DevelopmentFault('Invalid VM reservation file.', 503)
     with lock.open('a') as stream:
         try: fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)

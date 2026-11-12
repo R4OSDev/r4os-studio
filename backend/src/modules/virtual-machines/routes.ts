@@ -113,7 +113,19 @@ export async function vmRoutes(app: FastifyInstance) {
     schema: { body: { type: 'object', additionalProperties: false, required: ['action'], properties: {
       action: { type: 'string', enum: ['start', 'shutdown', 'force-stop', 'restart', 'sync-exchange'] },
     } } },
-  }, async (request, reply) => { sessions.mutation(request, reply); return { vm: await withVmLease(request.params.id, () => manager.action(request.params.id, request.body.action), request.body.action === 'start' ? 'start' : ['shutdown', 'force-stop'].includes(request.body.action) ? 'stop' : undefined) }; });
+  }, async (request, reply) => {
+    sessions.mutation(request, reply);
+    const { id } = request.params, { action } = request.body;
+    // Standalone VM installs and a prior development coordinator still accept the manual action.
+    const observe = () => developmentHost({ operation: 'watch_vm_boot', vmId: id }).catch(() => undefined);
+    return { vm: await withVmLease(id, async guard => {
+      const vm = await manager.action(id, action, action === 'restart' ? async () => {
+        guard(); await observe(); guard();
+      } : undefined);
+      if (action === 'start') await observe();
+      return vm;
+    }, action === 'start' ? 'start' : ['shutdown', 'force-stop'].includes(action) ? 'stop' : undefined) };
+  });
   app.get<{ Params: { id: string } }>('/:id/files', async (request, reply) => {
     sessions.get(request, reply); return { files: await manager.files(request.params.id) };
   });

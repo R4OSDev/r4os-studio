@@ -65,6 +65,13 @@ class Jobs:
         if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='deployments' AND type='table'").fetchone():
             with self.db:
                 self.db.execute('CREATE TABLE IF NOT EXISTS deployments(id TEXT PRIMARY KEY, job_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)')
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='active_project_observation'").fetchone():
+            with self.db:
+                self.db.execute('BEGIN IMMEDIATE')
+                if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='active_project_observation'").fetchone():
+                    self.db.execute('DROP INDEX IF EXISTS active_project_job')
+                    self.db.execute("CREATE UNIQUE INDEX active_project_job ON jobs(busy) WHERE busy=1 AND kind!='observation'")
+                    self.db.execute("CREATE UNIQUE INDEX active_project_observation ON jobs(busy) WHERE busy=1 AND kind='observation'")
 
     def initialize(self):
         if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
@@ -73,7 +80,8 @@ class Jobs:
           CREATE TABLE jobs(id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL,
             request_hash TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL,
             busy INTEGER NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);
-          CREATE UNIQUE INDEX active_project_job ON jobs(busy) WHERE busy=1;
+          CREATE UNIQUE INDEX active_project_job ON jobs(busy) WHERE busy=1 AND kind!='observation';
+          CREATE UNIQUE INDEX active_project_observation ON jobs(busy) WHERE busy=1 AND kind='observation';
           CREATE TABLE settings(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
           CREATE TABLE artifacts(id TEXT PRIMARY KEY, build_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL);
           PRAGMA user_version=1;
@@ -127,6 +135,9 @@ class Jobs:
                 raise DevelopmentFault('VM observation requires its original owned tool call.', 403)
         if kind in ('vm_stop','vm_restart') and (not owner or not owner.get('agentRunId')):
             raise DevelopmentFault('VM lifecycle requires an active project agent owner.',403)
+        if kind == 'vm_restart' and 'hardReset' in request:
+            expected.add('hardReset')
+            if request['hardReset'] is not True: raise DevelopmentFault('Use the explicit hard restart action.',400)
         if kind == 'ssh':
             expected.add('command')
             from project_ssh import command
@@ -152,7 +163,7 @@ class Jobs:
             settings = self.settings()
             if request['projectRevision'] != self.project['revision'] or request['settingsRevision'] != settings['revision']:
                 raise DevelopmentFault('Project or Run & Test settings changed. Reload before starting.')
-            if self.db.execute('SELECT id FROM jobs WHERE busy=1').fetchone():
+            if self.db.execute("SELECT id FROM jobs WHERE busy=1 AND (kind='observation')=?", (kind=='observation',)).fetchone():
                 raise DevelopmentFault('This project already has an active development job.')
             deployment = self.deployment_metadata(request['deploymentId']) if kind == 'execution' else None
             artifact = self.artifact(request['artifactId'] if kind == 'deploy' else deployment['artifactId']) if kind in ('deploy', 'execution') else None
@@ -196,6 +207,7 @@ class Jobs:
                 job['sdkInputs'] = read(self.workspace)
             if kind == 'ssh': job['sshCommand'] = request['command']
             if kind == 'observation': job['observationCall'] = {'runId': owner['agentRunId'], 'toolCallId': request['toolCallId']}
+            if 'hardReset' in request: job['hardReset'] = True
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))

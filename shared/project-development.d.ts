@@ -198,7 +198,8 @@ export interface DevelopmentCheck {
 }
 export interface DevelopmentJob {
   observationMode?: 'vm-diagnostic'; captureState?: 'pending' | 'confirmed'; evidenceId?: string;
-  vmLifecycle?: { kind: 'vm_stop' | 'vm_restart'; phase: string; noop?: boolean; shutdownDispatched?: boolean; newBootId?: string; readyAt?: string; qemuEnded?: boolean; stopped?: { confirmed: boolean; observedAt: string } };
+  vmLifecycle?: { kind: 'vm_stop' | 'vm_restart'; phase: string; noop?: boolean; shutdownDispatched?: boolean; newBootId?: string; readyAt?: string; qemuEnded?: boolean; stopped?: { confirmed: boolean; observedAt: string };
+    reset?: { confirmed: boolean; previousBootId: string; bootId: string; observedAt: string; commandAcknowledged: boolean } };
   sdkInputs?: DevelopmentSdkInputs;
   sdkResolution?: Record<string, unknown>;
   sdkDevelopment?: { sha256: string; sdkSource: Record<string, unknown> } | null;

@@ -34,9 +34,9 @@ def catalog(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_timeout=None, result_ids=None):
+def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_timeout=None, result_ids=None, vm_recovery=None):
     tools = {}
-    for original in tool_definitions(scope, root, file_writes, run_timeout, result_ids).values():
+    for original in tool_definitions(scope, root, file_writes, run_timeout, result_ids, vm_recovery).values():
         if presentation == 'legacy' and original.get('dispatch') or presentation != 'legacy' and original.get('retired'):
             continue
         tool = deepcopy(original)
@@ -96,13 +96,13 @@ def restricted(tool, actions):
 VARIANT_SELECTORS = ('operation', 'view', 'action', 'kind', 'scope', 'mode', 'field')
 
 
-def argument_requirements(tools, scope, root, version, file_writes=None, run_timeout=None, result_ids=None):
+def argument_requirements(tools, scope, root, version, file_writes=None, run_timeout=None, result_ids=None, vm_recovery=None):
     """Show broker-required variants in the flat declaration used by adapters."""
     if version is None:
         return tools
     if type(version) is not int or version not in (1,2):
         raise ValueError('The original tool argument requirements are unavailable.')
-    definitions = tool_definitions(scope, root, file_writes, run_timeout, result_ids)
+    definitions = tool_definitions(scope, root, file_writes, run_timeout, result_ids, vm_recovery)
     decorated = []
     for tool in tools:
         canonical = definitions[tool['name'][7:]]['inputSchema']
@@ -159,7 +159,8 @@ def declarations(scope='project', root=ROOT):
     file_writes = saved.get('fileWritePreconditions') if isinstance(saved,dict) else None
     run_timeout = saved.get('runTestTimeoutSeconds') if isinstance(saved,dict) else None
     result_ids = saved.get('resultIds') if isinstance(saved,dict) else None
-    by_name = prepared(kind, root, presentation, file_writes, run_timeout, result_ids)
+    vm_recovery = saved.get('vmRecovery') if isinstance(saved,dict) else None
+    by_name = prepared(kind, root, presentation, file_writes, run_timeout, result_ids, vm_recovery)
     if saved is not None:
         if (not isinstance(saved,dict) or saved.get('scope')!=kind or saved.get('version',1) not in (1,2)
                 or not isinstance(saved.get('tools'),list) or any(not isinstance(name,str) for name in saved['tools'])
@@ -170,7 +171,7 @@ def declarations(scope='project', root=ROOT):
         if not isinstance(actions,dict) or not actions.keys()<=set(saved['tools']):
             raise ValueError('The original tool action binding is invalid.')
         tools=[restricted(by_name[name],actions[name]) if name in actions else by_name[name] for name in saved['tools']]
-        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes,run_timeout,result_ids)
+        tools=argument_requirements(tools,kind,root,saved.get('argumentRequirements'),file_writes,run_timeout,result_ids,vm_recovery)
         if digest(tools)!=saved.get('sha256'):
             raise ValueError('The original tool definitions changed. Preserve the original input; no new permissions were granted.')
         return tools
@@ -208,8 +209,25 @@ def execution_timeout(root=ROOT):
 
 
 @lru_cache(maxsize=32)
-def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None,result_ids=None):
+def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None,result_ids=None,vm_recovery=None):
     tools = {item['name'][7:]: item for item in catalog(root)[scope]}
+    if vm_recovery is not None:
+        if scope != 'project' or type(vm_recovery) is not int or vm_recovery != 1:
+            raise ValueError('The original VM recovery contract is unavailable.')
+        control = deepcopy(tools['control_project_vm'])
+        control['inputSchema']['oneOf'].append({'type':'object','properties':{'action':{'type':'string','enum':['hard_restart']}},
+                                               'required':['action'],'additionalProperties':False})
+        control['dispatch']['hard_restart'] = {'tool':'restart_project_vm','set':{'hardReset':True}}
+        control['description'] = ('Start, stop or restart the assigned VM. For a crash shown by a VM screenshot, use hard_restart to reset QEMU '
+                                  'even while an old guest receipt is pending. Check the confirmed new boot and guest readiness in the result.')
+        tools['control_project_vm'] = control
+        restart = deepcopy(tools['restart_project_vm'])
+        restart['inputSchema']['properties']['hardReset'] = {'type':'boolean','enum':[True]}
+        tools['restart_project_vm'] = restart
+        capture = deepcopy(tools['capture_vm'])
+        capture['description'] += (' If guest control is lost, use scope=vm without a jobId to read the QEMU screen even while '
+                                   'an earlier job awaits recovery. Inspect the screen for a crash before using hard_restart.')
+        tools['capture_vm'] = capture
     if result_ids is not None:
         if type(result_ids) is not int or result_ids != 1:
             raise ValueError('The original result ID contract is unavailable.')
@@ -266,7 +284,8 @@ def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None,result_id
 
 def operation(name,value,scope='project'):
     selected = scope.get('toolCatalog', {}) if isinstance(scope,dict) else {}
-    action=tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions'))[name].get('dispatch')
+    action=tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions'),
+                            vm_recovery=selected.get('vmRecovery'))[name].get('dispatch')
     if not action: return name,value
     entry=action[value['action']]
     return entry['tool'],{**{key:v for key,v in value.items() if key!='action'},**entry.get('set',{})}
@@ -291,7 +310,8 @@ def validate_arguments(name,value,scope='project'):
         except Fault as error:raise ValueError('arguments.expectedSha256: '+str(error)) from None
     selected = scope.get('toolCatalog',{}) if isinstance(scope,dict) else {}
     definition = tool_definitions(tool_scope(scope),file_writes=selected.get('fileWritePreconditions'),
-                                  run_timeout=selected.get('runTestTimeoutSeconds'),result_ids=selected.get('resultIds')).get(name)
+                                  run_timeout=selected.get('runTestTimeoutSeconds'),result_ids=selected.get('resultIds'),
+                                  vm_recovery=selected.get('vmRecovery')).get(name)
     if definition is None:raise ValueError('This tool is unavailable for this workspace kind.')
     root = definition['inputSchema']
     actions = selected.get('actions',{}).get('studio_'+name)

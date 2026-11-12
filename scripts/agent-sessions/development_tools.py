@@ -185,7 +185,8 @@ class DevelopmentTools:
             if name in ('build_project', 'deploy_project', 'run_project', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command'):
                 if name in ('start_project_vm','stop_project_vm','restart_project_vm'):
                     capabilities = await self.capabilities()
-                    if capabilities.get('features', {}).get('vmStart' if name=='start_project_vm' else 'vmLifecycle') != 1:
+                    feature = 'vmHardRestart' if value.get('hardReset') is True else 'vmStart' if name=='start_project_vm' else 'vmLifecycle'
+                    if capabilities.get('features', {}).get(feature) != 1:
                         raise DevelopmentFault('VM start support requires development host maintenance.', 503)
                 if name == 'run_vm_command':
                     capability = await self.capabilities()
@@ -199,6 +200,7 @@ class DevelopmentTools:
                 try: revision = store.project['revision']
                 finally: store.close()
                 body = {'requestId': request_id, 'projectRevision': revision, 'settingsRevision': settings['revision']}
+                if name=='restart_project_vm' and value.get('hardReset') is True: body['hardReset'] = True
                 operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start', 'stop_project_vm':'vm_stop','restart_project_vm':'vm_restart', 'run_vm_command': 'ssh'}[name]
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']
@@ -368,8 +370,11 @@ class DevelopmentTools:
         ready=job['state']=='completed' and (job.get('vmStart') or {}).get('ready') is True
         if name=='stop_project_vm':ready=job['state']=='completed' and lifecycle.get('stopped',{}).get('confirmed') is True
         elif name=='restart_project_vm':
-            ready=bool(ready and lifecycle.get('stopped',{}).get('confirmed') and lifecycle.get('newBootId')
-                and lifecycle['newBootId']!=lifecycle.get('original',{}).get('bootId'))
+            changed = lifecycle.get('newBootId') and lifecycle['newBootId'] != lifecycle.get('original',{}).get('bootId')
+            if job.get('hardReset'):
+                ready = job['state']=='completed' and bool(changed and lifecycle.get('reset',{}).get('confirmed'))
+            else:
+                ready = bool(ready and changed and lifecycle.get('stopped',{}).get('confirmed'))
         if not ready and result['success']:
             result.update(success=False, error='interrupted' if job['state'] == 'interrupted' else 'failed')
         return result

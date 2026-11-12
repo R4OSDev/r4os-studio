@@ -9,7 +9,7 @@ import { projectsDirectory } from '../projects/store.js';
 interface UnitProof { state: string; mainPid: string; controlPid: string; invocationId: string; cgroup: string }
 interface ProcessProof { pid: number; birth: string }
 export interface LifecycleProof {
-  kind: 'vm_stop' | 'vm_restart'; phase: string; accessRevision?: number; shutdownIntentAt?: string;
+  kind: 'vm_stop' | 'vm_restart'; phase: string; accessRevision?: number; shutdownIntentAt?: string; hardReset?: boolean;
   original?: { unit: UnitProof; process: ProcessProof; bootId: string };
   stopped?: { confirmed: boolean };
 }
@@ -55,17 +55,21 @@ export async function lifecycleInfo(manager: VmManager, id: string, proof: Lifec
     && (!proof.shutdownIntentAt || !!sync?.lastSyncedAt && Date.parse(sync.lastSyncedAt) >= Date.parse(proof.shutdownIntentAt));
   return { vm, unit: observed, process, fullyStopped, exportComplete, originalProcessAlive };
 }
-export async function lifecycleEffect(manager: VmManager, id: string, proof: LifecycleProof, action: 'shutdown' | 'start') {
+export async function lifecycleEffect(manager: VmManager, id: string, proof: LifecycleProof, action: 'shutdown' | 'start' | 'restart') {
   const info = await lifecycleInfo(manager, id, proof), original = proof.original;
   if (!original) throw new VmError('The original lifecycle run has no bound VM generation.');
-  if (action === 'shutdown') {
-    if (proof.phase !== 'shutdown_intent' || info.vm.state !== 'running' || info.unit.controlPid !== '0'
+  if (action === 'shutdown' || action === 'restart') {
+    const hard = action === 'restart';
+    const effect = hard ? 'hard restart' : 'shutdown';
+    if ((hard && (proof.kind !== 'vm_restart' || proof.hardReset !== true))
+      || proof.phase !== (hard ? 'reset_intent' : 'shutdown_intent')
+      || !(info.vm.state === 'running' || (hard && info.vm.state === 'paused')) || info.unit.controlPid !== '0'
       || info.unit.invocationId !== original.unit.invocationId || info.process?.pid !== original.process.pid || info.process?.birth !== original.process.birth)
-      throw new VmError('The VM changed before the original shutdown. No power action was sent.');
+      throw new VmError(`The VM changed before the original ${effect}. No power action was sent.`);
     const boot = JSON.parse(await readFile(join(projectsDirectory(), '.studio/development/Boots', id + '.json'), 'utf8'));
     if (!boot.connected || boot.vmId !== id || boot.vmRevision !== (info.vm.revision ?? info.vm.imageSha256)
       || boot.bootId !== original.bootId || boot.invocationId !== original.unit.invocationId)
-      throw new VmError('The original VM boot changed before shutdown.');
+      throw new VmError(`The original VM boot changed before ${effect}.`);
   } else if (proof.kind !== 'vm_restart' || proof.phase !== 'restart_intent' || !proof.stopped?.confirmed
     || !info.fullyStopped || !info.exportComplete || info.originalProcessAlive
     || info.unit.invocationId && info.unit.invocationId !== original.unit.invocationId)

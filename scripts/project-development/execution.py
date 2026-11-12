@@ -127,9 +127,10 @@ class Execution:
             result = read(self.store, self.job['id'], previous['evidenceId'], mode='preview') if operation == 'capture' else previous
             return state, result
         guard(self.store, self.job, lease)
-        # Refresh and consume output once before another observation/action.
-        state = await control.call('poll'); self.output(state); state['outputBase64'] = ''
-        self.last = state
+        if not capture_scope:
+            # VM-scope diagnosis reads QEMU even when guest control is lost.
+            state = await control.call('poll'); self.output(state); state['outputBase64'] = ''
+            self.last = state
         job = self.store.get(self.job['id'])
         try:
             if operation == 'window':

@@ -100,7 +100,8 @@ def bind_catalog(store, sid, config):
         if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
         actions={name:items for name,items in selected.get('actions',{}).items() if name in names}
         options = dict(names=names,version=version,presentation=mode,actions=actions,
-                       requirements=selected.get('argumentRequirements'),file_writes=file_writes,run_timeout=run_timeout,result_ids=result_ids)
+                       requirements=selected.get('argumentRequirements'),file_writes=file_writes,run_timeout=run_timeout,
+                       result_ids=result_ids,vm_recovery=selected.get('vmRecovery'))
         catalog = snapshot(prior,root=root,**options)
         if root != ROOT and config['engine'] == engine(tool_scope(config),config['engine'].get('api')):
             # A new admission can use the current runtime when the archived

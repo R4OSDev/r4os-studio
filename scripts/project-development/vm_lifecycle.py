@@ -1,18 +1,32 @@
-"""Assigned-VM graceful stop/restart; original effects are never replayed."""
+"""Assigned-VM lifecycle jobs with durable original power receipts."""
 import asyncio
 from contextlib import closing
 from types import SimpleNamespace
 
-from contracts import DevelopmentFault,UnconfirmedGuestEffect,LIMITS
+from contracts import DevelopmentFault,UnconfirmedGuestEffect,LIMITS,identity
 from jobs import Jobs,folder,now
 from layout import save
 
 KINDS=('vm_stop','vm_restart')
+RESET_CONFIRM_SECONDS = 20
+
+
+def validate_reset_input(store, request):
+    from project_maintenance import pending_git
+    if set(request) != {'requestId','projectRevision','settingsRevision','hardReset'} or request['hardReset'] is not True:
+        raise DevelopmentFault('Use the explicit hard restart action.',400)
+    identity(request['requestId'])
+    if (type(request['projectRevision']) is not int or request['projectRevision'] != store.project['revision']
+            or type(request['settingsRevision']) is not int or request['settingsRevision'] != store.settings()['revision']):
+        raise DevelopmentFault('Project or Run & Test settings changed. Reload before starting.')
+    if pending_git(store.projects, store.id):
+        raise DevelopmentFault('Reconcile the original Git pull before another development job.')
+
 
 def binding_fields(job):
     return {'schema':1,'jobId':job['id'],'vmId':job['binding']['id'],'vmRevision':job['binding']['revision'],
         'imageId':job['binding']['imageId'],'imageSha256':job['binding']['imageSha256'],'projectRevision':job['projectRevision'],
-        'sessionId':job['sessionId'],'agentRunId':job['agentRunId']}
+        'sessionId':job['sessionId'],'agentRunId':job['agentRunId'],**({'hardReset':True} if job.get('hardReset') else {})}
 
 
 def validate_lease(projects,lease,cleanup=False,*,check_vm_metadata=True):
@@ -38,8 +52,9 @@ def validate_lease(projects,lease,cleanup=False,*,check_vm_metadata=True):
         from update_state import idle
         idle(projects,lease['vmId'])
         from quarantine import path
-        if path(projects,lease['vmId']).exists():raise DevelopmentFault('Resolve the original unconfirmed guest effect before a VM power action.')
-        value=job.get('vmLifecycle') or {'phase':'preparing'}
+        if not job.get('hardReset') and path(projects,lease['vmId']).exists():
+            raise DevelopmentFault('Resolve the original unconfirmed guest effect before a VM power action.')
+        value=job.get('vmLifecycle') or {'phase':'preparing',**({'hardReset':True} if job.get('hardReset') else {})}
         if kind=='vm_restart' and 'accessRevision' in value:
             from access import Access,transport_profile
             transport_profile();record=Access(projects,scope['r4os'],None).record(lease['vmId'])
@@ -62,13 +77,15 @@ async def bind(host,request,peer_pid):
         job=store.get(request['jobId']);authorize_job(store,job)
         if job['kind'] not in KINDS or job.get('vmLifecycle'):raise DevelopmentFault('Read the original lifecycle job; it was not rebound.')
         vm=vm_config(store.r4os,lease['vmId']);info=await vm_call(SimpleNamespace(id=request['leaseId'],token=request['token']),'lifecycle_info')
-        if info['vm']['state']!='running':raise DevelopmentFault('The assigned VM is no longer running. Use Start for a stopped VM.')
+        hard = job.get('hardReset') is True
+        if info['vm']['state'] not in (('running','paused') if hard else ('running',)):
+            raise DevelopmentFault('The assigned VM is no longer running. Use Start for a stopped VM.')
         if not info['process'] or not info['unit']['invocationId'] or info['unit']['controlPid']!='0':
             raise DevelopmentFault('The original VM process or transition worker is unconfirmed. No power action was sent.')
-        boot=await host.boots.ensure(vm,info['unit']['invocationId'])
+        boot=await host.boots.ensure(vm,info['unit']['invocationId'],allow_paused=True) if hard else await host.boots.ensure(vm,info['unit']['invocationId'])
         value={**binding_fields(job),'kind':job['kind'],'phase':'bound','boundAt':now(),
             'original':{'unit':info['unit'],'process':info['process'],'bootId':boot['bootId']}}
-        if job['kind']=='vm_restart':
+        if job['kind']=='vm_restart' and not hard:
             transport_profile();access=host.access.public(vm['id'])
             if not access['available']:raise DevelopmentFault(access['reason'])
             value['accessRevision']=access['revision']
@@ -88,9 +105,6 @@ class VmLifecycle:
 
     async def run(self):
         from queue_lease import reserve
-        from vm_worker import guard,broker_call
-        from vm_client import vm_call
-        from quarantine import path
         store,job=self.store,self.job;vm=job['binding']
         scope={'kind':'job','projectId':store.id,'projectRevision':job['projectRevision'],'jobId':job['id'],
             'vmRevision':vm['revision'],'imageId':vm['imageId'],'imageSha256':vm['imageSha256'],
@@ -108,6 +122,7 @@ class VmLifecycle:
         from quarantine import path
         store,job=self.store,self.job;vm=job['binding']
         guard(store,job,lease)
+        if job.get('hardReset'): return await self.hard_reset(lease)
         if path(store.projects,vm['id']).exists():raise DevelopmentFault('Resolve the original unconfirmed guest effect before controlling this VM.')
         info=await vm_call(lease,'lifecycle_info')
         if info['fullyStopped']:
@@ -145,31 +160,97 @@ class VmLifecycle:
         from vm_start import VmStart
         return await VmStart(store,store.get(job['id'])).run_reserved(lease,scope)
 
+    async def hard_reset(self, lease):
+        from vm_worker import guard, broker_call
+        from vm_client import vm_call
+        store, job = self.store, self.job
+        intent = self.work / 'reset-intent.json'
+        if intent.exists():
+            raise UnconfirmedGuestEffect('This original VM reset already has an intent. Inspect its result.')
+        await broker_call({'operation':'bind_vm_lifecycle','projectId':store.id,'jobId':job['id'],
+                           'leaseId':lease.id,'token':lease.token})
+        guard(store,job,lease)
+        value = self.record('reset_intent', resetIntentAt=now())
+        save(intent,value)
+        acknowledged = False
+        try:
+            await vm_call(lease, 'restart')
+            acknowledged = True
+        except DevelopmentFault as error:
+            if error.code < 500:
+                self.record('reset_refused')
+                raise
+        self.record('waiting_for_reset', resetAcknowledged=acknowledged)
+        deadline = asyncio.get_running_loop().time()+RESET_CONFIRM_SECONDS
+        while asyncio.get_running_loop().time() < deadline:
+            guard(store,job,lease)
+            proof = reset_proof(store, job, value, acknowledged)
+            if proof:
+                receipt = self.record('reset_confirmed', reset=proof, newBootId=proof['bootId'])
+                save(self.work/'reset.json',receipt)
+                return store.update(job['id'],'completed',phase='reset_confirmed',exitCode=0,error=None,
+                    readiness={'state':'not-run','reason':'New VM boot confirmed. Guest SSH readiness has not been checked.'})
+            await asyncio.sleep(.25)
+        raise UnconfirmedGuestEffect('A new boot could not be confirmed after the original hard reset. Inspect its saved receipt.')
+
+
+def reset_proof(store, job, lifecycle, acknowledged):
+    from boot import saved_boot
+    vm = job['binding']; original = lifecycle['original']
+    boot = saved_boot(store.projects,vm['id']) or {}
+    proof = boot.get('hostReset') or {}
+    if proof.get('previousBootId') != original['bootId']: proof = boot.get('transition') or {}
+    if (not boot.get('connected') or proof.get('kind') != 'qmp_reset' or proof.get('guest') is True
+            or (not acknowledged and proof.get('guest') is not False)
+            or boot.get('invocationId') != original['unit']['invocationId']
+            or any(boot.get(k) != vm[source] for k,source in (('vmRevision','revision'),('imageId','imageId'),('imageSha256','imageSha256')))
+            or proof.get('previousBootId') != original['bootId'] or proof.get('bootId') == original['bootId']
+            or proof.get('resetAt',proof.get('observedAt','')) < lifecycle['resetIntentAt']): return
+    return {**proof,'confirmed':True,'commandAcknowledged':acknowledged}
+
 
 def interrupted_effect(store,job):
     value=store.get(job['id']).get('vmLifecycle') or {}
     # An interrupted, confirmed stop before start remains an honest stopped
     # receipt. Pending power phases remain unknown and are never resumed.
-    return value.get('phase') in ('shutdown_intent','waiting_for_shutdown','restart_intent') and not (
+    return value.get('phase') in ('shutdown_intent','waiting_for_shutdown','restart_intent','reset_intent','waiting_for_reset') and not (
         value.get('phase')=='waiting_for_shutdown' and (value.get('stopped') or {}).get('confirmed'))
 
 
 def quarantine_unknown(store,job,message):
-    from quarantine import path,claim
+    from quarantine import path,claim,resolve_after_boot
     target=job['binding']['id']
     marker=path(store.projects,target)
     if marker.exists() or marker.is_symlink():return
-    claim(store.projects,target,{'jobId':job['id'],'projectId':store.id,'kind':job['kind'],
-        'vmRevision':job['binding']['revision'],'reason':message,
-        'phase':(store.get(job['id']).get('vmLifecycle') or {}).get('phase')})
+    lifecycle = store.get(job['id']).get('vmLifecycle') or {}
+    original = lifecycle.get('original')
+    value = {'jobId':job['id'],'projectId':store.id,'kind':job['kind'],
+        'vmRevision':job['binding']['revision'],'reason':message,'phase':lifecycle.get('phase')}
+    if original:
+        value['target'] = {key:lifecycle[key] for key in ('vmId','vmRevision','imageId','imageSha256')}
+        value['target']['bootId'] = original['bootId']
+        value['effectStartedAt'] = lifecycle.get('resetIntentAt') or lifecycle.get('shutdownIntentAt')
+    claim(store.projects,target,value)
+    from boot import saved_boot
+    boot = saved_boot(store.projects,target)
+    if boot: resolve_after_boot(store.projects,boot)
 
 
 def recovered(store,job):
     from recovery import read,receipt
     work=store.root/'VmLifecycleWork'/job['id']
-    path=work/('ready.json' if job['kind']=='vm_restart' else 'stopped.json')
+    path=work/('reset.json' if job.get('hardReset') else 'ready.json' if job['kind']=='vm_restart' else 'stopped.json')
     if not path.exists():return None
     proof=read(path)
+    if job.get('hardReset'):
+        reset = proof.get('reset') or {}
+        if (any(proof.get(k)!=v for k,v in binding_fields(job).items()) or reset.get('confirmed') is not True
+                or reset.get('kind')!='qmp_reset' or reset.get('bootId')!=proof.get('newBootId')
+                or reset.get('previousBootId')!=proof.get('original',{}).get('bootId')
+                or reset.get('bootId')==reset.get('previousBootId')):
+            raise DevelopmentFault('The original hard reset receipt has no confirmed new boot.')
+        return store.recovered(job['id'],'completed',receipt('original-vm-hard-reset',historical=True,jobId=job['id']),
+            vmLifecycle=proof,exitCode=0,error=None)
     if any(proof.get(k)!=v for k,v in binding_fields(job).items()) or not proof.get('stopped',{}).get('confirmed'):
         raise DevelopmentFault('The original lifecycle receipt has another owner or target. Existing files were preserved.')
     extra={}

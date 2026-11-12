@@ -44,6 +44,8 @@ def summary(job,page=None):
     if job.get('vmLifecycle'):
         lifecycle=job['vmLifecycle'];small['vmLifecycle']=pick(lifecycle,('kind','phase','noop','shutdownDispatched','newBootId','readyAt','qemuEnded'))
         if lifecycle.get('stopped'):small['vmLifecycle']['stopped']=pick(lifecycle['stopped'],('confirmed','observedAt'))
+        if lifecycle.get('reset'):
+            small['vmLifecycle']['reset']=pick(lifecycle['reset'],('confirmed','previousBootId','bootId','observedAt','commandAcknowledged'))
     if job.get('checkCompletion'):small['checkCompletion']=pick(job['checkCompletion'],('requestId','reason','state','cancelled','closed','completedAt'))
     if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed'))
     if job.get('target'):small['target']=pick(job['target'],('vmId','bootId'))

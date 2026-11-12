@@ -249,3 +249,7 @@ Trigger normal Claude compaction at an accepted instruction change and continue 
 ## 0.12.64
 
 Archive original VM PNG screenshots on the host and deliver pixel-identical lossless WebP within the transfer limit.
+
+## 0.12.65
+
+Capture VM crash diagnostics through recovery locks and authorize one hard reset with a confirmed boot transition.
