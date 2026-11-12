@@ -191,8 +191,9 @@ class Execution:
             else:
                 frame = read(self.store, job['id'], value['frameId'])['metadata']
                 from frame_binding import current
-                if not current(frame, job, state, focused=True):
-                    raise DevelopmentFault('The image is older than 30 seconds or its process, window geometry or focus changed. Capture the owned window again before input.')
+                maximum_age = LIMITS['guiInputFrameAgeSeconds']
+                if not current(frame, job, state, maximum_age=maximum_age, focused=True):
+                    raise DevelopmentFault(f'The image is older than {maximum_age} seconds or its process, window geometry or focus changed. Capture the owned window again before input.')
                 if deployment.get('helperCapabilities', {}).get('guiFrameBindingVersion') == 1 and frame.get('captureObservation', {}).get('version') == 1:
                     request.update(frameBindingVersion=1, expectedWindowId=state['windowId'],
                         expectedWindowWidth=state['windowWidth'], expectedWindowHeight=state['windowHeight'])

@@ -100,7 +100,7 @@ def argument_requirements(tools, scope, root, version, file_writes=None, run_tim
     """Show broker-required variants in the flat declaration used by adapters."""
     if version is None:
         return tools
-    if type(version) is not int or version != 1:
+    if type(version) is not int or version not in (1,2):
         raise ValueError('The original tool argument requirements are unavailable.')
     definitions = tool_definitions(scope, root, file_writes, run_timeout, result_ids)
     decorated = []
@@ -139,6 +139,9 @@ def argument_requirements(tools, scope, root, version, file_writes=None, run_tim
             tool = {**tool, 'description': tool['description'] +
                     ' For text provide text. For guiText provide frameId and text. For key provide frameId and key. '
                     'For click provide frameId, x and y. For gesture or keyPlan provide frameId and steps.'}
+            if version == 2:
+                age = development_limits(root)['guiInputFrameAgeSeconds']
+                tool['description'] += f' For GUI input use a focused frame captured within the last {age} seconds.'
         decorated.append(tool)
     return decorated
 
@@ -196,8 +199,12 @@ def automatic_file_writes(config):
 
 
 @lru_cache(maxsize=16)
+def development_limits(root=ROOT):
+    return json.loads((root/'shared/development-host.json').read_text())['limits']
+
+
 def execution_timeout(root=ROOT):
-    return json.loads((root/'shared/development-host.json').read_text())['limits']['executionTimeoutSeconds']
+    return development_limits(root)['executionTimeoutSeconds']
 
 
 @lru_cache(maxsize=32)

@@ -71,7 +71,7 @@ def goal_selection(store,sid):
     mode = roadmap_presentation(session, ROOT)
     run_timeout = execution_timeout() if tool_scope(session)=='project' else None
     return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,
-            requirements=1,file_writes=1,run_timeout=run_timeout,
+            requirements=2,file_writes=1,run_timeout=run_timeout,
             result_ids=1 if session.get('engine',{}).get('kind')=='studio' else None)}
 
 
@@ -220,7 +220,7 @@ def freeze(store,sid,config,*,images):
             if available:
                 names.append(full);actions[full]=available
         elif permitted(name): names.append(full)
-    requirements = saved.get('argumentRequirements') if saved else 1
+    requirements = saved.get('argumentRequirements') if saved else 2
     config['toolCatalog']=snapshot(config,root=root,names=names,version=2,presentation=mode,actions=actions,
                                   requirements=requirements,file_writes=file_writes,run_timeout=run_timeout,result_ids=result_ids)
 

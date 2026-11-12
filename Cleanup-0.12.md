@@ -237,3 +237,7 @@ Use normal Studio compaction for Claude at the existing threshold, continue with
 ## 0.12.61
 
 Read archived tool results and original images with a short result ID bound to the saved hashes and session.
+
+## 0.12.62
+
+Allow GUI input with the same focused VM frame for up to 300 seconds while preserving live window and process binding.
