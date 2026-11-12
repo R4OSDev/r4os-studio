@@ -150,8 +150,10 @@ class Messages:
                 if block['type'] != 'thinking' or not isinstance(delta.get('signature'), str): raise ModelFault()
                 block['signature'] = block.get('signature', '') + delta['signature']
             elif delta.get('type') == 'input_json_delta':
-                if block['type'] != 'tool_use' or not isinstance(delta.get('partial_json'), str): raise ModelFault()
-                self.fragments[index] = self.fragments.get(index, '') + delta['partial_json']
+                fragment = delta.get('partial_json')
+                if block['type'] != 'tool_use' or not isinstance(fragment, str): raise ModelFault()
+                if not fragment: return []
+                self.fragments[index] = self.fragments.get(index, '') + fragment
                 if len(self.fragments[index].encode('utf-8', 'surrogatepass')) > 131072: raise ModelFault('model_invalid_tool_arguments')
             elif delta.get('type') == 'citations_delta':
                 block.setdefault('citations', []).append(delta.get('citation'))

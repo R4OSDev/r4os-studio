@@ -50,7 +50,10 @@ class RequestCapture(CaptureFixture,unittest.IsolatedAsyncioTestCase):
             if '/messages' in head.splitlines()[0]:
                 events=[{'type':'message_start','message':{'id':'own','model':'own-model','role':'assistant','content':[],
                     'usage':{'input_tokens':10,'cache_read_input_tokens':2,'cache_creation_input_tokens':3}}},
-                    {'type':'message_delta','delta':{'stop_reason':'end_turn'},'usage':{'output_tokens':0}}, {'type':'message_stop'}]
+                    {'type':'content_block_start','index':0,'content_block':{'type':'tool_use','id':'own-call','name':'own_tool','input':{}}},
+                    {'type':'content_block_delta','index':0,'delta':{'type':'input_json_delta','partial_json':''}},
+                    {'type':'content_block_stop','index':0},
+                    {'type':'message_delta','delta':{'stop_reason':'tool_use'},'usage':{'output_tokens':0}}, {'type':'message_stop'}]
                 payload=''.join('data: '+dumps(v)+'\n\n' for v in events)
             elif '/chat/completions' in head.splitlines()[0]:
                 payload='data: '+dumps({'id':'own','model':'own-model','choices':[{'index':0,'delta':{'content':'OK'},'finish_reason':'stop'}],
@@ -75,6 +78,8 @@ class RequestCapture(CaptureFixture,unittest.IsolatedAsyncioTestCase):
                 {'type':'image','reference':'own-image'},{'type':'document','reference':'own-document'}]}]
             result=await model.response(messages,'Own system instructions',[{'name':'own_tool','description':'Own schema',
                 'inputSchema':{'type':'object','properties':{'value':{'type':'integer'}}}}],'none')
+            if protocol=='messages':
+                self.assertEqual(result['content'][0],{'type':'tool_call','callId':'own-call','name':'own_tool','arguments':{}})
             self.operations.finish(rid,result=result,attempted=True)
             self.assertEqual(body(self.store,self.sid,rid),received[-1])
             row=self.store.db.execute('SELECT sha256,metadata FROM studio_requests WHERE request_id=?',(rid,)).fetchone()

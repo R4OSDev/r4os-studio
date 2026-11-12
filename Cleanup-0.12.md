@@ -213,3 +213,7 @@ Calibrate append-only context estimates with confirmed provider input and a loca
 ## 0.12.55
 
 Expose action-specific required arguments in direct and native tool declarations. Derive variants from broker rules and preserve signed Claude catalogs on continuation.
+
+## 0.12.56
+
+Accept argument-free tool calls in Messages streams by skipping empty JSON fragments. Preserve complete-message validation and all nonempty fragments.
