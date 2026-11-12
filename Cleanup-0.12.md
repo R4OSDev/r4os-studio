@@ -225,3 +225,7 @@ Use the latest returned file version for workspace writes and patches. New catal
 ## 0.12.58
 
 Use 600 seconds as the standard and maximum Run & Test limit across the UI, agent tools, host, and guest. Deployments report the supported limit, and accepted jobs keep their saved timeout.
+
+## 0.12.59
+
+Keep fully evidenced workspace patch failures portable after a model change when Studio supplied the original file hashes.

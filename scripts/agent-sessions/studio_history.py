@@ -20,8 +20,8 @@ def recoveries(store, sid, messages):
                 if (message.get('origin', {}).get('toolReceiptId') != bound
                         or part['result'].get('studioReceiptId') != bound):
                     continue
-                row = store.db.execute("""SELECT t.run_id,t.call_id,t.tool,t.state,
-                    t.arguments_hash,substr(t.result,1,262145) AS result,substr(t.intent,1,131073) AS intent,
+                row = store.db.execute("""SELECT t.run_id,t.call_id,t.tool,t.state,t.rowid AS receipt_rowid,
+                    t.arguments_hash,substr(t.result,1,262145) AS result,substr(t.intent,1,524289) AS intent,
                     r.state AS run_state,r.busy AS run_busy,substr(r.worker,1,32769) AS worker,
                     substr(c.content,1,1048577) AS content,substr(c.origin,1,8193) AS origin
                     FROM tools t JOIN runs r ON r.id=t.run_id
@@ -36,7 +36,7 @@ def recoveries(store, sid, messages):
                         or encode(part['result']) != encode({**json.loads(row['result']), 'studioReceiptId': bound})):
                     continue
                 from patch_observations import confirmed
-                observation=confirmed(row)
+                observation=confirmed(row,store.db)
                 if observation:
                     result[(message['runId'], part['callId'])]={**observation,
                         'sessionId':sid,'runId':message['runId'],'recordId':message['id'],
