@@ -3,6 +3,7 @@ import base64
 import json
 import socket
 import stat
+import uuid
 
 from api_provider_store import ApiProviders, private, name
 from session_store import identity, encode, now
@@ -10,6 +11,14 @@ from store import ProjectFault
 
 KIND='codex-subscription'
 BASE='https://chatgpt.com/backend-api/codex'
+
+
+def prompt_cache_key(store, sid, provider, account):
+    # Account generation changes on replacement. Credential refresh and model
+    # settings edits within the same conversation do not change the key.
+    scope = encode(['r4os-studio-codex-cache', store.owner_type, store.owner_id,
+                    provider['id'], provider['baseUrl'], account['generation']])
+    return str(uuid.uuid5(uuid.UUID(sid), scope))
 
 
 def binding(value):

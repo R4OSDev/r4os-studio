@@ -12,6 +12,7 @@ PROTOCOL=1
 KEEP_RESULTS=8
 MIN_LATER_RESPONSES=2
 LARGE_OUTPUT=4096
+RESULT_READS = {'studio_read_result', 'studio_read_context_result', 'studio_read_skill_result'}
 
 
 def digest(value):return hashlib.sha256(encoded(value).encode()).hexdigest()
@@ -86,12 +87,58 @@ def load(worker,ref):
     return record,part,dict(tool)
 
 
+def previous_results(worker, records, binding):
+    """Use the last confirmed input to carry a prior worker's presentation."""
+    from history_receipts import original_input
+    from portable_history import foreign_selection
+
+    latest = next((row for row in reversed(records) if row.get('role') == 'assistant'
+                   and row.get('origin', {}).get('studioRequestId')), None)
+    if latest is None or foreign_selection(latest['origin'].get('selection', {}), binding):
+        return {}
+    body = original_input(worker.store, worker.session_id, latest)
+    if not body:
+        return {}
+
+    results = {}
+    def remember(call_id, content):
+        if not isinstance(call_id, str):
+            return
+        results[call_id] = None
+        if not isinstance(content, str) or '"contextArchive":' not in content:
+            return
+        try:
+            value = json.loads(content)
+        except (ValueError, RecursionError):
+            return
+        if isinstance(value, dict) and isinstance(value.get('contextArchive'), dict) and isinstance(value.get('output'), str):
+            results[call_id] = {'output': value['output'], 'contextArchive': value['contextArchive']}
+
+    for message in body.get('input', body.get('messages', [])):
+        if not isinstance(message, dict):
+            continue
+        if message.get('type') == 'function_call_output':
+            remember(message.get('call_id'), message.get('output'))
+        elif message.get('role') == 'tool':
+            remember(message.get('tool_call_id'), message.get('content'))
+        elif message.get('role') == 'user' and isinstance(message.get('content'), list):
+            for part in message['content']:
+                if isinstance(part, dict) and part.get('type') == 'tool_result':
+                    content = part.get('content')
+                    if isinstance(content, list):
+                        content = next((item.get('text') for item in content if isinstance(item, dict) and item.get('type') == 'text'), None)
+                    remember(part.get('tool_use_id'), content)
+    return results
+
+
 class Projection:
     def __init__(self,worker):
         from collections import OrderedDict
         from context_media import Screenshots
         self.w=worker;self.key=None;self.value=None;self.source=None;self.cache=OrderedDict();self.bytes=0
         self.screenshots=Screenshots(worker)
+        self.previous = None
+        self.provenance = None
 
     def project(self,active,records,checkpoint):
         w=self.w
@@ -104,35 +151,41 @@ class Projection:
         from signed_history import latest, protected_route
         policy=w.config.get('contextPolicy')
         explicit_media=optimized(policy,1)
+        stable=optimized(policy,11)
+        self.provenance = {'checkpointSequence': (checkpoint or {}).get('sequence'),
+                           'retiredScreenshotSequences': []} if stable else None
         binding={**w.config.get('apiProvider',{}),'model':w.config.get('model')}
         if explicit_media and (protected_route(binding) or latest(active,binding)):
             return active,records,checkpoint
-        responses=[m.get('sequence',0) for m in active if m.get('role')=='assistant' and m.get('origin',{}).get('providerResponseId')]
+        if stable and self.previous is None:
+            self.previous = previous_results(w, records, binding)
         from checkpoint_records import references
         retained={ref['sequence'] for ref in references(checkpoint)}
-        tools=[m.get('sequence',0) for m in active if m.get('role')=='tool']
-        recent=responses[-KEEP_RESULTS] if len(responses)>=KEEP_RESULTS else 0
-        human=max((m.get('sequence',0) for m in active if m.get('role')=='user' and m.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation')),default=0)
-        protected={s for s in tools[-KEEP_RESULTS:] if s>=max(recent,human)};cutoff=responses[-MIN_LATER_RESPONSES] if len(responses)>=MIN_LATER_RESPONSES else 0
+        if not stable:
+            responses=[m.get('sequence',0) for m in active if m.get('role')=='assistant' and m.get('origin',{}).get('providerResponseId')]
+            tools=[m.get('sequence',0) for m in active if m.get('role')=='tool']
+            recent=responses[-KEEP_RESULTS] if len(responses)>=KEEP_RESULTS else 0
+            human=max((m.get('sequence',0) for m in active if m.get('role')=='user' and m.get('origin',{}).get('kind') not in ('goalContinuation','quotaContinuation')),default=0)
+            protected={s for s in tools[-KEEP_RESULTS:] if s>=max(recent,human)};cutoff=responses[-MIN_LATER_RESPONSES] if len(responses)>=MIN_LATER_RESPONSES else 0
         retired=self.screenshots.retired(active,retained) if explicit_media else set()
+        if stable:
+            self.provenance['retiredScreenshotSequences'] = sorted(retired)
         result=[]
         for record in active:
-            # Latest results, native/signed assistant blocks and exact human
-            # instructions stay intact. Only confirmed, consumed tool rows vary.
             seq=record.get('sequence',0)
-            historical=seq<cutoff and seq not in protected and seq not in retained
-            if record.get('role')!='tool' or not (historical or seq in retired):
+            preview_text = seq not in retained and (stable or seq < cutoff and seq not in protected)
+            if record.get('role')!='tool' or not (preview_text or seq in retired):
                 result.append(record);continue
             original=record.get('content',[]);parts=[];projected=False
             remove_pixels=seq in retired if explicit_media else True
             saved=self.cache.get(record.get('sequence'))
-            if saved and saved[0] is original and saved[3]==(historical,remove_pixels):
+            if saved and saved[0] is original and saved[3]==(preview_text,remove_pixels):
                 self.cache.move_to_end(record['sequence']);result.append(saved[1]);continue
             result_indices=[i for i,p in enumerate(original) if p.get('type')=='tool_result']
             if len(result_indices)!=1:result.append(record);continue
             index=result_indices[0];part=original[index];value=part['result']
             images=[p for p in original if p.get('type')=='image'] if remove_pixels else []
-            output=value.get('output');large=historical and isinstance(output,str) and len(output.encode())>LARGE_OUTPUT
+            output=value.get('output');large=preview_text and isinstance(output,str) and len(output.encode())>LARGE_OUTPUT
             if not (large or images) or not settled(value):result.append(record);continue
             try:
                 ref=reference(w,record,index);_,_,tool=load(w,ref)
@@ -141,22 +194,45 @@ class Projection:
                 except (ValueError,TypeError):confirmed=False
                 if not confirmed:result.append(record);continue
             except ProjectFault:result.append(record);continue
+            previous = None
+            if stable:
+                if part['callId'] in self.previous:
+                    prior = self.previous[part['callId']]
+                    if prior is not None and prior['contextArchive'].get('reference') == ref:
+                        previous = prior
+                    # A previously transmitted result stays full unless its
+                    # original request proves a preview was sent.
+                    large = large and previous is not None and previous['output'] != output
+                elif tool['tool'] in RESULT_READS:
+                    large = False
+                if not (large or images):
+                    result.append(record);continue
             for offset,p in enumerate(original):
                 if remove_pixels and p['type']=='image':continue
                 if offset!=index:parts.append(p);continue
                 small=dict(value)
                 if large:
-                    from terminal import bounded_text
-                    preview,_=bounded_text(output,512)
-                    small['output']=encode({'kind':'historical_tool_preview','tool':tool['tool'],'originalOutputBytes':len(output.encode()),'textPreview':preview,
-                        'truncated':True,'notice':'This is a short historical preview, not the complete original. Read the exact original before relying on omitted details.'})
+                    if previous is not None:
+                        small['output'] = previous['output']
+                    else:
+                        from terminal import bounded_text
+                        preview,_=bounded_text(output,2048 if stable else 512)
+                        small['output']=encode({'kind':'tool_result_preview' if stable else 'historical_tool_preview',
+                            'tool':tool['tool'],'originalOutputBytes':len(output.encode()),'textPreview':preview,
+                            'truncated':True,'notice':('Read the retained original for the complete tool output.' if stable else
+                                'This is a short historical preview, not the complete original. Read the exact original before relying on omitted details.')})
                 if images and explicit_media:
                     small['imageDelivery']='reference-only'
                 from tool_catalog import result_readback
-                small['contextArchive']={'reference':ref,'historical':True,'tool':tool['tool'],'imageCount':len(images),
+                small['contextArchive']={'reference':ref,'historical':not stable or bool(images),'tool':tool['tool'],'imageCount':len(images),
                     'read':result_readback(w.config,'context'),
                     **({'readImage':result_readback(w.config,'image')} if images else {}),
-                    'notice':'Use the reference and read fields to retrieve the saved result or image. This is a historical observation.'}
+                    'notice':('Use the reference and read fields to retrieve the saved result or image.' if stable else
+                        'Use the reference and read fields to retrieve the saved result or image. This is a historical observation.')}
+                if previous is not None:
+                    prior = previous['contextArchive']
+                    if all(prior.get(key) == small['contextArchive'].get(key) for key in ('read','readImage','imageCount')):
+                        small['contextArchive'] = prior
                 parts.append({**p,'result':small});projected=True
             value={**record,'content':parts} if projected else record
             result.append(value)
@@ -165,7 +241,7 @@ class Projection:
                 if seq in self.cache:self.bytes-=self.cache.pop(seq)[2]
                 while self.cache and (self.bytes+size>8*1024*1024 or len(self.cache)>=1024):
                     _,(_,_,amount,_)=self.cache.popitem(last=False);self.bytes-=amount
-                self.cache[seq]=(original,value,size,(historical,remove_pixels));self.bytes+=size
+                self.cache[seq]=(original,value,size,(preview_text,remove_pixels));self.bytes+=size
         self.key=key;self.value=result;self.source=active;return result,records,checkpoint
 
 

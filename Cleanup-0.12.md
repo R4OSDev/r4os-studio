@@ -201,3 +201,7 @@ Merge Remote Job actions, keep exact original evidence, and send concise SFTP an
 ## 0.12.52
 
 Select update tooling per session and original recovery phase. Merge VM checks and recovery actions and retain original update evidence.
+
+## 0.12.53
+
+Keep the Codex prompt-cache key and the conversation prefix stable. Freeze tool previews when first sent and carry original result references across continuation. Include the installed project admission fix.

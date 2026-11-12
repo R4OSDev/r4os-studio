@@ -37,7 +37,7 @@ def schema(db):
         session_id TEXT PRIMARY KEY REFERENCES sessions(id),dropped INTEGER NOT NULL DEFAULT 0)''')
 
 
-def capture(store, operation, raw, binding, policy, estimate=None,blocked=None):
+def capture(store, operation, raw, binding, policy, estimate=None,blocked=None, *, projection=None):
     data = raw.encode('utf-8')
     if not 0 < len(data) <= MAX_BODY:
         raise ProjectFault('The complete model request could not be recorded. No request was sent.', 503)
@@ -54,6 +54,7 @@ def capture(store, operation, raw, binding, policy, estimate=None,blocked=None):
         'model':binding['model'],'protocol':binding['protocol'],'bytes':len(data),
         'facts':facts,'contextPolicy':policy,'dispatchAt':None,'responseAt':None,'httpStatus':None}
     if operation.get('summaryBudget'):metadata['summaryBudget']=operation['summaryBudget']
+    if projection is not None:metadata['contextProjection']=projection
     if blocked is not None:metadata['blocked']={'code':blocked.code,'reason':str(blocked)}
     from request_breakdown import analyze
     metadata['context']=analyze(raw,facts,policy,estimate,binding=binding)

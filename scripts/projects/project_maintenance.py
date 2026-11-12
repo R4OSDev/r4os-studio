@@ -8,6 +8,8 @@ from store import ProjectFault, public
 from project_use import project_id
 from layout import project_directory
 
+UPDATE_TERMINAL_PHASES = ('installed', 'live_installed', 'aborted', 'rolled_back', 'rejected')
+
 
 def database(path):
     if path.resolve(strict=True) != path or not stat.S_ISREG(path.lstat().st_mode):
@@ -27,17 +29,25 @@ def project(projects, identity):
         return public(row, db)
 
 
+def read_update_record(path):
+    try:
+        info = path.lstat()
+        if path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 2097152:
+            raise ValueError()
+        value = json.loads(path.read_text())
+        if not isinstance(value, dict) or value.get('schema') != 1:
+            raise ValueError()
+        return value
+    except (OSError, ValueError):
+        raise ProjectFault('Update ownership needs maintenance. Existing project data was preserved.', 503) from None
+
+
 def pending_update(projects,identity):
     root=Path(projects)/'.studio/development/UpdateOwners'
     if not root.exists():return False
     for path in root.glob('*.json'):
-        try:
-            info=path.lstat()
-            if path.resolve(strict=True)!=path or not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_size>2097152:raise ValueError()
-            value=json.loads(path.read_text())
-            if not isinstance(value,dict) or value.get('schema')!=1:raise ValueError()
-        except (OSError,ValueError):raise ProjectFault('Update ownership needs maintenance. Existing project data was preserved.',503) from None
-        if value.get('projectId')==identity and value.get('phase') not in ('installed','live_installed','aborted','rolled_back','rejected'):
+        value = read_update_record(path)
+        if value.get('projectId') == identity and value.get('phase') not in UPDATE_TERMINAL_PHASES:
             return True
     return False
 

@@ -96,12 +96,12 @@ class Operations:
         if purpose=='summary' and summary_budget is not None:data['summaryBudget']=summary_budget
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
 
-    def observe(self,model,rid):
+    def observe(self,model,rid, *, projection=None):
         """One observer contract for main, summary, vision and image requests."""
         from request_capture import capture,transport
-        model.capture_observer=lambda raw,binding,policy,estimate:capture(self.store,self.row(rid)[1],raw,binding,policy,estimate)
+        model.capture_observer=lambda raw,binding,policy,estimate:capture(self.store,self.row(rid)[1],raw,binding,policy,estimate,projection=projection)
         def blocked(raw,binding,policy,estimate,error):
-            capture(self.store,self.row(rid)[1],raw,binding,policy,estimate,blocked=error)
+            capture(self.store,self.row(rid)[1],raw,binding,policy,estimate,blocked=error,projection=projection)
             model.blocked_request_id=rid
         model.blocked_observer=blocked
         model.request_observer=lambda stage,status=None:transport(self.store,rid,stage,status)

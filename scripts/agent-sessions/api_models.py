@@ -116,7 +116,7 @@ def freeze(store,sid,data,providers,snapshot,original=None):
             raise ProjectFault('The original queued API selection changed. Its input was preserved.',409)
         # The reserved full-config hash is checked again at admission. Retain
         # accepted facts and credentials rather than reading a new catalog.
-        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiPlanGrant','apiClaudeGrant','apiNativeAccount','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
+        for key in ('apiProvider','apiModel','apiChat','apiZaiClient','apiPlanGrant','apiClaudeGrant','apiNativeAccount','promptCacheKey','apiRunId','nativeGoalPreparation','studioGoalPreparation'):
             if key in original:snapshot[key]=copy.deepcopy(original[key])
         return
     if (not selected or selected['providerId']!=provider['id'] or selected['baseUrl']!=provider['baseUrl']
@@ -164,8 +164,10 @@ def freeze_studio(store, sid, data, providers, snapshot, provider):
         from claude_plan import ClaudePlan
         snapshot['apiClaudeGrant']=ClaudePlan(providers).frozen(provider)
     if provider['kind']=='codex-subscription':
-        from native_openai import frozen
-        snapshot['apiNativeAccount']=frozen(providers,provider)
+        from native_openai import frozen, prompt_cache_key
+        account = frozen(providers, provider)
+        snapshot['apiNativeAccount'] = account
+        snapshot['promptCacheKey'] = prompt_cache_key(store, sid, provider, account)
     snapshot['apiRunId'] = future_run_id(store,sid,data['requestId'])
     snapshot['nativeGoalPreparation'] = False
     snapshot['studioGoalPreparation'] = data.get('liveGoalPreparation') == 1

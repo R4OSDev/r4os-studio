@@ -86,6 +86,7 @@ def detail(store,sid,rid):
         result['summaryBudget']=meta['summaryBudget']
         result['usage']['output']=counts['output']
     result['policy']=meta['contextPolicy']
+    if 'contextProjection' in meta:result['contextProjection']=meta['contextProjection']
     blocked=result['status']=='blocked-before-send'
     condition=BLOCKED if blocked else SENT
     ordering='seq' if blocked else 'dispatch_at'

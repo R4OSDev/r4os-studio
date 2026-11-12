@@ -177,10 +177,16 @@ class SSE:
 
 
 class ModelTransport:
-    def __init__(self, binding, model, credential=None, headers=None, chat_policy=None, client=None):
+    def __init__(self, binding, model, credential=None, headers=None, chat_policy=None, client=None, *, prompt_cache_key=None):
         self.binding = {**binding, 'model': model}
         self.credential = credential
         self.headers = headers or {}
+        if prompt_cache_key is not None:
+            from native_openai import BASE, KIND
+            if (binding.get('kind'), binding.get('baseUrl'), binding.get('protocol')) != (KIND, BASE, 'responses'):
+                raise ModelFault('model_cache_binding_invalid', not_dispatched=True)
+            self.headers = {**self.headers, 'session-id': prompt_cache_key}
+        self.prompt_cache_key = prompt_cache_key
         self.chat_policy = chat_policy or {}
         self.client = client
         self.child = None
@@ -284,6 +290,8 @@ class ModelTransport:
             from context_policy import optimized
             body = request(self.binding, messages, instructions, tools, effort,
                            local_compaction=optimized(self.context_policy,6))
+            if self.prompt_cache_key is not None:
+                body['prompt_cache_key'] = self.prompt_cache_key
         elif self.binding['protocol'] == 'chat-completions':
             from model_chat import request
             body, headers = request(self.binding, messages, instructions, tools, effort, self.chat_policy, self.client)

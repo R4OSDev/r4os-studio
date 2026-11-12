@@ -197,7 +197,8 @@ class StudioWorker(Worker):
             chat_policy = {**chat_policy, 'selectedEffort': summary['effort']}
         model=ModelTransport({**self.config['apiProvider'], **self.config.get('apiModel', {}),
             **self.config.get('apiModel', {}).get('messages', {})}, self.config['model'], self.credential,
-            headers=getattr(self,'model_headers',None), chat_policy=chat_policy, client=self.config.get('apiZaiClient'))
+            headers=getattr(self,'model_headers',None), chat_policy=chat_policy, client=self.config.get('apiZaiClient'),
+            prompt_cache_key=self.config.get('promptCacheKey'))
         model.media_resolver=self.media.resolve
         model.context_policy=self.config.get('contextPolicy')
         model.summary_budget=summary
@@ -264,7 +265,7 @@ class StudioWorker(Worker):
         self.turn_requested = True
         request_id = str(uuid.uuid4())
         self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'),summary_budget=summary)
-        self.operations.observe(self.model,request_id)
+        self.operations.observe(self.model,request_id,projection=self.context_results.provenance if not summary else None)
         execution = self.goal_worker.execution if self.goal_worker.active else None
         self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,summary['effort'] if summary else self.config['effort'],
             on_text=on_text,expected_sha256=expected_sha256))

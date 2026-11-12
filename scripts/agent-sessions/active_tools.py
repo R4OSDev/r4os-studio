@@ -82,8 +82,9 @@ def remote_jobs(store,sid):
 
 
 def update_recovery_options(store, sid, project_id):
-    from contracts import DevelopmentFault, identity
-    from update_state import TERMINAL, read_file
+    from project_maintenance import UPDATE_TERMINAL_PHASES, read_update_record
+    from session_store import identity
+    from store import ProjectFault
 
     options = set()
     project = store.workspace.parent
@@ -108,8 +109,8 @@ def update_recovery_options(store, sid, project_id):
         return options
     try:
         owner_path = project.parent / '.studio/development/UpdateOwners' / (identity(vm) + '.json')
-        owner = read_file(owner_path) if owner_path.is_file() else None
-    except DevelopmentFault:
+        owner = read_update_record(owner_path) if owner_path.is_file() else None
+    except ProjectFault:
         return options
     if not owner or any(owner.get(key) != value for key, value in
                        (('projectId', project_id), ('sessionId', sid), ('vmId', vm))):
@@ -121,7 +122,7 @@ def update_recovery_options(store, sid, project_id):
         options.update(('read_update_package', 'commit_update', 'abort_update', 'resume_update'))
     elif phase == 'cleanup_unconfirmed':
         options.update(('read_update_package', 'cleanup_update_transport'))
-    elif phase in TERMINAL:
+    elif phase in UPDATE_TERMINAL_PHASES:
         if phase != 'rejected' and not owner.get('cleanupConfirmed'):
             options.update(('read_update_package', 'cleanup_update_transport'))
         if phase in ('installed', 'live_installed', 'rolled_back') and not owner.get('proof'):

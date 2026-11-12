@@ -158,7 +158,8 @@ class StudioContext(Context):
                 'owner':{'type':w.store.owner_type,'id':w.store.owner_id},'selection':{'providerId':w.config['providerId']}}
             try:estimate=model.input_estimate(body)
             except ModelFault:estimate=None
-            capture(w.store,operation,raw,model.binding,w.config['contextPolicy'],estimate,blocked=error)
+            capture(w.store,operation,raw,model.binding,w.config['contextPolicy'],estimate,blocked=error,
+                    projection=w.context_results.provenance if optimized(w.config['contextPolicy'],11) else None)
             model.blocked_request_id=rid
         except ProjectFault:
             # Keep the original context rejection if optional recording cannot
