@@ -281,3 +281,7 @@ Keep the managed REA runtime reusable after native Python analysis by disabling 
 ## 0.12.72
 
 Remove the cumulative 96 MiB limit from local session history and native session imports. Existing conversation records, checkpoints, and import fingerprints keep their original format.
+
+## 0.12.73
+
+Exclude .cache directories before inventory and copying in the shared build snapshot, using the same rule as .zig-cache. Build inputs retain local source edits and assets.

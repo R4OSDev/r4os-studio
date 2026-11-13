@@ -9,7 +9,7 @@ from contracts import DevelopmentFault, LIMITS, hash_value, relative
 from jobs import folder
 from layout import save, sync
 
-EXCLUDED = {'.git', '.zig-cache', 'zig-out', 'zig-pkg', 'target', 'build', '.R4OSRust', 'node_modules'}
+EXCLUDED = {'.git', '.cache', '.zig-cache', 'zig-out', 'zig-pkg', 'target', 'build', '.R4OSRust', 'node_modules'}
 
 
 def signature(info): return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_mode)
