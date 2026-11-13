@@ -35,18 +35,16 @@ export function NewProvider({ api, created, setLeaveGuard }: { api: ProviderApi;
   }
 
   return <div className="provider-card">
-    <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><div><h2>Connect an AI provider</h2><p>Choose an account subscription or an API connection.</p></div></div>
+    <div className="provider-card-heading"><span className="provider-brand"><Icon name="box" /></span><h2>Connect an AI provider</h2></div>
     <div className="provider-form"><label htmlFor="provider-type">Provider</label>
       <select id="provider-type" value={type} disabled={busy} onChange={event => { if (!guard.current || guard.current()) setType(event.target.value as typeof type); }}><option value="openai">OpenAI · ChatGPT subscription</option><option value="claude-subscription">Claude · Pro / Max · Native conversations</option>{Object.entries(apiKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {type === 'openai' ? <form onSubmit={(event) => void submit(event)} className="provider-form">
-      <p className="field-help">Connect your ChatGPT subscription through OpenAI. Sign in entirely in your browser; native account access stays on the Studio host. Model access and usage limits use this same connection.</p>
       <label htmlFor="provider-name">Display name</label>
       <input id="provider-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoComplete="off" disabled={busy} />
-      <p className="field-help">This name appears in the Views column.</p>
       {error && <p className="provider-alert" role="alert">{error}</p>}
       <div className="provider-actions"><button className="button-primary" type="submit" disabled={busy || api.loading || !!api.error || !name.trim()}>{busy ? 'Adding provider…' : 'Add OpenAI provider'}</button></div>
     </form> : type === 'claude-subscription' ? <NewClaudeProvider api={api} created={created} /> : type === 'claude-plan' ? <ClaudePlan api={api} saved={created} /> : type === 'chatgpt-plan' ? <ChatGPTPlan api={api} saved={created} /> : <ApiConnectionForm key={type} api={api} kind={type} saved={created} setLeaveGuard={value => { guard.current = value; setLeaveGuard?.(value); }} />}
-    <div className="provider-hint"><Icon name="system" /><p>{type === 'openai' ? 'Manage the connection here. OpenAI handles your sign-in in a separate browser tab.' : type === 'claude-plan' ? 'One browser sign-in stays on the Studio host. Studio owns the conversation, tools and context.' : type === 'claude-subscription' ? 'Sign in to your own Claude plan with the native client. Credentials stay in its private provider directory.' : type === 'chatgpt-plan' ? 'Your own registration stays on the Studio host. Check the selected account’s model catalog explicitly after sign-in.' : 'API keys stay on the Studio host. Add model metadata after saving the connection.'}</p></div>
+    {type !== 'openai' && <div className="provider-hint"><Icon name="system" /><p>{type === 'claude-plan' ? 'One browser sign-in stays on the Studio host. Studio owns the conversation, tools and context.' : type === 'claude-subscription' ? 'Sign in to your own Claude plan with the native client. Credentials stay in its private provider directory.' : type === 'chatgpt-plan' ? 'Your own registration stays on the Studio host. Check the selected account’s model catalog explicitly after sign-in.' : 'API keys stay on the Studio host. Add model metadata after saving the connection.'}</p></div>}
   </div>;
 }
 

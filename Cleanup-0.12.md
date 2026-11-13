@@ -289,3 +289,7 @@ Exclude .cache directories before inventory and copying in the shared build snap
 ## 0.12.74
 
 Show stored project roadmap creation dates and persist completion dates for main versions and subversions. New text and JSON exports include them. Older versions can recover a date from a matching cleanup workflow or a continuous status receipt history.
+
+## 0.12.75
+
+Remove the four requested introductory and OpenAI hints from New Provider. Keep the provider picker, connection controls, status messages and the other providers’ guidance.
