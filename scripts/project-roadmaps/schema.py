@@ -22,7 +22,7 @@ CREATE TABLE versions (
     status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','complete','discarded')),
     position INTEGER NOT NULL CHECK(position>=0),
     revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>=1),
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT,
     UNIQUE(roadmap_id,major,minor), UNIQUE(roadmap_id,id)
 );
 CREATE TABLE subversions (
@@ -32,7 +32,7 @@ CREATE TABLE subversions (
     status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','complete','discarded')),
     position INTEGER NOT NULL CHECK(position>=0),
     revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>=1),
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT,
     UNIQUE(version_id,patch)
 );
 CREATE TABLE tasks (
@@ -65,3 +65,17 @@ CREATE TABLE workflows (
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 '''
+
+
+def completion_triggers(db, table):
+    # Additive to schema 1 so a pinned older worker can still edit a roadmap.
+    db.execute(f'''CREATE TRIGGER {table}_completion_insert AFTER INSERT ON {table}
+        WHEN NEW.status='complete'
+        BEGIN
+            UPDATE {table} SET completed_at=NEW.updated_at WHERE id=NEW.id;
+        END''')
+    db.execute(f'''CREATE TRIGGER {table}_completion_update AFTER UPDATE OF status ON {table}
+        WHEN NEW.status<>OLD.status
+        BEGIN
+            UPDATE {table} SET completed_at=CASE WHEN NEW.status='complete' THEN NEW.updated_at END WHERE id=NEW.id;
+        END''')

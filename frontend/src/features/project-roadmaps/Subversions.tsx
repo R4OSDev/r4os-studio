@@ -6,6 +6,7 @@ import {ExportJson} from './ExportJson';
 import { mutate } from './api';
 import { itemStatusLabels, versionStatusLabels } from './model';
 import { useRoadmapPage } from './useRoadmapPage';
+import { RoadmapDates } from './RoadmapDates';
 
 export interface EntryEditor {
   title: string; target: RoadmapTarget; initial: NonNullable<RoadmapMutation['input']>; create?: boolean;
@@ -117,6 +118,7 @@ function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }
     {expanded && <div className="roadmap-subversion-body">
       <section className="roadmap-subversion-description" aria-label="Description and notes"><h4>Description</h4>
         <p className="roadmap-item-description" tabIndex={0}>{sub.description || 'No description yet.'}</p>
+        <RoadmapDates entry={sub} />
         <NoteDetails notes={sub.notes} />
       </section>
       {actions.error && <p className="project-error" role="alert">{actions.error}</p>}

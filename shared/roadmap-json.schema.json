@@ -266,6 +266,10 @@
           "type": "string",
           "maxLength": 80
         },
+        "completedAt": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
         "versionId": {
           "type": "string",
           "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"
@@ -352,6 +356,10 @@
         },
         "updatedAt": {
           "type": "string",
+          "maxLength": 80
+        },
+        "completedAt": {
+          "type": ["string", "null"],
           "maxLength": 80
         },
         "number": {

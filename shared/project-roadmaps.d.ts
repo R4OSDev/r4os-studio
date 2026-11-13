@@ -15,6 +15,7 @@ export interface RoadmapItem extends RoadmapEntity {
   order: number;
 }
 export interface RoadmapSubversion extends RoadmapEntity {
+  completedAt?: string | null;
   versionId: string;
   number: string;
   title: string;
@@ -25,6 +26,7 @@ export interface RoadmapSubversion extends RoadmapEntity {
   acceptances: RoadmapItem[];
 }
 export interface RoadmapVersion extends RoadmapEntity {
+  completedAt?: string | null;
   number: string;
   title: string;
   vision: string;

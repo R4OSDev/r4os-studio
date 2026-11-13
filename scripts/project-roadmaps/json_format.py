@@ -1,6 +1,6 @@
 """Portable JSON v1, streamed from one immutable SQLite snapshot."""
 import json
-from model import common,item
+from model import common,item,version_fields
 from reads import root_row
 from storage import RoadmapFault
 from validation import fields,identity,target
@@ -31,13 +31,13 @@ def object_parts(value,children=()):
     yield '}'
 
 def version_parts(db,row):
-    value={**common(row),'number':f'{row["major"]}.{row["minor"]}.X','title':row['title'],'vision':row['vision'],'status':row['status'],'order':row['position']}
+    value={**version_fields(row),'number':f'{row["major"]}.{row["minor"]}.X','title':row['title'],'vision':row['vision'],'status':row['status'],'order':row['position']}
     children=(subversion_parts(db,r) for r in db.execute('SELECT * FROM subversions WHERE version_id=? ORDER BY position,patch,id',(row['id'],)))
     yield from object_parts(value,[('subversions',children)])
 
 def subversion_parts(db,row):
     parent=db.execute('SELECT major,minor FROM versions WHERE id=?',(row['version_id'],)).fetchone()
-    value={**common(row),'versionId':row['version_id'],'number':f'{parent["major"]}.{parent["minor"]}.{row["patch"]}','title':row['title'],'description':row['description'],'status':row['status'],'order':row['position']}
+    value={**version_fields(row),'versionId':row['version_id'],'number':f'{parent["major"]}.{parent["minor"]}.{row["patch"]}','title':row['title'],'description':row['description'],'status':row['status'],'order':row['position']}
     children=[(table,([encoded(item(r))] for r in db.execute('SELECT * FROM '+table+' WHERE subversion_id=? ORDER BY position,id',(row['id'],)))) for table in ('tasks','acceptances')]
     yield from object_parts(value,children)
 

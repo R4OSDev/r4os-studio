@@ -1,7 +1,7 @@
 """Revision-bound, project-bound pages for browser, tools and export traversal."""
 import base64
 import json
-from model import common, item
+from model import common, item, version_fields
 from storage import RoadmapFault
 from validation import fields, integer, target
 
@@ -55,13 +55,13 @@ def entity(db, kind, row, aggregates=None):
         return {**common(row), 'projectId': row['project_id'], 'description': row['description'],
                 'currentVersionId': row['current_version_id'], 'progress': progress(db)}
     if kind == 'version':
-        return {**common(row), 'number': f'{row["major"]}.{row["minor"]}.X',
+        return {**version_fields(row), 'number': f'{row["major"]}.{row["minor"]}.X',
                 'title': row['title'], 'vision': row['vision'], 'status': row['status'], 'order': row['position'],
                 'subversionCount': aggregates['counts'].get(row['id'],0) if aggregates is not None else db.execute('SELECT count(*) FROM subversions WHERE version_id=?', (row['id'],)).fetchone()[0],
                 'progress': aggregates['progress'][row['id']] if aggregates is not None else progress(db, version_id=row['id'])}
     if kind == 'subversion':
         parent = aggregates['parents'][row['version_id']] if aggregates is not None else db.execute('SELECT major,minor FROM versions WHERE id=?', (row['version_id'],)).fetchone()
-        return {**common(row), 'versionId': row['version_id'], 'number': f'{parent["major"]}.{parent["minor"]}.{row["patch"]}',
+        return {**version_fields(row), 'versionId': row['version_id'], 'number': f'{parent["major"]}.{parent["minor"]}.{row["patch"]}',
                 'title': row['title'], 'description': row['description'], 'status': row['status'],
                 'order': row['position'], 'progress': aggregates['progress'][row['id']] if aggregates is not None else progress(db, subversion_id=row['id'])}
     return item(row)

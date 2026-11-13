@@ -10,6 +10,10 @@ def details(row):
             f'Created: {row["created_at"]}\nUpdated: {row["updated_at"]}\n')
 
 
+def completion(row):
+    return f'Completed: {row["completed_at"] or "Unknown"}\n' if row['status'] == 'complete' else ''
+
+
 def block(label, value):
     return f'\n{label}:\n{value}\n\n'
 
@@ -25,6 +29,7 @@ def archive_text(db, version):
     yield block('Roadmap notes', root['notes'])
     yield f'## Version {number} — {version["title"]}\n\n'
     yield details(version)
+    yield completion(version)
     yield f'Status: {VERSION_LABELS[version["status"]]}\n'
     yield block('Vision', version['vision'])
     yield block('Version notes', version['notes'])
@@ -34,6 +39,7 @@ def archive_text(db, version):
         count += 1
         yield f'#### {version["major"]}.{version["minor"]}.{sub["patch"]} — {sub["title"]}\n\n'
         yield details(sub)
+        yield completion(sub)
         yield f'Parent version ID: {sub["version_id"]}\nStatus: {VERSION_LABELS[sub["status"]]}\n'
         yield block('Description', sub['description'])
         yield block('Subversion notes', sub['notes'])

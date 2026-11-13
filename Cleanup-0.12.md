@@ -285,3 +285,7 @@ Remove the cumulative 96 MiB limit from local session history and native session
 ## 0.12.73
 
 Exclude .cache directories before inventory and copying in the shared build snapshot, using the same rule as .zig-cache. Build inputs retain local source edits and assets.
+
+## 0.12.74
+
+Show stored project roadmap creation dates and persist completion dates for main versions and subversions. New text and JSON exports include them. Older versions can recover a date from a matching cleanup workflow or a continuous status receipt history.

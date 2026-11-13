@@ -38,6 +38,9 @@
 .roadmap-progress { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 20px 0 8px; font-size: 12px; }
 .roadmap-progress div { display: grid; gap: 5px; }
 .roadmap-progress dt { color: #b9a8ca; } .roadmap-progress dd { margin: 0; }
+.roadmap-dates { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0; color: #b9a8ca; font-size: 12px; }
+.roadmap-dates > div { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.roadmap-dates dd { margin: 0; color: #e8deef; }
 .roadmap-status { padding: 5px 9px; background: #30213e; border: 1px solid #574066; border-radius: 5px; color: #d4b4ff; font-size: 11px; }
 .roadmap-version-link > span { display: grid; gap: 4px; min-width: 0; }
 .roadmap-version-line { display:flex; align-items:baseline; gap:6px; min-width:0; }

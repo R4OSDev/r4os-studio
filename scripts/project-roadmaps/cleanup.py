@@ -278,7 +278,8 @@ def finalize(db, projects, project_id, args, actor):
         position = db.execute('SELECT coalesce(max(position),-1)+1 FROM versions').fetchone()[0]
         db.execute("INSERT INTO versions(id,roadmap_id,major,minor,title,vision,notes,status,position,created_at,updated_at) VALUES(?,?,?,?,'New','','','open',?,?,?)",
                    (next_id, root['id'], version['major'], next_minor, position, stamp, stamp))
-        db.execute("UPDATE versions SET status='complete',revision=revision+1,updated_at=? WHERE id=?", (stamp, version['id']))
+        db.execute("""UPDATE versions SET status='complete',revision=revision+1,updated_at=?,
+                   completed_at=? WHERE id=?""", (stamp, stamp, version['id']))
         db.execute('UPDATE roadmap SET current_version_id=?,revision=revision+1,updated_at=?', (next_id, stamp))
         payload['finalResult'] = {'phase': 'complete', 'nextVersionId': next_id,
                                   'nextNumber': f'{version["major"]}.{next_minor}.X',
