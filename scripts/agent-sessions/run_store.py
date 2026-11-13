@@ -227,11 +227,17 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
     from claude_selection import freeze as freeze_claude
     freeze_claude(store,session_id,data,provider_dir,snapshot,queue_context=queued_claude)
     if original is None:
-        from active_tools import freeze as freeze_tools
+        from active_tools import ROOT as tool_root, freeze as freeze_tools
         freeze_tools(store,session_id,snapshot,images=generated_history)
         if snapshot['engine'].get('kind')=='studio':
             from signed_history import bind_catalog
             bind_catalog(store,session_id,snapshot)
+        if (snapshot.get('toolCatalog', {}).get('release') in (None, tool_root.name)
+                and any(entry.get('mcp', {}).get('sourceBinding', {}).get('recipe') == 'rea'
+                        for entry in snapshot.get('skillAccess', {}).get('entries', []))):
+            snapshot['reaPaths'] = 1
+    elif original.get('reaPaths') == 1:
+        snapshot['reaPaths'] = 1
     from retry_protocol import freeze as freeze_retry
     freeze_retry(snapshot)
     if original is None:

@@ -43,6 +43,7 @@ class Service:
         self.config,self.launch=config,launch
         self.client=None;self.grant=None;self.lock=asyncio.Lock();self.stopped=asyncio.Event()
         self.connections=set();self.finished=None;self.finish_task=None;self.namespace_permissions=None;self.observation_busy=False
+        self.rea_tools = {}
         self.state=paths(config['projects'],launch,create=True)[3]
         self.controller=dict(pid=os.getpid(),birth=birth(os.getpid()),invocationId=os.environ.get('STUDIO_MCP_INVOCATION',''))
 
@@ -74,6 +75,8 @@ class Service:
             tools=await client.discover()
             if hashlib.sha256(encoded(tools)).hexdigest()!=worker.entry['mcp']['toolsHash']:
                 raise McpFault('The actual session MCP catalogue differs from its frozen contracts.')
+            if worker.config.get('reaPaths') == 1 and worker.entry['mcp']['sourceBinding'].get('recipe') == 'rea':
+                self.rea_tools = {tool['name']: tool for tool in tools}
         except BaseException:
             await self.finish();raise
 
@@ -126,10 +129,16 @@ class Service:
                 timeout=request.get('timeout',120)
                 if type(timeout) not in (int,float) or not 1<=timeout<=3600:raise McpFault('Invalid analysis deadline.')
                 rid=identity(request.get('requestId')) if op in ('call','request') else None
+                if op=='call':
+                    name = request.get('name')
+                    parameters = request.get('arguments')
+                    if self.rea_tools:
+                        from rea_paths import resolve
+                        parameters = resolve(worker, self.state, self.rea_tools.get(name), parameters)
                 if rid:
                     atomic(self.state/'Transport/Calls'/(rid+'.owner.json'),encoded(dict(runId=worker.run_id,
                         serviceId=self.launch['serviceId'],skillId=worker.entry['id'],packageHash=worker.entry['activeHash'])))
-                if op=='call':result=await self.client.call(request.get('name'),request.get('arguments'),request_id=rid,timeout=timeout)
+                if op=='call':result=await self.client.call(name,parameters,request_id=rid,timeout=timeout)
                 elif op=='request':
                     method=request.get('method');parameters=request.get('arguments')
                     required={'prompts/get':'prompts','resources/read':'resources','completion/complete':'completions'}.get(method)
@@ -156,7 +165,8 @@ class Service:
             if len(response)>MAX_REPLY:raise McpFault('The complete analysis response exceeds the service frame limit; its native result remains retained.')
             writer.write(response+b'\n')
         except McpFault as error:
-            writer.write(encoded(dict(error=str(error),requestId=error.request_id,state=error.state))+b'\n')
+            writer.write(encoded(dict(error=str(error),requestId=error.request_id,state=error.state,
+                                      **({'requestNotSent': True} if getattr(error, 'request_not_sent', False) else {})))+b'\n')
         except Exception:
             writer.write(b'{"error":"The original analysis service is unavailable. Observe its original state before another request."}\n')
         finally:

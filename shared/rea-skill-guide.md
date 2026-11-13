@@ -7,9 +7,10 @@ JSON object in `argumentsJson`. The complete native catalogue is available;
 there is no separate model plugin to register. These Studio instructions take
 precedence over the generic setup/connection instructions below.
 
-The server sees the selected project at `/workspace`, permitted attachments at
-`/attachments`, and private analysis files under `/session`. Write requested
-project outputs only where the accepted permissions allow. Use actual native
+For local REA file arguments, Studio resolves project-relative paths and
+`/workspace/...` against the selected workspace. Use `/session/...` for private
+analysis files and a returned `/attachments/...` path for an accepted input.
+Absolute host paths remain valid. Use actual native
 capability results to choose an analysis engine. A listed method does not prove
 that a licensed program, device, target OS or optional provider is available.
 

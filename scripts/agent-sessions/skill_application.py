@@ -178,5 +178,8 @@ def catalog_text(value, paths=None, config=None):
             reader=read['tool']+(' with action=skill' if read.get('action') else '')
             guidance += ' Follow result cursors with '+reader+'.'
         guidance += ' Use the schema and exact argumentsJson in studio_skill_call.'
+        if (config or {}).get('reaPaths') == 1:
+            guidance += (' For local REA file arguments, use project-relative paths or the /workspace/ prefix. '
+                         'Studio resolves /session/... to private analysis files and accepts returned attachment paths.')
     return ('\n\nCURRENT STUDIO GLOBAL SKILLS\n' + guidance + '\n'
             + json.dumps(rows, ensure_ascii=True, separators=(',', ':')))

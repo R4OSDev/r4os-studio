@@ -30,6 +30,8 @@ def scope(config,entry):
     value=dict(schema=1,skillId=identity(entry['id']),packageHash=entry['activeHash'],mcp=entry['mcp'],
                permissions={key:config['permissions'].get(key) is True for key in RIGHTS},
                attachments=config.get('attachmentFileAccess'))
+    if config.get('reaPaths') == 1:
+        value['reaPaths'] = 1
     return hashlib.sha256(encoded(value)).hexdigest()
 
 

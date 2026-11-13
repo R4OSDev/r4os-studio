@@ -26,7 +26,10 @@ class SessionClient:
             raw=await asyncio.wait_for(reader.readline(),parameters.get('timeout',120)+30)
             if not raw.endswith(b'\n'):raise OSError('The original analysis service reply was lost.')
             value=strict(raw)
-            if 'error' in value:raise McpFault(value['error'],value.get('requestId'),value.get('state'))
+            if 'error' in value:
+                error = McpFault(value['error'],value.get('requestId'),value.get('state'))
+                error.request_not_sent = value.get('requestNotSent') is True
+                raise error
             return value['result']
         except McpFault:raise
         except (OSError,ValueError,TimeoutError):

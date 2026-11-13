@@ -222,7 +222,7 @@ class SkillTools:
         except McpFault as error:
             unknown = bool(error.request_id and isinstance(error.state,dict) and not error.state.get('providerEndConfirmed',False))
             return dict(success=False,error='unknown' if unknown else 'skillUnavailable',output=str(error),
-                        **({'requestNotSent':True} if getattr(error,'wrapper_not_sent',False) else {}),
+                        **({'requestNotSent':True} if getattr(error,'wrapper_not_sent',False) or getattr(error,'request_not_sent',False) else {}),
                         **({'partialChangesPossible':True,'skillMcpRequest':error.request_id} if unknown else {}))
         except (OSError,ValueError,KeyError,TypeError):
             return dict(success=False,error='skillUnavailable',output='The frozen skill runtime or original result is unavailable or changed. No alternate skill/runtime was selected.')
