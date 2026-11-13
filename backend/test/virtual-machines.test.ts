@@ -33,12 +33,13 @@ await test('VM administration requires same-origin session/CSRF, preserves VM pi
     const input = { name: 'A', cpus: 2, memoryMiB: 2048 };
     assert.equal((await app.inject({ method: 'POST', url: '/api/vms', payload: input })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/vms', headers: { ...headers, origin: 'https://foreign.example' }, payload: input })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/vms', headers, payload: { ...input, networkEnabled: false } })).statusCode, 409);
+    assert.deepEqual((await app.inject('/api/vms')).json().vms, []);
+    await writeFile(process.env.STUDIO_VM_NETWORK_CAPABILITY!, JSON.stringify({ schema: 1, mode: 'user', device: 'rtl8139' }));
     const created = await app.inject({ method: 'POST', url: '/api/vms', headers, payload: { ...input, networkEnabled: false } });
     assert.equal(created.statusCode, 201); const vm = created.json().vm;
     assert.equal(vm.imageId, '0.10.0-full'); assert.equal(vm.state, 'stopped');
-    assert.equal(vm.networkEnabled, false);
-    assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: true } })).statusCode, 409);
-    await writeFile(process.env.STUDIO_VM_NETWORK_CAPABILITY!, JSON.stringify({ schema: 1, mode: 'user', device: 'rtl8139' }));
+    assert.equal(vm.networkEnabled, true);
     assert.equal((await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: 'false' } })).statusCode, 400);
     const network = await app.inject({ method: 'PATCH', url: `/api/vms/${vm.id}`, headers, payload: { ...input, networkEnabled: true } });
     assert.equal(network.statusCode, 200); assert.equal(network.json().vm.networkEnabled, true);

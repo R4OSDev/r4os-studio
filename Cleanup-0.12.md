@@ -293,3 +293,7 @@ Show stored project roadmap creation dates and persist completion dates for main
 ## 0.12.75
 
 Remove the four requested introductory and OpenAI hints from New Provider. Keep the provider picker, connection controls, status messages and the other providers’ guidance.
+
+## 0.12.76
+
+Center the New VM form and use native CPU and memory sliders with GB readouts. New VMs always use private NAT and DHCP. Existing VM settings remain editable.

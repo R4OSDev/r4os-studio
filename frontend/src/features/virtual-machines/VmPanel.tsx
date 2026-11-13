@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { CSSProperties, FormEvent } from 'react';
 import type { VirtualMachine } from '../../../../shared/virtual-machines.js';
 import type { VmApi } from './useVms';
 import { Icon } from '../../app/Icon';
@@ -11,29 +11,60 @@ import { useVmReset, VmResetDialog } from './VmReset';
 import './styles.css';
 import './exchange.css';
 
+const vmNetworkUnavailable = 'VM network host support is not installed. See the host setup documentation.';
+
+function VmRange({ id, label, value, min, max, step, display, bounds, disabled, change }: {
+  id: string; label: string; value: number; min: number; max: number; step: number;
+  display: (value: number) => string; bounds?: [string, string]; disabled: boolean; change: (value: number) => void;
+}) {
+  const selected = display(value);
+  const [lower, upper] = bounds ?? [display(min), display(max)];
+  return <div className="vm-range">
+    <div className="vm-range-label"><label htmlFor={id}>{label}</label><output htmlFor={id}>{selected}</output></div>
+    <input id={id} type="range" min={min} max={max} step={step} value={value} aria-valuetext={selected}
+      disabled={disabled} style={{ '--range-fill': `${100 * (value - min) / (max - min)}%` } as CSSProperties}
+      onChange={(event) => change(event.target.valueAsNumber)} />
+    <div className="vm-range-bounds" aria-hidden="true"><span>{lower}</span><span>{upper}</span></div>
+  </div>;
+}
+
 function VmForm({ api, vm, select }: { api: VmApi; vm?: VirtualMachine; select: (id: string | null) => void }) {
   const [name, setName] = useState(vm?.name ?? 'R4OS VM');
   const [cpus, setCpus] = useState(vm?.cpus ?? 4), [memory, setMemory] = useState(vm?.memoryMiB ?? 4096);
-  const [networkEnabled, setNetworkEnabled] = useState(vm ? vm.networkEnabled ?? false : true);
+  const [networkEnabled, setNetworkEnabled] = useState(vm?.networkEnabled ?? false);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const stopped = !vm || ['stopped', 'failed'].includes(vm.state);
   const baseImage = api.images.find((image) => image.id === api.defaultImageId);
+  const blocked = busy || !stopped || !name.trim() || !api.available || (!vm && (api.loading || !baseImage || !api.networkAvailable));
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError('');
-    try { const result = await api.request<{ vm: VirtualMachine }>(vm ? `/${vm.id}` : '', vm ? 'PATCH' : 'POST', { name, cpus, memoryMiB: memory, networkEnabled, ...(!vm && baseImage ? { imageId: baseImage.id } : {}) });
+    event.preventDefault();
+    if (blocked) return;
+    setBusy(true); setError('');
+    try { const result = await api.request<{ vm: VirtualMachine }>(vm ? `/${vm.id}` : '', vm ? 'PATCH' : 'POST', {
+      name, cpus, memoryMiB: memory, ...(vm ? { networkEnabled } : { imageId: baseImage?.id }),
+    });
       await api.reload(); select(result.vm.id);
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
-  return <form className="vm-form" onSubmit={(event) => void submit(event)}>
-    <label htmlFor="vm-name">Name</label><input id="vm-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} disabled={busy || !stopped} />
-    <label htmlFor="vm-cpus">Virtual CPUs</label><input id="vm-cpus" type="number" min={1} max={8} value={cpus} onChange={(event) => setCpus(Number(event.target.value))} required disabled={busy || !stopped} />
-    <label htmlFor="vm-memory">Memory (MiB)</label><input id="vm-memory" type="number" min={2048} max={16384} step={256} value={memory} onChange={(event) => setMemory(Number(event.target.value))} required disabled={busy || !stopped} />
-    <label className="vm-network" htmlFor="vm-network"><input id="vm-network" type="checkbox" checked={networkEnabled} onChange={(event) => setNetworkEnabled(event.target.checked)} disabled={busy || !stopped || (!api.networkAvailable && !networkEnabled)} />Network</label>
-    <p className="vm-help">{api.networkAvailable ? 'Enable outbound networking with private NAT and DHCP. Changes apply at the next start.' : 'VM network host support is not installed. See the host setup documentation.'}</p>
-    {!vm && <p className="vm-help">Base image: <strong>{baseImage ? `R4OS ${baseImage.version} Full` : 'No default release selected'}</strong>. New VMs use the selected default release and start powered off.{!baseImage && ' Choose an installed default under Updates → R4OS Releases.'}</p>}
+  const nameField = <><label htmlFor="vm-name">Name</label><input id="vm-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} disabled={busy || !stopped} /></>;
+  return <form className={vm ? 'vm-form' : 'vm-form vm-create-form'} onSubmit={(event) => void submit(event)}>
+    {vm ? <>{nameField}
+      <label htmlFor="vm-cpus">Virtual CPUs</label><input id="vm-cpus" type="number" min={1} max={8} value={cpus} onChange={(event) => setCpus(Number(event.target.value))} required disabled={busy || !stopped} />
+      <label htmlFor="vm-memory">Memory (MiB)</label><input id="vm-memory" type="number" min={2048} max={16384} step={256} value={memory} onChange={(event) => setMemory(Number(event.target.value))} required disabled={busy || !stopped} />
+      <label className="vm-network" htmlFor="vm-network"><input id="vm-network" type="checkbox" checked={networkEnabled} onChange={(event) => setNetworkEnabled(event.target.checked)} disabled={busy || !stopped || (!api.networkAvailable && !networkEnabled)} />Network</label>
+      <p className="vm-help">{api.networkAvailable ? 'Enable outbound networking with private NAT and DHCP. Changes apply at the next start.' : vmNetworkUnavailable}</p>
+    </> : <>
+      <div className="vm-range">{nameField}</div>
+      <VmRange id="vm-cpus" label="Virtual CPUs" value={cpus} min={1} max={8} step={1}
+        display={(value) => value === 1 ? '1 vCPU' : `${value} vCPUs`} bounds={['1', '8']} disabled={busy} change={setCpus} />
+      <VmRange id="vm-memory" label="Memory" value={memory} min={2048} max={16384} step={256}
+        display={(value) => `${value / 1024} GB`} disabled={busy} change={setMemory} />
+      {!api.loading && !api.networkAvailable && <p className="vm-help">{vmNetworkUnavailable}</p>}
+      {!api.loading && !baseImage && <p className="vm-help">Select an installed default release under Updates → R4OS Releases before creating a VM.</p>}
+    </>}
     {!stopped && <p className="vm-help">Stop the VM before changing its settings.</p>}
     {error && <p className="vm-alert" role="alert">{error}</p>}
-    <button className="button-primary" type="submit" disabled={busy || !stopped || !name.trim() || !api.available || (!vm && !baseImage)}>
+    <button className="button-primary" type="submit" disabled={blocked}>
       {busy ? 'Saving…' : vm ? 'Save settings' : 'Create virtual machine'}</button>
   </form>;
 }
@@ -76,8 +107,8 @@ function VmDetails({ api, vm, view, select }: { api: VmApi; vm?: VirtualMachine;
     <div className={`vm-content ${view === 'Console' && vm ? 'vm-content-console' : ''}`}>
     {api.error && <p className="vm-alert" role="alert">{api.error}</p>}
     {!api.loading && !api.available && <p className="vm-alert">VM host support is not installed. See the host setup documentation.</p>}
-    <section className={`vm-card ${view === 'Console' && vm ? 'vm-card-console' : view === 'Exchange' && vm ? 'vm-card-exchange' : ''}`}>
-      {!vm ? <><h2>New virtual machine</h2><p className="vm-help">Create an independent R4OS instance. Multiple VMs can run at the same time.</p><VmForm api={api} select={select} /></> : <>
+    <section className={`vm-card ${!vm ? 'vm-card-create' : view === 'Console' ? 'vm-card-console' : view === 'Exchange' ? 'vm-card-exchange' : ''}`}>
+      {!vm ? <VmForm api={api} select={select} /> : <>
         {confirm && <div className="vm-alert" role="alert"><p>{confirm === 'delete' ? 'Delete this VM, its disks and exchange files? The base image will be kept.' : confirm === 'restart' ? 'Restart this guest immediately? Unsaved guest work may be lost.' : 'Force this VM to stop? Unsaved guest work may be lost.'}</p>
           <button className="button-danger" disabled={busy || resetBlocked} onClick={() => void action(confirm)}>Confirm {confirm}</button><button className="button-secondary" disabled={busy} onClick={() => { setConfirm(''); }}>Cancel</button></div>}
         <VmResetDialog control={reset} vm={vm} />
