@@ -253,3 +253,7 @@ Archive original VM PNG screenshots on the host and deliver pixel-identical loss
 ## 0.12.65
 
 Capture VM crash diagnostics through recovery locks and authorize one hard reset with a confirmed boot transition.
+
+## 0.12.66
+
+Retry early interrupted direct model streams with bounded attempts and compact response evidence.

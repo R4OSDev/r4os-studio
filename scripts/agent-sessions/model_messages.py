@@ -79,6 +79,7 @@ class Messages:
         self.aliases = {'mcp_'+name: name for name in self.names} if binding.get('kind') == 'claude-plan' else {}
         self.started = False; self.done = False; self.blocks = {}; self.stopped = set()
         self.fragments = {}; self.pending = {}; self.stop_reason = None; self.usage = {}; self.origin = {}; self.extensions = []
+        self.output_seen = False
 
     def push(self, raw):
         if raw == '[DONE]':
@@ -102,8 +103,10 @@ class Messages:
             if usage is not None:
                 if not isinstance(usage, dict): raise ModelFault()
                 self.usage.update(usage)
+                self.output_seen = bool(usage.get('output_tokens'))
             return []
         if not self.started: raise ModelFault()
+        self.output_seen = True
         if kind == 'message_delta':
             delta = value.get('delta')
             if not isinstance(delta, dict): raise ModelFault()

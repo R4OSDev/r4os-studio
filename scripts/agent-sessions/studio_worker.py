@@ -296,13 +296,13 @@ class StudioWorker(Worker):
             proof=evidence(self.config,error) or snapshot_evidence(self.config,error,self.manifest['providers'])
             if proof:error.quota_evidence=proof
             self.operations.finish(request_id,error=error,attempted=self.model.attempted and not unsent)
-            if isinstance(error,ModelFault) and error.confirmed_overload:
-                error.retry_operation_id=request_id
             waiting=register(self,request_id,proof) if proof else None
+            retryable = isinstance(error,ModelFault) and (error.confirmed_overload or error.stream_interrupted) and not waiting
+            if retryable: error.retry_operation_id=request_id
             if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
             if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
                 if not unsent and not waiting:
-                    if error.confirmed_overload:error.retry_goal_execution=execution
+                    if retryable:error.retry_goal_execution=execution
                     else:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
             raise
         self.operations.finish(request_id,result=result,attempted=self.model.attempted)

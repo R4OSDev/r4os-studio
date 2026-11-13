@@ -105,12 +105,12 @@ class Operations:
             model.blocked_request_id=rid
         model.blocked_observer=blocked
         model.request_observer=lambda stage,status=None:transport(self.store,rid,stage,status)
-        model.process_observer=lambda stage,child:self.process(rid,stage,child,model.request_sha256)
+        model.process_observer=lambda stage,child:self.process(rid,stage,child,model.request_sha256,model.stream_progress)
         model.event_observer=lambda raw:self.wire(rid,raw)
         model.flush_observer=lambda:self.flush(rid)
         model.flush_delay=lambda:self.flush_delay(rid)
 
-    def process(self,rid,stage,child,request_sha256=None):
+    def process(self,rid,stage,child,request_sha256=None,stream_progress=None):
         row,data=self.row(rid)
         if stage=='started':
             if data.get('process'):raise ProjectFault('This model call already owns a process.',409)
@@ -122,6 +122,7 @@ class Operations:
             if not original or original['pid']!=child.pid or child.returncode is None:
                 raise ProjectFault('The original model process end is unconfirmed.',503)
             data['processEnd']={'confirmed':True,'observedBy':'original-worker-wait','exitCode':child.returncode,'at':now()}
+            if stream_progress is not None: data['stream'] = stream_progress
             self.put(rid,row['phase'],data)
 
     def finish(self,rid,result=None,error=None,attempted=False):
@@ -137,6 +138,7 @@ class Operations:
             data['error']['category']=getattr(error,'category','interrupted')
             data['error']['details']=getattr(error,'details',None)
             data['error']['partial']=getattr(error,'partial',None)
+            if getattr(error,'stream_interrupted',False): data['error']['earlyStreamInterruption'] = True
             proof=getattr(error,'quota_evidence',None)
             if proof and proof.get('kind')=='confirmed-primary-quota' and not data.get('vision') and not data.get('imageGeneration'):
                 data['quotaEvidence']=proof

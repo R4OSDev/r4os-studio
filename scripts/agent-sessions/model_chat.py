@@ -104,6 +104,11 @@ class Chat:
         self.reasoning_pending = {}
         self.usage = None; self.origin = {'providerResponseId': None, 'reportedModel': None, 'reportedBackend': None}
 
+    @property
+    def output_seen(self):
+        return bool(self.text or self.pending_surrogate or self.calls or self.strings or self.blocks
+                    or self.extensions or self.finish is not None or self.usage is not None)
+
     def reasoning_text(self, key, value):
         text, self.reasoning_pending[key] = text_fragment(value, self.reasoning_pending.get(key, ''))
         return text

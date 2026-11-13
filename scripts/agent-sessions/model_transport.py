@@ -14,6 +14,12 @@ from store import ProjectFault
 OVERLOAD_CODES = frozenset(('server_is_overloaded', 'overloaded_error'))
 
 
+def stream_without_output(progress):
+    status = progress.get('httpStatus') if progress else None
+    return (type(status) is int and 200 <= status < 300
+            and progress.get('outputSeen') is False and progress.get('incompleteEvent') is False)
+
+
 class ModelFault(ProjectFault):
     def __init__(self, code='model_protocol_error', http_status=None, *, not_dispatched=False, details=None,
                  confirmed_overload=False):
@@ -25,6 +31,7 @@ class ModelFault(ProjectFault):
         self.code = code
         self.http_status = http_status
         self.not_dispatched=not_dispatched;self.details=details
+        self.stream_interrupted = False
         overload = isinstance(code,str) and code in OVERLOAD_CODES and http_status in (None,503,529)
         self.confirmed_overload = confirmed_overload is True and overload and not not_dispatched
         self.category=('connection' if not_dispatched and http_status is None else 'authentication' if http_status==401 else 'access' if http_status in (403,404)
@@ -144,7 +151,11 @@ class SSE:
     def __init__(self):
         self.decoder = codecs.getincrementaldecoder('utf-8')('strict')
         self.buffer = ''; self.data = []; self.size = 0
-        self.started = False
+        self.started = False; self.event_field = False
+
+    @property
+    def incomplete_event(self):
+        return bool(self.buffer or self.data or self.event_field or self.decoder.getstate()[0])
 
     def push(self, chunk, final=False):
         try:
@@ -169,6 +180,7 @@ class SSE:
             if not line:
                 if self.data:
                     events.append('\n'.join(self.data)); self.data = []; self.size = 0
+                self.event_field = False
             elif line.startswith('data:'):
                 value = line[5:]
                 if value.startswith(' '): value = value[1:]
@@ -176,6 +188,8 @@ class SSE:
                 if self.size > 16 * 1024 * 1024:
                     raise ModelFault('model_stream_limit')
                 self.data.append(value)
+            elif line.startswith('event:'):
+                self.event_field = True
         if len(self.buffer.encode()) > 16 * 1024 * 1024 or final and (self.buffer or self.data):
             raise ModelFault('model_stream_incomplete')
         return events
@@ -197,6 +211,7 @@ class ModelTransport:
         self.child = None
         self.closed_confirmed = True
         self.attempted = False
+        self.stream_progress = None
         self.capture_observer = None
         self.blocked_observer = None
         self.request_observer = None
@@ -336,14 +351,23 @@ class ModelTransport:
                        *, expected_sha256=None):
         if self.child is not None: raise ModelFault('model_request_busy')
         self.attempted = False; self.request_sha256 = None
+        self.stream_progress = None
         body, parser = self.prepare(messages, instructions, tools, effort)
         try:
             await self.send(body, parser, on_text, on_reasoning, expected_sha256=expected_sha256)
-            return parser.result()
+            try: return parser.result()
+            except ModelFault as error:
+                # The HTTP response ended cleanly without a terminal SSE event.
+                if error.code == 'model_stream_incomplete': error.stream_interrupted = True
+                raise
         except ModelFault as error:
             error.partial={'origin':getattr(parser,'origin',None),'usage':getattr(parser,'usage',None)}
+            error.stream_interrupted = (error.stream_interrupted and self.closed_confirmed
+                                        and stream_without_output(self.stream_progress))
+            if error.stream_interrupted:
+                error.args = ('The model stream ended before any response content was received.',)
             if self.credential and self.credential in str(error.code):
-                error.code = 'model_provider_error';error.confirmed_overload = False
+                error.code = 'model_provider_error';error.confirmed_overload = False;error.stream_interrupted = False
             raise
 
     async def send(self, body, parser, on_text=None, on_reasoning=None, *, expected_sha256=None):
@@ -371,6 +395,7 @@ class ModelTransport:
         bootstrap = dumps({'binding': self.binding, 'addresses': addresses, 'key': self.credential,
                            'body': raw_body, 'extraHeaders': self.headers}).encode()
         ended = False; decoder = self.decoder()
+        http_status = None; bytes_received = 0; events_parsed = 0
         try:
             self.child = await asyncio.create_subprocess_exec('/usr/bin/node', str(Path(__file__).with_name('model_http.mjs')),
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -392,6 +417,7 @@ class ModelTransport:
                 frame = loads(raw)
                 if not isinstance(frame, dict): raise ModelFault()
                 if frame.get('type') in ('dispatch','response'):
+                    if frame['type'] == 'response': http_status = frame.get('httpStatus')
                     if self.request_observer:self.request_observer(frame['type'],frame.get('httpStatus'))
                     continue
                 if frame.get('type') == 'error':
@@ -403,6 +429,8 @@ class ModelTransport:
                     error = ModelFault(code, status, not_dispatched=frame.get('notDispatched') is True, details=details,
                         confirmed_overload=status in (503,529) and isinstance(details,dict)
                         and details.get('httpResponseComplete') is True)
+                    error.stream_interrupted = code == 'model_stream_incomplete' or (
+                        code == 'model_connection_error' and isinstance(details,dict) and details.get('connectionCode') == 'ECONNRESET')
                     if (self.binding.get('kind') == 'zai-coding-plan' and frame.get('httpStatus') == 400 and str(code) == '1261'
                             and isinstance(error.details, dict) and error.details.get('httpResponseComplete') is True):
                         error.category='context'
@@ -415,12 +443,15 @@ class ModelTransport:
                 elif frame.get('type') == 'bytes' and not ended:
                     try: chunk = base64.b64decode(frame['value'], validate=True)
                     except (ValueError, TypeError): raise ModelFault() from None
+                    bytes_received += len(chunk)
                     values = decoder.push(chunk)
                 else:
                     raise ModelFault()
                 for value in values:
                     if self.event_observer:self.event_observer(value)
-                    for channel, text in parser.push(value) or []:
+                    updates = parser.push(value)
+                    events_parsed += 1
+                    for channel, text in updates or []:
                         callback = on_text if channel == 'text' else on_reasoning if channel == 'reasoning' else None
                         if callback is not None: await callback(text)
             if await self.child.wait() != 0 or not ended:
@@ -428,6 +459,9 @@ class ModelTransport:
         except (OSError, ValueError, ConnectionError) as error:
             raise ModelFault('model_transport_error') from error
         finally:
+            if isinstance(decoder,SSE):
+                self.stream_progress = {'httpStatus':http_status,'bytesReceived':bytes_received,'eventsParsed':events_parsed,
+                    'outputSeen':getattr(parser,'output_seen',None),'incompleteEvent':decoder.incomplete_event,'httpComplete':ended}
             try:await self.close()
             finally:
                 if self.flush_observer:self.flush_observer()
