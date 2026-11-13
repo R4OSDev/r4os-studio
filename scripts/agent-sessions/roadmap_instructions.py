@@ -24,8 +24,14 @@ def compose(config):
         return ('\n\nSTUDIO ROADMAP AVAILABILITY: Roadmap tools are disabled for this run. '
                 'Do not bypass the frozen setting through files, shell, external URLs or another session.')
     source = Path(__file__).resolve().parents[2] / 'shared/project-roadmap-instructions.txt'
-    guidance='\n\n'+source.read_text(encoding='utf-8')+publication_context(config)
-    if config.get('toolCatalog',{}).get('presentation')=='standard': return guidance
+    text = source.read_text(encoding='utf-8')
+    presentation = config.get('toolCatalog', {}).get('presentation')
+    if presentation == 'standard_initialize':
+        text = text.replace('Enable Roadmap administration for initialization, import, export or cleanup.',
+                            'If the roadmap read returns nextCall, use it to initialize before writing. '
+                            'Enable Roadmap administration for import, export or cleanup.')
+    guidance = '\n\n' + text + publication_context(config)
+    if presentation in ('standard', 'standard_initialize'): return guidance
     return (guidance+'\n\nCURRENT CLEANUP CAPABILITY: Prepare the selected version and verify the complete archive in '
             'Docs/Changelogs/<version>.txt. Update the relevant Docs with permitted file tools. Use prepare again '
             'with a new requestId, the same workflowId, documents and documentationSummary. For each document, '

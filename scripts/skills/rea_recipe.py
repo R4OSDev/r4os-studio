@@ -62,18 +62,18 @@ def run(api,stage,work,label,arguments,network=False,timeout=1200):
 
 
 def inventory(root):
-    files=[]
+    files={}
     for parent,folders,names in os.walk(root,followlinks=False):
         for name in folders+names:
             path=Path(parent)/name;relative=path.relative_to(root).as_posix();runtime_spec.relative(relative)
             if path.is_symlink():
                 if not path.resolve(strict=True).is_relative_to(root) or Path(os.readlink(path)).is_absolute():
                     raise ValueError('A built runtime link leaves its own tree.')
-                files.append(dict(path=relative,link=os.readlink(path)))
+                files[relative] = dict(path=relative,link=os.readlink(path))
             elif path.is_file():
-                files.append(dict(path=relative,sha256=file_hash(path),bytes=path.stat().st_size,executable=bool(path.stat().st_mode&0o111)))
+                files[relative] = dict(path=relative,sha256=file_hash(path),bytes=path.stat().st_size,executable=bool(path.stat().st_mode&0o111))
             elif not path.is_dir():raise ValueError('The built runtime has a special entry.')
-    return sorted(files,key=lambda item:item['path'])
+    return [files[name] for name in sorted(files) if not runtime_spec.generated_sleigh_lock(root, name, files)]
 
 
 async def probe(api,stage,work,expected,job,environment):

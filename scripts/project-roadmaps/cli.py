@@ -30,7 +30,7 @@ def _operation(projects, request,actor=None):
                 fields(request, ['operation', 'projectId'], ['versionId', 'limit', 'cursor'])
                 if 'cursor' in request: raise ProjectFault('No workflow page exists in this project.', 404)
                 return {'items': [], 'nextCursor': None}
-            if name not in ('read', 'overview'):
+            if name not in ('read', 'overview') and not (name == 'current' and actor is not None):
                 raise ProjectFault('Initialize this project roadmap before continuing.', 404)
             return {'exists': False, 'projectId': request['projectId']}
         if name in ('import_preview','import_apply'):

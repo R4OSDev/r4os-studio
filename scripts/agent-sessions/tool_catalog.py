@@ -33,6 +33,18 @@ def catalog(root=ROOT):
     return value
 
 
+def model_schema(tool, presentation):
+    wire = tool.get('modelSchemas', {})
+    if presentation != 'standard_initialize':
+        return wire.get(presentation)
+    schema = wire.get('standard')
+    if schema is not None and tool['name'] == 'studio_update_roadmap':
+        schema = deepcopy(schema)
+        schema['properties']['operation']['enum'].append('initialize')
+        schema['required'] = ['operation', 'requestId']
+    return schema
+
+
 @lru_cache(maxsize=32)
 def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_timeout=None, result_ids=None, vm_recovery=None):
     tools = {}
@@ -41,9 +53,12 @@ def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_ti
             continue
         tool = deepcopy(original)
         tool.pop('dispatch',None);tool.pop('retired',None)
-        wire = tool.pop('modelSchemas', {})
-        if presentation in wire:
-            tool['inputSchema'] = wire[presentation]
+        wire = model_schema(tool, presentation)
+        tool.pop('modelSchemas', None)
+        if wire is not None:
+            tool['inputSchema'] = wire
+        if presentation == 'standard_initialize' and tool['name'] == 'studio_update_roadmap':
+            tool['description'] += ' If the Roadmap does not exist, use initialize with only requestId.'
         if file_writes and original['name'] in ('studio_write_workspace','studio_write_file','studio_apply_patch'):
             schema = tool['inputSchema']
             for variant in schema.get('oneOf', [schema]):
@@ -317,7 +332,7 @@ def validate_arguments(name,value,scope='project'):
     actions = selected.get('actions',{}).get('studio_'+name)
     if actions is not None and isinstance(value,dict) and value.get('action') not in actions:
         raise ValueError('arguments.action: allowed values are '+', '.join(actions)+'.')
-    wire = definition.get('modelSchemas',{}).get(selected.get('presentation'))
+    wire = model_schema(definition, selected.get('presentation'))
     if wire and isinstance(value,dict):
         if name=='send_vm_input' and value.get('kind')=='text' and 'frameId' in value:
             raise ValueError('arguments.kind: use guiText for text bound to a GUI frame.')

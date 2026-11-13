@@ -2,7 +2,6 @@
 from copy import deepcopy
 import hashlib
 import json
-from pathlib import Path
 import unittest
 
 import test_runs as fixtures
@@ -11,9 +10,6 @@ from profile import PROFILE, permission_tools
 from run_store import admit, get_run
 from session_store import encode
 from system_prompt import read, update
-
-
-CONTRACT = Path(__file__).resolve().parents[2] / 'shared/project-roadmap-instructions.txt'
 
 
 class RoadmapInstructions(unittest.TestCase):
@@ -48,7 +44,8 @@ class RoadmapInstructions(unittest.TestCase):
             self.assertIn(config['systemPrompt']['text'], base(config))
             if custom: self.assertIn(config['systemPrompt']['text'], result)
             self.assertIn(config['projectInstructions']['text'], result)
-            self.assertIn('*** STUDIO PROJECT ROADMAP CONTRACT ***\n' + CONTRACT.read_text().split('\n', 1)[1], result)
+            self.assertIn('*** STUDIO PROJECT ROADMAP CONTRACT ***\n', result)
+            self.assertIn('If the roadmap read returns nextCall, use it to initialize before writing.', result)
             self.assertEqual(config, original)
             self.assertEqual(agents.read_bytes(), raw_agents)
             self.assertEqual(read(self.projects), global_source)

@@ -7,6 +7,7 @@ import re
 import stat
 
 MAX_MANIFEST = 32 * 1024 * 1024
+SLEIGH_LOCK = re.compile(r'Programs/Ghidra/Ghidra/Processors/[^/]+/data/languages/[^/]+\.sla\.lock')
 
 
 def read(path, limit=MAX_MANIFEST):
@@ -60,12 +61,26 @@ def load(skills, ident, binding, complete=False, catalog_only=False):
     return root, value, catalog
 
 
+def generated_sleigh_lock(root, name, files):
+    if not SLEIGH_LOCK.fullmatch(name):
+        return False
+    language = files.get(name.removesuffix('.lock'))
+    if language is None or 'link' in language:
+        return False
+    lock = root / name
+    mode = lock.lstat().st_mode
+    if not stat.S_ISREG(mode) or mode & 0o111:
+        return False
+    # Ghidra writes the holder's PID and truncates the file on release.
+    return re.fullmatch(rb'(?:[1-9][0-9]{0,9}\n)?', read(lock, 32)) is not None
+
+
 def verify_files(root, files):
-    expected = set()
+    expected = {}
     for item in files:
         path = root / relative(item['path'])
         if item['path'] in expected: raise ValueError('Duplicate runtime file identity.')
-        expected.add(item['path'])
+        expected[item['path']] = item
         info = path.lstat()
         if 'link' in item:
             if (not stat.S_ISLNK(info.st_mode) or os.readlink(path) != item['link']
@@ -82,4 +97,6 @@ def verify_files(root, files):
         for name in folders + names:
             path = Path(directory) / name
             if path.is_symlink() or not path.is_dir(): actual.add(path.relative_to(root).as_posix())
-    if actual != expected | {'runtime.json'}: raise ValueError('The immutable runtime inventory changed.')
+    required = expected.keys() | {'runtime.json'}
+    if not required <= actual or any(not generated_sleigh_lock(root, name, expected) for name in actual - required):
+        raise ValueError('The immutable runtime inventory changed.')

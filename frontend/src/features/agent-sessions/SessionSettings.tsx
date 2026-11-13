@@ -123,7 +123,7 @@ export function SessionSettings({ session, token, projectId, close, saved, reloa
         </fieldset>{scope === 'project' && <fieldset><legend>Roadmap</legend>
           <label className="agent-permission"><span>Roadmap</span><input type="checkbox" role="switch" aria-label="Roadmap" checked={draft.roadmapEnabled ?? true} onChange={(e) => patch({ roadmapEnabled: e.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
           <label className="agent-permission"><span>Roadmap administration</span><input type="checkbox" role="switch" aria-label="Roadmap administration" disabled={draft.roadmapEnabled === false} checked={draft.roadmapAdministrationEnabled ?? false} onChange={event => patch({ roadmapAdministrationEnabled: event.target.checked })} /><span className="agent-switch" aria-hidden="true" /></label>
-          <p className="agent-terminal-hint">Enable initialization, import, export and archival tools for new runs.</p>
+          <p className="agent-terminal-hint">Enable import, export and archival tools for new runs.</p>
           <p className="agent-terminal-hint">Use this project’s shared roadmap. On by default. Changes apply from the next run. Earlier conversation content stays in its original history.</p>
           <p className="agent-terminal-hint" role="status">{draft.roadmapAccess?.available ? 'Roadmap tools available in this session.' : draft.roadmapAccess?.reason ?? 'Roadmap tools are unavailable through the active host.'}</p>
         </fieldset>}{(scope === 'skill' ? ['Files', 'Terminal', 'Skills', 'Images'] : ['Files', 'Terminal', 'Build', 'VM', 'Updates', 'GitHub', 'Remote Hosts', 'Images']).map((group) => <fieldset key={group}><legend>{group}</legend>

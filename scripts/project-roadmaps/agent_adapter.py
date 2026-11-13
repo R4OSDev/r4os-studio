@@ -9,6 +9,7 @@ from pathlib import Path
 import sqlite3
 import stat
 import sys
+import uuid
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / 'projects'))
 from store import ProjectFault
@@ -98,14 +99,29 @@ def compact(value):
     return result
 
 
-def read(projects, project_id, arguments):
+def read(projects, project_id, arguments, actor=None):
     view = arguments['view']; extra = {k: v for k, v in arguments.items() if k != 'view'}
     common = {'projectId': project_id}
     if view in ('overview', 'current', 'revision'):
         fields(extra, optional=('cursor', 'limit') if view == 'overview' else (),
                context='read_roadmap view=' + view,
                hint='expectedRevision is allowed only for view=text. This view returns the latest revision.')
-        return compact(operation(projects, {'operation': view, **common, **extra}))
+        config = actor['config'] if actor is not None else {}
+        standard_initialize = (config.get('toolCatalog') or {}).get('presentation') == 'standard_initialize'
+        result = operation(projects, {'operation': view, **common, **extra}, actor=actor if standard_initialize else None)
+        if result.get('exists') is False and standard_initialize:
+            from tool_catalog import validate_arguments
+            args = {'operation': 'initialize', 'requestId': str(uuid.uuid4())}
+            names = (config.get('toolCatalog') or {}).get('tools', ('studio_update_roadmap',))
+            if 'studio_update_roadmap' in names:
+                try:
+                    validate_arguments('update_roadmap', args, config)
+                except ValueError:
+                    pass
+                else:
+                    return {**result, 'nextCall': {'tool': 'studio_update_roadmap', 'arguments': args}}
+            return {**result, 'message': 'Open the project Roadmap and choose Initialize roadmap.'}
+        return compact(result)
     if view in ('versions', 'subversions', 'tasks', 'acceptances'):
         return compact(operation(projects, {'operation': 'list', 'collection': view, **common, **extra}))
     if view == 'entry':
@@ -159,7 +175,7 @@ def read(projects, project_id, arguments):
 
 
 def call(projects, project_id, tool, arguments, actor=None):
-    if tool == 'read_roadmap': return read(projects, project_id, arguments)
+    if tool == 'read_roadmap': return read(projects, project_id, arguments, actor)
     if tool == 'cleanup_roadmap':
         from cleanup import call as cleanup_call
         with connection(projects, project_id) as db:
@@ -189,9 +205,9 @@ def main():
     from tool_catalog import validate_arguments
     if request['tool'] not in ('read_roadmap', 'update_roadmap', 'cleanup_roadmap'):
         raise ProjectFault('Unsupported Roadmap tool.', 400)
-    validate_arguments(request['tool'], request['arguments'], 'project')
     bound = {'tool': request['tool'], 'call_id': request['callId'], 'arguments': request['arguments']}
     with authorize(projects, project_id, session_id, run_id, descriptor, release, **bound) as actor:
+        validate_arguments(request['tool'], request['arguments'], actor['config'])
         def check():
             with authorize(projects, project_id, session_id, run_id, descriptor, release, **bound) as fresh:
                 if fresh['config'] != actor['config']:

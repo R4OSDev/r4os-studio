@@ -59,7 +59,10 @@ class Service:
         if self.client:return
         if self.stopped.is_set():raise McpFault('The original analysis service is closing.')
         import skill_runtime
-        root,manifest,_=await asyncio.to_thread(skill_runtime.load,worker,worker.entry,True)
+        try:
+            root,manifest,_=await asyncio.to_thread(skill_runtime.load,worker,worker.entry,True)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise McpFault('The managed analysis runtime failed file verification. Review the active runtime in Skill Manager.') from error
         if self.stopped.is_set():raise McpFault('The original run stopped during runtime verification; no MCP process was started.')
         directory(self.state/'Data')
         atomic(self.state/'Binding.json',encoded(dict(entry=worker.entry,namespaceHash=self.launch['namespaceHash'])))

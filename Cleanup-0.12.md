@@ -257,3 +257,7 @@ Capture VM crash diagnostics through recovery locks and authorize one hard reset
 ## 0.12.66
 
 Retry early interrupted direct model streams with bounded attempts and compact response evidence.
+
+## 0.12.67
+
+Initialize missing project roadmaps in standard sessions and return the next tool call. Include the verified REA fix for Ghidra Sleigh lock files.
