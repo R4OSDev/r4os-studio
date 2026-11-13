@@ -99,6 +99,15 @@ class StudioGoal:
         value=self.current()
         return bool(self.execution and value and value['goalId']==self.goal_id and value['status']=='active' and self.goals.snapshot(self.w.session_id)['phase']=='idle')
 
+    def can_restart_model(self):
+        value = self.current()
+        if not self.active or value is None:
+            return False
+        budget, used = value.get('tokenBudget'), value.get('tokensUsed')
+        remaining = self.remaining_time()
+        return ((budget is None or type(used) is int and used < budget)
+                and (remaining is None or remaining > 0))
+
     async def start(self):
         w=self.w
         w.thread_id=w.store.row(w.session_id)['thread_id'] or w.session_id

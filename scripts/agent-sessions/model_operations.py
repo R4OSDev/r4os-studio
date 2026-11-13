@@ -110,7 +110,7 @@ class Operations:
     def put(self,rid,phase,value):
         with self.store.db:self.store.db.execute('UPDATE studio_model_calls SET phase=?,data=? WHERE request_id=?',(phase,encode(value),rid))
 
-    def begin(self,run_id,rid,child=None,purpose='conversation',summary_budget=None):
+    def begin(self,run_id,rid,child=None,purpose='conversation',summary_budget=None,parser_restart_of=None):
         row=get_run(self.store,run_id);config=json.loads(row['config'])
         if child is not None:
             if child.get('purpose') not in ('vision','image-generation') or child.get('parentRunId') != run_id or child['snapshot']['apiRunId'] != rid: raise ProjectFault('Invalid image operation binding.',409)
@@ -120,6 +120,8 @@ class Operations:
             'selection':{key:config[key] for key in ('providerId','model','effort','apiProvider')},'createdAt':now()}
         if child is not None: data['vision' if child['purpose']=='vision' else 'imageGeneration'] = child
         if purpose=='summary' and summary_budget is not None:data['summaryBudget']=summary_budget
+        if parser_restart_of is not None:
+            data['parserRestartOf'] = parser_restart_of
         with self.store.db:self.store.db.execute('INSERT INTO studio_model_calls VALUES (?,?,?,?)',(run_id,rid,'preparing',encode(data)))
 
     def observe(self,model,rid, *, projection=None):
@@ -165,6 +167,8 @@ class Operations:
             data['error']['details']=getattr(error,'details',None)
             data['error']['partial']=getattr(error,'partial',None)
             if getattr(error,'stream_interrupted',False): data['error']['earlyStreamInterruption'] = True
+            if getattr(error, 'parser_failure', None):
+                data['error']['parser'] = {**error.parser_failure, 'reason': error.reason}
             proof=getattr(error,'quota_evidence',None)
             if proof and proof.get('kind')=='confirmed-primary-quota' and not data.get('vision') and not data.get('imageGeneration'):
                 data['quotaEvidence']=proof

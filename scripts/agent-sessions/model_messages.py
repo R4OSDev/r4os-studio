@@ -1,6 +1,8 @@
 """Direct Messages wire format and signed content; no Claude agent SDK."""
 import re
-from model_transport import ModelFault, dumps, loads, text_fragment, unicode_text
+from model_transport import (
+    ModelFault, ResponseRejected, completed_response_text, dumps, loads, response_json, response_text, tool_arguments, valid_call_id,
+)
 
 
 def request(binding, messages, instructions, tools, effort):
@@ -85,110 +87,135 @@ class Messages:
         if raw == '[DONE]':
             if not self.done: raise ModelFault('model_stream_incomplete')
             return []
-        value = loads(raw)
-        if not isinstance(value, dict): raise ModelFault()
+        value = response_json(raw)
         kind = value.get('type')
         if kind == 'ping': return []
-        if self.done: raise ModelFault()
+        if self.done:
+            raise ResponseRejected('model_event_after_finish', 'Messages sent an event after message_stop.')
         if kind == 'error':
             error = value.get('error', {})
             raise ModelFault(error.get('type', 'model_provider_error') if isinstance(error, dict) else 'model_provider_error')
         if kind == 'message_start':
             message = value.get('message')
             if self.started or not isinstance(message, dict) or message.get('role') != 'assistant' or message.get('content'):
-                raise ModelFault()
+                raise ResponseRejected('model_invalid_message_start', 'Messages sent a duplicate or invalid assistant start event.')
             self.started = True
             self.origin = {'providerResponseId': message.get('id'), 'reportedModel': message.get('model')}
             usage = message.get('usage')
             if usage is not None:
-                if not isinstance(usage, dict): raise ModelFault()
+                if not isinstance(usage, dict):
+                    raise ResponseRejected('model_invalid_usage', 'Messages usage must be an object.', usage_unconfirmed=True)
                 self.usage.update(usage)
                 self.output_seen = bool(usage.get('output_tokens'))
             return []
-        if not self.started: raise ModelFault()
+        if not self.started:
+            raise ResponseRejected('model_invalid_message_start', 'Messages sent content before the assistant start event.')
         self.output_seen = True
         if kind == 'message_delta':
             delta = value.get('delta')
-            if not isinstance(delta, dict): raise ModelFault()
+            if not isinstance(delta, dict):
+                raise ResponseRejected('model_invalid_response_event', 'A Messages delta must be an object.')
             reason = delta.get('stop_reason')
             if reason is not None:
-                if self.stop_reason is not None and self.stop_reason != reason: raise ModelFault()
+                if self.stop_reason is not None and self.stop_reason != reason:
+                    raise ResponseRejected('model_finish_conflict', 'Messages sent conflicting stop reasons.')
                 self.stop_reason = reason
             usage = value.get('usage')
             if usage is not None:
-                if not isinstance(usage, dict): raise ModelFault()
+                if not isinstance(usage, dict):
+                    raise ResponseRejected('model_invalid_usage', 'Messages usage must be an object.', usage_unconfirmed=True)
                 self.usage.update(usage)  # Actual cumulative counters, never a sum.
             return []
         if kind == 'message_stop':
-            if self.stop_reason is None or len(self.stopped) != len(self.blocks): raise ModelFault('model_stream_incomplete')
+            if self.stop_reason is None:
+                raise ResponseRejected('model_finish_unavailable', 'Messages ended without a stop reason.')
+            if len(self.stopped) != len(self.blocks):
+                raise ResponseRejected('model_invalid_content_block', 'Messages ended before closing every content block.')
             self.done = True; return []
         if kind == 'content_block_start':
             index, block = value.get('index'), value.get('content_block')
-            if type(index) is not int or not 0 <= index < 8192 or index in self.blocks or not isinstance(block, dict): raise ModelFault()
-            if block.get('type') not in ('text', 'thinking', 'redacted_thinking', 'tool_use'): raise ModelFault('model_content_unavailable')
+            if type(index) is not int or not 0 <= index < 8192 or index in self.blocks or not isinstance(block, dict):
+                raise ResponseRejected('model_invalid_content_block', 'Messages sent a content block with a duplicate or invalid index or value.')
+            if block.get('type') not in ('text', 'thinking', 'redacted_thinking', 'tool_use'):
+                raise ResponseRejected('model_content_unavailable', 'Messages sent an unsupported content block type.')
             fields = ('text',) if block['type'] == 'text' else ('thinking', 'signature') if block['type'] == 'thinking' else ()
-            if any(not isinstance(block.get(field, ''), str) for field in fields): raise ModelFault()
+            if any(not isinstance(block.get(field, ''), str) for field in fields):
+                raise ResponseRejected('model_invalid_content_block', 'A Messages content block has a non-text field where text is required.')
             self.blocks[index] = dict(block)
             return []
         if kind in ('content_block_delta', 'content_block_stop'):
             index = value.get('index')
-            if type(index) is not int or index not in self.blocks or index in self.stopped: raise ModelFault()
+            if type(index) is not int or index not in self.blocks or index in self.stopped:
+                raise ResponseRejected('model_invalid_content_block', 'A Messages delta or stop event refers to an absent or closed block.')
             block = self.blocks[index]
             if kind == 'content_block_stop':
                 if index in self.fragments:
-                    if block.get('input'): raise ModelFault('model_tool_input_conflict')
-                    block['input'] = loads(unicode_text(self.fragments[index]), allow_identical_duplicates=True)
-                if self.pending.get(index): raise ModelFault('model_stream_invalid')
+                    if block.get('input'):
+                        raise ResponseRejected('model_tool_input_conflict', 'Messages sent both original and streamed input for a tool call.')
+                    block['input'] = tool_arguments(completed_response_text(self.fragments[index]))
+                if self.pending.get(index):
+                    raise ResponseRejected('model_stream_invalid', 'A Messages content block ended with an incomplete Unicode character.')
                 self.stopped.add(index); return []
             delta = value.get('delta')
-            if not isinstance(delta, dict): raise ModelFault()
+            if not isinstance(delta, dict):
+                raise ResponseRejected('model_invalid_response_event', 'A Messages content block delta must be an object.')
             mapping = {'text_delta': ('text', 'text', 'text'), 'thinking_delta': ('thinking', 'thinking', 'reasoning')}
             if delta.get('type') in mapping:
                 expected, field, channel = mapping[delta['type']]
-                if block['type'] != expected: raise ModelFault()
-                text, self.pending[index] = text_fragment(delta.get(field), self.pending.get(index, ''))
+                if block['type'] != expected:
+                    raise ResponseRejected('model_invalid_content_block', 'A Messages delta does not match its content block type.')
+                text, self.pending[index] = response_text(delta.get(field), self.pending.get(index, ''))
                 block[field] = block.get(field, '') + text
                 return [(channel, text)] if text else []
             if delta.get('type') == 'signature_delta':
-                if block['type'] != 'thinking' or not isinstance(delta.get('signature'), str): raise ModelFault()
+                if block['type'] != 'thinking' or not isinstance(delta.get('signature'), str):
+                    raise ResponseRejected('model_invalid_signature', 'Messages sent a signature outside a thinking block or with an invalid type.')
                 block['signature'] = block.get('signature', '') + delta['signature']
             elif delta.get('type') == 'input_json_delta':
                 fragment = delta.get('partial_json')
-                if block['type'] != 'tool_use' or not isinstance(fragment, str): raise ModelFault()
+                if block['type'] != 'tool_use' or not isinstance(fragment, str):
+                    raise ResponseRejected('model_invalid_tool_arguments', 'A Messages tool input fragment has the wrong block or value type.')
                 if not fragment: return []
                 self.fragments[index] = self.fragments.get(index, '') + fragment
-                if len(self.fragments[index].encode('utf-8', 'surrogatepass')) > 131072: raise ModelFault('model_invalid_tool_arguments')
+                if len(self.fragments[index].encode('utf-8', 'surrogatepass')) > 131072:
+                    raise ResponseRejected('model_invalid_tool_arguments', 'Messages tool arguments exceeded the supported size.')
             elif delta.get('type') == 'citations_delta':
                 block.setdefault('citations', []).append(delta.get('citation'))
             else:
-                if block['type'] == 'tool_use': raise ModelFault('model_tool_delta_unavailable')
+                if block['type'] == 'tool_use':
+                    raise ResponseRejected('model_tool_delta_unavailable', 'Messages sent an unsupported tool input delta.')
                 self.extensions.append(value)
             return []
         self.extensions.append(value)
         return []
 
     def result(self):
-        if not self.done or sorted(self.blocks) != list(range(len(self.blocks))): raise ModelFault('model_stream_incomplete')
+        if not self.done: raise ModelFault('model_stream_incomplete')
+        if sorted(self.blocks) != list(range(len(self.blocks))):
+            raise ResponseRejected('model_invalid_content_block', 'The completed Messages blocks have noncontiguous indexes.')
+        if self.stop_reason == 'max_tokens':
+            raise ModelFault('model_output_limit')
         if self.stop_reason not in ('end_turn', 'stop_sequence', 'tool_use', 'refusal'):
-            raise ModelFault('model_output_limit' if self.stop_reason == 'max_tokens' else 'model_finish_unavailable')
+            raise ResponseRejected('model_finish_unavailable', 'Messages sent an unsupported stop reason.')
         blocks = [self.blocks[index] for index in range(len(self.blocks))]
         content = []; calls = set()
         for block in blocks:
             if block['type'] == 'text':
-                content.append({'type': 'text', 'text': unicode_text(block.get('text', ''))})
+                content.append({'type': 'text', 'text': completed_response_text(block.get('text', ''))})
             elif block['type'] == 'tool_use':
                 ident = block.get('id')
                 wire_name = block.get('name')
                 name = (self.aliases.get(wire_name) if self.binding.get('kind') == 'claude-plan' else wire_name) if isinstance(wire_name, str) else None
-                if (not isinstance(ident, str) or not 1 <= len(ident.encode()) <= 256 or ident in calls or len(calls) >= 32
-                        or any(ord(c) < 33 or ord(c) == 127 for c in ident) or name not in self.names
-                        or not isinstance(block.get('input'), dict)): raise ModelFault('model_invalid_tool_call')
+                if (not valid_call_id(ident) or ident in calls or len(calls) >= 32 or name not in self.names
+                        or not isinstance(block.get('input'), dict)):
+                    raise ResponseRejected('model_invalid_tool_call', 'Messages sent an invalid or undeclared tool call.')
                 calls.add(ident)
                 content.append({'type': 'tool_call', 'callId': ident, 'name': name, 'arguments': block['input']})
             elif block['type'] == 'thinking':
                 if self.binding.get('kind') != 'zai-coding-plan' and (not isinstance(block.get('signature'), str) or not block['signature']):
-                    raise ModelFault('model_reasoning_incomplete')
-        if (self.stop_reason == 'tool_use') != bool(calls): raise ModelFault()
+                    raise ResponseRejected('model_reasoning_incomplete', 'A Messages thinking block has no signature.')
+        if (self.stop_reason == 'tool_use') != bool(calls):
+            raise ResponseRejected('model_tool_finish_mismatch', 'The Messages stop reason disagrees with the tool calls.')
         content.append({'type': 'provider', 'protocol': 'messages', 'value': dumps(blocks)})
         return {'content': content, 'origin': {**self.origin, **({'extensionDeltas': self.extensions} if self.extensions else {})},
                 'usage': self.usage or None, 'finishReason': self.stop_reason}

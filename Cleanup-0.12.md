@@ -301,3 +301,7 @@ Center the New VM form and use native CPU and memory sliders with GB readouts. N
 ## 0.12.77
 
 Rotate the private raw model stream archive at 256 MB per session. Delete the oldest ended streams as whole units and keep the current stream. Record archive eviction in the original model receipt.
+
+## 0.12.78
+
+Restart one direct model step after a verified complete response is rejected before any visible output or tool execution. Reuse the confirmed input and saved tool results. Store and show the concrete parser error if the restart fails.

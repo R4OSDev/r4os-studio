@@ -13,6 +13,22 @@ class RunGoal:
     @property
     def active(self):return True  # Run authority is frozen, independently of future keepalive controls.
     def current(self):return copy.deepcopy(self.goal)
+    def can_restart_model(self):
+        value = control.row(self.w.store, self.w.session_id)
+        if (not value or not value.get('active') or value.get('phase') != 'idle'
+                or value.get('generation') != self.original['generation']):
+            return False
+        goal = value.get('goal')
+        if not goal or goal['goalId'] != self.goal['goalId'] or goal['status'] != 'active':
+            return False
+        budget, used = goal.get('tokenBudget'), goal.get('tokensUsed')
+        if budget is not None and (type(used) is not int or used >= budget):
+            return False
+        time_budget = goal.get('timeBudgetMs')
+        if time_budget is None:
+            return True
+        spent, known = control.elapsed(value, budget=True)
+        return known and spent < time_budget * 1_000_000
     def instructions(self):return ''  # Shared frozen instruction composition covers every runtime.
     async def start(self):
         if self.w.config['engine'].get('kind')=='studio':

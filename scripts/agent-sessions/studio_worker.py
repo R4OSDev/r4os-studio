@@ -234,21 +234,58 @@ class StudioWorker(Worker):
 
     async def infer(self,messages,instructions,tools,on_text=None):
         expected_sha256 = None
+        original_rejection = None
         while True:
-            try:return await self.infer_once(messages,instructions,tools,on_text,expected_sha256=expected_sha256)
+            try:
+                return await self.infer_once(messages, instructions, tools, on_text,
+                    expected_sha256=expected_sha256,
+                    parser_restart_of=original_rejection.rejected_request_id if original_rejection else None)
             except ModelFault as error:
-                if await self.provider_retry.direct(error):
+                rejected = getattr(error, 'rejected_request_id', None)
+                if rejected and original_rejection is None:
+                    await self.goal_worker.boundary(allow_play=False)
+                    if not self.active():
+                        raise asyncio.CancelledError() from None
+                    if not self.goal_worker.execution or self.goal_worker.can_restart_model():
+                        original_rejection = error
+                        expected_sha256 = self.model.request_sha256
+                        continue
+                if original_rejection is None and await self.provider_retry.direct(error):
                     expected_sha256 = self.model.request_sha256
                     continue
                 if self.stopping: raise asyncio.CancelledError() from None
                 execution = getattr(error,'retry_goal_execution',None)
                 if execution and execution == self.goal_worker.execution:
                     await self.goal_worker.pause(status='blocked',reason=str(error))
+                if original_rejection and error.not_dispatched and error.code in ('model_retry_input_changed', 'model_restart_goal_unavailable'):
+                    cause = ('The confirmed input changed' if error.code == 'model_retry_input_changed'
+                             else 'The Goal could no longer continue')
+                    original_rejection.args = (f'{original_rejection} {cause} before restart.',)
+                    raise original_rejection from None
+                if original_rejection and not getattr(error, 'parser_failure', None):
+                    error.args = (f'Model restart failed. {error} First response. {original_rejection.reason}',)
                 raise
 
-    async def infer_once(self,messages,instructions,tools,on_text=None,*,expected_sha256=None):
-        self.validate_lease()
+    def confirmed_parser_rejection(self, request_id, error):
+        if not getattr(error, 'parser_failure', None) or not self.model.closed_confirmed:
+            return False
+        row, value = self.operations.row(request_id)
+        stream = value.get('stream', {})
+        status = stream.get('httpStatus')
+        # Parsing ends before any tool admission. The conversation only records
+        # a model reply after infer has returned a confirmed result.
+        return (row['run_id'] == self.run_id and row['phase'] == 'unknown' and value.get('attempted') is True
+                and value['sessionId'] == self.session_id and value['purpose'] == 'conversation'
+                and row['request_id'] == request_id and value.get('error', {}).get('code') == error.code
+                and value.get('requestSha256') == self.model.request_sha256
+                and value.get('processEnd', {}).get('confirmed') is True
+                and value['processEnd'].get('exitCode') == 0 and type(status) is int and 200 <= status < 300
+                and stream.get('httpComplete') is True and stream.get('terminalReceived') is True
+                and stream.get('incompleteEvent') is False)
+
+    async def infer_once(self,messages,instructions,tools,on_text=None,*,expected_sha256=None,parser_restart_of=None):
         if not self.active():raise asyncio.CancelledError()
+        self.validate_lease()
         if self.config['apiProvider']['kind']=='codex-subscription':
             from native_openai import access
             original=await asyncio.to_thread(access,self.manifest['providers'],self.config['apiProvider']['id'],self.config['apiNativeAccount'])
@@ -283,11 +320,24 @@ class StudioWorker(Worker):
         self.model = self.transport(summary=summary) if summary else self.transport()
         self.turn_requested = True
         request_id = str(uuid.uuid4())
-        self.operations.begin(self.run_id,request_id,purpose=getattr(self,'request_purpose','conversation'),summary_budget=summary)
+        purpose = getattr(self, 'request_purpose', 'conversation')
+        self.operations.begin(self.run_id, request_id, purpose=purpose, summary_budget=summary, parser_restart_of=parser_restart_of)
         self.operations.observe(self.model,request_id,projection=self.context_results.provenance if not summary else None)
         execution = self.goal_worker.execution if self.goal_worker.active else None
-        self.operation = asyncio.create_task(self.model.response(messages,instructions,tools,summary['effort'] if summary else self.config['effort'],
-            on_text=on_text,expected_sha256=expected_sha256))
+
+        async def restart_guard():
+            await self.goal_worker.boundary(allow_play=False)
+            if not self.active():
+                raise asyncio.CancelledError()
+            self.validate_lease()
+            if (self.uncertain_effect or execution != self.goal_worker.execution
+                    or execution and not self.goal_worker.can_restart_model()):
+                raise ModelFault('model_restart_goal_unavailable', not_dispatched=True)
+
+        self.model.dispatch_guard = restart_guard if parser_restart_of else None
+        effort = summary['effort'] if summary else self.config['effort']
+        self.operation = asyncio.create_task(self.model.response(messages, instructions, tools, effort,
+            on_text=on_text, expected_sha256=expected_sha256, conversation=purpose == 'conversation'))
         try:result = await self.operation
         except (asyncio.CancelledError,ProjectFault) as error:
             unsent=isinstance(error,ModelFault) and error.not_dispatched
@@ -299,9 +349,19 @@ class StudioWorker(Worker):
             waiting=register(self,request_id,proof) if proof else None
             retryable = isinstance(error,ModelFault) and (error.confirmed_overload or error.stream_interrupted) and not waiting
             if retryable: error.retry_operation_id=request_id
-            if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:self.goal_worker.missing_usage(request_id)
+            rejected = not waiting and StudioWorker.confirmed_parser_rejection(self, request_id, error)
+            if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:
+                usage = (getattr(error, 'partial', None) or {}).get('usage') if rejected else None
+                if usage is None:
+                    self.goal_worker.missing_usage(request_id)
+                else:
+                    self.goal_worker.observe({'usage': usage}, request_id)
+            if (rejected and not parser_restart_of and self.model.stream_progress['visibleOutput'] is False
+                    and not self.uncertain_effect and self.active()
+                    and (not execution or self.goal_worker.can_restart_model())):
+                error.rejected_request_id = request_id
             if isinstance(error,ModelFault) and execution and execution == self.goal_worker.execution:
-                if not unsent and not waiting:
+                if not unsent and not waiting and not getattr(error, 'rejected_request_id', None):
                     if retryable:error.retry_goal_execution=execution
                     else:await self.goal_worker.pause(status='usageLimited' if error.category in ('billing','rate','quota') else 'blocked',reason=str(error))
             raise

@@ -105,6 +105,62 @@ class ModelFault(ProjectFault):
         if not isinstance(code,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}',code):self.code='model_provider_error'
 
 
+class ResponseRejected(ModelFault):
+    """A parser check failed. Only static explanations reach the session."""
+    def __init__(self, code, reason, *, usage_unconfirmed=False):
+        super().__init__(code)
+        self.reason = reason
+        self.args = ('The model response was rejected. ' + reason,)
+        self.parser_failure = None
+        self.usage_unconfirmed = usage_unconfirmed
+
+
+def tool_arguments(value):
+    try:
+        arguments = loads(value, allow_identical_duplicates=True)
+    except ModelFault:
+        raise ResponseRejected('model_invalid_tool_arguments', 'Tool arguments are not valid JSON.') from None
+    if not isinstance(arguments, dict):
+        raise ResponseRejected('model_invalid_tool_arguments', 'Tool arguments must be a JSON object.')
+    return arguments
+
+
+def response_json(raw):
+    try:
+        value = loads(raw)
+    except ModelFault:
+        raise ResponseRejected('model_invalid_response_json', 'An event did not contain valid response JSON.') from None
+    if not isinstance(value, dict):
+        raise ResponseRejected('model_invalid_response_event', 'A response event must be a JSON object.')
+    return value
+
+
+def response_event(value, protocol):
+    if protocol == 'chat-completions' and value == '[DONE]':
+        return True, None
+    try:
+        event = loads(value)
+    except ModelFault:
+        return False, None
+    if not isinstance(event, dict):
+        return False, None
+    if protocol == 'chat-completions':
+        return False, event.get('usage') if event.get('choices') == [] else None
+    if protocol == 'messages':
+        return event.get('type') == 'message_stop', event.get('usage') if event.get('type') == 'message_delta' else None
+    response = event.get('response')
+    if event.get('type') == 'response.completed' and isinstance(response, dict) and response.get('status') == 'completed':
+        return True, response.get('usage')
+    return False, None
+
+
+def parser_finished(parser):
+    if getattr(parser, 'done', False) is True:
+        return True
+    response = getattr(parser, 'response', None)
+    return isinstance(response, dict) and response.get('status') == 'completed'
+
+
 def loads(value, *, allow_identical_duplicates=False):
     """Keep envelopes strict; tool arguments may repeat an identical JSON value."""
     def invalid(_value):
@@ -132,18 +188,26 @@ def dumps(value):
         raise ModelFault('model_input_invalid') from None
 
 
-def text_fragment(value, pending=''):
-    if not isinstance(value, str): raise ModelFault('model_stream_invalid')
+def response_text(value, pending=''):
+    if not isinstance(value, str):
+        raise ResponseRejected('model_stream_invalid', 'A response text fragment must be a string.')
     text = pending + value; pending = ''
     if text and 0xd800 <= ord(text[-1]) <= 0xdbff: pending = text[-1]; text = text[:-1]
     try: return text.encode('utf-16-le', 'surrogatepass').decode('utf-16-le'), pending
-    except UnicodeError: raise ModelFault('model_stream_invalid') from None
+    except UnicodeError:
+        raise ResponseRejected('model_stream_invalid', 'The response contains an invalid Unicode text fragment.') from None
 
 
-def unicode_text(value):
-    text, pending = text_fragment(value)
-    if pending: raise ModelFault('model_stream_invalid')
+def completed_response_text(value):
+    text, pending = response_text(value)
+    if pending:
+        raise ResponseRejected('model_stream_invalid', 'The response text ended with an incomplete Unicode character.')
     return text
+
+
+def valid_call_id(value):
+    return (isinstance(value, str) and 1 <= len(value.encode('utf-8', 'surrogatepass')) <= 256
+            and not any(ord(c) < 33 or ord(c) == 127 or 0xd800 <= ord(c) <= 0xdfff for c in value))
 
 
 class SSE:
@@ -230,6 +294,7 @@ class ModelTransport:
         self._input_estimate = None
         self.measured_input = None
         self.count_observer = None
+        self.dispatch_guard = None
 
     def parser(self, tools):
         protocol = self.binding['protocol']
@@ -348,20 +413,32 @@ class ModelTransport:
         return body, self.parser(tools)
 
     async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None,
-                       *, expected_sha256=None):
+                       *, expected_sha256=None, conversation=False):
         if self.child is not None: raise ModelFault('model_request_busy')
         self.attempted = False; self.request_sha256 = None
         self.stream_progress = None
         body, parser = self.prepare(messages, instructions, tools, effort)
         try:
-            await self.send(body, parser, on_text, on_reasoning, expected_sha256=expected_sha256)
-            try: return parser.result()
+            await self.send(body, parser, on_text, on_reasoning, expected_sha256=expected_sha256,
+                            recover_parser=conversation)
+            try:
+                result = parser.result()
+                if conversation and not any(part['type'] == 'tool_call' or
+                        part['type'] == 'text' and part['text'].strip() for part in result['content']):
+                    error = ResponseRejected('model_empty_response', 'The response contained neither assistant text nor tool calls.')
+                    error.partial = {'origin': result['origin'], 'usage': result['usage']}
+                    raise error
+                return result
             except ModelFault as error:
                 # The HTTP response ended cleanly without a terminal SSE event.
                 if error.code == 'model_stream_incomplete': error.stream_interrupted = True
+                if isinstance(error, ResponseRejected):
+                    error.parser_failure = {'stage': 'result'}
                 raise
         except ModelFault as error:
-            error.partial={'origin':getattr(parser,'origin',None),'usage':getattr(parser,'usage',None)}
+            if not getattr(error, 'partial', None):
+                error.partial={'origin':getattr(parser,'origin',None),
+                               'usage':None if getattr(error,'usage_unconfirmed',False) else getattr(parser,'usage',None)}
             error.stream_interrupted = (error.stream_interrupted and self.closed_confirmed
                                         and stream_without_output(self.stream_progress))
             if error.stream_interrupted:
@@ -370,7 +447,8 @@ class ModelTransport:
                 error.code = 'model_provider_error';error.confirmed_overload = False;error.stream_interrupted = False
             raise
 
-    async def send(self, body, parser, on_text=None, on_reasoning=None, *, expected_sha256=None):
+    async def send(self, body, parser, on_text=None, on_reasoning=None, *, expected_sha256=None,
+                   recover_parser=False):
         if self.child is not None:
             raise ModelFault('model_request_busy')
         if self._frozen is not None and self._frozen['body'] is body and self._frozen['scope'] != self.freeze_scope():
@@ -392,10 +470,14 @@ class ModelTransport:
         if self.capture_observer:self.capture_observer(raw_body,self.binding,self.context_policy,
             self._input_estimate[1] if self._input_estimate is not None and self._input_estimate[0]==raw_body else None)
         addresses = await resolve_binding(self.binding)
+        if self.dispatch_guard:
+            await self.dispatch_guard()
         bootstrap = dumps({'binding': self.binding, 'addresses': addresses, 'key': self.credential,
                            'body': raw_body, 'extraHeaders': self.headers}).encode()
         ended = False; decoder = self.decoder()
         http_status = None; bytes_received = 0; events_parsed = 0
+        event_count = 0; terminal_received = False; published = False; rejected = None
+        trailing_usage = None; conflicting_usage = False
         try:
             self.child = await asyncio.create_subprocess_exec('/usr/bin/node', str(Path(__file__).with_name('model_http.mjs')),
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -411,7 +493,8 @@ class ModelTransport:
                 try:
                     raw=await asyncio.wait_for(self.child.stdout.readline(),max(0.001,delay)) if delay is not None else await self.child.stdout.readline()
                 except asyncio.TimeoutError:
-                    self.flush_observer()
+                    if self.flush_observer:
+                        self.flush_observer()
                     continue
                 if not raw:break
                 frame = loads(raw)
@@ -448,20 +531,55 @@ class ModelTransport:
                 else:
                     raise ModelFault()
                 for value in values:
+                    event_count += 1
                     if self.event_observer:self.event_observer(value)
-                    updates = parser.push(value)
+                    try:
+                        updates = parser.push(value) if rejected is None else None
+                    except ResponseRejected as error:
+                        error.parser_failure = {'stage': 'event', 'event': event_count}
+                        if not recover_parser:
+                            raise
+                        terminal_received = parser_finished(parser)
+                        rejected = error
+                    if rejected is not None:
+                        terminal, usage = response_event(value, self.binding['protocol'])
+                        if isinstance(usage, dict):
+                            if terminal_received or (self.binding['protocol'] == 'chat-completions'
+                                    and trailing_usage is not None and trailing_usage != usage):
+                                conflicting_usage = True
+                            trailing_usage = usage
+                        terminal_received |= terminal
+                        continue
                     events_parsed += 1
                     for channel, text in updates or []:
                         callback = on_text if channel == 'text' else on_reasoning if channel == 'reasoning' else None
-                        if callback is not None: await callback(text)
+                        if callback is not None and text:
+                            published = True
+                            await callback(text)
             if await self.child.wait() != 0 or not ended:
                 raise ModelFault('model_stream_incomplete')
+        except ModelFault:
+            if rejected is not None:
+                raise rejected from None
+            raise
         except (OSError, ValueError, ConnectionError) as error:
             raise ModelFault('model_transport_error') from error
+        else:
+            if rejected is not None:
+                # Parser updates stopped at the invalid event. Use cumulative
+                # usage from the complete stream tail for a Goal.
+                parser_usage = getattr(parser, 'usage', None)
+                if self.binding['protocol'] == 'messages' and trailing_usage is not None:
+                    trailing_usage = {**(parser_usage or {}), **trailing_usage}
+                rejected.partial = {'origin': getattr(parser, 'origin', None),
+                                    'usage': None if conflicting_usage or rejected.usage_unconfirmed else trailing_usage}
+                raise rejected
         finally:
             if isinstance(decoder,SSE):
+                terminal_received |= parser_finished(parser)
                 self.stream_progress = {'httpStatus':http_status,'bytesReceived':bytes_received,'eventsParsed':events_parsed,
-                    'outputSeen':getattr(parser,'output_seen',None),'incompleteEvent':decoder.incomplete_event,'httpComplete':ended}
+                    'outputSeen':getattr(parser,'output_seen',None),'incompleteEvent':decoder.incomplete_event,'httpComplete':ended,
+                    'terminalReceived':terminal_received,'visibleOutput':published}
             try:await self.close()
             finally:
                 if self.flush_observer:self.flush_observer()
