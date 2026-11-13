@@ -78,7 +78,7 @@ def goal_selection(store,sid):
 
 def roadmap_presentation(config, root):
     if not any(item.get('modelSchemas') or item.get('dispatch') for item in catalog(root)[tool_scope(config)]): return None
-    return 'administration' if config.get('roadmapAdministrationEnabled') else 'standard_initialize'
+    return 'administration_edit' if config.get('roadmapAdministrationEnabled') else 'standard_edit'
 
 
 def remote_jobs(store,sid):
@@ -196,7 +196,7 @@ def freeze(store,sid,config,*,images):
         from goal_keepalive import row
         goal=bool((row(store,sid) or {}).get('goal'))
     mode = saved.get('presentation') if saved else roadmap_presentation(config,root)
-    if mode=='administration' and not config.get('roadmapAdministrationEnabled'):
+    if mode in ('administration', 'administration_edit') and not config.get('roadmapAdministrationEnabled'):
         mode=roadmap_presentation(config,root)
     file_writes = saved.get('fileWritePreconditions') if saved else 1
     scope = tool_scope(config)
@@ -211,7 +211,7 @@ def freeze(store,sid,config,*,images):
                    else update_recovery_options(store, sid, config['owner']['id']))
     permitted=eligible(config,documents=config.get('documentContext',False),images=images,goal=goal,
                        remote_history=tool_scope(config)=='project' and not config.get('remoteHostBinding') and remote_jobs(store,sid),
-                       roadmap_admin=mode not in ('standard', 'standard_initialize'),vm=bool(getattr(store,'project',{'vmId':True}).get('vmId')) if tool_scope(config)=='project' else False,
+                       roadmap_admin=mode not in ('standard', 'standard_initialize', 'standard_edit'),vm=bool(getattr(store,'project',{'vmId':True}).get('vmId')) if tool_scope(config)=='project' else False,
                        updates=updates)
     names=[];actions={}
     for tool in declarations(config,root):

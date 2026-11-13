@@ -68,7 +68,7 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
             fields(origin, ['runId', 'sessionId', 'sha256']); identity(origin['runId']); identity(origin['sessionId'])
             from human_context import text as human_text
             return human_text(db,origin['sessionId'],origin['runId'],{'type':'project','id':project_id})
-        yield {'config': config, 'sessionId': session_id, 'runId': run_id, 'contexts': contexts, 'verify_origin': verify_origin}
+        yield {'config': config, 'sessionId': session_id, 'runId': run_id, 'db': db, 'contexts': contexts, 'verify_origin': verify_origin}
     finally:
         db.rollback(); db.close()
 
@@ -107,7 +107,8 @@ def read(projects, project_id, arguments, actor=None):
                context='read_roadmap view=' + view,
                hint='expectedRevision is allowed only for view=text. This view returns the latest revision.')
         config = actor['config'] if actor is not None else {}
-        standard_initialize = (config.get('toolCatalog') or {}).get('presentation') == 'standard_initialize'
+        from roadmap_arguments import EDIT_PRESENTATIONS
+        standard_initialize = (config.get('toolCatalog') or {}).get('presentation') in ('standard_initialize', *EDIT_PRESENTATIONS)
         result = operation(projects, {'operation': view, **common, **extra}, actor=actor if standard_initialize else None)
         if result.get('exists') is False and standard_initialize:
             from tool_catalog import validate_arguments
@@ -174,6 +175,19 @@ def read(projects, project_id, arguments, actor=None):
     raise ProjectFault('Unsupported Roadmap read view.', 400)
 
 
+def edit_binding(actor):
+    """Use only a completed result from this worker's accepted run."""
+    latest = actor['db'].execute("""SELECT result FROM tools
+        WHERE run_id=? AND tool IN ('studio_read_roadmap','studio_update_roadmap')
+        AND state='completed' AND json_type(result,'$.roadmap.revision')='integer'
+        AND json_type(result,'$.roadmap.currentVersionId')='text' ORDER BY rowid DESC LIMIT 1""",
+        (actor['runId'],)).fetchone()
+    if latest:
+        roadmap = json.loads(latest[0])['roadmap']
+        return {'expectedRevision': roadmap['revision'], 'currentVersionId': roadmap['currentVersionId']}
+    raise ProjectFault('Read the project roadmap current version before editing.', 409)
+
+
 def call(projects, project_id, tool, arguments, actor=None):
     if tool == 'read_roadmap': return read(projects, project_id, arguments, actor)
     if tool == 'cleanup_roadmap':
@@ -188,6 +202,12 @@ def call(projects, project_id, tool, arguments, actor=None):
     if op == 'export':
         fields(data, ['requestId', 'versionId', 'expectedRevision', 'currentVersionId'])
     elif op not in ('mutate','batch','import_preview','import_apply'): raise ProjectFault('Unsupported Roadmap update.', 400)
+    if actor is not None and op in ('mutate', 'batch'):
+        from roadmap_arguments import EDIT_PRESENTATIONS
+        if ('expectedRevision' not in data and
+                (actor['config'].get('toolCatalog') or {}).get('presentation') in EDIT_PRESENTATIONS):
+            from functools import partial
+            actor = {**actor, 'editBinding': partial(edit_binding, actor)}
     return compact(operation(projects, {'operation': op, 'projectId': project_id, 'input': data},actor=actor))
 
 
@@ -224,7 +244,7 @@ if __name__ == '__main__':
     try: main()
     except ProjectFault as error:
         print(encode({'error': str(error), 'code': error.code})); sys.exit(1)
-    except ValueError:
-        print(encode({'error': 'Invalid Roadmap tool contract.', 'code': 400})); sys.exit(1)
+    except ValueError as error:
+        print(encode({'error': str(error)[:1024], 'code': 400})); sys.exit(1)
     except Exception:
         print(encode({'error': 'The Roadmap result is unconfirmed. Inspect the original request receipt before retrying.', 'code': 503})); sys.exit(1)

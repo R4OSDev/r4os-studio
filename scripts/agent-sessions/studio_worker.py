@@ -83,7 +83,7 @@ class StudioWorker(Worker):
             except ValueError as error:
                 # Only the pure schema validator supplies feedback: no host,
                 # provider or tool-execution exception can enter this path.
-                invalid.append({'callId':call['callId'],'message':str(error)[:1024]})
+                invalid.append({'callId':call['callId'],'tool':call['name'],'message':str(error)[:1024]})
         if invalid:
             if previous_effect:raise ModelFault('model_invalid_tool_arguments')
             raise ToolArgumentsFault(invalid[:8])
@@ -400,10 +400,13 @@ class StudioWorker(Worker):
                 self.validate_calls(calls, tools, rejected)  # Validate the entire set before any host effect.
             except ModelFault as error:
                 correctable=isinstance(error,ToolArgumentsFault) and correction_attempts<5 and not self.uncertain_effect
+                errors = {entry['callId']: entry['message'] for entry in error.details} if isinstance(error, ToolArgumentsFault) else {}
                 for index, call in enumerate(calls):
                     feedback={'success':False,'error':'notAdmitted','output':'This entire tool batch was rejected before host execution.'}
                     if isinstance(error,ToolArgumentsFault):
                         feedback['validation']={'code':'invalidArguments','errors':error.details,'correctionAvailable':correctable}
+                        if call['callId'] in errors:
+                            feedback['output'] += ' ' + call['name'] + ': ' + errors[call['callId']]
                         feedback['output']+=(' Correct the schema errors using the declared fields and original target IDs, then issue fresh tool calls. No call in this batch ran.'
                             if correctable else ' No further correction is available before a successful tool batch or while earlier effects are unconfirmed; this run ends.')
                     self.conversation.append(self.run_id, 'rejected-' + self.run_id + '-' + str(self.round) + '-' + str(index), 'tool',
@@ -552,4 +555,5 @@ class GoalHalted(Exception):
 class ToolArgumentsFault(ModelFault):
     def __init__(self,errors):
         super().__init__('model_invalid_tool_arguments',details=errors)
-        self.args=('The tool batch failed argument validation before execution. The consecutive correction allowance is exhausted or earlier effects are unconfirmed.',)
+        first = errors[0]
+        self.args=(first['tool'] + ': ' + first['message'] + ' The tool batch was not executed.',)

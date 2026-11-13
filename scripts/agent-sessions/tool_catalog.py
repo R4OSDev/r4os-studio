@@ -35,6 +35,11 @@ def catalog(root=ROOT):
 
 def model_schema(tool, presentation):
     wire = tool.get('modelSchemas', {})
+    if presentation in ('standard_edit', 'administration_edit'):
+        if tool['name'] == 'studio_update_roadmap' and wire:
+            from roadmap_arguments import edit_schema
+            return edit_schema(wire, presentation == 'administration_edit')
+        return wire.get('administration' if presentation == 'administration_edit' else 'standard')
     if presentation != 'standard_initialize':
         return wire.get(presentation)
     schema = wire.get('standard')
@@ -59,6 +64,9 @@ def prepared(scope, root=ROOT, presentation='standard', file_writes=None, run_ti
             tool['inputSchema'] = wire
         if presentation == 'standard_initialize' and tool['name'] == 'studio_update_roadmap':
             tool['description'] += ' If the Roadmap does not exist, use initialize with only requestId.'
+        if presentation in ('standard_edit', 'administration_edit') and tool['name'] == 'studio_update_roadmap':
+            from roadmap_arguments import description
+            tool['description'] = description(presentation == 'administration_edit')
         if file_writes and original['name'] in ('studio_write_workspace','studio_write_file','studio_apply_patch'):
             schema = tool['inputSchema']
             for variant in schema.get('oneOf', [schema]):
@@ -120,6 +128,9 @@ def argument_requirements(tools, scope, root, version, file_writes=None, run_tim
     definitions = tool_definitions(scope, root, file_writes, run_timeout, result_ids, vm_recovery)
     decorated = []
     for tool in tools:
+        if (tool['name'] == 'studio_update_roadmap' and tool.get('inputSchema', {}).get('oneOf')):
+            decorated.append(tool)
+            continue
         canonical = definitions[tool['name'][7:]]['inputSchema']
         schema = tool['inputSchema']
         properties = dict(schema.get('properties', {}))
@@ -332,7 +343,12 @@ def validate_arguments(name,value,scope='project'):
     actions = selected.get('actions',{}).get('studio_'+name)
     if actions is not None and isinstance(value,dict) and value.get('action') not in actions:
         raise ValueError('arguments.action: allowed values are '+', '.join(actions)+'.')
-    wire = model_schema(definition, selected.get('presentation'))
+    presentation = selected.get('presentation')
+    if name == 'update_roadmap' and presentation in ('standard_edit', 'administration_edit') and isinstance(value, dict):
+        from roadmap_arguments import optional_binding, validate_edit
+        validate_edit(value)
+        root = optional_binding(root)
+    wire = model_schema(definition, presentation)
     if wire and isinstance(value,dict):
         if name=='send_vm_input' and value.get('kind')=='text' and 'frameId' in value:
             raise ValueError('arguments.kind: use guiText for text bound to a GUI frame.')
@@ -399,7 +415,8 @@ def validate_arguments(name,value,scope='project'):
         if actual == 'integer' and not rule.get('minimum', 0) <= v <= rule.get('maximum', 1000000): raise ValueError(path + ': number is outside its allowed range.')
         if actual == 'array':
             if len(v) > rule.get('maxItems', 8): raise ValueError(path + ': too many entries.')
-            for entry in v: validate(rule['items'], entry, path + '[]')
+            for index, entry in enumerate(v):
+                validate(rule['items'], entry, f'{path}[{index}]' if path == 'arguments.operations' else path + '[]')
         if actual == 'object':
             if len(v) > 64: raise ValueError(path + ': too many fields.')
             missing = sorted(set(rule.get('required', [])) - v.keys())

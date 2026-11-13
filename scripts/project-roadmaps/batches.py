@@ -52,9 +52,11 @@ def validate_operations(db,operations,now,maximum=MAX_OPERATIONS,create_ids=None
         return result
     finally:clone.close()
 
-def batch(db,project_id,body):
-    fields(body,['requestId','expectedRevision','currentVersionId','operations'])
-    identity(body['requestId']);identity(body['currentVersionId']);integer(body['expectedRevision'],1,2**53-1)
+def batch(db,project_id,body,*,edit_binding=None):
+    fields(body,['requestId','operations',*([] if edit_binding else ['expectedRevision','currentVersionId'])])
+    identity(body['requestId'])
+    if edit_binding is None:
+        identity(body['currentVersionId']);integer(body['expectedRevision'],1,2**53-1)
     if len(json.dumps(body,ensure_ascii=False).encode())>128*1024:raise RoadmapFault('Batch input exceeds 128 KiB.',413)
     fingerprint=hashlib.sha256(json.dumps({'operation':'batch','projectId':project_id,**body},sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
     db.execute('PRAGMA max_page_count='+str((64*1024*1024)//db.execute('PRAGMA page_size').fetchone()[0]));db.execute('BEGIN IMMEDIATE')
@@ -64,7 +66,8 @@ def batch(db,project_id,body):
             if receipt['request_hash']!=fingerprint:raise RoadmapFault('This requestId belongs to different roadmap input.',409)
             return json.loads(receipt['result'])
         root=root_row(db)
-        if root['revision']!=body['expectedRevision'] or root['current_version_id']!=body['currentVersionId']:raise RoadmapFault('The roadmap changed. Reload its revision before saving.',409)
+        expected = edit_binding() if edit_binding else body
+        if root['revision']!=expected['expectedRevision'] or root['current_version_id']!=expected['currentVersionId']:raise RoadmapFault('The roadmap changed. Reload its revision before saving.',409)
         if db.execute("SELECT 1 FROM workflows WHERE phase NOT IN ('complete','cancelled','aborted') LIMIT 1").fetchone():raise RoadmapFault('Reconcile the current roadmap workflow before editing.',409)
         if db.execute('SELECT count(*) FROM receipts').fetchone()[0]>=50000:raise RoadmapFault('Roadmap receipt storage needs maintenance.',503)
         now=timestamp();validate_operations(db,body['operations'],now)

@@ -31,6 +31,8 @@ def _operation(projects, request,actor=None):
                 if 'cursor' in request: raise ProjectFault('No workflow page exists in this project.', 404)
                 return {'items': [], 'nextCursor': None}
             if name not in ('read', 'overview') and not (name == 'current' and actor is not None):
+                if name in ('mutate', 'batch') and actor is not None and 'editBinding' in actor:
+                    raise ProjectFault('The project has no roadmap. Read its current state and use the returned initialize call.', 404)
                 raise ProjectFault('Initialize this project roadmap before continuing.', 404)
             return {'exists': False, 'projectId': request['projectId']}
         if name in ('import_preview','import_apply'):
@@ -50,9 +52,9 @@ def _operation(projects, request,actor=None):
             return value
         if name == 'batch':
             from batches import batch
-            return batch(db,request['projectId'],request['input'])
+            return batch(db,request['projectId'],request['input'],edit_binding=(actor or {}).get('editBinding'))
         if name == 'mutate':
-            return mutate(db, request['projectId'], request['input'])
+            return mutate(db, request['projectId'], request['input'], edit_binding=(actor or {}).get('editBinding'))
         if name in ('workflows', 'workflow'):
             from workflow_reads import read as read_workflows
             return read_workflows(db, request['projectId'], request)

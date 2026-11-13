@@ -97,7 +97,7 @@ def bind_catalog(store, sid, config):
         if prior.get('updateToolsEnabled') and not config.get('updateToolsEnabled') and operations.intersection(UPDATE_TOOLS):
             raise ValueError()
         mode=selected.get('presentation')
-        if mode=='administration' and not config.get('roadmapAdministrationEnabled'): raise ValueError()
+        if mode in ('administration', 'administration_edit') and not config.get('roadmapAdministrationEnabled'): raise ValueError()
         actions={name:items for name,items in selected.get('actions',{}).items() if name in names}
         options = dict(names=names,version=version,presentation=mode,actions=actions,
                        requirements=selected.get('argumentRequirements'),file_writes=file_writes,run_timeout=run_timeout,

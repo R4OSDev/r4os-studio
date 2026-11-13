@@ -261,3 +261,7 @@ Retry early interrupted direct model streams with bounded attempts and compact r
 ## 0.12.67
 
 Initialize missing project roadmaps in standard sessions and return the next tool call. Include the verified REA fix for Ghidra Sleigh lock files.
+
+## 0.12.68
+
+Use the last returned project Roadmap revision for edits and report exact operation and target validation errors.

@@ -37,11 +37,15 @@ class RoadmapTools:
             if response.get('error'):
                 code = response.get('code', 503)
                 uncertain = (name == 'update_roadmap' or (name == 'cleanup_roadmap' and arguments.get('action') != 'status')) and code >= 500
-                return {'success': False, 'error': 'unknown' if uncertain else 'conflict' if code == 409 else 'denied' if code == 403 else 'failed',
+                reason = 'unknown' if uncertain else {403: 'denied', 409: 'conflict'}.get(code, 'failed')
+                if code == 400 and name == 'update_roadmap': reason = 'invalidArguments'
+                return {'success': False, 'error': reason,
                         'output': response['error'], 'roadmap': {'operation': name, 'code': code, 'requestId': arguments.get('requestId')},
                         **({'partialChangesPossible': True} if uncertain else {})}
             value = response['result']
             summary = {'operation': name, 'requestId': arguments.get('requestId'), **{k: value[k] for k in ('workflowId', 'phase', 'revision', 'currentVersionId', 'requestId', 'versionId', 'sha256') if k in value}}
+            if name == 'read_roadmap' and arguments.get('view') == 'overview' and value.get('exists'):
+                summary.update({key: value['roadmap'][key] for key in ('revision', 'currentVersionId')})
             if value.get('available') is False:
                 return {'success': False, 'error': 'unavailable', 'output': value['message'], 'roadmap': summary}
             return {'success': True, 'output': encode(value), 'roadmap': summary}

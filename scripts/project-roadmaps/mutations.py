@@ -149,13 +149,13 @@ def apply_change(db, reference, action, data, now, new_id=None, preserve_text=Fa
     return changed
 
 
-def mutate(db, project_id, body, initialize=False):
+def mutate(db, project_id, body, initialize=False, *, edit_binding=None):
     if initialize:
         fields(body, ['requestId'])
     else:
-        fields(body, ['requestId', 'expectedRevision', 'currentVersionId', 'target', 'action'], ['input'])
+        fields(body, ['requestId', 'target', 'action', *([] if edit_binding else ['expectedRevision', 'currentVersionId'])], ['input'])
     identity(body['requestId'])
-    if not initialize:
+    if not initialize and edit_binding is None:
         integer(body['expectedRevision'], 1, 9007199254740991); identity(body['currentVersionId'])
     fingerprint = hashlib.sha256(json.dumps({'projectId': project_id, 'initialize': initialize, **body},
                                            sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
@@ -173,7 +173,8 @@ def mutate(db, project_id, body, initialize=False):
         if initialize:
             result = {**binding(db), 'entity': entity(db, 'roadmap', root)}
         else:
-            if body['expectedRevision'] != root['revision'] or body['currentVersionId'] != root['current_version_id']:
+            expected = edit_binding() if edit_binding else body
+            if expected['expectedRevision'] != root['revision'] or expected['currentVersionId'] != root['current_version_id']:
                 raise RoadmapFault('The roadmap changed. Reload its current version and revision before saving.', 409)
             if db.execute("SELECT id FROM workflows WHERE phase NOT IN ('complete','cancelled','aborted') LIMIT 1").fetchone():
                 raise RoadmapFault('Reconcile the current roadmap workflow before editing.', 409)

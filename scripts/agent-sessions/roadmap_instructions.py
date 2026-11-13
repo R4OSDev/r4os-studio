@@ -26,12 +26,20 @@ def compose(config):
     source = Path(__file__).resolve().parents[2] / 'shared/project-roadmap-instructions.txt'
     text = source.read_text(encoding='utf-8')
     presentation = config.get('toolCatalog', {}).get('presentation')
-    if presentation == 'standard_initialize':
+    if presentation in ('standard_initialize', 'standard_edit', 'administration_edit'):
         text = text.replace('Enable Roadmap administration for initialization, import, export or cleanup.',
                             'If the roadmap read returns nextCall, use it to initialize before writing. '
                             'Enable Roadmap administration for import, export or cleanup.')
+    if presentation in ('standard_edit', 'administration_edit'):
+        text = text.replace(
+            'Read the current version ID and revision before a change. Use exact target and parent IDs. '
+            'For project-wide changes use roadmap.id. Pass currentVersionId separately.',
+            'Read current or overview before a change. Studio uses the revision and current version from its latest returned result. '
+            'Use exact target and parent IDs. For project-wide changes use roadmap.id.')
+        text = text.replace('For a coordinated change use the batch tool with the exact current revision.',
+                            'For a coordinated change use operation=batch with operations.')
     guidance = '\n\n' + text + publication_context(config)
-    if presentation in ('standard', 'standard_initialize'): return guidance
+    if presentation in ('standard', 'standard_initialize', 'standard_edit'): return guidance
     return (guidance+'\n\nCURRENT CLEANUP CAPABILITY: Prepare the selected version and verify the complete archive in '
             'Docs/Changelogs/<version>.txt. Update the relevant Docs with permitted file tools. Use prepare again '
             'with a new requestId, the same workflowId, documents and documentationSummary. For each document, '
