@@ -277,3 +277,7 @@ Reuse verified REA installations with an exact runtime inventory and full verifi
 ## 0.12.71
 
 Keep the managed REA runtime reusable after native Python analysis by disabling bytecode writes for isolated interpreter calls.
+
+## 0.12.72
+
+Remove the cumulative 96 MiB limit from local session history and native session imports. Existing conversation records, checkpoints, and import fingerprints keep their original format.

@@ -16,7 +16,6 @@ CONTEXT_INDEXES = {
 }
 FORMAT = 1
 MAX_RECORD = 16 * 1024 * 1024
-MAX_HISTORY = 96 * 1024 * 1024
 
 
 def encoded(value):
@@ -169,10 +168,6 @@ class Conversation:
                 # Older readers must refuse this view instead of silently
                 # omitting the exact observations retained below through_seq.
                 self.store.db.execute('UPDATE conversation_sessions SET format=2 WHERE session_id=?', (self.session_id,))
-            from session_budgets import total as budget_total
-            size = budget_total(self.store.db, self.session_id, 'conversation')
-            if size + len(content_raw.encode()) + len(origin_raw.encode()) > MAX_HISTORY:
-                raise ProjectFault('Conversation history reached its storage limit. Original records were preserved.', 409)
             cursor = self.store.db.execute('''INSERT INTO conversation_records
                 (session_id,run_id,record_id,kind,role,content,origin,through_seq,created_at)
                 VALUES (?,?,?,?,?,?,?,?,?)''',

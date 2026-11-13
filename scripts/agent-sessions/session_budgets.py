@@ -1,18 +1,14 @@
-"""Transactional counters over original session data, including older writers.
+"""Transactional counters for model request and stream archives.
 
 Each source is inventoried once, in the same write transaction that installs
-its triggers. The triggers also charge old pinned workers and SQL deletion.
-Events retain their historical character unit; conversation/raw budgets use
-UTF-8 bytes. No original content or quota is changed.
+its triggers. Previously installed history triggers stay in the database
+for pinned workers that still use their counters.
 """
 from store import ProjectFault
 
 
 SOURCES = {
     'requests': ('studio_request_bodies', 'length({row}.compressed)', '{row}.session_id'),
-    'events': ('events', 'length({row}.payload)', '{row}.session_id'),
-    'conversation': ('conversation_records',
-                     'length(CAST({row}.content AS BLOB))+length(CAST({row}.origin AS BLOB))', '{row}.session_id'),
     'raw': ('studio_model_events', 'length(CAST({row}.raw AS BLOB))',
             '(SELECT session_id FROM session_budget_runs WHERE run_id={row}.run_id)'),
 }

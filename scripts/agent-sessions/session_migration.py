@@ -4,7 +4,7 @@ import hashlib
 import json
 import uuid
 
-from conversation import Conversation, MAX_HISTORY, encoded
+from conversation import Conversation, encoded
 from native_history import NativeHistory, fail
 from owner import open_lock, binding
 from profile import regular
@@ -18,6 +18,16 @@ SOURCE_TABLES = ('runs', 'items', 'tools', 'session_goals', 'goal_commands', 'se
 
 def digest(value): return hashlib.sha256(encode(value).encode()).hexdigest()
 def has(store, name): return bool(store.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())
+
+
+def hash_rows(checksum, rows):
+    """Hash the original JSON array encoding one row at a time."""
+    checksum.update(b'[')
+    for index, row in enumerate(rows):
+        if index:
+            checksum.update(b',')
+        checksum.update(encode(list(row)).encode())
+    checksum.update(b']')
 
 
 class Migration:
@@ -47,7 +57,7 @@ class Migration:
         if json.loads(row['engine']) != value['engine'] or row['thread_id'] != value['threadId']: return False
         if any(settings.get(k) != value['settings'].get(k) for k in CHOICES): return False
         if self.work_mark() != value['workMark']: return False
-        if digest(self.conversation_records()) != value['conversationSha256']: return False
+        if self.conversation_digest() != value['conversationSha256']: return False
         if self.goal_row() != value['goalAfter']: return False
         return True
 
@@ -60,8 +70,11 @@ class Migration:
                 result[name] = [list(r) for r in self.store.db.execute('SELECT * FROM '+name+' WHERE session_id=? ORDER BY rowid', (self.sid,))]
         return digest(result)
 
-    def conversation_records(self):
-        return [list(r) for r in self.store.db.execute('SELECT * FROM conversation_records WHERE session_id=? ORDER BY seq', (self.sid,))] if has(self.store, 'conversation_records') else []
+    def conversation_digest(self):
+        rows = self.store.db.execute('SELECT * FROM conversation_records WHERE session_id=? ORDER BY seq', (self.sid,)) if has(self.store, 'conversation_records') else ()
+        checksum = hashlib.sha256()
+        hash_rows(checksum, rows)
+        return checksum.hexdigest()
 
     def goal_row(self):
         row = self.store.db.execute('SELECT * FROM session_goals WHERE session_id=?', (self.sid,)).fetchone() if has(self.store, 'session_goals') else None
@@ -71,17 +84,22 @@ class Migration:
         session = self.store.row(self.sid)
         if json.loads(session['engine']).get('kind') == 'studio': raise ProjectFault('This session already uses the Studio runtime.', 409)
         source = NativeHistory(self.store, self.sid).read()
-        total = 0; state = {'session': dict(session), 'native': source.source()}
-        for name in SOURCE_TABLES:
-            if not has(self.store, name): continue
+        metadata = {'session': dict(session), 'native': source.source()}
+        tables = [name for name in SOURCE_TABLES if has(self.store, name)]
+        checksum = hashlib.sha256(b'{')
+        for index, name in enumerate(sorted([*metadata, *tables])):
+            if index:
+                checksum.update(b',')
+            checksum.update(encode(name).encode() + b':')
+            if name in metadata:
+                checksum.update(encode(metadata[name]).encode())
+                continue
             columns = {r[1] for r in self.store.db.execute('PRAGMA table_info('+name+')')}
             where = 'session_id=?' if 'session_id' in columns else 'run_id IN (SELECT id FROM runs WHERE session_id=?)'
-            state[name] = []
-            for row in self.store.db.execute('SELECT * FROM '+name+' WHERE '+where+' ORDER BY rowid', (self.sid,)):
-                value = list(row); total += len(encode(value).encode())
-                if total > MAX_HISTORY: fail('The original session exceeds the common history storage limit.')
-                state[name].append(value)
-        return source, digest(state)
+            rows = self.store.db.execute('SELECT * FROM '+name+' WHERE '+where+' ORDER BY rowid', (self.sid,))
+            hash_rows(checksum, rows)
+        checksum.update(b'}')
+        return source, checksum.hexdigest()
 
     def target(self, data):
         from studio_selection import target
@@ -240,7 +258,7 @@ class Migration:
                 self.store.db.execute('UPDATE session_goals SET native=?,revision=? WHERE session_id=?', (goal_after['native'], goal_after['revision'], self.sid))
             value = {'before': before, 'source': source.source(), 'records': len(records), 'selection': {k: target[k] for k in ('providerId', 'model', 'effort')},
                 'engine': target['engine'], 'settings': settings, 'threadId': thread, 'goalBefore': goal_before, 'goalAfter': self.goal_row(),
-                'workMark': self.work_mark(), 'conversationSha256': digest(self.conversation_records())}
+                'workMark': self.work_mark(), 'conversationSha256': self.conversation_digest()}
             self.store.db.execute('''CREATE TABLE IF NOT EXISTS session_migrations(
                 request_id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 input_hash TEXT NOT NULL,state TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL)''')
