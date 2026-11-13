@@ -269,3 +269,7 @@ Use the last returned project Roadmap revision for edits and report exact operat
 ## 0.12.69
 
 Resolve managed REA file arguments against the original project and session paths before native execution.
+
+## 0.12.70
+
+Reuse verified REA installations with an exact runtime inventory and full verification after changes.

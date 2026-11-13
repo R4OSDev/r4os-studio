@@ -27,7 +27,15 @@ def freeze(projects, ident, source):
 def load(worker, entry, complete=False, catalog_only=False):
     frozen = entry.get('mcp')
     if not isinstance(frozen, dict) or frozen.get('schema') != 1: raise McpFault('This accepted run has no managed runtime for the selected skill.')
-    root, manifest, catalog = runtime_spec.load(skills_root(worker.store.projects), entry['id'], frozen['sourceBinding'], complete=complete, catalog_only=catalog_only)
+    skills = skills_root(worker.store.projects)
+    verify = None
+    if complete:
+        from functools import partial
+        from rea_verification import verify as verify_runtime
+        verify = partial(verify_runtime, skills/'.rea-verification', runtime_spec,
+                         frozen['sourceBinding']['runtime']['manifestHash'])
+    root, manifest, catalog = runtime_spec.load(skills, entry['id'], frozen['sourceBinding'],
+                                               complete=complete, catalog_only=catalog_only, verify=verify)
     if (manifest['catalog']['sha256'] != frozen['catalogHash']
             or hashlib.sha256(encoded(catalog['tools'])).hexdigest() != frozen['toolsHash']
             or len(catalog['tools']) != frozen['tools']): raise McpFault('The frozen MCP catalogue changed.')
@@ -40,6 +48,7 @@ def command(worker, root, manifest, state):
     mapped = lambda value: ':'.join(str(working.path(part)) if part.startswith('/') else part for part in str(value).split(':'))
     environment = {'HOME': state / 'Data/Home', 'XDG_CACHE_HOME': state / 'Data/Cache',
         'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONNOUSERSITE': '1',
+        'PYTHONPYCACHEPREFIX': state / 'Data/Cache/Python',
         'PATH': mapped('/runtime/Programs/Bin:/runtime/Programs/Java/bin:/runtime/Programs/Python/bin:/runtime/Programs/OsTools/usr/bin:/runtime/Programs/OsTools/usr/sbin:/runtime/Programs/Wabt/bin:/runtime/' + str(Path(manifest['node']['path']).parent) + ':/usr/bin:/bin'),
         'REA_BUILD_COMMIT': manifest['source']['commit'], 'REA_MCP_INPUT_SCHEMA_PROFILE': 'full',
         'REA_MCP_OUTPUT_SCHEMA_PROFILE': 'full'}
