@@ -74,14 +74,15 @@ def initialize(db, kind):
     db.execute('INSERT INTO session_budget_formats VALUES (?,1)', (kind,))
 
 
-def total(db, session_id, kind):
+def total(db, session_id, kind, *, initialized=False):
     if kind not in SOURCES:
         raise ValueError('Unknown session budget.')
     # A normal deferred read must not race a writer between quota check and
     # insertion. Do not use executescript: it would commit the caller's work.
     if not db.in_transaction:
         db.execute('BEGIN IMMEDIATE')
-    initialize(db, kind)
+    if not initialized:
+        initialize(db, kind)
     row = db.execute('SELECT used FROM session_byte_budgets WHERE session_id=? AND budget=?',
                      (session_id, kind)).fetchone()
     if row is None or type(row[0]) is not int or row[0] < 0:

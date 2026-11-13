@@ -297,3 +297,7 @@ Remove the four requested introductory and OpenAI hints from New Provider. Keep 
 ## 0.12.76
 
 Center the New VM form and use native CPU and memory sliders with GB readouts. New VMs always use private NAT and DHCP. Existing VM settings remain editable.
+
+## 0.12.77
+
+Rotate the private raw model stream archive at 256 MB per session. Delete the oldest ended streams as whole units and keep the current stream. Record archive eviction in the original model receipt.

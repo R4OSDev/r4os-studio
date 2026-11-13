@@ -24,42 +24,38 @@ def alive(pid,started):
 
 
 class Operations:
+    RAW_LIMIT = 256_000_000
     RAW_BATCH_EVENTS=64
     RAW_BATCH_BYTES=256*1024
     RAW_BATCH_SECONDS=0.1
 
     def __init__(self,store):
         self.store=store
-        self.raw_remaining={}
         self.raw_pending={}
-        with store.db:store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_calls(
-            run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL UNIQUE,
-            phase TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run_id,request_id))''')
+        with store.db:
+            store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_calls(
+                run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL UNIQUE,
+                phase TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run_id,request_id))''')
+            store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_events(
+                run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL REFERENCES studio_model_calls(request_id),
+                seq INTEGER NOT NULL,raw TEXT NOT NULL,PRIMARY KEY(request_id,seq))''')
 
     def wire(self,rid,raw):
         if rid not in self.raw_pending:
             row,data=self.row(rid)
-            with self.store.db:self.store.db.execute('''CREATE TABLE IF NOT EXISTS studio_model_events(
-                run_id TEXT NOT NULL REFERENCES runs(id),request_id TEXT NOT NULL REFERENCES studio_model_calls(request_id),
-                seq INTEGER NOT NULL,raw TEXT NOT NULL,PRIMARY KEY(request_id,seq))''')
             from session_budgets import total as budget_total
-            with self.store.db:used=budget_total(self.store.db,data['sessionId'],'raw')
-            self.raw_remaining[rid]=max(0,96*1024*1024-used)
+            with self.store.db:
+                budget_total(self.store.db, data['sessionId'], 'raw')
             seq=self.store.db.execute('SELECT COALESCE(MAX(seq),0) FROM studio_model_events WHERE request_id=?',(rid,)).fetchone()[0]
-            self.raw_pending[rid]={'runId':row['run_id'],'seq':seq,'events':[],'bytes':0,'since':None}
+            self.raw_pending[rid]={'runId':row['run_id'],'sessionId':data['sessionId'],
+                                   'seq':seq,'events':[],'bytes':0,'since':None}
         pending=self.raw_pending[rid]
         size=len(raw.encode())
-        if size>self.raw_remaining[rid]:
-            self.flush(rid)
-            row,data=self.row(rid)
-            if not data.get('rawTruncated'):data['rawTruncated']=True;self.put(rid,row['phase'],data)
-            self.raw_remaining[rid]=0;return
         if pending['events'] and pending['bytes']+size>self.RAW_BATCH_BYTES:self.flush(rid)
         if not pending['events']:pending['since']=time.monotonic()
         pending['seq']+=1
         pending['events'].append((pending['runId'],rid,pending['seq'],raw))
         pending['bytes']+=size
-        self.raw_remaining[rid]-=size
         if len(pending['events'])>=self.RAW_BATCH_EVENTS or pending['bytes']>=self.RAW_BATCH_BYTES or self.flush_delay(rid)==0:
             self.flush(rid)
 
@@ -72,9 +68,39 @@ class Operations:
         if not pending or not pending['events']:return
         # Clear only after a successful FULL commit. A failed write cannot
         # produce a confirmed response or admit a tool from this operation.
-        with self.store.db:
-            self.store.db.executemany('INSERT INTO studio_model_events VALUES (?,?,?,?)',pending['events'])
+        db = self.store.db
+        from session_budgets import total as budget_total
+        with db:
+            used = budget_total(db, pending['sessionId'], 'raw', initialized=True)
+            if used + pending['bytes'] >= self.RAW_LIMIT:
+                self.rotate_raw(pending['sessionId'], rid, used, pending['bytes'])
+            db.executemany('INSERT INTO studio_model_events VALUES (?,?,?,?)',pending['events'])
         pending['events'].clear();pending['bytes']=0;pending['since']=None
+
+    def rotate_raw(self, session_id, request_id, used, incoming):
+        db = self.store.db
+        # Oldest terminated streams first. The active stream is always kept
+        # whole, including when the provider parser will reject the answer.
+        candidates = db.execute("""SELECT c.request_id,c.data
+            FROM runs r JOIN studio_model_calls c ON c.run_id=r.id
+            WHERE r.session_id=? AND c.request_id<>? AND c.phase IN ('completed','failed','unknown')
+            AND (json_type(c.data,'$.process') IS NULL OR json_extract(c.data,'$.processEnd.confirmed')=1)
+            AND EXISTS(SELECT 1 FROM studio_model_events e WHERE e.request_id=c.request_id)
+            ORDER BY json_extract(c.data,'$.createdAt'),c.rowid""", (session_id, request_id)).fetchall()
+        target = max((used + 1) // 2, used + incoming - self.RAW_LIMIT + 1)
+        removed = 0
+        stamp = now()
+        for row in candidates:
+            rid = row['request_id']
+            size = db.execute('SELECT SUM(length(CAST(raw AS BLOB))) FROM studio_model_events WHERE request_id=?',
+                              (rid,)).fetchone()[0]
+            data = json.loads(row['data'])
+            data['rawEvicted'] = {'bytes': size, 'at': stamp}
+            db.execute('DELETE FROM studio_model_events WHERE request_id=?', (rid,))
+            db.execute('UPDATE studio_model_calls SET data=? WHERE request_id=?', (encode(data), rid))
+            removed += size
+            if removed >= target:
+                break
 
     def row(self,rid):
         row=self.store.db.execute('SELECT * FROM studio_model_calls WHERE request_id=?',(rid,)).fetchone()
@@ -151,7 +177,7 @@ class Operations:
             else:self.put(rid,'unknown' if attempted else 'failed',data)
         from studio_usage import record
         record(self.store,self.row(rid)[0])
-        self.raw_pending.pop(rid,None);self.raw_remaining.pop(rid,None)
+        self.raw_pending.pop(rid,None)
 
     def reconcile(self,run_id):
         for row in self.store.db.execute('SELECT * FROM studio_model_calls WHERE run_id=?',(run_id,)).fetchall():
