@@ -54,7 +54,7 @@ def command(worker, root, manifest, state):
         'REA_MCP_OUTPUT_SCHEMA_PROFILE': 'full'}
     environment.update({name: mapped(value) for name, value in manifest.get('environment', {}).items()})
     from runtime_paths import launchers
-    replacements, bins = launchers(root, state / 'Data/Commands')
+    replacements, bins = launchers(root, state / 'Data/Commands', disable_python_bytecode=True)
     for name, value in tuple(environment.items()):
         if name != 'PATH': environment[name] = replacements.get(str(value), value)
     environment['PATH'] = ':'.join([*bins, environment['PATH']])

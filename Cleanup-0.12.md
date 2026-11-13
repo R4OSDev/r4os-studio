@@ -273,3 +273,7 @@ Resolve managed REA file arguments against the original project and session path
 ## 0.12.70
 
 Reuse verified REA installations with an exact runtime inventory and full verification after changes.
+
+## 0.12.71
+
+Keep the managed REA runtime reusable after native Python analysis by disabling bytecode writes for isolated interpreter calls.

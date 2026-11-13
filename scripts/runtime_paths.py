@@ -3,7 +3,15 @@ from pathlib import Path
 import shlex
 
 
-def launchers(root, directory):
+def write_launcher(entry, arguments):
+    data = ('#!/usr/bin/python3\nimport os,sys\ncommand=' + repr(arguments)
+            + '\nos.execv(command[0],[*command,*sys.argv[1:]])\n').encode()
+    if not entry.exists() or entry.read_bytes() != data:
+        entry.write_bytes(data)
+        entry.chmod(0o700)
+
+
+def launchers(root, directory, *, disable_python_bytecode=False):
     root = Path(root).resolve(); directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     replacements = {}; bins = []
@@ -31,9 +39,13 @@ def launchers(root, directory):
                 if words[0] == 'exec' and words[-1] == '$@':
                     arguments = [str(root / word.removeprefix('/runtime/')) if word.startswith('/runtime/') else word for word in words[1:-1]]
             if arguments is None: continue
-            data = ('#!/usr/bin/python3\nimport os,sys\ncommand=' + repr(arguments) + '\nos.execv(command[0],[*command,*sys.argv[1:]])\n').encode()
             entry = target / path.name
-            if not entry.exists() or entry.read_bytes() != data:
-                entry.write_bytes(data); entry.chmod(0o700)
+            write_launcher(entry, arguments)
             replacements[str(path)] = str(entry)
+    python = root / 'Programs/Python/bin/python'
+    if disable_python_bytecode and python.is_file():
+        # REA's isolated Python invocations ignore PYTHONDONTWRITEBYTECODE.
+        entry = directory / 'python-no-bytecode'
+        write_launcher(entry, [str(python), '-B'])
+        replacements[str(python)] = str(entry)
     return replacements, bins

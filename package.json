@@ -1,6 +1,6 @@
 {
   "name": "r4os-studio",
-  "version": "0.12.70",
+  "version": "0.12.71",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.3",
