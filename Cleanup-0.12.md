@@ -341,3 +341,7 @@ Measure the session Context gauge against the original completed request input l
 ## 0.12.87
 
 Add a session Usage gauge and show both percentages in accessible tooltips
+
+## 0.12.88
+
+Move session feedback into the header beside the project and session name

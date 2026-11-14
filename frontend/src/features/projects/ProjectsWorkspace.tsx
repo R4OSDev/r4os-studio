@@ -156,7 +156,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
               }
             } catch { /* Server deletion does not depend on browser storage access. */ }
           }} />}
-        {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} dirtyChanged={setDirty} busyChanged={setSaving} removed={() => {
+        {current.section === 'Sessions' && (current.sessionId ? <SessionPanel key={`${selected.id}:${current.sessionId}`} projectId={selected.id} ownerName={selected.name} sessionId={current.sessionId} token={api.token} changed={sessions.reload} refreshAuth={api.reload} dirtyChanged={setDirty} busyChanged={setSaving} removed={() => {
           navigate(selected.id, { ...current, sessionId: undefined }); window.history.replaceState(null, '', `#projects/${selected.id}/sessions`);
         }} /> : <p className="session-empty">Select a session or create one.</p>)}
       </>}

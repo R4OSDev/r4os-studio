@@ -20,7 +20,7 @@ import { useGoal } from './useGoal';
 import { GoalControls, GoalEditor, goalLabel } from './GoalControls';
 import type { SessionGoal } from '../../../../shared/agent-inputs';
 import { useAttachments } from './useAttachments';
-import { AttachmentButton, AttachmentCards } from './AttachmentComposer';
+import { AttachmentButton, AttachmentCards, AttachmentStatus } from './AttachmentComposer';
 import { useMessageComposer } from './useMessageComposer';
 import { useMessageInbox } from './useMessageInbox';
 import { MessageQueue } from './MessageQueue';
@@ -36,8 +36,8 @@ function merge(previous: SessionItem[], value: SessionItem) {
   return previous.some((p) => itemKey(p) === itemKey(value)) ? previous.map((p) => itemKey(p) === itemKey(value) ? value : p) : [...previous, value];
 }
 
-export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth, dirtyChanged, busyChanged, removed }: {
-  projectId: string; sessionId: string; token: string; changed: () => void; refreshAuth: () => Promise<void>;
+export function SessionPanel({ projectId, ownerName, sessionId, token, changed, refreshAuth, dirtyChanged, busyChanged, removed }: {
+  projectId: string; ownerName: string; sessionId: string; token: string; changed: () => void; refreshAuth: () => Promise<void>;
   dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
   removed: () => void;
 }) {
@@ -46,6 +46,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const selectionScope=scope+':'+projectId+':'+sessionId,currentScope=useRef(selectionScope);
   useLayoutEffect(()=>{currentScope.current=selectionScope;},[selectionScope]);
   const [session, setSession] = useState<AgentSession | null>(null), [items, setItems] = useState<SessionItem[]>([]);
+  const [headerStatus, setHeaderStatus] = useState<HTMLDivElement | null>(null);
   const [before, setBefore] = useState<number | null>(null), [error, setError] = useState('');
   const [connection, setConnection] = useState('Connecting'), [stopping, setStopping] = useState(false);
   const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), last = useRef(0);
@@ -254,14 +255,37 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     } finally { setOlder(false); }
   }
   return <section className="agent-session" aria-label="Agent session" onPointerDownCapture={flushDeltas} onFocusCapture={flushDeltas} onKeyDownCapture={flushDeltas} onCopyCapture={flushDeltas}>
-    <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
+    <header className="agent-header"><h1>{ownerName} &gt; {session?.name ?? 'Session'}</h1>
+      <div className="agent-header-messages" aria-label="Session messages and status">
+        <div ref={setHeaderStatus} className="agent-header-composer-status"/>
+        {session && session.engine.kind !== 'studio' && <p className="agent-plan-usage" role="status">Native {session.engine.kind === 'claude-code' ? 'Claude' : 'OpenAI'} conversation. Review an explicit conversion under Session settings → Conversation to use the Studio runtime.</p>}
+        {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
+        <ProviderRetryStatus key={base} run={run}/>
+        <QuotaWaitStatus wait={session?.quotaWait} run={run} control={quotaControl}/>
+        {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
+        {error && <p className="agent-error" role="alert">{error}</p>}
+        {composer.error && <p className="agent-error" role="status">{composer.error}</p>}
+        <MessageQueue control={inbox} />
+        <AttachmentStatus control={attachments} disabled={sending || !!pending} />
+        {active && attachments.hasFiles && <p className="agent-keyboard-hint">{afterResponse ? 'The complete input and its attachments will wait for this response.' : 'Queue the complete input with its attachments. Direct delivery supports text only.'}</p>}
+        {pending && <div className="agent-pending-message" aria-label="Preserved original message">
+          <details><summary>Original request · {composer.receipt?.state ?? 'checking'}</summary><p>{pending.input.text}</p></details>
+          {composer.receipt?.state === 'unknown' && <p>Acceptance is unconfirmed. Check the original request before submitting another copy.</p>}
+          <button type="button" disabled={sending} onClick={() => void composer.submit('run', [], undefined, true)}>Retry same request</button>
+          <button type="button" disabled={sending || composer.receipt?.state === 'pending' || composer.receipt?.state === 'dispatching'} onClick={composer.restore}>Use preserved input</button>
+        </div>}
+        {goal.goal?.phase === 'pausing' && <p className="agent-goal-message" role="status">Pausing after current turn.</p>}
+        {!goal.execution && goal.available && <p className="agent-goal-message" role="status">Finish current runs before starting a Goal.</p>}
+        {goal.goal?.phase === 'unknown' && <p className="agent-goal-message" role="status">The original Goal state is unconfirmed. Pause or Stop before resuming.</p>}
+        {goal.error && <p className="agent-goal-message error" role="alert">{goal.error}</p>}
+        {(goal.checkAgain || !goal.available || goal.goal?.phase === 'unknown') && <div className="agent-goal-recovery"><button type="button" disabled={goal.posting || goal.checking} onClick={() => void goal.check()}>Check Goal status</button>
+          {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
+      </div>
       <div className="agent-header-actions"><span className={`agent-state ${active ? 'active' : ''}`} role="status">{connection === 'Connected' ? (run?.mode === 'goal' && goal.goal?.runId === run.id ? 'Goal · ' + goalLabel(goal, run) : run?.state ? ({queued:'Queued',starting:'Starting',running:'Running',stopping:'Stopping',completed:'Complete',failed:'Failed',interrupted:'Stopped',unknown:'Unconfirmed'} as Record<string,string>)[run.state]??run.state : 'Ready') : connection}</span>
         <button type="button" className="agent-settings-button" aria-label="Screenshot gallery" title="Screenshot gallery" aria-haspopup="dialog" aria-expanded={gallery} disabled={!session} onClick={()=>setGallery(true)}><Icon name="image"/></button>
         <button type="button" className="agent-settings-button" aria-label="Session statistics" title="Session statistics" disabled={!session} onClick={()=>setStatistics(true)}><Icon name="statistics" /></button>
         <button type="button" className={'agent-settings-button agent-notes-button' + (notes.count ? ' has-notes' : '')} aria-label={`Environment notes (${notes.count})`} title="Environment notes" aria-haspopup="dialog" aria-expanded={showNotes} disabled={!session} onClick={() => setShowNotes(true)}><Icon name="note" />{notes.count > 0 && <span className="agent-notes-marker" aria-hidden="true">{notes.count}</span>}</button>
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving ||choiceUnconfirmed|| !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
-    {session && session.engine.kind !== 'studio' && <p className="agent-plan-usage" role="status">Native {session.engine.kind === 'claude-code' ? 'Claude' : 'OpenAI'} conversation. Review an explicit conversion under Session settings → Conversation to use the Studio runtime.</p>}
-    {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
     <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={0} data-following={transcript.following}
       onWheel={transcript.onWheel} onScroll={transcript.onScroll} onKeyDown={transcript.onKeyDown}
       onPointerDown={transcript.onPointerDown} onTouchStart={transcript.onTouchStart} onTouchMove={transcript.onTouchMove}>
@@ -270,12 +294,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       <SessionTranscript before={before} older={older} loadOlder={loadOlder} log={log} following={transcript.following} pauseFollowing={transcript.pause} resumeFollowing={transcript.resume} viewChanged={transcript.viewChanged} items={items} projectId={projectId} sessionId={sessionId} token={token} liveText={active&&run?.id===liveText?.runId?liveText:null}/>
       </div>
     </div>
-    <ProviderRetryStatus key={base} run={run}/>
-    <QuotaWaitStatus wait={session?.quotaWait} run={run} control={quotaControl}/>
-    {run?.error && !items.some((i) => i.runId === run.id && i.type === 'notice' && i.text === run.error) && <p className="agent-error" role="alert">{run.error}</p>}
-    {error && <p className="agent-error" role="alert">{error}</p>}
-    {composer.error && <p className="agent-error" role="status">{composer.error}</p>}
-    <MessageQueue control={inbox} />
     <form className={'agent-composer' + (projectSession && transcript.following ? ' agent-following' : '') + (dragging ? ' dragging' : '')}
       data-following={projectSession ? transcript.following : undefined}
       onSubmit={(e) => { e.preventDefault(); void send(); }}
@@ -299,12 +317,12 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
           if (e.repeat || e.shiftKey || e.metaKey || e.altKey) return;
           void send(e.ctrlKey);
         }} />
-      <AttachmentCards control={attachments} disabled={sending || !!pending} />
+      <AttachmentCards control={attachments} disabled={sending || !!pending} statusTarget={headerStatus} />
       <div className="agent-composer-footer">
         <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} inputBusy={sending || !!pending}
           runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} goal={goal.goal} pending={goal.pending} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} />
         {session && <ComposerSettings key={base} session={session} projectId={projectId} token={token} active={active} disabled={sending || !!pending || settings || goal.changing || goalEditor}
-          busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
+          statusTarget={headerStatus} busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
             if(currentScope.current===selectionScope&&value.id===sessionId&&value.owner.id===projectId&&value.owner.type===scope){setSession(old=>mergeSession(old,value));changed();}
           }} />}
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
@@ -313,19 +331,6 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
           {active && direct && afterResponse && <button type="button" disabled={sending || !!pending || blocked || empty || !!attachments.issue} onClick={() => void send(true,true)}>After response</button>}
           <button className="agent-send" disabled={sending || !session || (!pending && (blocked || empty || !!attachments.issue || queueMode && !inbox.available))}>{sending ? 'Sending…' : pending ? 'Check original request' : queueMode ? 'Queue message' : 'Send'}</button></div>
       </div>
-      {active && attachments.hasFiles && <p className="agent-keyboard-hint">{afterResponse ? 'The complete input and its attachments will wait for this response.' : 'Queue the complete input with its attachments. Direct delivery supports text only.'}</p>}
-      {pending && <div className="agent-pending-message" aria-label="Preserved original message">
-        <details><summary>Original request · {composer.receipt?.state ?? 'checking'}</summary><p>{pending.input.text}</p></details>
-        {composer.receipt?.state === 'unknown' && <p>Acceptance is unconfirmed. Check the original request before submitting another copy.</p>}
-        <button type="button" disabled={sending} onClick={() => void composer.submit('run', [], undefined, true)}>Retry same request</button>
-        <button type="button" disabled={sending || composer.receipt?.state === 'pending' || composer.receipt?.state === 'dispatching'} onClick={composer.restore}>Use preserved input</button>
-      </div>}
-      {goal.goal?.phase === 'pausing' && <p className="agent-goal-message" role="status">Pausing after current turn.</p>}
-      {!goal.execution && goal.available && <p className="agent-goal-message" role="status">Finish current runs before starting a Goal.</p>}
-      {goal.goal?.phase === 'unknown' && <p className="agent-goal-message" role="status">The original Goal state is unconfirmed. Pause or Stop before resuming.</p>}
-      {goal.error && <p className="agent-goal-message error" role="alert">{goal.error}</p>}
-      {(goal.checkAgain || !goal.available || goal.goal?.phase === 'unknown') && <div className="agent-goal-recovery"><button type="button" disabled={goal.posting || goal.checking} onClick={() => void goal.check()}>Check Goal status</button>
-        {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
     </form>
     {goalEditor && <GoalEditor control={goal} run={run} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
     {showNotes && session && <EnvironmentNotes key={notes.key} session={session} notes={notes} token={token} reauth={refreshAuth} close={() => setShowNotes(false)} run={run} stop={stop} />}

@@ -1,5 +1,6 @@
 import { useSessionOptions } from './useSessionOptions';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AgentSession } from '../../../../shared/agent-sessions';
 import { useSessionApi, ProjectRequestError, projectRequestId,sessionPath,busyRun } from './api';
 import {useModelChoice} from './useModelChoice';
@@ -10,10 +11,11 @@ import {UsageIndicator} from './UsageIndicator';
 
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
 
-export function ComposerSettings({ session, projectId, token, disabled, active=false, saved, busyChanged, unconfirmedChanged, refreshAuth }: {
+export function ComposerSettings({ session, projectId, token, disabled, active=false, saved, busyChanged, unconfirmedChanged, refreshAuth, statusTarget }: {
   session: AgentSession; projectId: string; token: string; disabled: boolean; active?:boolean;
   saved: (session: AgentSession) => void; busyChanged: (value: boolean) => void; refreshAuth: () => Promise<void>;
   unconfirmedChanged?:(value:boolean)=>void;
+  statusTarget: HTMLDivElement | null;
 }) {
   const { request: projectRequest, scope } = useSessionApi();
   const { options, error: optionsError } = useSessionOptions(projectId);
@@ -101,10 +103,11 @@ export function ComposerSettings({ session, projectId, token, disabled, active=f
         <UsageIndicator projectId={projectId} sessionId={session.id} providerId={choice.providerId}
           model={choice.model} modelName={model?.name} nativeClaude={session.engine.kind==='claude-code'}/></div>
     </fieldset>
-    {session.pendingModel&&<div className="agent-pending-model" role="status">
-      <p>{busyRun(session.latestRun?.state)?`Current run: ${session.latestRun?.selection?.model??session.model} · `:''}Next run: {session.pendingModel.choice.model} · {session.pendingModel.state==='blocked'?'Blocked':'Pending'}</p>
+    {statusTarget&&createPortal(<>
+    {session.pendingModel&&<div className="agent-pending-model">
+      <div className="agent-status-actions"><span role="status">{busyRun(session.latestRun?.state)?`Current run: ${session.latestRun?.selection?.model??session.model} · `:''}Next run: {session.pendingModel.choice.model} · {session.pendingModel.state==='blocked'?'Blocked':'Pending'}</span>
+        <button type="button" disabled={controlsDisabled} onClick={()=>void change({model:session.model,effort:session.effort,fastMode:session.fastMode})}>Cancel model change</button></div>
       {session.pendingModel.reason&&<p>{session.pendingModel.reason}</p>}
-      <button type="button" disabled={controlsDisabled} onClick={()=>void change({model:session.model,effort:session.effort,fastMode:session.fastMode})}>Cancel model change</button>
     </div>}
     {!session.pendingModel&&busyRun(session.latestRun?.state)&&session.latestRun?.selection&&session.latestRun.selection.model!==session.model
       &&<p className="agent-terminal-hint" role="status">Current run: {session.latestRun.selection.model} · Following inputs: {session.model}</p>}
@@ -113,8 +116,8 @@ export function ComposerSettings({ session, projectId, token, disabled, active=f
       <button type="button" disabled={modelChoice.busy} onClick={()=>void modelChoice.read()}>Check original choice</button>
       <button type="button" disabled={modelChoice.busy} onClick={()=>void modelChoice.retry()}>Retry same choice</button>
     </div>}
-    {session.engine.kind !== 'studio' && <p className="agent-terminal-hint">This conversation uses a native connection. Review a conversion in Session settings → Conversation to use a different direct connection.</p>}
     {model?.available === false && <p className="agent-terminal-hint" role="status">{model.unavailableReasons?.join(' ')}</p>}
     {(error ||modelChoice.error|| optionsError) && <p className="agent-choice-error" role="alert">{error ||modelChoice.error|| optionsError}</p>}
+    </>,statusTarget)}
   </div>;
 }
