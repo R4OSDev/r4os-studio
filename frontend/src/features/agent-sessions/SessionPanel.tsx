@@ -212,6 +212,10 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope,acceptQuota,scheduleTranscript]);
   useEffect(()=>{const hidden=()=>{deltas.flush();if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[deltas]);
   const run = session?.latestRun;
+  const compaction = session?.context?.compaction;
+  const compacting = compaction?.state === 'running' && compaction.runId === run?.id && busyRun(run?.state);
+  const followHint = compacting ? 'Compaction running...' : transcript.following
+    ? 'Following latest messages. Scroll up to pause.' : 'Following paused. Scroll to the bottom to resume.';
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
   const active = busyRun(run?.state) || nativeActive;
   const waiting = inbox.inbox?.messages.some(value => value.mode === 'queue' && ['queued','dispatching'].includes(value.state)) ?? false;
@@ -274,12 +278,14 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     <MessageQueue control={inbox} />
     <form className={'agent-composer' + (projectSession && transcript.following ? ' agent-following' : '') + (dragging ? ' dragging' : '')}
       data-following={projectSession ? transcript.following : undefined}
-      title={projectSession ? transcript.following ? 'Following latest messages. Scroll up to pause.' : 'Following paused. Scroll to the bottom to resume.' : undefined}
       onSubmit={(e) => { e.preventDefault(); void send(); }}
       onDragEnter={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); dragDepth.current++; setDragging(true); } }}
       onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = sending || pending ? 'none' : 'copy'; } }}
       onDragLeave={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } } }}
       onDrop={event => { if (event.dataTransfer.files.length) { event.preventDefault(); dragDepth.current = 0; setDragging(false); if (session && !sending && !pending && !settings && !goalEditor) attachments.add(Array.from(event.dataTransfer.files)); } }}>
+      {(projectSession || compacting) && <span className="agent-follow-indicator" data-state={compacting ? 'compacting' : transcript.following ? 'following' : 'paused'}
+        title={followHint} aria-hidden="true" />}
+      <span className="agent-follow-status" role="status">{compacting && 'Compaction running...'}</span>
       <textarea aria-label="Message" placeholder="Message the agent…" rows={3} maxLength={65536} value={text} disabled={!session}
         onChange={(e) => composer.edit(e.target.value)}
         onPaste={event => {

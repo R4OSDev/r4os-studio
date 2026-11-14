@@ -329,3 +329,7 @@ Backport Linux kernel-thread recognition for Ghidra cleanup in the managed REA r
 ## 0.12.84
 
 Remove the secondary caption below the session Context gauge
+
+## 0.12.85
+
+Focus the scroll indicator tooltip and pulse blue during context compaction
