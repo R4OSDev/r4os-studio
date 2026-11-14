@@ -3,6 +3,7 @@ import { DeleteSkillDialog, pendingSkillDeletion } from './DeleteSkillDialog';
 import { projectRequestId } from '../projects/api';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../../app/Icon';
+import { WorkspaceNavigation } from '../../app/WorkspaceNavigation';
 import { EditorDialog } from '../project-editor/EditorDialog';
 import { useSkills } from './useSkills';
 import type { FormEvent } from 'react';
@@ -55,7 +56,7 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
   const closeDeletion=useCallback(()=>setDeletionId(null),[]);
   const finishDeletion=useCallback(async(id:string)=>{forgetSkill(id);await reloadSkills();if(selectedRef.current===id){setChildGuard(()=>true);setSessionDirty(false);select(null);navigate(id);window.history.replaceState(null,'','#tools');}},[forgetSkill,reloadSkills,select,navigate,setChildGuard]);
   return <>
-    <aside className="navigation" aria-label="Tools navigation">
+    <WorkspaceNavigation label="Tools navigation">
       <nav className="nav-column" aria-label="Tools"><div className="column-heading">TOOLS</div>
         <div className="nav-items"><button type="button" className="nav-item selected" aria-current="true"><Icon name="book" /><span>Skill Manager</span></button></div>
       </nav>
@@ -76,7 +77,7 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
           <button type="button" className={`nav-item ${!sessionId ? 'selected' : ''}`} aria-current={!sessionId ? 'page' : undefined} onClick={() => { if (sessionId) chooseSession(); }}>View Skill</button></div>
         <div className="nav-items skill-session-list">{sessions.error ? <><p className="skill-nav-message" role="alert">{sessions.error}</p><button className="nav-item" onClick={sessions.reload}>Retry</button></> : sessions.loading ? <p className="skill-nav-message" role="status">Loading sessions…</p> : sessions.sessions.map((session) => <button key={session.id} type="button" className={`nav-item ${session.id === sessionId ? 'selected' : ''}`} aria-current={session.id === sessionId ? 'page' : undefined} onClick={() => { if (session.id !== sessionId) chooseSession(session.id); }}><span className="provider-view-name">{session.name}</span>{busyRun(session.latestRun?.state) && <span className="session-nav-status" aria-label="Run active" />}</button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
-    </aside>
+    </WorkspaceNavigation>
     <main className="main-area skill-main" aria-label="Tools content" tabIndex={-1}>
       {active && sessionId ? sessions.loading ? <p className="skill-empty">Loading session…</p> : (sessions.sessions.some((session) => session.id === sessionId) || !!pendingDeletion('skill', active.id, sessionId)) ? <SessionPanel key={'skill:' + active.id + ':' + sessionId} projectId={active.id} sessionId={sessionId} token={api.token} changed={changed} refreshAuth={api.reload} dirtyChanged={setSessionDirty} busyChanged={setSessionBusy} removed={() => { navigate(active.id); window.history.replaceState(null, '', '#tools/skills/' + active.id); }} /> : <p className="skill-empty">The selected session is unavailable. Select a session or View Skill.</p> : active ? <Suspense fallback={<p className="skill-empty">Loading skill…</p>}><SkillEditor key={active.id} id={active.id} token={api.token}
         deleteSkill={()=>setDeletionId(active.id)} remembered={api.remember} setLeaveGuard={setChildGuard} refreshAuth={api.reload} /></Suspense>

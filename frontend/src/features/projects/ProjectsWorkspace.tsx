@@ -1,6 +1,7 @@
 import { deferView } from '../../app/DeferredView';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../app/Icon';
+import { WorkspaceNavigation } from '../../app/WorkspaceNavigation';
 import { useProjects } from './useProjects';
 import { useProjectActivity } from './useProjectActivity';
 import type { ProjectSettingsView } from './ProjectSettings';
@@ -68,7 +69,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   useEffect(() => { setLeaveGuard(leave); return () => setLeaveGuard(() => true); }, [leave, setLeaveGuard]);
 
   return <>
-    <aside className={`navigation ${current.section === 'Statistics' ? 'statistics-project' : ''}`} aria-label="Projects navigation">
+    <WorkspaceNavigation className={current.section === 'Statistics' ? 'statistics-project' : ''} fixed={current.section === 'Statistics'} label="Projects navigation">
       <nav className="nav-column" aria-label="Projects">
         <div className="column-heading">Projects</div>
         <div className="nav-items" aria-busy={api.loading}>
@@ -119,7 +120,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
                 <span className="provider-view-name">{s.name}</span>{sessions.fresh && busyRun(s.latestRun?.state) && <span className="session-nav-status" aria-label="Run active" />}</button>)}
         </div>
       </nav> : current.section === 'Statistics' ? null : <div className="nav-column" aria-hidden="true" />}
-    </aside>
+    </WorkspaceNavigation>
     <main className={`main-area ${current.section === 'Editor' ? 'editor-main' : current.section === 'Boards' ? 'boards-main' : ''}`} aria-label="Project content">
       {selected && opening.checking && !selected.deleting && <p className="project-message project-background-status" role="status">Checking GitHub in the background…</p>}
       {opening.notice && <p className="project-message project-background-status" role="status">{opening.notice} <button className="project-reload" type="button" onClick={opening.refresh}>Refresh GitHub status</button></p>}

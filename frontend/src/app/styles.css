@@ -39,6 +39,8 @@ button { border: 0; }
 .tab.active .icon { color: var(--accent); }
 /* Die bisherige dritte Spalte gibt die Breite für alle drei Spalten vor. */
 .workspace { --navigation-column-width: calc(max(510px, 44vw) * .95 / 3.05); display: grid; grid-template-columns: calc(3 * var(--navigation-column-width)) minmax(0, 1fr); flex: 1; min-height: 0; }
+.workspace-navigation { display: grid; min-width: 0; min-height: 0; }
+.navigation-grip { display: none; }
 .navigation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; background: #1b1623; }
 .nav-column { position: relative; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); overflow-y: auto; }
 .nav-column:nth-child(2) { background: #191420; }
@@ -89,3 +91,44 @@ h2 { margin: 14px 0 12px; color: #ece2fa; font-size: clamp(21px, 2vw, 29px); lin
 @media(min-width:801px) { .workspace.single-area-workspace { grid-template-columns:var(--navigation-column-width) minmax(0,1fr); } }
 .navigation.single-area-workspace { grid-template-columns:minmax(0,1fr); }
 @media(max-width:800px) { .navigation.single-area-workspace { min-height:0; } }
+
+@media (max-width: 1050px) {
+  .workspace.collapsible-workspace {
+    --navigation-grip-width: 28px;
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: var(--navigation-grip-width) minmax(0, 1fr);
+  }
+  .collapsible-workspace > .main-area { grid-column: 2; }
+  .workspace-navigation.collapsible-navigation {
+    position: absolute;
+    z-index: 5;
+    inset: 0 auto 0 0;
+    display: flex;
+  }
+  .collapsible-navigation .navigation-grip {
+    display: flex;
+    flex: 0 0 var(--navigation-grip-width);
+    width: var(--navigation-grip-width);
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-right: 1px solid var(--line);
+    background: #21192b;
+    color: var(--accent);
+  }
+  .collapsible-navigation .navigation-grip[aria-expanded=true] .icon { transform: rotate(180deg); }
+  .collapsible-navigation > .navigation {
+    position: absolute;
+    inset: 0 auto 0 100%;
+    width: min(calc(3 * var(--navigation-column-width)), calc(100vw - var(--navigation-grip-width)));
+    min-height: 0;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+    box-shadow: 6px 0 18px #0d0a12aa;
+  }
+  .collapsible-navigation > .navigation[inert] { display: none; }
+  .collapsible-navigation .column-heading { overflow: hidden; text-overflow: ellipsis; }
+  .collapsible-navigation .provider-remaining { margin-left: 0; }
+}

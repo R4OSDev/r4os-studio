@@ -2,6 +2,7 @@ import { deferView, ViewRecovery } from './DeferredView';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from './Icon';
+import { WorkspaceNavigation } from './WorkspaceNavigation';
 import { navigation } from './navigation';
 import type { Tab } from './navigation';
 import { useProviders } from '../features/llm-providers/useProviders';
@@ -235,10 +236,10 @@ export function App() {
         </div>
       </header>
 
-      <div className={`workspace ${tab === 'Status' ? 'status-workspace' : singleColumnPage ? 'single-area-workspace' : tab === 'Projects' && projectNavigation[projectId ?? '']?.section === 'Statistics' ? 'statistics-project' : ''}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
+      <div className={`workspace ${tab === 'Status' ? 'status-workspace' : singleColumnPage ? 'single-area-workspace' : tab === 'Projects' && projectNavigation[projectId ?? '']?.section === 'Statistics' ? 'statistics-project' : 'collapsible-workspace'}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
         {tab === 'Status' ? <StatusWorkspace><AiLimitsPanel api={providers} /></StatusWorkspace> : tab === 'Tools' ? <ToolsWorkspace selectedId={skillId} sessionId={skillSessions[skillId ?? '']} navigate={navigateSkill} select={setSkillId} setLeaveGuard={setToolsLeaveGuard} /> : tab === 'Projects' ? <ProjectsWorkspace selectedId={projectId} select={selectProject}
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
-        <aside className={`navigation ${singleColumnPage ? 'single-area-workspace' : ''}`} aria-label={`${tab} navigation`}>
+        <WorkspaceNavigation className={singleColumnPage ? 'single-area-workspace' : ''} fixed={singleColumnPage} label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
             <div className="column-heading">Areas</div>
             <div className="nav-items">
@@ -290,7 +291,7 @@ export function App() {
               })}
             </div>
           </nav></>}
-        </aside>
+        </WorkspaceNavigation>
 
         <main className="main-area">
           <div className="page-heading"><h1>{systemToolsPage ? 'Tools' : statisticsPage ? 'Statistics' : remotePage ? activeRemoteHost?.name ?? (remoteHostId ? 'Remote Host' : 'New Remote Host') : vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>

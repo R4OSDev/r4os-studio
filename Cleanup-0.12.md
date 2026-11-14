@@ -313,3 +313,7 @@ Retry a complete Z.AI HTTP 500 with code 1234 up to five times at 60-second inte
 ## 0.12.80
 
 Hide temporary session reader contention notices and move run stopping to the composer
+
+## 0.12.81
+
+Collapse the three workspace navigation columns into a shared overlay on narrow screens
