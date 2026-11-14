@@ -21,6 +21,11 @@
 .github-issue-labels { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
 .github-issue-labels span { border:1px solid #624d78; border-radius:5px; padding:3px 7px; color:#d0bddf; font-size:10px; overflow-wrap:anywhere; }
 .github-issue time { display:block; margin-top:10px; color:#a997bc; font-size:10px; }
+.github-issue-row-actions { margin-top: 12px; }
+.github-discard-dialog form { padding: 16px 26px 20px; overflow-wrap: anywhere; }
+.github-discard-dialog .project-actions { padding: 0; }
+.github-discard-dialog textarea { display: block; width: 100%; margin: 8px 0 14px; resize: vertical; padding: 10px; border: 1px solid #574065; border-radius: 6px; background: #21192b; color: inherit; font: inherit; }
+.github-discard-dialog a { color: var(--accent); }
 .github-issues-paging { display:flex; justify-content:flex-end; gap:10px; }
 .github-issues-error { color:#e4b8d3; font-size:12px; line-height:1.7; }
 .github-issues-empty { padding:24px 0; color:#b7a3c9; font-size:13px; }

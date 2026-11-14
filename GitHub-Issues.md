@@ -83,3 +83,7 @@ Import GitHub issues as linked project Roadmap subversions.
 ## 0.13.4
 
 Finish linked GitHub issues with durable comment and closure receipts.
+
+## 0.13.5
+
+Discard issues with a reason from the GitHub Issues panel.

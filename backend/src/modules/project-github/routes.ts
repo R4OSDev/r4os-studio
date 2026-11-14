@@ -12,6 +12,7 @@ import type { RoadmapIssueLink } from '../../../../shared/project-roadmaps.js';
 import { GitHubStore } from '../github-connections/store.js';
 import { roadmapStore } from '../project-roadmaps/store.js';
 import { ProjectIssueTarget, roadmapIssueText } from './issue-detail.js';
+import { issueAction as callIssueAction } from './issue-actions.js';
 
 export async function projectGithubRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions,{
   githubDirectory=join(dirname(directory),'GitHub'), transport=fetch, refreshGithub=false,
@@ -22,6 +23,7 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
   const { issues } = refresh;
   const targets = new ProjectIssueTarget(new GitHubStore(githubDirectory), id => refresh.readBinding(id), transport);
   const revision = {type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER};
+  const issueId = {type:'string',minLength:1,maxLength:256,pattern:'^[A-Za-z0-9_+/=-]+$'};
   const issueNumber = {type:'integer',minimum:1,maximum:2147483647};
   const issueParams = { ...params, required:['id','number'], properties:{...params.properties,number:issueNumber} };
   const issueAction = { requestId:uuid,bindingRevision:revision,credentialRevision:revision };
@@ -35,13 +37,38 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     return {...page,items:page.items.map(item=>links[item.number]?{...item,roadmap:links[item.number]}:item)};
   }
   type IssueAction = {requestId:string;bindingRevision:number;credentialRevision:number};
+  app.get<{Params:{id:string;number:number};Querystring:{bindingRevision:number;credentialRevision:number;issueId?:string}}>('/:id/github/issues/:number/discard',{
+    schema:{params:issueParams,querystring:{type:'object',required:['bindingRevision','credentialRevision'],additionalProperties:false,
+      properties:{bindingRevision:revision,credentialRevision:revision,issueId}}},
+  },async(request,reply)=>{
+    sessions.session(request,reply);
+    await refresh.readBinding(request.params.id);
+    return { receipt:await callIssueAction(directory,githubDirectory,request.params.id,'status',{...request.query,number:request.params.number}) };
+  });
+  app.post<{Params:{id:string;number:number};Body:IssueAction&{text:string;issueId?:string}}>('/:id/github/issues/:number/discard',{
+    bodyLimit:16384,schema:{params:issueParams,body:{type:'object',required:[...Object.keys(issueAction),'text'],additionalProperties:false,
+      properties:{...issueAction,text:{type:'string',minLength:1,maxLength:4000},issueId}}},
+  },async(request,reply)=>{
+    sessions.mutation(request,reply);
+    if(!request.body.text.trim()||Buffer.byteLength(request.body.text)>4000)throw new ProjectError('Enter a reason within 4,000 bytes.',400);
+    const {id,number}=request.params;
+    await refresh.readBinding(id);
+    const receipt=await callIssueAction(directory,githubDirectory,id,'discard',{...request.body,number});
+    if(receipt?.closedAt) {
+      const {bindingRevision}=request.body;
+      await issues.read(id,bindingRevision,'open',null,true).catch(()=>null);
+    }
+    return {receipt};
+  });
   app.post<{Params:{id:string;number:number};Body:IssueAction}>('/:id/github/issues/:number/roadmap',{
-    bodyLimit:4096,schema:{params:issueParams,body:{type:'object',required:Object.keys(issueAction),additionalProperties:false,properties:issueAction}},
+    bodyLimit:4096,schema:{params:issueParams,body:{type:'object',required:Object.keys(issueAction),additionalProperties:false,properties:{...issueAction,issueId}}},
   },async(request,reply)=>{
     sessions.mutation(request,reply);
     const {id,number}=request.params;
     const {requestId,bindingRevision,credentialRevision}=request.body;
     const {bound,issue,assertCurrent}=await targets.read(id,number,bindingRevision,credentialRevision);
+    const expectedId=(request.body as IssueAction&{issueId?:string}).issueId;
+    if(expectedId&&issue.id!==expectedId)throw new ProjectError('The original GitHub issue changed. Refresh the list.',409);
     if(issue.state!=='OPEN'){
       const {links}=await roadmapStore<{links:Record<string,RoadmapIssueLink>}>(directory,{
         operation:'github_issue_links',projectId:id,input:{repositoryId:bound.repository.id,numbers:[number]},

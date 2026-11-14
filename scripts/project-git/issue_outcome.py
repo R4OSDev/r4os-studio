@@ -9,7 +9,7 @@ import re
 import stat
 from uuid import uuid4
 
-from common import ProjectFault, acquire, binding, document, folder, now, project_id, save, storage
+from common import ProjectFault, acquire, binding, document, folder, now, project as require_project, project_id, save, storage
 from github import GitHub
 from issue_origin import origin
 from storage import connection
@@ -44,7 +44,11 @@ def graphql(api, operation, query, variables):
         raise ProjectFault('GitHub returned an invalid issue response.', 502)
     errors = raw.get('errors', [])
     if not isinstance(errors, list) or errors:
-        kinds = {error.get('type') for error in errors if isinstance(error, dict)} if isinstance(errors, list) else set()
+        data = raw.get('data')
+        if operation in ('StudioIssueComment','StudioIssueClose') and isinstance(data,dict) and any(
+                value is not None for value in data.values()):
+            raise ProjectFault('GitHub returned a partial issue action response.',502)
+        kinds = {str(error.get('type')) for error in errors if isinstance(error, dict)} if isinstance(errors, list) else set()
         if kinds.intersection({'FORBIDDEN', 'INSUFFICIENT_SCOPES', 'UNAUTHORIZED'}):
             raise ProjectFault('GitHub denied this issue action. Check Issues write permissions.', 403)
         if 'RATE_LIMITED' in kinds:
@@ -127,13 +131,20 @@ def check_roadmap(projects, project, subversion_id, requested=None):
         return source
 
 
+def operation_path(projects, project, issue_id, repository_id):
+    directory = Path(projects) / project_id(project) / '.studio/git/IssueActions'
+    key = hashlib.sha256(f'{repository_id}:{issue_id}'.encode()).hexdigest()
+    return directory/(key+'.json')
+
+
 @contextmanager
 def operation_lock(projects, project, target, repository_id):
-    directory = storage(projects, project) / 'IssueActions'
+    path = operation_path(projects, project, target['id'], repository_id)
+    storage(projects, project)
+    directory = path.parent
     directory.mkdir(mode=0o700, exist_ok=True)
     folder(directory)
-    key = hashlib.sha256(f'{repository_id}:{target["id"]}'.encode()).hexdigest()
-    fd = os.open(directory/(key+'.lock'), os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK, 0o600)
+    fd = os.open(path.with_suffix('.lock'), os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK, 0o600)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
@@ -142,7 +153,7 @@ def operation_lock(projects, project, target, repository_id):
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ProjectFault('A GitHub action for this issue is already running. Check the original action.', 409) from None
-        yield directory/(key+'.json')
+        yield path
     finally:
         os.close(fd)
 
@@ -219,7 +230,11 @@ def execute(projects, github, project, payload, authorize, frozen=None, credenti
     body=text(payload['text'],4000,True)
     sub=payload.get('subversionId')
     if sub: identity(sub)
+    expected_issue=payload.get('issueId')
+    if expected_issue is not None and (not isinstance(expected_issue,str) or not re.fullmatch(r'[A-Za-z0-9_+/=-]{1,256}',expected_issue)):
+        raise ProjectFault('Invalid GitHub issue identity.',400)
     with acquire(projects,project):
+        require_project(projects,project)
         bound=binding(projects,project)
         if not bound or bound['revision']!=revision or (frozen is not None and (not match_binding(bound,frozen) or token_revision!=credential_revision)):
             raise ProjectFault('The GitHub repository or connection changed.',409)
@@ -231,7 +246,7 @@ def execute(projects, github, project, payload, authorize, frozen=None, credenti
                 raise ProjectFault('The GitHub repository binding changed.',409)
             api.assert_current()
         repo_id=bound['repository']['id']
-        target=issue(api,bound,number,payload.get('issueId'))
+        target=issue(api,bound,number,expected_issue)
         if sub and requested_reason=='COMPLETED':
             source=check_roadmap(projects,project,sub,None)
             if source['repositoryId']!=repo_id or source['issueId']!=target['id']:

@@ -1,10 +1,11 @@
 import {Icon} from '../../app/Icon';
 import {useEffect,useState} from 'react';
-import type {GitHubIssue, GitHubIssueState, GitHubIssueCount} from '../../../../shared/project-github-issues';
+import type {GitHubIssue, GitHubIssuePage, GitHubIssueState, GitHubIssueCount} from '../../../../shared/project-github-issues';
 import type {RoadmapIssueLink} from '../../../../shared/project-roadmaps';
 import {projectRequest,projectRequestId} from '../projects/api';
 import type {ProjectIssuesModel} from './useProjectIssues';
-import {issueCountText} from './useIssueCounts';
+import {issueCountChanged,issueCountText} from './useIssueCounts';
+import {DiscardIssueDialog} from './DiscardIssueDialog';
 import './issues.css';
 
 export function GithubNavigation({model,count,selected,disabled,choose}:{model:ProjectIssuesModel;count?:GitHubIssueCount;selected:'Connection'|'Issues';disabled:boolean;choose:(view:'Connection'|'Issues')=>void}){
@@ -19,6 +20,7 @@ export function ProjectIssues({model,token,openRoadmap,busyChanged}:{model:Proje
   const data=model.data;
   const [pending,setPending]=useState<number|null>(null),[error,setError]=useState('');
   const [added,setAdded]=useState<Record<string,RoadmapIssueLink>>({});
+  const [discard,setDiscard]=useState<{issue:GitHubIssue;scope:GitHubIssuePage['scope']}|null>(null);
   const busy=pending!==null;
   useEffect(()=>{busyChanged(busy);return()=>busyChanged(false);},[busy,busyChanged]);
   function key(issue:GitHubIssue){
@@ -32,7 +34,8 @@ export function ProjectIssues({model,token,openRoadmap,busyChanged}:{model:Proje
     try{
       const requestId=sessionStorage.getItem(action)??projectRequestId();
       sessionStorage.setItem(action,requestId);
-      const link=await projectRequest<RoadmapIssueLink>(`/${projectId}/github/issues/${issue.number}/roadmap`,token,'POST',{requestId,bindingRevision,credentialRevision});
+      const link=await projectRequest<RoadmapIssueLink>(`/${projectId}/github/issues/${issue.number}/roadmap`,token,'POST',
+        {requestId,bindingRevision,credentialRevision,...(issue.id?{issueId:issue.id}:{})});
       sessionStorage.removeItem(action);
       setAdded(previous=>({...previous,[action]:link}));
     }catch(cause){setError((cause as Error).message);}
@@ -56,12 +59,25 @@ export function ProjectIssues({model,token,openRoadmap,busyChanged}:{model:Proje
         <div className="github-issue-heading"><span className={`github-issue-state ${issue.state}`}>{issue.state==='open'?'Open':'Closed'}</span><a href={issue.url} target="_blank" rel="noopener noreferrer"><span>#{issue.number}</span> {issue.title}</a></div>
         {issue.labels.length>0&&<div className="github-issue-labels">{issue.labels.map((label,index)=><span key={index} style={{borderColor:'#'+label.color}}>{label.name}</span>)}{issue.moreLabels>0&&<span>+{issue.moreLabels} more</span>}</div>}
         <time dateTime={issue.updatedAt}>Updated {new Date(issue.updatedAt).toLocaleString()}</time>
-        {(link||issue.state==='open')&&<div className="github-issues-actions">
+        {(link||issue.state==='open'||issue.id)&&<div className="github-issues-actions github-issue-row-actions">
           {link?<button type="button" disabled={busy} onClick={()=>openRoadmap(link)}>View in Roadmap</button>
-            :<button type="button" disabled={busy||!token} onClick={()=>void add(issue)}>{pending===issue.number?'Adding…':'Add to Roadmap'}</button>}
+            :issue.state==='open'&&<button type="button" disabled={busy||!token} onClick={()=>void add(issue)}>{pending===issue.number?'Adding…':'Add to Roadmap'}</button>}
+          {issue.state==='open'&&<button type="button" disabled={busy||!token} onClick={()=>setDiscard({issue:{...issue,roadmap:link},scope:data.scope})}>Discard</button>}
+          {issue.state==='closed'&&issue.id&&hasDiscard(data.scope,issue.number)&&
+            <button type="button" disabled={busy||!token} onClick={()=>setDiscard({issue:{...issue,roadmap:link},scope:data.scope})}>Resume discard</button>}
         </div>}
       </li>;})}</ol>:<p className="github-issues-empty">No {model.state==='all'?'':model.state+' '}issues found.</p>}
       <footer className="github-issues-paging"><button type="button" disabled={model.loading||busy||!model.canPrevious} onClick={model.previous}>Previous</button><button type="button" disabled={model.loading||busy||!data.nextCursor} onClick={model.next}>Next</button></footer>
     </>}
+    {discard&&<DiscardIssueDialog {...discard} token={token} close={()=>setDiscard(null)} busyChanged={busyChanged} changed={completed=>{
+      if(completed)setDiscard(null);
+      model.refresh();
+      window.dispatchEvent(new Event(issueCountChanged));
+    }} />}
   </section>;
+}
+
+function hasDiscard(scope:GitHubIssuePage['scope'],number:number){
+  try{return sessionStorage.getItem('studio.github.discard.'+[scope.projectId,scope.repositoryId,number].join('.'))!==null;}
+  catch{return false;}
 }

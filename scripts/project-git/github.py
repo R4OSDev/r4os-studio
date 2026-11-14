@@ -12,6 +12,18 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args): return None
 
 
+def connection_record(directory, connection_id):
+    catalog = document(Path(directory) / 'connections.json', 8 * 1024 * 1024)
+    if catalog.get('schema') != 1 or not isinstance(catalog.get('connections'), list):
+        raise ProjectFault('GitHub connection storage needs maintenance.', 503)
+    record = next((value for value in catalog['connections'] if value.get('id') == connection_id), None)
+    if not record:
+        raise ProjectFault('GitHub connection was removed. Reconnect this project.', 409)
+    if not isinstance(record.get('token'), str) or not re.fullmatch(r'[\x21-\x7e]{20,4096}', record['token']):
+        raise ProjectFault('GitHub connection storage is invalid.', 503)
+    return record
+
+
 class GitHub:
     def __init__(self, directory, connection_id, token_revision=None, expected_user=None):
         self.directory, self.connection_id = Path(directory), connection_id
@@ -30,14 +42,7 @@ class GitHub:
         self.assert_current()
 
     def snapshot(self):
-        catalog = document(self.directory / 'connections.json', 8 * 1024 * 1024)
-        if catalog.get('schema') != 1 or not isinstance(catalog.get('connections'), list):
-            raise ProjectFault('GitHub connection storage needs maintenance.', 503)
-        record = next((v for v in catalog['connections'] if v.get('id') == self.connection_id), None)
-        if not record: raise ProjectFault('GitHub connection was removed. Reconnect this project.', 409)
-        if not isinstance(record.get('token'), str) or not re.fullmatch(r'[\x21-\x7e]{20,4096}', record['token']):
-            raise ProjectFault('GitHub connection storage is invalid.', 503)
-        return record
+        return connection_record(self.directory, self.connection_id)
 
     def assert_current(self):
         record = self.snapshot()

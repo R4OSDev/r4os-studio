@@ -15,7 +15,7 @@ export const ISSUES_QUERY=`query StudioProjectIssues($owner:String!,$name:String
   repository(owner:$owner,name:$name){databaseId nameWithOwner hasIssuesEnabled
     openIssues:issues(first:1,states:[OPEN]){totalCount}
     issuePage:issues(first:25,states:$states,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){
-      nodes{__typename number title state url updatedAt labels(first:12){nodes{name color} totalCount}}
+      nodes{__typename id number title state url updatedAt labels(first:12){nodes{name color} totalCount}}
       pageInfo{hasNextPage endCursor}
     }
   }
@@ -24,7 +24,7 @@ type BindingReader=(id:string)=>Promise<GitHubProjectBinding|null>;
 const integer=(v:unknown):v is number=>Number.isSafeInteger(v)&&(v as number)>=0;
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length>0&&v.length<=max&&!/[\p{Cc}\p{Cs}]/u.test(v);
 const invalid=()=>new ProjectError('GitHub returned incomplete or invalid issue data. Refresh without treating the count as zero.',502);
-type RawIssue={__typename?:unknown;number?:unknown;title?:unknown;state?:unknown;url?:unknown;updatedAt?:unknown;labels?:{nodes?:{name?:unknown;color?:unknown}[];totalCount?:unknown}};
+type RawIssue={__typename?:unknown;id?:unknown;number?:unknown;title?:unknown;state?:unknown;url?:unknown;updatedAt?:unknown;labels?:{nodes?:{name?:unknown;color?:unknown}[];totalCount?:unknown}};
 type QueryResult={errors?:{type?:string;extensions?:{type?:string;code?:string}}[];data?:{
   viewer?:{databaseId?:unknown};repository?:{databaseId?:unknown;nameWithOwner?:unknown;hasIssuesEnabled?:unknown;
     openIssues?:{totalCount?:unknown};issuePage?:{nodes?:RawIssue[];pageInfo?:{hasNextPage?:unknown;endCursor?:unknown}}}|null}};
@@ -179,7 +179,9 @@ export class GitHubIssues {
       const issueState=v.state==='OPEN'?'open':'closed',url='https://github.com/'+repo.nameWithOwner+'/issues/'+v.number;
       if(v.url!==url||(state!=='all'&&state!==issueState))throw invalid();
       const labels=v.labels.nodes.map(l=>{if(!text(l.name,100)||typeof l.color!=='string'||! /^[a-f0-9]{6}$/i.test(l.color))throw invalid();return{name:l.name,color:l.color};});
-      return{number:v.number,title:v.title,state:issueState,url,updatedAt:v.updatedAt,labels,moreLabels:v.labels.totalCount-labels.length};
+      const id=typeof v.id==='string'&&/^[A-Za-z0-9_+/=-]{1,256}$/.test(v.id)?v.id:undefined;
+      if(v.id!==undefined&&!id)throw invalid();
+      return{number:v.number,title:v.title,state:issueState,url,updatedAt:v.updatedAt,labels,moreLabels:v.labels.totalCount-labels.length,...(id?{id}:{})};
     });
     if(new Set(items.map(v=>v.number)).size!==items.length||info.hasNextPage&&(!items.length||info.endCursor===after))throw invalid();
     const now=Date.now();
