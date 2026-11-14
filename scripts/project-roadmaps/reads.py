@@ -60,8 +60,9 @@ def entity(db, kind, row, aggregates=None):
                 'subversionCount': aggregates['counts'].get(row['id'],0) if aggregates is not None else db.execute('SELECT count(*) FROM subversions WHERE version_id=?', (row['id'],)).fetchone()[0],
                 'progress': aggregates['progress'][row['id']] if aggregates is not None else progress(db, version_id=row['id'])}
     if kind == 'subversion':
+        from issue_origin import source_fields
         parent = aggregates['parents'][row['version_id']] if aggregates is not None else db.execute('SELECT major,minor FROM versions WHERE id=?', (row['version_id'],)).fetchone()
-        return {**version_fields(row), 'versionId': row['version_id'], 'number': f'{parent["major"]}.{parent["minor"]}.{row["patch"]}',
+        return {**version_fields(row), **source_fields(db, row['id']), 'versionId': row['version_id'], 'number': f'{parent["major"]}.{parent["minor"]}.{row["patch"]}',
                 'title': row['title'], 'description': row['description'], 'status': row['status'],
                 'order': row['position'], 'progress': aggregates['progress'][row['id']] if aggregates is not None else progress(db, subversion_id=row['id'])}
     return item(row)

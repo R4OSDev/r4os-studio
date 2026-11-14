@@ -41,6 +41,10 @@ def archive_text(db, version):
         yield details(sub)
         yield completion(sub)
         yield f'Parent version ID: {sub["version_id"]}\nStatus: {VERSION_LABELS[sub["status"]]}\n'
+        from issue_origin import origin
+        issue = origin(db, sub['id'])
+        if issue:
+            yield f'GitHub Issue #{issue["number"]}: {issue["url"]}\n'
         yield block('Description', sub['description'])
         yield block('Subversion notes', sub['notes'])
         for table, label in (('tasks', 'Tasks'), ('acceptances', 'Acceptance items')):

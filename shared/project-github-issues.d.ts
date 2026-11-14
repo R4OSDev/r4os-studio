@@ -1,7 +1,9 @@
+import type { RoadmapIssueLink } from './project-roadmaps';
 export type GitHubIssueState='open'|'closed'|'all';
 export interface GitHubIssue {
   number:number;title:string;state:'open'|'closed';url:string;updatedAt:string;
   labels:{name:string;color:string}[];moreLabels:number;
+  roadmap?: RoadmapIssueLink;
 }
 export interface GitHubIssuePage {
   scope:{projectId:string;repositoryId:number;bindingRevision:number;credentialRevision:number};

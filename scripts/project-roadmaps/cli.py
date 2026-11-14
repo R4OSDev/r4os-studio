@@ -18,13 +18,23 @@ from exports import chunk, open_archive, prepare
 def _operation(projects, request,actor=None):
     fields(request, ['operation', 'projectId'], ['requestId', 'input', 'target', 'collection', 'versionId', 'subversionId', 'cursor', 'limit', 'exportId', 'offset', 'workflowId','previewId'])
     name = request['operation']
-    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'batch', 'export', 'json_export','import_preview','import_apply','import_preview_read','import_preview_chunk','import_receipt','export_info', 'export_chunk', 'workflows', 'workflow'):
+    if name not in ('read', 'initialize', 'overview', 'list', 'get', 'notes', 'current', 'revision', 'mutate', 'batch', 'export', 'json_export','import_preview','import_apply','import_preview_read','import_preview_chunk','import_receipt','export_info', 'export_chunk', 'workflows', 'workflow','github_issue_import','github_issue_links'):
         raise ProjectFault('Unsupported roadmap operation.', 400)
     if name in ('read', 'initialize'):
         fields(request, ['operation', 'projectId'], ['requestId'] if name == 'initialize' else [])
-    elif name in ('mutate', 'batch', 'export','json_export','import_preview','import_apply'):
+    elif name in ('mutate', 'batch', 'export','json_export','import_preview','import_apply','github_issue_import','github_issue_links'):
         fields(request, ['operation', 'projectId', 'input'])
-    with connection(projects, request['projectId'], initialize=name == 'initialize') as db:
+    initialize_entry = None
+    if name == 'github_issue_import':
+        from functools import partial
+        from issue_origin import import_issue
+        initialize_entry = partial(import_issue, project_id=request['projectId'], body=request['input'])
+    with connection(projects, request['projectId'], initialize=name in ('initialize','github_issue_import'), initialize_entry=initialize_entry) as db:
+        if name == 'github_issue_import':
+            return initialize_entry(db)
+        if name == 'github_issue_links':
+            from issue_origin import selection
+            return selection(db, request['input'])
         if db is None:
             if name == 'workflows':
                 fields(request, ['operation', 'projectId'], ['versionId', 'limit', 'cursor'])

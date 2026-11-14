@@ -66,12 +66,12 @@ export function App() {
   const [projectId, setProjectId] = useState<string | null>(sessionRoute?.[1] ?? projectRoute?.[1] ?? projectStatisticsRoute?.[1] ?? roadmapRoute?.projectId ?? boardRoute?.projectId ?? null);
   const [projectNavigation, setProjectNavigation] = useState<Record<string, ProjectNavigation>>(projectStatisticsRoute ? { [projectStatisticsRoute[1]]: { section: 'Statistics', settingsView: 'General' } } : boardRoute
     ? { [boardRoute.projectId]: { section: 'Boards', settingsView: 'General', boardId: boardRoute.boardId } } : roadmapRoute
-    ? { [roadmapRoute.projectId]: { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmapRoute.versionId } }
+    ? { [roadmapRoute.projectId]: { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmapRoute.versionId, roadmapSubversionId: roadmapRoute.subversionId } }
     : sessionRoute ? { [sessionRoute[1]]: { section: 'Sessions', settingsView: 'General', sessionId: sessionRoute[2] } } : {});
   const selectProject = useCallback((id: string | null) => {
     setProjectId(id);
     const selected = id ? projectNavigation[id] : undefined;
-    window.history.replaceState(null, '', id ? selected?.section === 'Statistics' ? `#projects/${id}/statistics` : selected?.section === 'Boards' ? boardHash(id, selected.boardId) : selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId) : '#projects/' + id : '#projects');
+    window.history.replaceState(null, '', id ? selected?.section === 'Statistics' ? `#projects/${id}/statistics` : selected?.section === 'Boards' ? boardHash(id, selected.boardId) : selected?.section === 'Roadmap' ? roadmapHash(id, selected.roadmapVersionId, selected.roadmapSubversionId) : '#projects/' + id : '#projects');
   }, [projectNavigation]);
   const projectLeaveGuard = useRef<() => boolean>(() => true);
   const settingsLeaveGuard = useRef<() => boolean>(() => true);
@@ -79,7 +79,7 @@ export function App() {
   const setProjectLeaveGuard = useCallback((guard: () => boolean) => { projectLeaveGuard.current = guard; }, []);
   const navigateProject = useCallback((id: string, value: ProjectNavigation) => {
     setProjectNavigation((previous) => ({ ...previous, [id]: value }));
-    const hash = value.section === 'Statistics' ? `#projects/${id}/statistics` : value.section === 'Boards' ? boardHash(id, value.boardId) : value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
+    const hash = value.section === 'Statistics' ? `#projects/${id}/statistics` : value.section === 'Boards' ? boardHash(id, value.boardId) : value.section === 'Roadmap' ? roadmapHash(id, value.roadmapVersionId, value.roadmapSubversionId) : value.section === 'Sessions' && value.sessionId ? `#projects/${id}/sessions/${value.sessionId}` : '#projects/' + id;
     if ((value.section === 'Statistics' || /^#projects\/[a-f0-9-]{36}\/statistics$/.test(window.location.hash) || value.section === 'Roadmap' || value.section === 'Boards' || parseRoadmapRoute(window.location.hash) || parseBoardRoute(window.location.hash)) && window.location.hash !== hash) window.history.pushState(null, '', hash);
   }, []);
   const [selected, setSelected] = useState<Selection>({
@@ -105,7 +105,7 @@ export function App() {
       else if (projectStatistics) { setProjectId(projectStatistics[1]); navigateProject(projectStatistics[1], { section: 'Statistics', settingsView: 'General' }); setTab('Projects'); }
       else if (remoteHost) { setRemoteHostId(remoteHost.id); setSelected({ group: 2, item: 0, view: remoteHost.view === 'Settings' ? 1 : 0 }); setTab('System'); }
       else if (board) { setProjectId(board.projectId); navigateProject(board.projectId, { section: 'Boards', settingsView: 'General', boardId: board.boardId }); setTab('Projects'); }
-      else if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId }); setTab('Projects'); }
+      else if (roadmap) { setProjectId(roadmap.projectId); navigateProject(roadmap.projectId, { section: 'Roadmap', settingsView: 'General', roadmapVersionId: roadmap.versionId, roadmapSubversionId: roadmap.subversionId }); setTab('Projects'); }
       else if (project) { setProjectId(project[1]); navigateProject(project[1], { section: 'Sessions', settingsView: 'General', sessionId: project[2] }); setTab('Projects'); }
       else if (projectEntry) {
         setProjectId(projectEntry[1]); setTab('Projects');
@@ -205,7 +205,7 @@ export function App() {
     const session = projectId ? projectNavigation[projectId]?.sessionId : undefined;
     const projectStats = projectId && projectNavigation[projectId]?.section === 'Statistics' ? `#projects/${projectId}/statistics` : null;
     const board = projectId && projectNavigation[projectId]?.section === 'Boards' ? boardHash(projectId, projectNavigation[projectId].boardId) : null;
-    const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId) : null;
+    const roadmap = projectId && projectNavigation[projectId]?.section === 'Roadmap' ? roadmapHash(projectId, projectNavigation[projectId].roadmapVersionId, projectNavigation[projectId].roadmapSubversionId) : null;
     window.history.pushState(null, '', value === 'Status' ? '#status/ai-limits' : value === 'Projects' ? (projectStats ?? board ?? roadmap ?? (session ? `#projects/${projectId}/sessions/${session}` : projectId ? '#projects/' + projectId : '#projects')) : value === 'Tools' ? (skillId ? `#tools/skills/${skillId}${skillSessions[skillId] ? '/sessions/' + skillSessions[skillId] : ''}` : '#tools') : selected.group === 0 && selected.item === toolDeadlineItem ? toolDeadlineRoute : selected.group === 0 && selected.item === 5 ? '#system/settings/context/limit' : selected.group === 0 && selected.item === 4 ? '#system/settings/fallback' : selected.group === 5 ? '#system/tools' : selected.group === 4 ? '#statistics' : selected.group === 2 ? remoteHostHash(remoteHostId, selected.view === 1 ? 'Settings' : 'Overview') : selected.group === 0 && selected.item === 1 ? '#system-prompt' : selected.group === 0 && selected.item === 3 ? '#skill-manager-prompt' : '#system');
     setTab(value); return true;
   }

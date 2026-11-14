@@ -7,6 +7,11 @@ import { developmentHost } from '../project-development/host.js';
 import {dirname,join} from 'node:path';
 import { ProjectGitHubRefresh } from './refresh.js';
 import type {GitHubIssueState} from '../../../../shared/project-github-issues.js';
+import type { GitHubIssuePage } from '../../../../shared/project-github-issues.js';
+import type { RoadmapIssueLink } from '../../../../shared/project-roadmaps.js';
+import { GitHubStore } from '../github-connections/store.js';
+import { roadmapStore } from '../project-roadmaps/store.js';
+import { ProjectIssueTarget, roadmapIssueText } from './issue-detail.js';
 
 export async function projectGithubRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions,{
   githubDirectory=join(dirname(directory),'GitHub'), transport=fetch, refreshGithub=false,
@@ -15,6 +20,43 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
   const params = { type: 'object', required: ['id'], properties: { id: uuid, requestId: uuid } };
   const refresh = new ProjectGitHubRefresh(directory, githubDirectory, transport);
   const { issues } = refresh;
+  const targets = new ProjectIssueTarget(new GitHubStore(githubDirectory), id => refresh.readBinding(id), transport);
+  const revision = {type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER};
+  const issueNumber = {type:'integer',minimum:1,maximum:2147483647};
+  const issueParams = { ...params, required:['id','number'], properties:{...params.properties,number:issueNumber} };
+  const issueAction = { requestId:uuid,bindingRevision:revision,credentialRevision:revision };
+  async function withRoadmap(page:GitHubIssuePage):Promise<GitHubIssuePage> {
+    if (!page.items.length) return page;
+    const {projectId,repositoryId}=page.scope;
+    const {links}=await roadmapStore<{links:Record<string,RoadmapIssueLink>}>(directory,{
+      operation:'github_issue_links',projectId,input:{repositoryId,numbers:page.items.map(item=>item.number)},
+    }).catch(()=>({links:{} as Record<string,RoadmapIssueLink>}));
+    if (!Object.keys(links).length) return page;
+    return {...page,items:page.items.map(item=>links[item.number]?{...item,roadmap:links[item.number]}:item)};
+  }
+  type IssueAction = {requestId:string;bindingRevision:number;credentialRevision:number};
+  app.post<{Params:{id:string;number:number};Body:IssueAction}>('/:id/github/issues/:number/roadmap',{
+    bodyLimit:4096,schema:{params:issueParams,body:{type:'object',required:Object.keys(issueAction),additionalProperties:false,properties:issueAction}},
+  },async(request,reply)=>{
+    sessions.mutation(request,reply);
+    const {id,number}=request.params;
+    const {requestId,bindingRevision,credentialRevision}=request.body;
+    const {bound,issue,assertCurrent}=await targets.read(id,number,bindingRevision,credentialRevision);
+    if(issue.state!=='OPEN'){
+      const {links}=await roadmapStore<{links:Record<string,RoadmapIssueLink>}>(directory,{
+        operation:'github_issue_links',projectId:id,input:{repositoryId:bound.repository.id,numbers:[number]},
+      });
+      if(links[number]?.issueId===issue.id)return links[number];
+      throw new ProjectError('Only open GitHub issues can be added to the roadmap.',409);
+    }
+    await assertCurrent();
+    const result=await roadmapStore<{versionId:string;subversionId:string}>(directory,{operation:'github_issue_import',projectId:id,input:{
+      requestId,repositoryId:bound.repository.id,issueId:issue.id,number,url:issue.url,
+      title:roadmapIssueText(issue.title.trim(),240),
+      description:roadmapIssueText(issue.body,32768,'\n\n[Description truncated. Read the original GitHub issue.]'),
+    }});
+    return {versionId:result.versionId,subversionId:result.subversionId,issueId:issue.id};
+  });
   if (refreshGithub) {
     const stop = new AbortController();
     let pending: Promise<unknown> | undefined;
@@ -52,7 +94,8 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     schema:{params,querystring:{type:'object',required:['bindingRevision'],properties:{bindingRevision:{type:'integer',minimum:1}}}},
   },async(request,reply)=>{
     sessions.session(request,reply);reply.header('Cache-Control','private, no-store');
-    return {page:await issues.saved(request.params.id,request.query.bindingRevision)};
+    const page=await issues.saved(request.params.id,request.query.bindingRevision);
+    return {page:page?await withRoadmap(page):null};
   });
   app.get<{Params:{id:string};Querystring:{bindingRevision:number;state?:GitHubIssueState;cursor?:string;refresh?:boolean}}>('/:id/github/issues',{
     preValidation:async request=>{if(Object.keys(request.query as object).some(key=>!['bindingRevision','state','cursor','refresh'].includes(key)))throw new ProjectError('Unexpected issue query fields.',400);},
@@ -61,7 +104,7 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     }}}
   },async(request,reply)=>{
     sessions.session(request,reply);reply.header('Cache-Control','private, no-store');
-    return issues.read(request.params.id,request.query.bindingRevision,request.query.state??'open',request.query.cursor??null,request.query.refresh===true);
+    return withRoadmap(await issues.read(request.params.id,request.query.bindingRevision,request.query.state??'open',request.query.cursor??null,request.query.refresh===true));
   });
   app.get('/github/capabilities', async (request, reply) => {
     sessions.session(request, reply);

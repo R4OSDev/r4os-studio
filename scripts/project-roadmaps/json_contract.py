@@ -57,6 +57,8 @@ def validate(value):
             for i,child in enumerate(entry[kind]):
                 identity(child,path+'.'+kind+'['+str(i)+']')
                 if child['subversionId']!=entry['id']:raise RoadmapFault(path+'.'+kind+'['+str(i)+'].subversionId: parent mismatch.',400)
+        if entry.get('githubIssue') and entry['githubIssue']['acceptanceId'] not in {item['id'] for item in entry['acceptances']}:
+            raise RoadmapFault(path+'.githubIssue.acceptanceId: acceptance does not belong to the source subversion.',400)
     def version(entry,path):
         identity(entry,path)
         for i,child in enumerate(entry['subversions']):sub(child,path+'.subversions['+str(i)+']',entry)

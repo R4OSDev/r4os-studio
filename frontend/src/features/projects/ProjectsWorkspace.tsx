@@ -36,7 +36,7 @@ const EditorFiles = deferView(() => import('../project-editor/EditorFiles'));
 
 export interface ProjectNavigation {
   section: 'Sessions' | 'Editor' | 'GitHub' | 'Roadmap' | 'Boards' | 'Statistics' | 'Settings'; settingsView: ProjectSettingsView; sessionId?: string; roadmapVersionId?: string; boardId?: string;
-  githubView?:'Connection'|'Issues';
+  githubView?:'Connection'|'Issues'; roadmapSubversionId?: string;
 }
 export function ProjectsWorkspace({ selectedId, select, navigation, navigate, setLeaveGuard }: {
   selectedId: string | null; select: (id: string | null) => void;
@@ -89,7 +89,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         if (leave()) { setDirty(false); navigate(selected.id, { ...current, boardId: id }); }
       }} create={() => { if (leave()) { setDirty(false); setNewBoard(true); } }} />
         : selected && current.section === 'Roadmap' ? <RoadmapNavigation model={roadmap} selected={current.roadmapVersionId} disabled={saving}
-        choose={(id) => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); } }}
+        choose={(id) => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id, roadmapSubversionId:undefined }); } }}
         create={() => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewRoadmapVersion(true); } }} />
         : selected && current.section === 'Editor' ? <Suspense fallback={<div className="nav-column" />}><EditorFiles key={selected.id} id={selected.id} token={api.token} /></Suspense> : selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
         <div className="nav-items">{(['General', 'Pins', 'Virtual machine', 'Remote host', 'Run & Test', 'Agents.md'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
@@ -113,12 +113,15 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         </div>}
         {current.section === 'Statistics' && <StatisticsPanel key={selected.id} projectId={selected.id} reauth={api.reload} />}
         {current.section === 'Editor' && <Suspense fallback={<p className="session-empty">Loading editor…</p>}><EditorPanel key={selected.id} id={selected.id} token={api.token} /></Suspense>}
-        {current.section === 'GitHub' && (githubView==='Connection'?<ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />:<ProjectIssues key={selected.id} model={github}/>)}
+        {current.section === 'GitHub' && (githubView==='Connection'?<ProjectGithubPanel key={selected.id} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />:
+          <ProjectIssues key={selected.id} model={github} token={api.token} busyChanged={setSaving} openRoadmap={link=>{
+            if(leave())navigate(selected.id,{...current,section:'Roadmap',roadmapVersionId:link.versionId,roadmapSubversionId:link.subversionId});
+          }}/>)}
         {current.section === 'Boards' && <BoardPanel key={selected.id + ':' + (current.boardId ?? 'auto')} id={selected.id} token={api.token} renewAuth={api.reload} model={boards} creating={newBoard}
           closeCreate={() => { setNewBoard(false); setDirty(false); }} created={id => { setNewBoard(false); setDirty(false); navigate(selected.id, { ...current, boardId: id }); }}
           removed={() => { setDirty(false); navigate(selected.id, { ...current, boardId: undefined }); boards.reload(); }} dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Roadmap' && <RoadmapPanel key={selected.id + ':' + (current.roadmapVersionId ?? 'overview') + ':' + epoch} id={selected.id} token={api.token} model={roadmap}
-          selectedVersionId={current.roadmapVersionId} creating={newRoadmapVersion} closeCreate={() => setNewRoadmapVersion(false)}
+          selectedVersionId={current.roadmapVersionId} selectedSubversionId={current.roadmapSubversionId} creating={newRoadmapVersion} closeCreate={() => setNewRoadmapVersion(false)}
           created={(id) => { setNewRoadmapVersion(false); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); }}
           dirty={dirty} dirtyChanged={setDirty} busyChanged={setSaving} />}
         {current.section === 'Settings' && current.settingsView === 'Run & Test' && <RunTestSettings key={selected.id + ':' + epoch} id={selected.id} token={api.token} dirtyChanged={setDirty} busyChanged={setSaving} />}

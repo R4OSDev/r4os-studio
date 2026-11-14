@@ -31,6 +31,12 @@ def plan(db,project_id,preview_id,document,body):
         allowed=('description','notes') if kind=='roadmap' else ('title','vision','notes','status') if kind=='version' else ('title','description','notes','status') if kind=='subversion' else ('description','notes','status')
         value={k:entry[k] for k in allowed}
         if kind in ('version','subversion'):value['number']=number or entry['number']
+        source = entry.get('githubIssue') if kind == 'subversion' else None
+        if source and source['url'] not in value.get('notes', ''):
+            notes = value.get('notes', '')
+            suffix = f'\nGitHub Issue #{source["number"]}\n{source["url"]}'
+            if len((notes + suffix).encode()) <= 32768:
+                value['notes'] = (notes + suffix).lstrip('\n')
         if existing is not None:
             ident=existing['id'];ref={**ref,'id':ident};action='update';key=None
         else:

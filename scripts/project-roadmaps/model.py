@@ -18,6 +18,7 @@ def item(row):
 
 
 def snapshot(db):
+    from issue_origin import source_fields
     # Keep a coherent read transaction even when another session is editing.
     db.execute('BEGIN')
     try:
@@ -30,7 +31,7 @@ def snapshot(db):
             number = f'{version["major"]}.{version["minor"]}'
             children = []
             for sub in db.execute('SELECT * FROM subversions WHERE version_id=? ORDER BY position,patch,id', (version['id'],)):
-                children.append({**version_fields(sub), 'versionId': version['id'], 'number': f'{number}.{sub["patch"]}',
+                children.append({**version_fields(sub), **source_fields(db, sub['id']), 'versionId': version['id'], 'number': f'{number}.{sub["patch"]}',
                                  'title': sub['title'], 'description': sub['description'],
                                  'status': sub['status'], 'order': sub['position'],
                                  'tasks': [item(x) for x in db.execute('SELECT * FROM tasks WHERE subversion_id=? ORDER BY position,id', (sub['id'],))],

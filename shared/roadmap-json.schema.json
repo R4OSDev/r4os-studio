@@ -245,6 +245,18 @@
     "subversion": {
       "type": "object",
       "properties": {
+        "githubIssue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repositoryId", "issueId", "number", "url", "acceptanceId"],
+          "properties": {
+            "repositoryId": { "type": "integer", "minimum": 1 },
+            "issueId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9_+/=-]+$" },
+            "number": { "type": "integer", "minimum": 1 },
+            "url": { "type": "string", "maxLength": 512, "pattern": "^https://github\\.com/[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}/issues/[1-9][0-9]*$" },
+            "acceptanceId": { "type": "string", "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$" }
+          }
+        },
         "id": {
           "type": "string",
           "pattern": "^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$"

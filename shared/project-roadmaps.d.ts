@@ -14,6 +14,8 @@ export interface RoadmapItem extends RoadmapEntity {
   status: RoadmapItemStatus;
   order: number;
 }
+export interface RoadmapGitHubIssue { repositoryId: number; issueId: string; number: number; url: string; acceptanceId: string }
+export interface RoadmapIssueLink { versionId: string; subversionId: string; issueId: string }
 export interface RoadmapSubversion extends RoadmapEntity {
   completedAt?: string | null;
   versionId: string;
@@ -21,6 +23,7 @@ export interface RoadmapSubversion extends RoadmapEntity {
   title: string;
   description: string;
   status: RoadmapVersionStatus;
+  githubIssue?: RoadmapGitHubIssue;
   order: number;
   tasks: RoadmapItem[];
   acceptances: RoadmapItem[];

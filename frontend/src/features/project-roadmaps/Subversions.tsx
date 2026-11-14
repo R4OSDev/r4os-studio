@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../app/Icon';
-import type { RoadmapBinding, RoadmapItem, RoadmapMutation, RoadmapSubversionHeader, RoadmapTarget } from '../../../../shared/project-roadmaps';
+import type { RoadmapBinding, RoadmapItem, RoadmapMutation, RoadmapRead, RoadmapSubversionHeader, RoadmapTarget } from '../../../../shared/project-roadmaps';
 import { ProjectRequestError, projectRequestId } from '../projects/api';
 import {ExportJson} from './ExportJson';
-import { mutate } from './api';
+import { mutate, roadmapRequest } from './api';
 import { itemStatusLabels, versionStatusLabels } from './model';
 import { useRoadmapPage } from './useRoadmapPage';
 import { RoadmapDates } from './RoadmapDates';
@@ -97,13 +97,15 @@ function ItemCollection(input: Shared & { subversionId: string; kind: 'task' | '
   </section>;
 }
 
-function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }) {
+function Subversion({ sub, focused, ...props }: Shared & { sub: RoadmapSubversionHeader; focused?: boolean }) {
   const expandedKey = `studio.roadmap.expanded.${props.id}.${sub.id}`;
-  const [expanded, setExpanded] = useState(() => { try { return sessionStorage.getItem(expandedKey) === '1'; } catch { return false; } });
+  const [expanded, setExpanded] = useState(() => { try { return focused || sessionStorage.getItem(expandedKey) === '1'; } catch { return !!focused; } });
+  const details = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if(focused)details.current?.scrollIntoView({block:'nearest'}); },[focused]);
   const actions = useActions(props);
   const target: RoadmapTarget = { kind: 'subversion', versionId: props.versionId, id: sub.id };
   const pending = hasPending(props.id, target);
-  return <details className="roadmap-subversion" open={expanded} onToggle={(event) => {
+  return <details className="roadmap-subversion" ref={details} open={expanded} onToggle={(event) => {
     const open = event.currentTarget.open; setExpanded(open);
     try { if (open) sessionStorage.setItem(expandedKey, '1'); else sessionStorage.removeItem(expandedKey); } catch { /* Expanding does not require browser storage. */ }
   }}>
@@ -117,6 +119,7 @@ function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }
     </summary>
     {expanded && <div className="roadmap-subversion-body">
       <section className="roadmap-subversion-description" aria-label="Description and notes"><h4>Description</h4>
+        {sub.githubIssue&&<p><a href={sub.githubIssue.url} target="_blank" rel="noreferrer">GitHub Issue #{sub.githubIssue.number}</a></p>}
         <p className="roadmap-item-description" tabIndex={0}>{sub.description || 'No description yet.'}</p>
         <RoadmapDates entry={sub} />
         <NoteDetails notes={sub.notes} />
@@ -139,13 +142,21 @@ function Subversion({ sub, ...props }: Shared & { sub: RoadmapSubversionHeader }
   </details>;
 }
 
-export function Subversions(input: Shared) {
+export function Subversions({selectedId,...input}: Shared & {selectedId?:string}) {
   const props = { ...input, disabled: input.disabled };
   const list = useRoadmapPage<RoadmapSubversionHeader>(props.id, `/versions/${props.versionId}/subversions`, props.binding.revision, props.binding.sourceGeneration);
   props.disabled ||= !!list.error || list.loading;
   const actions = useActions(props);
   const target: RoadmapTarget = { kind: 'subversion', versionId: props.versionId };
   const entries = list.page?.items ?? [];
+  const [selected,setSelected]=useState<RoadmapSubversionHeader|null>(null);
+  useEffect(()=>{
+    if(!selectedId)return;
+    const controller=new AbortController();
+    void roadmapRequest<RoadmapRead<RoadmapSubversionHeader>>(input.id,`/versions/${input.versionId}/subversions/${selectedId}`,'','GET',undefined,controller.signal)
+      .then(result=>{if(!controller.signal.aborted&&result.revision===input.binding.revision)setSelected(result.entity);}).catch(()=>{});
+    return()=>controller.abort();
+  },[input.id,input.versionId,input.binding.revision,selectedId]);
   const pending = hasPending(props.id, target);
   function move(index: number, direction: number) {
     const ids = entries.map((entry) => entry.id);
@@ -160,8 +171,9 @@ export function Subversions(input: Shared) {
     {props.disabled && <p className="project-message">Finish the current edit or refresh before changing another entry.</p>}
     {list.loading && <p role="status">Loading subversions…</p>}
     {pending && <button type="button" disabled={props.disabled} onClick={() => void actions.perform('reorder', target, {})}>Confirm original order change</button>}
+    {selected?.id===selectedId&&selected&&!entries.some(sub=>sub.id===selectedId)&&<Subversion key={selected.id} {...props} sub={selected} focused />}
     {entries.map((sub, index) => <div className="roadmap-subversion-row" key={sub.id}>
-      <Subversion {...props} sub={sub} />
+      <Subversion {...props} sub={sub} focused={sub.id===selectedId} />
       <div className="roadmap-order-actions" role="group" aria-label={`Order ${sub.number}`}><span>Order</span>
         <button type="button" disabled={props.disabled || pending || !!list.page?.nextCursor || entries.length > 500 || index === 0} onClick={() => move(index, -1)} aria-label={`Move ${sub.number} up`}>↑</button>
         <button type="button" disabled={props.disabled || pending || !!list.page?.nextCursor || entries.length > 500 || index === entries.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${sub.number} down`}>↓</button>

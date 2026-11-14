@@ -36,8 +36,8 @@ function VersionDialog({ close, children, title = 'New Version' }: { close: () =
   </dialog>;
 }
 
-export function RoadmapPanel({ id, token, model, selectedVersionId, creating, closeCreate, created, dirty, dirtyChanged, busyChanged }: {
-  id: string; token: string; model: RoadmapModel; selectedVersionId?: string; creating: boolean;
+export function RoadmapPanel({ id, token, model, selectedVersionId, selectedSubversionId, creating, closeCreate, created, dirty, dirtyChanged, busyChanged }: {
+  id: string; token: string; model: RoadmapModel; selectedVersionId?: string; selectedSubversionId?: string; creating: boolean;
   closeCreate: () => void; created: (versionId: string) => void;
   dirty: boolean; dirtyChanged: (value: boolean) => void; busyChanged: (value: boolean) => void;
 }) {
@@ -118,7 +118,7 @@ export function RoadmapPanel({ id, token, model, selectedVersionId, creating, cl
           onClick={() => void selectCurrent(state.roadmap, model.version!)}>{pendingSelection ? 'Confirm original selection' : 'Make current version'}</button>}
         </div>
         <Subversions id={id} token={token} versionId={model.version.id} binding={{ ...state.roadmap, sourceGeneration: model.sourceGeneration }} disabled={dirty || actionBusy || formBusy || blocked}
-          busyChanged={setActionBusy} changed={model.reload} edit={setEditor} />
+          busyChanged={setActionBusy} changed={model.reload} edit={setEditor} selectedId={selectedSubversionId} />
         {editor && <VersionDialog title={editor.title} close={() => { if (!formBusy) setEditor(null); }}>
           <RoadmapForm blocked={blocked} refreshing={model.loading} key={editor.title + ':' + editor.target.id + ':' + model.epoch} id={id} token={token}
             binding={state.roadmap} target={editor.target} initial={editor.initial} create={editor.create} notesMode={editor.notesMode}

@@ -146,7 +146,7 @@ def open_database(path, identity, verify_integrity=True):
         raise
 
 
-def create_database(path, identity):
+def create_database(path, identity, initialize_entry=None):
     """Publish a fully committed database; never initialize an existing file."""
     lock = path.parent / '.initialize.lock'
     fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -182,6 +182,9 @@ def create_database(path, identity):
             db.execute('PRAGMA application_id=' + str(APPLICATION_ID))
             db.execute('PRAGMA user_version=' + str(SCHEMA_VERSION))
             db.commit()
+            if initialize_entry:
+                db.row_factory = sqlite3.Row
+                initialize_entry(db)
         finally:
             db.close()
         with stage.open('rb') as stream:
@@ -199,7 +202,7 @@ def create_database(path, identity):
 
 
 @contextmanager
-def connection(projects, identity, initialize=False, verify_integrity=True):
+def connection(projects, identity, initialize=False, verify_integrity=True, initialize_entry=None):
     projects = Path(projects).absolute()
     # Lifetime locks coordinate deletion, not workspace edits or agent runs.
     with acquire(projects, identity):
@@ -224,7 +227,7 @@ def connection(projects, identity, initialize=False, verify_integrity=True):
             if not initialize:
                 yield None
                 return
-            create_database(path, identity)
+            create_database(path, identity, initialize_entry)
         db = open_database(path, identity, verify_integrity=verify_integrity)
         try:
             yield db
