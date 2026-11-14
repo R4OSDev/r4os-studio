@@ -67,3 +67,7 @@ Primary schema and behavior references:
 [authenticated GraphQL calls](https://docs.github.com/en/graphql/guides/forming-calls-with-graphql)
 and [query limits/partial errors](https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api).
 Evidence: `Research/R4OS/Roadmap-Implementation/0.8.34/` in the development workspace.
+
+## 0.13.1
+
+Schedule sequential GitHub refresh and expose interval settings.

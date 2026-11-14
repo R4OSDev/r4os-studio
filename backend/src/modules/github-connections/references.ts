@@ -20,7 +20,7 @@ export async function projectBinding(directory: string, id: string): Promise<Git
     const value = JSON.parse(await file.readFile('utf8')) as GitHubProjectBinding;
     if (value.schema !== 1 || !Number.isSafeInteger(value.revision) || value.revision < 1
       || typeof value.connectionId !== 'string' || !/^[a-f0-9-]{36}$/.test(value.connectionId)
-      || !Number.isSafeInteger(value.userId) || !Number.isSafeInteger(value.repository?.id)
+      || !Number.isSafeInteger(value.userId) || value.userId < 1 || !Number.isSafeInteger(value.repository?.id) || value.repository.id < 1
       || typeof value.branch !== 'string') throw new ProjectError('Git project binding is invalid.', 503);
     return value;
   } finally { await file.close(); }

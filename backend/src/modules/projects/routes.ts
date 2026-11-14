@@ -51,12 +51,14 @@ function validateFields(value: unknown, allowed: string[]) {
   if (Object.hasOwn(body, 'vmId') && body.vmId !== null && typeof body.vmId !== 'string') throw new ProjectError('Invalid virtual machine.', 400);
 }
 
-export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory,githubDirectory,githubTransport }: { directory: string; providerDirectory?: string;githubDirectory?:string;githubTransport?:typeof fetch }) {
+export async function projectRoutes(app: FastifyInstance, { directory, providerDirectory,githubDirectory,githubTransport, refreshGithub }: {
+  directory: string; providerDirectory?: string;githubDirectory?:string;githubTransport?:typeof fetch;refreshGithub?:boolean;
+}) {
   const sessions = new ProjectSessions();
   scopedStatisticsRoutes(app, sessions, 'project');
   roadmapRoutes(app, directory, sessions);
   boardRoutes(app, directory, sessions);
-  await projectGithubRoutes(app, directory, sessions,{githubDirectory,transport:githubTransport});
+  await projectGithubRoutes(app, directory, sessions,{githubDirectory,transport:githubTransport,refreshGithub});
   editorRoutes(app, directory, sessions);
   agentSessionRoutes(app, directory, sessions, providerDirectory);
   runRoutes(app, sessions);

@@ -1,15 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GitHubProjectBinding, GitHubProjectStatus } from '../../../../shared/project-github';
-import { projectRequest } from '../projects/api';
+import { projectRequest, projectRequestId } from '../projects/api';
 import { pullProject } from './projectApi';
-import { bindingKey, openingCheck } from './openingCheck';
 
 interface Opening { id: string | null; phase: 'checking' | 'prompt' | 'updating' | 'ready'; status?: GitHubProjectStatus; error?: string; notice?: string }
+const bindingKey = (binding: GitHubProjectBinding) => JSON.stringify([binding.revision, binding.connectionId, binding.userId,
+  binding.repository.id, binding.repository.owner, binding.repository.name, binding.branch]);
+
 export function useProjectOpening(id: string | null, token: string) {
   const [value, setValue] = useState<Opening>({ id: null, phase: 'checking' });
-  const [epoch,refresh]=useState(0),authenticated=Boolean(token),credential=useRef(token);
+  const authenticated=Boolean(token);
   if(value.id!==id)setValue({id,phase:'checking'});
-  useLayoutEffect(()=>{credential.current=token;},[token]);
   const generation = useRef(0);
   useEffect(() => {
     const controller = new AbortController(), current = ++generation.current;
@@ -18,19 +19,17 @@ export function useProjectOpening(id: string | null, token: string) {
       setValue({ id, phase: 'checking' });
       void (async () => {
         try {
-          const bound = await projectRequest<{ binding: GitHubProjectBinding | null }>(`/${id}/github`, '', 'GET', undefined, controller.signal);
-          if (!bound.binding) { if (!controller.signal.aborted && generation.current === current) setValue({ id, phase: 'ready' }); return; }
-          if(controller.signal.aborted)return;
-          const status=await openingCheck(id,bound.binding,credential.current);
+          const {status,error}=await projectRequest<{status:GitHubProjectStatus|null;error?:string}>(`/${id}/github/observation`, '', 'GET', undefined, controller.signal);
           if (controller.signal.aborted || generation.current !== current) return;
-          setValue({ id, phase: status.behind > 0 && ['behind', 'diverged'].includes(status.state) ? 'prompt' : 'ready', status });
+          setValue({ id, phase: status && !status.stale && status.behind > 0 && ['behind', 'diverged'].includes(status.state) ? 'prompt' : 'ready',
+            status:status??undefined,notice:error });
         } catch (e) {
           if (!controller.signal.aborted && generation.current === current) setValue({ id, phase: 'ready', notice: 'GitHub status unavailable: ' + (e as Error).message });
         }
       })();
     }, 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [id, authenticated,epoch]);
+  }, [id, authenticated]);
   async function update() {
     if (!id || value.id !== id || value.phase !== 'prompt' || !value.status) return;
     const current = generation.current, status = value.status;
@@ -44,6 +43,19 @@ export function useProjectOpening(id: string | null, token: string) {
       setValue({ id, phase: 'ready' });
     } catch (e) { if (generation.current === current) setValue({ id, phase: 'prompt', status, error: (e as Error).message }); }
   }
+  async function refresh() {
+    if (!id || !token) return;
+    const current=++generation.current;
+    setValue({id,phase:'checking'});
+    try {
+      const {binding}=await projectRequest<{binding:GitHubProjectBinding|null}>(`/${id}/github`);
+      const status=binding?await projectRequest<GitHubProjectStatus>(`/${id}/github/refresh`,token,'POST',
+        {bindingRevision:binding.revision,requestId:projectRequestId()}):undefined;
+      if(generation.current===current)setValue({id,phase:status&&status.behind>0&&['behind','diverged'].includes(status.state)?'prompt':'ready',status});
+    } catch(error) {
+      if(generation.current===current)setValue({id,phase:'ready',notice:(error as Error).message});
+    }
+  }
   return {
     checking: !!id&&(value.id!==id||value.phase==='checking'),
     deciding: value.id === id && ['prompt', 'updating'].includes(value.phase),
@@ -51,6 +63,6 @@ export function useProjectOpening(id: string | null, token: string) {
     status: value.id === id ? value.status : undefined,
     notice: value.id === id ? value.notice : '', error: value.id === id ? value.error : '',
     ignore: () => { if (id && value.id === id && value.phase === 'prompt') setValue({ id, phase: 'ready' }); },
-    update,refresh:()=>{setValue({id,phase:'checking'});refresh(v=>v+1);},
+    update,refresh,
   };
 }

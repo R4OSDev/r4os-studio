@@ -5,18 +5,51 @@ import { gitHost } from './client.js';
 import { projectBinding } from '../github-connections/references.js';
 import { developmentHost } from '../project-development/host.js';
 import {dirname,join} from 'node:path';
-import {GitHubIssues} from './issues.js';
-import {GitHubStore} from '../github-connections/store.js';
+import { ProjectGitHubRefresh } from './refresh.js';
 import type {GitHubIssueState} from '../../../../shared/project-github-issues.js';
 
-export async function projectGithubRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions,{githubDirectory=join(dirname(directory),'GitHub'),transport=fetch}:{githubDirectory?:string;transport?:typeof fetch}={}) {
+export async function projectGithubRoutes(app: FastifyInstance, directory: string, sessions: ProjectSessions,{
+  githubDirectory=join(dirname(directory),'GitHub'), transport=fetch, refreshGithub=false,
+}:{githubDirectory?:string;transport?:typeof fetch;refreshGithub?:boolean}={}) {
   const uuid = { type: 'string', pattern: '^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$' };
   const params = { type: 'object', required: ['id'], properties: { id: uuid, requestId: uuid } };
-  const issues=new GitHubIssues(new GitHubStore(githubDirectory),async id=>{
-    const project=await projectStore<{deleting?:boolean}>(directory,{operation:'get_settings',id});
-    if(project.deleting)throw new ProjectError('The project is being deleted. Issue reads are unavailable.',409);
-    return projectBinding(directory,id);
-  },transport);
+  const refresh = new ProjectGitHubRefresh(directory, githubDirectory, transport);
+  const { issues } = refresh;
+  if (refreshGithub) {
+    const stop = new AbortController();
+    let pending: Promise<unknown> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      pending = refresh.runDue(stop.signal).catch(() => app.log.warn('GitHub refresh will retry at its next scheduled check.')).finally(() => {
+        if (!stop.signal.aborted) timer = setTimeout(tick, refresh.nextDelay).unref();
+      });
+    };
+    app.addHook('onListen', async () => { timer = setTimeout(tick, 1000).unref(); });
+    app.addHook('onClose', async () => { stop.abort(); clearTimeout(timer); await pending; });
+  }
+  app.get<{Params:{id:string}}>('/:id/github/observation',{schema:{params}},async(request,reply)=>{
+    sessions.session(request,reply);
+    return refresh.status(request.params.id);
+  });
+  app.post<{Params:{id:string};Body:{bindingRevision:number;requestId:string}}>('/:id/github/refresh',{
+    bodyLimit:4096,schema:{params,body:{type:'object',required:['bindingRevision','requestId'],additionalProperties:false,
+      properties:{bindingRevision:{type:'integer',minimum:1},requestId:uuid}}},
+  },async(request,reply)=>{
+    sessions.mutation(request,reply);
+    const binding=await refresh.readBinding(request.params.id);
+    if(!binding||binding.revision!==request.body.bindingRevision)throw new ProjectError('The repository connection changed. Refresh again.',409);
+    const stop = new AbortController();
+    const disconnected = () => stop.abort();
+    reply.raw.once('close', disconnected);
+    try { return await refresh.check(request.params.id,binding,request.body.requestId,stop.signal); }
+    finally { reply.raw.off('close', disconnected); }
+  });
+  app.get<{Params:{id:string};Querystring:{bindingRevision:number}}>('/:id/github/issues/saved',{
+    schema:{params,querystring:{type:'object',required:['bindingRevision'],properties:{bindingRevision:{type:'integer',minimum:1}}}},
+  },async(request,reply)=>{
+    sessions.session(request,reply);reply.header('Cache-Control','private, no-store');
+    return {page:await issues.saved(request.params.id,request.query.bindingRevision)};
+  });
   app.get<{Params:{id:string};Querystring:{bindingRevision:number;state?:GitHubIssueState;cursor?:string;refresh?:boolean}}>('/:id/github/issues',{
     preValidation:async request=>{if(Object.keys(request.query as object).some(key=>!['bindingRevision','state','cursor','refresh'].includes(key)))throw new ProjectError('Unexpected issue query fields.',400);},
     schema:{params,querystring:{type:'object',additionalProperties:false,required:['bindingRevision'],properties:{

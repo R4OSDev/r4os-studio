@@ -18,10 +18,11 @@ import type { GitHubTestResult } from '../../shared/github-connections.js';
 import { skillRoutes } from './modules/skills/routes.js';
 import { remoteHostRoutes } from './modules/remote-hosts/routes.js';
 
-export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory(), githubTester, githubTransport, skillSourceExecutor }: {
+export function createApp({ serveFrontend = false, logger = false, providers = {}, projectDirectory = projectsDirectory(), githubTester, githubTransport, skillSourceExecutor, refreshGithub = serveFrontend }: {
   serveFrontend?: boolean; logger?: boolean; providers?: Partial<ProviderOptions>; projectDirectory?: string;
   githubTester?: (token: string) => Promise<GitHubTestResult>;
   githubTransport?: typeof fetch;
+  refreshGithub?: boolean;
   skillSourceExecutor?: (id: string, requestId: string) => Promise<unknown>;
 } = {}) {
   const app = Fastify({ logger });
@@ -47,7 +48,7 @@ export function createApp({ serveFrontend = false, logger = false, providers = {
   app.register(statisticsRoutes, { prefix: '/api/statistics' });
   app.register(vmRoutes, { prefix: '/api/vms' });
   app.register(updateRoutes, { prefix: '/api/updates' });
-  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory,githubDirectory,githubTransport });
+  app.register(projectRoutes, { prefix: '/api/projects', directory: projectDirectory, providerDirectory: providers.directory,githubDirectory,githubTransport,refreshGithub });
   app.register(settingsRoutes, { prefix: '/api/settings', directory: projectDirectory });
   app.register(githubRoutes, { prefix: '/api/github', directory: githubDirectory, projectDirectory, tester: githubTester, transport: githubTransport });
   app.register(skillRoutes, { prefix: '/api/skills', directory: join(dirname(providers.directory ?? process.env.STUDIO_DATA_DIR

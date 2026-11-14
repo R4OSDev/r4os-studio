@@ -17,7 +17,7 @@ export function UpdateProjectDialog({ id, name, status, busy, error, update, ign
     <div id="github-update-description" className="project-delete-description">
       <p><strong>{name}</strong> has {status.behind} remote commit{status.behind === 1 ? '' : 's'} missing locally.</p>
       <p>{status.binding?.repository.fullName} · {status.binding?.branch}</p>
-      <p>Update applies the checked fast-forward. Ignore keeps your local sources for this opening; Studio checks again when you reopen the project.</p>
+      <p>Update applies the checked fast-forward. Ignore keeps your local sources.</p>
       {reason && <p role="status">{reason}</p>}{error && <p className="project-error" role="alert">{error}</p>}{busy && <p role="status">Updating from the original pull request…</p>}
     </div>
     <footer className="project-actions"><button type="button" className="project-primary" disabled={busy || !!reason} onClick={update}>Update</button><button type="button" disabled={busy} onClick={ignore}>Ignore</button></footer>

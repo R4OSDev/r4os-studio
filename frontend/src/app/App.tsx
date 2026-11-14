@@ -32,6 +32,7 @@ const ComponentUpdatesPanel = deferView(() => import('../features/updates/Compon
 const ProjectsWorkspace = deferView(() => import('../features/projects/ProjectsWorkspace').then(module => ({default: module.ProjectsWorkspace})));
 const SystemPromptPanel = deferView(() => import('../features/settings/SystemPromptPanel').then(module => ({default: module.SystemPromptPanel})));
 const ConnectionPanel = deferView(() => import('../features/github-connections/ConnectionPanel').then(module => ({default: module.ConnectionPanel})));
+const RefreshSettingsPanel = deferView(() => import('../features/github-connections/RefreshSettingsPanel').then(module => ({default: module.RefreshSettingsPanel})));
 const HostPanel = deferView(() => import('../features/remote-hosts/HostPanel').then(module => ({default: module.HostPanel})));
 const ToolsWorkspace = deferView(() => import('../features/skills/ToolsWorkspace'));
 const tabs: Tab[] = ['Status', 'System', 'Projects', 'Tools'];
@@ -122,7 +123,7 @@ export function App() {
     return () => { window.removeEventListener('hashchange', restore); window.removeEventListener('popstate', restore); };
   }, [navigateProject, navigateSkill]);
   const [providerView, setProviderView] = useState<string | null>(null);
-  const [connectionView, setConnectionView] = useState<string | null>(null);
+  const [connectionView, setConnectionView] = useState<string | null>('settings');
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const groups = navigation;
   const group = groups[selected.group];
@@ -152,7 +153,8 @@ export function App() {
   const activeProvider = providers.providers.find((provider) => provider.id === providerView);
   const availableViews = contextPage ? ['Limit'] : remotePage ? (remoteHostId ? ['Overview', 'Settings'] : []) : githubPage ? ['+ Connection', ...github.connections.map((connection) => connection.name)] : vmPage ? (activeVm ? ['Overview', 'Console', 'Settings', 'Exchange', 'Logs'] : []) : providerPage ? ['New Provider', ...providers.providers.map((provider) => provider.name)] : updatePage ? (item === 'Components' ? ['SDK'] : item === 'Tools' ? ['Zig', 'C', 'Rust', 'QEMU', 'Codex', 'R4UPack'] : []) : [];
   const selectedView = githubPage ? (activeConnection ? github.connections.indexOf(activeConnection) + 1 : 0) : providerPage ? (activeProvider ? providers.providers.indexOf(activeProvider) + 1 : 0) : updatePage && item === 'Components' ? 0 : selected.view;
-  const view = availableViews[selectedView];
+  const githubSettings = githubPage && connectionView === 'settings';
+  const view = githubSettings ? 'GitHub Settings' : availableViews[selectedView];
   const componentKind: ComponentKind | 'c' | undefined = updatePage && item !== 'R4OS Studio'
     ? ({ SDK: 'sdk', Contract: 'contract', Libraries: 'libraries', Zig: 'zig', C: 'c', Rust: 'rust', QEMU: 'qemu', Codex: 'codex', R4UPack: 'r4upack', 'R4OS Releases': 'r4os' } as Record<string, ComponentKind | 'c'>)[view ?? item] : undefined;
 
@@ -263,7 +265,12 @@ export function App() {
             </div>
           </nav>
           <nav className="nav-column" aria-label="Views">
+            {githubPage && <div className="nav-items github-settings-navigation">
+              <button type="button" className={`nav-item view-item ${githubSettings ? 'selected' : ''}`} aria-current={githubSettings ? 'page' : undefined}
+                onClick={() => { if (!githubSettings && settingsLeaveGuard.current()) setConnectionView('settings'); }}><span>Settings</span></button>
+            </div>}
             <div className="nav-items">
+              {githubPage && <span className="github-connections-label">Connections</span>}
               {availableViews.map((name, index) => {
                 const provider = providerPage && index > 0 ? providers.providers[index - 1] : undefined;
                 const account = provider ? providers.nativeProviders.find(p => p.id === provider.id) : undefined;
@@ -272,8 +279,8 @@ export function App() {
                 const state = limits?.state ?? (provider ? providers.usageByProvider[provider.id]?.state : undefined);
                 const apiLimits = provider?.type === 'api' && ['claude-plan', 'openrouter', 'zai-coding-plan'].includes(provider.kind) && provider.enabled;
                 const held = !!limits?.zai?.holds?.length;
-                return <button type="button" key={githubPage ? (github.connections[index - 1]?.id ?? 'new-connection') : providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${selectedView === index ? 'selected' : ''}`}
-                  aria-current={selectedView === index ? 'page' : undefined}
+                return <button type="button" key={githubPage ? (github.connections[index - 1]?.id ?? 'new-connection') : providerPage ? (provider?.id ?? 'new-provider') : name} className={`nav-item view-item ${!githubSettings && selectedView === index ? 'selected' : ''}`}
+                  aria-current={!githubSettings && selectedView === index ? 'page' : undefined}
                   onClick={() => { if (!settingsLeaveGuard.current()) return; if (githubPage) setConnectionView(github.connections[index - 1]?.id ?? null); else if (providerPage) setProviderView(provider?.id ?? null); else select({ view: index }); }}>
                   {providerPage ? <>
                     {index === 0 && <span className="view-number" aria-hidden="true">+</span>}
@@ -293,7 +300,7 @@ export function App() {
         <main className="main-area">
           <div className="page-heading"><h1>{systemToolsPage ? 'Tools' : statisticsPage ? 'Statistics' : remotePage ? activeRemoteHost?.name ?? (remoteHostId ? 'Remote Host' : 'New Remote Host') : vmPage ? (activeVm?.name ?? 'New virtual machine') : (view ?? item)}</h1><span className="page-rule" /></div>
           {toolDeadlinePage ? <ToolDeadlineSettingsPanel setLeaveGuard={setSettingsLeaveGuard} />
-            : contextPage ? <ContextSettingsPanel setLeaveGuard={setSettingsLeaveGuard} /> : fallbackPage ? <VisionFallbackPanel setLeaveGuard={setSettingsLeaveGuard} /> : systemToolsPage ? <SystemToolsPanel /> : statisticsPage ? <StatisticsPanel /> : remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} setLeaveGuard={setSettingsLeaveGuard} /> : null}
+            : contextPage ? <ContextSettingsPanel setLeaveGuard={setSettingsLeaveGuard} /> : fallbackPage ? <VisionFallbackPanel setLeaveGuard={setSettingsLeaveGuard} /> : systemToolsPage ? <SystemToolsPanel /> : statisticsPage ? <StatisticsPanel /> : remotePage ? <HostPanel key={`${remoteHostId ?? 'new'}/${view ?? 'Overview'}`} id={remoteHostId} view={view ?? 'Overview'} api={remoteHosts} navigate={navigateRemoteHost} setLeaveGuard={setSettingsLeaveGuard} /> : githubSettings ? <RefreshSettingsPanel setLeaveGuard={setSettingsLeaveGuard} /> : githubPage ? <ConnectionPanel key={activeConnection?.id ?? 'new-connection'} connection={activeConnection} api={github} select={setConnectionView} setLeaveGuard={setSettingsLeaveGuard} /> : systemPromptPage || skillPromptPage ? <SystemPromptPanel key={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} kind={skillPromptPage ? 'skill-manager-prompt' : 'system-prompt'} setLeaveGuard={setSettingsLeaveGuard} /> : updatePage ? componentKind ? <ComponentUpdatesPanel key={componentKind} kind={componentKind} /> : <UpdatesPanel /> : vmPage ? <VmPanel key={activeVm?.id ?? 'new-vm'} api={vms} vm={activeVm} view={view ?? 'Overview'} select={(id) => { setVmId(id); select({ view: 0 }); }} /> : providerPage ? <ProviderPanel provider={activeProvider} api={providers} select={setProviderView} setLeaveGuard={setSettingsLeaveGuard} /> : null}
         </main>
         </>}
       </div>

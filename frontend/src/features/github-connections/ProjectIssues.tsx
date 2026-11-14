@@ -20,8 +20,10 @@ export function ProjectIssues({model}:{model:ProjectIssuesModel}){
       <button type="button" disabled={model.loading} onClick={model.refresh}>Refresh</button>
     </div></header>
     {model.loading&&<p role="status">Loading issues…</p>}
+    {!data&&!model.loading&&!model.error&&model.binding&&<p className="github-issues-empty">Issues have not been checked yet. Select Refresh to load them now.</p>}
     {model.error&&<div className="github-issues-error" role="alert"><p>{model.error}</p><button type="button" onClick={model.refresh}>Retry from first page</button></div>}
     {data&&<>
+      {data.refreshError&&<p className="github-issues-error" role="status">{data.refreshError}</p>}
       <p className="github-issues-checked" role="status">{model.stale?'Last checked data. Refresh for a current view. ':data.cached?'Cached. ':''}Checked {new Date(data.checkedAt).toLocaleString()} · {data.openCount} open issue{data.openCount===1?'':'s'} across this repository.</p>
       {data.items.length?<ol className="github-issues-list">{data.items.map(issue=><li key={issue.number} className="github-issue">
         <div className="github-issue-heading"><span className={`github-issue-state ${issue.state}`}>{issue.state==='open'?'Open':'Closed'}</span><a href={issue.url} target="_blank" rel="noopener noreferrer"><span>#{issue.number}</span> {issue.title}</a></div>

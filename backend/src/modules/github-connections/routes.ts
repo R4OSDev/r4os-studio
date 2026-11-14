@@ -7,11 +7,13 @@ import type { GitHubTestResult } from '../../../../shared/github-connections.js'
 import { GitHubRepositories } from './repositories.js';
 import { connectionProjects } from './references.js';
 import { projectsDirectory, ProjectError as InvalidInput } from '../projects/store.js';
+import { RefreshSettings } from './refresh-settings.js';
 
 export async function githubRoutes(app: FastifyInstance, { directory, projectDirectory = projectsDirectory(), tester = testToken, transport = fetch }: {
   directory: string; projectDirectory?: string; tester?: (token: string) => Promise<GitHubTestResult>; transport?: typeof fetch;
 }) {
   const sessions = new ProjectSessions('github'), store = new GitHubStore(directory);
+  const settings = new RefreshSettings(directory);
   const repositories = new GitHubRepositories(store, transport);
   function input(value: unknown, keys: string[]) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !keys.includes(key))) throw new InvalidInput('Invalid GitHub request.', 400);
@@ -40,6 +42,11 @@ export async function githubRoutes(app: FastifyInstance, { directory, projectDir
     return { connections: await store.list(), csrfToken: session.token };
   });
   app.post('/', { bodyLimit: 16 * 1024 }, async (request) => store.create(createInput(request.body)));
+  app.get('/settings', async (request, reply) => {
+    sessions.session(request, reply);
+    return settings.read();
+  });
+  app.put('/settings', { bodyLimit: 4096 }, async request => settings.save(request.body));
   app.get<{ Params: { id: string } }>('/:id/projects', async (request, reply) => {
     sessions.session(request, reply); connectionId(request.params.id);
     return { projects: await connectionProjects(projectDirectory, request.params.id) };

@@ -20,7 +20,7 @@ export interface GitHubBranchPage { account: GitHubAccount; repository: GitHubRe
 export interface GitHubProjectStatus {
   binding: GitHubProjectBinding | null; head: string | null; remoteHead: string | null;
   ahead: number; behind: number; state: string; snapshot: string;
-  changes: { path: string; status: string }[]; checkedAt: string | null; fresh?: boolean;
+  changes: { path: string; status: string }[]; checkedAt: string | null; fresh?: boolean; stale?: boolean;
 }
 export interface GitHubImportPreview {
   projectId: string; commit: string; snapshot: string; files: number; binding: GitHubProjectBinding;

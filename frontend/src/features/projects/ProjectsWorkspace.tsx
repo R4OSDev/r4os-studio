@@ -104,7 +104,6 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
       </nav> : current.section === 'Statistics' ? null : <div className="nav-column" aria-hidden="true" />}
     </WorkspaceNavigation>
     <main className={`main-area ${current.section === 'Editor' ? 'editor-main' : current.section === 'Boards' ? 'boards-main' : ''}`} aria-label="Project content">
-      {selected && opening.checking && !selected.deleting && <p className="project-message project-background-status" role="status">Checking GitHub in the background…</p>}
       {opening.notice && <p className="project-message project-background-status" role="status">{opening.notice} <button className="project-reload" type="button" onClick={opening.refresh}>Refresh GitHub status</button></p>}
       {selected && <>
         {current.section !== 'Editor' && !(current.section === 'Sessions' && current.sessionId) && <div className={`page-heading${current.section==='Roadmap'?' roadmap-page-heading':''}`}><h1>{selected.name}{current.section==='Roadmap'?' Roadmap':''}</h1><span className="page-rule" />

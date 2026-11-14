@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { GitHubAccount, GitHubDiff, GitHubJob, GitHubProjectBinding, GitHubProjectStatus } from '../../../../shared/project-github';
 import type { GitHubConnection } from '../../../../shared/github-connections';
-import { projectRequest } from '../projects/api';
+import { projectRequest, projectRequestId } from '../projects/api';
 import { ConnectionSelect } from './ConnectionSelect';
 import { RepositorySelect } from './RepositorySelect';
 import type { RepositoryChoice } from './RepositorySelect';
 import { clearGit, clearPull, pendingGit, pendingPull, pullProject, runGitJob, waitGitJob } from './projectApi';
 import { loadConnections } from './api';
-import {pendingOpeningCheck} from './openingCheck';
 import './project.css';
 
 const labels: Record<string, string> = { not_connected: 'Local project', unknown: 'Remote state unknown', not_pushed: 'Not pushed yet', remote_only: 'Remote history requires import', branch_missing: 'Remote branch missing', diverged: 'Local and remote history diverged', ahead: 'Local commits ready to push', behind: 'Remote commits available', up_to_date: 'Up to date at last check' };
@@ -26,11 +25,22 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
         const [value, capabilities, root] = await Promise.all([projectRequest<{ binding: GitHubProjectBinding | null; job: GitHubJob | null }>(`/${id}/github`, '', 'GET', undefined, controller.signal), projectRequest<{ kinds?: string[] }>('/github/capabilities', '', 'GET', undefined, controller.signal), loadConnections()]);
         if (controller.signal.aborted) return;
         setBinding(value.binding); setJob(value.job); setKinds(capabilities.kinds ?? []); setConnections(root.connections);
-        if (value.job && ['running', 'queued'].includes(value.job.state)) { setBusy(true);setWriting(!['status','check','diff'].includes(value.job.kind));await waitGitJob(id, value.job.id, value.job, setJob, controller.signal); }
-        const checking=value.binding?pendingOpeningCheck(id,value.binding):undefined;
-        if(checking){const checked=await checking;if(!controller.signal.aborted)setStatus(checked);return;}
+        let finished = value.job;
+        if (finished && ['running', 'queued'].includes(finished.state) && !['status','check','diff'].includes(finished.kind)) {
+          setBusy(true);setWriting(true);finished=await waitGitJob(id, finished.id, finished, setJob, controller.signal);
+        }
+        const remote = value.binding ? await projectRequest<{status:GitHubProjectStatus|null;error?:string}>(`/${id}/github/observation`, '', 'GET', undefined, controller.signal) : null;
+        if (controller.signal.aborted) return;
+        const saved = remote?.status;
+        if (saved) setStatus(saved);
+        if (remote?.error) setError(remote.error);
+        if (finished && ['running','queued'].includes(finished.state)) return;
         const read = await runGitJob(id, token, 'status', {});
-        if (!controller.signal.aborted && read.result && 'snapshot' in read.result) setStatus(read.result);
+        if (controller.signal.aborted || !read.result || !('snapshot' in read.result)) return;
+        if (!value.binding) { setStatus(read.result); return; }
+        // The local inventory can move while an earlier remote result is saved.
+        setStatus(saved && saved.head === read.result.head ? { ...saved, changes: read.result.changes, snapshot: read.result.snapshot }
+          : { ...read.result, checkedAt:null, remoteHead:null, ahead:0, behind:0, state:'unknown' });
       } catch (e) { if (!controller.signal.aborted) setError((e as Error).message); }
       finally { if (!controller.signal.aborted) { setLoading(false); setBusy(false);setWriting(false); } }
     })();
@@ -41,6 +51,11 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
     setBusy(true); setError('');
     setWriting(!['status','check','diff'].includes(kind));
     try {
+      if (kind === 'check' && binding) {
+        setStatus(await projectRequest<GitHubProjectStatus>(`/${id}/github/refresh`,token,'POST',
+          {bindingRevision:binding.revision,requestId:projectRequestId()}));
+        return;
+      }
       const result = await runGitJob(id, token, kind, input, ['status', 'check', 'diff'].includes(kind) ? undefined : setJob, original ? pendingGit(id) ?? undefined : undefined);
       if (result.result && 'snapshot' in result.result) { setStatus(result.result); setBinding(result.result.binding); }
       if (result.result && 'diff' in result.result) setDiff(result.result.diff);
@@ -83,7 +98,7 @@ export function ProjectGithubPanel({ id, token, dirtyChanged, busyChanged }: { i
       <div><dt>Branch</dt><dd>{binding.branch}</dd></div><div><dt>Commit author</dt><dd>{binding.author.name} &lt;{binding.author.email}&gt;</dd></div>
       <div><dt>Local commit</dt><dd>{status?.head?.slice(0, 12) ?? 'No local commit'}</dd></div><div><dt>Remote commit</dt><dd>{status?.remoteHead?.slice(0, 12) ?? 'Unknown / no branch'}</dd></div>
       <div><dt>Synchronization</dt><dd>{labels[status?.state ?? 'unknown']} · {status?.ahead ?? 0} ahead · {status?.behind ?? 0} behind</dd></div>
-      <div><dt>Last remote check</dt><dd>{status?.checkedAt ? new Date(status.checkedAt).toLocaleString() + (status.fresh ? '' : ' · Cached') : 'Not checked'}</dd></div>
+      <div><dt>Last remote check</dt><dd>{status?.checkedAt ? new Date(status.checkedAt).toLocaleString() + (status.stale ? ' · Out of date' : status.fresh ? '' : ' · Cached') : 'Not checked'}</dd></div>
     </dl> : !loading && <p>No GitHub repository connected. Your sources remain local.</p>}
     {binding && <p className="github-hint">{binding.repository.archived ? 'Archived repository. Push is unavailable.' : 'Token contents permissions and branch rules are checked again for each transfer.'}</p>}
     {!editing && <button type="button" disabled={busy || loading || unresolved} onClick={() => setEditing(true)}>{binding ? 'Edit connection or author' : 'Connect repository'}</button>}

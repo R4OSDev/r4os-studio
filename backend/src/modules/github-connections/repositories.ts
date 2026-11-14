@@ -17,10 +17,25 @@ export function repository(value: unknown): GitHubRepository {
     defaultBranch: v.default_branch ?? null, archived: v.archived, read: v.permissions?.pull === true || !v.private, push: v.permissions?.push === true && !v.archived };
 }
 
+export class GitHubRateLimit extends ProjectError {
+  constructor(readonly retryAt = Date.now() + 60_000) {
+    super('GitHub rate limit reached. Retry later.', 429);
+  }
+}
+
+function retryAt(headers: Headers) {
+  const now = Date.now();
+  const after = headers.get('retry-after'), reset = Number(headers.get('x-ratelimit-reset'));
+  const retry = after && /^\d+$/.test(after) ? now + Number(after) * 1000 : after ? Date.parse(after) : 0;
+  const time = Math.max(now + 1000, retry && Number.isSafeInteger(retry) ? retry : 0,
+    headers.get('x-ratelimit-remaining') === '0' && reset > 0 && Number.isSafeInteger(reset * 1000) ? reset * 1000 : 0);
+  return time === now + 1000 ? now + 60_000 : time;
+}
+
 /** No caller-controlled host, redirects, error bodies or unbounded JSON. */
 export class GitHubApi {
   constructor(private token: string, private transport: typeof fetch = fetch) {}
-  async request(path: string, method = 'GET', body?: unknown): Promise<unknown> {
+  async request(path: string, method = 'GET', body?: unknown, headers?: (response: Headers) => void): Promise<unknown> {
     if (!path.startsWith('/') || path.startsWith('//') || /[\r\n#]/.test(path)) throw new ProjectError('Invalid GitHub operation.', 400);
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10_000);
     try {
@@ -29,8 +44,9 @@ export class GitHubApi {
           'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'R4OS-Studio', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       try {
+        headers?.(response.headers);
         if (response.status === 401) throw new ProjectError('GitHub authentication expired. Update this connection.', 401);
-        if (response.status === 429 || (response.status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')))) throw new ProjectError('GitHub rate limit reached. Retry later.', 429);
+        if (response.status === 429 || (response.status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')))) throw new GitHubRateLimit(retryAt(response.headers));
         if (response.status === 403) throw new ProjectError('GitHub denied this operation. Check token permissions, SSO and repository rules.', 403);
         if (response.status === 404) throw new ProjectError('Repository or branch not found, or this token cannot access it.', 404);
         if (response.status === 422) throw new ProjectError('GitHub rejected these repository parameters. Check the name and permissions.', 422);
@@ -49,6 +65,8 @@ export class GitHubApi {
     } finally { clearTimeout(timer); controller.abort(); }
   }
 }
+
+export { retryAt };
 
 export class GitHubRepositories {
   constructor(readonly store: GitHubStore, private transport: typeof fetch = fetch) {}

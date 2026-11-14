@@ -7,4 +7,5 @@ export interface GitHubIssuePage {
   scope:{projectId:string;repositoryId:number;bindingRevision:number;credentialRevision:number};
   repository:string;state:GitHubIssueState;items:GitHubIssue[];openCount:number;
   nextCursor:string|null;checkedAt:string;expiresAt:string;cached:boolean;
+  stale?:boolean;refreshError?:string;
 }
