@@ -44,6 +44,31 @@ def paths(root, revision):
     return base, saved, document, result
 
 
+def package_source_roots(document, roots):
+    source_roots = {name: roots[name] for name in ('contract', 'libraries')}
+    recovery = roots['recovery']
+    for name in ('recovery-sdk', 'recovery-contract', 'recovery-libraries'):
+        binding = document['sources'].get(name)
+        if not isinstance(binding, dict):
+            raise ValueError('The SDK package is missing a source binding: ' + name)
+        archive_sha256 = binding.get('archive_sha256')
+        if 'tree' in binding:
+            path = recovery / package.relative(binding.get('source_subdir'))
+            exists = path.is_dir()
+        elif (name == 'recovery-libraries' and isinstance(archive_sha256, str)
+              and package.SHA256.fullmatch(archive_sha256)):
+            # Archive-only SDK releases bind the ZIP in Recovery's source archive.
+            path = recovery / 'Legal/Sources/Libraries.zip'
+            exists = path.is_file()
+        else:
+            raise ValueError('The SDK package has an unsupported source binding: ' + name)
+        watch(path)
+        if not exists or path.resolve(strict=True) != path.absolute():
+            raise ValueError('An SDK package source root is missing or indirect: ' + name)
+        source_roots[name] = path
+    return source_roots
+
+
 def verify(root, revision, *, sources=True, work=None):
     base, saved, document, roots = paths(root, revision)
     capability = package.regular_bytes(base / package.asset(document, 'capabilities')['path'])
@@ -62,10 +87,7 @@ def verify(root, revision, *, sources=True, work=None):
                 raise ValueError('An SDK host tool link changed: ' + name)
     runner = sdk_host.powershell(root)
     if sources:
-        expected_roots = {'contract': str(roots['contract']), 'libraries': str(roots['libraries']),
-                          'recovery-sdk': str(roots['recovery'] / 'Platform/SDK'),
-                          'recovery-contract': str(roots['recovery'] / 'Platform/Contract'),
-                          'recovery-libraries': str(roots['recovery'] / 'Legal/Sources/Libraries.zip')}
+        expected_roots = {name: str(path) for name, path in package_source_roots(document, roots).items()}
         if package.decode(package.regular_bytes(base / 'roots.json')) != expected_roots:
             raise ValueError('The SDK package source roots changed.')
         # The SDK already verified these immutable inputs when publishing the
@@ -84,15 +106,17 @@ def verify(root, revision, *, sources=True, work=None):
 def source_signature(base, document, roots):
     """Detect changes to already SDK-verified inputs; never resolve policy."""
     groups = [('sdk', roots['sdk'], document['sdk_source']['files'])]
-    source_roots = {'contract': roots['contract'], 'libraries': roots['libraries'],
-                    'recovery-sdk': roots['recovery'] / 'Platform/SDK',
-                    'recovery-contract': roots['recovery'] / 'Platform/Contract'}
+    source_roots = package_source_roots(document, roots)
+    archive_only = 'tree' not in document['sources']['recovery-libraries']
     for name, root in source_roots.items():
-        groups.append((name, root, document['sources'][name]['tree']['files']))
+        if name != 'recovery-libraries' or not archive_only:
+            groups.append((name, root, document['sources'][name]['tree']['files']))
     projection = package.decode(package.regular_bytes(roots['tools'] / 'RustToolsProfile.json'))
     groups.append(('tools', roots['tools'], [item['path'] for item in projection['files']] + ['RustToolsProfile.json']))
     groups.append(('assets', base, [item['path'] for item in document['assets']]))
-    groups.append(('recovery-archive', roots['recovery'], ['Legal/Sources/Libraries.zip']))
+    if archive_only:
+        archive = source_roots['recovery-libraries'].relative_to(roots['recovery'])
+        groups.append(('recovery-archive', roots['recovery'], [archive.as_posix()]))
     entries = []
     for name, root, files in groups:
         for relative in files:
@@ -250,11 +274,11 @@ def prepare(manager, selected):
             with tempfile.TemporaryDirectory(prefix='.sdk-extract-', dir=destination.parent) as name:
                 extracted = extract(target, Path(name), item['prefix'])
                 publish(extracted, destination)
-    roots = {'contract': str(targets['contract-source']), 'libraries': str(targets['libraries-source']),
-             'recovery-sdk': str(targets['recovery-sources'] / 'Platform/SDK'),
-             'recovery-contract': str(targets['recovery-sources'] / 'Platform/Contract'),
-             'recovery-libraries': str(targets['recovery-sources'] / 'Legal/Sources/Libraries.zip')}
-    atomic(base / 'roots.json', roots)
+    install = base / 'Install'
+    roots = {kind: targets[role] for kind, role in package.SOURCE_ROLES.items()}
+    roots.update(tools=targets['tools'], recovery=targets['recovery-sources'], install=install)
+    source_roots = package_source_roots(document, roots)
+    atomic(base / 'roots.json', {name: str(path) for name, path in source_roots.items()})
     runner = sdk_host.powershell(manager.root)
     home = base / 'Work'
     manager.progress('Verifying the complete SDK package and source set…')
@@ -271,7 +295,6 @@ def prepare(manager, selected):
             raise ValueError('The SDK executable path is indirect.')
         executable.chmod(0o755)
     manager.progress('Provisioning SDK-selected Zig and Rust host tools…')
-    install = base / 'Install'
     sdk_host.invoke(runner, targets['sdk-source'], 'Setup.ps1', ['-InstallRoot', install, '-Tools', 'zig'],
                     home, timeout=1200, log=base / 'setup-zig')
     sdk_host.invoke(runner, targets['sdk-source'], 'Setup.ps1', ['-InstallRoot', install, '-Tools', 'zig', '-Check'],
@@ -309,12 +332,7 @@ def prepare(manager, selected):
             record['sdkPackage'] = {'schema': 1, 'manifestSha256': package.sha256(raw),
                                     'profileSources': package.profile_hashes(document)}
         records[kind] = record
-    all_paths = {'sdk': str(targets['sdk-source'].relative_to(manager.root)),
-                 'contract': str(targets['contract-source'].relative_to(manager.root)),
-                 'libraries': str(targets['libraries-source'].relative_to(manager.root)),
-                 'tools': str(targets['tools'].relative_to(manager.root)),
-                 'recovery': str(targets['recovery-sources'].relative_to(manager.root)),
-                 'install': str(install.relative_to(manager.root))}
+    all_paths = {name: str(path.relative_to(manager.root)) for name, path in roots.items()}
     record = {'schema': 1, 'interface': package.INTERFACE, 'version': document['sdk_version'],
               'revision': revision, 'manifestSha256': package.sha256(raw), 'profileSources': package.profile_hashes(document),
               'components': records, 'paths': all_paths, 'hostFiles': host_files, 'hostLinks': host_links,
@@ -322,7 +340,7 @@ def prepare(manager, selected):
                                   'sha256': expected_zig['hosts']['Linux']['sha256'],
                                   'binarySha256': host_files['Install/Toolchains/Zig/zig']},
               'verifiedAt': now(), 'technical': False, 'verification': result}
-    record['sourceSignature'] = source_signature(base, document, {key: manager.root / path for key, path in all_paths.items()})
+    record['sourceSignature'] = source_signature(base, document, roots)
     atomic(base / 'bundle.json', record)
     for kind, role in package.SOURCE_ROLES.items():
         atomic(targets[role] / '.studio-component.json', records[kind])

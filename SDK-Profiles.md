@@ -34,6 +34,12 @@ with `Package.ps1 Verify`. Archive prefixes determine local roots. SDK sources,
 Contract and Libraries retain their exact component identities; matching
 Recovery snapshots and the matched tool export belong to the same package.
 
+Studio uses each Recovery source tree's manifest-declared `source_subdir`
+relative to the extracted Recovery archive. SDK 0.64.218 binds Recovery
+Libraries to `Platform/Libraries`. Releases with an archive-only
+`recovery-libraries` binding use `Legal/Sources/Libraries.zip`. Studio
+records paths and tracks the files of the selected binding for revalidation.
+
 SDK `Setup.ps1` provisions and checks Zig; SDK `Rust.ps1 --profile sdk` provisions
 and checks the private normal Rust toolchain. Optional kernel, graphics, boot
 and VM tools are not required just to compile an ordinary application. Neither
