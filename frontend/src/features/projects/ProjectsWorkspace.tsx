@@ -71,7 +71,6 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
   return <>
     <WorkspaceNavigation className={current.section === 'Statistics' ? 'statistics-project' : ''} fixed={current.section === 'Statistics'} label="Projects navigation">
       <nav className="nav-column" aria-label="Projects">
-        <div className="column-heading">Projects</div>
         <div className="nav-items" aria-busy={api.loading}>
           <button type="button" className="nav-item project-new" disabled={!api.token || saving} onClick={() => {
             if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewProject(true); }
@@ -90,7 +89,6 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         </div>
       </nav>
       {selected ? <nav className="nav-column" aria-label="Project sections">
-        <div className="column-heading" aria-hidden="true" />
         <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Roadmap', 'Boards', 'Statistics', 'Settings'] as const).map((section) =>
           <button key={section} type="button" disabled={saving || selected.deleting} className={`nav-item ${current.section === section ? 'selected' : ''}`}
             aria-current={current.section === section ? 'true' : undefined} onClick={() => {
@@ -106,12 +104,10 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
         choose={(id) => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); navigate(selected.id, { ...current, roadmapVersionId: id }); } }}
         create={() => { if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewRoadmapVersion(true); } }} />
         : selected && current.section === 'Editor' ? <Suspense fallback={<div className="nav-column" />}><EditorFiles key={selected.id} id={selected.id} token={api.token} /></Suspense> : selected && current.section === 'Settings' ? <nav className="nav-column" aria-label="Project settings">
-        <div className="column-heading" aria-hidden="true" />
         <div className="nav-items">{(['General', 'Pins', 'Virtual machine', 'Remote host', 'Run & Test', 'Agents.md'] as const).map((view) => <button key={view} type="button" disabled={saving || selected.deleting}
           className={`nav-item ${current.settingsView === view ? 'selected' : ''}`} aria-current={current.settingsView === view ? 'page' : undefined}
           onClick={() => { if (view !== current.settingsView && leave()) navigate(selected.id, { ...current, settingsView: view }); }}><span>{view}</span></button>)}</div>
       </nav> : selected && current.section === 'Sessions' ? <nav className="nav-column" aria-label="Project sessions">
-        <div className="column-heading" aria-hidden="true" />
         <div className="nav-items">
           <button type="button" className="nav-item project-new" disabled={!api.token || saving} onClick={() => { if (leave()) setNewSession(true); }}><span className="project-plus" aria-hidden="true">+</span><span>New Session</span></button>
           {sessions.error ? <><p className="project-nav-message" role="alert">{sessions.error}</p><button className="nav-item" onClick={sessions.reload}>Retry</button></>

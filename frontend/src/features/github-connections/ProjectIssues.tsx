@@ -6,7 +6,7 @@ import './issues.css';
 export function GithubNavigation({model,selected,disabled,choose}:{model:ProjectIssuesModel;selected:'Connection'|'Issues';disabled:boolean;choose:(view:'Connection'|'Issues')=>void}){
   const count=model.data?.openCount;
   const label=typeof count==='number'?`${count} open issues${model.stale?', last checked data':''}`:model.loading?'Loading open issue count':'Open issue count unavailable';
-  return <nav className="nav-column" aria-label="Project GitHub sections"><div className="column-heading" aria-hidden="true"/><div className="nav-items">
+  return <nav className="nav-column" aria-label="Project GitHub sections"><div className="nav-items">
     <button type="button" disabled={disabled} className={`nav-item ${selected==='Connection'?'selected':''}`} aria-current={selected==='Connection'?'page':undefined} onClick={()=>choose('Connection')}><Icon name="settings"/><span>Connection</span></button>
     <button type="button" disabled={disabled||!model.binding} className={`nav-item github-issues-navigation ${selected==='Issues'?'selected':''}`} aria-current={selected==='Issues'?'page':undefined} title={!model.binding?'Connect a repository first.':undefined} onClick={()=>choose('Issues')}><Icon name="book"/><span>Issues</span><span className="github-issues-count" aria-label={label} title={label}>{typeof count==='number'?(model.stale?'~':'')+count:model.loading?'…':'—'}</span></button>
   </div></nav>;

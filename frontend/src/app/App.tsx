@@ -241,7 +241,6 @@ export function App() {
           navigation={projectNavigation} navigate={navigateProject} setLeaveGuard={setProjectLeaveGuard} /> : <>
         <WorkspaceNavigation className={singleColumnPage ? 'single-area-workspace' : ''} fixed={singleColumnPage} label={`${tab} navigation`}>
           <nav className="nav-column" aria-label="Areas">
-            <div className="column-heading">Areas</div>
             <div className="nav-items">
               {groups.map((entry, index) => (
                 <button type="button" key={entry.name} className={`nav-item ${selected.group === index ? 'selected' : ''}`}
@@ -253,7 +252,6 @@ export function App() {
             </div>
           </nav>
           {!singleColumnPage && <><nav className="nav-column" aria-label="Components">
-            <div className="column-heading">Components</div>
             <div className="nav-items">
               {componentItems.map((name, index) => (
                 <button type="button" key={remotePage && index > 0 ? remoteHosts.hosts[index - 1].id : vmPage && index > 0 ? vms.vms[index - 1].id : name} className={`nav-item ${selectedComponent === index ? 'selected' : ''}`}
@@ -265,7 +263,6 @@ export function App() {
             </div>
           </nav>
           <nav className="nav-column" aria-label="Views">
-            <div className="column-heading">Views</div>
             <div className="nav-items">
               {availableViews.map((name, index) => {
                 const provider = providerPage && index > 0 ? providers.providers[index - 1] : undefined;

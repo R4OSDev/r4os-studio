@@ -57,10 +57,10 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
   const finishDeletion=useCallback(async(id:string)=>{forgetSkill(id);await reloadSkills();if(selectedRef.current===id){setChildGuard(()=>true);setSessionDirty(false);select(null);navigate(id);window.history.replaceState(null,'','#tools');}},[forgetSkill,reloadSkills,select,navigate,setChildGuard]);
   return <>
     <WorkspaceNavigation label="Tools navigation">
-      <nav className="nav-column" aria-label="Tools"><div className="column-heading">TOOLS</div>
+      <nav className="nav-column" aria-label="Tools">
         <div className="nav-items"><button type="button" className="nav-item selected" aria-current="true"><Icon name="book" /><span>Skill Manager</span></button></div>
       </nav>
-      <nav className="nav-column" aria-label="Skills"><div className="column-heading">SKILLS</div>
+      <nav className="nav-column" aria-label="Skills">
         <div className="nav-items"><button type="button" className="nav-item" disabled={!api.token || busy} onClick={() => {
           if (leave()) { requestId.current = projectRequestId(); setName(''); setError(''); setCreating(true); }
         }}><span>+ New Skill</span></button>
@@ -72,7 +72,7 @@ function SkillWorkspace({ selectedId, sessionId, select, navigate, setLeaveGuard
                 </button>)}
         </div>
       </nav>
-      {active ? <nav className="nav-column" aria-label="Skill views"><div className="column-heading">Views</div>
+      {active ? <nav className="nav-column" aria-label="Skill views">
         <div className="nav-items skill-fixed-views"><button type="button" className="nav-item" disabled={!api.token || busy || sessionBusy} onClick={() => { if (leave()) setNewSession(true); }}>+ Session</button>
           <button type="button" className={`nav-item ${!sessionId ? 'selected' : ''}`} aria-current={!sessionId ? 'page' : undefined} onClick={() => { if (sessionId) chooseSession(); }}>View Skill</button></div>
         <div className="nav-items skill-session-list">{sessions.error ? <><p className="skill-nav-message" role="alert">{sessions.error}</p><button className="nav-item" onClick={sessions.reload}>Retry</button></> : sessions.loading ? <p className="skill-nav-message" role="status">Loading sessions…</p> : sessions.sessions.map((session) => <button key={session.id} type="button" className={`nav-item ${session.id === sessionId ? 'selected' : ''}`} aria-current={session.id === sessionId ? 'page' : undefined} onClick={() => { if (session.id !== sessionId) chooseSession(session.id); }}><span className="provider-view-name">{session.name}</span>{busyRun(session.latestRun?.state) && <span className="session-nav-status" aria-label="Run active" />}</button>)}</div>

@@ -6,7 +6,6 @@ export function StatusWorkspace({ children }: { children: ReactNode }) {
   return <>
     <aside className="navigation status-navigation" aria-label="Status navigation">
       <nav className="nav-column" aria-label="Areas">
-        <div className="column-heading">Areas</div>
         <div className="nav-items">
           <a className="nav-item selected" href="#status/ai-limits" aria-current="page"><Icon name="statistics" /><span>AI Limits</span></a>
         </div>

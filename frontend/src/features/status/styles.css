@@ -33,5 +33,4 @@
 @media (max-width: 600px) {
   .status-content { padding: 20px 16px; }
   .status-navigation .nav-items { padding: 9px; }
-  .status-navigation .column-heading { height: 36px; }
 }

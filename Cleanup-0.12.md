@@ -349,3 +349,7 @@ Move session feedback into the header beside the project and session name
 ## 0.12.89
 
 Align the model selection frame with the Goal frame
+
+## 0.12.90
+
+Remove navigation column headings and blank strips across System, Projects, Tools and Status.

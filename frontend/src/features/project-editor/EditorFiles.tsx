@@ -66,7 +66,6 @@ export default function EditorFiles({ id, token }: { id: string; token: string }
     else setError(p.error || 'The operation could not be completed.');
   }
   return <nav className="nav-column editor-files" aria-label="Workspace files">
-    <div className="column-heading">Files</div>
     <div className="editor-file-actions editor-navigation-actions"><button type="button" title="Ctrl/Cmd+P" onClick={() => setSearch('name')}>Quick Open</button><button type="button" title="Ctrl/Cmd+Shift+F" onClick={() => setSearch('content')}>Search</button></div>
     <div className="editor-file-actions"><button type="button" disabled={blocked} onClick={() => begin('create')}>New file</button><button type="button" disabled={blocked} onClick={() => begin('mkdir')}>New folder</button>
       <button type="button" disabled={blocked || !p.selection} onClick={() => begin('rename')}>Rename</button><button type="button" disabled={blocked || !p.selection} onClick={() => begin('delete')}>Delete</button>

@@ -6,7 +6,6 @@ export function RoadmapNavigation({ model, selected, choose, create, disabled }:
 }) {
   const state = model.overview;
   return <nav className="nav-column" aria-label="Project roadmap versions">
-    <div className="column-heading" aria-hidden="true" />
     <div className="nav-items">
       <button className={`nav-item ${!selected ? 'selected' : ''}`} type="button" disabled={disabled}
         aria-current={!selected ? 'page' : undefined} onClick={() => choose()}>Overview</button>
