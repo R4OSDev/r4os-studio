@@ -245,5 +245,3 @@
 .agent-goal-buttons { justify-self:end; }
 .agent-goal-buttons button { display:flex; justify-content:center; align-items:center; gap:3px; width:auto; min-width:38px; font-size:10px; }
 .agent-goal-state-stack { grid-column:1 / -1; display:flex; justify-content:flex-end; gap:8px; }
-.agent-current-run { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px; color:#bba7cc; font-size:10px; }
-.agent-current-run button { padding:4px 6px; color:#e2cadc; border:1px solid #61465b; border-radius:4px; background:#342230; font:inherit; }

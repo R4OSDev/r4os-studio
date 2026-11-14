@@ -3,7 +3,7 @@ import { watchSessionReads } from './sessionReads';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentSession } from '../../../../shared/agent-sessions';
 import type { GoalAction, GoalCommand, GoalReceipt, SessionGoal } from '../../../../shared/agent-inputs';
-import { busyRun, projectRequestId, ProjectRequestError, sessionPath, useSessionApi } from './api';
+import { busyRun, isLocalReadBusy, projectRequestId, ProjectRequestError, sessionPath, useSessionApi } from './api';
 
 const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 function stored(key: string): GoalCommand | null {
@@ -55,6 +55,9 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
   useEffect(() => {
     const controller = new AbortController(), current = generation.current;
     let timer: number | undefined;
+    const retryRead = () => {
+      if (!document.hidden) timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
+    };
     const load = async () => {
       if (document.hidden) return;
       const [state, support] = await Promise.all([
@@ -67,9 +70,13 @@ export function useGoal(projectId: string, sessionId: string, session: AgentSess
         setKeepalive(true); setLiveExecution(true); setReadback(false); return;
       }
       observe(state.goal); setAvailable(false); setExecution(false); setKeepalive(false); setLiveExecution(false); setReadback(false);
-      if (!document.hidden) timer = window.setTimeout(() => setRefresh((value) => value + 1), 3000);
+      retryRead();
     };
-    void load().catch((failure: Error) => { if (!controller.signal.aborted) { setError(failure.message); setAvailable(false); } });
+    void load().catch((failure: Error) => {
+      if (controller.signal.aborted) return;
+      if (isLocalReadBusy(failure)) { retryRead(); return; }
+      setError(failure.message); setAvailable(false);
+    });
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [base, request, observe, refresh, claudeSession, studioSession]);
 

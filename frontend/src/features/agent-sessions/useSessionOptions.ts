@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SessionOptions } from '../../../../shared/agent-sessions';
-import { sessionPath, useSessionApi } from './api';
+import { isLocalReadBusy, sessionPath, useSessionApi } from './api';
 import { watchSessionReads } from './sessionReads';
 import { watchVisible } from './sessionActivity';
 
@@ -13,15 +13,17 @@ export function useSessionOptions(ownerId: string) {
       if (controller.signal.aborted || document.hidden) return;
       if (loading) { dirty = true; return; }
       loading = true; dirty = false; window.clearTimeout(timer);
+      let interval = 30000;
       try {
         const value = await request<SessionOptions>(path, '', 'GET', undefined, controller.signal);
         if (!controller.signal.aborted) setState({ key, value, error: '' });
       } catch (error) {
-        if (!controller.signal.aborted && (error as Error).name !== 'AbortError') setState({ key, value: null, error: (error as Error).message });
+        if (isLocalReadBusy(error)) interval = 3000;
+        else if (!controller.signal.aborted && (error as Error).name !== 'AbortError') setState({ key, value: null, error: (error as Error).message });
       } finally {
         loading = false;
         if (!controller.signal.aborted && !document.hidden) {
-          if (dirty) void load(); else timer = window.setTimeout(() => void load(), 30000);
+          if (dirty) void load(); else timer = window.setTimeout(() => void load(), interval);
         }
       }
     }

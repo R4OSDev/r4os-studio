@@ -23,7 +23,7 @@ export function useQuotaWait(ownerId:string,sid:string,token:string,wait:Session
       ||result.receipt.requestId!==input.requestId||result.receipt.waitId!==input.waitId||result.receipt.state!=='confirmed')throw new Error('The original cancellation has another owner, wait or session.');
     if(stored(key)?.requestId===input.requestId)sessionStorage.removeItem(key);
     setPending(null);setNotFound(false);setError('');
-    setNotice(result.receipt.outcome==='already-admitted'?'The continuation was already admitted. Use Stop current run to stop it.':'');
+    setNotice(result.receipt.outcome==='already-admitted'?'The continuation was already admitted. Use Stop in the message composer to stop it.':'');
     onSaved.current(result.quotaWait,result.session);
     if(typeof BroadcastChannel!=='undefined') {const channel=new BroadcastChannel('studio-quota-waits');channel.postMessage({scope,ownerId,sid,revision:result.quotaWait.revision});channel.close();}
   },[key,ownerId,sid,scope]);

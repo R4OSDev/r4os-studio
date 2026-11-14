@@ -309,3 +309,7 @@ Restart one direct model step after a verified complete response is rejected bef
 ## 0.12.79
 
 Retry a complete Z.AI HTTP 500 with code 1234 up to five times at 60-second intervals and show the provider error when the attempts are exhausted.
+
+## 0.12.80
+
+Hide temporary session reader contention notices and move run stopping to the composer

@@ -7,7 +7,7 @@ import { useEnvironmentNotes } from './useEnvironmentNotes';
 import { SessionStatistics, GoalRuntime } from '../statistics/SessionStatistics';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentEvent, AgentRun, AgentSession, SessionContext, SessionHistory, SessionItem } from '../../../../shared/agent-sessions';
-import { useSessionApi, sessionPath, busyRun, ProjectRequestError } from './api';
+import { useSessionApi, sessionPath, busyRun, isLocalReadBusy, ProjectRequestError } from './api';
 import { clearDeletedSession, pendingDeletion } from './sessionDeletionStorage';
 import { Icon } from '../../app/Icon';
 import { SessionTranscript } from './SessionTranscript';
@@ -182,11 +182,23 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       window.clearTimeout(timer); setConnection('Reconnecting');
       timer = window.setTimeout(() => { void refreshAuth().then(async () => {
         // A closed SSE can also mean another browser tab deleted this session.
-        try { const current=await projectRequest<{session:AgentSession}>(base); if(!controller.signal.aborted&&currentScope.current===selectionScope)setSession(old=>mergeSession(old,current.session)); } catch (failure) { if ((failure as ProjectRequestError).status === 410) { deleted(); return; } throw failure; }
+        try {
+          const current = await projectRequest<{ session: AgentSession }>(base, '', 'GET', undefined, controller.signal);
+          if (controller.signal.aborted || currentScope.current !== selectionScope) return;
+          setSession(old => mergeSession(old, current.session));
+        } catch (error) {
+          if (error instanceof ProjectRequestError && error.status === 410) { deleted(); return; }
+          throw error;
+        }
         if (!loaded) { await load(controller.signal); loaded = true; } connect();
       }).catch(retry); }, Math.min(1000 * 2 ** attempt++, 10000));
     };
-    void load(controller.signal).then(() => { loaded = true; connect(); }).catch((e: ProjectRequestError) => { if (!controller.signal.aborted) { if (e.status === 410) { deleted(); return; } setError(e.message); retry(); } });
+    void load(controller.signal).then(() => { loaded = true; connect(); }).catch((error: Error) => {
+      if (controller.signal.aborted) return;
+      if (error instanceof ProjectRequestError && error.status === 410) { deleted(); return; }
+      if (!isLocalReadBusy(error)) setError(error.message);
+      retry();
+    });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); deltas.clear(); };
   }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope,acceptQuota]);
   useEffect(()=>{const hidden=()=>{deltas.flush();if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[deltas]);
@@ -219,13 +231,14 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     finally { setStopping(false); }
   }
   async function loadOlder() {
-    if (!before || older) return; setOlder(true);
-
+    if (!before || older) return; setOlder(true); setError('');
     try {
       const h = await projectRequest<SessionHistory>(base + `/history?before=${before}`);
       for(const value of h.items)if(value.type==='assistant')assistantIds.current.add(itemKey(value));
       setItems(old => { const known = new Set(old.map(itemKey)); return [...h.items.filter(i => !known.has(itemKey(i))), ...old]; }); setBefore(h.before);
-    } catch (e) { setError((e as Error).message); } finally { setOlder(false); }
+    } catch (error) {
+      if (!isLocalReadBusy(error)) setError((error as Error).message);
+    } finally { setOlder(false); }
   }
   return <section className="agent-session" aria-label="Agent session" onPointerDownCapture={flushDeltas} onFocusCapture={flushDeltas} onKeyDownCapture={flushDeltas} onCopyCapture={flushDeltas}>
     <header className="agent-header"><h1>{session?.name ?? 'Session'}</h1>
@@ -273,14 +286,14 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         }} />
       <AttachmentCards control={attachments} disabled={sending || !!pending} />
       <div className="agent-composer-footer">
-        <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} runStopDisabled={!session||settings||stopping} inputBusy={sending || !!pending}
-          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} goal={goal.goal} pending={goal.pending} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} stopRun={stop} />
+        <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} inputBusy={sending || !!pending}
+          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} goal={goal.goal} pending={goal.pending} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} />
         {session && <ComposerSettings key={base} session={session} projectId={projectId} token={token} active={active} disabled={sending || !!pending || settings || goal.changing || goalEditor}
           busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
             if(currentScope.current===selectionScope&&value.id===sessionId&&value.owner.id===projectId&&value.owner.type===scope){setSession(old=>mergeSession(old,value));changed();}
           }} />}
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
-        <div className="agent-compose-actions">{busyRun(run?.state) && (run?.mode !== 'goal' || !goal.available || !!goal.error) && <button type="button" className="agent-stop" disabled={stopping} onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
+        <div className="agent-compose-actions">{busyRun(run?.state) && <button type="button" className="agent-stop" disabled={stopping || run?.state === 'stopping'} title="Stop the current run" onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
           {active && <button type="button" title={direct && session?.engine.kind === 'studio' ? 'Accept before the next model turn; the current request stays unchanged' : afterResponse ? 'Wait for this response, then continue the same conversation' : 'Append to the original active turn'} disabled={sending || !!pending || blocked || empty || !!attachments.issue || (!direct && !afterResponse)} onClick={() => void send(true)}>{direct ? 'Send now' : afterResponse ? 'After response' : 'Send now'}</button>}
           {active && direct && afterResponse && <button type="button" disabled={sending || !!pending || blocked || empty || !!attachments.issue} onClick={() => void send(true,true)}>After response</button>}
           <button className="agent-send" disabled={sending || !session || (!pending && (blocked || empty || !!attachments.issue || queueMode && !inbox.available))}>{sending ? 'Sending…' : pending ? 'Check original request' : queueMode ? 'Queue message' : 'Send'}</button></div>
@@ -299,7 +312,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       {(goal.checkAgain || !goal.available || goal.goal?.phase === 'unknown') && <div className="agent-goal-recovery"><button type="button" disabled={goal.posting || goal.checking} onClick={() => void goal.check()}>Check Goal status</button>
         {goal.pending && <button type="button" disabled={goal.posting} onClick={() => void goal.retry()}>Retry same Goal request</button>}</div>}
     </form>
-    {goalEditor && <GoalEditor control={goal} run={run} stopRun={stop} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
+    {goalEditor && <GoalEditor control={goal} run={run} close={() => setGoalEditor(false)} dirtyChanged={dirtyChanged} />}
     {showNotes && session && <EnvironmentNotes key={notes.key} session={session} notes={notes} token={token} reauth={refreshAuth} close={() => setShowNotes(false)} run={run} stop={stop} />}
     {statistics && <SessionStatistics ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setStatistics(false)} run={run} stop={stop} />}
     {gallery&&<ScreenshotGallery key={base} ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} close={()=>setGallery(false)} run={run} stop={stop}/>}

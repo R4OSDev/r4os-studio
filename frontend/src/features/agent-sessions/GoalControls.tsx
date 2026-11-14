@@ -28,13 +28,11 @@ export function goalLabel(control: Control, run?: AgentRun | null) {
   return status ? ({ active: 'Active', paused: 'Paused', blocked: 'Blocked', usageLimited: 'Usage limit', budgetLimited: 'Budget limit', complete: 'Complete' })[status] : 'Ready';
 }
 
-export function GoalControls({ control, run, disabled, editor, openEditor, stopRun, inputBusy = false, runtime, runStopDisabled }: {
-  control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; stopRun: () => Promise<void>; inputBusy?: boolean; runtime?: ReactNode;
-  runStopDisabled?:boolean;
+export function GoalControls({ control, run, disabled, editor, openEditor, inputBusy = false, runtime }: {
+  control: Control; run?: AgentRun | null; disabled: boolean; editor: boolean; openEditor: () => void; inputBusy?: boolean; runtime?: ReactNode;
 }) {
   const group = useRef<HTMLDivElement>(null), textButton = useRef<HTMLButtonElement>(null);
   const state = control.goal, status = state?.goal?.status;
-  const running = busyRun(run?.state);
   const active = status === 'active' && state?.phase !== 'unknown';
   const ready = !disabled && control.available && !control.changing && !editor;
   const confirmed = state?.phase === 'idle' || state?.phase === 'pausing';
@@ -56,12 +54,11 @@ export function GoalControls({ control, run, disabled, editor, openEditor, stopR
     </div>
     <button type="button" className="agent-goal-text" aria-label={`Edit goal: ${state?.goal?.objective ?? 'Set a goal'}`} aria-haspopup="dialog" title={state?.goal?.objective ?? 'Set a goal'} ref={textButton}
       disabled={disabled || inputBusy || !control.available || control.changing} onClick={openEditor}>{state?.goal?.objective ?? 'Set a goal'}</button>
-    {running && <div className="agent-current-run"><span>Run: {run?.state}</span><button type="button" disabled={runStopDisabled ?? disabled} onClick={() => void stopRun()}>Stop current run</button></div>}
   </div>;
 }
 
-export function GoalEditor({ control, run, stopRun, close, dirtyChanged }: {
-  control: Control; run?: AgentRun | null; stopRun: () => Promise<void>; close: () => void; dirtyChanged: (value: boolean) => void;
+export function GoalEditor({ control, run, close, dirtyChanged }: {
+  control: Control; run?: AgentRun | null; close: () => void; dirtyChanged: (value: boolean) => void;
 }) {
   const activeRun = busyRun(run?.state);
   const activeOrdinaryRun = !control.keepalive && activeRun && run?.mode !== 'goal' && (!control.liveExecution || !run?.goalControlSupport);
@@ -106,7 +103,7 @@ export function GoalEditor({ control, run, stopRun, close, dirtyChanged }: {
       {conflict && <div className="agent-goal-conflict"><p>The saved Goal changed. Your draft is preserved.</p><p className="agent-goal-saved">{saved || 'No saved Goal'}</p>
         <button type="button" onClick={() => setBaseline({ revision: control.goal!.revision, text: saved })}>Review saved goal</button></div>}
       {control.error && <p className="project-dialog-error" role="alert">{control.error}</p>}
-      <footer className="project-actions">{activeGoal && <button type="button" disabled={control.changing} onClick={() => void control.perform('pause')}>Pause goal</button>}{activeRun && <button type="button" onClick={() => void stopRun()}>Stop current run</button>}<button type="button" disabled={control.posting} onClick={discard}>Discard</button>
+      <footer className="project-actions">{activeGoal && <button type="button" disabled={control.changing} onClick={() => void control.perform('pause')}>Pause goal</button>}<button type="button" disabled={control.posting} onClick={discard}>Discard</button>
         <button className="project-primary" disabled={invalid || !!conflict || control.changing || activeOrdinaryRun || activeGoal || control.goal?.phase === 'unknown'}>{control.posting ? 'Saving…' : 'Save'}</button></footer>
     </form>
   </dialog>, document.body);

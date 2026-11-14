@@ -1,11 +1,13 @@
 import { createContext, useContext, useMemo } from 'react';
-import { studioRequest } from '../projects/api';
+import { ProjectRequestError, studioRequest } from '../projects/api';
 import type {AgentToolId} from '../../../../shared/agent-sessions';
 import { sharedSessionRead, shareSessionPath } from './sessionReads';
 export function sessionPath(projectId: string, sessionId?: string) {
   return `/${encodeURIComponent(projectId)}/sessions${sessionId ? '/' + encodeURIComponent(sessionId) : ''}`;
 }
 export { projectRequest, projectRequestId, ProjectRequestError } from '../projects/api';
+export const isLocalReadBusy = (error: unknown) => error instanceof ProjectRequestError && error.status === 429
+  && error.message === 'Local readers are busy. Try this read again shortly.';
 export const busyRun = (state?: string) => ['queued', 'starting', 'running', 'stopping'].includes(state ?? '');
 export const permissionToolLabels: Record<AgentToolId, string> = {
   'studio.skill_discover':'Discover skill tools', 'studio.skill_call':'Call skill tool', 'studio.read_skill_result':'Read skill result',
