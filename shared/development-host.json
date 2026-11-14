@@ -6,7 +6,7 @@
   "dataSchema": 1,
   "guestProtocol": 1,
   "limits": {
-    "activeHostJobs": 2,
+    "activeHostJobs": 4,
     "inputFiles": 4096,
     "inputBytes": 268435456,
     "fileBytes": 67108864,
