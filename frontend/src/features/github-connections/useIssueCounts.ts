@@ -9,7 +9,7 @@ export const issueCountText = (value: GitHubIssueCount) =>
       + (value.checkedAt ? ' · Checked ' + new Date(value.checkedAt).toLocaleString() : '');
 
 export function useIssueCounts(ready: boolean) {
-  const [counts, setCounts] = useState<Record<string, GitHubIssueCount>>({});
+  const [counts, setCounts] = useState<Record<string, GitHubIssueCount> | null>(null);
   useEffect(() => {
     if (!ready) return;
     let request: AbortController | undefined;
@@ -23,7 +23,7 @@ export function useIssueCounts(ready: boolean) {
         const data = await projectRequest<{ counts: Record<string, GitHubIssueCount> }>('/github/issue-counts', '', 'GET', undefined, controller.signal);
         if (!controller.signal.aborted) setCounts(data.counts ?? {});
       } catch {
-        if (!controller.signal.aborted) setCounts({});
+        if (!controller.signal.aborted) setCounts(null);
       }
     };
     const update = () => { void load(); };
@@ -42,5 +42,5 @@ export function useIssueCounts(ready: boolean) {
       document.removeEventListener('visibilitychange', update);
     };
   }, [ready]);
-  return ready ? counts : {};
+  return { counts: ready ? counts ?? {} : {}, available: ready && counts !== null };
 }

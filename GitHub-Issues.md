@@ -1,4 +1,38 @@
-# Project GitHub Issues (0.8.34)
+# Project GitHub Issues
+
+## Refresh and navigation
+
+Studio checks the branch and first open issue page for each bound project in
+catalog order. The server runs the checks with the browser closed. Set the
+interval and the **Automatic refresh** checkbox under **System → Settings →
+GitHub → Settings**, above **Connections** in the third column. The defaults
+are enabled and one hour. Projects opens the saved observations. The Issues
+panel supports manual refresh, filters and pagination.
+
+Open issue totals appear at the right of project and group rows. A collapsed
+group still shows the sum of its members. A tilde marks a stale value and a
+greater-than-or-equal sign marks a partial group total. The Issues filter and
+page do not affect the repository-wide total.
+
+## Roadmap and issue actions
+
+**Add to Roadmap** imports an open issue's title, description and verified
+GitHub link into an open current main version. Studio creates a roadmap or
+successor version when needed. The original issue and generated acceptance
+have a stored association. **View in Roadmap** opens that subversion.
+
+Once the linked work has passed its checks, `studio_finish_github_issue` posts
+the result and closes the issue as **Completed**. The tool needs the project
+session's **Finish linked GitHub issues** permission and a GitHub connection
+that can write issues. A confirmed comment and closure complete the generated
+acceptance.
+
+**Discard** asks for a reason, posts it to GitHub, then closes the issue as
+**Not planned**. A linked open subversion records the outcome and becomes
+**Discarded**. Both closure paths retain the original comment and closure
+receipts so a retry can resume any unfinished step. [GitHub Issues reference](https://docs.github.com/en/graphql/reference/issues)
+
+## Original list and transport contract from 0.8.34
 
 Projects → GitHub now uses the third column for **Connection**, then **Issues**.
 Connection starts by default and retains the existing setup, account/repository,
@@ -87,3 +121,7 @@ Finish linked GitHub issues with durable comment and closure receipts.
 ## 0.13.5
 
 Discard issues with a reason from the GitHub Issues panel.
+
+## 0.13.6
+
+Show open GitHub issue totals on expanded and collapsed project groups.

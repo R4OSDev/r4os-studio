@@ -11,14 +11,28 @@ const projectDragType = 'application/x-studio-project';
 const ungrouped = 'ungrouped';
 const groupStorageKey = (id: string) => 'studio.project-group.open.' + id;
 
-function ProjectGroupRow({ group, edit, disabled, children }: {
+function ProjectGroupRow({ group, edit, disabled, members, counts, countsReady, children }: {
   group: ProjectGroup; edit: (group: ProjectGroup) => void; disabled: boolean; children: ReactNode;
+  members: ProjectSummary[]; counts: Readonly<Record<string, GitHubIssueCount>>; countsReady: boolean;
 }) {
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem(groupStorageKey(group.id)) === 'true'; }
     catch { return false; }
   });
   const listId = 'project-group-projects-' + group.id;
+  let total = 0, known = 0, missing = 0, stale = false;
+  for (const project of members) {
+    const issue = project.deleting ? undefined : counts[project.id];
+    if (!issue) continue;
+    if (issue.count === null) { missing++; continue; }
+    known++;
+    total += issue.count;
+    stale ||= issue.state === 'stale';
+  }
+  const waiting = !countsReady && members.some(project => !project.deleting);
+  const count = waiting ? '…' : missing && !known ? '—' : (stale ? '~' : '') + (missing ? '≥' : '') + total;
+  const label = waiting ? 'Open issue total is not available yet' : missing && !known ? 'Open issue total unavailable' :
+    `${missing ? 'At least ' : ''}${total} open issue${total === 1 ? '' : 's'}${stale ? ' · Includes out-of-date counts' : ''}`;
   function toggle() {
     const next = !open;
     setOpen(next);
@@ -30,8 +44,10 @@ function ProjectGroupRow({ group, edit, disabled, children }: {
   return <>
     <div className="project-group-row">
       <button type="button" className="nav-item project-group-toggle" aria-expanded={open} aria-controls={listId}
-        title={group.name} onClick={toggle}>
-        <Icon name="group" /><span>{group.name}</span><Icon name="chevron" className="project-group-chevron" />
+        aria-label={group.name + ', ' + label} title={group.name} onClick={toggle}>
+        <Icon name="group" /><span>{group.name}</span>
+        <span className="project-issue-count project-group-issue-count" title={label} aria-hidden="true">{count}</span>
+        <Icon name="chevron" className="project-group-chevron" />
       </button>
       <button type="button" className="project-group-edit" aria-label={`Edit group ${group.name}`} title="Edit group"
         aria-haspopup="dialog" disabled={disabled} onClick={() => edit(group)}><Icon name="pencil" /></button>
@@ -40,9 +56,9 @@ function ProjectGroupRow({ group, edit, disabled, children }: {
   </>;
 }
 
-export function ProjectNavigationList({ api, activity, selectedId, saving, counts, createProject, choose }: {
+export function ProjectNavigationList({ api, activity, selectedId, saving, counts, countsReady, createProject, choose }: {
   api: ReturnType<typeof useProjects>; activity: ReadonlySet<string>; selectedId: string | null; saving: boolean;
-  counts: Readonly<Record<string, GitHubIssueCount>>;
+  counts: Readonly<Record<string, GitHubIssueCount>>; countsReady: boolean;
   createProject: () => void; choose: (id: string) => void;
 }) {
   const [editor, setEditor] = useState<ProjectGroup | 'create' | null>(null);
@@ -140,7 +156,9 @@ export function ProjectNavigationList({ api, activity, selectedId, saving, count
             {draggedProject && <div className="project-group-ungrouped nav-item" {...dropTarget(ungrouped)}>Ungrouped</div>}
             {[...groups].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })).map(group =>
               <div className="project-group" key={group.id} {...dropTarget(group.id)}>
-                <ProjectGroupRow group={group} edit={setEditor} disabled={disabled}>{projectsByGroup.get(group.id)?.map(projectRow)}</ProjectGroupRow>
+                <ProjectGroupRow group={group} edit={setEditor} disabled={disabled} members={projectsByGroup.get(group.id) ?? []} counts={counts} countsReady={countsReady}>
+                  {projectsByGroup.get(group.id)?.map(projectRow)}
+                </ProjectGroupRow>
               </div>)}
             {projectsByGroup.get(ungrouped)?.map(projectRow)}
             {api.projects.length === 0 && <p className="project-nav-message" role="status">No projects yet.</p>}

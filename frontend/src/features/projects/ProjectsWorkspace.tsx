@@ -73,7 +73,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
 
   return <>
     <WorkspaceNavigation className={current.section === 'Statistics' ? 'statistics-project' : ''} fixed={current.section === 'Statistics'} label="Projects navigation">
-      <ProjectNavigationList api={api} activity={activity} selectedId={selectedId} saving={saving} counts={issueCounts}
+      <ProjectNavigationList api={api} activity={activity} selectedId={selectedId} saving={saving} counts={issueCounts.counts} countsReady={issueCounts.available}
         createProject={() => { if (leave()) { setEpoch(value => value + 1); setDirty(false); setNewProject(true); } }}
         choose={id => { if (id !== selectedId && leave()) select(id); }} />
       {selected ? <nav className="nav-column" aria-label="Project sections">
@@ -83,7 +83,7 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
               if (section !== current.section && leave()) navigate(selected.id, { ...current, section, settingsView: 'General' });
             }}><Icon name={section === 'Statistics' ? 'statistics' : section === 'Boards' ? 'board' : section === 'Sessions' ? 'terminal' : section === 'Editor' || section === 'Roadmap' ? 'book' : 'settings'} /><span>{section}</span></button>)}</div>
       </nav> : <div className="nav-column" aria-hidden="true" />}
-      {selected&&current.section==='GitHub'?<GithubNavigation model={github} count={issueCounts[selected.id]} selected={githubView} disabled={saving||!!selected.deleting} choose={view=>{
+      {selected&&current.section==='GitHub'?<GithubNavigation model={github} count={issueCounts.counts[selected.id]} selected={githubView} disabled={saving||!!selected.deleting} choose={view=>{
         if(view!==githubView&&(view!=='Issues'||github.binding)&&leave())navigate(selected.id,{...current,githubView:view});
       }}/>:selected && current.section === 'Boards' ? <BoardNavigation model={boards} disabled={saving} choose={id => {
         if (leave()) { setDirty(false); navigate(selected.id, { ...current, boardId: id }); }
