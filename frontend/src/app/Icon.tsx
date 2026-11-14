@@ -1,4 +1,4 @@
-type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal' | 'play' | 'pause' | 'restart' | 'power' | 'stop' | 'attachment' | 'board' | 'statistics' | 'note' | 'image' | 'download';
+type IconName = 'system' | 'box' | 'book' | 'flask' | 'folder' | 'settings' | 'chevron' | 'grid' | 'terminal' | 'play' | 'pause' | 'restart' | 'power' | 'stop' | 'attachment' | 'board' | 'statistics' | 'note' | 'image' | 'download' | 'group' | 'pencil';
 
 const paths: Record<IconName, React.ReactNode> = {
   download: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></>,
@@ -17,6 +17,8 @@ const paths: Record<IconName, React.ReactNode> = {
   book: <><path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3Z" /></>,
   flask: <><path d="M9 3h6m-5 0v6L4 19a1.3 1.3 0 0 0 1 2h14a1.3 1.3 0 0 0 1-2L14 9V3M7 14h10" /></>,
   folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />,
+  group: <><rect x="5" y="9" width="14" height="12" rx="2" /><path d="M6 6h12M8 3h8m-7 10h6m-6 4h4" /></>,
+  pencil: <path d="m14 5 5 5m-14 9 5-1L21 7l-4-4L6 14l-1 5Z" />,
   settings: <><path d="M3 7h6m4 0h8M3 17h12m4 0h2" /><circle cx="11" cy="7" r="2" /><circle cx="17" cy="17" r="2" /></>,
   chevron: <path d="m9 5 7 7-7 7" />,
   grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,

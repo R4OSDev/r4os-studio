@@ -5,8 +5,20 @@ export interface ProjectSummary {
 }
 export interface ProjectDeleted { id: string; deleted: true }
 
+export interface ProjectGroup {
+  id: string;
+  name: string;
+  revision: number;
+}
+
+export interface ProjectGrouping {
+  groups: ProjectGroup[];
+  memberships: Record<string, string>;
+}
+
 export interface ProjectsResponse {
   projects: ProjectSummary[];
+  grouping?: ProjectGrouping;
   csrfToken: string;
 }
 

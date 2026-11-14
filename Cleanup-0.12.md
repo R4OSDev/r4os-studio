@@ -353,3 +353,7 @@ Align the model selection frame with the Goal frame
 ## 0.12.90
 
 Remove navigation column headings and blank strips across System, Projects, Tools and Status.
+
+## 0.12.91
+
+Organize projects into named groups with drag and drop, group editing and saved expansion state.

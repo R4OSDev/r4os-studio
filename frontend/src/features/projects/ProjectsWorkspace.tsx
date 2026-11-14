@@ -3,6 +3,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../app/Icon';
 import { WorkspaceNavigation } from '../../app/WorkspaceNavigation';
 import { useProjects } from './useProjects';
+import { ProjectNavigationList } from './ProjectNavigationList';
 import { useProjectActivity } from './useProjectActivity';
 import type { ProjectSettingsView } from './ProjectSettings';
 import { useSessions } from '../agent-sessions/useSessions';
@@ -70,24 +71,9 @@ export function ProjectsWorkspace({ selectedId, select, navigation, navigate, se
 
   return <>
     <WorkspaceNavigation className={current.section === 'Statistics' ? 'statistics-project' : ''} fixed={current.section === 'Statistics'} label="Projects navigation">
-      <nav className="nav-column" aria-label="Projects">
-        <div className="nav-items" aria-busy={api.loading}>
-          <button type="button" className="nav-item project-new" disabled={!api.token || saving} onClick={() => {
-            if (leave()) { setEpoch((value) => value + 1); setDirty(false); setNewProject(true); }
-          }}><span className="project-plus" aria-hidden="true">+</span><span>New Project</span></button>
-          {api.loading ? <p className="project-nav-message" role="status">Loading projects…</p>
-            : api.error ? <><p className="project-nav-message" role="alert">{api.error}</p><button className="nav-item" onClick={() => void api.reload()}>Retry</button></>
-              : api.projects.length === 0 ? <p className="project-nav-message" role="status">No projects yet.</p>
-                : api.projects.map((project) => <button type="button" key={project.id} disabled={saving}
-                  className={`nav-item ${selectedId === project.id ? 'selected' : ''}`}
-                  aria-current={selectedId === project.id ? 'true' : undefined}
-                  aria-label={activity.has(project.id) && !project.deleting ? `${project.name}, Session running` : undefined}
-                  title={activity.has(project.id) && !project.deleting ? 'Session running' : undefined}
-                  onClick={() => { if (project.id !== selectedId && leave()) select(project.id); }}>
-                  <Icon name="folder" energyPulse={activity.has(project.id) && !project.deleting} /><span>{project.name}{project.deleting ? ' · Deleting…' : ''}</span>
-                </button>)}
-        </div>
-      </nav>
+      <ProjectNavigationList api={api} activity={activity} selectedId={selectedId} saving={saving}
+        createProject={() => { if (leave()) { setEpoch(value => value + 1); setDirty(false); setNewProject(true); } }}
+        choose={id => { if (id !== selectedId && leave()) select(id); }} />
       {selected ? <nav className="nav-column" aria-label="Project sections">
         <div className="nav-items">{(['Sessions', 'Editor', 'GitHub', 'Roadmap', 'Boards', 'Statistics', 'Settings'] as const).map((section) =>
           <button key={section} type="button" disabled={saving || selected.deleting} className={`nav-item ${current.section === section ? 'selected' : ''}`}

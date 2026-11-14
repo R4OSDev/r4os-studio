@@ -127,6 +127,11 @@ def initialize(db):
     db.execute('PRAGMA user_version=1')
 
 
+def summaries(db):
+    return [{'id': row['id'], 'name': row['name'], **({'deleting': True} if row['deleting'] else {})}
+            for row in db.execute("SELECT p.id,p.name,d.project_id AS deleting FROM projects p LEFT JOIN project_deletions d ON d.project_id=p.id WHERE p.state='ready' OR d.project_id IS NOT NULL")]
+
+
 def operation(db, request, root):
     if request.get('operation') == 'creation_status' and set(request) == {'operation', 'requestId'}:
         key = request['requestId']
@@ -144,8 +149,14 @@ def operation(db, request, root):
             return {'requestId': key, 'state': 'complete', 'project': public(row, db)}
         return {'requestId': key, 'state': 'pending'}
     if request == {'operation': 'list'}:
-        return [{'id': row['id'], 'name': row['name'], **({'deleting': True} if row['deleting'] else {})}
-                for row in db.execute("SELECT p.id,p.name,d.project_id AS deleting FROM projects p LEFT JOIN project_deletions d ON d.project_id=p.id WHERE p.state='ready' OR d.project_id IS NOT NULL")]
+        return summaries(db)
+    if request == {'operation': 'list_navigation'}:
+        from project_groups import inventory
+        db.execute('BEGIN')
+        return {'projects': summaries(db), 'grouping': inventory(db)}
+    if request.get('operation') in ('create_group', 'rename_group', 'delete_group', 'move_project'):
+        from project_groups import mutate
+        return mutate(db, request)
     if request.get('operation') == 'vms' and len(request) == 1:
         return vm_choices(root)
     if request.get('operation') == 'get' and set(request) == {'operation', 'id'}:

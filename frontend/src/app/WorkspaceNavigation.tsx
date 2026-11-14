@@ -18,11 +18,12 @@ export function WorkspaceNavigation({ label, fixed = false, className = '', chil
   const open = narrow && layout.narrow === narrow && layout.open;
   const panelId = useId();
   const region = useRef<HTMLDivElement>(null), grip = useRef<HTMLButtonElement>(null);
+  const draggingInside = useRef(false);
 
   useEffect(() => {
     if (!open) return;
     function dismiss(event: PointerEvent) {
-      if (event.target instanceof Node && region.current?.contains(event.target)) return;
+      if (draggingInside.current || event.target instanceof Node && region.current?.contains(event.target)) return;
       setLayout({ narrow: true, open: false });
     }
     document.addEventListener('pointerdown', dismiss, true);
@@ -30,13 +31,15 @@ export function WorkspaceNavigation({ label, fixed = false, className = '', chil
   }, [open]);
 
   function leaveFocus(event: FocusEvent) {
-    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    if (draggingInside.current || event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
     setLayout({ narrow: true, open: false });
   }
 
   return <div className={fixed ? 'workspace-navigation' : 'workspace-navigation collapsible-navigation'} ref={region}
+    onDragStart={event => { if (open && !event.defaultPrevented) draggingInside.current = true; }}
+    onDragEnd={() => { draggingInside.current = false; }}
     onPointerLeave={event => {
-      if (!open || event.pointerType !== 'mouse') return;
+      if (!open || draggingInside.current || event.pointerType !== 'mouse') return;
       if (document.activeElement instanceof HTMLElement && event.currentTarget.contains(document.activeElement))
         document.activeElement.blur();
       setLayout({ narrow: true, open: false });

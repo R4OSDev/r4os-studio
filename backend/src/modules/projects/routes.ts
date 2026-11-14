@@ -1,7 +1,8 @@
 import { scopedStatisticsRoutes } from '../statistics/routes.js';
 import type { FastifyInstance } from 'fastify';
 import type { Project, ProjectInput, ProjectOptions, ProjectUpdate, ProjectsResponse, ProjectDeleted } from '../../../../shared/projects.js';
-import { listProjects, projectStore, ProjectError } from './store.js';
+import { projectStore, ProjectError } from './store.js';
+import { projectGroupRoutes } from './group-routes.js';
 import { ProjectSessions } from './sessions.js';
 import { agentSessionRoutes } from '../agent-sessions/routes.js';
 import { runRoutes } from '../agent-sessions/run-routes.js';
@@ -94,6 +95,7 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
     return projectStore(directory, { operation: 'save', id: request.params.id, input: request.body }, 'project_agents');
   });
   app.addHook('onRequest', async (request, reply) => sessions.validate(request, reply));
+  projectGroupRoutes(app, directory, sessions);
   let recovery: Promise<void> = Promise.resolve();
   app.addHook('onReady', async () => {
     recovery = projectStore<{ id: string; deleted: boolean }[]>(directory, { operation: 'recover' }, 'delete')
@@ -198,7 +200,11 @@ export async function projectRoutes(app: FastifyInstance, { directory, providerD
   });
 
   app.get<{ Reply: ProjectsResponse | { message: string } }>('/', async (request, reply) => {
-    try { return { projects: await listProjects(directory), csrfToken: sessions.session(request, reply, true).token }; }
+    try {
+      const catalog = await projectStore<Omit<ProjectsResponse, 'csrfToken'>>(directory, { operation: 'list_navigation' });
+      catalog.projects.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+      return { ...catalog, csrfToken: sessions.session(request, reply, true).token };
+    }
     catch (error) {
       app.log.error(error, 'Project inventory could not be read.');
       return reply.code(503).send({ message: 'Projects could not be loaded.' });
