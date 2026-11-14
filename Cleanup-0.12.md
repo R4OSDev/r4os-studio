@@ -345,3 +345,7 @@ Add a session Usage gauge and show both percentages in accessible tooltips
 ## 0.12.88
 
 Move session feedback into the header beside the project and session name
+
+## 0.12.89
+
+Align the model selection frame with the Goal frame

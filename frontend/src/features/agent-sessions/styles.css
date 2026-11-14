@@ -76,6 +76,9 @@
 .agent-compose-actions .agent-stop { color:#f3bac7; border-color:#78505e; }
 .agent-compose-actions button:disabled { opacity:.45; cursor:default; }
 .agent-composer-footer { display:flex; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-top:12px; }
+.agent-composer-panels { display:flex; flex:1 1 740px; flex-wrap:wrap; min-width:0; gap:12px; }
+.agent-composer-panels>.agent-composer-settings { display:flex; flex-direction:column; }
+.agent-composer-panels .agent-model-controls { flex:1 0 auto; min-height:84px; align-content:center; }
 .agent-composer-settings { flex:1 1 auto; min-width:0; max-width:100%; }
 .agent-model-controls { display:flex; justify-content:flex-start; align-items:flex-end; flex-wrap:wrap; gap:9px; min-width:0; margin:0; padding:8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
 .agent-model-controls label { display:flex; flex-direction:column; gap:5px; min-width:0; max-width:100%; }
@@ -87,6 +90,8 @@
 .agent-composer-footer .agent-compose-actions { flex-shrink:0; margin:0 0 0 auto; }
 .agent-composer { container-type:inline-size; }
 .agent-composer-footer .agent-composer-settings { flex:2 1 420px; }
+.agent-composer-panels>.agent-composer-settings:has(.agent-fast-context>label, .agent-usage) { flex-basis:530px; }
+.agent-composer-panels>.agent-composer-settings:has(.agent-fast-context>label):has(.agent-usage) { flex-basis:620px; }
 .agent-composer-footer .agent-account-choice,.agent-composer-footer .agent-model-choice { flex-basis:120px; }
 .agent-goal { flex:1 1 300px; min-width:min(100%,260px); max-width:380px; padding:8px; border:1px solid #4e3a5f; border-radius:7px; background:#211829; }
 .agent-goal-top { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:6px; min-width:0; }

@@ -319,12 +319,14 @@ export function SessionPanel({ projectId, ownerName, sessionId, token, changed, 
         }} />
       <AttachmentCards control={attachments} disabled={sending || !!pending} statusTarget={headerStatus} />
       <div className="agent-composer-footer">
-        <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} inputBusy={sending || !!pending}
-          runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} goal={goal.goal} pending={goal.pending} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} />
-        {session && <ComposerSettings key={base} session={session} projectId={projectId} token={token} active={active} disabled={sending || !!pending || settings || goal.changing || goalEditor}
-          statusTarget={headerStatus} busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
-            if(currentScope.current===selectionScope&&value.id===sessionId&&value.owner.id===projectId&&value.owner.type===scope){setSession(old=>mergeSession(old,value));changed();}
-          }} />}
+        <div className="agent-composer-panels">
+          <GoalControls control={goal} run={run} disabled={!session || choiceSaving ||choiceUnconfirmed|| settings || stopping} inputBusy={sending || !!pending}
+            runtime={<GoalRuntime ownerId={projectId} sessionId={sessionId} reauth={refreshAuth} goal={goal.goal} pending={goal.pending} active={goal.goal?.goal?.status === 'active' || goal.goal?.phase === 'pending' || goal.goal?.phase === 'pausing'} />} editor={goalEditor} openEditor={() => setGoalEditor(true)} />
+          {session && <ComposerSettings key={base} session={session} projectId={projectId} token={token} active={active} disabled={sending || !!pending || settings || goal.changing || goalEditor}
+            statusTarget={headerStatus} busyChanged={setChoiceSaving} unconfirmedChanged={setChoiceUnconfirmed} refreshAuth={refreshAuth} saved={(value) => {
+              if(currentScope.current===selectionScope&&value.id===sessionId&&value.owner.id===projectId&&value.owner.type===scope){setSession(old=>mergeSession(old,value));changed();}
+            }} />}
+        </div>
         <AttachmentButton control={attachments} disabled={!session || sending || !!pending || settings || goalEditor} />
         <div className="agent-compose-actions">{busyRun(run?.state) && <button type="button" className="agent-stop" disabled={stopping || run?.state === 'stopping'} title="Stop the current run" onClick={() => void stop()}>{stopping || run?.state === 'stopping' ? 'Stopping…' : 'Stop'}</button>}
           {active && <button type="button" title={direct && session?.engine.kind === 'studio' ? 'Accept before the next model turn; the current request stays unchanged' : afterResponse ? 'Wait for this response, then continue the same conversation' : 'Append to the original active turn'} disabled={sending || !!pending || blocked || empty || !!attachments.issue || (!direct && !afterResponse)} onClick={() => void send(true)}>{direct ? 'Send now' : afterResponse ? 'After response' : 'Send now'}</button>}
