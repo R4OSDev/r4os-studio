@@ -163,15 +163,20 @@ def profile(root, projects, pinned=None, resolve_rust=True, verify_components=Tr
 def manifest_profile(context, facts):
     """Read the SDK's manifest plan; Studio has no independent profile choice."""
     manifest = context['package']['manifest']
+    ident = facts.get('sdk_profile')
     if facts['language'] == 'Rust':
-        ident = facts['rust_project']['profile']
-    else:
+        rust_profile = facts['rust_project']['profile']
+        if ident is not None and ident != rust_profile:
+            raise ValueError('The SDK manifest plan selects inconsistent Rust profiles.')
+        ident = rust_profile
+    elif ident is None:
+        # Older Zig and C plans predate the explicit SDK profile identifier.
         matches = [key for key, value in manifest['profiles'].items()
                    if value['language'] == facts['language'] and value['role'] == 'module']
         if len(matches) != 1:
             raise ValueError('The SDK does not identify one module profile for this language.')
         ident = matches[0]
-    declared = manifest['profiles'].get(ident)
+    declared = manifest['profiles'].get(ident) if isinstance(ident, str) else None
     if not declared or declared['language'] != facts['language'] or declared['role'] != 'module':
         raise ValueError('The SDK manifest plan selects an inconsistent module profile.')
     expected = context['pins']['sdkProfile'].get('id')

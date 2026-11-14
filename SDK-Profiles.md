@@ -64,9 +64,12 @@ New projects and imports consume supported host templates from the SDK's
 capability catalog. The official `New-Project.ps1` selects policy from the
 template; Studio never adds a free `-Profile` switch to the creator or builder.
 The SDK manifest plan and native profile resolver supply the effective profile
-ID. That ID, the original three hashes and the template identity are retained
-with the ready project and its portable metadata. Preparation and publication
-share the existing recoverable creation journal.
+ID. Studio uses the plan's `sdk_profile` when present and verifies that a Rust
+plan's Cargo profile agrees. Earlier Zig and C plans can identify the profile
+through the release's single module profile for their language. The resolved
+ID, the original three hashes and the template identity are retained with the
+ready project and its portable metadata. Preparation and publication share the
+existing recoverable creation journal.
 
 Project settings select a complete SDK package. Compiler, Contract, Libraries
 and matched tools are derived read-only values, including for imported projects.
