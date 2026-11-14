@@ -35,19 +35,39 @@ export function usageWindows(sample: UsageObservation | null, model?: string): L
 }
 
 const budgetNames: Record<string, string> = { key_limit: 'API key', member: 'Member', user: 'User', organization: 'Organization', workspace: 'Workspace', guardrail: 'Guardrail' };
+
+function sameAllowance(left: OpenRouterBudget, right: OpenRouterBudget) {
+  return left.scope === right.scope && left.resetInterval === right.resetInterval
+    && left.limitUsd === right.limitUsd && left.remainingUsd === right.remainingUsd
+    && left.unlimited === right.unlimited && left.includeByok === right.includeByok;
+}
+
+function compatibleReset(left: string | null, right: string | null) {
+  return !left || !right || Date.parse(left) === Date.parse(right);
+}
+
 function budgetWindows(sample: ConnectionLimits, onlyFinite: boolean): LimitWindow[] {
   const quota = sample.openrouter!;
+  const key = quota.keyBudget;
+  const keyReset = reset(key.resetsAt);
+  const selected = quota.selectedBudget;
+  // Older snapshots can use the top-level key observation as their selection.
+  const selectedIsKey = selected && sameAllowance(selected, key)
+    && selected.spendUsd === key.spendUsd && reset(selected.resetsAt) === keyReset;
   const budgets: OpenRouterBudget[] = [];
-  for (const row of [quota.selectedBudget, quota.effectiveBudget, ...quota.budgets, quota.keyBudget]) {
+  for (const row of [selectedIsKey ? null : selected, quota.effectiveBudget, ...quota.budgets]) {
     if (!row) continue;
-    // The key/effective/list representations can describe the very same cap;
-    // a missing timestamp does not turn it into a second allowance.
-    const same = budgets.find(b => b.scope === row.scope && b.resetInterval === row.resetInterval && b.limitUsd === row.limitUsd
-      && b.remainingUsd === row.remainingUsd && b.spendUsd === row.spendUsd && b.unlimited === row.unlimited
-      && b.includeByok === row.includeByok && (!b.resetsAt || !row.resetsAt || b.resetsAt === row.resetsAt));
-    if (same) { if (!same.resetsAt && row.resetsAt) same.resetsAt = row.resetsAt; }
-    else budgets.push({ ...row });
+    const resetsAt = reset(row.resetsAt);
+    const same = budgets.find(b => sameAllowance(b, row) && b.spendUsd === row.spendUsd && compatibleReset(b.resetsAt, resetsAt));
+    if (same) { if (!same.resetsAt && resetsAt) same.resetsAt = resetsAt; }
+    else budgets.push({ ...row, resetsAt });
   }
+  const matching = budgets.filter(row => sameAllowance(row, key) && compatibleReset(row.resetsAt, keyReset));
+  const detail = matching.length === 1 ? matching[0] : undefined;
+  // The general usage figure can differ from the spend on the reported window.
+  const reportedKeyWindow = !keyReset && detail?.resetsAt && key.limitUsd !== null && key.remainingUsd !== null;
+  if (detail && (reportedKeyWindow || detail.spendUsd === key.spendUsd)) detail.resetsAt ??= keyReset;
+  else budgets.push({ ...key, resetsAt: keyReset });
   return budgets.filter(budget=>!onlyFinite || budget.limitUsd!==null && !budget.unlimited).map((budget, index) => {
     const maximum = budget.limitUsd, left = budget.remainingUsd;
     const valid = maximum !== null && left !== null && Number.isFinite(maximum) && Number.isFinite(left) && maximum >= 0 && left >= 0 && left <= maximum;

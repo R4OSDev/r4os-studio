@@ -357,3 +357,7 @@ Remove navigation column headings and blank strips across System, Projects, Tool
 ## 0.12.91
 
 Organize projects into named groups with drag and drop, group editing and saved expansion state.
+
+## 0.12.92
+
+Deduplicate OpenRouter key windows using matching allowance metadata and the reported reset.
