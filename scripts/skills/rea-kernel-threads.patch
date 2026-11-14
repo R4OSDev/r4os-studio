@@ -1,0 +1,82 @@
+--- a/src/process/LinuxProcessStat.ts
++++ b/src/process/LinuxProcessStat.ts
+@@ -1,5 +1,8 @@
+ import type { ProcessLifecycle } from "./ProcessLifecycle.js";
+
++// Task flags from Linux include/linux/sched.h, reported by /proc/PID/stat.
++const PF_KTHREAD = 0x00200000;
++
+ /** Native process facts parsed from one Linux `/proc/<pid>/stat` record. */
+ export interface LinuxProcessStat {
+   readonly pid: number;
+@@ -10,6 +13,7 @@
+   readonly parentPid: number;
+   readonly processGroupId: number;
+   readonly sessionId: number;
++  readonly kernelThread?: true;
+ }
+
+ /**
+@@ -89,5 +93,8 @@
+     parentPid,
+     processGroupId,
+     sessionId,
++    ...(Number.isSafeInteger(flags) && (flags & PF_KTHREAD) !== 0
++      ? { kernelThread: true as const }
++      : {}),
+   };
+ };
+--- a/src/process/ProcessOwnershipObservation.ts
++++ b/src/process/ProcessOwnershipObservation.ts
+@@ -1278,6 +1278,7 @@
+                 state: "readable" as const,
+                 identity: `linux-starttime:${facts.startTime}`,
+                 ...(facts.name === "" ? {} : { name: facts.name }),
++                ...(facts.kernelThread === true ? { kernelThread: true as const } : {}),
+                 ...(effectiveUid === undefined ? {} : { effectiveUid }),
+                 ...(environmentRestriction === undefined
+                   ? {}
+--- a/src/process/ProcessOwnership.ts
++++ b/src/process/ProcessOwnership.ts
+@@ -109,6 +109,8 @@
+        * truncated. It names a process in diagnostics; never identity or lookup.
+        */
+       readonly name?: string;
++      /** Linux PF_KTHREAD from the same native stat record as the identity. */
++      readonly kernelThread?: true;
+     }
+   | {
+       readonly state: "absent";
+@@ -1812,6 +1814,11 @@
+             : "run-token-mismatch",
+       });
+     if (fact.token.state !== "unavailable") continue;
++    const observed =
++      fact.state === "same-generation" &&
++      fact.identityAfter.state === "readable"
++        ? fact.identityAfter
++        : undefined;
+     const relationBefore =
+       fact.identityBefore.state === "readable"
+         ? fact.identityBefore.relation
+@@ -1828,11 +1835,15 @@
+       relationAfter?.state === "observed" &&
+       relationBefore.parentPid === relationAfter.parentPid &&
+       relationBefore.processGroupId === relationAfter.processGroupId;
+-    const observed =
+-      fact.state === "same-generation" &&
+-      fact.identityAfter.state === "readable"
+-        ? fact.identityAfter
+-        : undefined;
++    // Linux kernel threads have no userspace ownership token. A matching
++    // generation and unrelated process relation rule out a provider member.
++    if (
++      knownUnrelated &&
++      fact.identityBefore.state === "readable" &&
++      fact.identityBefore.kernelThread === true &&
++      observed?.kernelThread === true
++    )
++      continue;
+     if (
+       knownUnrelated &&
+       environmentWithheldFromInspection(

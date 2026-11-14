@@ -321,3 +321,7 @@ Collapse the three workspace navigation columns into a shared overlay on narrow 
 ## 0.12.82
 
 Keep session autoscroll aligned through content growth reconnects and tab visibility changes
+
+## 0.12.83
+
+Backport Linux kernel-thread recognition for Ghidra cleanup in the managed REA runtime
