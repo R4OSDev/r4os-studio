@@ -32,6 +32,35 @@ SENT='r.dispatch_at IS NOT NULL'
 VISIBLE='('+SENT+' OR '+BLOCKED+')'
 
 
+def last_measurement(store, sid, model, provider):
+    """Use completed conversation receipts and the input limit bound at dispatch."""
+    if not exists(store.db):
+        return None
+    row = store.db.execute("""SELECT r.request_id,r.metadata,c.data FROM studio_requests r
+        JOIN studio_model_calls c ON c.request_id=r.request_id AND c.run_id=r.run_id
+        WHERE r.session_id=? AND r.dispatch_at IS NOT NULL AND c.phase='completed'
+          AND json_extract(r.metadata,'$.purpose')='conversation'
+          AND json_extract(r.metadata,'$.providerId')=? AND json_extract(r.metadata,'$.model')=?
+          AND json_extract(r.metadata,'$.protocol')=?
+          AND json_extract(c.data,'$.selection.apiProvider.revision')=?
+          AND json_extract(c.data,'$.selection.apiProvider.credentialRevision')=?
+        ORDER BY r.dispatch_at DESC,r.seq DESC LIMIT 1""",
+        (sid,provider['id'],model,provider['protocol'],provider['revision'],provider['credentialRevision'])).fetchone()
+    if row is None:
+        return None
+    meta=json.loads(row['metadata'])
+    if meta['owner']!={'type':store.owner_type,'id':store.owner_id}:
+        return None
+    from session_context import number
+    from studio_usage import numbers
+    count=numbers(json.loads(row['data']).get('usage'),meta['protocol'])['input']
+    capacity=(meta.get('context') or {}).get('inputLimit')
+    if not number(count) or not number(capacity,positive=True):
+        return None
+    return {'requestId':row['request_id'],'inputTokens':count,'inputLimit':capacity,
+            'providerId':provider['id'],'model':model}
+
+
 def page(store,sid,before=None,count=20,kind='dispatched'):
     session=store.row(sid)
     if kind not in ('dispatched','blocked'):raise ProjectFault('Invalid context request kind.',400)

@@ -42,12 +42,24 @@ def empty(store,row):
         'last':None,'autoCompactThreshold':None,'nominalModelCapacity':None}
 
 
-def read(store,row):
+def read(store,row,provider_dir=None):
     """Read only one bounded row. Selection changes never relabel old tokens."""
     current=empty(store,row);snapshot=saved(store,row['id'])
+    if current['engine']=='studio' and provider_dir is not None:
+        from api_provider_store import ApiProviders
+        from request_history import last_measurement
+        from store import ProjectFault
+        try:
+            provider=ApiProviders(provider_dir).get(current['providerId'])
+            measured=last_measurement(store,row['id'],current['requestedModel'],provider) if provider['enabled'] else None
+        except (ProjectFault,OSError,ValueError,KeyError,TypeError):
+            measured=None
+        current['measurement']=measured
+        if snapshot:snapshot={**snapshot,'measurement':measured}
     if not snapshot:return current
     if any(snapshot.get(k)!=current[k] for k in ('owner','sessionId','engine','engineVersion','engineSha256','providerId','requestedModel','threadId')):
-        return {**snapshot,'compaction':None,'state':'pending','reason':'The selection or native conversation changed. Waiting for a matching context measurement.'}
+        return {**snapshot,**({'measurement':current.get('measurement')} if current['engine']=='studio' else {'measurement':None}),
+                'compaction':None,'state':'pending','reason':'The selection or native conversation changed. Waiting for a matching context measurement.'}
     latest=store.db.execute('SELECT id,busy,state,config FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     progress=snapshot.get('compaction')
     if progress and progress['state']=='running' and (not latest or not latest['busy'] or latest['id']!=progress['runId']):

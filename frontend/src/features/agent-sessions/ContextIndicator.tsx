@@ -5,13 +5,21 @@ import './context.css';
 
 const percent=new Intl.NumberFormat('en-US',{style:'percent',maximumFractionDigits:4});
 
-export function ContextIndicator({context,projectId,sessionId}:{context?:SessionContext;projectId:string;sessionId:string}) {
+export function ContextIndicator({context,projectId,sessionId,providerId,model}:{
+  context?:SessionContext;projectId:string;sessionId:string;providerId:string;model:string;
+}) {
   const [open,setOpen]=useState(false);
-  const known=context?.state==='available' && typeof context.usedRatio==='number' && Number.isFinite(context.usedRatio)
-    && context.usedRatio>=0 && typeof context.capacityTokens==='number' && context.capacityTokens>0;
-  const ratio=known?context.usedRatio!:0,fill=Math.min(1,ratio),pulse=known&&ratio>.5;
+  const measured=context?.measurement;
+  const matches=context?.sessionId===sessionId && measured?.providerId===providerId && measured?.model===model;
+  const native=context?.engine==='codex' && context.state==='available'
+    && context.providerId===providerId && context.requestedModel===model;
+  const used=matches?measured?.inputTokens:native?context.last?.inputTokens:null;
+  const capacity=matches?measured?.inputLimit:native?context.capacityTokens:null;
+  const known=typeof used==='number' && Number.isFinite(used) && used>=0
+    && typeof capacity==='number' && Number.isFinite(capacity) && capacity>0;
+  const ratio=known?used/capacity:0,fill=Math.min(1,ratio),pulse=known&&ratio>.5;
   const state=context?.state??'unavailable';
-  const value=known?Math.round(fill*100)+'%':'—';
+  const value=known?Math.round(ratio*100)+'%':'—';
   const label='Context usage: '+(known?percent.format(ratio):state)+'. Show details';
   return <div className="agent-context-control">
     <span className="agent-context-label">Context</span>
@@ -24,7 +32,7 @@ export function ContextIndicator({context,projectId,sessionId}:{context?:Session
       </svg><span aria-hidden="true">{value}</span>
     </button>
     {known&&<span className="agent-context-meter" role="meter" aria-label="Context usage" aria-valuemin={0} aria-valuemax={100}
-      aria-valuenow={fill*100} aria-valuetext={percent.format(ratio)+(context?.engine==='studio'?' of the configured model window':' of the reported effective context window')}/>}
+      aria-valuenow={fill*100} aria-valuetext={percent.format(ratio)+(matches?' of the effective input limit':' of the reported effective context window')}/>}
     {open&&<ContextInspector key={projectId+':'+sessionId} projectId={projectId} sessionId={sessionId} context={context} close={()=>setOpen(false)}/>}
   </div>;
 }

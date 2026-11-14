@@ -95,7 +95,8 @@ export function ComposerSettings({ session, projectId, token, disabled, active=f
         <select aria-label="Fast Mode" value={choice.fastMode ? 'on' : 'off'} disabled={controlsDisabled||!model} onChange={(event) => void change({ fastMode: event.target.value === 'on' })}>
           <option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option>
         </select>
-      </label>}<ContextIndicator key={scope+projectId+session.id} projectId={projectId} sessionId={session.id} context={session.context}/></div>
+      </label>}<ContextIndicator key={scope+projectId+session.id} projectId={projectId} sessionId={session.id} context={session.context}
+        providerId={session.providerId} model={session.model}/></div>
     </fieldset>
     {session.pendingModel&&<div className="agent-pending-model" role="status">
       <p>{busyRun(session.latestRun?.state)?`Current run: ${session.latestRun?.selection?.model??session.model} · `:''}Next run: {session.pendingModel.choice.model} · {session.pendingModel.state==='blocked'?'Blocked':'Pending'}</p>

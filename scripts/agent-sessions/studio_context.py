@@ -104,6 +104,8 @@ class StudioContext(Context):
             autoCompactThreshold=trigger, contextPolicy=w.config.get('contextPolicy'),
             inputLimit=threshold(w.config,capacity) if strict(w.config.get('contextPolicy')) else None,
             checkpoint={'recordId':checkpoint['id'], 'throughSequence':checkpoint['throughSequence']} if checkpoint else None)
+        from request_history import last_measurement
+        value['measurement']=last_measurement(w.store,w.session_id,w.config['model'],w.config['apiProvider'])
         if optimized(w.config.get('contextPolicy'),2):value['compactionTargetTokens']=target
         if getattr(self,'compaction_progress',None):value['compaction']=self.compaction_progress
         self.write(value)

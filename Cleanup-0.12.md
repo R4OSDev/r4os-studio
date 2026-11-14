@@ -333,3 +333,7 @@ Remove the secondary caption below the session Context gauge
 ## 0.12.85
 
 Focus the scroll indicator tooltip and pulse blue during context compaction
+
+## 0.12.86
+
+Measure the session Context gauge against the original completed request input limit

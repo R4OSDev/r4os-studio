@@ -69,6 +69,7 @@ export interface SessionContext {
   autoCompactThreshold: number | null; nominalModelCapacity: null;
   estimatedInputTokens?: number | null; estimateMethod?: string; estimateAt?: string; capacitySource?: string | null;
   inputLimit?: number | null;
+  measurement?: {requestId: string; inputTokens: number; inputLimit: number; providerId: string; model: string} | null;
   inputCount?: import('./context-requests').InputCount|null;
   compactionTargetTokens?: number | null;
   compaction?: ContextCompaction | null;

@@ -293,7 +293,7 @@ PRAGMA user_version=1;
         if row is None: raise ProjectFault('Session not found.', 404)
         return row
 
-    def present(self, row):
+    def present(self, row, provider_dir=None):
         settings = json.loads(row['settings'])
         settings.setdefault('fastMode', False)
         settings.setdefault('webSearchEnabled', True)
@@ -329,7 +329,7 @@ PRAGMA user_version=1;
         from tool_defaults import effective
         settings['permissions'] = effective(self, settings.get('permissions', {}))
         from session_context import read as context_read
-        context=context_read(self,row)
+        context=context_read(self,row,provider_dir)
         from environment_note_tools import availability
         settings['environmentNotesAccess'] = availability(self.owner_type)
         if self.owner_type == 'project':
@@ -364,7 +364,7 @@ PRAGMA user_version=1;
                 'latestRun':{'id':row['run_id'],'state':row['run_state']} if row['run_id'] else None})
         return result
 
-    def get(self, session_id): return self.present(self.row(session_id))
+    def get(self, session_id, provider_dir=None): return self.present(self.row(session_id),provider_dir)
 
     @guarded
     def create(self, data, provider_dir):
@@ -489,7 +489,7 @@ PRAGMA user_version=1;
                     changed_settings(self,session_id)
                 self.db.execute('UPDATE sessions SET name=?,settings=?,revision=revision+1,updated_at=? WHERE id=?',
                                 (text(value['name'], 120), encode(settings), now(), session_id))
-            self.db.commit(); return self.get(session_id)
+            self.db.commit(); return self.get(session_id,provider_dir)
         finally:
             if self.db.in_transaction: self.db.rollback()
 
@@ -587,7 +587,7 @@ def operation(projects, r4os, provider_dir, request):
             from request_history import chunk
             return chunk(store,request['sessionId'],request['requestId'],request.get('offset',0),request.get('limit',65536))
         if op == 'create': return store.create(request['input'], provider_dir)
-        if op == 'get': return store.get(request['sessionId'])
+        if op == 'get': return store.get(request['sessionId'],provider_dir)
         if op=='screenshots':
             from screenshot_gallery import page
             return page(store,request['sessionId'],request.get('cursor'),request.get('limit',32))
