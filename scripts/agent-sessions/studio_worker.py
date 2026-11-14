@@ -347,7 +347,8 @@ class StudioWorker(Worker):
             if proof:error.quota_evidence=proof
             self.operations.finish(request_id,error=error,attempted=self.model.attempted and not unsent)
             waiting=register(self,request_id,proof) if proof else None
-            retryable = isinstance(error,ModelFault) and (error.confirmed_overload or error.stream_interrupted) and not waiting
+            retryable = isinstance(error, ModelFault) and not waiting and (
+                error.confirmed_overload or error.stream_interrupted or error.confirmed_zai_network_failure)
             if retryable: error.retry_operation_id=request_id
             rejected = not waiting and StudioWorker.confirmed_parser_rejection(self, request_id, error)
             if self.model.attempted and not unsent and execution and execution == self.goal_worker.execution:

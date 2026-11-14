@@ -305,3 +305,7 @@ Rotate the private raw model stream archive at 256 MB per session. Delete the ol
 ## 0.12.78
 
 Restart one direct model step after a verified complete response is rejected before any visible output or tool execution. Reuse the confirmed input and saved tool results. Store and show the concrete parser error if the restart fails.
+
+## 0.12.79
+
+Retry a complete Z.AI HTTP 500 with code 1234 up to five times at 60-second intervals and show the provider error when the attempts are exhausted.

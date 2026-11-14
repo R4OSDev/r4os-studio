@@ -69,26 +69,29 @@ class ProviderRetry:
         if execution is None: return True
         goal = self.w.goal_worker
         value = goal.current()
-        # A refusal or interrupted stream may leave the Goal's usage unknown.
+        # Failed requests can leave the Goal's usage unknown.
         return bool(goal.execution == execution and goal.active and value
-                    and value.get('tokenBudget') is None)
+                    and value.get('tokenBudget') is None
+                    and (not getattr(error, 'confirmed_zai_network_failure', False) or goal.can_restart_model()))
 
     async def direct(self,error):
         """Repeat the original model input after a qualified transport failure."""
         w=self.w;row=get_run(w.store,w.run_id)
         overload = getattr(error,'confirmed_overload',False)
+        zai_network_failure = getattr(error, 'confirmed_zai_network_failure', False)
+        confirmed_rejection = overload or zai_network_failure
         interruption = getattr(error,'stream_interrupted',False)
         unsent = (getattr(error,'not_dispatched',False) and error.http_status is None
                   and isinstance(error.details,dict) and error.details.get('connectionCode')
                   in ('ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN'))
         if (w.config['engine'].get('kind')!='studio' or w.config.get('streamRetryProtocol')!=2
-                or not (overload or unsent or interruption) or not self.direct_goal_allows(error)
+                or not (confirmed_rejection or unsent or interruption) or not self.direct_goal_allows(error)
                 or not w.model or not w.model.closed_confirmed
                 or self.closed or w.stopping or w.done.is_set() or w.uncertain_effect
                 or not row['busy'] or row['state']!='running'):return False
-        self.failure={'text':str(error) if overload or interruption else 'The connection failed before the model request was dispatched.',
+        self.failure={'text':str(error) if confirmed_rejection or interruption else 'The connection failed before the model request was dispatched.',
                       'httpStatusCode':error.http_status}
-        if overload or interruption:
+        if confirmed_rejection or interruption:
             from model_transport import stream_without_output
             request_id = getattr(error,'retry_operation_id',None)
             if not request_id or not w.model.request_sha256: return False
@@ -99,7 +102,10 @@ class ProviderRetry:
                     or evidence.get('requestSha256') != w.model.request_sha256
                     or failure.get('code') != error.code
                     or evidence.get('processEnd',{}).get('confirmed') is not True): return False
-            if overload and (call['phase'] != 'failed' or failure.get('confirmedOverload') is not True): return False
+            if confirmed_rejection and call['phase'] != 'failed': return False
+            if overload and failure.get('confirmedOverload') is not True: return False
+            if zai_network_failure and (failure.get('confirmedZaiNetworkFailure') is not True
+                    or failure.get('httpStatus') != 500): return False
             if interruption:
                 stream = evidence.get('stream')
                 if (call['phase'] != 'unknown' or failure.get('earlyStreamInterruption') is not True

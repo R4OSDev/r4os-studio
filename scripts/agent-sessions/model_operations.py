@@ -174,9 +174,11 @@ class Operations:
                 data['quotaEvidence']=proof
                 if not attempted:data['processEnd']={'confirmed':True,'observedBy':'not-dispatched','at':now()}
                 self.put(rid,'failed',data)
-            elif (getattr(error,'confirmed_overload',False) and attempted
-                    and data.get('processEnd',{}).get('confirmed') is True):
-                data['error']['confirmedOverload']=True
+            elif (attempted and data.get('processEnd', {}).get('confirmed') is True
+                  and (getattr(error, 'confirmed_overload', False)
+                       or getattr(error, 'confirmed_zai_network_failure', False))):
+                proof_flag = 'confirmedOverload' if error.confirmed_overload else 'confirmedZaiNetworkFailure'
+                data['error'][proof_flag] = True
                 self.put(rid,'failed',data)
             else:self.put(rid,'unknown' if attempted else 'failed',data)
         from studio_usage import record

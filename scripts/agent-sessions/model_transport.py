@@ -32,6 +32,7 @@ class ModelFault(ProjectFault):
         self.http_status = http_status
         self.not_dispatched=not_dispatched;self.details=details
         self.stream_interrupted = False
+        self.confirmed_zai_network_failure = False
         overload = isinstance(code,str) and code in OVERLOAD_CODES and http_status in (None,503,529)
         self.confirmed_overload = confirmed_overload is True and overload and not not_dispatched
         self.category=('connection' if not_dispatched and http_status is None else 'authentication' if http_status==401 else 'access' if http_status in (403,404)
@@ -445,6 +446,14 @@ class ModelTransport:
                 error.args = ('The model stream ended before any response content was received.',)
             if self.credential and self.credential in str(error.code):
                 error.code = 'model_provider_error';error.confirmed_overload = False;error.stream_interrupted = False
+            elif (self.binding.get('kind') == 'zai-coding-plan' and error.code == '1234'
+                  and error.http_status == 500 and self.attempted and not error.not_dispatched
+                  and self.closed_confirmed and isinstance(error.details, dict)
+                  and error.details.get('httpResponseComplete') is True
+                  and self.stream_progress and self.stream_progress['httpStatus'] == 500
+                  and self.stream_progress['bytesReceived'] == 0):
+                error.confirmed_zai_network_failure = True
+                error.args = ('Z.AI: Internal network failure (HTTP 500, Code 1234).',)
             raise
 
     async def send(self, body, parser, on_text=None, on_reasoning=None, *, expected_sha256=None,
