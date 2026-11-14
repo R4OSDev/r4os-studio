@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderList, ProviderUsage } from '../../../../shared/llm-providers.js';
 import type { ApiProvider } from '../../../../shared/api-providers.js';
 import type { ClaudeSubscriptionProvider } from '../../../../shared/claude-subscription.js';
@@ -170,3 +170,4 @@ export function useProviders(usageVisible = true) {
 }
 
 export type ProviderApi = ReturnType<typeof useProviders>;
+export const ProviderUsageSource = createContext<ProviderApi | null>(null);

@@ -5,7 +5,7 @@ import { Icon } from './Icon';
 import { WorkspaceNavigation } from './WorkspaceNavigation';
 import { navigation } from './navigation';
 import type { Tab } from './navigation';
-import { useProviders } from '../features/llm-providers/useProviders';
+import { ProviderUsageSource, useProviders } from '../features/llm-providers/useProviders';
 import { percent } from '../features/llm-providers/usage-format';
 import { useVms } from '../features/virtual-machines/useVms';
 import { version } from '../../../shared/version.json';
@@ -217,7 +217,7 @@ export function App() {
   }, [tab]);
 
   return (
-    <ViewRecovery.Provider value={reloadView}><div className="studio">
+    <ProviderUsageSource.Provider value={providers}><ViewRecovery.Provider value={reloadView}><div className="studio">
       <header className="topbar">
         <a className="brand" href="/" aria-label="R4OS Studio home">
           <span className="brand-mark"><Icon name="terminal" /></span>
@@ -305,6 +305,6 @@ export function App() {
         <span className="statusbar-name">R4OS Studio</span>
         <span className="statusbar-version">Version {version}</span>
       </footer>
-    </div></ViewRecovery.Provider>
+    </div></ViewRecovery.Provider></ProviderUsageSource.Provider>
   );
 }

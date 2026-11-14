@@ -6,6 +6,7 @@ import {useModelChoice} from './useModelChoice';
 
 import { availableModels, effortLabel, providerAllowed, providerLabel } from './modelChoices';
 import {ContextIndicator} from './ContextIndicator';
+import {UsageIndicator} from './UsageIndicator';
 
 type Choice = Pick<AgentSession, 'providerId' | 'model' | 'effort' | 'fastMode'>;
 
@@ -96,7 +97,9 @@ export function ComposerSettings({ session, projectId, token, disabled, active=f
           <option value="off">Off</option><option value="on" disabled={!model?.fastModeAvailable}>On</option>
         </select>
       </label>}<ContextIndicator key={scope+projectId+session.id} projectId={projectId} sessionId={session.id} context={session.context}
-        providerId={session.providerId} model={session.model}/></div>
+        providerId={session.providerId} model={session.model}/>
+        <UsageIndicator projectId={projectId} sessionId={session.id} providerId={choice.providerId}
+          model={choice.model} modelName={model?.name} nativeClaude={session.engine.kind==='claude-code'}/></div>
     </fieldset>
     {session.pendingModel&&<div className="agent-pending-model" role="status">
       <p>{busyRun(session.latestRun?.state)?`Current run: ${session.latestRun?.selection?.model??session.model} · `:''}Next run: {session.pendingModel.choice.model} · {session.pendingModel.state==='blocked'?'Blocked':'Pending'}</p>

@@ -337,3 +337,7 @@ Focus the scroll indicator tooltip and pulse blue during context compaction
 ## 0.12.86
 
 Measure the session Context gauge against the original completed request input limit
+
+## 0.12.87
+
+Add a session Usage gauge and show both percentages in accessible tooltips
