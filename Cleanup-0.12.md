@@ -325,3 +325,7 @@ Keep session autoscroll aligned through content growth reconnects and tab visibi
 ## 0.12.83
 
 Backport Linux kernel-thread recognition for Ghidra cleanup in the managed REA runtime
+
+## 0.12.84
+
+Remove the secondary caption below the session Context gauge
