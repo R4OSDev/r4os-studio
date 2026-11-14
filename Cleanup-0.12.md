@@ -317,3 +317,7 @@ Hide temporary session reader contention notices and move run stopping to the co
 ## 0.12.81
 
 Collapse the three workspace navigation columns into a shared overlay on narrow screens
+
+## 0.12.82
+
+Keep session autoscroll aligned through content growth reconnects and tab visibility changes

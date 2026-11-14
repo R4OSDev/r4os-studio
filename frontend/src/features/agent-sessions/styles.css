@@ -4,6 +4,7 @@
 .agent-state { padding:5px 9px; border:1px solid #463551; border-radius:20px; font-size:10px; color:#b5a3c6; text-transform:capitalize; white-space:nowrap; }
 .agent-state.active { color:#ddbdff; border-color:#79529b; background:#ae83de13; }
 .agent-log { flex:1; min-height:170px; overflow:auto; overscroll-behavior:contain; padding:20px 24px; scrollbar-gutter:stable; }
+.agent-log[data-following="true"] { overflow-anchor:none; }
 .agent-empty { margin:45px 0; text-align:center; color:#9685a6; font-size:13px; }
 .agent-message { margin:0 0 24px; min-width:0; }
 .agent-message-role { margin-bottom:9px; font-size:10px; font-weight:650; text-transform:uppercase; letter-spacing:.7px; color:#c8a8e8; }

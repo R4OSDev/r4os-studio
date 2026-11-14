@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent, RefObject, TouchEvent, WheelEvent } from 'react';
 import type { SessionItem } from '../../../../shared/agent-sessions';
+import { watchVisible } from './sessionActivity';
 
 // One position state drives both scrolling and its visible boundary. Content
 // growth is not an upward gesture; late image/layout growth uses the same latch.
 export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, contentRef: RefObject<HTMLDivElement | null>, items: SessionItem[], enabled: boolean) {
-  const active = useRef(true), latest = useRef(true), previous = useRef({ top: 0, height: 0, viewport: 0 }), touchY = useRef<number | null>(null);
+  const active = useRef(true), previous = useRef({ top: 0, height: 0, viewport: 0 }), touchY = useRef<number | null>(null);
   const [following, setFollowing] = useState(true);
   const follow = useCallback((value: boolean) => {
     if (active.current !== value) { active.current = value; setFollowing(value); }
@@ -17,11 +18,17 @@ export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, co
     previous.current = { top: element.scrollTop, height: element.scrollHeight, viewport: element.clientHeight };
   }, [enabled, logRef]);
   const frame = useRef<number | null>(null);
+  const cancel = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+  }, []);
   const schedule = useCallback(() => {
-    if (frame.current === null) frame.current = requestAnimationFrame(() => { frame.current = null; align(); });
-  }, [align]);
+    if (enabled && active.current && frame.current === null) {
+      frame.current = requestAnimationFrame(() => { frame.current = null; align(); });
+    }
+  }, [enabled, align]);
   useLayoutEffect(() => { schedule(); }, [items, following, schedule]);
-  useEffect(() => () => { if(frame.current !== null)cancelAnimationFrame(frame.current); }, []);
+  useLayoutEffect(() => cancel, [cancel]);
   useEffect(() => {
     if (!enabled || !logRef.current || !contentRef.current) return;
     const observer = new ResizeObserver(() => {
@@ -31,8 +38,9 @@ export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, co
       schedule();
     });
     observer.observe(logRef.current); observer.observe(contentRef.current);
-    return () => observer.disconnect();
-  }, [enabled, schedule, logRef, contentRef]);
+    const stopWatching = watchVisible(() => { cancel(); schedule(); });
+    return () => { observer.disconnect(); stopWatching(); cancel(); };
+  }, [enabled, schedule, cancel, logRef, contentRef]);
   const onScroll = useCallback(() => {
     const element = logRef.current; if (!element) return;
     const current = { top: element.scrollTop, height: element.scrollHeight, viewport: element.clientHeight };
@@ -42,13 +50,15 @@ export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, co
     const selection = !active.current && movedDown && bottom ? document.getSelection() : null;
     const selecting = selection && !selection.isCollapsed && selection.rangeCount && contentRef.current
       && selection.getRangeAt(0).intersectsNode(contentRef.current);
-    if (!resized) {
-      if (current.top < previous.current.top - 0.5) follow(false);
-      else if (bottom && (active.current && latest.current || movedDown && !selecting)) follow(true);
-      else if (!bottom) follow(false);
+    if (active.current) {
+      // Layout and child focus can move the scroll position without an
+      // upward gesture. Explicit input handlers own pausing the timeline.
+      if (!bottom) schedule();
+    } else if (!resized && bottom && movedDown && !selecting) {
+      follow(true);
     }
     previous.current = current;
-  }, [follow, logRef, contentRef]);
+  }, [follow, schedule, logRef, contentRef]);
   const nested = useCallback((target: EventTarget | null, delta: number) => {
     const element = logRef.current;
     for (let node = target instanceof Element ? target : null; node && node !== element; node = node.parentElement) {
@@ -95,6 +105,6 @@ export function useTranscriptFollow(logRef: RefObject<HTMLDivElement | null>, co
     if (element) previous.current = { top: element.scrollTop, height: element.scrollHeight, viewport: element.clientHeight };
   }, [follow, logRef]);
   const resume = useCallback(() => { follow(true); schedule(); }, [follow, schedule]);
-  const viewChanged = useCallback((value: boolean) => { latest.current=value;if(!value)follow(false); },[follow]);
-  return { following, onScroll, onWheel, onKeyDown, onPointerDown, onTouchStart, onTouchMove, pause, resume, viewChanged };
+  const viewChanged = useCallback((value: boolean) => { if (!value) follow(false); }, [follow]);
+  return { following, onScroll, onWheel, onKeyDown, onPointerDown, onTouchStart, onTouchMove, pause, resume, viewChanged, schedule };
 }

@@ -50,6 +50,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
   const [connection, setConnection] = useState('Connecting'), [stopping, setStopping] = useState(false);
   const log = useRef<HTMLDivElement>(null), transcriptContent = useRef<HTMLDivElement>(null), last = useRef(0);
   const projectSession = scope === 'project', transcript = useTranscriptFollow(log, transcriptContent, items, true);
+  const scheduleTranscript = transcript.schedule;
   const [older, setOlder] = useState(false);
   const [settings, setSettings] = useState(false);
   const [gallery,setGallery]=useState(false);
@@ -173,7 +174,15 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
     const connect = () => {
       if (controller.signal.aborted) return;
       source = new EventSource(`${apiBase}${base}/events?after=${last.current}`);
-      source.onopen = () => { if (!controller.signal.aborted) { if (connected) invalidateSessionReads('capabilities'); connected = true; publishSessionActivity({scope,ownerId:projectId,sessionId,connected:true}); setConnection('Connected'); attempt = 0; if (projectSession) window.dispatchEvent(new Event('studio-project-activity')); } };
+      source.onopen = () => {
+        if (controller.signal.aborted) return;
+        if (connected) invalidateSessionReads('capabilities');
+        connected = true;
+        publishSessionActivity({scope, ownerId: projectId, sessionId, connected: true});
+        setConnection('Connected'); attempt = 0;
+        scheduleTranscript();
+        if (projectSession) window.dispatchEvent(new Event('studio-project-activity'));
+      };
       source.onmessage = (e) => { if(controller.signal.aborted)return;try { receive(JSON.parse(e.data)); } catch { deltas.flush();setLiveText(null);source?.close(); retry(); } };
       source.onerror = () => { deltas.flush();setLiveText(null);source?.close(); retry(); };
     };
@@ -200,7 +209,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
       retry();
     });
     return () => { controller.abort(); source?.close(); window.clearTimeout(timer); deltas.clear(); };
-  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope,acceptQuota]);
+  }, [base, load, changed, refreshAuth, apiBase, observeGoal, observeNotes, deleted, projectRequest, projectSession, projectId, sessionId, scope, deltas,selectionScope,acceptQuota,scheduleTranscript]);
   useEffect(()=>{const hidden=()=>{deltas.flush();if(document.hidden)setLiveText(null);};document.addEventListener('visibilitychange',hidden);return()=>document.removeEventListener('visibilitychange',hidden);},[deltas]);
   const run = session?.latestRun;
   const nativeActive = goal.goal?.goal?.status === 'active' && goal.goal.phase !== 'unknown';
@@ -249,7 +258,7 @@ export function SessionPanel({ projectId, sessionId, token, changed, refreshAuth
         <button type="button" className="agent-settings-button" aria-label="Session settings" disabled={!session || active || sending || choiceSaving ||choiceUnconfirmed|| !!pending || goal.changing || goalEditor} onClick={() => setSettings(true)}><Icon name="settings" /></button></div></header>
     {session && session.engine.kind !== 'studio' && <p className="agent-plan-usage" role="status">Native {session.engine.kind === 'claude-code' ? 'Claude' : 'OpenAI'} conversation. Review an explicit conversion under Session settings → Conversation to use the Studio runtime.</p>}
     {session?.engine.kind==='studio'&&session.engine.api?.kind==='chatgpt-plan'&&<p className="agent-plan-usage">ChatGPT plan · Remaining allowance is not reported here. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Manage plan usage</a></p>}
-    <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={0}
+    <div className="agent-log" ref={log} role="log" aria-label="Session messages" aria-live="off" tabIndex={0} data-following={transcript.following}
       onWheel={transcript.onWheel} onScroll={transcript.onScroll} onKeyDown={transcript.onKeyDown}
       onPointerDown={transcript.onPointerDown} onTouchStart={transcript.onTouchStart} onTouchMove={transcript.onTouchMove}>
       <div ref={transcriptContent}>
