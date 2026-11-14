@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { GitHubJob, GitHubProjectBinding, GitHubProjectStatus } from '../../../../shared/project-github.js';
+import type { GitHubIssueCount } from '../../../../shared/project-github-issues.js';
 import { projectBinding } from '../github-connections/references.js';
 import { GitHubStore } from '../github-connections/store.js';
 import { RefreshSettings } from '../github-connections/refresh-settings.js';
@@ -36,6 +37,35 @@ export class ProjectGitHubRefresh {
   async scope(id: string, binding: GitHubProjectBinding) {
     const { connection } = await this.credentials.credential(binding.connectionId);
     return observationKey(id, binding, connection.tokenRevision);
+  }
+
+  async issueCounts() {
+    const [projects, settings, connections] = await Promise.all([listProjects(this.projects), this.settings.read(), this.credentials.list()]);
+    const revisions = new Map(connections.map(connection => [connection.id, connection.tokenRevision]));
+    const counts: Record<string, GitHubIssueCount> = {};
+    const bindings = new Map<string, GitHubProjectBinding>();
+    const unavailable: GitHubIssueCount = { count: null, checkedAt: null, state: 'unavailable' };
+    const age = settings.intervalHours * 3_600_000;
+    for (let start = 0; start < projects.length; start += 24) {
+      await Promise.all(projects.slice(start, start + 24).map(async project => {
+        if (project.deleting) return;
+        const binding = await projectBinding(this.projects, project.id).catch(() => null);
+        if (!binding) return;
+        const revision = revisions.get(binding.connectionId);
+        if (!revision) { counts[project.id] = unavailable; return; }
+        const saved = await this.observations.issues(project.id, observationKey(project.id, binding, revision)).catch(() => null);
+        const current = await projectBinding(this.projects, project.id).catch(() => null);
+        if (!current || bindingKey(binding) !== bindingKey(current)) return;
+        bindings.set(project.id, binding);
+        if (saved?.value) {
+          const { openCount, checkedAt } = saved.value;
+          counts[project.id] = { count: openCount, checkedAt, state: saved.error || Date.now() - Date.parse(checkedAt) >= age ? 'stale' : 'current' };
+        } else counts[project.id] = saved?.error ? unavailable : { count: null, checkedAt: null, state: 'unknown' };
+      }));
+    }
+    const current = new Map((await this.credentials.list()).map(connection => [connection.id, connection.tokenRevision]));
+    for (const [id, binding] of bindings) if (current.get(binding.connectionId) !== revisions.get(binding.connectionId)) counts[id] = unavailable;
+    return { counts };
   }
 
   async status(id: string) {

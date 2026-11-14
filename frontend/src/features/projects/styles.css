@@ -14,6 +14,8 @@
 .project-group-edit:disabled { cursor: default; }
 .project-group-edit .icon { width: 14px; height: 14px; }
 .project-group-members:not([hidden]) { display: grid; gap: 5px; margin-inline-start: 8px; padding-inline-start: 3px; border-inline-start: 1px solid var(--line); }
+.nav-item > .project-issue-count { margin-inline-start: auto; flex-shrink: 0; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: #cbb5e0; }
+.project-issue-count[data-state="unknown"], .project-issue-count[data-state="unavailable"] { opacity: .7; }
 .project-navigation-list [draggable=true] { cursor: grab; }
 .project-group-ungrouped { position: sticky; inset-block-start: 0; z-index: 1; border: 1px dashed #745895; background: #261c32; color: #d4b4ff; }
 .project-group[data-project-drop-active] .project-group-row, .project-group-ungrouped[data-project-drop-active] {

@@ -9,3 +9,8 @@ export interface GitHubIssuePage {
   nextCursor:string|null;checkedAt:string;expiresAt:string;cached:boolean;
   stale?:boolean;refreshError?:string;
 }
+export interface GitHubIssueCount {
+  count: number | null;
+  checkedAt: string | null;
+  state: 'current' | 'stale' | 'unknown' | 'unavailable';
+}

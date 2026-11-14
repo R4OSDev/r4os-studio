@@ -31,6 +31,10 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     sessions.session(request,reply);
     return refresh.status(request.params.id);
   });
+  app.get('/github/issue-counts',async(request,reply)=>{
+    sessions.session(request,reply);
+    return refresh.issueCounts();
+  });
   app.post<{Params:{id:string};Body:{bindingRevision:number;requestId:string}}>('/:id/github/refresh',{
     bodyLimit:4096,schema:{params,body:{type:'object',required:['bindingRevision','requestId'],additionalProperties:false,
       properties:{bindingRevision:{type:'integer',minimum:1},requestId:uuid}}},

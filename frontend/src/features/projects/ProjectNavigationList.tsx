@@ -4,6 +4,8 @@ import type { ProjectGroup, ProjectSummary } from '../../../../shared/projects';
 import { Icon } from '../../app/Icon';
 import type { useProjects } from './useProjects';
 import { ProjectGroupDialog } from './ProjectGroupDialog';
+import type { GitHubIssueCount } from '../../../../shared/project-github-issues';
+import { issueCountText } from '../github-connections/useIssueCounts';
 
 const projectDragType = 'application/x-studio-project';
 const ungrouped = 'ungrouped';
@@ -38,8 +40,9 @@ function ProjectGroupRow({ group, edit, disabled, children }: {
   </>;
 }
 
-export function ProjectNavigationList({ api, activity, selectedId, saving, createProject, choose }: {
+export function ProjectNavigationList({ api, activity, selectedId, saving, counts, createProject, choose }: {
   api: ReturnType<typeof useProjects>; activity: ReadonlySet<string>; selectedId: string | null; saving: boolean;
+  counts: Readonly<Record<string, GitHubIssueCount>>;
   createProject: () => void; choose: (id: string) => void;
 }) {
   const [editor, setEditor] = useState<ProjectGroup | 'create' | null>(null);
@@ -104,12 +107,17 @@ export function ProjectNavigationList({ api, activity, selectedId, saving, creat
   function projectRow(project: ProjectSummary) {
     const running = activity.has(project.id) && !project.deleting;
     const canDrag = !disabled && !project.deleting && groups.length > 0;
+    const issue = project.deleting ? undefined : counts[project.id];
+    const issueLabel = issue ? issueCountText(issue) : '';
     return <button type="button" key={project.id} disabled={saving} className={`nav-item ${selectedId === project.id ? 'selected' : ''}`}
-      aria-current={selectedId === project.id ? 'true' : undefined} aria-label={running ? `${project.name}, Session running` : undefined}
+      aria-current={selectedId === project.id ? 'true' : undefined} aria-label={running || issue ? [project.name, running && 'Session running', issueLabel].filter(Boolean).join(', ') : undefined}
       title={running ? 'Session running' : undefined} draggable={canDrag} onDragStart={event => {
         if (canDrag) dragStart(event, project); else event.preventDefault();
       }} onDragEnd={endDrag} onClick={() => choose(project.id)}>
       <Icon name="folder" energyPulse={running} /><span>{project.name}{project.deleting ? ' · Deleting…' : ''}</span>
+      {issue && <span className="project-issue-count" data-state={issue.state} aria-hidden="true" title={issueLabel}>
+        {issue.count === null ? (issue.state === 'unknown' ? '…' : '—') : (issue.state === 'stale' ? '~' : '') + issue.count}
+      </span>}
     </button>;
   }
 

@@ -2,6 +2,7 @@ import {useCallback,useEffect,useState} from 'react';
 import type {GitHubProjectBinding} from '../../../../shared/project-github';
 import type {GitHubIssuePage,GitHubIssueState} from '../../../../shared/project-github-issues';
 import {projectRequest} from '../projects/api';
+import {issueCountChanged} from './useIssueCounts';
 
 interface Selection{id:string|null;state:GitHubIssueState;cursor:string|null;previous:(string|null)[];revision:number;mode:'saved'|'remote'|'refresh'}
 interface Read {id:string|null;key:string;binding:GitHubProjectBinding|null|undefined;data?:GitHubIssuePage;error:string}
@@ -36,6 +37,7 @@ export function useProjectIssues(id:string|null){
         if(new Set(data.items.map(v=>v.number)).size!==data.items.length)throw Error('The issue page contains duplicate entries. Refresh its issues.');
         setRead({id,key,binding,data,error:''});
       }catch(error){if(!controller.signal.aborted)setRead({id,key,binding,error:(error as Error).message});}
+      finally{if(selection.mode!=='saved'&&!controller.signal.aborted)window.dispatchEvent(new Event(issueCountChanged));}
     })();
     return()=>controller.abort();
   },[id,key,selection.state,selection.cursor,selection.mode]);

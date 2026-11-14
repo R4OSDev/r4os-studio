@@ -1,14 +1,14 @@
 import {Icon} from '../../app/Icon';
-import type {GitHubIssueState} from '../../../../shared/project-github-issues';
+import type {GitHubIssueState, GitHubIssueCount} from '../../../../shared/project-github-issues';
 import type {ProjectIssuesModel} from './useProjectIssues';
+import {issueCountText} from './useIssueCounts';
 import './issues.css';
 
-export function GithubNavigation({model,selected,disabled,choose}:{model:ProjectIssuesModel;selected:'Connection'|'Issues';disabled:boolean;choose:(view:'Connection'|'Issues')=>void}){
-  const count=model.data?.openCount;
-  const label=typeof count==='number'?`${count} open issues${model.stale?', last checked data':''}`:model.loading?'Loading open issue count':'Open issue count unavailable';
+export function GithubNavigation({model,count,selected,disabled,choose}:{model:ProjectIssuesModel;count?:GitHubIssueCount;selected:'Connection'|'Issues';disabled:boolean;choose:(view:'Connection'|'Issues')=>void}){
+  const label=count?issueCountText(count):model.loading?'Loading open issue count':'Open issue count unavailable';
   return <nav className="nav-column" aria-label="Project GitHub sections"><div className="nav-items">
     <button type="button" disabled={disabled} className={`nav-item ${selected==='Connection'?'selected':''}`} aria-current={selected==='Connection'?'page':undefined} onClick={()=>choose('Connection')}><Icon name="settings"/><span>Connection</span></button>
-    <button type="button" disabled={disabled||!model.binding} className={`nav-item github-issues-navigation ${selected==='Issues'?'selected':''}`} aria-current={selected==='Issues'?'page':undefined} title={!model.binding?'Connect a repository first.':undefined} onClick={()=>choose('Issues')}><Icon name="book"/><span>Issues</span><span className="github-issues-count" aria-label={label} title={label}>{typeof count==='number'?(model.stale?'~':'')+count:model.loading?'…':'—'}</span></button>
+    <button type="button" disabled={disabled||!model.binding} className={`nav-item github-issues-navigation ${selected==='Issues'?'selected':''}`} aria-current={selected==='Issues'?'page':undefined} title={!model.binding?'Connect a repository first.':undefined} onClick={()=>choose('Issues')}><Icon name="book"/><span>Issues</span><span className="github-issues-count" aria-label={label} title={label}>{count?.count!=null?(count.state==='stale'?'~':'')+count.count:count?.state==='unknown'||model.loading?'…':'—'}</span></button>
   </div></nav>;
 }
 

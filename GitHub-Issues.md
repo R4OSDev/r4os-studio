@@ -71,3 +71,7 @@ Evidence: `Research/R4OS/Roadmap-Implementation/0.8.34/` in the development work
 ## 0.13.1
 
 Schedule sequential GitHub refresh and expose interval settings.
+
+## 0.13.2
+
+Show confirmed open issue counts in project rows from the shared GitHub observations.
