@@ -60,6 +60,8 @@ def authorize(projects, project_id, session_id, run_id, descriptor, release, too
                 or config.get('revision') != row[4] or worker.get('pid') != parent or worker.get('birth') != birth
                 or worker.get('release') != release or row[5] != 'studio_' + tool or row[6] != fingerprint):
             raise ProjectFault('Roadmap permission, worker or original call binding changed.', 403)
+        if tool == 'finish_github_issue' and config.get('permissions',{}).get('studio.finish_github_issue') is not True:
+            raise ProjectFault('Finishing GitHub issues is disabled for this run.', 403)
         def contexts():
             from human_context import contexts as human_contexts
             yield from human_contexts(db,session_id,run_id,{'type':'project','id':project_id})
@@ -223,7 +225,7 @@ def main():
         raise ProjectFault('Invalid Roadmap call identity.', 400)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'agent-sessions'))
     from tool_catalog import validate_arguments
-    if request['tool'] not in ('read_roadmap', 'update_roadmap', 'cleanup_roadmap'):
+    if request['tool'] not in ('read_roadmap', 'update_roadmap', 'cleanup_roadmap', 'finish_github_issue'):
         raise ProjectFault('Unsupported Roadmap tool.', 400)
     bound = {'tool': request['tool'], 'call_id': request['callId'], 'arguments': request['arguments']}
     with authorize(projects, project_id, session_id, run_id, descriptor, release, **bound) as actor:
@@ -233,7 +235,26 @@ def main():
                 if fresh['config'] != actor['config']:
                     raise ProjectFault('The frozen Roadmap run configuration changed.', 403)
         actor['check'] = check
-        result = call(projects, project_id, request['tool'], request['arguments'], actor)
+        if request['tool'] == 'finish_github_issue':
+            sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-git'))
+            from issue_outcome import check_roadmap, execute
+            config = actor['config']
+            frozen, revision = config.get('githubBinding'), config.get('githubCredentialRevision')
+            if not isinstance(frozen, dict) or type(revision) is not int:
+                raise ProjectFault('This run has no verified GitHub connection revision.', 409)
+            arguments = request['arguments']
+            subversion_id = identity(arguments['subversionId'])
+            source = check_roadmap(projects, project_id, subversion_id)
+            if source['repositoryId'] != frozen['repository']['id']:
+                raise ProjectFault('The linked issue is outside this run’s repository.', 409)
+            request_id = str(uuid.uuid5(uuid.UUID(run_id), 'finish-github-issue:' + request['callId']))
+            result = execute(projects, projects.parent / 'GitHub', project_id, {
+                'requestId':request_id, 'number':source['number'], 'issueId':source['issueId'],
+                'bindingRevision':frozen['revision'], 'credentialRevision':revision,
+                'text':arguments['summary'], 'reason':'COMPLETED', 'subversionId':subversion_id,
+            }, check, frozen, revision)
+        else:
+            result = call(projects, project_id, request['tool'], request['arguments'], actor)
     rendered = encode({'result': result})
     if len(rendered.encode()) > 120000:
         raise ProjectFault('Roadmap result exceeds the tool limit. Read a smaller page or individual text field.', 413)

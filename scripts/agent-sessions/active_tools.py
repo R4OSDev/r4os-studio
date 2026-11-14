@@ -175,6 +175,8 @@ def eligible(config, *, documents=False, images=False, goal=False, remote_histor
         if name in REMOTE_TOOLS:
             return bool(config.get('remoteHostBinding') or (remote_history and name in ('read_remote_job','stop_remote_job')))
         if name == 'push_project': return bool(config.get('githubBinding'))
+        if name == 'finish_github_issue':
+            return config.get('roadmapEnabled') is True and bool(config.get('githubBinding')) and bool(config.get('githubCredentialRevision'))
         if name == 'read_context_result': return direct
         return True
 

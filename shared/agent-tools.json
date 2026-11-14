@@ -2874,6 +2874,19 @@
       }
     },
     {
+      "name": "studio_finish_github_issue",
+      "description": "Comment on the issue linked to this Roadmap subversion and close it as completed after the other work is verified. The summary is posted on GitHub. Check the original receipt to confirm both steps.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subversionId": { "type": "string", "minLength": 36, "maxLength": 36 },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 4000 }
+        },
+        "required": ["subversionId", "summary"],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "studio_read_roadmap",
       "description": "Read the project roadmap. Use only the selected view fields. Follow collection cursors and UTF-8 nextOffset for full text. expectedRevision applies to view=text. Use receipt with the original requestId to reconcile a mutation.",
       "inputSchema": {

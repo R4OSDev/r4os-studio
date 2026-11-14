@@ -79,3 +79,7 @@ Show confirmed open issue counts in project rows from the shared GitHub observat
 ## 0.13.3
 
 Import GitHub issues as linked project Roadmap subversions.
+
+## 0.13.4
+
+Finish linked GitHub issues with durable comment and closure receipts.

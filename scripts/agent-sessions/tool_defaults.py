@@ -7,13 +7,13 @@ import stat
 from profile import permission_tools, default_enabled
 
 
-def private_document(path):
+def private_document(path, maximum=32768):
     path = Path(path).absolute()
     if path.resolve(strict=True) != path: raise ValueError('Linked private metadata')
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 32768: raise ValueError('Invalid private metadata')
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > maximum: raise ValueError('Invalid private metadata')
         return json.load(stream)
 
 
@@ -52,8 +52,24 @@ def repository_binding(store):
 
 def permissions(store):
     result = {'studio.' + tool: default_enabled(tool) for tool in permission_tools(store.selected_profile)}
-    if 'studio.push_project' in result: result['studio.push_project'] = repository_binding(store) is not None
+    bound_tools = {'studio.push_project','studio.finish_github_issue'} & result.keys()
+    if bound_tools:
+        bound = repository_binding(store) is not None
+        for tool in bound_tools:
+            result[tool] = bound
     return result
+
+
+def github_credential_revision(projects, bound):
+    if not bound: return None
+    try:
+        catalog = private_document(projects.parent / 'GitHub/connections.json', 8 * 1024 * 1024)
+        if catalog.get('schema') != 1: return None
+        entry = next(connection for connection in catalog['connections'] if connection.get('id') == bound['connectionId'])
+        revision = entry.get('tokenRevision', 1)
+        return revision if type(revision) is int and revision >= 1 else None
+    except (OSError, ValueError, TypeError, KeyError, StopIteration, AttributeError):
+        return None
 
 
 def effective(store, saved):

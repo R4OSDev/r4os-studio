@@ -84,6 +84,9 @@ def update(db, reference, data, now, action, preserve_text=False):
             else:
                 parent = db.execute('SELECT * FROM versions WHERE id=?', (row['version_id'],)).fetchone()
                 value['patch'] = number(raw, parent)
+    if 'status' in value:
+        from issue_origin import guard_change
+        guard_change(db, kind, row, action, value)
     db.execute('UPDATE ' + table + ' SET ' + ','.join(k + '=?' for k in value)
                + (',revision=revision+1,updated_at=?' if kind != 'roadmap' else '') + ' WHERE id=?',
                [*value.values(), *([now] if kind != 'roadmap' else []), row['id']])
@@ -129,6 +132,8 @@ def apply_change(db, reference, action, data, now, new_id=None, preserve_text=Fa
         if data['confirm'] is not True or reference.get('kind') == 'roadmap':
             raise RoadmapFault('Explicitly confirm removal of the selected roadmap entry.', 400)
         row = target(db, reference)
+        from issue_origin import guard_change
+        guard_change(db, reference['kind'],row,action,{})
         if reference['kind'] == 'version' and row['id'] == root_row(db)['current_version_id']:
             raise RoadmapFault('Select another current version before removing this version.', 409)
         db.execute('DELETE FROM ' + KINDS[reference['kind']] + ' WHERE id=?', (row['id'],))

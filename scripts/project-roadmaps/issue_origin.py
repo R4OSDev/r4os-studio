@@ -27,6 +27,52 @@ def available(db):
     return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='github_issue_origins'").fetchone() is not None
 
 
+def record_closure(db, subversion_id, receipt):
+    db.execute('''CREATE TABLE IF NOT EXISTS github_issue_closures (
+        subversion_id TEXT PRIMARY KEY REFERENCES github_issue_origins(subversion_id) ON DELETE CASCADE,
+        request_id TEXT NOT NULL, reason TEXT NOT NULL,
+        comment_url TEXT NOT NULL, closed_at TEXT NOT NULL
+    )''')
+    db.execute('INSERT OR REPLACE INTO github_issue_closures VALUES(?,?,?,?,?)',
+               (subversion_id,receipt['requestId'],receipt['reason'],receipt['comment']['url'],receipt['closedAt']))
+
+
+def closure(db, subversion_id):
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='github_issue_closures'").fetchone():
+        return None
+    return db.execute('SELECT * FROM github_issue_closures WHERE subversion_id=?',(subversion_id,)).fetchone()
+
+
+def guard_change(db, kind, row, action, value):
+    if kind not in ('subversion','acceptance') or not available(db):
+        return
+    if kind=='subversion':
+        if value.get('status') not in ('complete','discarded'):
+            return
+        subversion_id=row['id']
+        if not origin(db,subversion_id):
+            return
+        if value['status']=='discarded':
+            if row['status']=='discarded': return
+            raise RoadmapFault('Use Discard on the linked GitHub issue to record its closure.',409)
+    else:
+        subversion_id=row['subversion_id']
+        source=origin(db,subversion_id)
+        if not source or source['acceptanceId']!=row['id']:
+            return
+        if action=='delete':
+            raise RoadmapFault('The imported GitHub acceptance belongs to this linked subversion.',409)
+        status=value.get('status')
+        if status not in ('done','discarded'):
+            return
+        if status=='discarded':
+            if row['status']=='discarded': return
+            raise RoadmapFault('Use Discard on the linked GitHub issue to record its closure.',409)
+    outcome=closure(db,subversion_id)
+    if not outcome or outcome['reason']!='COMPLETED':
+        raise RoadmapFault('Confirm the linked GitHub comment and Completed closure before marking this work complete.',409)
+
+
 def public(row):
     return {'repositoryId': row['repository_id'], 'issueId': row['issue_id'], 'number': row['issue_number'],
             'url': row['issue_url'], 'acceptanceId': row['acceptance_id']}

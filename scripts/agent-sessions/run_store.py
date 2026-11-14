@@ -184,8 +184,11 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
             snapshot['vmObservation'] = vm_snapshot(store)
         # Trusted private metadata only; the terminal/Workspace cannot supply a
         # destination. Missing context stays explicit and cannot grant Push.
-        from tool_defaults import repository_binding
+        from tool_defaults import github_credential_revision, repository_binding
         snapshot['githubBinding'] = repository_binding(store)
+        if snapshot['permissions'].get('studio.finish_github_issue') is True:
+            snapshot['githubCredentialRevision'] = (original.get('githubCredentialRevision') if original is not None else
+                                                    github_credential_revision(store.projects, snapshot['githubBinding']))
         from remote_context import snapshot as remote_snapshot
         snapshot.update(remote_snapshot(store, tool_scope(session), data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)

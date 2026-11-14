@@ -2,6 +2,7 @@
 import asyncio
 import json
 from pathlib import Path
+import uuid
 from roadmap_access import require
 from session_store import encode
 
@@ -31,18 +32,28 @@ class RoadmapTools:
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, limit=131072)
         try:
-            raw, _ = await asyncio.wait_for(process.communicate(encode({'tool': name, 'callId': call_id, 'arguments': arguments}).encode()), 30)
+            raw, _ = await asyncio.wait_for(process.communicate(encode({'tool': name, 'callId': call_id, 'arguments': arguments}).encode()),
+                                            260 if name == 'finish_github_issue' else 30)
             if len(raw) > 131072: raise ValueError('Roadmap result exceeded its limit.')
             response = json.loads(raw)
             if response.get('error'):
                 code = response.get('code', 503)
-                uncertain = (name == 'update_roadmap' or (name == 'cleanup_roadmap' and arguments.get('action') != 'status')) and code >= 500
+                uncertain = (name in ('update_roadmap','finish_github_issue') or (name == 'cleanup_roadmap' and arguments.get('action') != 'status')) and code >= 500
                 reason = 'unknown' if uncertain else {403: 'denied', 409: 'conflict'}.get(code, 'failed')
                 if code == 400 and name == 'update_roadmap': reason = 'invalidArguments'
+                if name == 'finish_github_issue':
+                    request_id = str(uuid.uuid5(uuid.UUID(worker.run_id), 'finish-github-issue:' + call_id))
+                    return {'success':False,'error':reason,'output':response['error'],
+                            'roadmap':{'operation':name,'requestId':request_id,'code':code},
+                            **({'partialChangesPossible':True} if uncertain else {})}
                 return {'success': False, 'error': reason,
                         'output': response['error'], 'roadmap': {'operation': name, 'code': code, 'requestId': arguments.get('requestId')},
                         **({'partialChangesPossible': True} if uncertain else {})}
             value = response['result']
+            if name == 'finish_github_issue':
+                completed = value.get('state') == 'complete'
+                return {'success':completed,'output':encode(value),'githubIssue':value,
+                        **({} if completed else {'error':'incomplete','partialChangesPossible':True})}
             summary = {'operation': name, 'requestId': arguments.get('requestId'), **{k: value[k] for k in ('workflowId', 'phase', 'revision', 'currentVersionId', 'requestId', 'versionId', 'sha256') if k in value}}
             if name == 'read_roadmap' and arguments.get('view') == 'overview' and value.get('exists'):
                 summary.update({key: value['roadmap'][key] for key in ('revision', 'currentVersionId')})

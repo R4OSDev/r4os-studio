@@ -62,7 +62,8 @@ export async function projectGithubRoutes(app: FastifyInstance, directory: strin
     let pending: Promise<unknown> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
-      pending = refresh.runDue(stop.signal).catch(() => app.log.warn('GitHub refresh will retry at its next scheduled check.')).finally(() => {
+      pending = refresh.refreshClosedIssues(stop.signal).then(() => refresh.runDue(stop.signal))
+        .catch(() => app.log.warn('GitHub refresh will retry at its next scheduled check.')).finally(() => {
         if (!stop.signal.aborted) timer = setTimeout(tick, refresh.nextDelay).unref();
       });
     };

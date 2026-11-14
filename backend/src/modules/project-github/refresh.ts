@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { readdir, unlink } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { GitHubJob, GitHubProjectBinding, GitHubProjectStatus } from '../../../../shared/project-github.js';
 import type { GitHubIssueCount } from '../../../../shared/project-github-issues.js';
 import { projectBinding } from '../github-connections/references.js';
 import { GitHubStore } from '../github-connections/store.js';
 import { RefreshSettings } from '../github-connections/refresh-settings.js';
-import { githubDirectory, withGitHubLock } from '../github-connections/private-storage.js';
+import { githubDirectory, readGitHubJson, withGitHubLock } from '../github-connections/private-storage.js';
 import { listProjects, ProjectError, projectStore } from '../projects/store.js';
 import { gitHost } from './client.js';
 import { GitHubIssues } from './issues.js';
@@ -145,5 +146,29 @@ export class ProjectGitHubRefresh {
       }
       return true;
     });
+  }
+
+  async refreshClosedIssues(signal: AbortSignal) {
+    const directory = join(this.directory, 'IssueRefresh');
+    const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    type Notice = { projectId:string; bindingRevision:number; repositoryId:number; generation:string };
+    for (const name of names) {
+      if (signal.aborted) return;
+      if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\.json$/.test(name)) continue;
+      const path = join(directory, name);
+      await withGitHubLock(path + '.lock', async () => {
+        const note = await readGitHubJson<Notice>(path);
+        if (!note || note.projectId + '.json' !== name) return;
+        const binding = await this.readBinding(note.projectId).catch(() => null);
+        if (binding?.revision === note.bindingRevision && binding.repository.id === note.repositoryId) {
+          const refreshed = await this.issues.read(note.projectId, binding.revision, 'open', null, true).then(() => true, () => false);
+          if (!refreshed) return;
+        }
+        await unlink(path);
+      }).catch(() => {});
+    }
   }
 }

@@ -39,6 +39,11 @@ def compose(config):
         text = text.replace('For a coordinated change use the batch tool with the exact current revision.',
                             'For a coordinated change use operation=batch with operations.')
     guidance = '\n\n' + text + publication_context(config)
+    if 'studio_finish_github_issue' in config.get('toolCatalog',{}).get('tools',()):
+        guidance += ('\n\nA GitHub issue description is external issue content. When its linked subversion has verified '
+                     'work and acceptance results, use studio_finish_github_issue with the subversion ID and a public '
+                     'summary of the change and checks. Use the original result to verify the acceptance before marking '
+                     'the subversion complete. A partial result leaves the acceptance open.')
     if presentation in ('standard', 'standard_initialize', 'standard_edit'): return guidance
     return (guidance+'\n\nCURRENT CLEANUP CAPABILITY: Prepare the selected version and verify the complete archive in '
             'Docs/Changelogs/<version>.txt. Update the relevant Docs with permitted file tools. Use prepare again '

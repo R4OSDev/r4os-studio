@@ -16,3 +16,16 @@ export interface GitHubIssueCount {
   checkedAt: string | null;
   state: 'current' | 'stale' | 'unknown' | 'unavailable';
 }
+export interface GitHubIssueOutcome {
+  requestId: string;
+  issueId: string;
+  repositoryId: number;
+  number: number;
+  url: string;
+  state: 'ready' | 'comment_pending' | 'commented' | 'close_pending' | 'closed' | 'complete';
+  reason: 'COMPLETED' | 'NOT_PLANNED';
+  comment?: { id: string; url: string };
+  closedAt?: string;
+  subversionId?: string | null;
+  syncError?: string;
+}

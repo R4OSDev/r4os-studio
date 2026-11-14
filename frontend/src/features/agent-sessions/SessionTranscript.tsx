@@ -48,6 +48,10 @@ const ToolDetails = memo(function ToolDetails({ i, jobId, projectId, sessionId, 
         {i.output && <CodeBlock text={i.output} label="Copy output" language="Output" />}{i.truncated === true && <p>Output truncated.</p>}
         {['studio.validate_skill', 'studio.save_skill'].includes(i.tool ?? '') && <SkillCard value={i.skill} />}
         {i.tool === 'studio.push_project' && <GitHubReceipt value={i.github} />}
+        {i.tool === 'studio.finish_github_issue' && i.githubIssue?.comment && <p>
+          <a href={i.githubIssue.comment.url} target="_blank" rel="noreferrer">GitHub issue #{i.githubIssue.number} comment</a>
+          {i.githubIssue.closedAt && ' · Closed on GitHub'}{i.githubIssue.syncError && ' · ' + i.githubIssue.syncError}
+        </p>}
         {scope === 'project' && roadmapLabels[i.tool ?? ''] && <RoadmapReceipt value={i.roadmap} />}
         {scope === 'project' && i.remote && <RemoteReceipt value={i.remote} />}
         {i.tool === 'studio.stop_development_job' && i.developmentStop?.version === 1 && <p>

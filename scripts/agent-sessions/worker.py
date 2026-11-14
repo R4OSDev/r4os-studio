@@ -214,7 +214,7 @@ class Worker:
         if name in REMOTE_TOOLS:
             from remote_tools import RemoteTools
             return await RemoteTools(self).call(name, arguments, call_id)
-        if name in ROADMAP_TOOLS:
+        if name in (*ROADMAP_TOOLS,'finish_github_issue'):
             from roadmap_tools import RoadmapTools
             return await RoadmapTools(self).call(name, arguments, call_id)
         if name == 'push_project' and self.store.owner_type == 'project':
@@ -356,7 +356,7 @@ class Worker:
                     if name == 'studio_read_project_git' else
                     {'success': False, 'error': 'interrupted', 'output': 'The tool was interrupted; partial effects may remain.', 'partialChangesPossible': True})
             except Exception:
-                uncertain = name[7:] in ('generate_image','import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
+                uncertain = name[7:] in ('generate_image','import_generated_image','run_remote_command', 'remote_files', 'stop_remote_job', 'update_roadmap', 'cleanup_roadmap', 'write_file', 'apply_patch', 'create_directory', 'exec_command', 'write_stdin', 'terminate_process', 'start_project_vm', 'stop_project_vm','restart_project_vm', 'run_vm_command', 'deploy_project', 'run_project', 'complete_development_job', 'stop_development_job', 'send_vm_input', 'save_skill', 'push_project', 'finish_github_issue', 'plan_update_package', 'build_update_package', 'upload_update_package', 'install_update_package', 'commit_update', 'resume_update', 'abort_update', 'rollback_update', 'cleanup_update_transport')
                 uncertain = uncertain or name == 'studio_control_app_window' and (not isinstance(arguments,dict) or arguments.get('action') != 'status')
                 uncertain = uncertain or name == 'studio_skill_call'
                 result = {'success': False, 'error': 'unknown' if uncertain else 'failed', 'output': 'The workspace tool could not confirm its result.',
@@ -376,7 +376,7 @@ class Worker:
         value = {'id': call_id, 'runId': self.run_id, 'type': 'tool', 'tool': tool_id, 'arguments': arguments,
                  'status': 'completed' if result['success'] else {'disabled': 'denied', 'interrupted': 'interrupted', 'unknown': 'unknown'}.get(result.get('error'), 'failed'),
                  'output': result.get('output', ''), 'error': result.get('error')}
-        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'generatedImage', 'imageGeneration', 'skillMcp', 'skillMcpRequest', 'deadlineSeconds'):
+        for key in ('remote', 'roadmap', 'webSearch', 'development', 'developmentStop', 'github', 'githubIssue', 'image', 'captureState', 'imageDelivery', 'visionAnalysis', 'exitCode', 'signal', 'reason', 'nextLine', 'nextOffset', 'totalLines', 'lineTruncated', 'skippedFiles', 'reasonCode', 'partialChangesPossible', 'files', 'skill', 'generatedAsset', 'generatedImage', 'imageGeneration', 'skillMcp', 'skillMcpRequest', 'deadlineSeconds'):
             if key in result: value[key] = result[key]
         if name in ('studio_exec_command','studio_write_stdin','studio_terminate_process'):
             from terminal_timing import FIELDS as terminal_time_fields
