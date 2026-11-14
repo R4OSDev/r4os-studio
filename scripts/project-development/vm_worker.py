@@ -66,7 +66,7 @@ class Deployment:
         from retired_desktop import job as reject_retired
         reject_retired(self.job)
         store, job = self.store, self.job; artifact = store.artifact(job['artifactId']); vm = job['binding']
-        profile = transport_profile()
+        transport_profile()
         scope = {'kind': 'job', 'projectId': store.id, 'projectRevision': job['projectRevision'],
             'vmRevision': vm['revision'], 'imageId': vm['imageId'], 'imageSha256': vm['imageSha256'], 'jobId': job['id']}
         from queue_lease import reserve
@@ -81,7 +81,7 @@ class Deployment:
             access = Access(store.projects, store.r4os, None)
             if not vm.get('networkEnabled') or not access.record(vm['id'])['enabled']:
                 raise DevelopmentFault('Enable Network and development access for the assigned VM before deploying.', reason_code='development_access_unavailable')
-            self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, profile, job['pins']); guard(store, job, lease)
+            self.phase('preparing_helper'); helper = await prepare_helper(store.projects, store.r4os, job['pins']); guard(store, job, lease)
             target = await broker_call({'operation': 'bind_target', 'projectId': store.id, 'jobId': job['id'],
                 'leaseId': lease.id, 'token': lease.token, 'helperSha256': helper['sha256']})
             scope['bootId'] = target['bootId']; save(lease.root / 'leases' / (lease.id + '.json'), lease.value)

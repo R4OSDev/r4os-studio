@@ -13,21 +13,50 @@ from builder import Builder
 from store import connect
 
 
-async def prepare_helper(projects, r4os, execution_profile, project_pins):
-    from sdk import profile, validate
+def source_manifest(manifest, template):
+    # The SDK's app entry alias follows its own generation. Use the same
+    # platform query in the helper's extra desktop import.
+    imports = template['imports']
+    if len(imports) != 1 or imports[0] not in ('R4SYS:Query:1', 'R4SYS:Query2:2'):
+        raise DevelopmentFault('The pinned SDK declares an unsupported guest helper platform import.')
+    system = imports[0]
+    desktop = 'R4DESK:' + system.split(':', 1)[1]
+    manifest = manifest.replace(b'IMPORT=R4SYS:Query:1', b'IMPORT=' + system.encode())
+    manifest = manifest.replace(b'IMPORT=R4DESK:Query:1', b'IMPORT=' + desktop.encode())
+    profile = template.get('build_profile')
+    if profile:
+        manifest = manifest.replace(b'LANGUAGE=Zig', b'LANGUAGE=Zig\nSDK_PROFILE=' + profile.encode(), 1)
+    return manifest
+
+
+async def prepare_helper(projects, r4os, project_pins):
+    from sdk import TYPES, profile
+    from sdk_profiles import manifest_profile
+    from toolset import combination
     selected = {name: project_pins[name] for name in ('sdk', 'contract', 'libraries', 'zig') if name in project_pins}
-    context = await asyncio.to_thread(profile, r4os, projects, resolve_rust=False, selected=selected)
-    await asyncio.to_thread(validate, context, APP / 'guest/development-helper')
-    pins = context['pins']
-    client = await prepare_one(projects, r4os, execution_profile, False, pins)
-    client['watchdog'] = await prepare_one(projects, r4os, execution_profile, True, pins)
+    try:
+        context = await asyncio.to_thread(profile, r4os, projects, resolve_rust=False, selected=selected)
+        terminal = next(value for value in TYPES if value[0] == 'terminal')
+        choice = combination(context, terminal, 'Zig')
+        if not choice or not choice['supported']:
+            raise DevelopmentFault('The pinned SDK has no supported Zig console application template.')
+        template = choice['template']
+        pins = context['pins']
+        pins['sdkProfile']['id'] = manifest_profile(context,
+            {'language': 'Zig', 'sdk_profile': template.get('build_profile')})
+        client = await prepare_one(projects, r4os, template, False, pins)
+        client['watchdog'] = await prepare_one(projects, r4os, template, True, pins)
+    except ValueError as error:
+        detail = str(error).strip()[-1000:]
+        raise DevelopmentFault('Studio guest helper preparation failed for the pinned SDK. ' + detail) from error
     return client
 
 
-async def prepare_one(projects, r4os, execution_profile, watcher, pins):
+async def prepare_one(projects, r4os, template, watcher, pins):
     source = APP / 'guest/development-helper'
     content = {str(p.relative_to(source)): p.read_bytes() for p in sorted(source.rglob('*'))
                if p.is_file() and not p.is_symlink()}
+    content['module.R4MF'] = source_manifest(content['module.R4MF'], template)
     if watcher:
         content['module.R4MF'] = content['module.R4MF'].replace(b'NAME=STHELP', b'NAME=STWATCH').replace(b'APP_CLASS=console', b'APP_CLASS=service')
         content['src/main.zig'] = b'const r4os=@import("r4os"); pub fn r4_app_main(app:*r4os.App)i32{return @import("bootstrap.zig").run(app);}'
@@ -79,6 +108,10 @@ async def build_locked(root, content, files, pins, key, r4os, watcher):
         snapshot, directory = capture(store, job); store.update(job['id'], 'running', source=snapshot, phase='compiling')
         builder = Builder(store, job)
         try: result = await asyncio.wait_for(builder.build(directory), 600)
+        except DevelopmentFault as error:
+            store.update(job['id'], 'failed', error=str(error))
+            raise DevelopmentFault(f'The pinned Studio guest helper {store.project["moduleName"]} could not be built. '
+                                   f'Build {job["id"]} failed. {error}') from error
         except BaseException:
             store.update(job['id'], 'failed', error='The pinned Studio guest helper could not be built.'); raise
         artifact = store.artifact(result['artifactId'])

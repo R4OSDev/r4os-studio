@@ -153,10 +153,9 @@ async def migrate(args):
             planned['newPins'] = value['newPins']; save(journal, state)
             print(json.dumps({'projectId': ident, 'phase': 'qualified'}), flush=True)
         from helper import prepare_helper
-        from profiles import runner
         pins = next(iter(state['projects'].values()))['newPins'] if state['projects'] else None
         if pins is not None:
-            helper = await prepare_helper(original, r4os, runner(), pins)
+            helper = await prepare_helper(original, r4os, pins)
             state['helpers'] = {name: {key: value[key] for key in ('sha256', 'bytes', 'pins')}
                                 for name, value in (('controller', helper), ('watchdog', helper['watchdog']))}
             save(journal, state)

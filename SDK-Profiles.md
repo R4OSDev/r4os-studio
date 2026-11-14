@@ -221,7 +221,10 @@ Global gates remain until the final inventory agrees. A failed or interrupted
 migration stays pending for its original request; no old SDK fallback is chosen.
 
 Private guest helpers derive pins from the accepted project's SDK, including
-its Libraries and native module profile. They use the SDK manifest build driver;
+its Libraries and native Zig application profile. The SDK's verified console
+template supplies the platform import generation for both STHELP and STWATCH.
+Their SDK manifest builds use those imports and include the selected profile in
+the private artifact cache identity. They use the SDK manifest build driver;
 obsolete private direct-build files no longer select an older SDK. R4UPack retains
 the independent Distribution source identity while its SDK source, Zig compiler,
 host profile and optimization come from the selected SDK package. Its actual
