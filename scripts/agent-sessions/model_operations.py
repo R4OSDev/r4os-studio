@@ -166,7 +166,10 @@ class Operations:
             data['error']['category']=getattr(error,'category','interrupted')
             data['error']['details']=getattr(error,'details',None)
             data['error']['partial']=getattr(error,'partial',None)
-            if getattr(error,'stream_interrupted',False): data['error']['earlyStreamInterruption'] = True
+            if getattr(error, 'partial_tool_stream', False):
+                data['error']['pendingToolStreamInterruption'] = True
+            elif getattr(error,'stream_interrupted',False):
+                data['error']['earlyStreamInterruption'] = True
             if getattr(error, 'parser_failure', None):
                 data['error']['parser'] = {**error.parser_failure, 'reason': error.reason}
             proof=getattr(error,'quota_evidence',None)

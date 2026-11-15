@@ -55,6 +55,18 @@ API work and participate in the existing session-scoped deletion.
 
 ## Queue, stop, rotation, deletion and restore
 
+Direct Studio runs can retry a model stream that ends during the arguments of
+a declared local tool. Studio requires a confirmed transport end, a complete
+stream event boundary, and no terminal response or published output. Tool
+arguments from the interrupted response stay in the original stream archive.
+Only a complete response can admit tools.
+
+Studio waits 60 seconds between retries and allows up to five. Each retry
+sends the same request body, including the results of earlier tools. The
+original run, Goal limits and tool receipts are checked again before dispatch.
+The accepted run captures the retry policy. For a model timeout before any
+output, the existing single-retry limit applies.
+
 Accepted input retains its original provider/config/credential/model/thread
 selection. Key/settings changes hold the earlier queue; they do not redirect it
 to new settings. Cancel releases its exact unstarted reservation. Coordinator

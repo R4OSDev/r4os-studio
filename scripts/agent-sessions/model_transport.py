@@ -25,6 +25,13 @@ def timeout_without_output(progress):
             and progress.get('terminalReceived') is False and progress.get('visibleOutput') is False)
 
 
+def stream_with_pending_tool_arguments(progress):
+    status = progress.get('httpStatus') if progress else None
+    return (type(status) is int and 200 <= status < 300
+            and progress.get('pendingToolArguments') is True and progress.get('incompleteEvent') is False
+            and progress.get('terminalReceived') is False and progress.get('visibleOutput') is False)
+
+
 class ModelFault(ProjectFault):
     def __init__(self, code='model_protocol_error', http_status=None, *, not_dispatched=False, details=None,
                  confirmed_overload=False):
@@ -39,6 +46,7 @@ class ModelFault(ProjectFault):
         self.http_status = http_status
         self.not_dispatched=not_dispatched;self.details=details
         self.stream_interrupted = False
+        self.partial_tool_stream = False
         self.transport_timeout = False
         self.confirmed_zai_network_failure = False
         overload = isinstance(code,str) and code in OVERLOAD_CODES and http_status in (None,503,529)
@@ -422,7 +430,7 @@ class ModelTransport:
         return body, self.parser(tools)
 
     async def response(self, messages, instructions, tools, effort='', on_text=None, on_reasoning=None,
-                       *, expected_sha256=None, conversation=False):
+                       *, expected_sha256=None, conversation=False, retry_tool_arguments=False):
         if self.child is not None: raise ModelFault('model_request_busy')
         self.attempted = False; self.request_sha256 = None
         self.stream_progress = None
@@ -452,14 +460,20 @@ class ModelTransport:
                 error.stream_interrupted = (conversation and self.attempted and self.closed_confirmed
                                             and timeout_without_output(self.stream_progress))
             else:
+                error.partial_tool_stream = (conversation and retry_tool_arguments and error.stream_interrupted
+                                             and self.attempted and self.closed_confirmed
+                                             and stream_with_pending_tool_arguments(self.stream_progress))
                 error.stream_interrupted = (error.stream_interrupted and self.closed_confirmed
-                                            and stream_without_output(self.stream_progress))
-            if error.stream_interrupted:
+                                            and (error.partial_tool_stream or stream_without_output(self.stream_progress)))
+            if error.partial_tool_stream:
+                error.args = ('The model stream ended while receiving tool arguments.',)
+            elif error.stream_interrupted:
                 message = ('The model stream timed out before any response content was received.' if error.transport_timeout
                            else 'The model stream ended before any response content was received.')
                 error.args = (message,)
             if self.credential and self.credential in str(error.code):
                 error.code = 'model_provider_error';error.confirmed_overload = False;error.stream_interrupted = False
+                error.partial_tool_stream = False
             elif (self.binding.get('kind') == 'zai-coding-plan' and error.code == '1234'
                   and error.http_status == 500 and self.attempted and not error.not_dispatched
                   and self.closed_confirmed and isinstance(error.details, dict)
@@ -603,7 +617,8 @@ class ModelTransport:
                 terminal_received |= parser_finished(parser)
                 self.stream_progress = {'httpStatus':http_status,'bytesReceived':bytes_received,'eventsParsed':events_parsed,
                     'outputSeen':getattr(parser,'output_seen',None),'incompleteEvent':decoder.incomplete_event,'httpComplete':ended,
-                    'terminalReceived':terminal_received,'visibleOutput':published}
+                    'terminalReceived':terminal_received,'visibleOutput':published,
+                    'pendingToolArguments':rejected is None and getattr(parser,'pending_tool_arguments',False)}
             try:await self.close()
             finally:
                 if self.flush_observer:self.flush_observer()

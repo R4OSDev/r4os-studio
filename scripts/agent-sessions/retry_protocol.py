@@ -6,7 +6,7 @@ FIELDS=('goalRetryProtocol','claudeRetryProtocol','streamRetryProtocol')
 
 def offered(snapshot):
     engine=snapshot['engine']
-    if engine.get('kind')=='studio':return {'streamRetryProtocol':2}
+    if engine.get('kind')=='studio':return {'streamRetryProtocol':3}
     if engine.get('kind')=='claude-code':
         from claude_runtime import profile,text_profile
         pin=profile();runtime=engine.get('claude') or {}
@@ -30,7 +30,7 @@ def freeze(snapshot,original=None):
         if original is not None:
             if field not in original:
                 snapshot.pop(field,None);continue
-            versions=(1,2) if field=='streamRetryProtocol' else (1,)
+            versions=(1,2,3) if field=='streamRetryProtocol' else (1,)
             if (type(original[field]) is not int or original[field] not in versions
                 or available.get(field) not in versions or original[field]>available[field]):
                 raise ProjectFault('The saved retry protocol is unavailable. Preserve the original queue and submit explicitly after review.',409)

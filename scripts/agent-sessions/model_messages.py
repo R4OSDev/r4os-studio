@@ -83,6 +83,19 @@ class Messages:
         self.fragments = {}; self.pending = {}; self.stop_reason = None; self.usage = {}; self.origin = {}; self.extensions = []
         self.output_seen = False
 
+    @property
+    def pending_tool_arguments(self):
+        if self.stop_reason is not None or self.extensions or not (self.fragments.keys() - self.stopped):
+            return False
+        for block in self.blocks.values():
+            if block['type'] in ('thinking', 'redacted_thinking'):
+                continue
+            name = block.get('name')
+            if (block['type'] != 'tool_use' or not valid_call_id(block.get('id'))
+                    or not isinstance(name, str) or self.aliases.get(name, name) not in self.names):
+                return False
+        return True
+
     def push(self, raw):
         if raw == '[DONE]':
             if not self.done: raise ModelFault('model_stream_incomplete')

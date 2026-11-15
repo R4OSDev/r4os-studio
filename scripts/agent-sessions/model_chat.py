@@ -111,6 +111,13 @@ class Chat:
         return bool(self.text or self.pending_surrogate or self.calls or self.strings or self.blocks
                     or self.extensions or self.finish is not None or self.usage is not None)
 
+    @property
+    def pending_tool_arguments(self):
+        return (self.finish is None and self.usage is None
+                and not (self.text or self.pending_surrogate or self.extensions)
+                and any(call['arguments'] for call in self.calls.values())
+                and all(call['name'] in self.names and valid_call_id(call['id']) for call in self.calls.values()))
+
     def reasoning_text(self, key, value):
         text, self.reasoning_pending[key] = response_text(value, self.reasoning_pending.get(key, ''))
         return text

@@ -58,6 +58,7 @@ class ProviderRetry:
         self.w = worker; self.original = None; self.account = None; self.task = None
         self.pending = None; self.state = None; self.attempt = 0; self.sequence = 1
         self.direct_timeout = None
+        self.direct_guard_error = None
         self.direct_limit = MAX_ATTEMPTS
         self.failed_turn = None; self.retry_turn = None; self.deadline = None
         self.progress = False; self.native_retry = False; self.failure = None; self.receipts = None
@@ -76,7 +77,8 @@ class ProviderRetry:
         return bool(goal.execution == execution and goal.active and value
                     and value.get('tokenBudget') is None
                     and (not (getattr(error, 'confirmed_zai_network_failure', False)
-                              or getattr(error, 'transport_timeout', False)) or goal.can_restart_model()))
+                              or getattr(error, 'transport_timeout', False)
+                              or getattr(error, 'partial_tool_stream', False)) or goal.can_restart_model()))
 
     def direct_binding_current(self, error):
         w = self.w
@@ -88,21 +90,28 @@ class ProviderRetry:
                 and all(worker.get(k) == self.original[k] for k in ('pid', 'birth', 'release'))
                 and digest(json.loads(current['config'])) == self.original['configSha256'])
 
-    def timeout_binding_current(self):
+    def guarded_binding_current(self):
         try:
-            return self.direct_binding_current(self.direct_timeout) and self.tool_receipts() == self.receipts
+            return self.direct_binding_current(self.direct_guard_error) and self.tool_receipts() == self.receipts
         except UnconfirmedToolOutcome:
             return False
 
-    async def timeout_dispatch_guard(self):
+    async def direct_dispatch_guard(self):
         from model_transport import ModelFault
         w = self.w
         await w.goal_worker.boundary(allow_play=False)
         if not w.active():
             raise asyncio.CancelledError()
-        if not self.timeout_binding_current():
-            error = ModelFault('model_timeout_retry_unavailable', not_dispatched=True)
-            error.args = ('The model timed out. The retry could no longer be admitted within the original run, tool receipts or Goal limits.',)
+        if not self.guarded_binding_current():
+            if self.direct_timeout is not None:
+                error = ModelFault('model_timeout_retry_unavailable', not_dispatched=True)
+                error.args = ('The model timed out. The retry could no longer be admitted within the original run, tool receipts or Goal limits.',)
+            else:
+                error = ModelFault('model_tool_stream_retry_unavailable', not_dispatched=True)
+                error.args = ('The model stream ended during a tool call. The original run, tool receipts or Goal limits no longer allow the retry.',)
+                self.failure['text'] = str(error)
+                with w.store.db:
+                    self.write('cancelled')
             raise error
         w.validate_lease()
 
@@ -131,10 +140,12 @@ class ProviderRetry:
         confirmed_rejection = overload or zai_network_failure
         interruption = getattr(error,'stream_interrupted',False)
         timeout = interruption and getattr(error, 'transport_timeout', False)
+        partial_tool = interruption and getattr(error, 'partial_tool_stream', False)
+        protocol = w.config.get('streamRetryProtocol')
         unsent = (getattr(error,'not_dispatched',False) and error.http_status is None
                   and isinstance(error.details,dict) and error.details.get('connectionCode')
                   in ('ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN'))
-        if (w.config['engine'].get('kind')!='studio' or w.config.get('streamRetryProtocol')!=2
+        if (w.config['engine'].get('kind')!='studio' or protocol not in (2, 3) or (partial_tool and protocol != 3)
                 or not (confirmed_rejection or unsent or interruption) or not self.direct_goal_allows(error)
                 or not w.model or not w.model.closed_confirmed
                 or self.closed or w.stopping or w.done.is_set() or w.uncertain_effect
@@ -142,7 +153,7 @@ class ProviderRetry:
         self.failure={'text':str(error) if confirmed_rejection or interruption else 'The connection failed before the model request was dispatched.',
                       'httpStatusCode':error.http_status}
         if confirmed_rejection or interruption:
-            from model_transport import stream_without_output, timeout_without_output
+            from model_transport import stream_with_pending_tool_arguments, stream_without_output, timeout_without_output
             request_id = getattr(error,'retry_operation_id',None)
             if not request_id or not w.model.request_sha256: return False
             call, evidence = w.operations.row(request_id)
@@ -158,21 +169,36 @@ class ProviderRetry:
                     or failure.get('httpStatus') != 500): return False
             if interruption:
                 stream = evidence.get('stream')
-                if (call['phase'] != 'unknown' or failure.get('earlyStreamInterruption') is not True
-                        or not stream_without_output(stream)): return False
-                if timeout and (evidence.get('purpose') != 'conversation' or not timeout_without_output(stream)):
+                if call['phase'] != 'unknown':
                     return False
+                if partial_tool:
+                    if (evidence.get('purpose') != 'conversation' or failure.get('pendingToolStreamInterruption') is not True
+                            or not stream_with_pending_tool_arguments(stream)):
+                        return False
+                else:
+                    if failure.get('earlyStreamInterruption') is not True or not stream_without_output(stream):
+                        return False
+                    if timeout and (evidence.get('purpose') != 'conversation' or not timeout_without_output(stream)):
+                        return False
                 self.failure['httpStatusCode'] = stream['httpStatus']
             self.failure['modelRequest']={'id':request_id,'sha256':w.model.request_sha256,'code':error.code}
         if self.attempt>=MAX_ATTEMPTS:
             with w.store.db:self.write('exhausted')
-            if interruption: error.args = ('The model stream ended before any response content after five retry attempts.',)
+            if partial_tool:
+                error.args = ('The model stream ended during a tool call after five retry attempts.',)
+            elif interruption:
+                error.args = ('The model stream ended before any response content after five retry attempts.',)
             return False
-        if timeout:
+        if timeout or partial_tool:
             try:
-                self.receipts = self.tool_receipts()
+                receipts = self.tool_receipts()
             except UnconfirmedToolOutcome:
                 return False
+            if self.direct_guard_error is not None and self.receipts != receipts:
+                return False
+            self.receipts = receipts
+            self.direct_guard_error = error
+        if timeout:
             self.direct_timeout = error
             self.direct_limit = self.attempt + 1
         owner=json.loads(row['worker']);self.original={'owner':{'type':w.store.owner_type,'id':w.store.owner_id},
@@ -184,8 +210,8 @@ class ProviderRetry:
         self.task=asyncio.create_task(asyncio.sleep(DELAY_NS/1_000_000_000))
         try:await self.task
         finally:self.task=None
-        if timeout:
-            if not self.timeout_binding_current():
+        if self.direct_guard_error is not None:
+            if not self.guarded_binding_current():
                 with w.store.db:self.write('cancelled')
                 return False
         elif not self.direct_binding_current(error):
@@ -200,7 +226,9 @@ class ProviderRetry:
                 with self.w.store.db:self.write('completed')
             self.attempt = 0  # The next model request starts a fresh retry budget.
             self.direct_timeout = None
+            self.direct_guard_error = None
             self.direct_limit = MAX_ATTEMPTS
+            self.receipts = None
 
     def eligible(self):
         from image_provider import PROVIDER

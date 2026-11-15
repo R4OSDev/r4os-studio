@@ -66,6 +66,54 @@ class Responses:
         self.pending_text = {}
         self.output_seen = False
         self.local_compaction = local_compaction
+        self._local_tool_prefix = True
+        self._open_tool_items = set()
+        self._tool_argument_deltas = set()
+
+    @property
+    def pending_tool_arguments(self):
+        return self._local_tool_prefix and bool(self._tool_argument_deltas)
+
+    def observe_tool_prefix(self, kind, value, envelope):
+        if not self._local_tool_prefix:
+            return
+        if kind in ('response.created', 'response.in_progress', 'response.metadata'):
+            self._local_tool_prefix = not envelope.get('output') and envelope.get('usage') is None
+            return
+        if isinstance(kind, str) and kind.startswith('response.reasoning_'):
+            return
+        index = value.get('output_index')
+        if kind in ('response.output_item.added', 'response.output_item.done'):
+            item = value.get('item')
+            if isinstance(item, dict) and item.get('type') == 'reasoning':
+                return
+            if (isinstance(item, dict) and item.get('type') == 'function_call'
+                    and type(index) is int and index >= 0 and valid_call_id(item.get('id'))
+                    and valid_call_id(item.get('call_id')) and isinstance(item.get('name'), str)
+                    and item['name'] in self.names
+                    and (self.binding.get('kind') != 'chatgpt-plan' or item.get('namespace') == 'studio')):
+                key = (index, item['id'])
+                if kind == 'response.output_item.done':
+                    self._open_tool_items.discard(key)
+                    self._tool_argument_deltas.discard(key)
+                    return
+                if item.get('status') == 'in_progress' and key not in self._open_tool_items:
+                    self._open_tool_items.add(key)
+                    return
+        if kind in ('response.function_call_arguments.delta', 'response.function_call_arguments.done'):
+            item_id = value.get('item_id')
+            if type(index) is int and isinstance(item_id, str) and (index, item_id) in self._open_tool_items:
+                key = (index, item_id)
+                if kind == 'response.function_call_arguments.done':
+                    self._open_tool_items.discard(key)
+                    self._tool_argument_deltas.discard(key)
+                    return
+                delta = value.get('delta')
+                if isinstance(delta, str):
+                    if delta:
+                        self._tool_argument_deltas.add(key)
+                    return
+        self._local_tool_prefix = False
 
     def push(self, raw):
         if raw == '[DONE]':
@@ -77,6 +125,7 @@ class Responses:
             raise ResponseRejected('model_event_after_finish', 'Responses sent an event after completion.')
         envelope = value.get('response')
         envelope = envelope if isinstance(envelope,dict) else {}
+        self.observe_tool_prefix(kind, value, envelope)
         if envelope.get('output') or envelope.get('usage') is not None:
             self.output_seen = True
         if kind in ('error', 'response.failed', 'response.incomplete'):
