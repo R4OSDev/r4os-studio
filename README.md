@@ -1,3 +1,12 @@
+## Window client coordinates 0.13.16
+
+GUI pointer input uses client pixels with `(0, 0)` at the top-left of the
+window content. Captures show the full VM screen. Convert screen positions
+to client pixels using the observed window. A click must fit within
+`windowObservation.windowWidth` and `windowObservation.windowHeight`.
+The execution handler records a concrete bounds error before guest input.
+The original action receipt remains available for repeated request IDs.
+
 ## Context input limits 0.12.15–17
 
 Global and session settings, complete input checks and native connection limits: [Context input limits](Context-Limits.md).

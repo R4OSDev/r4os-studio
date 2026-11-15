@@ -173,7 +173,10 @@ def runtime_guidance(config, project=None):
                      'Use an owned app frame to verify app behavior.')
     if any(rights.get('studio.' + name) for name in ('send_vm_input', 'control_app_window')):
         text += ('\n\nSTUDIO GUI: Use a fresh focused frame of the owned app for input. Capture a current frame '
-                 'after a view change. Check the original receipt and observe the app after an action.')
+                 'after a view change. Pointer coordinates are window client pixels with (0, 0) at the top-left '
+                 'of the window content. Keep x below windowObservation.windowWidth and y below '
+                 'windowObservation.windowHeight. The capture shows the full VM screen, so convert screen '
+                 'positions to client pixels. Check the original receipt and observe the app after an action.')
     from profile import UPDATE_TOOLS
     catalog = config.get('toolCatalog', {})
     if catalog.get('version') == 2:

@@ -1248,7 +1248,7 @@
     },
     {
       "name": "studio_send_vm_input",
-      "description": "Send terminal text with kind=text or focused GUI input with guiText, key, click, gesture or keyPlan. GUI input needs the current frameId and its action fields.",
+      "description": "Send terminal text with kind=text or focused GUI input with guiText, key, click, gesture or keyPlan. GUI input needs the current frameId and its action fields. Pointer x/y are window client pixels with (0,0) at the top-left of the window content. Use x<windowWidth and y<windowHeight from the frame windowObservation. The capture shows the full VM screen, so convert screen positions to client pixels.",
       "inputSchema": {
         "oneOf": [
           {

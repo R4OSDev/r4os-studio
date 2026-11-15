@@ -233,8 +233,13 @@ class Execution:
                     request['key'] = gui_key(value['key'],editor_shortcuts=shortcut); expected = repeat
                     if deployment.get('helperCapabilities', {}).get('guiInputVersion') == 2: request['keyRepeat'] = repeat
                 else:
-                    if any(type(value[k]) is not int or not 0 <= value[k] <= 1279 for k in ('x', 'y')):
-                        raise DevelopmentFault('Invalid client coordinates.', 400)
+                    width, height = state['windowWidth'], state['windowHeight']
+                    if (type(value['x']) is not int or type(value['y']) is not int
+                            or not 0 <= value['x'] < width or not 0 <= value['y'] < height):
+                        raise DevelopmentFault(
+                            f"GUI click ({value['x']}, {value['y']}) is outside the {width} × {height} window client area. "
+                            f"Use integer client pixels x=0..{width - 1} and y=0..{height - 1} with (0, 0) at the "
+                            f"top-left of the window content in frame {value['frameId']}. The capture shows the full VM screen.", 400)
                     request.update(x=value['x'], y=value['y'])
                     expected = 2
             guard(self.store, self.job, lease)
