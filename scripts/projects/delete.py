@@ -13,6 +13,7 @@ import sys
 from store import connect, ProjectFault
 from layout import folder, sync
 from project_use import acquire, project_id
+from development_units import job_units
 
 AGENT_RUNTIME = Path('/run/r4os-studio-agents')
 DEVELOPMENT_RUNTIME = Path('/run/r4os-studio-development')
@@ -37,7 +38,7 @@ def rows(path, table, columns='*'):
 
 def worker_check(runs, jobs, action='deleting'):
     units = ['r4os-studio-agent@' + value + '.service' for value in runs]
-    units += [('r4os-studio-development-ssh@' if kind == 'ssh' else 'r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + value + '.service' for value, kind in jobs.items()]
+    units.extend(unit for job_id, kind in jobs.items() for unit in job_units(job_id, kind))
     for start in range(0, len(units), 128):
         result = subprocess.run(['/usr/bin/systemctl', 'show', *units[start:start+128], '--property=ActiveState', '--value'],
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=False)

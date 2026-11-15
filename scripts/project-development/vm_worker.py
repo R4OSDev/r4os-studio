@@ -246,10 +246,14 @@ async def main():
     except BaseException as error:
         message = str(error) if isinstance(error, DevelopmentFault) else ('The VM lifecycle wait ended. Inspect its saved phases and original power receipts; nothing was repeated.' if job['kind'] in ('vm_stop','vm_restart') else 'The VM operation did not complete. Inspect its preserved transfer receipts before retrying.')
         uncertain = bool(getattr(error, 'uncertain', False))
+        phase = 'stopped' if interrupted else 'failed'
         if job['kind'] in ('vm_stop','vm_restart'):
             from vm_lifecycle import interrupted_effect,quarantine_unknown
             uncertain=uncertain or interrupted_effect(store,job)
-            if uncertain:quarantine_unknown(store,job,message)
+            if uncertain:
+                quarantine_unknown(store,job,message)
+                lifecycle = store.get(job['id']).get('vmLifecycle') or {}
+                phase = lifecycle.get('phase') or phase
         state = 'unknown' if uncertain else ('interrupted' if interrupted else 'failed')
         if job['kind'] == 'execution':
             from checks import evaluate
@@ -264,7 +268,7 @@ async def main():
         readiness = store.get(job['id']).get('readiness')
         if job['kind'] == 'execution' and (not readiness or readiness.get('state') != 'unsupported'):
             readiness = {'state': state, 'checkedAt': now(), 'reason': message}
-        store.update(job['id'], state, readiness=readiness, phase='stopped' if interrupted else 'failed', error=message,
+        store.update(job['id'], state, readiness=readiness, phase=phase, error=message,
                      reasonCode=getattr(error, 'reason_code', None),
                      nextStep={'vm_start_required': 'Start the assigned VM with its permitted VM-start tool, or use Virtual Machines, then deploy again.',
                          'exchange_worker_upgrade_required': 'Stop and start the assigned VM in Virtual Machines to adopt its current Exchange worker, then deploy again.',

@@ -11,6 +11,8 @@ import subprocess
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from service_runtime import root_service
+from projects.development_units import LIFECYCLE_UNIT
+from lifecycle_unit import render
 
 def main():
     if os.geteuid() != 0: raise SystemExit('Run the development host installer as root.')
@@ -38,6 +40,7 @@ def main():
     Path('/etc/systemd/system/r4os-studio-development@.service').write_text(root_service(worker))
     vm_worker = worker.replace('Description=R4OS Studio development job %i', 'Description=R4OS Studio VM development job %i')
     Path('/etc/systemd/system/r4os-studio-development-vm@.service').write_text(root_service(vm_worker))
+    (Path('/etc/systemd/system') / LIFECYCLE_UNIT.format('')).write_text(root_service(render(vm_worker)))
     agent_dropin = Path('/etc/systemd/system/r4os-studio-agent@.service.d')
     agent_dropin.mkdir(exist_ok=True)
     (agent_dropin / '51-development.conf').write_text('[Service]\n')

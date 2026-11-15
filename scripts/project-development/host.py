@@ -15,17 +15,10 @@ from coordinator_work import ReadWork
 
 from contracts import APP, ACTIVE, DevelopmentFault, UnconfirmedGuestEffect, LIMITS, encode, identity, protocol
 from jobs import Jobs, folder
+from development_units import LIFECYCLE_KINDS, UNIT_PATTERNS, job_unit, job_units
 from layout import save
 from profiles import eligible
 from store import ProjectFault, connect
-
-UNIT = 'r4os-studio-development@{}.service'
-VM_UNIT = 'r4os-studio-development-vm@{}.service'
-SSH_UNIT = 'r4os-studio-development-ssh@{}.service'
-
-
-def job_unit(job_id, kind='build'): return (SSH_UNIT if kind == 'ssh' else UNIT if kind in ('build', 'package') else VM_UNIT).format(identity(job_id))
-
 
 async def systemctl(*args):
     process = await asyncio.create_subprocess_exec('/usr/bin/systemctl', '--no-ask-password', *args,
@@ -68,8 +61,19 @@ class Host:
             raise DevelopmentFault('Unsupported local read.',400)
         finally:store.close()
 
+    async def active_unit(self, job_id, kind):
+        units = job_units(identity(job_id), kind)
+        states = (await systemctl('show', *units, '--property=ActiveState', '--value')).split()
+        if len(states) != len(units):
+            raise DevelopmentFault('The original development worker status is unavailable.', 503)
+        active = [unit for unit, state in zip(units, states)
+                  if state in ('active', 'activating', 'deactivating', 'reloading')]
+        if len(active) > 1:
+            raise DevelopmentFault('Multiple worker units claim the original development job.', 503)
+        return active[0] if active else None
+
     async def alive(self, job_id, kind='build'):
-        return await systemctl('show', job_unit(job_id, kind), '--property=ActiveState', '--value') in ('active', 'activating', 'deactivating', 'reloading')
+        return bool(await self.active_unit(job_id, kind))
 
     def metadata(self, path):
         if path.resolve(strict=True) != path.absolute(): raise ValueError('Invalid worker metadata.')
@@ -120,10 +124,10 @@ class Host:
             try: store.update(job_id, 'unknown', phase='recovery', error='The worker ended without a confirmed result. It was not restarted.')
             finally: store.close()
             self.active.pop(job_id, None)
-        raw = await systemctl('list-units', '--all', '--state=active,activating,deactivating,reloading', '--plain', '--no-legend', '--no-pager', 'r4os-studio-development@*.service', 'r4os-studio-development-vm@*.service', 'r4os-studio-development-ssh@*.service')
+        raw = await systemctl('list-units', '--all', '--state=active,activating,deactivating,reloading', '--plain', '--no-legend', '--no-pager', *UNIT_PATTERNS)
         units = set()
         for line in raw.splitlines():
-            match = re.match(r'^r4os-studio-development(?:-vm|-ssh)?@([a-f0-9-]{36})\.service\s', line.strip())
+            match = re.match(r'^r4os-studio-development(?:-vm|-ssh|-lifecycle)?@([a-f0-9-]{36})\.service\s', line.strip())
             if match: units.add(identity(match[1]))
         self.unbound = units - set(self.active)
 
@@ -460,8 +464,9 @@ class Host:
                 for row in store.db.execute('SELECT payload FROM jobs WHERE busy=1').fetchall():
                     job = json.loads(row[0])
                     if job.get('agentRunId') == owner['agentRunId'] and job.get('sessionId') == owner['sessionId']:
+                        unit = await self.active_unit(job['id'], job['kind']) or job_unit(job['id'], job['kind'])
                         store.update(job['id'], 'stopping', phase='stopping')
-                        await systemctl('stop', '--no-block', job_unit(job['id'], job['kind'])); stopped.append(job['id'])
+                        await systemctl('stop', '--no-block', unit); stopped.append(job['id'])
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
             if op == 'session_jobs':
@@ -642,10 +647,11 @@ class Host:
                 if op == 'stop_job':
                     job_id = identity(request['id']); job = store.get(job_id)
                     if owner is not None: authorize(store, owner, op, peer_pid, job)
-                    requested = job['state'] in ACTIVE or await self.alive(job_id, job['kind'])
+                    active_unit = await self.active_unit(job_id, job['kind'])
+                    requested = job['state'] in ACTIVE or bool(active_unit)
                     if requested:
                         store.update(job_id, 'stopping', phase='stopping')
-                        try: await systemctl('stop', job_unit(job_id, job['kind']))
+                        try: await systemctl('stop', active_unit or job_unit(job_id, job['kind']))
                         except (DevelopmentFault, asyncio.TimeoutError, OSError) as error:
                             raise UnconfirmedGuestEffect('The Stop command has no confirmed worker receipt. Inspect the original job; it was not repeated.') from error
                         if store.get(job_id)['state'] in ACTIVE:
@@ -665,10 +671,13 @@ class Host:
                         target = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if not (target / 'scripts/project-development/vm_observation.py').is_file():
                             raise DevelopmentFault('Adopt the current VM observation worker before accepting a capture.', 503)
-                    if op in ('vm_stop','vm_restart'):
+                    if op in LIFECYCLE_KINDS:
                         target=Path(self.config.get('workerReleaseRoot','/opt/r4os-studio/current')).resolve(strict=True)
                         if not (target/'scripts/project-development/vm_lifecycle.py').is_file():
                             raise DevelopmentFault('Adopt the compatible VM lifecycle worker before accepting this action.',503)
+                        unit = job_unit(identity(request['input'].get('requestId')), op)
+                        if await systemctl('show', unit, '--property=LoadState', '--value') != 'loaded':
+                            raise DevelopmentFault('Install VM lifecycle worker host support before starting this action.', 503)
                     if op == 'ssh':
                         from project_ssh import supported, command
                         if not supported(): raise DevelopmentFault('Project SSH worker host maintenance is required.', 503)
@@ -717,10 +726,9 @@ class Host:
                     if op not in ('vm_stop', 'observation') and not hard_reset:
                         status = self.access.public(binding['id'])
                         if not status['available']: raise DevelopmentFault(status['reason'])
-                    if op in ('vm_stop','vm_restart') and not hard_reset:
-                        from quarantine import path as quarantine_path
-                        if quarantine_path(self.config['projects'],binding['id']).exists():
-                            raise DevelopmentFault('Resolve the original unconfirmed guest effect before a VM lifecycle action.')
+                    if op in LIFECYCLE_KINDS and not hard_reset:
+                        from quarantine import require_clear
+                        require_clear(self.config['projects'], binding['id'])
                     if hard_reset:
                         from vm_lifecycle import validate_reset_input
                         validate_reset_input(store, request['input'])

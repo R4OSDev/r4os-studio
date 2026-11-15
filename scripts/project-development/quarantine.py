@@ -7,6 +7,7 @@ from pathlib import Path
 from contracts import DevelopmentFault, identity
 from jobs import folder, now
 from layout import save
+from development_units import LIFECYCLE_KINDS
 
 
 def path(projects, vm_id):
@@ -34,6 +35,24 @@ def archive(file, value, resolution, **proof):
     file.unlink()
 
 
+def recovery_fault(value, fallback):
+    if value.get('kind') not in LIFECYCLE_KINDS:
+        return DevelopmentFault(fallback)
+    operation = 'restart' if value['kind'] == 'vm_restart' else 'stop'
+    phase = value.get('phase') or 'unknown'
+    job = identity(value.get('jobId'))
+    return DevelopmentFault(f'VM {operation} job {job} has an unconfirmed outcome in phase {phase}. '
+                            'For a running VM, use System → Virtual Machines → Restart. '
+                            'Confirm the new boot and check SSH access before continuing.',
+                            reason_code='vm_lifecycle_recovery_required')
+
+
+def require_clear(projects, vm_id):
+    value = read(path(projects, vm_id))
+    if value is not None:
+        raise recovery_fault(value, 'Resolve the original unconfirmed guest effect before a VM lifecycle action.')
+
+
 def admission(projects, vm_id, state):
     file = path(projects, vm_id)
     if not file.exists() and not file.is_symlink(): return
@@ -43,7 +62,7 @@ def admission(projects, vm_id, state):
         if state == 'stopped':
             archive(file, value, 'VM confirmed stopped; no guest action replayed')
             return
-        raise DevelopmentFault('A previous execution has no confirmed cleanup receipt. Reconcile it or explicitly stop the assigned VM before another development job.')
+        raise recovery_fault(value, 'A previous execution has no confirmed cleanup receipt. Reconcile it or explicitly stop the assigned VM before another development job.')
 
 
 def claim(projects, vm_id, value):

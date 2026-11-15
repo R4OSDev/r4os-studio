@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from contracts import DevelopmentFault,UnconfirmedGuestEffect,LIMITS,identity
 from jobs import Jobs,folder,now
 from layout import save
+from development_units import LIFECYCLE_KINDS as KINDS
 
-KINDS=('vm_stop','vm_restart')
 RESET_CONFIRM_SECONDS = 20
 
 
@@ -51,9 +51,9 @@ def validate_lease(projects,lease,cleanup=False,*,check_vm_metadata=True):
                 raise DevelopmentFault('The original VM image or settings revision changed.')
         from update_state import idle
         idle(projects,lease['vmId'])
-        from quarantine import path
-        if not job.get('hardReset') and path(projects,lease['vmId']).exists():
-            raise DevelopmentFault('Resolve the original unconfirmed guest effect before a VM power action.')
+        from quarantine import require_clear
+        if not job.get('hardReset'):
+            require_clear(projects, lease['vmId'])
         value=job.get('vmLifecycle') or {'phase':'preparing',**({'hardReset':True} if job.get('hardReset') else {})}
         if kind=='vm_restart' and 'accessRevision' in value:
             from access import Access,transport_profile
@@ -119,11 +119,11 @@ class VmLifecycle:
     async def run_reserved(self,lease,scope):
         from vm_worker import guard,broker_call
         from vm_client import vm_call
-        from quarantine import path
+        from quarantine import require_clear
         store,job=self.store,self.job;vm=job['binding']
         guard(store,job,lease)
         if job.get('hardReset'): return await self.hard_reset(lease)
-        if path(store.projects,vm['id']).exists():raise DevelopmentFault('Resolve the original unconfirmed guest effect before controlling this VM.')
+        require_clear(store.projects, vm['id'])
         info=await vm_call(lease,'lifecycle_info')
         if info['fullyStopped']:
             if job['kind']=='vm_restart':raise DevelopmentFault('The assigned VM is stopped. Use Start project VM instead of Restart.')

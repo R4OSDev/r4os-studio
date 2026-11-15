@@ -17,6 +17,7 @@ from skill_lifecycle import api as lifecycle
 from stats_store import Source, hashed, scope as statistic_scope
 from stats_lifecycle import preserve_pending
 from store import ProjectFault
+from development_units import job_units
 
 READ_ONLY = {'studio_list_directory','studio_read_file','studio_search','studio_read_attachment',
     'studio_read_development_job','studio_get_remote_host','studio_read_remote_job',
@@ -196,10 +197,7 @@ async def inspect(host, store, sid, *, preserve_history=False):
                 blockers.append('Pause or stop the Goal and confirm its original receipt first.')
     if preserve_history: blockers.extend(history_blockers(store,sid))
     additional, jobs = external(store, sid); blockers.extend(additional)
-    units=[]
-    for job_id, kind in jobs.items():
-        unit = ('r4os-studio-development-ssh@' if kind == 'ssh' else 'r4os-studio-development@' if kind in ('build','package') else 'r4os-studio-development-vm@') + job_id + '.service'
-        units.append(unit)
+    units = [unit for job_id, kind in jobs.items() for unit in job_units(job_id, kind)]
     if await unit_states(units): blockers.append('An original development worker unit is still active.')
     path = store.directory / sid; device = inode = 0
     if path.exists() or path.is_symlink():
