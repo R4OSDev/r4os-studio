@@ -22,7 +22,7 @@ function RetryStatus({ retry }: { retry: ProviderRetry }) {
     : `Checking original admission for attempt ${retry.nextAttempt}/${retry.maxAttempts}…`;
   else if (retry.state === 'submitting') detail = `Starting attempt ${retry.attempt}/${retry.maxAttempts}…`;
   else if (retry.state === 'continuing') detail = `Continuing · attempt ${retry.attempt}/${retry.maxAttempts}.`;
-  else if (retry.state === 'exhausted') detail = 'Automatic continuation stopped after five attempts. Send or Play explicitly to continue.';
+  else if (retry.state === 'exhausted') detail = `Automatic continuation stopped after ${retry.maxAttempts} ${retry.maxAttempts === 1 ? 'attempt' : 'attempts'}. Use Send or Start to continue.`;
   else if (retry.state === 'unknown') detail = 'The original continuation is unconfirmed. Review its retained result before continuing.';
   else detail = 'Automatic continuation ended. Review the original run before continuing.';
   return <div className="agent-provider-retry" role="status" aria-live="polite">

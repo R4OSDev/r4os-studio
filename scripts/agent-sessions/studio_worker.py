@@ -335,6 +335,8 @@ class StudioWorker(Worker):
                 raise ModelFault('model_restart_goal_unavailable', not_dispatched=True)
 
         self.model.dispatch_guard = restart_guard if parser_restart_of else None
+        if expected_sha256 and self.provider_retry.direct_timeout is not None:
+            self.model.dispatch_guard = self.provider_retry.timeout_dispatch_guard
         effort = summary['effort'] if summary else self.config['effort']
         self.operation = asyncio.create_task(self.model.response(messages, instructions, tools, effort,
             on_text=on_text, expected_sha256=expected_sha256, conversation=purpose == 'conversation'))

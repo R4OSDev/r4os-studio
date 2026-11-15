@@ -20,6 +20,11 @@ def stream_without_output(progress):
             and progress.get('outputSeen') is False and progress.get('incompleteEvent') is False)
 
 
+def timeout_without_output(progress):
+    return (stream_without_output(progress) and progress.get('httpComplete') is False
+            and progress.get('terminalReceived') is False and progress.get('visibleOutput') is False)
+
+
 class ModelFault(ProjectFault):
     def __init__(self, code='model_protocol_error', http_status=None, *, not_dispatched=False, details=None,
                  confirmed_overload=False):
@@ -27,11 +32,14 @@ class ModelFault(ProjectFault):
                     403: 'The account cannot access the selected model.', 404: 'The selected model or API route was not found.',
                     429: 'The model service is rate or usage limited.'}
         message = messages.get(http_status, 'The model response could not be confirmed. It was not repeated.')
+        if code == 'model_transport_timeout' and http_status is None:
+            message = 'The model transport timed out.'
         super().__init__(message, 503)
         self.code = code
         self.http_status = http_status
         self.not_dispatched=not_dispatched;self.details=details
         self.stream_interrupted = False
+        self.transport_timeout = False
         self.confirmed_zai_network_failure = False
         overload = isinstance(code,str) and code in OVERLOAD_CODES and http_status in (None,503,529)
         self.confirmed_overload = confirmed_overload is True and overload and not not_dispatched
@@ -440,10 +448,16 @@ class ModelTransport:
             if not getattr(error, 'partial', None):
                 error.partial={'origin':getattr(parser,'origin',None),
                                'usage':None if getattr(error,'usage_unconfirmed',False) else getattr(parser,'usage',None)}
-            error.stream_interrupted = (error.stream_interrupted and self.closed_confirmed
-                                        and stream_without_output(self.stream_progress))
+            if error.transport_timeout:
+                error.stream_interrupted = (conversation and self.attempted and self.closed_confirmed
+                                            and timeout_without_output(self.stream_progress))
+            else:
+                error.stream_interrupted = (error.stream_interrupted and self.closed_confirmed
+                                            and stream_without_output(self.stream_progress))
             if error.stream_interrupted:
-                error.args = ('The model stream ended before any response content was received.',)
+                message = ('The model stream timed out before any response content was received.' if error.transport_timeout
+                           else 'The model stream ended before any response content was received.')
+                error.args = (message,)
             if self.credential and self.credential in str(error.code):
                 error.code = 'model_provider_error';error.confirmed_overload = False;error.stream_interrupted = False
             elif (self.binding.get('kind') == 'zai-coding-plan' and error.code == '1234'
@@ -521,6 +535,7 @@ class ModelTransport:
                     error = ModelFault(code, status, not_dispatched=frame.get('notDispatched') is True, details=details,
                         confirmed_overload=status in (503,529) and isinstance(details,dict)
                         and details.get('httpResponseComplete') is True)
+                    error.transport_timeout = code == 'model_transport_timeout' and status is None
                     error.stream_interrupted = code == 'model_stream_incomplete' or (
                         code == 'model_connection_error' and isinstance(details,dict) and details.get('connectionCode') == 'ECONNRESET')
                     if (self.binding.get('kind') == 'zai-coding-plan' and frame.get('httpStatus') == 400 and str(code) == '1261'

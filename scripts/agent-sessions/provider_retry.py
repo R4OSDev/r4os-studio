@@ -47,8 +47,9 @@ def snapshot(store, run):
                 remaining = max(0, (value['deadlineNs'] - time.monotonic_ns()) // 1_000_000)
         except (OSError, ValueError, TypeError, KeyError):
             state = 'unknown'
-    return {'state': state, 'sequence': row['sequence'], 'attempt': row['attempt'], 'maxAttempts': MAX_ATTEMPTS,
-            'nextAttempt': min(MAX_ATTEMPTS, row['attempt'] + 1), 'remainingMs': remaining,
+    limit = value.get('maxAttempts', MAX_ATTEMPTS)
+    return {'state': state, 'sequence': row['sequence'], 'attempt': row['attempt'], 'maxAttempts': limit,
+            'nextAttempt': min(limit, row['attempt'] + 1), 'remainingMs': remaining,
             'error': value['error'], 'httpStatusCode': value['httpStatusCode'], 'sampledAt': now()}
 
 
@@ -56,6 +57,8 @@ class ProviderRetry:
     def __init__(self, worker):
         self.w = worker; self.original = None; self.account = None; self.task = None
         self.pending = None; self.state = None; self.attempt = 0; self.sequence = 1
+        self.direct_timeout = None
+        self.direct_limit = MAX_ATTEMPTS
         self.failed_turn = None; self.retry_turn = None; self.deadline = None
         self.progress = False; self.native_retry = False; self.failure = None; self.receipts = None
         self.saved_live_open = False; self.closed = False
@@ -72,15 +75,62 @@ class ProviderRetry:
         # Failed requests can leave the Goal's usage unknown.
         return bool(goal.execution == execution and goal.active and value
                     and value.get('tokenBudget') is None
-                    and (not getattr(error, 'confirmed_zai_network_failure', False) or goal.can_restart_model()))
+                    and (not (getattr(error, 'confirmed_zai_network_failure', False)
+                              or getattr(error, 'transport_timeout', False)) or goal.can_restart_model()))
+
+    def direct_binding_current(self, error):
+        w = self.w
+        current = get_run(w.store, w.run_id)
+        worker = json.loads(current['worker'] or '{}')
+        return (not (w.stopping or w.done.is_set() or self.closed or w.uncertain_effect)
+                and current['busy'] and current['state'] == 'running' and current['turn_id'] == self.failed_turn
+                and self.direct_goal_allows(error)
+                and all(worker.get(k) == self.original[k] for k in ('pid', 'birth', 'release'))
+                and digest(json.loads(current['config'])) == self.original['configSha256'])
+
+    def timeout_binding_current(self):
+        try:
+            return self.direct_binding_current(self.direct_timeout) and self.tool_receipts() == self.receipts
+        except UnconfirmedToolOutcome:
+            return False
+
+    async def timeout_dispatch_guard(self):
+        from model_transport import ModelFault
+        w = self.w
+        await w.goal_worker.boundary(allow_play=False)
+        if not w.active():
+            raise asyncio.CancelledError()
+        if not self.timeout_binding_current():
+            error = ModelFault('model_timeout_retry_unavailable', not_dispatched=True)
+            error.args = ('The model timed out. The retry could no longer be admitted within the original run, tool receipts or Goal limits.',)
+            raise error
+        w.validate_lease()
+
+    def timeout_end(self, error):
+        w = self.w
+        if error.code == 'model_transport_timeout':
+            confirmed = w.store.db.execute('''SELECT r.seq FROM studio_requests r
+                JOIN studio_model_calls c ON c.run_id=r.run_id AND c.request_id=r.request_id
+                WHERE r.session_id=? AND c.phase='completed' AND json_extract(c.data,'$.purpose')='conversation'
+                ORDER BY r.seq DESC LIMIT 1''', (w.session_id,)).fetchone()
+            point = (f' Continue from confirmed request #{confirmed[0]} and the saved tool results.' if confirmed
+                     else ' Continue from the saved input in this session.')
+            error.args = ('The model transport timed out again during its single retry.' + point,)
+        self.failure['text'] = str(error)
+        with w.store.db:
+            self.write('cancelled' if error.not_dispatched else 'exhausted')
 
     async def direct(self,error):
         """Repeat the original model input after a qualified transport failure."""
         w=self.w;row=get_run(w.store,w.run_id)
+        if self.direct_timeout is not None:
+            self.timeout_end(error)
+            return False
         overload = getattr(error,'confirmed_overload',False)
         zai_network_failure = getattr(error, 'confirmed_zai_network_failure', False)
         confirmed_rejection = overload or zai_network_failure
         interruption = getattr(error,'stream_interrupted',False)
+        timeout = interruption and getattr(error, 'transport_timeout', False)
         unsent = (getattr(error,'not_dispatched',False) and error.http_status is None
                   and isinstance(error.details,dict) and error.details.get('connectionCode')
                   in ('ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN'))
@@ -92,7 +142,7 @@ class ProviderRetry:
         self.failure={'text':str(error) if confirmed_rejection or interruption else 'The connection failed before the model request was dispatched.',
                       'httpStatusCode':error.http_status}
         if confirmed_rejection or interruption:
-            from model_transport import stream_without_output
+            from model_transport import stream_without_output, timeout_without_output
             request_id = getattr(error,'retry_operation_id',None)
             if not request_id or not w.model.request_sha256: return False
             call, evidence = w.operations.row(request_id)
@@ -110,12 +160,21 @@ class ProviderRetry:
                 stream = evidence.get('stream')
                 if (call['phase'] != 'unknown' or failure.get('earlyStreamInterruption') is not True
                         or not stream_without_output(stream)): return False
+                if timeout and (evidence.get('purpose') != 'conversation' or not timeout_without_output(stream)):
+                    return False
                 self.failure['httpStatusCode'] = stream['httpStatus']
             self.failure['modelRequest']={'id':request_id,'sha256':w.model.request_sha256,'code':error.code}
         if self.attempt>=MAX_ATTEMPTS:
             with w.store.db:self.write('exhausted')
             if interruption: error.args = ('The model stream ended before any response content after five retry attempts.',)
             return False
+        if timeout:
+            try:
+                self.receipts = self.tool_receipts()
+            except UnconfirmedToolOutcome:
+                return False
+            self.direct_timeout = error
+            self.direct_limit = self.attempt + 1
         owner=json.loads(row['worker']);self.original={'owner':{'type':w.store.owner_type,'id':w.store.owner_id},
             'sessionId':w.session_id,'runId':w.run_id,'requestId':row['request_id'],'inputSha256':row['payload_hash'],
             'configSha256':digest(w.config),'threadId':w.thread_id,'release':w.manifest['release'],
@@ -125,13 +184,12 @@ class ProviderRetry:
         self.task=asyncio.create_task(asyncio.sleep(DELAY_NS/1_000_000_000))
         try:await self.task
         finally:self.task=None
-        current=get_run(w.store,w.run_id)
-        worker=json.loads(current['worker'] or '{}')
-        if (w.stopping or w.done.is_set() or self.closed or w.uncertain_effect
-                or not current['busy'] or current['state']!='running' or current['turn_id']!=self.failed_turn
-                or not self.direct_goal_allows(error)
-                or any(worker.get(k)!=self.original[k] for k in ('pid','birth','release'))
-                or digest(json.loads(current['config']))!=self.original['configSha256']):return False
+        if timeout:
+            if not self.timeout_binding_current():
+                with w.store.db:self.write('cancelled')
+                return False
+        elif not self.direct_binding_current(error):
+            return False
         w.validate_lease();self.attempt+=1;self.sequence+=1;self.retry_turn=w.turn_id
         with w.store.db:self.write('continuing')
         return True
@@ -141,6 +199,8 @@ class ProviderRetry:
             if self.state=='continuing':
                 with self.w.store.db:self.write('completed')
             self.attempt = 0  # The next model request starts a fresh retry budget.
+            self.direct_timeout = None
+            self.direct_limit = MAX_ATTEMPTS
 
     def eligible(self):
         from image_provider import PROVIDER
@@ -205,9 +265,16 @@ class ProviderRetry:
                 current = projects.execute("SELECT pins FROM projects WHERE id=? AND state='ready'", (w.store.owner_id,)).fetchone()
                 if not current or json.loads(current[0]) != w.config['projectPins']:
                     raise ValueError('Project pins changed')
+        return self.tool_receipts()
+
+    def tool_receipts(self):
+        w = self.w
         hashed = hashlib.sha256()
-        for receipt in db.execute('SELECT call_id,tool,arguments_hash,state,result FROM tools WHERE run_id=? ORDER BY call_id', (w.run_id,)):
-            result = json.loads(receipt['result']) if receipt['result'] else None
+        for receipt in w.store.db.execute('SELECT call_id,tool,arguments_hash,state,result FROM tools WHERE run_id=? ORDER BY call_id', (w.run_id,)):
+            try:
+                result = json.loads(receipt['result']) if receipt['result'] else None
+            except ValueError:
+                raise UnconfirmedToolOutcome('Tool result cannot be read') from None
             if (receipt['state'] not in ('completed', 'failed') or not isinstance(result, dict)
                     or type(result.get('success')) is not bool or result.get('error') == 'unknown'
                     or result.get('partialChangesPossible') is True):
@@ -220,6 +287,8 @@ class ProviderRetry:
         payload = {'binding': self.original, 'failedTurnId': self.failed_turn, 'retryTurnId': self.retry_turn,
                    'toolReceiptsSha256': self.receipts, 'deadlineNs': self.deadline,
                    'error': self.failure['text'], 'httpStatusCode': self.failure['httpStatusCode']}
+        if self.direct_timeout is not None:
+            payload['maxAttempts'] = self.direct_limit
         if 'modelRequest' in self.failure:
             payload['modelRequest'] = self.failure['modelRequest']
         if self.goal_mode:
