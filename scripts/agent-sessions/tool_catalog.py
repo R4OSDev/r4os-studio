@@ -209,7 +209,13 @@ def specifications(scope='project'):
 
 
 def native_specifications(scope='project'):
-    return [t for t in specifications(scope) if t['name'] != 'studio_generate_image' and t['name'][7:] not in ((*WEB_TOOLS,) if isinstance(scope,dict) and scope.get('goalKeepalive') else (*GOAL_TOOLS,*WEB_TOOLS))]
+    hidden = {*WEB_TOOLS}
+    if not isinstance(scope, dict) or not scope.get('goalKeepalive'):
+        hidden.add('update_goal')
+        if not isinstance(scope, dict) or not scope.get('goalKeepaliveControl'):
+            hidden.add('get_goal')
+    return [tool for tool in specifications(scope)
+            if tool['name'] != 'studio_generate_image' and tool['name'][7:] not in hidden]
 
 
 def tools_for(scope='project'):

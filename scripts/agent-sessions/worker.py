@@ -190,6 +190,9 @@ class Worker:
 
     async def execute(self, name, arguments, call_id):
         if self.keepalive_goal and name in ('get_goal','update_goal'):return await self.keepalive_goal.tool(name,arguments)
+        if name == 'get_goal' and self.config.get('goalKeepaliveControl'):
+            from goal_reporting import read
+            return read(self)
         if name in ('skill_discover','skill_call','read_skill_result'):
             return await self.skill_mcp.call(name,arguments,call_id)
         if name=='generate_image':
@@ -343,6 +346,7 @@ class Worker:
             result = {'success': False, 'error': 'disabled', 'output': roadmap_denial}
         elif (name[7:] not in (*ROADMAP_TOOLS,*NOTE_TOOLS,*WEB_TOOLS)
                 and not ((self.config['engine'].get('kind')=='studio' or self.config.get('goalKeepalive')) and name[7:] in __import__('tool_catalog').GOAL_TOOLS)
+                and not (name == 'studio_get_goal' and self.config.get('goalKeepaliveControl'))
                 and not self.config['permissions'].get(tool_id, False)):
             result = {'success': False, 'error': 'disabled', 'output': 'This tool call is disabled in session settings.'}
         else:

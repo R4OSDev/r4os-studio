@@ -8564,7 +8564,7 @@
     },
     {
       "name": "studio_get_goal",
-      "description": "Read this Studio conversation’s current Goal, original Play and measured budget state. Reading does not activate or resume work.",
+      "description": "Read the current Goal and measured budget. canReportStatus and its reason describe whether this calling run can submit a status report.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -10179,7 +10179,7 @@
     },
     {
       "name": "studio_get_goal",
-      "description": "Read this Studio conversation’s current Goal, original Play and measured budget state. Reading does not activate or resume work.",
+      "description": "Read the current Goal and measured budget. canReportStatus and its reason describe whether this calling run can submit a status report.",
       "inputSchema": {
         "type": "object",
         "properties": {},

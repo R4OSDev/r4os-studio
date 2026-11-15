@@ -219,7 +219,7 @@ class StudioGoal:
         self.charged.add(request_id);value['tokensUsed']=None
         self.goals.observe(self.w.session_id,self.w.thread_id,value,self.w.run_id)
 
-    async def pause(self,origin='automatic',status='paused',reason=None):
+    async def pause(self,origin='automatic',status='paused',reason=None,authorize=None):
         if not self.execution:return True
         value=self.current()
         if not value or value['goalId']!=self.goal_id:return True
@@ -230,15 +230,14 @@ class StudioGoal:
         value['updatedAt']=int(time.time())
         phase='unknown' if self.w.uncertain_effect else 'idle'
         if self.w.uncertain_effect:value['status']='paused'
-        self.goals.observe(self.w.session_id,self.w.thread_id,value,self.w.run_id,phase=phase)
-        if reason:
-            with self.w.store.db:
-                self.w.store.db.execute('UPDATE session_goals SET reason=? WHERE session_id=?',(reason,self.w.session_id));self.goals.publish(self.w.session_id)
+        self.goals.observe(self.w.session_id,self.w.thread_id,value,self.w.run_id,phase=phase,authorize=authorize,reason=reason)
         return not self.w.uncertain_effect
 
     async def tool(self,name,arguments):
-        if name=='get_goal':return {'success':True,'output':encode(self.goals.snapshot(self.w.session_id))}
-        if not self.active:return {'success':False,'error':'notActive','output':'Only an explicitly activated original Play can change its Goal.'}
+        from goal_reporting import denied, state
+        permission = state(self.w, execution=self.execution, goal_id=self.goal_id)
+        if name == 'get_goal': return {'success':True, 'output':encode(permission)}
+        if not permission['canReportStatus']: return denied(permission)
         evidence=arguments.get('receiptIds',[])
         for ident in evidence:
             rows=self.w.store.db.execute('SELECT t.result,t.state FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=?',
@@ -246,7 +245,19 @@ class StudioGoal:
             row=rows[0] if len(rows)==1 else None
             if not row or row['state']!='completed' or not row['result'] or not json.loads(row['result']).get('success'):
                 return {'success':False,'error':'unconfirmedEvidence','output':'A completion reference is not a confirmed receipt of this original run.'}
-        await self.pause(status=arguments['status'],reason=arguments['reason'])
+        class NoReportAuthority(Exception):
+            pass
+
+        def authorize():
+            current = state(self.w, execution=self.execution, goal_id=self.goal_id)
+            if not current['canReportStatus']: raise NoReportAuthority(current)
+
+        async with self.lock:
+            try:
+                authorize()
+                await self.pause(status=arguments['status'], reason=arguments['reason'], authorize=authorize)
+            except NoReportAuthority as error:
+                return denied(error.args[0])
         return {'success':True,'output':encode(self.goals.snapshot(self.w.session_id))}
 
     async def control(self,reader,writer):

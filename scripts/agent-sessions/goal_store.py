@@ -79,7 +79,7 @@ class Goals:
         with self.store.db:
             self.store.db.execute("UPDATE goal_commands SET stage=? WHERE request_id=? AND session_id=? AND state='pending'", (stage,rid,sid))
 
-    def observe(self, sid, thread_id, value, run_id=None, phase=None):
+    def observe(self, sid, thread_id, value, run_id=None, phase=None, authorize=None, reason=None):
         if self.store.row(sid)['thread_id'] != thread_id: raise ProjectFault('Goal thread binding changed.', 409)
         try:
             if json.loads(self.store.row(sid)['engine']).get('kind') == 'studio':
@@ -90,16 +90,22 @@ class Goals:
         self.schema()
         raw = encode(goal) if goal else None
         with self.store.db:
+            if authorize is not None:
+                self.store.db.execute('BEGIN IMMEDIATE')
+                authorize()
             current = self.store.db.execute('SELECT native,phase,run_id FROM session_goals WHERE session_id=?',(sid,)).fetchone()
             next_phase = phase or (current['phase'] if current else 'idle')
             next_run = run_id or (current['run_id'] if current else None)
-            if current and current['native'] == raw and current['phase'] == next_phase and current['run_id'] == next_run: return self.snapshot(sid)
+            if current and current['native'] == raw and current['phase'] == next_phase and current['run_id'] == next_run and reason is None:
+                return self.snapshot(sid)
             previous=json.loads(current['native']) if current and current['native'] else None
             control=lambda g: None if g is None else {k:g.get(k) for k in ('threadId','objective','status','tokenBudget','createdAt')}
             changed=not current or control(previous)!=control(goal) or current['phase']!=next_phase or current['run_id']!=next_run
             self.store.db.execute('''INSERT INTO session_goals VALUES (?,1,?,NULL,?,NULL,?,NULL)
               ON CONFLICT(session_id) DO UPDATE SET native=excluded.native,revision=revision+?,
               phase=excluded.phase,run_id=excluded.run_id''', (sid,raw,next_phase,next_run,int(changed)))
+            if reason:
+                self.store.db.execute('UPDATE session_goals SET reason=? WHERE session_id=?',(reason,sid))
             self.publish(sid)
         return self.snapshot(sid)
 

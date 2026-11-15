@@ -57,24 +57,29 @@ class RunGoal:
         if value and value['generation']==self.original['generation'] and value['goal']['goalId']==self.goal['goalId']:
             control.block(self.w.store,self.w.session_id,reason or 'The original Goal run reached a limit.',status=status,expected=self.original['generation'])
     async def tool(self,name,arguments):
-        if name=='get_goal':return {'success':True,'output':encode({'goal':self.current(),'runId':self.w.run_id,'keepaliveChangesApplyAfterRun':True})}
+        from goal_reporting import denied, state
+        if name == 'get_goal':
+            value = state(self.w, original=self.original)
+            return {'success':True, 'output':encode({**value, 'runId':self.w.run_id, 'keepaliveChangesApplyAfterRun':True})}
         store=self.w.store
         for rid in arguments.get('receiptIds',[]):
             rows=store.db.execute('SELECT t.state,t.result FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=?',(self.w.session_id,rid)).fetchall()
             if len(rows)!=1 or rows[0]['state']!='completed' or not rows[0]['result'] or not json.loads(rows[0]['result']).get('success'):
                 return {'success':False,'error':'unconfirmedEvidence','output':'Completion needs a confirmed original receipt.'}
-        self.goal.update(status=arguments['status'],updatedAt=int(time.time()))
         store.db.execute('BEGIN IMMEDIATE')
         try:
-            value=control.row(store,self.w.session_id);applies=bool(value and value['generation']==self.original['generation'] and value['goal']['goalId']==self.goal['goalId'])
-            if applies:
-                control.checkpoint(value,store=store,sid=self.w.session_id)
-                value.update(active=False,revision=value['revision']+1,reason=arguments['reason']);value['goal'].update(status=arguments['status'],updatedAt=int(time.time()))
-                control.write(store,self.w.session_id,value)
-                from goal_keepalive_clock import record
-                record(store,self.w.session_id,value)
-                control.publish(store,self.w.session_id)
+            permission = state(self.w, original=self.original)
+            if not permission['canReportStatus']: return denied(permission)
+            value = control.row(store,self.w.session_id)
+            control.checkpoint(value,store=store,sid=self.w.session_id)
+            value.update(active=False,revision=value['revision']+1,reason=arguments['reason'])
+            value['goal'].update(status=arguments['status'],updatedAt=int(time.time()))
+            control.write(store,self.w.session_id,value)
+            from goal_keepalive_clock import record
+            record(store,self.w.session_id,value)
+            control.publish(store,self.w.session_id)
             store.db.commit()
+            self.goal = copy.deepcopy(value['goal'])
         finally:
             if store.db.in_transaction:store.db.rollback()
-        return {'success':True,'output':encode({'goal':self.current(),'appliedToCurrentKeepalive':applies,'runContinuesNormally':True})}
+        return {'success':True,'output':encode({'goal':self.current(),'appliedToCurrentKeepalive':True,'runContinuesNormally':True})}

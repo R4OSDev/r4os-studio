@@ -160,6 +160,7 @@ def eligible(config, *, documents=False, images=False, goal=False, remote_histor
         if name in ROADMAP_TOOLS:
             return config.get('roadmapEnabled') is True and (name!='cleanup_roadmap' or roadmap_admin)
         if name == 'web_search': return direct and config.get('webSearchEnabled') is True
+        if name == 'get_goal' and config.get('goalKeepaliveControl'): return True
         if name in ('get_goal','update_goal'):
             return bool(config.get('goalKeepalive') or direct and (goal or config.get('goalExecution') or config.get('studioGoalPreparation')))
         if name == 'reconcile_development_job': return permissions.get('studio.read_development_job') is True
