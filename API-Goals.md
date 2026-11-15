@@ -56,3 +56,10 @@ Active GOAL retry recovery is not enabled by this feature. No new provider-retry
 tests or inference were performed under0.8.10's outstanding restriction.
 See [Provider-Retries.md](Provider-Retries.md) and
 [API-Session-Lifecycle.md](API-Session-Lifecycle.md).
+## Progress between runs
+
+When further work is possible, record the verified progress and finish the
+current run with the Goal active. Studio admits the continuation after it
+confirms the run has ended. Use `blocked` when a concrete obstacle prevents
+the next meaningful step, and include what is needed to resume. Use `complete`
+when the full objective has been verified.

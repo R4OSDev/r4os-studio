@@ -8513,7 +8513,7 @@
     },
     {
       "name": "studio_update_goal",
-      "description": "Report complete or blocked for the current explicitly activated Studio Goal. Give a concrete reason and relevant confirmed studioReceiptId references. This cannot activate, replace or change a Goal objective or budget.",
+      "description": "Report status for the explicitly activated Goal. Keep it active through progress updates and finish the current response normally. Use blocked only when a concrete obstacle prevents the next meaningful step and give the prerequisite for resuming. Use complete only after verifying the entire objective. Include relevant confirmed receipt IDs.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -10128,7 +10128,7 @@
     },
     {
       "name": "studio_update_goal",
-      "description": "Report complete or blocked for the current explicitly activated Studio Goal. Give a concrete reason and relevant confirmed studioReceiptId references. This cannot activate, replace or change a Goal objective or budget.",
+      "description": "Report status for the explicitly activated Goal. Keep it active through progress updates and finish the current response normally. Use blocked only when a concrete obstacle prevents the next meaningful step and give the prerequisite for resuming. Use complete only after verifying the entire objective. Include relevant confirmed receipt IDs.",
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -501,7 +501,7 @@ class StudioWorker(Worker):
                 await self.goal_worker.boundary()
                 if self.goal_worker.active and not self.config.get('goalKeepalive'):
                     self.conversation.append(self.run_id,'goal-continuation-'+self.run_id+'-'+str(self.round),'user',
-                        [{'type':'text','text':'Continue the explicitly activated Goal. Report complete or blocked with studio_update_goal when justified; preserve unknown effects.'}],
+                        [{'type':'text','text':'Continue the explicitly activated Goal from the confirmed progress. Keep it active while further work is possible. Follow the Goal status reporting instructions and preserve unknown effects.'}],
                         {'kind':'goalContinuation','executionId':self.goal_worker.execution,'humanPlayRequestId':self.goal_worker.execution})
                     continue
                 self.outcome = 'completed'; return

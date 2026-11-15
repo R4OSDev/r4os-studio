@@ -243,5 +243,7 @@ def instructions(config):
     original=config.get('goalKeepalive')
     if not original:return ''
     return ('\n\nSTUDIO GOAL RUN: This ordinary run was admitted at a confirmed session boundary for the following saved Goal. '
-        'Work within the frozen permissions. Use studio_get_goal and studio_update_goal to report complete or blocked with a reason and confirmed receipts. '
-        'End this run naturally when your response is finished. Studio alone decides whether to admit another run. Do not create a scheduler or continue loop.\n'+encode(original['goal']))
+        'Work within the frozen permissions and read the Goal with studio_get_goal. When further work is possible, record confirmed progress, '
+        'keep the Goal active, and finish this run normally. Studio can then continue at the next confirmed run boundary. '
+        'Use studio_update_goal with blocked only for a concrete obstacle that prevents the next meaningful step. Give the reason and the prerequisite for resuming. '
+        'Report complete only after verifying the full objective. Include relevant original receipt IDs. Studio manages continuation.\n'+encode(original['goal']))
