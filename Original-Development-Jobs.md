@@ -47,3 +47,17 @@ The host updater requires the explicit, hash-checked local maintenance script
 `scripts/agent-sessions/install-job-lookup-support.py` before installing the first
 v19 release. Existing v18 compatibility and rollback identities remain intact;
 the normal release updater performs installation afterward.
+## VM lifecycle recovery in Goal runs
+
+New project Goal runs can use `studio_control_project_vm` with `hard_restart`
+when their assigned VM and Start, Stop and Restart permissions are available.
+For an original shutdown in `waiting_for_shutdown`, read the lifecycle job and
+its `vmRecovery` state. After the original hard restart confirms the QEMU event,
+use `start` with its `newBootId` as `expectedBootId`. Studio authenticates and
+runs `VER` on that running boot. An early guest reset observed during the QEMU
+confirmation is recorded alongside the host event and can supply `newBootId`.
+
+The original lifecycle job retains its historical state. Summary and details
+show the separately resolved recovery, the paired boot and the VER receipt.
+A later boot marks the paired readiness as historical. After losing an action
+reply, read the same job or look up its original request or tool call ID.

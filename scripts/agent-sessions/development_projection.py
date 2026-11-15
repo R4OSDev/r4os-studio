@@ -42,10 +42,12 @@ def summary(job,page=None):
         if isinstance(job.get(key),dict):small[key]=job[key]
     if job.get('vmStart'):small['vmStart']=pick(job['vmStart'],('ready','started','bootId','checkedAt','guestRelease','guestKernel'))
     if job.get('vmLifecycle'):
-        lifecycle=job['vmLifecycle'];small['vmLifecycle']=pick(lifecycle,('kind','phase','noop','shutdownDispatched','newBootId','readyAt','qemuEnded'))
+        lifecycle=job['vmLifecycle'];small['vmLifecycle']=pick(lifecycle,('kind','phase','noop','shutdownDispatched','newBootId','readyAt','qemuEnded','recoveryJobId'))
         if lifecycle.get('stopped'):small['vmLifecycle']['stopped']=pick(lifecycle['stopped'],('confirmed','observedAt'))
         if lifecycle.get('reset'):
             small['vmLifecycle']['reset']=pick(lifecycle['reset'],('confirmed','previousBootId','bootId','observedAt','commandAcknowledged'))
+            if lifecycle['reset'].get('observedBoot'):
+                small['vmLifecycle']['reset']['observedBoot'] = pick(lifecycle['reset']['observedBoot'],('bootId','previousBootId','observedAt','guest'))
     if job.get('checkCompletion'):small['checkCompletion']=pick(job['checkCompletion'],('requestId','reason','state','cancelled','closed','completedAt'))
     if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed'))
     if job.get('target'):small['target']=pick(job['target'],('vmId','bootId'))
@@ -94,6 +96,7 @@ def summary(job,page=None):
             'desktopDiagnostics': diagnosis, 'diagnosticPreview': page.get('diagnosticPreview'),
             'notice':'Detailed checks, artifacts and cleanup receipts are retained in view=details.',
             **({'update':value['update']} if 'update' in value else {})}
+    if page.get('vmRecovery'): value['vmRecovery'] = page['vmRecovery']
     return value
 
 
@@ -117,7 +120,7 @@ def view(page,kind,cursor=None,offset=0):
             'hasMore':offset+count<page.get('totalBytes',offset+count),'jobState':job['state'],
             'mayGrow':job['state'] in ('queued','starting','running','stopping'),'detailsOmitted':False}
     if kind not in ('details','inventory'):raise DevelopmentFault('Unknown development presentation view.',400)
-    body={k:v for k,v in page.items() if k not in ('output','rawOutputBase64','artifact')}
+    body={k:v for k,v in page.items() if k not in ('output','rawOutputBase64','artifact','vmRecovery')}
     if kind=='inventory':body={'jobId':job['id'],'revision':job['revision'],'artifact':page.get('artifact'),
         'source':job.get('source'),'pins':job.get('pins'),'outputFiles':job.get('outputFiles'),'evidence':page.get('evidence',[])}
     raw=encoded(body).encode();digest=hashlib.sha256(raw).hexdigest();position=0
@@ -130,5 +133,6 @@ def view(page,kind,cursor=None,offset=0):
         except (ValueError,TypeError,UnicodeError):raise DevelopmentFault('The original detail snapshot changed or the cursor belongs to another job/view. Read its first page again; no action was replayed.',409) from None
     text=fragment(raw[position:].decode('utf-8'));end=position+len(text.encode())
     next_cursor=base64.urlsafe_b64encode(encoded({**binding,'sha256':digest,'offset':end}).encode()).decode().rstrip('=') if end<len(raw) else None
-    return {**binding,'snapshotSha256':digest,'encoding':'utf-8-json','fragment':text,'startOffset':position,
+    recovery = {'vmRecovery':page['vmRecovery']} if kind == 'details' and page.get('vmRecovery') else {}
+    return {**binding,**recovery,'snapshotSha256':digest,'encoding':'utf-8-json','fragment':text,'startOffset':position,
         'nextOffset':end,'totalBytes':len(raw),'hasMore':end<len(raw),'nextCursor':next_cursor,'detailsOmitted':False}

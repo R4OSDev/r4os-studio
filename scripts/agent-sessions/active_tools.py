@@ -70,10 +70,12 @@ def worker_release(config, current, root=RELEASES):
 def goal_selection(store,sid):
     session=store.get(sid)
     mode = roadmap_presentation(session, ROOT)
-    run_timeout = execution_timeout() if tool_scope(session)=='project' else None
+    project = tool_scope(session) == 'project'
+    run_timeout = execution_timeout() if project else None
     return {'permissions':session['permissions'].copy(),'catalog':snapshot(session,version=2,presentation=mode,
             requirements=2,file_writes=1,run_timeout=run_timeout,
-            result_ids=1 if session.get('engine',{}).get('kind')=='studio' else None)}
+            result_ids=1 if session.get('engine',{}).get('kind')=='studio' else None,
+            vm_recovery=2 if project else None)}
 
 
 def roadmap_presentation(config, root):
@@ -204,7 +206,7 @@ def freeze(store,sid,config,*,images):
     scope = tool_scope(config)
     run_timeout = saved.get('runTestTimeoutSeconds') if saved else execution_timeout(root) if scope=='project' else None
     result_ids = saved.get('resultIds') if saved else 1 if config['engine'].get('kind')=='studio' else None
-    vm_recovery = saved.get('vmRecovery') if saved else 1 if scope=='project' else None
+    vm_recovery = saved.get('vmRecovery') if saved else 2 if scope=='project' else None
     definitions=tool_definitions(scope,root,file_writes,run_timeout,result_ids,vm_recovery)
     updates = None
     if 'check_update' in definitions:

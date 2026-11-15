@@ -188,6 +188,8 @@ class DevelopmentTools:
                     feature = 'vmHardRestart' if value.get('hardReset') is True else 'vmStart' if name=='start_project_vm' else 'vmLifecycle'
                     if capabilities.get('features', {}).get(feature) != 1:
                         raise DevelopmentFault('VM start support requires development host maintenance.', 503)
+                    if value.get('expectedBootId') and capabilities.get('features', {}).get('vmBootReadiness') != 1:
+                        raise DevelopmentFault('Checking the confirmed reset boot requires the current development coordinator.', 503)
                 if name == 'run_vm_command':
                     capability = await self.capabilities()
                     if capability.get('features',{}).get('projectSsh') != 1:
@@ -201,6 +203,7 @@ class DevelopmentTools:
                 finally: store.close()
                 body = {'requestId': request_id, 'projectRevision': revision, 'settingsRevision': settings['revision']}
                 if name=='restart_project_vm' and value.get('hardReset') is True: body['hardReset'] = True
+                if name=='start_project_vm' and 'expectedBootId' in value: body['expectedBootId'] = value['expectedBootId']
                 operation = {'build_project': 'build', 'deploy_project': 'deploy', 'run_project': 'execution', 'start_project_vm': 'vm_start', 'stop_project_vm':'vm_stop','restart_project_vm':'vm_restart', 'run_vm_command': 'ssh'}[name]
                 if name == 'deploy_project':
                     body['artifactId'] = value['artifactId']

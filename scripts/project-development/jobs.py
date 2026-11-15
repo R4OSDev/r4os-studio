@@ -138,6 +138,9 @@ class Jobs:
         if kind == 'vm_restart' and 'hardReset' in request:
             expected.add('hardReset')
             if request['hardReset'] is not True: raise DevelopmentFault('Use the explicit hard restart action.',400)
+        if kind == 'vm_start' and 'expectedBootId' in request:
+            expected.add('expectedBootId')
+            identity(request['expectedBootId'])
         if kind == 'ssh':
             expected.add('command')
             from project_ssh import command
@@ -208,6 +211,7 @@ class Jobs:
             if kind == 'ssh': job['sshCommand'] = request['command']
             if kind == 'observation': job['observationCall'] = {'runId': owner['agentRunId'], 'toolCallId': request['toolCallId']}
             if 'hardReset' in request: job['hardReset'] = True
+            if 'expectedBootId' in request: job['expectedBootId'] = request['expectedBootId']
             if 'windowControl' in request: job['windowControlRequested'] = request['windowControl']
             self.db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,1,1,?)',
                 (job['id'], request['requestId'], fingerprint, kind, 'queued', encode(job)))

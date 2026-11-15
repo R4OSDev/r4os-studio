@@ -101,3 +101,86 @@ def resolve_after_boot(projects, boot):
                 or any(target.get(k) != boot[k] for k in ('vmId', 'vmRevision', 'imageId', 'imageSha256'))
                 or (value.get('effectStartedAt') or value['createdAt']) >= proof.get('resetAt', proof['observedAt'])): return
         archive(file, value, 'Original VM boot ended; guest outcome remains unconfirmed', bootTransition=proof)
+
+
+def lifecycle_status(store, job, access):
+    """Relate the original recovery record to the currently observed VM boot."""
+    from access import same_host_image, vm_config
+
+    if job['kind'] not in LIFECYCLE_KINDS or job['state'] != 'unknown': return None
+    binding = job.get('binding') or {}
+    vm_id = binding.get('id')
+    if vm_id is None or store.project['vmId'] != vm_id:
+        return {'state':'binding_changed', 'jobId':job['id']}
+    vm = vm_config(store.r4os, vm_id)
+    fields = {'vmId':'id', 'vmRevision':'revision', 'imageId':'imageId', 'imageSha256':'imageSha256'}
+    if any(binding.get(field) != vm[field] for field in fields.values()):
+        return {'state':'binding_changed', 'jobId':job['id']}
+
+    file = path(store.projects, vm_id)
+    def matches(value):
+        return value and (value.get('jobId'), value.get('projectId'), value.get('kind'), value.get('vmRevision')) == (
+            job['id'], store.id, job['kind'], vm['revision'])
+
+    result = {'jobId':job['id'], 'vmId':vm_id}
+    active = read(file)
+    row = store.db.execute('''SELECT payload FROM jobs WHERE kind='vm_restart'
+        AND json_extract(payload,'$.vmLifecycle.recoveryJobId')=? ORDER BY rowid DESC LIMIT 1''', (job['id'],)).fetchone()
+    reset_job = json.loads(row[0]) if row else None
+    if matches(active):
+        result.update(state='required', phase=active.get('phase'))
+        if reset_job:
+            result.update(resetJobId=reset_job['id'], resetState=reset_job['state'], resetPhase=reset_job['phase'],
+                          next='Read the original hard restart job for its QEMU confirmation.')
+        elif job.get('hardReset'):
+            result['next'] = 'Check the QEMU evidence for this original hard restart and confirm the assigned VM state.'
+        else:
+            result['next'] = 'Check the assigned VM. Use hard_restart when it is running and this run permits recovery.'
+        return result
+    original = read(file.parent / 'Resolved' / (identity(job['id']) + '.json'))
+    if not matches(original):
+        return {**result, 'state':'unconfirmed', 'next':'Check the original lifecycle receipt and assigned VM state.'}
+    result.update(state='released', resolvedAt=original['resolvedAt'], resolution=original['resolution'])
+    proof = original.get('bootTransition') or {}
+    target = original.get('target') or {}
+    if (proof.get('kind') not in ('qmp_reset','new_instance') or not proof.get('bootId')
+            or not target.get('bootId') or target['bootId'] == proof['bootId']
+            or any(target.get(key) != vm[field] for key, field in fields.items())):
+        return result
+    expected = proof['bootId']
+    if reset_job and reset_job['state'] == 'completed':
+        from vm_lifecycle import ready_boot_id
+        lifecycle = reset_job['vmLifecycle']
+        reset = lifecycle.get('reset') or {}
+        ready_boot = ready_boot_id(reset)
+        if (reset.get('confirmed') is True and ready_boot and ready_boot == lifecycle.get('newBootId')
+                and proof['bootId'] in (reset.get('bootId'), ready_boot)
+                and proof.get('invocationId') == reset.get('invocationId')
+                and all(lifecycle.get(key) == vm[field] for key, field in fields.items())):
+            proof, expected = reset, ready_boot
+            result['resetJobId'] = lifecycle['jobId']
+    result['bootTransition'] = {key:proof[key] for key in ('kind','previousBootId','bootId','observedAt','guest') if key in proof}
+    result['recoveryBootId'] = expected
+    readiness = result['readiness'] = {'state':'boot_unconfirmed'}
+    boot = access.boots.values.get(vm_id) or {}
+    if not boot.get('connected') or any(boot.get(key) != vm[field] for key, field in fields.items()):
+        return result
+    result['currentBootId'] = boot['bootId']
+    record = access.record(vm_id)
+    checked = record.get('readiness') if same_host_image(record, vm) else None
+    if checked and checked['vmRevision'] == vm['revision'] and checked['bootId'] == expected:
+        readiness.update({key:checked[key] for key in ('bootId','checkedAt','release','kernel')})
+    if boot['bootId'] != expected:
+        readiness['state'] = 'historical'
+    elif not boot.get('running'):
+        readiness['state'] = 'boot_unconfirmed'
+    else:
+        status = access.public(vm_id)
+        if status['ready']:
+            readiness['state'] = 'ready'
+        elif status['available']:
+            readiness['state'] = 'required'
+            result['next'] = {'action':'start', 'expectedBootId':expected}
+        else:
+            readiness.update(state='unavailable', reason=status['reason'])
+    return result

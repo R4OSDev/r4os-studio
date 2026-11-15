@@ -131,14 +131,14 @@ class Host:
             if match: units.add(identity(match[1]))
         self.unbound = units - set(self.active)
 
-    async def watch_vm_boot(self, vm_id):
+    async def watch_vm_boot(self, vm_id, *, verify=False):
         from access import vm_config
         from quarantine import path
-        if not path(self.config['projects'], vm_id).exists(): return {'watching':False}
+        if not verify and not path(self.config['projects'], vm_id).exists(): return {'watching':False}
         vm = vm_config(self.config['r4os'], vm_id)
         invocation = await systemctl('show', 'r4os-studio-vm@'+vm_id+'.service', '--property=InvocationID', '--value')
         if invocation == '0'*32 or not re.fullmatch('[a-f0-9]{32}', invocation): return {'watching':False}
-        boot = await self.boots.ensure(vm, invocation, allow_paused=True)
+        boot = await self.boots.ensure(vm, invocation, allow_paused=not verify)
         return {'watching':True,'bootId':boot['bootId']}
 
     async def retire_execution_for_restart(self, store, job):
@@ -411,7 +411,7 @@ class Host:
             from package_support import available
             from project_ssh import supported as ssh_supported
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'vmHardRestart':1, 'vmReleaseBatch':1, 'vmObservation':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'vmHardRestart':1, 'vmBootReadiness':1, 'vmReleaseBatch':1, 'vmObservation':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
                     'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version'], 'sshWait': 1}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
@@ -551,7 +551,14 @@ class Host:
                 from settings import update
                 return update(store, request['input'])
             if op == 'jobs': return store.list()
-            if op == 'read_job': return store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False), channel=request.get('channel'), tail_bytes=request.get('tailBytes'))
+            if op == 'read_job':
+                from quarantine import lifecycle_status
+                page = store.page(request['id'], request.get('offset', 0), metadata_only=request.get('metadataOnly', False), channel=request.get('channel'), tail_bytes=request.get('tailBytes'))
+                try: recovery = lifecycle_status(store, page['job'], self.access)
+                except (DevelopmentFault, OSError, ValueError, KeyError, TypeError):
+                    recovery = {'state':'unavailable', 'jobId':page['job']['id']}
+                if recovery: page['vmRecovery'] = recovery
+                return page
             if op == 'artifact': return store.artifact(request['id'])
             if op == 'deployment': return store.deployment(request['id'])
             if op == 'assess':
@@ -736,8 +743,15 @@ class Host:
                             raise DevelopmentFault('The host is already running its maximum number of development jobs.')
                         if retiring: await self.retire_execution_for_restart(store, retiring)
                     if op == 'vm_start':
-                        try: await self.watch_vm_boot(binding['id'])
+                        boot = None
+                        verify = 'expectedBootId' in request['input']
+                        if verify: identity(request['input']['expectedBootId'])
+                        try:
+                            watched = await self.watch_vm_boot(binding['id'], verify=verify)
+                            if watched['watching']: boot = self.boots.values[binding['id']]
                         except (DevelopmentFault, OSError, asyncio.TimeoutError): pass
+                        from vm_start import require_boot
+                        require_boot(request['input'], boot)
                 job, fresh = store.admit(op, request['input'], owner, binding)
                 if not fresh: return job
                 try:

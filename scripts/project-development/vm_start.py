@@ -39,6 +39,7 @@ async def bind(host, request, peer_pid):
             if (not (lifecycle.get('stopped') or {}).get('confirmed') or info['invocationId']==lifecycle.get('original',{}).get('unit',{}).get('invocationId')):
                 raise DevelopmentFault('Restart needs its confirmed original stop and a new VM invocation.')
         boot = await host.boots.ensure(vm, info['invocationId'])
+        require_boot(job, boot)
         if job['kind']=='vm_restart' and boot['bootId']==job['vmLifecycle']['original']['bootId']:
             raise DevelopmentFault('Restart has no new confirmed boot generation.')
         record = host.access.record(vm['id'])
@@ -78,6 +79,13 @@ async def bind(host, request, peer_pid):
     finally: store.close()
 
 
+def require_boot(request, boot):
+    expected = request.get('expectedBootId')
+    if expected is not None and (not boot or boot['bootId'] != expected or not boot.get('connected') or not boot.get('running')):
+        raise DevelopmentFault('The expected VM boot is no longer confirmed running. Read the original recovery job before checking VER.',
+                               reason_code='vm_expected_boot_unavailable')
+
+
 class VmStart:
     def __init__(self, store, job):
         self.store, self.job = store, job
@@ -110,7 +118,10 @@ class VmStart:
         from quarantine import admission
         store,job,vm=self.store,self.job,self.job['binding']
         guard(store, job, lease)
-        info = await vm_call(lease, 'info'); admission(store.projects, vm['id'], info['vm']['state'])
+        info = await vm_call(lease, 'info')
+        if job.get('expectedBootId') and info['vm']['state'] != 'running':
+            require_boot(job, None)
+        admission(store.projects, vm['id'], info['vm']['state'])
         started = False
         if job['kind']=='vm_restart' and info['vm']['state'] not in ('stopped','failed'):
             raise DevelopmentFault('The VM changed after the original stop. Restart cannot adopt another start.')

@@ -85,6 +85,11 @@ async def bind(host,request,peer_pid):
         boot=await host.boots.ensure(vm,info['unit']['invocationId'],allow_paused=True) if hard else await host.boots.ensure(vm,info['unit']['invocationId'])
         value={**binding_fields(job),'kind':job['kind'],'phase':'bound','boundAt':now(),
             'original':{'unit':info['unit'],'process':info['process'],'bootId':boot['bootId']}}
+        if hard:
+            from quarantine import path, read
+            pending = read(path(store.projects, vm['id']))
+            if pending and pending.get('projectId') == store.id and pending.get('kind') in KINDS:
+                value['recoveryJobId'] = identity(pending['jobId'])
         if job['kind']=='vm_restart' and not hard:
             transport_profile();access=host.access.public(vm['id'])
             if not access['available']:raise DevelopmentFault(access['reason'])
@@ -183,14 +188,14 @@ class VmLifecycle:
         self.record('waiting_for_reset', resetAcknowledged=acknowledged)
         deadline = asyncio.get_running_loop().time()+RESET_CONFIRM_SECONDS
         while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(.25)
             guard(store,job,lease)
             proof = reset_proof(store, job, value, acknowledged)
             if proof:
-                receipt = self.record('reset_confirmed', reset=proof, newBootId=proof['bootId'])
+                receipt = self.record('reset_confirmed', reset=proof, newBootId=ready_boot_id(proof))
                 save(self.work/'reset.json',receipt)
                 return store.update(job['id'],'completed',phase='reset_confirmed',exitCode=0,error=None,
                     readiness={'state':'not-run','reason':'New VM boot confirmed. Guest SSH readiness has not been checked.'})
-            await asyncio.sleep(.25)
         raise UnconfirmedGuestEffect('A new boot could not be confirmed after the original hard reset. Inspect its saved receipt.')
 
 
@@ -206,7 +211,24 @@ def reset_proof(store, job, lifecycle, acknowledged):
             or any(boot.get(k) != vm[source] for k,source in (('vmRevision','revision'),('imageId','imageId'),('imageSha256','imageSha256')))
             or proof.get('previousBootId') != original['bootId'] or proof.get('bootId') == original['bootId']
             or proof.get('resetAt',proof.get('observedAt','')) < lifecycle['resetIntentAt']): return
-    return {**proof,'confirmed':True,'commandAcknowledged':acknowledged}
+    proof = {**proof,'confirmed':True,'commandAcknowledged':acknowledged}
+    # The guest may issue a second QMP reset while the initial boot is
+    # starting. Bind to the observed successor at receipt time and preserve
+    # the original host reset event as an independent proof.
+    if boot['bootId'] != proof['bootId']:
+        observed = {**proof, 'observedBoot':boot.get('transition') or {}}
+        if ready_boot_id(observed) == boot['bootId']: return observed
+    return proof
+
+
+def ready_boot_id(reset):
+    observed = reset.get('observedBoot')
+    if observed is None: return reset.get('bootId')
+    if (observed.get('kind') == 'qmp_reset' and observed.get('guest') is True
+            and observed.get('previousBootId') in (reset.get('bootId'), reset.get('previousBootId'))
+            and observed.get('invocationId') == reset.get('invocationId')
+            and observed.get('resetAt', '') > reset.get('resetAt', '')):
+        return observed.get('bootId')
 
 
 def interrupted_effect(store,job):
@@ -245,7 +267,7 @@ def recovered(store,job):
     if job.get('hardReset'):
         reset = proof.get('reset') or {}
         if (any(proof.get(k)!=v for k,v in binding_fields(job).items()) or reset.get('confirmed') is not True
-                or reset.get('kind')!='qmp_reset' or reset.get('bootId')!=proof.get('newBootId')
+                or reset.get('kind')!='qmp_reset' or not proof.get('newBootId') or ready_boot_id(reset)!=proof['newBootId']
                 or reset.get('previousBootId')!=proof.get('original',{}).get('bootId')
                 or reset.get('bootId')==reset.get('previousBootId')):
             raise DevelopmentFault('The original hard reset receipt has no confirmed new boot.')

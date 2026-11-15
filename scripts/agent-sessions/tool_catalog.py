@@ -238,7 +238,7 @@ def execution_timeout(root=ROOT):
 def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None,result_ids=None,vm_recovery=None):
     tools = {item['name'][7:]: item for item in catalog(root)[scope]}
     if vm_recovery is not None:
-        if scope != 'project' or type(vm_recovery) is not int or vm_recovery != 1:
+        if scope != 'project' or type(vm_recovery) is not int or vm_recovery not in (1, 2):
             raise ValueError('The original VM recovery contract is unavailable.')
         control = deepcopy(tools['control_project_vm'])
         control['inputSchema']['oneOf'].append({'type':'object','properties':{'action':{'type':'string','enum':['hard_restart']}},
@@ -254,6 +254,24 @@ def tool_definitions(scope,root=ROOT,file_writes=None,run_timeout=None,result_id
         capture['description'] += (' If guest control is lost, use scope=vm without a jobId to read the QEMU screen even while '
                                    'an earlier job awaits recovery. Inspect the screen for a crash before using hard_restart.')
         tools['capture_vm'] = capture
+        if vm_recovery == 2:
+            expected_boot = {'type':'string','minLength':36,'maxLength':36,
+                             'description':'For start only, the confirmed reset boot ID to check by authenticated VER.'}
+            for variant in control['inputSchema']['oneOf']:
+                if variant['properties']['action']['enum'] == ['start']:
+                    variant['properties']['expectedBootId'] = expected_boot
+            start = deepcopy(tools['start_project_vm'])
+            start['inputSchema']['properties']['expectedBootId'] = expected_boot
+            tools['start_project_vm'] = start
+            control['description'] = ('Control the assigned VM. After a dispatched shutdown stalls in waiting_for_shutdown, read the '
+                'original job. If recovery is required and hard_restart is available, issue it once and check its confirmed '
+                'QEMU reset and newBootId. Then use start with expectedBootId set to that ID to check the running boot by '
+                'authenticated VER without powering on. Compare the VER receipt bootId with the reset ID. After an uncertain '
+                'reply, look up the original job instead of repeating the action. Report the still-unconfirmed step from its receipt.')
+            read = deepcopy(tools['read_development_job'])
+            read['description'] += (' For a VM lifecycle job, summary and details can show vmRecovery with the original job’s '
+                                    'recovery record, boot transition and current or historical VER readiness.')
+            tools['read_development_job'] = read
     if result_ids is not None:
         if type(result_ids) is not int or result_ids != 1:
             raise ValueError('The original result ID contract is unavailable.')
