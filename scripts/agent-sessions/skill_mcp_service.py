@@ -96,7 +96,14 @@ class Service:
         if not isinstance(request,dict) or set(request)-{'operation','runId','name','arguments','method','key','requestId','timeout','retain'}:
             raise McpFault('Invalid analysis service request.')
         op=request.get('operation');effects=op not in ('close','release','observe')
-        worker=await original_worker(self.config['projects'],self.launch,request.get('runId'),peer,self.config['uid'],effects)
+        try:
+            worker=await original_worker(self.config['projects'],self.launch,request.get('runId'),peer,self.config['uid'],effects)
+        except Exception as error:
+            if not database_busy(error):
+                raise
+            fault = McpFault('The original run journal is temporarily locked. No native analysis request was sent.')
+            fault.request_not_sent = True
+            raise fault from None
         try:
             if op=='close':
                 if self.grant and self.grant['runId']!=worker.run_id:
@@ -222,7 +229,9 @@ class Service:
                 if database_busy(error):
                     self.observation_busy=True
                     if busy_since is None:busy_since=asyncio.get_running_loop().time()
-                    if asyncio.get_running_loop().time()-busy_since<30:
+                    # A locked journal cannot authorize new effects, but it
+                    # does not invalidate the live worker identity above.
+                    if self.grant or asyncio.get_running_loop().time()-busy_since<30:
                         await asyncio.sleep(.25);continue
                 try:atomic(self.state/'ObservationFailure.json',encoded(dict(kind=type(error).__name__,message=str(error)[:1000])))
                 except OSError:pass

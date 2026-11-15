@@ -221,7 +221,15 @@ class SkillTools:
             async with lock:return await self.invoke(args,call_id)
         except McpFault as error:
             unknown = bool(error.request_id and isinstance(error.state,dict) and not error.state.get('providerEndConfirmed',False))
-            return dict(success=False,error='unknown' if unknown else 'skillUnavailable',output=str(error),
+            output = str(error)
+            if unknown and name=='skill_call':
+                from tool_catalog import result_readback
+                readback = result_readback(self.worker.config,'skill')
+                if readback:
+                    parameters = {key:value for key,value in readback.items() if key!='tool'}
+                    parameters.update(skillId=entry['id'],reference=error.request_id)
+                    output += f" Read the original transport receipt, if present, with {readback['tool']} {encoded(parameters).decode()}."
+            return dict(success=False,error='unknown' if unknown else 'skillUnavailable',output=output,
                         **({'requestNotSent':True} if getattr(error,'wrapper_not_sent',False) or getattr(error,'request_not_sent',False) else {}),
                         **({'partialChangesPossible':True,'skillMcpRequest':error.request_id} if unknown else {}))
         except (OSError,ValueError,KeyError,TypeError):

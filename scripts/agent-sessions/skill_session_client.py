@@ -20,19 +20,28 @@ class SessionClient:
         request=dict(operation=operation,runId=self.worker.run_id,**parameters)
         ident=parameters.get('requestId')
         writer=None
+        sent=False
         try:
             reader,writer=await asyncio.wait_for(asyncio.open_unix_connection(str(self.socket),limit=34*1024*1024+1),10)
-            writer.write(encoded(request)+b'\n');await writer.drain()
+            payload=encoded(request)+b'\n'
+            sent=True  # A write/drain failure may still leave bytes with the peer.
+            writer.write(payload);await writer.drain()
             raw=await asyncio.wait_for(reader.readline(),parameters.get('timeout',120)+30)
             if not raw.endswith(b'\n'):raise OSError('The original analysis service reply was lost.')
             value=strict(raw)
-            if 'error' in value:
+            if not isinstance(value,dict) or not ('result' in value or isinstance(value.get('error'),str)):
+                raise ValueError('Invalid analysis service reply.')
+            if isinstance(value.get('error'),str):
                 error = McpFault(value['error'],value.get('requestId'),value.get('state'))
                 error.request_not_sent = value.get('requestNotSent') is True
                 raise error
             return value['result']
         except McpFault:raise
         except (OSError,ValueError,TimeoutError):
+            if not sent:
+                error = McpFault('The original analysis service could not accept the connection. No native analysis request was sent.')
+                error.request_not_sent = True
+                raise error from None
             raise McpFault('The original session analysis response is unavailable. It was not repeated.',ident,
                            dict(phase='unknown',providerEndConfirmed=False,serviceId=self.launch['serviceId'])) from None
         finally:
