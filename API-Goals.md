@@ -63,3 +63,12 @@ current run with the Goal active. Studio admits the continuation after it
 confirms the run has ended. Use `blocked` when a concrete obstacle prevents
 the next meaningful step, and include what is needed to resume. Use `complete`
 when the full objective has been verified.
+
+## Goal continuation order
+
+The coordinator checks active project and skill Goals in rotation. It moves
+each selected Goal to the end of the rotation, even when that workspace is
+busy or its Goal is waiting for quota. With two checks already in progress,
+the next available check starts at the next Goal in the rotation. A continuation
+uses the saved Goal and requires the confirmed end of its preceding run and
+available agent capacity.

@@ -9,6 +9,7 @@ import signal
 import socket
 import struct
 import sys
+from collections import OrderedDict
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from coordinator_work import ReadWork
 
@@ -39,7 +40,8 @@ class Host:
         self.lock = asyncio.Lock(); self.active = {}; self.unbound = set(); self.connections = set(); self.goal_tasks = {}
         self.goal_readback_lock = asyncio.Lock()
         self.image_capability_lock=asyncio.Lock()
-        self.inboxes=set();self.keepalives=set()
+        self.inboxes = set()
+        self.keepalives = OrderedDict()
         self.quota_waits=set();self.quota_tasks={};self.quota_next={};self.quota_scopes={};self.quota_samples={};self.quota_reads={};self.quota_epochs={}
         self.message_tasks={}
         self.skill_delete_tasks={}
@@ -167,7 +169,8 @@ class Host:
                 Goals(store).recover(live_plays)
                 from goal_keepalive import exists as keepalive_exists
                 if keepalive_exists(store):
-                    self.keepalives.update((kind,project_id,r['session_id']) for r in store.db.execute('SELECT session_id FROM session_keepalive WHERE active=1'))
+                    for row in store.db.execute('SELECT session_id FROM session_keepalive WHERE active=1'):
+                        self.keepalives[kind, project_id, row['session_id']] = None
                 from quota_wait import has as has_waits
                 if has_waits(store):
                     from quota_wait import recover as recover_wait
@@ -565,8 +568,10 @@ class Host:
                         key=(kind,project_id,session_id)
                         from goal_keepalive import row as keepalive_row
                         current=keepalive_row(store,session_id)
-                        if current and current['active']:self.keepalives.add(key)
-                        else:self.keepalives.discard(key)
+                        if current and current['active']:
+                            self.keepalives[key] = None
+                        else:
+                            self.keepalives.pop(key, None)
                         return result
                     if request['input'].get('action') in ('pause','stop'):
                         from message_store import Messages

@@ -10,11 +10,16 @@ import goal_keepalive as control
 
 def schedule(host):
     for key in tuple(host.keepalives):
-        task_key=(*key,'keepalive')
-        if len(host.goal_tasks)>=2:return
-        if task_key in host.goal_tasks:continue
-        task=asyncio.create_task(dispatch(host,*key));host.goal_tasks[task_key]=task
-        task.add_done_callback(lambda _,key=task_key:host.goal_tasks.pop(key,None))
+        if len(host.goal_tasks) >= 2:
+            break
+        task_key = (*key, 'keepalive')
+        if task_key in host.goal_tasks:
+            continue
+        task = asyncio.create_task(dispatch(host, *key))
+        host.goal_tasks[task_key] = task
+        # A busy workspace or a quota wait still counts as this Goal's turn.
+        host.keepalives.move_to_end(key)
+        task.add_done_callback(lambda _, key=task_key: host.goal_tasks.pop(key, None))
 
 
 async def dispatch(host,kind,ident,sid):
@@ -25,7 +30,8 @@ async def dispatch(host,kind,ident,sid):
             if any(binding(meta)==(kind,ident) for meta in host.active.values()):return
             store=host.store(ident,kind);value=control.row(store,sid)
             if not value or not value['active']:
-                host.keepalives.discard((kind,ident,sid));return
+                host.keepalives.pop((kind, ident, sid), None)
+                return
             from quota_wait import row as quota_wait
             waiting=quota_wait(store,sid)
             if waiting and waiting['state'] in ('waiting','dispatching'):return
