@@ -51,6 +51,9 @@ export function RunTestSettings({ id, token, dirtyChanged, busyChanged }: {
   const filePatch = (index: number, value: Partial<DevelopmentSettings['outputFiles'][number]>) => patch({ outputFiles: files.map((f, i) => i === index ? { ...f, ...value } : f) });
   return <><form className="project-settings run-test-settings" aria-label="Run and test settings" onSubmit={(e) => void submit(e)}>
     <h2>Run &amp; Test</h2>
+    {options?.capacity?.state === 'full' && <p className="project-message" role="status">
+      Development host {options.capacity.active}/{options.capacity.limit} jobs active. {options.capacity.next}
+    </p>}
     {options && project && <dl className="development-target"><div><dt>Entry</dt><dd>Project module · {project.template}</dd></div><div><dt>Build</dt><dd>{project.language} · SDK {project.pins.sdk.version} · Zig {project.pins.zig.version}</dd></div><div><dt>Target</dt><dd>{options.assignedVm ? `${options.assignedVm.name} · R4OS ${options.assignedVm.imageId.replace('-full', '')}` : 'No VM assigned'}</dd></div></dl>}
     {options?.sdkInputs && <section aria-label="SDK build inputs"><h3>SDK build inputs</h3>
       <p>{options.sdkInputs.available ? options.sdkInputs.technical ? 'Technical Development build' : 'Regular SDK profile' : options.sdkInputs.reason}</p>

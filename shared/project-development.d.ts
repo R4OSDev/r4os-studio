@@ -18,7 +18,16 @@ export type DesktopLaunchBudget = {available:false;reason:string} | {available:t
 export type DesktopArgumentLayout = {available:false;reason:string} | {available:true;
   binding:{projectRevision:number;settingsRevision:number;deploymentId:string;vmId:string;vmRevision:string;bootId:string};
   limitBytes:number;wrapperBytes:number;defaultWaitFixedBytes:number;shortWaitFixedBytes:Record<string,number>;saved:DesktopLaunchBudget};
+export interface DevelopmentCapacity {
+  active: number;
+  limit: number;
+  available: number;
+  state: 'available' | 'full' | 'maintenance';
+  next: string;
+}
+
 export interface DevelopmentOptions {
+  capacity?: DevelopmentCapacity;
   sdkInputs?: { available: boolean; path: string; reason?: string; technical?: boolean;
     configSha256?: string | null; additionalLibraries?: string[]; developmentProfile?: string | null };
   keyPlan?: { version: 1; maximumSteps: 32; maximumMilliseconds: 2000; requiresNewDeployment: true; heldKeys: false; heldModifiers: false; delivery: 'owned-event-queue' };

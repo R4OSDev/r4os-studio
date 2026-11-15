@@ -48,9 +48,10 @@ export function developmentRoutes(app: FastifyInstance, security: ProjectSession
     if (result.error) throw new ProjectError(result.error, result.code);
     return result;
   });
-  for (const operation of ['options', 'settings', 'jobs'] as const) {
+  for (const operation of ['options', 'settings', 'jobs', 'capacity'] as const) {
     app.get<{ Params: { id: string } }>(base + '/' + operation, { schema: { params } }, async (request, reply) => {
       security.session(request, reply);
+      if (operation === 'capacity') reply.header('Cache-Control', 'private, no-store');
       return developmentHost({ operation, projectId: request.params.id });
     });
   }

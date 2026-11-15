@@ -157,6 +157,24 @@ class Host:
                      error='The execution worker ended before a hard VM restart. Its guest outcome remains unconfirmed.')
         self.active.pop(job['id'], None)
 
+    def capacity(self):
+        limit = LIMITS['activeHostJobs']
+        active = len(self.active)
+        available = max(0, limit - active)
+        if self.unbound:
+            return {'active':active, 'limit':limit, 'available':0, 'state':'maintenance',
+                    'next':'Restore the original worker bindings before starting development work.'}
+        state = 'available' if available else 'full'
+        next_step = ('Start the required development job explicitly.' if available else
+                     'Wait for a development job to finish, check capacity, then start this job explicitly.')
+        return {'active':active, 'limit':limit, 'available':available, 'state':state, 'next':next_step}
+
+    def capacity_refusal(self):
+        capacity = self.capacity()
+        message = f"Development capacity is full ({capacity['active']}/{capacity['limit']} active). No job was created. {capacity['next']}"
+        return DevelopmentFault(message, reason_code='development_capacity_full',
+                                capacity={**capacity, 'jobCreated':False})
+
     def options(self, store):
         from contracts import hash_value
         project = store.project; image = None; vm = None
@@ -187,6 +205,7 @@ class Host:
         return {'revision': hash_value({'project': project['revision'], 'settings': store.settings()['revision'], 'image': image,
                     'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'sdkInputs': sdk_inputs}),
             'sdkInputs': sdk_inputs,
+            'capacity': self.capacity(),
             'evidenceCapabilities': evidence_capabilities,'desktopLaunchBudget':launch_budget, 'windowControlVersion':1, 'dragInterruptVersion':1,
             'editorShortcuts': {'version':1,'keys':['Ctrl+A'],'unsupported':['Ctrl+Home','Ctrl+End'],
                 'delivery':'semantic-codepoint','requiresNewDeployment':True},
@@ -424,7 +443,7 @@ class Host:
         if op in ('save_settings', 'capture', 'input', 'window', 'complete_check', 'assess', 'reconcile'): allowed.add('input')
         if op == 'evidence': allowed.update(('evidenceId', 'presentationSessionId', 'screenshotOriginal'))
         if op in ('capture', 'input', 'evidence'): allowed.add('screenshotPreview')
-        if set(request) - allowed or op not in ('options', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
+        if set(request) - allowed or op not in ('options', 'capacity', 'settings', 'jobs', 'job_request', 'session_jobs', 'read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'artifact', 'package_artifact', 'deployment', 'build', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery', 'deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation', 'save_settings', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'cancel_owned', 'reconcile'):
             raise DevelopmentFault('Unsupported development coordinator operation.', 400)
         if op in ('deploy', 'execution'):
             from retired_desktop import request as reject_retired
@@ -469,6 +488,10 @@ class Host:
                         await systemctl('stop', '--no-block', unit); stopped.append(job['id'])
                 return {'stopping': stopped}
             if op == 'options': return self.options(store)
+            if op == 'capacity':
+                async with self.lock:
+                    await self.refresh()
+                    return self.capacity()
             if op == 'session_jobs':
                 from session_jobs import listing
                 session_id = owner['sessionId'] if owner is not None else request.get('sessionId')
@@ -698,7 +721,7 @@ class Host:
                         release = Path(self.config.get('workerReleaseRoot', '/opt/r4os-studio/current')).resolve(strict=True)
                         if not available() or not (release / 'scripts/project-development/packager.py').is_file():
                             raise DevelopmentFault('Package worker host maintenance or compatible worker adoption is required.', 503)
-                    if not hard_reset and len(self.active) >= LIMITS['activeHostJobs']: raise DevelopmentFault('The host is already running its maximum number of development jobs.')
+                    if not hard_reset and self.capacity()['state'] == 'full': raise self.capacity_refusal()
                     if op == 'build' and not owner and store.agent_busy(): raise DevelopmentFault('The workspace is owned by an active agent. Request a build through that agent or wait for it to finish.')
                 binding = None
                 if op in ('deploy', 'execution', 'vm_start', 'vm_stop', 'vm_restart', 'ssh', 'observation', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_verify', 'update_recovery') and not previous:
@@ -740,7 +763,7 @@ class Host:
                         from vm_lifecycle import validate_reset_input
                         validate_reset_input(store, request['input'])
                         if len(self.active) - bool(retiring) >= LIMITS['activeHostJobs']:
-                            raise DevelopmentFault('The host is already running its maximum number of development jobs.')
+                            raise self.capacity_refusal()
                         if retiring: await self.retire_execution_for_restart(store, retiring)
                     if op == 'vm_start':
                         boot = None
@@ -783,7 +806,10 @@ class Host:
             if len(raw) > 131072: raise DevelopmentFault('Development request too large.', 400)
             result = await self.handle(json.loads(raw), peer_pid); writer.write((encode({'result': result}) + '\n').encode())
         except (DevelopmentFault, ProjectFault) as error:
-            writer.write((encode({'error': str(error), 'code': error.code, 'reasonCode': getattr(error, 'reason_code', None), 'uncertain': bool(getattr(error, 'uncertain', False))}) + '\n').encode())
+            failure = {'error': str(error), 'code': error.code, 'reasonCode': getattr(error, 'reason_code', None),
+                       'uncertain': bool(getattr(error, 'uncertain', False))}
+            if getattr(error, 'capacity', None): failure['capacity'] = error.capacity
+            writer.write((encode(failure) + '\n').encode())
         except Exception:
             writer.write(b'{"error":"The development coordinator is unavailable.","code":503}\n')
         finally:

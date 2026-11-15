@@ -591,7 +591,7 @@
     },
     {
       "name": "studio_read_development_job",
-      "description": "Read one original job by jobId and view. Use lookup alone to find jobs by original request or run. Continue output with its cursor.",
+      "description": "Read one original job by jobId and view. Use lookup alone to find jobs by original request or run. Continue output with its cursor. Read view=capacity alone for current development host slots and the next admission step.",
       "inputSchema": {
         "oneOf": [
           {
@@ -705,6 +705,21 @@
               "lookup"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "enum": [
+                  "capacity"
+                ]
+              }
+            },
+            "required": [
+              "view"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -734,7 +749,8 @@
                 "details",
                 "inventory",
                 "output",
-                "tail"
+                "tail",
+                "capacity"
               ]
             },
             "cursor": {
@@ -835,7 +851,8 @@
                 "details",
                 "inventory",
                 "output",
-                "tail"
+                "tail",
+                "capacity"
               ]
             },
             "cursor": {

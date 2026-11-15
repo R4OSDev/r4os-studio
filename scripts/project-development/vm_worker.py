@@ -29,7 +29,7 @@ async def broker_call(request):
         if value.get('error'):
             from contracts import UnconfirmedGuestEffect
             if value.get('uncertain'): raise UnconfirmedGuestEffect(value['error'])
-            raise DevelopmentFault(value['error'], value.get('code', 503), reason_code=value.get('reasonCode'))
+            raise DevelopmentFault(value['error'], value.get('code', 503), reason_code=value.get('reasonCode'), capacity=value.get('capacity'))
         return value['result']
     finally:
         writer.close(); await writer.wait_closed()

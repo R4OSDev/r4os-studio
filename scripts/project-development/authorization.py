@@ -12,7 +12,7 @@ PERMISSIONS = {'build': 'build_project', 'deploy': 'deploy_project', 'execution'
     'evidence': 'capture_vm', 'evidence_history': 'capture_vm', 'capture': 'capture_vm', 'assess': 'capture_vm',
     'input': 'send_vm_input', 'stop_job': 'stop_development_job', 'complete_check': 'complete_development_job'}
 PERMISSIONS['window'] = 'control_app_window'
-PERMISSIONS['session_jobs'] = 'read_development_job'
+PERMISSIONS['session_jobs'] = PERMISSIONS['capacity'] = 'read_development_job'
 PERMISSIONS['observation'] = PERMISSIONS['wait_observation'] = 'capture_vm'
 
 PERMISSIONS.update(UPDATE_PERMISSIONS)

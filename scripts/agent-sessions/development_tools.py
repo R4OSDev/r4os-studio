@@ -225,6 +225,8 @@ class DevelopmentTools:
                 if name in ('build_project', 'deploy_project', 'run_project','run_vm_command'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
             if name == 'read_development_job':
+                if value.get('view') == 'capacity':
+                    return {'success':True, 'output':encode({'capacity':await self.request('capacity')})}
                 if 'lookup' in value:
                     if tool_scope(self.worker.config) != 'project' or set(value) != {'lookup'}:
                         raise DevelopmentFault('Job lookup requires its declared v19 read option.',403)
@@ -340,6 +342,7 @@ class DevelopmentTools:
             raise DevelopmentFault('Unknown development tool.', 400)
         except DevelopmentFault as error:
             return {'success': False, 'error': 'unknown' if getattr(error, 'uncertain', False) else 'unavailable', 'output': str(error), 'reasonCode': getattr(error, 'reason_code', None),
+                    **({'capacity':error.capacity} if error.capacity else {}),
                     **({'developmentRequest': {'requestId':request_id,'originRunId':self.worker.run_id,'toolCallId':call_id,
                          'receiptState':'unknown' if getattr(error,'uncertain',False) else 'request_error'}}
                        if job is None and name in ('build_project','deploy_project','run_project','start_project_vm','stop_project_vm','restart_project_vm','capture_vm') else {}),
