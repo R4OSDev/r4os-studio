@@ -1,5 +1,7 @@
 """Native account reference for the common model worker; no agent execution."""
+import asyncio
 import base64
+import errno
 import json
 import socket
 import stat
@@ -11,6 +13,16 @@ from store import ProjectFault
 
 KIND='codex-subscription'
 BASE='https://chatgpt.com/backend-api/codex'
+ACCESS_RETRIES = 10
+ACCESS_RETRY_INTERVAL = 1
+ACCESS_ERROR = 'The original native OpenAI access service is unavailable. No model request was started.'
+
+
+class AccessUnavailable(ProjectFault):
+    """The private socket was absent or closed before a complete reply."""
+
+    def __init__(self):
+        super().__init__(ACCESS_ERROR, 503)
 
 
 def prompt_cache_key(store, sid, provider, account):
@@ -46,24 +58,24 @@ def frozen(providers,provider):
 
 def access(providers,ident,expected=None):
     api=ApiProviders(providers);private(api.parent,directory=True);path=api.parent/'.a.sock'
+    message={'action':'credential' if expected is not None else 'snapshot','id':identity(ident)}
+    if expected is not None:message['binding']=binding(expected)
     try:
         info=path.lstat()
-        import os
         if not stat.S_ISSOCK(info.st_mode):raise ValueError()
-        message={'action':'credential' if expected is not None else 'snapshot','id':identity(ident)}
-        if expected is not None:message['binding']=binding(expected)
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(55);client.connect(str(path));client.sendall((encode(message)+'\n').encode())
             raw=b''
             while b'\n' not in raw:
                 chunk=client.recv(16384)
-                if not chunk:raise ValueError()
+                if not chunk:raise AccessUnavailable()
                 raw+=chunk
                 if len(raw)>32768:raise ValueError()
         value=json.loads(raw)
         if 'error' in value:raise ProjectFault(value['error'],value.get('code',503))
         result=value['result'];original=binding(result['binding'])
-        if expected is not None and original!=expected:raise ValueError()
+        if expected is not None and original!=expected:
+            raise ProjectFault('The original native OpenAI account binding changed. No model request was started.', 409)
         if result.get('managedRouting') is not False:raise ValueError()
         if expected is None:return original
         token=result['accessToken'];client=result['client']
@@ -73,8 +85,27 @@ def access(providers,ident,expected=None):
         return {'key':token,'extraHeaders':{'ChatGPT-Account-Id':original['accountId'],
             'originator':'r4os_studio','User-Agent':client['userAgent']},'clientVersion':client['version']}
     except ProjectFault:raise
-    except (OSError,ValueError,TypeError,KeyError):
-        raise ProjectFault('The original native OpenAI access service is unavailable. No model request was started.',503) from None
+    except OSError as error:
+        if error.errno in (errno.ENOENT, errno.ECONNREFUSED, errno.ECONNRESET, errno.EPIPE):
+            raise AccessUnavailable() from None
+        raise ProjectFault(ACCESS_ERROR, 503) from None
+    except (ValueError,TypeError,KeyError):
+        raise ProjectFault(ACCESS_ERROR, 503) from None
+
+
+async def model_access(providers, ident, expected, guard):
+    """Wait briefly for the same local broker before any model dispatch."""
+    for attempt in range(ACCESS_RETRIES + 1):
+        guard()
+        try:
+            result = await asyncio.to_thread(access, providers, ident, expected)
+        except AccessUnavailable:
+            if attempt == ACCESS_RETRIES:
+                raise
+            await asyncio.sleep(ACCESS_RETRY_INTERVAL)
+        else:
+            guard()
+            return result
 
 
 def prepare(providers,ident,label,account):

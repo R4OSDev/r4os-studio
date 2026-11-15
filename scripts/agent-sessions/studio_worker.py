@@ -287,11 +287,15 @@ class StudioWorker(Worker):
         if not self.active():raise asyncio.CancelledError()
         self.validate_lease()
         if self.config['apiProvider']['kind']=='codex-subscription':
-            from native_openai import access
-            original=await asyncio.to_thread(access,self.manifest['providers'],self.config['apiProvider']['id'],self.config['apiNativeAccount'])
+            from native_openai import model_access
+
+            def guard():
+                if not self.active():raise asyncio.CancelledError()
+                if self.goal_worker.execution and not self.goal_worker.active:raise GoalHalted()
+                self.validate_lease()
+
+            original=await model_access(self.manifest['providers'],self.config['apiProvider']['id'],self.config['apiNativeAccount'],guard)
             self.credential=original['key'];self.model_headers=original['extraHeaders']
-            self.validate_lease()
-            if not self.active():raise asyncio.CancelledError()
         if self.config['apiProvider']['kind']=='chatgpt-plan':
             from chatgpt_plan import Plan
             self.credential=await asyncio.to_thread(Plan(self.manifest['providers']).credential,self.config['apiProvider'],self.config['apiPlanGrant'])
