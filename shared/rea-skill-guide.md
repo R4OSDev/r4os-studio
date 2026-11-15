@@ -14,6 +14,12 @@ Absolute host paths remain valid. Use actual native
 capability results to choose an analysis engine. A listed method does not prove
 that a licensed program, device, target OS or optional provider is available.
 
+For a headerless 16-bit x86 image, use `binary_session` with
+`format=raw-binary`, `architecture=x86-16`, and a hexadecimal `entry_point`.
+The entry and last mapped byte must fit in `0x0..0xfffff`. `architecture=x86`
+selects 32-bit analysis, and `format=dos-com` selects the DOS COM load layout.
+Check the bound Ghidra language in `binary_overview`.
+
 Do not run `rea setup`, register a global MCP server, install another Node/npm or
 replace a missing managed runtime with an unrelated npm release. Report the
 original Studio preparation/runtime error. Studio's Update action prepares a

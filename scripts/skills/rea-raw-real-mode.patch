@@ -1,0 +1,182 @@
+diff --git a/bridge/ghidra/ReaGhidraBridge.java b/bridge/ghidra/ReaGhidraBridge.java
+index eb26f63..a68535f 100644
+--- a/bridge/ghidra/ReaGhidraBridge.java
++++ b/bridge/ghidra/ReaGhidraBridge.java
+@@ -209,15 +209,12 @@ public final class ReaGhidraBridge extends HeadlessScript {
+         sessionDefaultAddressSpace =
+             currentProgram.getAddressFactory().getDefaultAddressSpace();
+         if (currentProgram.getExecutableFormat().equals("Raw Binary")) {
+-            boolean dosCom = currentProgram.getLanguageID().getIdAsString()
+-                .equals("x86:LE:16:Real Mode");
+-            String preparation = dosCom ? "REA DOS COM prepared" : "REA raw binary prepared";
+-            if (!currentProgram.getOptions(ghidra.program.model.listing.Program.PROGRAM_INFO)
+-                .getBoolean(preparation, false)) {
+-                throw new IllegalStateException(
+-                    dosCom ? "REA DOS COM entry/context preparation failed" :
+-                        "REA raw binary entry preparation failed"
+-                );
++            var preparation = currentProgram.getOptions(ghidra.program.model.listing.Program.PROGRAM_INFO);
++            boolean rawPrepared = preparation.getBoolean("REA raw binary prepared", false);
++            boolean comPrepared = preparation.getBoolean("REA DOS COM prepared", false) &&
++                currentProgram.getLanguageID().getIdAsString().equals("x86:LE:16:Real Mode");
++            if (!rawPrepared && !comPrepared) {
++                throw new IllegalStateException("REA raw binary or DOS COM entry preparation failed");
+             }
+         }
+         if (!Application.getApplicationVersion().equals(descriptor.providerVersion)) {
+diff --git a/src/contracts/sessionToolContracts.ts b/src/contracts/sessionToolContracts.ts
+index 44d5655..f5c73a2 100644
+--- a/src/contracts/sessionToolContracts.ts
++++ b/src/contracts/sessionToolContracts.ts
+@@ -68,7 +68,7 @@ export const exportEvidenceBundleInputSchema = z.strictObject({
+ export const SESSION_TOOL_CONTRACTS = [
+   session(
+     "open_binary",
+-    "Open a local executable, application bundle, archive, JavaScript, source map, plist, or analysis database after validation. format=dos-com explicitly interprets 1..65280 headerless bytes as a DOS COM analysis image. format=raw-binary interprets headerless bytes with a required architecture and entry_point; file offset 0 maps at that address. Omission preserves header-based detection. provider_id selects one deep provider or deterministic auto selection; the binding remains stable until close or an explicit switch, with no failure fallback. Reopening the same target and profile retains its active database and metadata edits. An optional analysis snapshot is imported atomically and must match the binary identity, concrete provider, and canonical analysis profile exactly; importing into a session with metadata mutations requires closing and reopening it first. Switching targets preserves investigation records. Call close_binary to release engine resources; reset_investigation explicitly clears investigation records.",
++    "Open a local executable, application bundle, archive, JavaScript, source map, plist, or analysis database after validation. format=dos-com explicitly interprets 1..65280 headerless bytes as a DOS COM analysis image. format=raw-binary interprets headerless bytes with a required architecture and entry_point; file offset 0 maps at that address. Use architecture=x86-16 for 16-bit x86 Real Mode with a linear entry and load range within 0x0..0xfffff. architecture=x86 uses 32-bit x86. Omission preserves header-based detection. provider_id selects one deep provider or deterministic auto selection; the binding remains stable until close or an explicit switch, with no failure fallback. Reopening the same target and profile retains its active database and metadata edits. An optional analysis snapshot is imported atomically and must match the binary identity, concrete provider, and canonical analysis profile exactly; importing into a session with metadata mutations requires closing and reopening it first. Switching targets preserves investigation records. Call close_binary to release engine resources; reset_investigation explicitly clears investigation records.",
+     openBinaryInputSchema,
+   ),
+   session(
+diff --git a/src/domain/binaryTargetTypes.ts b/src/domain/binaryTargetTypes.ts
+index 743a92c..2985829 100644
+--- a/src/domain/binaryTargetTypes.ts
++++ b/src/domain/binaryTargetTypes.ts
+@@ -4,6 +4,7 @@ import type { ZipPackageFormat } from "./zipPackageFormat.js";
+ /** Provider-neutral CPU families detected from headers or explicitly selected raw loads. */
+ export const BINARY_ARCHITECTURES = [
+   "x86",
++  "x86-16",
+   "x86_64",
+   "arm",
+   "arm64",
+@@ -22,6 +23,7 @@ export type BinaryArchitecture = (typeof BINARY_ARCHITECTURES)[number];
+  * never yields them, so detected targets and Evidence subjects exclude them.
+  */
+ export const RAW_ONLY_ARCHITECTURES = [
++  "x86-16",
+   "6502",
+   "m68k",
+ ] as const satisfies readonly BinaryArchitecture[];
+diff --git a/src/domain/rawBinary.ts b/src/domain/rawBinary.ts
+index deb9f81..ff3d63f 100644
+--- a/src/domain/rawBinary.ts
++++ b/src/domain/rawBinary.ts
+@@ -11,6 +11,7 @@ import { err, ok, type Result } from "./result.js";
+ /** Caller-visible CPU families admitted for headerless raw binaries. */
+ export const BINARY_ARCHITECTURES = [
+   "x86",
++  "x86-16",
+   "x86_64",
+   "arm",
+   "arm64",
+@@ -77,7 +78,9 @@ export interface RawBinaryAdmissionRejection {
+ }
+ 
+ const addressWidth = (architecture: BinaryArchitecture): bigint =>
+-  architecture === "6502"
++  architecture === "x86-16"
++    ? 0xfffffn
++    : architecture === "6502"
+     ? 0xffffn
+     : architecture === "x86" ||
+         architecture === "arm" ||
+@@ -95,7 +98,7 @@ export const admitRawBinary = (input: {
+   if (!architecture.success)
+     return err({
+       reason:
+-        "raw-binary format requires architecture (x86, x86_64, arm, arm64, 6502, or m68k)",
++        "raw-binary format requires architecture (x86, x86-16, x86_64, arm, arm64, 6502, or m68k)",
+       constraint: "load_selection_rejected",
+     });
+   if (typeof input.entryPoint !== "string")
+@@ -132,6 +135,11 @@ export const admitRawBinary = (input: {
+     });
+   const last = entry.value.value + BigInt(input.fileBytes) - 1n;
+   const max = addressWidth(architecture.data);
++  if (architecture.data === "x86-16" && last > max)
++    return err({
++      reason: `raw-binary x86-16 entry and load range must fit in 0x0..0xfffff; image ends at 0x${last.toString(16)}`,
++      constraint: "load_selection_rejected",
++    });
+   if (entry.value.value > max || last > max)
+     return err({
+       reason: `raw-binary mapping from ${entry.value.canonical} must fit in the ${architecture.data} address width`,
+diff --git a/src/ghidra/GhidraProvider.ts b/src/ghidra/GhidraProvider.ts
+index 040b733..b6a34bf 100644
+--- a/src/ghidra/GhidraProvider.ts
++++ b/src/ghidra/GhidraProvider.ts
+@@ -92,6 +92,7 @@ import {
+ 
+ const SUPPORTED_ARCHITECTURES = new Set<BinaryArchitecture>([
+   "x86",
++  "x86-16",
+   "x86_64",
+   "arm",
+   "arm64",
+diff --git a/src/ghidra/GhidraProviderClient.ts b/src/ghidra/GhidraProviderClient.ts
+index 77bb0f1..b4aa3f6 100644
+--- a/src/ghidra/GhidraProviderClient.ts
++++ b/src/ghidra/GhidraProviderClient.ts
+@@ -131,7 +131,10 @@ import {
+   ghidraExtensionLimitations,
+ } from "./extensions/GhidraExtensions.js";
+ import { inspectWindowsNativeReadiness } from "../process/WindowsAuthority.js";
+-import { ghidraRawBinaryLanguage } from "./GhidraRawBinaryLanguage.js";
++import {
++  ghidraRawBinaryLanguage,
++  ghidraRawLoadAddress,
++} from "./GhidraRawBinaryLanguage.js";
+ import { ghidraDolLanguage, ghidraDolSectionFile } from "./GhidraDolProfile.js";
+ 
+ /** Production seam for exercising provider projection without a real process. */
+@@ -511,7 +514,7 @@ export const createGhidraProviderClient = (input: {
+     ...(target.format === "raw-binary"
+       ? [
+           "Headerless raw-binary analysis uses the caller-supplied architecture and entry address; file offset 0 is mapped at that address. Headers are not discovered from file bytes.",
+-          "Little-endian generic Ghidra languages are used for x86, x86_64, arm, arm64, and NMOS 6502; m68k uses the big-endian 68000 default language, which decodes the 68040 superset. Big-endian ARM, Thumb-only, Cortex-M, 65C02, 65816, separate 68020/68030/CPU32/ColdFire variants, and other processor variants are unsupported in this increment.",
++          "Little-endian Ghidra languages are used for x86-16 real mode, x86, x86_64, arm, arm64, and NMOS 6502; m68k uses the big-endian 68000 default language, which decodes the 68040 superset. Big-endian ARM, Thumb-only, Cortex-M, 65C02, 65816, separate 68020/68030/CPU32/ColdFire variants, and other processor variants are unsupported in this increment.",
+           "Static analysis does not emulate reset vectors, memory-mapped I/O, or firmware boot sequences.",
+         ]
+       : []),
+@@ -593,7 +596,7 @@ export const createGhidraProviderClient = (input: {
+             rawBinary: {
+               languageId: rawLanguage.languageId,
+               compilerSpecId: rawLanguage.compilerSpecId,
+-              baseAddr: target.entryPoint,
++              baseAddr: ghidraRawLoadAddress(target.architecture, target.entryPoint),
+             },
+           }),
+       ...(target.format === "gamecube-dol"
+diff --git a/src/ghidra/GhidraRawBinaryLanguage.ts b/src/ghidra/GhidraRawBinaryLanguage.ts
+index e29b747..cde353c 100644
+--- a/src/ghidra/GhidraRawBinaryLanguage.ts
++++ b/src/ghidra/GhidraRawBinaryLanguage.ts
+@@ -32,6 +32,12 @@ export const ghidraRawBinaryLanguage = (
+         compilerSpecId: "default",
+         defaultAddressSpace: "ram",
+       };
++    case "x86-16":
++      return {
++        languageId: "x86:LE:16:Real Mode",
++        compilerSpecId: "default",
++        defaultAddressSpace: "ram",
++      };
+     case "x86":
+       return {
+         languageId: "x86:LE:32:default",
+@@ -58,3 +64,15 @@ export const ghidraRawBinaryLanguage = (
+       };
+   }
+ };
++
++/** Ghidra's segmented input spelling for a caller's linear load address. */
++export const ghidraRawLoadAddress = (
++  architecture: RawBinaryAdmission["architecture"],
++  entry: string,
++): string => {
++  if (architecture !== "x86-16") return entry;
++  const linear = BigInt(entry);
++  const segment = ((linear >> 16n) << 12n).toString(16).padStart(4, "0");
++  const offset = (linear & 0xffffn).toString(16).padStart(4, "0");
++  return `${segment}:${offset}`;
++};

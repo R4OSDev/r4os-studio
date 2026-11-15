@@ -16,8 +16,11 @@ from managed_download import node_plan,install_node,file_hash
 import runtime_spec
 
 RECIPE_VERSION=4
-KERNEL_THREAD_BACKPORT_SOURCE = 'd7df9df3393f77c78a76a06144ff4f515d5db928'
-KERNEL_THREAD_BACKPORT = Path(__file__).with_name('rea-kernel-threads.patch')
+BACKPORT_SOURCE = 'd7df9df3393f77c78a76a06144ff4f515d5db928'
+BACKPORTS = {
+    name: Path(__file__).with_name(f'rea-{name}.patch')
+    for name in ('kernel-threads', 'raw-real-mode')
+}
 PROGRAM_PATH='/runtime/Programs/Bin:/runtime/Programs/Java/bin:/runtime/Programs/Python/bin:/runtime/Programs/OsTools/usr/bin:/runtime/Programs/Wabt/bin:/runtime/Node/bin:/usr/bin:/bin'
 
 
@@ -63,19 +66,19 @@ def run(api,stage,work,label,arguments,network=False,timeout=1200):
     return proof
 
 
-def patch_kernel_thread_cleanup(api, repository, work):
+def apply_backport(api, repository, work, name, patch):
     # The repository is the recipe's private staging copy. Git apply does
     # not need an index or the surrounding Studio checkout.
     result = subprocess.run(
-        ['/usr/bin/git', 'apply', '--whitespace=nowarn', str(KERNEL_THREAD_BACKPORT.resolve())],
+        ['/usr/bin/git', 'apply', '--whitespace=nowarn', str(patch.resolve())],
         cwd=repository, env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
                              'GIT_DIR': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1',
                              'GIT_CONFIG_GLOBAL': '/dev/null'},
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
-    api.atomic(work/'kernel-threads.log', result.stdout)
+    api.atomic(work/(name+'.log'), result.stdout)
     if result.returncode:
-        raise api.SkillFault('The managed REA kernel-thread patch could not be applied to its pinned source.', 409)
-    return dict(phase='kernel-threads', exit=result.returncode, sha256=file_hash(KERNEL_THREAD_BACKPORT))
+        raise api.SkillFault(f'The managed REA {name} patch could not be applied to its pinned source.', 409)
+    return dict(phase=name, exit=result.returncode, sha256=file_hash(patch))
 
 
 def inventory(root):
@@ -142,9 +145,8 @@ def prepare(api,skills,ident,job,source,source_manifest,progress):
     script=Path(__file__).resolve()
     recipe_files=[script,script.with_name('managed_download.py'),script.with_name('runtime_spec.py'),script.with_name('rea_programs.py'),
                   script.parents[1]/'../shared/rea-skill-guide.md',script.parents[1]/'../shared/rea-programs.json']
-    backport_kernel_threads = source_manifest['commit'] == KERNEL_THREAD_BACKPORT_SOURCE
-    if backport_kernel_threads:
-        recipe_files.append(KERNEL_THREAD_BACKPORT)
+    backports = BACKPORTS if source_manifest['commit'] == BACKPORT_SOURCE else {}
+    recipe_files.extend(backports.values())
     recipe={file.name:file_hash(file.resolve()) for file in recipe_files}
     identity=dict(recipeVersion=RECIPE_VERSION,recipeFiles=recipe,sourceCommit=source_manifest['commit'],sourceManifestHash=source_hash,
                   dependencyLockHash=hashlib.sha256(lock_raw).hexdigest(),node={k:node[k] for k in ('version','sha256','architecture')})
@@ -169,8 +171,8 @@ def prepare(api,skills,ident,job,source,source_manifest,progress):
     node_runtime=install_node(api,node,stage/'Node')
     shutil.copytree(repository,stage/'Repository',symlinks=False)
     receipts=[]
-    if backport_kernel_threads:
-        receipts.append(patch_kernel_thread_cleanup(api, stage/'Repository', work))
+    for name, patch in backports.items():
+        receipts.append(apply_backport(api, stage/'Repository', work, name, patch))
     receipts.extend([run(api,stage,work,'node-version',['/runtime/Node/bin/node','--version'],timeout=30),
                      run(api,stage,work,'npm-version',['/runtime/Node/bin/npm','--version'],timeout=30)])
     if (work/'node-version.log').read_text().strip()!=node['version']:
