@@ -79,6 +79,10 @@ def adopted(previous, sid):
         'timeUsageKnown':previous.get('timeUsageKnown',False),'tokenBudget':previous.get('tokenBudget'),'timeBudgetMs':previous.get('timeBudgetMs')}
 
 
+def continuation_request(value, after):
+    return str(uuid.uuid5(uuid.UUID(value['goal']['goalId']), str(value['generation']) + ':' + (after or 'initial')))
+
+
 def accept(goals, sid, data):
     store=goals.store;store.row(sid)
     allowed={'requestId','revision','action','objective','sessionRevision','target','targetRunId','tokenBudget','timeBudgetMs'}
@@ -102,10 +106,12 @@ def accept(goals, sid, data):
             if previous['session_id']!=sid or original!=data:raise ProjectFault('This request ID belongs to another Goal command.',409)
             return goals.receipt(sid,rid),False
         current=goals.snapshot(sid)
-        if current['revision']!=data['revision']:raise ProjectFault('The Goal changed. Read its original state before changing it.',409)
+        value=row(store,sid) or {'schema':1,'revision':current['revision'],'generation':0,'active':False,'goal':adopted(current['goal'],sid),'phase':current['phase']}
+        duplicate_play = (action == 'play' and value['active'] and value.get('resumeFailedRunId')
+                          and value['revision'] == data['revision'] + 1)
+        if current['revision']!=data['revision'] and not duplicate_play:raise ProjectFault('The Goal changed. Read its original state before changing it.',409)
         if db.execute("SELECT 1 FROM goal_commands WHERE state='pending'").fetchone():raise ProjectFault('Reconcile the original pending Goal request first.',409)
         if db.execute('SELECT COUNT(*) FROM goal_commands WHERE session_id=?',(sid,)).fetchone()[0]>=4096:raise ProjectFault('The session reached its Goal command history limit.',409)
-        value=row(store,sid) or {'schema':1,'revision':current['revision'],'generation':0,'active':False,'goal':adopted(current['goal'],sid),'phase':current['phase']}
         if value['phase']=='unknown' and action not in ('pause','stop'):raise ProjectFault('Pause or Stop the unconfirmed Goal before resuming.',409)
         goal=copy.deepcopy(value['goal']);noop=action=='play' and value['active']
         if action=='save':
@@ -132,6 +138,11 @@ def accept(goals, sid, data):
             checkpoint(value,reset=action=='stop' or changed,new_goal=changed,store=store,sid=sid,request_id=rid)
             value.update(revision=value['revision']+1,generation=value['generation']+1,active=action=='play',goal=goal,
                 lastIntent=action,requestId=rid,phase='idle',reason=None)
+            value.pop('resumeFailedRunId', None)
+            if action == 'play':
+                source = db.execute('SELECT id,state FROM runs WHERE session_id=? ORDER BY rowid DESC LIMIT 1', (sid,)).fetchone()
+                if source and source['state'] == 'failed':
+                    value['resumeFailedRunId'] = source['id']
             if goal:
                 goal.update(timeUsedSeconds=value['clock']['budgetNs']//1_000_000_000,timeUsageKnown=value['clock']['budgetKnown'])
                 goal.update(status='active' if value['active'] else 'paused',updatedAt=int(time.time()))
@@ -145,9 +156,12 @@ def accept(goals, sid, data):
             control(store,sid,'Explicit Goal control ended the previous automatic quota continuation.',only_goal=action!='play')
         result={'requestId':rid,'action':action,'state':'confirmed','snapshot':snapshot(store,sid)}
         fingerprint=hashlib.sha256(encode({'sessionId':sid,**data}).encode()).hexdigest()
+        command = {**data, '_keepalive': 1}
+        if action == 'play' and value.get('resumeFailedRunId'):
+            command['_continuationRequestId'] = continuation_request(value, value['resumeFailedRunId'])
         db.execute('INSERT INTO goal_commands VALUES(?,?,?,?,?,?,?,?)',
-            (rid,sid,fingerprint,encode({**data,'_keepalive':1}),'confirmed','session_intent',encode(result),now()))
-        publish(store,sid);db.commit();return result,True
+            (rid,sid,fingerprint,encode(command),'confirmed','session_intent',encode(result),now()))
+        publish(store,sid);db.commit();return goals.receipt(sid,rid),True
     finally:
         if db.in_transaction:db.rollback()
 
@@ -182,7 +196,7 @@ def prepare(store,sid,after):
         block(store,sid,'The original Goal time budget is exhausted or its elapsed time is unknown.',status='budgetLimited');return None
     if goal.get('tokenBudget') is not None and (goal.get('tokensUsed') is None or goal['tokensUsed']>=goal['tokenBudget']):
         block(store,sid,'The original Goal token budget is exhausted or its usage is unknown.',status='budgetLimited');return None
-    request=str(uuid.uuid5(uuid.UUID(goal['goalId']),str(value['generation'])+':'+(after or 'initial')))
+    request=continuation_request(value,after)
     dispatch=value.get('dispatch')
     if dispatch and dispatch['requestId']==request:
         return {**dispatch,'goal':copy.deepcopy(goal),'tools':value['tools'],'generation':value['generation'],'playRequestId':value['playRequestId']}

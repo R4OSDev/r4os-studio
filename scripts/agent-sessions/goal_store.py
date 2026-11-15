@@ -59,8 +59,16 @@ class Goals:
 
     def receipt(self, sid, rid):
         row = self.command(sid, rid)
-        return json.loads(row['response']) if row['response'] else {'requestId': rid, 'action': json.loads(row['payload'])['action'],
-                'state': row['state'], 'snapshot': self.snapshot(sid)}
+        payload = json.loads(row['payload'])
+        if not row['response']:
+            return {'requestId': rid, 'action': payload['action'], 'state': row['state'], 'snapshot': self.snapshot(sid)}
+        result = json.loads(row['response'])
+        if payload.get('_continuationRequestId'):
+            run = self.store.db.execute('SELECT id FROM runs WHERE session_id=? AND request_id=?',
+                                        (sid, payload['_continuationRequestId'])).fetchone()
+            if run:
+                result['runId'] = run['id']
+        return result
 
     @goal_guard
     def accept(self, sid, data):

@@ -38,7 +38,7 @@ export interface SessionGoal {
 }
 export interface GoalReceipt {
   requestId: string; action: GoalAction; state: 'pending' | 'confirmed' | 'failed' | 'unknown';
-  snapshot: SessionGoal; reason?: string;
+  snapshot: SessionGoal; reason?: string; runId?: string;
 }
 export type AttachmentInputMode = 'localImage' | 'text' | 'pdfText';
 /** Private paths and file bytes never appear in public event/HTTP metadata. */
