@@ -1,4 +1,5 @@
 """Bounded no-follow capture, including uncommitted files, before a build."""
+from collections import defaultdict
 import hashlib
 import os
 from pathlib import Path
@@ -18,7 +19,22 @@ def signature(info): return (info.st_dev, info.st_ino, info.st_size, info.st_mti
 def inventory(root, inputs=None):
     from sdk_inputs import read, git_roots, git_metadata
     roots = git_roots(inputs if inputs is not None else read(root))
-    result = {}; total = 0; folders = []
+    result = {}
+    folders = []
+    observed = {'bytes':0, 'files':0, 'directories':0}
+    contributions = defaultdict(lambda: {'bytes':0, 'files':0, 'directories':0})
+
+    def count(path, field, amount, directory=False):
+        observed[field] += amount
+        group = path.split('/', 1)[0] if directory or '/' in path else '.'
+        contributions[group][field] += amount
+
+    def refuse(kind, field, measured, maximum, path):
+        raise BuildInputLimit(kind, measured, maximum, path, observed, [
+            {'path':key, **values} for key, values in
+            sorted(contributions.items(), key=lambda item: (-item[1][field], item[0]))[:5]
+        ])
+
     for base, directories, files, fd in os.fwalk(root, follow_symlinks=False):
         def included(name):
             path = str((Path(base) / name).relative_to(root))
@@ -29,8 +45,10 @@ def inventory(root, inputs=None):
             if not stat.S_ISDIR(os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode):
                 raise DevelopmentFault('Linked project directories cannot be captured.')
             path = relative(str((Path(base) / name).relative_to(root)))
-            if len(path.encode()) > 240 or len(folders) >= LIMITS['inputFiles']:
-                raise DevelopmentFault('Project directories exceed the build input limit.')
+            if len(path.encode()) > 240: raise DevelopmentFault('A project input path exceeds 240 UTF-8 bytes.')
+            count(path, 'directories', 1, directory=True)
+            if observed['directories'] > LIMITS['inputFiles']:
+                refuse('directories', 'directories', observed['directories'], LIMITS['inputFiles'], path)
             folders.append(path)
         for name in sorted(files):
             path = relative(str((Path(base) / name).relative_to(root)))
@@ -40,12 +58,38 @@ def inventory(root, inputs=None):
             info = os.stat(name, dir_fd=fd, follow_symlinks=False)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 raise DevelopmentFault('Linked, hardlinked or special project files cannot be captured.')
-            total += info.st_size
-            if info.st_size > LIMITS['fileBytes'] or total > LIMITS['inputBytes'] or len(result) >= LIMITS['inputFiles']:
-                raise DevelopmentFault('Project sources exceed the build input limit.')
+            count(path, 'bytes', info.st_size)
+            count(path, 'files', 1)
+            if info.st_size > LIMITS['fileBytes']:
+                refuse('fileBytes', 'bytes', info.st_size, LIMITS['fileBytes'], path)
+            if observed['bytes'] > LIMITS['inputBytes']:
+                refuse('inputBytes', 'bytes', observed['bytes'], LIMITS['inputBytes'], path)
+            if observed['files'] > LIMITS['inputFiles']:
+                refuse('inputFiles', 'files', observed['files'], LIMITS['inputFiles'], path)
             result[path] = signature(info)
     if 'module.R4MF' not in result: raise DevelopmentFault('The project manifest is missing.')
     return result, sorted(folders)
+
+
+class BuildInputLimit(DevelopmentFault):
+    def __init__(self, kind, measured, maximum, path, observed, directories):
+        label = {'fileBytes':'Single input file bytes', 'inputBytes':'Total input bytes',
+                 'inputFiles':'Input file count', 'directories':'Input directory count'}[kind]
+        super().__init__(f'{label} exceeded ({measured} > {maximum}) at {path}. '
+                         'The scan stopped at this limit. Counts are partial. The compiler did not start.',
+                         reason_code='build_input_limit')
+        self.diagnosis = {'limit':kind, 'maximum':maximum, 'measured':measured, 'path':path,
+                          'observed':dict(observed), 'partial':True, 'topDirectories':directories,
+                          'excludedDirectories':sorted(EXCLUDED - {'.git'}), 'excludedRootPaths':['ExFiles'],
+                          'gitMetadata':'Only required declared SDK input metadata is included.',
+                          'compilerStarted':False, 'compilerReceipt':None}
+
+
+def checked_inventory(store, job, inputs):
+    try: return inventory(store.workspace, inputs)
+    except BuildInputLimit as error:
+        store.update(job['id'], buildInputLimit=error.diagnosis, reasonCode=error.reason_code)
+        raise
 
 
 def capture(store, job):
@@ -53,7 +97,7 @@ def capture(store, job):
     inputs = read(store.workspace)
     if job.get('sdkInputs') != inputs:
         raise DevelopmentFault('SDK input selection changed after this build was accepted. Start a new build explicitly.')
-    before, directories = inventory(store.workspace, inputs)
+    before, directories = checked_inventory(store, job, inputs)
     parent = folder(store.root / 'Inputs'); final = parent / job['id']; temp = parent / (job['id'] + '.new')
     if final.exists() or temp.exists(): raise DevelopmentFault('This build input already exists; it was preserved.')
     folder(temp); files = []
@@ -86,7 +130,7 @@ def capture(store, job):
                     target.chmod(0o500 if executable else 0o400)
             finally:
                 for fd in reversed(descriptors): os.close(fd)
-        if inventory(store.workspace, inputs) != (before, directories): raise DevelopmentFault('Project changed while its build input was captured. Retry explicitly.')
+        if checked_inventory(store, job, inputs) != (before, directories): raise DevelopmentFault('Project changed while its build input was captured. Retry explicitly.')
         verify_inventory(inputs, files)
         value = {'id': job['id'], 'sha256': hash_value({'files': files, 'directories': directories}),
                  'manifestSha256': next(item['sha256'] for item in files if item['path'] == 'module.R4MF'),

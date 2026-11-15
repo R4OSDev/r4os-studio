@@ -205,7 +205,23 @@ export interface DevelopmentCheck {
   /** Visual judgement is distinguished from host assertions. */
   assessment: 'host' | 'agent' | 'user' | null;
 }
+export interface BuildInputLimit {
+  limit: 'fileBytes' | 'inputBytes' | 'inputFiles' | 'directories';
+  maximum: number;
+  measured: number;
+  path: string;
+  observed: { bytes: number; files: number; directories: number };
+  partial: true;
+  topDirectories: { path: string; bytes: number; files: number; directories: number }[];
+  excludedDirectories: string[];
+  excludedRootPaths: string[];
+  gitMetadata: string;
+  compilerStarted: false;
+  compilerReceipt: null;
+}
+
 export interface DevelopmentJob {
+  buildInputLimit?: BuildInputLimit;
   observationMode?: 'vm-diagnostic'; captureState?: 'pending' | 'confirmed'; evidenceId?: string;
   vmLifecycle?: { kind: 'vm_stop' | 'vm_restart'; phase: string; noop?: boolean; shutdownDispatched?: boolean; newBootId?: string; readyAt?: string; qemuEnded?: boolean; stopped?: { confirmed: boolean; observedAt: string };
     reset?: { confirmed: boolean; previousBootId: string; bootId: string; observedAt: string; commandAcknowledged: boolean } };
