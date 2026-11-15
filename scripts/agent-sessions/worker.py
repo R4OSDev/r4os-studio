@@ -224,7 +224,7 @@ class Worker:
             from github_tools import GitHubTools
             return await GitHubTools(self).inspect(arguments,call_id)
         if name in AUTHOR_TOOLS and self.store.owner_type == 'skill': return await self.skills.call(name, arguments, call_id)
-        if name in (*DEVELOPMENT_TOOLS, *WINDOW_TOOLS) and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
+        if name in (*DEVELOPMENT_TOOLS, *WINDOW_TOOLS, 'reconcile_development_job') and self.store.owner_type == 'project': return await self.development.call(name, arguments, call_id)
         if name in ('exec_command', 'write_stdin', 'terminate_process'):
             return await self.terminals.call(name, arguments)
         if name in ('list_directory', 'read_file', 'search', 'write_file', 'apply_patch', 'create_directory'):
@@ -284,7 +284,7 @@ class Worker:
             except ProjectFault as error:roadmap_denial=str(error)
         hashed = requested_hash if requested==name else fingerprint(name,arguments)
         previous = self.store.db.execute('SELECT t.* FROM tools t JOIN runs r ON r.id=t.run_id WHERE r.session_id=? AND t.call_id=? LIMIT 1', (self.session_id, call_id)).fetchone()
-        tool_id = name.replace('studio_', 'studio.', 1)
+        tool_id = 'studio.read_development_job' if name == 'studio_reconcile_development_job' else name.replace('studio_', 'studio.', 1)
         from tool_deadlines import seconds_for
         from tool_outcomes import execute_with_deadline, reported_result
         deadline = seconds_for(self.config, tool_id)

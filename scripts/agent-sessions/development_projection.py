@@ -50,7 +50,7 @@ def summary(job,page=None):
             if lifecycle['reset'].get('observedBoot'):
                 small['vmLifecycle']['reset']['observedBoot'] = pick(lifecycle['reset']['observedBoot'],('bootId','previousBootId','observedAt','guest'))
     if job.get('checkCompletion'):small['checkCompletion']=pick(job['checkCompletion'],('requestId','reason','state','cancelled','closed','completedAt'))
-    if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed'))
+    if job.get('recovery'):small['recovery']=pick(job['recovery'],('id','source','replayed','guestEndConfirmed','cleanupConfirmed','reason'))
     if job.get('target'):small['target']=pick(job['target'],('vmId','bootId'))
     if job.get('source'):small['source']=pick(job['source'],('id','sha256','manifestSha256'))
     if job.get('pins'):small['pinsSha256']=hashlib.sha256(encoded(job['pins']).encode()).hexdigest()

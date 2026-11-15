@@ -217,7 +217,7 @@ def tools_for(scope='project'):
 
 
 def permission_tools(scope='project'):
-    grouped={'read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note',*GOAL_TOOLS,*WEB_TOOLS}
+    grouped={'reconcile_development_job','read_roadmap','update_roadmap','cleanup_roadmap','read_environment_notes','record_environment_note',*GOAL_TOOLS,*WEB_TOOLS}
     return tuple(name for name,item in tool_definitions(tool_scope(scope)).items() if name not in grouped and not item.get('dispatch'))
 
 

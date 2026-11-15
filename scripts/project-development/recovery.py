@@ -32,7 +32,7 @@ def complete_files(store, job):
     return files, visual
 
 
-def local(store, job):
+def local(store, job, *, original_execution=False):
     """Only already committed, privately attested results may become final."""
     if job['state'] != 'unknown': return None
     if job.get('desktopShortcutRequested') or job.get('desktopLinkRequested'): return None
@@ -97,6 +97,10 @@ def local(store, job):
     work = store.root / 'ExecutionWork' / job['id']; closed = work / 'closed.json'
     if not closed.exists(): return None
     value = read(closed); intent = read(work / 'intent.json')
+    if original_execution and any(intent.get(key) != job.get(key) for key in ('deploymentId','target')):
+        raise DevelopmentFault('The saved launch intent has a different deployment or boot binding.')
+    if original_execution and intent.get('jobId') != job['id']:
+        raise DevelopmentFault('The saved launch intent belongs to another execution.')
     if (value.get('state') != 'closed' or value.get('jobId') != job['id'] or value.get('deploymentId') != job['deploymentId']
         or value.get('executionId') != intent.get('executionId') or value.get('target') != job.get('target')
         or value.get('settings') != job['settings']): raise DevelopmentFault('The guest close receipt has a different execution identity.')
@@ -109,6 +113,8 @@ def local(store, job):
         outcome, process = ('failed' if rejected else 'interrupted'), None
     else:
         started = read(work / 'started.json'); process = started['process']; generation(process['generation'])
+        if original_execution and any(started.get(key) != intent.get(key) for key in ('jobId','deploymentId','target')):
+            raise DevelopmentFault('The saved process start has a different original execution binding.')
         state = value.get('completion') or {}
         if (started.get('executionId') != value['executionId'] or state.get('closeConfirmed') is not True
             or state.get('instanceId') != process['instanceId'] or state.get('generation') != process['generation']):
@@ -127,13 +133,35 @@ def local(store, job):
         completion = completion_result(store, job, state, data, files, marker, cancelled=bool(value.get('checkCompletion', {}).get('cancelled')))
         completion_fields['checkCompletion'] = completion
         if state.get('stopReason') == 'user_stop': outcome = 'interrupted' if completion['cancelled'] else completion['state']
-    result = store.recovered(job['id'], outcome, receipt('private-guest-close-receipt', guestEndConfirmed=True), process=process,
+    cleanup = value.get('cleanupReceipt') or {}
+    cleanup_confirmed = all(cleanup.get(key) is True for key in ('closed','serviceRemoved','watchdogRemoved'))
+    result = store.recovered(job['id'], outcome, receipt('private-guest-close-receipt', guestEndConfirmed=True,
+        cleanupConfirmed=cleanup_confirmed), process=process,
         guestState=state, exitCode=state.get('exitCode'), check=evaluate(job['settings'], state, data, files, visual), error=None, **completion_fields)
     resolve(store.projects, value['target']['vmId'], job['id'], 'private-guest-close-receipt')
     return result
 
 
-async def reconcile(store, job, host=None):
+def execution_pending(store, job, reason):
+    return store.recovered(job['id'], 'unknown', receipt('unconfirmed-original-execution',
+        guestEndConfirmed=False, cleanupConfirmed=False, reason=reason))
+
+
+def execution_status(job, request_id):
+    recovery = job.get('recovery') or {}
+    closed = recovery.get('guestEndConfirmed') is True or (job.get('guestState') or {}).get('closeConfirmed') is True
+    closed = closed and recovery.get('source') not in ('vm-stopped','vm-replaced')
+    cleanup = closed and recovery.get('cleanupConfirmed') is True
+    return {'requestId':request_id, 'originalRequestId':job['requestId'], 'jobId':job['id'],
+            'state':'confirmed' if closed else 'unconfirmed', 'processEndConfirmed':closed,
+            'cleanupConfirmed':cleanup, 'applicationExitCode':job.get('exitCode') if closed else None,
+            'originalReceiptId':recovery.get('id'), 'replayed':False,
+            'next':('Use the confirmed original execution and cleanup receipts.' if closed and cleanup else
+                    'Read the saved cleanup status for this completed process.' if closed else
+                    recovery.get('reason') or 'Read the original execution and check for its saved end receipt.')}
+
+
+async def reconcile(store, job, host=None, *, original_execution=False):
     if job['kind'] == 'ssh':
         from project_ssh import reconcile as ssh_reconcile
         return await ssh_reconcile(store, job)
@@ -147,10 +175,23 @@ async def reconcile(store, job, host=None):
         if host is None: raise DevelopmentFault('The current VM observer is required for Inbox reconciliation.')
         from update_transfer import reconcile as inbox_reconcile
         return await inbox_reconcile(store, job, host)
+    if original_execution:
+        binding = job.get('binding') or {}
+        if not binding or store.project['vmId'] != binding['id']:
+            return execution_pending(store, job, 'The original project VM binding changed. Read the saved original execution.')
+        from access import vm_config
+        vm = vm_config(store.r4os, binding['id'])
+        if any(binding.get(key) != vm.get(key) for key in ('revision','imageId','imageSha256')):
+            return execution_pending(store, job, 'The original VM revision or image changed. Read its saved execution evidence.')
     try:
-        result = local(store, job)
+        result = local(store, job, original_execution=original_execution)
         if result: return result
-    except (OSError, ValueError, KeyError): raise DevelopmentFault('The saved recovery evidence is damaged. Existing files were preserved.') from None
+    except (OSError, ValueError, KeyError, DevelopmentFault) as error:
+        if original_execution:
+            reason = str(error) if isinstance(error, DevelopmentFault) else 'The saved original execution evidence is incomplete or damaged.'
+            return execution_pending(store, job, reason)
+        if isinstance(error, DevelopmentFault): raise
+        raise DevelopmentFault('The saved recovery evidence is damaged. Existing files were preserved.') from None
     if job['kind'] in ('vm_stop','vm_restart'):
         return store.recovered(job['id'],'unknown',receipt('unconfirmed-vm-lifecycle',guestEndConfirmed=False,
             reason='No original terminal lifecycle receipt. Inspect its saved phases; no shutdown, start, export or SSH action was repeated.'))
@@ -172,10 +213,19 @@ async def reconcile(store, job, host=None):
         info = await vm_call(lease, 'info'); work = store.root / 'ExecutionWork' / job['id']
         intent = read(work / 'intent.json') if (work / 'intent.json').exists() else {}
         replaced = bool(intent.get('vmInvocationId') and info['invocationId'] and intent['vmInvocationId'] != info['invocationId'])
+        if original_execution and (replaced or info['vm']['state'] != 'running'):
+            return execution_pending(store, job, 'The original VM invocation or running boot is unavailable. Use the original saved execution evidence.')
         if info['vm']['state'] != 'stopped' and not replaced:
             from desktop_evidence import recover as retained_completion
-            retained = await retained_completion(store, job, host, vm, lease, info)
+            try:
+                retained = await retained_completion(store, job, host, vm, lease, info, original_boot=original_execution)
+            except (DevelopmentFault, OSError, ValueError, KeyError, TypeError) as error:
+                if not original_execution: raise
+                reason = str(error) if isinstance(error, DevelopmentFault) else 'The original request, process or evidence token is missing or damaged.'
+                return execution_pending(store, job, reason)
             if retained: return retained
+            if original_execution:
+                return execution_pending(store, job, 'The original scoped evidence has no confirmed process end yet. Read this execution and its saved receipts.')
             return store.recovered(job['id'], 'unknown', receipt('unconfirmed-guest', guestEndConfirmed=False,
                 reason='The guest end is unconfirmed. Its watchdog may still be cleaning up. Stop the assigned VM explicitly if no private close receipt becomes available.'))
         state = {'state': 'completed', 'exitCode': None, 'closeConfirmed': True, 'outputIncomplete': True,

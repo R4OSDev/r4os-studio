@@ -162,6 +162,7 @@ def eligible(config, *, documents=False, images=False, goal=False, remote_histor
         if name == 'web_search': return direct and config.get('webSearchEnabled') is True
         if name in ('get_goal','update_goal'):
             return bool(config.get('goalKeepalive') or direct and (goal or config.get('goalExecution') or config.get('studioGoalPreparation')))
+        if name == 'reconcile_development_job': return permissions.get('studio.read_development_job') is True
         if not permissions.get('studio.'+name): return False
         if updates is not None and name in UPDATE_TOOLS:
             return name in updates and (vm or name in ('read_update_package', 'plan_update_package', 'build_update_package'))

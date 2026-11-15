@@ -50,7 +50,7 @@ class DevelopmentTools:
                 del request['screenshotPreview']
                 return await broker_call(request)
         except (OSError, asyncio.TimeoutError):
-            if operation in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'observation', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
+            if operation in ('build', 'deploy', 'execution', 'vm_start', 'vm_stop','vm_restart', 'ssh', 'observation', 'capture', 'input', 'window', 'assess', 'stop_job', 'complete_check', 'reconcile', 'cancel_owned', 'update_plan', 'package', 'update_probe', 'update_transfer', 'update_install', 'update_commit', 'update_recovery'):
                 raise UnconfirmedGuestEffect('The development request receipt was lost. It was not replayed.') from None
             raise DevelopmentFault('The development coordinator is unavailable.', 503) from None
 
@@ -224,6 +224,16 @@ class DevelopmentTools:
                 if name in ('start_project_vm','stop_project_vm','restart_project_vm'): return await self.wait_for_vm(job, call_id, value,name)
                 if name in ('build_project', 'deploy_project', 'run_project','run_vm_command'): return await self.wait_for_job(name, job, call_id, value)
                 return self.result(job)
+            if name == 'reconcile_development_job':
+                capabilities = await self.capabilities()
+                if capabilities.get('features', {}).get('agentReconciliation') != 1:
+                    raise DevelopmentFault('Original execution reconciliation requires the current development coordinator.', 503)
+                receipt = await self.request('reconcile', id=value['jobId'], input={'requestId':request_id})
+                if receipt.get('error'):
+                    raise DevelopmentFault(receipt['error'], receipt.get('code', 409))
+                job = receipt['job']
+                return {'success':True, 'output':encode({**self.present(job), 'reconciliation':receipt['reconciliation']}),
+                        'development':{'jobId':job['id'], 'kind':job['kind'], 'state':job['state']}}
             if name == 'read_development_job':
                 if value.get('view') == 'capacity':
                     return {'success':True, 'output':encode({'capacity':await self.request('capacity')})}
@@ -347,7 +357,7 @@ class DevelopmentTools:
                          'receiptState':'unknown' if getattr(error,'uncertain',False) else 'request_error'}}
                        if job is None and name in ('build_project','deploy_project','run_project','start_project_vm','stop_project_vm','restart_project_vm','capture_vm') else {}),
                     **({'development': {'jobId': job['id']}} if job else
-                       {'development': {'jobId': value['jobId']}} if name in ('control_app_window','send_vm_input') else {})}
+                       {'development': {'jobId': value['jobId']}} if name in ('control_app_window','send_vm_input','reconcile_development_job') else {})}
 
     async def wait_for_vm(self, job, call_id, arguments, name='start_project_vm'):
         from contracts import ACTIVE, DevelopmentFault, LIMITS, UnconfirmedGuestEffect

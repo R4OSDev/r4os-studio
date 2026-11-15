@@ -145,7 +145,7 @@ async def query_saved(ssh, deployment, execution_id, work, token, operation='sta
     return bound(token, result)
 
 
-async def recover(store, job, host, vm, lease, info):
+async def recover(store, job, host, vm, lease, info, *, original_boot=False):
     """Only read an acknowledged original lease, after exact boot/byte checks."""
     import hashlib
     import os
@@ -156,21 +156,37 @@ async def recover(store, job, host, vm, lease, info):
     from checks import evaluate
     work = store.root / 'ExecutionWork' / job['id']
     path = work / 'desktop-evidence.json'
-    if not host or not path.exists(): return None
+    if not host or not path.exists():
+        if original_boot: raise DevelopmentFault('The original retained evidence receipt is missing. Read the original execution.')
+        return None
     record = read(path)
-    if record.get('phase') not in (3, 4): return None
+    if record.get('phase') not in (3, 4):
+        if original_boot: raise DevelopmentFault('The original retained evidence scope is unconfirmed. Read the original execution.')
+        return None
     intent = read(work / 'intent.json'); token = record['token']; fields = unpack(token)
     deployment = store.deployment(job['deploymentId'])
     if (intent.get('jobId') != job['id'] or intent.get('target') != job.get('target')
         or intent.get('deploymentId') != deployment['id'] or record['launch']['request'] != (job.get('desktopLaunch') or {}).get('request')
         or (fields[6], str(fields[7])) != (record['launch']['process_id'], record['launch']['process_generation'])):
         raise DevelopmentFault('The saved evidence scope differs from its original job.')
+    if original_boot:
+        launch = record['launch']
+        process = job.get('process') or {}
+        if (not intent.get('vmInvocationId') or intent['vmInvocationId'] != info['invocationId']
+                or fields[2:6] != tuple(int(part) for part in launch['request'].split(':'))
+                or fields[10:13] != tuple(int(part) for part in launch['evidence_epoch'])
+                or not fields[13] or (process and (process.get('instanceId'), process.get('generation')) != (fields[6], str(fields[7])))):
+            raise DevelopmentFault('The original VM invocation, request, process generation or evidence epoch differs. Read the saved execution.')
     boot = await host.boots.ensure(vm, info['invocationId'])
     target = intent['target']
     if (target.get('vmId') != vm['id'] or any(target.get(k) != vm.get(k)
         for k in ('imageId', 'imageSha256'))
         or target.get('vmRevision') != vm['revision']): return None
     same_boot = all(target.get(k) == boot.get(k) for k in ('vmId', 'vmRevision', 'imageId', 'imageSha256', 'bootId'))
+    if original_boot and not same_boot:
+        raise DevelopmentFault('The original execution boot differs from the currently observed VM boot.')
+    if original_boot and deployment.get('helperCapabilities', {}).get('desktopEvidenceRecoveryVersion') != 1:
+        raise DevelopmentFault('The original deployment has no compatible retained evidence reader.')
     helper = next((f for f in deployment['files'] if f.get('path', '').endswith('/STHELP.R4X')), None)
     if not helper or deployment.get('helperCapabilities', {}).get('desktopEvidenceVersion') != 1: return None
     directory = deployment['guestDirectory']

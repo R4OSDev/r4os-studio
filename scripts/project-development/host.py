@@ -430,7 +430,7 @@ class Host:
             from package_support import available
             from project_ssh import supported as ssh_supported
             return {'enabled': not self.unbound, 'protocol': 1, 'projectDeletionLocks': 1, 'maxActiveJobs': LIMITS['activeHostJobs'],
-                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'vmHardRestart':1, 'vmBootReadiness':1, 'vmReleaseBatch':1, 'vmObservation':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
+                    'features': {'stopReceipts': 1, 'projectPins': 1, 'updateAgentTools': 1, 'updateRecovery': 1, 'updateVerification': 1, 'updateInstallation': 1, 'updateInbox': 1, 'updatePreflight': 1, 'packageJobs': int(available()), 'updatePlans': 1, 'agentTools': 2, 'reconciliation': 1, 'agentReconciliation':1, 'leaseQueue': 1, 'vmReset': 1, 'vmStart': 1, 'vmLifecycle':1, 'vmHardRestart':1, 'vmBootReadiness':1, 'vmReleaseBatch':1, 'vmObservation':1, 'jobWait': 1, 'checkCompletion': 1, 'windowControl':1, 'dragInterrupt':1, 'sessionJobLookup':1, 'keyPlan':1, 'projectSsh':int(ssh_supported())},
                     'keyPlanVersion':1, 'version': json.loads((APP / 'shared/version.json').read_text())['version'], 'sshWait': 1}
         allowed = {'operation', 'projectId', 'owner'}
         if op == 'session_jobs': allowed.update(('sessionId','query'))
@@ -465,7 +465,7 @@ class Host:
                 bound = None
                 if op == 'artifact': bound = store.get(store.artifact_metadata(request['id'])['buildId'])
                 elif op == 'deployment': bound = store.get(store.deployment_metadata(request['id'])['jobId'])
-                elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess'): bound = store.get(request['id'])
+                elif op in ('read_job', 'wait_update', 'wait_vm_start', 'wait_vm_stop','wait_vm_restart', *waits, 'stop_job', 'capture', 'input', 'window', 'complete_check', 'evidence', 'evidence_history', 'assess', 'reconcile'): bound = store.get(request['id'])
                 authorization = authorize(store, owner, op, peer_pid, bound, stopping=op == 'cancel_owned', recovery_action=request.get('input',{}).get('action') if op=='update_recovery' else None)
                 if op == 'observation' or op == 'capture' and request.get('input', {}).get('scope') == 'vm':
                     from access import vm_config
@@ -548,6 +548,8 @@ class Host:
                 from recovery import reconcile
                 if not isinstance(request.get('input'), dict) or set(request['input']) != {'requestId'}: raise DevelopmentFault('Unexpected recovery fields.', 400)
                 job = store.get(request['id'])
+                if owner is not None and job['kind'] != 'execution':
+                    raise DevelopmentFault('Only an own-session execution can be reconciled through this tool.', 400)
                 if job['kind'] == 'observation':
                     raise DevelopmentFault('Read this original observation and its saved image receipts. An unconfirmed capture cannot be reconciled by another capture.')
                 if await self.alive(job['id'], job['kind']): raise DevelopmentFault('This worker is still active. Reconnect to its current job instead.')
@@ -555,15 +557,21 @@ class Host:
                     meta = self.metadata(self.root / job['id'] / 'worker.json')
                     if meta['projectId'] != store.id: raise ValueError()
                 except Exception: raise DevelopmentFault('The original worker release binding is missing or damaged. Existing receipts were preserved.', 409) from None
-                previous = admit(store, job['id'], {'operation': 'reconcile', **request['input']})
+                # Recheck current owner after the asynchronous worker-end observation.
+                if owner is not None:
+                    authorize(store, owner, op, peer_pid, job)
+                previous = admit(store, job['id'], {'operation': 'agent-reconcile' if owner else 'reconcile', **request['input']})
                 if previous is not None: return previous
                 if job['state'] != 'unknown':
                     result = {'job': store.page(job['id'])['job'], 'reconciled': False}
                 else:
-                    try: await reconcile(store, job, self)
+                    try: await reconcile(store, job, self, original_execution=owner is not None)
                     except DevelopmentFault as error:
                         finish(store, request['input']['requestId'], {'error': str(error), 'code': error.code}); raise
                     result = {'job': store.page(job['id'])['job'], 'reconciled': True}
+                if owner is not None:
+                    from recovery import execution_status
+                    result['reconciliation'] = execution_status(result['job'], request['input']['requestId'])
                 return finish(store, request['input']['requestId'], result)
             if op == 'settings': return store.settings()
             if op == 'job_request':

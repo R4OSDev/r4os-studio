@@ -932,7 +932,7 @@
     },
     {
       "name": "studio_finish_development_job",
-      "description": "Stop the owned job or complete its test when all configured criteria are confirmed. Each action returns the original receipt.",
+      "description": "Stop the owned job or complete its test when all configured criteria are confirmed. Each action returns the original receipt. Use reconcile with the original execution jobId after losing a guest response. Read the saved process and cleanup status before requesting further effects.",
       "inputSchema": {
         "oneOf": [
           {
@@ -976,6 +976,27 @@
               "jobId"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "reconcile"
+                ]
+              },
+              "jobId": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Opaque Studio UUID from a confirmed tool result."
+              }
+            },
+            "required": [
+              "action",
+              "jobId"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -985,8 +1006,30 @@
         },
         "complete": {
           "tool": "complete_development_job"
+        },
+        "reconcile": {
+          "tool": "reconcile_development_job"
         }
       }
+    },
+    {
+      "name": "studio_reconcile_development_job",
+      "description": "Reconcile this session’s original execution from its bound process and cleanup receipts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "maxLength": 36,
+            "description": "Opaque Studio UUID from a confirmed tool result."
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      },
+      "retired": true
     },
     {
       "name": "studio_stop_development_job",
