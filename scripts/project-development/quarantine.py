@@ -80,12 +80,13 @@ def release(projects, vm_id, job_id):
         if value is not None and value['jobId'] == job_id: file.unlink()
 
 
-def resolve(projects, vm_id, job_id, source):
+def resolve(projects, vm_id, job_id, source, *, project_id=None):
     file = path(projects, vm_id)
     if not file.exists() and not file.is_symlink(): return
     with locked(file):
         value = read(file)
-        if value is not None and value['jobId'] == job_id: archive(file, value, source)
+        if value is not None and value['jobId'] == job_id and (project_id is None or value.get('projectId') == project_id):
+            archive(file, value, source)
 
 
 def resolve_after_boot(projects, boot):

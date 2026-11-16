@@ -4451,9 +4451,12 @@ and attributed worker/runtime records. The assigned VM and files already deploye
 to it are kept, as are other projects, shared components and global settings.
 
 The DELETE API requires the Projects browser session, CSRF, allowed host/origin,
-`{ revision, confirm: true }` and the current project revision. Active runs/jobs,
-held workspace reservations and unconfirmed guest effects block deletion. A shared
-project lifetime lock prevents new sessions/jobs racing with deletion; a still
+`{ revision, confirm: true }` and the current project revision. Active runs/jobs
+and held workspace reservations block deletion. For an unconfirmed execution,
+Studio checks that the original VM is fully stopped and clears the project's
+matching execution recovery record during deletion. Other unconfirmed guest
+effects still require reconciliation. A shared project lifetime lock prevents
+new sessions/jobs racing with deletion; a still
 running older coordinator must adopt this release before deletion is admitted.
 Projects without host support can be deleted if no agent/development history needs
 reconciliation. No model turn, build, guest connection or VM action is started.

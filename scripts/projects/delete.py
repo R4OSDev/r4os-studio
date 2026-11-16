@@ -15,6 +15,8 @@ from layout import folder, sync
 from project_use import acquire, project_id
 from development_units import job_units
 
+sys.path.append(str(Path(__file__).resolve().parents[1] / 'project-development'))
+
 AGENT_RUNTIME = Path('/run/r4os-studio-agents')
 DEVELOPMENT_RUNTIME = Path('/run/r4os-studio-development')
 
@@ -49,6 +51,35 @@ def worker_check(runs, jobs, action='deleting'):
             raise ProjectFault(f'Wait for this project\'s runs and development jobs to finish before {action}.', 409)
 
 
+def confirm_guest_stopped(projects, vm_id):
+    from contracts import DevelopmentFault
+    from lease import VmLease
+
+    try:
+        with VmLease(projects, vm_id, {'kind': 'manual'}):
+            result = subprocess.run(['/usr/bin/systemctl', 'show', f'r4os-studio-vm@{vm_id}.service',
+                                     '--property=LoadState,ActiveState,MainPID,ControlPID,ControlGroup'],
+                                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5, check=True)
+            state = dict(line.split('=', 1) for line in result.stdout.splitlines())
+            if state['LoadState'] != 'loaded':
+                raise ProjectFault('The original VM service is unavailable. Its stop could not be verified.', 503)
+            if state['ActiveState'] not in ('inactive', 'failed') or state['MainPID'] != '0' or state['ControlPID'] != '0':
+                raise ProjectFault('Stop the original VM and wait for it to shut down before deleting this project.', 409)
+            group = state['ControlGroup']
+            if group:
+                if not group.startswith('/') or '..' in Path(group).parts:
+                    raise ValueError('Invalid VM control group')
+                events = Path('/sys/fs/cgroup' + group) / 'cgroup.events'
+                try: empty = 'populated 0' in events.read_text().splitlines()
+                except FileNotFoundError: empty = True
+                if not empty:
+                    raise ProjectFault('Wait for the original VM processes to exit before deleting this project.', 409)
+    except DevelopmentFault as error:
+        raise ProjectFault(str(error), error.code) from None
+    except (OSError, subprocess.SubprocessError, KeyError, ValueError):
+        raise ProjectFault('The original VM stop could not be verified. Existing data was preserved.', 503) from None
+
+
 def collect(projects, ident, hosts):
     from remote_binding import assert_change_safe
     assert_change_safe(projects, ident)
@@ -77,10 +108,11 @@ def collect(projects, ident, hosts):
         raise ProjectFault('Wait for the updated development host to become ready before deleting this project.', 503)
     run_ids = {project_id(r['id']) for r in runs}
     job_ids = {project_id(j['id']): j['kind'] for j in jobs}
+    unconfirmed = {}
     for job in jobs:
         value = json.loads(job['payload'])
         if job['kind'] == 'execution' and value.get('target') and not (value.get('guestState') or {}).get('closeConfirmed') and job['state'] == 'unknown':
-            raise ProjectFault('Reconcile this project\'s unconfirmed guest execution before deleting it.', 409)
+            unconfirmed[job['id']] = project_id(value['target'].get('vmId'))
     # Include orphaned, but positively attributed, host records as well.
     for kind, root in [('agents', projects / '.studio/agents'), ('development', projects / '.studio/development')]:
         for path in root.glob('*/worker.json'):
@@ -116,12 +148,19 @@ def collect(projects, ident, hosts):
         if path.stem in leases or scope.get('projectId') == ident or scope.get('jobId') in job_ids:
             if value.get('state') != 'closed': raise ProjectFault('A project VM connection still needs cleanup before deletion.', 409)
             if path.stem not in leases: leases.append(project_id(path.stem))
+    stopped_effects = {}
     for path in (development / 'Unconfirmed').glob('*.json'):
         try: value = document(path)
         except Exception: continue
-        if value.get('projectId') == ident or value.get('jobId') in job_ids:
+        job_id = value.get('jobId')
+        if value.get('projectId') != ident and job_id not in job_ids: continue
+        if value.get('projectId') != ident or unconfirmed.get(job_id) != path.stem or (value.get('target') or {}).get('vmId') != path.stem:
             raise ProjectFault('Reconcile this project\'s unconfirmed guest effects before deleting it.', 409)
-    return {'projectId': ident, 'runs': sorted(run_ids), 'jobs': sorted(job_ids), 'leases': sorted(leases)}
+        stopped_effects[path.stem] = job_id
+    for vm_id in sorted(set(unconfirmed.values())):
+        confirm_guest_stopped(projects, vm_id)
+    return {'projectId': ident, 'runs': sorted(run_ids), 'jobs': sorted(job_ids), 'leases': sorted(leases),
+            'stoppedGuestEffects': stopped_effects}
 
 
 def remove(path):
@@ -151,6 +190,12 @@ def finish(db, projects, journal):
             target = projects / '.studio' / group / value
             if (target / 'worker.json').exists() and document(target / 'worker.json').get('projectId') != ident:
                 raise ProjectFault('A host record now belongs to another project. It was preserved.', 409)
+    if journal.get('stoppedGuestEffects'):
+        from quarantine import resolve
+        # The confirmed stop ended the original processes even if the VM has
+        # since booted. An interrupted deletion can only clear its own marker.
+        for vm_id, job_id in journal['stoppedGuestEffects'].items():
+            resolve(projects, project_id(vm_id), project_id(job_id), 'vm-stopped', project_id=ident)
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'agent-sessions'))
     from stats_lifecycle import preserve_pending
     preserve_pending(projects, projects / ident / 'Sessions/Sessions.sqlite')

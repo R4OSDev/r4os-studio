@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -61,6 +62,58 @@ class DeleteProject(unittest.TestCase):
 
     def delete(self, **input):
         return deletion.delete(self.projects, self.id, {'revision': 1, 'confirm': True, **input}, {'agents': True, 'development': True})
+
+    def unconfirmed_execution(self):
+        self.records()
+        vm = str(uuid.uuid4())
+        target = {'vmId': vm}
+        path = self.project / 'Development/Development.sqlite'
+        with closing(sqlite3.connect(path)) as db, db:
+            db.execute("UPDATE jobs SET kind='execution',state='unknown',payload=?", (json.dumps({'target': target}),))
+        self.json(self.projects / '.studio/development' / self.job / 'worker.json',
+                  {'projectId': self.id, 'jobId': self.job, 'kind': 'execution'})
+        return vm, target, self.projects / '.studio/development/Unconfirmed' / (vm + '.json')
+
+    def test_delete_after_confirmed_stop_clears_only_own_execution(self):
+        vm, target, marker = self.unconfirmed_execution()
+        self.json(marker, {'projectId': self.id, 'jobId': self.job, 'target': target})
+        foreign = marker.with_name(str(uuid.uuid4()) + '.json')
+        self.json(foreign, {'projectId': str(uuid.uuid4()), 'jobId': str(uuid.uuid4())})
+        with patch.object(deletion, 'confirm_guest_stopped') as stopped:
+            self.assertTrue(self.delete()['deleted'])
+        stopped.assert_called_once_with(self.projects, vm)
+        self.assertFalse(self.project.exists())
+        self.assertFalse(marker.exists())
+        self.assertTrue(foreign.exists())
+
+    def test_delete_stays_blocked_until_stop_even_when_marker_is_missing(self):
+        vm, _, marker = self.unconfirmed_execution()
+        self.assertFalse(marker.exists())
+        systemctl = subprocess.run
+
+        def running(command, **options):
+            if f'r4os-studio-vm@{vm}.service' in command:
+                return subprocess.CompletedProcess(command, 0, 'LoadState=loaded\nActiveState=active\nMainPID=123\nControlPID=0\nControlGroup=\n')
+            return systemctl(command, **options)
+
+        with patch.object(deletion.subprocess, 'run', side_effect=running):
+            with self.assertRaisesRegex(ProjectFault, 'Stop the original VM'):
+                self.delete()
+        self.assertTrue(self.project.exists())
+        with closing(connect(self.projects)) as db:
+            self.assertEqual(db.execute('SELECT state FROM projects').fetchone()[0], 'ready')
+            self.assertEqual(db.execute('SELECT count(*) FROM project_deletions').fetchone()[0], 0)
+
+    def test_delete_retry_leaves_replaced_marker_alone(self):
+        _, target, marker = self.unconfirmed_execution()
+        self.json(marker, {'projectId': self.id, 'jobId': self.job, 'target': target})
+        with patch.object(deletion, 'confirm_guest_stopped'), patch.object(deletion, 'finish', side_effect=OSError):
+            with self.assertRaises(OSError):
+                self.delete()
+        foreign = {'projectId': str(uuid.uuid4()), 'jobId': str(uuid.uuid4()), 'target': target}
+        self.json(marker, foreign)
+        self.assertTrue(self.delete()['deleted'])
+        self.assertEqual(json.loads(marker.read_text()), foreign)
 
     def test_removes_content_and_records_without_following_links_or_recreating(self):
         self.records(); result = self.delete(); self.assertTrue(result['deleted']); self.assertFalse(self.project.exists())
