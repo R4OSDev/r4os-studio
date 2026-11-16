@@ -8,7 +8,7 @@ import uuid
 from session_store import encode, now, identity, validate_settings
 from store import ProjectFault
 from system_prompt import snapshot as prompt_snapshot
-from project_agents import snapshot as project_snapshot
+from project_agents import MAX_BYTES as PROJECT_INSTRUCTION_BYTES, snapshot as project_snapshot
 
 CAPABILITIES=('skillMcp','projectInstructions','skillSelection','skillScripts','nativeWebSearch','roadmapSettings','remoteHostTools','nativeImageInputs','documentInputs','imageGenerationSettings','liveGoalPreparation','environmentNotesSettings')
 
@@ -192,7 +192,12 @@ def capture_input(store, session_id, data, provider_dir, image_capability=None, 
         from remote_context import snapshot as remote_snapshot
         snapshot.update(remote_snapshot(store, tool_scope(session), data.get('remoteHostTools') == 1))
         snapshot['systemPrompt'] = prompt_snapshot(store.projects)
-        snapshot['projectInstructions'] = project_snapshot(store.projects, store.project_id, store.project)
+        compact = snapshot['engine'].get('kind') == 'studio' and (
+            original is None or original.get('projectInstructionsCompaction') == 1)
+        project = project_snapshot(store.projects, store.project_id, store.project, compact=compact)
+        snapshot['projectInstructions'] = project
+        if compact and len(project['text'].encode('utf-8')) > PROJECT_INSTRUCTION_BYTES:
+            snapshot['projectInstructionsCompaction'] = 1
     from workspace_instructions import snapshot as working_paths
     if original is None or 'workspaceContext' in original:
         snapshot['workspaceContext'] = original['workspaceContext'] if original else working_paths(store, snapshot)

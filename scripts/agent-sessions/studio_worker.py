@@ -219,12 +219,13 @@ class StudioWorker(Worker):
         model.context_policy=self.config.get('contextPolicy')
         model.measured_input=self.measured_input if summary is None else None
         model.summary_budget=summary
-        if optimized(model.context_policy, 1) and model.binding['protocol']=='messages':
+        if (optimized(model.context_policy, 1) and model.binding['protocol']=='messages'
+                and not (summary and summary.get('purpose') == 'project-instructions')):
             from instructions import TOOL_EXECUTION
             from signed_history import Prefix, can_restart_messages, instruction_sources
             guidance = TOOL_EXECUTION if self.config.get('toolDeadlines', {}).get('version') == 1 else None
             changed = optimized(model.context_policy,14) and can_restart_messages(self.config)
-            sources = instruction_sources(self.config) if changed else None
+            sources = instruction_sources(getattr(self, 'effective_config', self.config)) if changed else None
             model.signed_prefix=Prefix(self.store,self.session_id,model.binding,guidance,current_sources=sources)
         model.count_observer=lambda receipt:event(self.store,self.session_id,self.run_id,'inputCount',receipt)
         from studio_history import recoveries
@@ -341,6 +342,13 @@ class StudioWorker(Worker):
         self.model.dispatch_guard = restart_guard if parser_restart_of else None
         if expected_sha256 and self.provider_retry.direct_guard_error is not None:
             self.model.dispatch_guard = self.provider_retry.direct_dispatch_guard
+        if purpose == 'project-instructions':
+            from project_instruction_compaction import guard
+
+            async def compaction_dispatch():
+                guard(self)
+
+            self.model.dispatch_guard = compaction_dispatch
         effort = summary['effort'] if summary else self.config['effort']
         self.operation = asyncio.create_task(self.model.response(messages, instructions, tools, effort,
             on_text=on_text, expected_sha256=expected_sha256, conversation=purpose == 'conversation',
@@ -353,7 +361,7 @@ class StudioWorker(Worker):
             proof=evidence(self.config,error) or snapshot_evidence(self.config,error,self.manifest['providers'])
             if proof:error.quota_evidence=proof
             self.operations.finish(request_id,error=error,attempted=self.model.attempted and not unsent)
-            waiting=register(self,request_id,proof) if proof else None
+            waiting=register(self,request_id,proof) if proof and purpose != 'project-instructions' else None
             retryable = isinstance(error, ModelFault) and not waiting and (
                 error.confirmed_overload or error.stream_interrupted or error.confirmed_zai_network_failure)
             if retryable: error.retry_operation_id=request_id
@@ -380,6 +388,8 @@ class StudioWorker(Worker):
         return result
 
     def quota_rejected(self,error):
+        if getattr(self, 'request_purpose', None) == 'project-instructions':
+            return False
         from quota_wait import snapshot_evidence,register
         proof=snapshot_evidence(self.config,error,self.manifest['providers'])
         if not proof:return False
@@ -445,7 +455,8 @@ class StudioWorker(Worker):
 
     async def cycle(self):
         from instructions import compose
-        instructions = compose(self.config, self.store.project if self.store.owner_type == 'project' else None)
+        instructions = compose(getattr(self, 'effective_config', self.config),
+                               self.store.project if self.store.owner_type == 'project' else None)
         final_tool_results = self.config.get('toolDeadlines', {}).get('version') == 1
         correction_attempts=0; rejected=set()
         while self.active():
@@ -570,6 +581,10 @@ class StudioWorker(Worker):
             self.message_worker=MessageWorker(self);await self.message_worker.start()
             worker=json.loads(get_run(self.store,self.run_id)['worker']);worker.update(messageProtocol=1,messageTurnActive=True)
             transition(self.store,self.run_id,'starting',worker=worker)
+            if self.config.get('projectInstructionsCompaction') == 1:
+                from project_instruction_compaction import compact
+                effective = await compact(self)
+                self.effective_config = {**self.config, 'projectInstructions': effective}
             human = self.config['goalExecution']['objective'] if self.config.get('goalExecution') else request_text(self.store, self.run_id)
             from studio_media import user_content
             self.conversation.append(self.run_id, 'user-' + self.row['request_id'], 'user',

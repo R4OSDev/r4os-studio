@@ -14,14 +14,15 @@ from project_maintenance import project, busy, require_idle
 
 NAME = 'Agents.md'
 MAX_BYTES = 32768
+MAX_COMPACTION_BYTES = 4 * MAX_BYTES
 
 
-def validate(text):
+def validate(text, maximum=MAX_BYTES):
     try:
-        valid = isinstance(text, str) and len(text.encode('utf-8')) <= MAX_BYTES and not any(
+        valid = isinstance(text, str) and len(text.encode('utf-8')) <= maximum and not any(
             (ord(c) < 32 and c not in '\t\n\r') or ord(c) == 127 for c in text)
     except UnicodeError: valid = False
-    if not valid: raise ProjectFault('Enter at most 32 KiB of UTF-8 text without control characters.', 400)
+    if not valid: raise ProjectFault(f'Enter at most {maximum // 1024} KiB of UTF-8 text without control characters.', 400)
     return text
 
 
@@ -29,7 +30,7 @@ def initial(value):
     return validate('Titel: ' + value['name'] + '\nBeschreibung: ' + value['description'] + '\n')
 
 
-def read_at(directory, value):
+def read_at(directory, value, *, maximum=MAX_BYTES):
     directory = Path(directory).absolute()
     if directory.resolve(strict=True) != directory: raise ProjectFault('Invalid project instruction directory.', 409)
     if any(p.name.casefold() == NAME.casefold() and p.name != NAME for p in directory.iterdir()):
@@ -41,18 +42,20 @@ def read_at(directory, value):
     except OSError: raise ProjectFault('Agents.md is unavailable. Its contents were preserved.', 409) from None
     with os.fdopen(descriptor, 'rb') as stream:
         before = os.fstat(stream.fileno())
-        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > MAX_BYTES:
-            raise ProjectFault('Agents.md must be a regular file of at most 32 KiB.', 409)
-        raw = stream.read(MAX_BYTES + 1); after = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > maximum:
+            raise ProjectFault(f'Agents.md must be a regular file of at most {maximum // 1024} KiB.', 409)
+        raw = stream.read(maximum + 1); after = os.fstat(stream.fileno())
     if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
         raise ProjectFault('Agents.md changed while being read. Retry the request.', 409)
-    try: text = validate(raw.decode('utf-8'))
+    try: text = validate(raw.decode('utf-8'), maximum)
     except UnicodeError: raise ProjectFault('Agents.md must contain valid UTF-8. Its contents were preserved.', 409) from None
     return {'path': NAME, 'text': text, 'sha256': hashlib.sha256(raw).hexdigest(), 'exists': True}
 
 
-def write_at(directory, value, text, expected):
-    text = validate(text); current = read_at(directory, value)
+def write_at(directory, value, text, expected, *, source_maximum=MAX_BYTES):
+    text = validate(text); current = read_at(directory, value, maximum=source_maximum)
+    if source_maximum != MAX_BYTES and (not current['exists'] or current['sha256'] != expected):
+        raise ProjectFault('Agents.md changed while it was being compacted. Continue with the current file.', 409)
     if current['exists'] and current['text'] == text: return current
     if current['sha256'] != expected:
         raise ProjectFault('Agents.md changed. Reload it before saving.', 409)
@@ -61,7 +64,7 @@ def write_at(directory, value, text, expected):
     try:
         with os.fdopen(descriptor, 'wb') as stream:
             stream.write(text.encode('utf-8')); stream.flush(); os.fsync(stream.fileno())
-        if read_at(directory, value)['sha256'] != expected:
+        if read_at(directory, value, maximum=source_maximum)['sha256'] != expected:
             raise ProjectFault('Agents.md changed. Reload it before saving.', 409)
         if current['exists']: os.replace(temporary, path)
         else:
@@ -73,14 +76,15 @@ def write_at(directory, value, text, expected):
     return read_at(directory, value)
 
 
-def ensure_at(directory, value):
-    current = read_at(directory, value)
+def ensure_at(directory, value, *, maximum=MAX_BYTES):
+    current = read_at(directory, value, maximum=maximum)
     if current['exists']: return current
     return write_at(directory, value, current['text'], None)
 
 
-def snapshot(projects, identity, value):
-    current = ensure_at(workspace(projects, identity, True), value)
+def snapshot(projects, identity, value, *, compact=False):
+    current = ensure_at(workspace(projects, identity, True), value,
+                        maximum=MAX_COMPACTION_BYTES if compact else MAX_BYTES)
     return {k: current[k] for k in ('path', 'text', 'sha256')}
 
 

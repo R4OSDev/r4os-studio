@@ -55,6 +55,14 @@ API work and participate in the existing session-scoped deletion.
 
 ## Queue, stop, rotation, deletion and restore
 
+For a newly accepted direct Studio project run, an oversized `Agents.md`
+triggers a dedicated request with the selected session model before the
+ordinary conversation continues. The run retains the original bytes and
+checksum. Studio validates the replacement as UTF-8 within 32 KiB and saves
+it against the original checksum. The same run then uses the compacted
+instructions, including when the run was admitted by Goal keepalive. Inputs
+for this operation are bounded at 128 KiB.
+
 Direct Studio runs can retry a model stream that ends during the arguments of
 a declared local tool. Studio requires a confirmed transport end, a complete
 stream event boundary, and no terminal response or published output. Tool
