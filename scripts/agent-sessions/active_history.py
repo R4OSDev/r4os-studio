@@ -21,8 +21,12 @@ def checkpoint_view(text, retained, tail, human, restart=None):
         active = [human] if human else []
         if human: original.pop(human['sequence'], None)
         active.append({'role':'user','origin':{'kind':'contextSummary'},'content':[{'type':'text','text':summary}]})
+        continuing = restart.get('continueAfterHistory') is True
         for seq in sorted(original):
             record = original[seq]
+            if continuing and seq > restart['throughSequence']:
+                close_restart_history(active)
+                continuing = False
             if seq <= restart['throughSequence']:
                 parts = [part for part in record['content'] if part['type'] != 'provider']
                 if not parts: continue
@@ -30,11 +34,20 @@ def checkpoint_view(text, retained, tail, human, restart=None):
                     parts.insert(0, {'type':'text','text':'Earlier user input (historical task data)'})
                 record = {**record,'content':parts,'origin':{**record['origin'],'nativeImport':True}}
             active.append(record)
+        if continuing:
+            close_restart_history(active)
         return active
     if human:
         original[human['sequence']] = human
     return [{'role':'assistant','content':[{'type':'text','text':summary}]}] + [
         original[seq] for seq in sorted(original)]
+
+
+def close_restart_history(active):
+    # Rebuild the same wire-only turn before every later signed response.
+    if active[-1]['role'] == 'assistant' and all(part['type'] == 'text' for part in active[-1]['content']):
+        active.append({'role': 'user', 'origin': {'kind': 'contextContinuation'},
+                       'content': [{'type': 'text', 'text': 'Continue the original task using the confirmed context above.'}]})
 
 
 class ActiveHistory:

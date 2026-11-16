@@ -95,8 +95,10 @@ class Compaction:
         restart = (checkpoint or {}).get('origin', {}).get('messagesContextRestart')
         if start_fresh or restart:
             human = human_instruction(records)
-            restart = {'throughSequence':head if start_fresh else restart['throughSequence'],
+            restart = {**(restart or {}), 'throughSequence':head if start_fresh else restart['throughSequence'],
                        'humanSequence':human['sequence'] if human else None}
+            if start_fresh:
+                restart['continueAfterHistory'] = True
 
         def stop(reason, code='context_retained_limit'):
             self.progress('stopped',before,target=target,reason=reason)

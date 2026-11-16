@@ -543,8 +543,8 @@ class ModelTransport:
                 if frame.get('type') == 'error':
                     code = frame.get('code', 'model_transport_error')
                     if self.binding.get('kind') == 'claude-plan':
-                        from claude_tool_schema import rejected
-                        if rejected(frame.get('httpStatus'), frame.get('details')): code = 'model_tool_schema_rejected'
+                        from claude_tool_schema import rejected as schema_rejected
+                        if schema_rejected(frame.get('httpStatus'), frame.get('details')): code = 'model_tool_schema_rejected'
                     status, details = frame.get('httpStatus'), frame.get('details')
                     error = ModelFault(code, status, not_dispatched=frame.get('notDispatched') is True, details=details,
                         confirmed_overload=status in (503,529) and isinstance(details,dict)

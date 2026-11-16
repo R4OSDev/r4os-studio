@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -11,7 +12,7 @@ import uuid
 from conversation import Conversation
 import goal_keepalive
 from goal_store import Goals
-from model_transport import dumps
+from model_transport import ModelFault, ModelTransport, dumps
 from project_agents import MAX_BYTES, read_at
 from project_instruction_compaction import compact, replacement
 from run_store import admit, get_run, transition
@@ -190,3 +191,45 @@ class InstructionCompaction(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(other.read_text(), BEFORE)
         with self.assertRaises(ProjectFault):
             replacement({'content': [{'type': 'text', 'text': '{"text":"foo","extra":1}'}]})
+
+    def test_fresh_messages_checkpoint_ends_with_user_and_reproduces_signed_prefix(self):
+        from active_history import checkpoint_view
+        from model_messages import request
+        binding = {'kind': 'claude-plan', 'model': 'claude-opus-5-5', 'id': 'own', 'reasoning': 'unsupported'}
+        human = {'sequence': 3, 'role': 'user', 'content': [{'type': 'text', 'text': 'Original task'}]}
+        history = {'sequence': 2, 'role': 'assistant', 'origin': {}, 'content': [{'type': 'text', 'text': 'Previous progress'}]}
+        restart = {'throughSequence': 3, 'humanSequence': 3, 'continueAfterHistory': True}
+        projected = checkpoint_view('Summary', [], [history, human], human, restart)
+        wire, _ = request(binding, projected, 'Instructions', [], 'none')
+        self.assertEqual([item['role'] for item in wire['messages']], ['user', 'assistant', 'user'])
+        self.assertEqual(wire['messages'][1]['content'], history['content'])
+        signed = {'sequence': 5, 'role': 'assistant', 'origin': {'selection': {'model': binding['model'], 'providerId': 'own'}},
+                  'content': [{'type': 'provider', 'protocol': 'messages',
+                               'value': dumps([{'type': 'thinking', 'thinking': '', 'signature': 'fixture'}])}]}
+        later = checkpoint_view('Summary', [], [history, signed], human, restart)
+        follow, _ = request(binding, later, 'Instructions', [], 'none')
+        self.assertEqual(follow['messages'][:len(wire['messages'])], wire['messages'])
+        self.assertEqual(follow['messages'][-1]['content'], json.loads(signed['content'][0]['value']))
+
+    async def test_messages_http_rejection_keeps_original_error(self):
+        frame={'type': 'error', 'code': 'invalid_request_error', 'httpStatus': 400,
+               'details': {'httpResponseComplete': True, 'providerBodyBase64': 'e30='}}
+        connector = ('import sys\nsys.stdin.buffer.read()\n'
+                     + '\n'.join('print(' + repr(dumps(item)) + ')' for item in
+                                 ({'type': 'response', 'httpStatus': 400}, frame)))
+        spawn = asyncio.create_subprocess_exec
+
+        async def local_child(*_, **kwargs):
+            return await spawn(sys.executable, '-c', connector, **kwargs)
+
+        binding = {'kind': 'claude-plan', 'baseUrl': 'https://fixture.invalid/v1', 'auth': 'bearer',
+                   'protocol': 'messages', 'contextWindow': 1000000, 'reasoning': 'unsupported'}
+        model = ModelTransport(binding, 'claude-opus-5-5', 'fixture-credential')
+        user = [{'role': 'user', 'content': [{'type': 'text', 'text': 'User text'}]}]
+        with patch('model_transport.resolve_binding', new=AsyncMock(return_value=['127.0.0.1'])), \
+                patch('model_transport.asyncio.create_subprocess_exec', new=local_child):
+            with self.assertRaises(ModelFault) as caught:
+                await model.response(user, 'Original instructions', [], 'none')
+        self.assertEqual(caught.exception.http_status, 400)
+        self.assertEqual(caught.exception.code, 'invalid_request_error')
+        self.assertTrue(caught.exception.details['httpResponseComplete'])
